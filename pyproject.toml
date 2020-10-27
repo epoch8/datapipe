@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "c12n-pipe"
+version = "0.1.0"
+description = ""
+authors = ["Andrey Tatarinov <a@tatarinov.co>"]
+
+[tool.poetry.dependencies]
+python = "^3.6.1"
+pandas = "^1.1.3"
+dask = "^2.30.0"
+googletrans = "^3.0.0" # proc_translate
+streamlit = "^0.69.2"
+
+[tool.poetry.dev-dependencies]
+jupyter = "^1.0.0"
+pylint = "^2.6.0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
