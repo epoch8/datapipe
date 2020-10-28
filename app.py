@@ -61,7 +61,7 @@ if __name__ == "__main__":
     rnr.run()
 
     mem_src.data = pd.DataFrame({
-        'text': ['Батон 2', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
+        'text': ['Батон', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
     })
 
     failing_id.should_fail = True
