@@ -1,7 +1,9 @@
 import pandas as pd
 import logging
 
-from pipe import DataTable, Source, IncProcess, PipeRunner
+from pipe import Source, IncProcess, PipeRunner
+from ds_memory import MemoryDataStore
+
 from proc_translate import IncTranslate
 
 def lower(df: pd.DataFrame) -> pd.DataFrame:
@@ -39,12 +41,15 @@ if __name__ == "__main__":
 
     pd.options.display.float_format = '{:f}'.format
 
-    rnr = PipeRunner([
-        ('memsrc',      Source(mem_src)),
-        ('failing_id',  IncProcess(failing_id, ['text'])),
-        ('lower',       IncProcess(lower, ['text'])),
-        ('translate',   IncTranslate(inputs=['text'], src='ru', dest='en')),
-    ])
+    rnr = PipeRunner(
+        MemoryDataStore(),
+        [
+            ('memsrc',      Source(mem_src)),
+            ('failing_id',  IncProcess(failing_id, ['text'])),
+            ('lower',       IncProcess(lower, ['text'])),
+            ('translate',   IncTranslate(inputs=['text'], src='ru', dest='en')),
+        ]
+    )
 
     mem_src.data = pd.DataFrame({
         'text': ['Батон', 'Булка', 'Молоко 0.5л']
@@ -60,11 +65,11 @@ if __name__ == "__main__":
     print('*'*10)
     rnr.run()
 
-    mem_src.data = pd.DataFrame({
-        'text': ['Батон', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
-    })
+    # mem_src.data = pd.DataFrame({
+    #     'text': ['Батон', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
+    # })
 
-    failing_id.should_fail = True
+    # failing_id.should_fail = True
 
-    print('*'*10)
-    rnr.run()
+    # print('*'*10)
+    # rnr.run()
