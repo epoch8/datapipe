@@ -53,7 +53,7 @@ class IncProcess:
         self.inputs = inputs
     
     def run(self, name: str, ds: DataStore, df: pd.DataFrame) -> None:
-        logger.debug(f'Processing {len(df)} rows')
+        logger.debug(f'Processing {len(df)} rows: {df.index}')
         try:
             res = self.func(df)
             ds.put_success(name, res)

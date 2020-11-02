@@ -65,11 +65,11 @@ if __name__ == "__main__":
     print('*'*10)
     rnr.run()
 
-    # mem_src.data = pd.DataFrame({
-    #     'text': ['Батон', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
-    # })
+    mem_src.data = pd.DataFrame({
+        'text': ['Батон', 'Булка 2', 'Молоко 1л 2', 'Сок добрый 2']
+    })
 
-    # failing_id.should_fail = True
+    failing_id.should_fail = True
 
-    # print('*'*10)
-    # rnr.run()
+    print('*'*10)
+    rnr.run()
