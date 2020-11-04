@@ -17,6 +17,10 @@ class DataStore:
         ''' Получить датафрейм с системной информацией '''
         raise NotImplementedError
 
+    def get_debug_df(self, name: str) -> pd.DataFrame:
+        ''' Получить датафрейм с данными и метаданными для просмотра глазами '''
+        raise NotImplementedError
+
     def get_df(self, name: str, idx: Optional[pd.Index] = None) -> pd.DataFrame:
         ''' Получить датафрейм с информацией приложения по заданным индексам '''
         raise NotImplementedError
@@ -125,6 +129,6 @@ class PipeRunner(object):
             step.run(self.ds, prev_name, cur_name)
 
             logger.debug(f'Done {cur_name}')
-            logger.debug(f'Result {cur_name}:\n{self.ds.get_system_df(cur_name)}')
+            logger.debug(f'Result {cur_name}:\n{self.ds.get_debug_df(cur_name)}')
 
         return self.ds.get_df(cur_name)
