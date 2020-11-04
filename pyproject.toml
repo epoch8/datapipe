@@ -11,6 +11,7 @@ dask = "^2.30.0"
 googletrans = "^3.0.0" # proc_translate
 streamlit = "^0.69.2"
 lxml = "^4.6.1"
+fsspec = "^0.8.4"
 
 [tool.poetry.dev-dependencies]
 jupyter = "^1.0.0"

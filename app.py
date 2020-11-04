@@ -26,7 +26,7 @@ if __name__ == "__main__":
         MemoryDataStore(),
         [
             # ('memsrc',      Source(mem_src)),
-            ('src',         src_gfeed.SrcGfeed('./ozon_products.xml',)),
+            ('src',         src_gfeed.SrcGfeed('file://./ozon_products.xml',)),
             ('sample10',    Sample(n=10)),
             ('lower',       IncProcess(lower, input_cols=['title'])),
             ('translate',   proc_translate.ProcTranslate(input_cols=['title'], src='ru', dest='en')),

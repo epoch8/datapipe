@@ -3,6 +3,7 @@ import mimetypes
 import re
 from datetime import date, datetime
 from typing import Dict, List, Optional, Text, Union
+import fsspec
 
 import lxml
 import pandas as pd
@@ -143,24 +144,24 @@ def _extract_element(element):
             yield extract_dict_of_elements(el)
 
 
-def get_elements(filename):
-    with open(filename, 'rb') as f:
-        for _, element in etree.iterparse(f, tag="item"):
-            content = dict()
-            for tag, text in _extract_element(element):
-                content[tag] = text
-            
-            content['_id'] = content['id']
+def get_elements(f):
+    for _, element in etree.iterparse(f, tag="item"):
+        content = dict()
+        for tag, text in _extract_element(element):
+            content[tag] = text
+        
+        content['_id'] = content['id']
 
-            yield content
-
-
-def gfeed(filename):
-    return pd.DataFrame.from_records(
-        get_elements(filename), 
-        index='_id'
-    )
+        yield content
 
 
-def SrcGfeed(filename):
-    return Source(gfeed, args=(filename,))
+def gfeed(url):
+    with fsspec.open(url) as f:
+        return pd.DataFrame.from_records(
+            get_elements(f), 
+            index='_id'
+        )
+
+
+def SrcGfeed(url):
+    return Source(gfeed, args=(url,))
