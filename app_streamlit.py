@@ -9,6 +9,9 @@ import proc_translate
 import src_gfeed
 
 
+logging.basicConfig(level=logging.DEBUG)
+pd.options.display.float_format = '{:f}'.format
+
 def lower(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
@@ -27,22 +30,9 @@ pipeline = [
     ('translate',   proc_translate.ProcTranslate(input_cols=['title'], src='en', dest='ru')),
 ]
 
+rnr = PipeRunner(ds, pipeline)
 
-@st.cache
-def run_pipeline(ds, pipeline):
-    logging.basicConfig(level=logging.DEBUG)
-
-    pd.options.display.float_format = '{:f}'.format
-
-    rnr = PipeRunner(ds, pipeline)
-
-    rnr.run()
-
-    return ds
-
-
-data = run_pipeline(ds, pipeline)
-
-for (name, _) in pipeline:
-    st.text(name)
-    st.dataframe(data.get_system_df(name))
+for (prev_name, cur_name, step) in rnr.pipeline:
+    st.text(cur_name)
+    rnr.run_step(prev_name, cur_name, step)
+    st.dataframe(ds.get_debug_df(cur_name))

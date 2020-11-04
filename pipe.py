@@ -122,13 +122,14 @@ class PipeRunner(object):
             in zip(prev_names, pipeline)
         ]
 
-    def run(self) -> pd.DataFrame:
+    def run_step(self, prev_name: Optional[str], cur_name: str, step: Process) -> None:
+        logger.debug(f'Running {cur_name}')
+
+        step.run(self.ds, prev_name, cur_name)
+
+        logger.debug(f'Done {cur_name}')
+        logger.debug(f'Result {cur_name}:\n{self.ds.get_debug_df(cur_name)}')
+
+    def run(self) -> None:
         for prev_name, cur_name, step in self.pipeline:
-            logger.debug(f'Running {cur_name}')
-
-            step.run(self.ds, prev_name, cur_name)
-
-            logger.debug(f'Done {cur_name}')
-            logger.debug(f'Result {cur_name}:\n{self.ds.get_debug_df(cur_name)}')
-
-        return self.ds.get_df(cur_name)
+            self.run_step(prev_name, cur_name, step)
