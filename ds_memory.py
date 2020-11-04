@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import time
 import pandas as pd
@@ -24,13 +24,15 @@ class MemoryDataStore(DataStore):
 
         return self.data[name]
 
-    def get_df(self, name, idx: Optional[pd.Index] = None) -> pd.DataFrame:
+    def get_df(self, name, idx: Optional[pd.Index] = None, cols: List[str] = None) -> pd.DataFrame:
         data = self.get_system_df(name)
 
-        if idx is not None:
-            data = data.loc[idx]
+        if idx is None:
+            idx = data.index
 
-        return self._data_to_df(data)
+        data = data.loc[idx]
+
+        return self._data_to_df(data, cols)
 
     def _df_to_data_success(self, df: pd.DataFrame) -> pd.DataFrame:
         ts = time.time()
@@ -64,10 +66,20 @@ class MemoryDataStore(DataStore):
 
         return data_df
 
-    def _data_to_df(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _data_to_df(self, data: pd.DataFrame, cols: Optional[List[str]] = None) -> pd.DataFrame:
         bad_idx = data['data'].isnull()
 
-        return pd.DataFrame.from_records(list(data.loc[-bad_idx, 'data']), index=data.index)
+        data_to_convert = data.loc[-bad_idx]
+
+        if len(data_to_convert) > 0:
+            df = pd.DataFrame.from_records(list(data_to_convert.loc[:, 'data']), index=data_to_convert.index)
+
+            if cols is None:
+                cols = df.columns.values
+            
+            return df.loc[:, cols]
+        else:
+            return pd.DataFrame(columns=cols)
 
     def _compare_idxs_for_update(self, name, idx: pd.Index) -> Tuple[pd.Index, pd.Index]:
         ''' Возвращает пересекающиеся индексы и новые, которые нужно добавить '''
@@ -83,7 +95,7 @@ class MemoryDataStore(DataStore):
         data = self.get_system_df(name)
 
         if len(df) > 0:
-            data.loc[df.index, ['last_run_ts', 'last_run_status']] = df.loc[:, ['last_run_ts', 'last_run_status']]
+            data.loc[df.index, ['last_run_ts', 'last_run_status', 'last_run_reason']] = df.loc[:, ['last_run_ts', 'last_run_status', 'last_run_reason']]
 
             changed_idx = df.index[data.loc[df.index, 'data'] != df.loc[:, 'data']]
             good_idx = changed_idx.difference(df.loc[changed_idx, 'data'].isnull())
@@ -126,7 +138,7 @@ class MemoryDataStore(DataStore):
 
         return missing_idx.append(newer_idx)
 
-    def get_for_update(self, prev_name: str, next_name: str) -> pd.DataFrame:
+    def get_for_update(self, prev_name: str, next_name: str, input_cols: Optional[List[str]]) -> pd.DataFrame:
         idx = self.what_to_update(prev_name, next_name)
 
-        return self.get_df(prev_name, idx)
+        return self.get_df(prev_name, idx, input_cols)

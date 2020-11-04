@@ -155,16 +155,12 @@ def get_elements(filename):
             yield content
 
 
-# def 
+def gfeed(filename):
+    return pd.DataFrame.from_records(
+        get_elements(filename), 
+        index='_id'
+    )
 
 
-# class GFeedSource(Source):
-#     def __init__(self, url):
-#         self.url = url
-
-#         Source.__init__(self, )
-
-# with open("ozon_products.xml", 'rb') as f:
-#     df = pd.DataFrame(get_elements(f))
-
-#     print(df)
+def SrcGfeed(filename):
+    return Source(gfeed, args=(filename,))
