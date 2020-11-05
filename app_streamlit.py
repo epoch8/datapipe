@@ -3,62 +3,36 @@ import streamlit as st
 import pandas as pd
 import logging
 
-from pipe import Source, IncProcess, PipeRunner
+from pipe import Source, IncProcess, PipeRunner, Sample
 from ds_memory import MemoryDataStore
-from proc_translate import IncTranslate
+import proc_translate
+import src_gfeed
+
+
+logging.basicConfig(level=logging.DEBUG)
+pd.options.display.float_format = '{:f}'.format
 
 def lower(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df['text'] = df['text'].str.lower()
+
+    for c in df.columns:
+        df.loc[:, c] = df.loc[:,c].str.lower()
 
     return df
 
 
-mem_src_data = {'data': None}
-
-def mem_src() -> pd.DataFrame:
-    return mem_src_data['data']
-
-
 ds = MemoryDataStore()
 pipeline = [
-    ('memsrc',      Source(mem_src)),
-    ('lower',       IncProcess(lower, ['text'])),
-    ('translate',   IncTranslate(inputs=['text'], src='ru', dest='en')),
+    # ('memsrc',      Source(mem_src)),
+    ('src',         src_gfeed.SrcGfeed('file://./ozon_products.xml',)),
+    ('sample10',    Sample(n=10)),
+    # ('lower',       IncProcess(lower, input_cols=['title'])),
+    ('translate',   proc_translate.ProcTranslate(input_cols=['title'], src='en', dest='ru')),
 ]
 
+rnr = PipeRunner(ds, pipeline)
 
-@st.cache
-def run_pipeline(ds, pipeline):
-    logging.basicConfig(level=logging.DEBUG)
-
-    pd.options.display.float_format = '{:f}'.format
-
-    rnr = PipeRunner(ds, pipeline)
-
-    mem_src_data['data'] = pd.DataFrame({
-        'text': ['Батон', 'Булка', 'Молоко 0.5л']
-    })
-
-    rnr.run()
-
-    mem_src_data['data'] = pd.DataFrame({
-        'text': ['Батон', 'Булка', 'Молоко 1л', 'Сок добрый']
-    })
-
-    rnr.run()
-
-    mem_src_data['data'] = pd.DataFrame({
-        'text': ['Батон', 'Булка', 'Молоко 1л', 'Сок добрый', 'Печенье творожное']
-    })
-
-    rnr.run()
-
-    return ds
-
-
-data = run_pipeline(ds, pipeline)
-
-for (name, _) in pipeline:
-    st.text(name)
-    st.dataframe(data.get_system_df(name))
+for (prev_name, cur_name, step) in rnr.pipeline:
+    st.text(cur_name)
+    rnr.run_step(prev_name, cur_name, step)
+    st.dataframe(ds.get_debug_df(cur_name))
