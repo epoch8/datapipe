@@ -174,7 +174,7 @@ class DataTable:
                 },
             )
 
-    def get_data(self, idx: Optional[Index], con: Engine) -> pd.DataFrame:
+    def get_data(self, idx: Optional[Index] = None, con: Engine = None) -> pd.DataFrame:
         if con is None:
             con = create_engine(self.constr)
 
@@ -277,6 +277,31 @@ class DataTable:
         for i in range(0, len(meta_df.index), chunksize):
             yield self.get_data(meta_df.index[i:i+chunksize], con=con)
 
+    def get_indexes(self, idx: Optional[Index] = None, con: Engine = None) -> Index:
+        if con is None:
+            con = create_engine(self.constr)
+
+        if idx is None:
+            return pd.read_sql_query(
+                f'''
+                select id from {self.schema}.{self.data_table_name()}
+                ''',
+                con=con,
+                index_col='id',
+            ).index.tolist()
+        else:
+            return pd.read_sql_query(
+                f'''
+                select id from {self.schema}.{self.data_table_name()}
+                where id = ANY(%(ids)s)
+                ''',
+                con=con,
+                index_col='id',
+                params={
+                    'ids': list(idx)
+                },
+            ).index.tolist()
+
 
 class DataStore:
     def __init__(self, connstr: str, schema: str):
@@ -336,9 +361,11 @@ class DataStore:
         )
 
         logger.info(f'Items to update {len(idx_df)}')
-
-        for i in range(0, len(idx_df.index), chunksize):
-            yield [inp.get_data(idx_df.index[i:i+chunksize], con=con) for inp in inputs]
+        if len(idx_df.index) > 0:
+            for i in range(0, len(idx_df.index), chunksize):
+                yield [inp.get_data(idx_df.index[i:i+chunksize], con=con) for inp in inputs]
+        else:
+            yield [inp.get_data() for inp in inputs]
 
 
 def inc_process(
