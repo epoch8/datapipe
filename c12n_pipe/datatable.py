@@ -1,4 +1,4 @@
-from typing import Callable, Generator, List, Dict, Any, Optional, Union
+from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Union
 import logging
 import time
 
@@ -284,7 +284,7 @@ class DataTable:
         if idx is None:
             return pd.read_sql_query(
                 f'''
-                select id from {self.schema}.{self.data_table_name()}
+                select id from {self.schema}.{self.meta_table_name()}
                 ''',
                 con=con,
                 index_col='id',
@@ -292,7 +292,7 @@ class DataTable:
         else:
             return pd.read_sql_query(
                 f'''
-                select id from {self.schema}.{self.data_table_name()}
+                select id from {self.schema}.{self.meta_table_name()}
                 where id = ANY(%(ids)s)
                 ''',
                 con=con,
@@ -317,38 +317,31 @@ class DataStore:
             create_tables=create_tables
         )
 
-    def get_process_chunks(
+    def get_process_ids(
         self,
         inputs: List[DataTable],
         output: DataTable,
-        chunksize: int = 1000
-    ) -> Generator[List[pd.DataFrame], None, None]:
-        con = create_engine(self.connstr)
-
-        '''
-        select t0.id
-        from eva_feed_meta t0
-        left eva_ozon_sync_stocks_request_meta out on t0.id = out.id
-        where out.update_ts is null
-        or out.update_ts < t0.update_ts
-        '''
+        con: Engine = None,
+    ) -> pd.Index:
+        if con is None:
+            con = create_engine(self.connstr)
 
         sql = text(
             f'''
-            select t0.id
+            select id
             from {self.schema}.{inputs[0].meta_table_name()} t0
             ''' +
             ''.join(f'''
-            join {self.schema}.{t.meta_table_name()} t{i+1} on t0.id = t{i+1}.id
+            full join {self.schema}.{t.meta_table_name()} t{i+1} using (id)
             ''' for i, t in enumerate(inputs[1:])) +
             f'''
-            left join {self.schema}.{output.meta_table_name()} out on t0.id = out.id
+            left join {self.schema}.{output.meta_table_name()} out using (id)
             where
             out.update_ts is null
             ''' +
             ''.join(
             f'''
-            or out.update_ts < t{i}.update_ts
+            or (t{i}.update_ts is not null and out.update_ts < t{i}.update_ts)
             '''
                 for i, t in enumerate(inputs)
             )
@@ -360,12 +353,30 @@ class DataStore:
             index_col='id',
         )
 
-        logger.info(f'Items to update {len(idx_df)}')
-        if len(idx_df.index) > 0:
-            for i in range(0, len(idx_df.index), chunksize):
-                yield [inp.get_data(idx_df.index[i:i+chunksize], con=con) for inp in inputs]
-        else:
-            yield [inp.get_data() for inp in inputs]
+        return idx_df.index
+
+    def get_process_chunks(
+        self,
+        inputs: List[DataTable],
+        output: DataTable,
+        chunksize: int = 1000,
+        con: Engine = None,
+    ) -> Iterator[List[pd.DataFrame]]:
+        if con is None:
+            con = create_engine(self.connstr)
+
+
+        idx = self.get_process_ids(
+            inputs=inputs,
+            output=output,
+            con=con,
+        )
+
+        logger.info(f'Items to update {len(idx)}')
+
+        if len(idx) > 0:
+            for i in range(0, len(idx), chunksize):
+                yield [inp.get_data(idx[i:i+chunksize], con=con) for inp in inputs]
 
 
 def inc_process(
@@ -376,6 +387,9 @@ def inc_process(
     proc_func: Callable,
     chunksize: int = 1000,
 ) -> DataTable:
+    '''
+    Инкрементальная обработка на основании `input_dts` и `DataTable(name)`
+    '''
     res_dt = ds.get_table(
         name=name,
         data_sql_schema=data_sql_schema,
@@ -390,5 +404,30 @@ def inc_process(
 
     # FIXME: здесь нельзя делать синк метадаты, потому что при запуске когда ничего не меняется - стирается все
     # res_dt.sync_meta(chunks)
+
+    return res_dt
+
+
+def gen_process(
+    ds: DataStore,
+    name: str,
+    data_sql_schema: DataSchema,
+    proc_func: Callable[[], Iterator[pd.DataFrame]],
+) -> DataTable:
+    '''
+    Создание новой таблицы из результатов запуска `proc_func`
+    '''
+
+    res_dt = ds.get_table(
+        name=name,
+        data_sql_schema=data_sql_schema,
+    )
+
+    chunks = []
+
+    for chunk_df in proc_func():
+        chunks.append(res_dt.store_chunk(chunk_df))
+    
+    res_dt.sync_meta(chunks=chunks)
 
     return res_dt
