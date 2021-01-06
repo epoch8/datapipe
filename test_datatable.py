@@ -18,6 +18,7 @@ TEST_DF = pd.DataFrame(
     index=[f'id_{i}' for i in range(10)]
 )
 
+
 @pytest.fixture
 def test_schema():
     eng = create_engine(DBCONNSTR)
@@ -27,6 +28,7 @@ def test_schema():
     yield 'ok'
 
     eng.execute('DROP SCHEMA test CASCADE')
+
 
 @pytest.mark.usefixtures('test_schema')
 def test_simple():
