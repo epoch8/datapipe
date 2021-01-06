@@ -1,11 +1,12 @@
 import pytest
+import os
 
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
 from c12n_pipe.datatable import DataStore, DataTable
 
-DBCONNSTR = 'postgresql://postgres:password@localhost:5432/postgres'
+DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 
 TEST_SCHEMA = [
     Column('a', Numeric),
