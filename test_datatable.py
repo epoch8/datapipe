@@ -37,7 +37,7 @@ def test_simple():
 
     tbl = ds.get_table('test', TEST_SCHEMA)
 
-    tbl.store()
+    tbl.store(TEST_DF)
 
 
 @pytest.mark.usefixtures('test_schema')
