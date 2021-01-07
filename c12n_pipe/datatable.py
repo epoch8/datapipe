@@ -244,7 +244,7 @@ class DataTable:
 
         return data_df.index
 
-    def sync_meta(self, chunks: List[ChunkMeta], con: Engine = None) -> None:
+    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None, con: Engine = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         if con is None:
             con = create_engine(self.constr)
@@ -253,7 +253,7 @@ class DataTable:
         for chunk in chunks:
             idx = idx.union(chunk)
 
-        existing_meta_df = self.get_metadata(idx=None, con=con)
+        existing_meta_df = self.get_metadata(idx=processed_idx, con=con)
 
         deleted_idx = existing_meta_df.index.difference(idx)
 
@@ -391,6 +391,36 @@ class DataStore:
                 yield [inp.get_data(idx[i:i+chunksize], con=con) for inp in inputs]
 
 
+def inc_process2(
+    ds: DataStore,
+    input_dts: List[DataTable],
+    res_dt: DataTable,
+    proc_func: Callable,
+    chunksize: int = 1000,
+) -> None:
+    chunks = []
+
+    con = create_engine(ds.connstr)
+
+    idx = ds.get_process_ids(
+        inputs=input_dts,
+        output=res_dt,
+        con=con,
+    )
+
+    logger.info(f'Items to update {len(idx)}')
+
+    if len(idx) > 0:
+        for i in range(0, len(idx), chunksize):
+            input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
+
+            chunk_df = proc_func(*input_dfs)
+
+            chunks.append(res_dt.store_chunk(chunk_df))
+
+    res_dt.sync_meta(chunks, processed_idx=idx, con=con)
+
+
 def inc_process(
     ds: DataStore,
     input_dts: List[DataTable],
@@ -407,17 +437,27 @@ def inc_process(
         data_sql_schema=data_sql_schema,
     )
 
-    chunks = []
-
-    for input_dfs in ds.get_process_chunks(inputs=input_dts, output=res_dt, chunksize=chunksize):
-        chunk_df = proc_func(*input_dfs)
-
-        chunks.append(res_dt.store_chunk(chunk_df))
-
-    # FIXME: здесь нельзя делать синк метадаты, потому что при запуске когда ничего не меняется - стирается все
-    # res_dt.sync_meta(chunks)
+    inc_process2(
+        ds,
+        input_dts,
+        res_dt,
+        proc_func,
+        chunksize,
+    )
 
     return res_dt
+
+
+def gen_process2(
+    dt: DataTable,
+    proc_func: Callable[[], Iterator[pd.DataFrame]],
+) -> None:
+    chunks = []
+
+    for chunk_df in proc_func():
+        chunks.append(dt.store_chunk(chunk_df))
+    
+    return dt.sync_meta(chunks=chunks)
 
 
 def gen_process(
@@ -435,11 +475,8 @@ def gen_process(
         data_sql_schema=data_sql_schema,
     )
 
-    chunks = []
-
-    for chunk_df in proc_func():
-        chunks.append(res_dt.store_chunk(chunk_df))
-    
-    res_dt.sync_meta(chunks=chunks)
+    gen_process2(res_dt, proc_func)
 
     return res_dt
+
+
