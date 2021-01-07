@@ -17,7 +17,7 @@ def make_event_table(schema, con):
         'datapipe_events',
         metadata,
 
-        Column('id', Integer, pirmary_key=True),
+        Column('id', Integer, primary_key=True, autoincrement=True),
         Column('event_ts', DateTime, server_default=func.now()),
 
         Column('table_name', String(100)),
