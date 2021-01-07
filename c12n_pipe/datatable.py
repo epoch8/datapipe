@@ -7,13 +7,16 @@ from sqlalchemy.sql import text
 from sqlalchemy import create_engine, MetaData, Table, Column, Float, String, Numeric
 import pandas as pd
 
-logger = logging.getLogger('c12n_pipe')
+from c12n_pipe.event_logger import EventLogger
+
+logger = logging.getLogger('c12n_pipe.datatable')
 
 
 Index = Union[List, pd.Index]
 ChunkMeta = Index
 
 DataSchema = List[Column]
+
 
 # Metadata
 # - id: str
@@ -48,12 +51,14 @@ class DataTable:
         schema: str,
         name: str,
         data_sql_schema: List[Column],
-        create_tables: bool = True
+        event_logger: EventLogger,
+        create_tables: bool = True,
     ):
         self.constr = constr
         self.schema = schema
         self.name = name
         self.data_sql_schema = data_sql_schema
+        self.event_logger = event_logger
 
         con = create_engine(self.constr)
         if create_tables:
@@ -220,7 +225,7 @@ class DataTable:
         # найти что добавилось
         new_idx = new_meta_df.index.difference(existing_meta_df.index)
 
-        logger.info(f'Changed: {len(changed_idx)}; New: {len(new_idx)}')
+        self.event_logger.log_event(self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0)
 
         # удалить измененные строки
         to_write_idx = changed_idx.union(new_idx)
@@ -251,7 +256,10 @@ class DataTable:
 
         deleted_idx = existing_meta_df.index.difference(idx)
 
-        self._delete_data(deleted_idx, con=con)
+        if len(deleted_idx) > 0:
+            self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+
+            self._delete_data(deleted_idx, con=con)
 
     def store(self, df: pd.DataFrame, con: Engine = None) -> None:
         if con is None:
@@ -308,13 +316,16 @@ class DataStore:
         self.connstr = connstr
         self.schema = schema
 
+        self.event_logger = EventLogger(self.connstr, self.schema)
+
     def get_table(self, name: str, data_sql_schema: List[Column], create_tables: bool = True) -> DataTable:
         return DataTable(
             constr=self.connstr,
             schema=self.schema,
             name=name,
             data_sql_schema=data_sql_schema,
-            create_tables=create_tables
+            create_tables=create_tables,
+            event_logger=self.event_logger,
         )
 
     def get_process_ids(
