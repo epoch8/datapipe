@@ -195,5 +195,33 @@ def test_inc_process_delete_values_from_proc() -> None:
     assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
+@pytest.mark.usefixtures('test_schema')
+def test_inc_process_proc_no_change() -> None:
+    ds = DataStore(DBCONNSTR, schema='test')
+
+    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
+    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+
+    def id_func(df):
+        return TEST_DF
+    
+    tbl2.store(TEST_DF)
+    tbl1.store(TEST_DF)
+
+    assert(len(ds.get_process_ids([tbl1], tbl2)) == len(TEST_DF))
+
+    inc_process(ds, [tbl1], tbl2, id_func)
+
+    assert(len(ds.get_process_ids([tbl1], tbl2)) == 0)
+
+    tbl1.store(TEST_DF_INC1)
+
+    assert(len(ds.get_process_ids([tbl1], tbl2)) == len(TEST_DF))
+
+    inc_process(ds, [tbl1], tbl2, id_func)
+
+    assert(len(ds.get_process_ids([tbl1], tbl2)) == 0)
+
+
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
