@@ -5,7 +5,7 @@ import cloudpickle
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
-from c12n_pipe.datatable import DataStore, gen_process2, inc_process2
+from c12n_pipe.datatable import DataStore, gen_process, inc_process
 
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 
@@ -108,7 +108,7 @@ def test_gen_process():
     def gen():
         yield TEST_DF
 
-    gen_process2(
+    gen_process(
         tbl1,
         gen
     )
@@ -118,7 +118,7 @@ def test_gen_process():
     def gen2():
         yield TEST_DF[:5]
     
-    gen_process2(
+    gen_process(
         tbl1,
         gen2
     )
@@ -138,14 +138,14 @@ def test_inc_process_modify_values() -> None:
     
     tbl1.store(TEST_DF)
 
-    inc_process2(ds, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
     assert(check_df_equal(tbl2.get_data(), TEST_DF))
 
     ##########################
     tbl1.store(TEST_DF_INC1)
 
-    inc_process2(ds, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
     assert(check_df_equal(tbl2.get_data(), TEST_DF_INC1))
 
@@ -190,7 +190,7 @@ def test_inc_process_delete_values_from_proc() -> None:
 
     tbl1.store(TEST_DF)
 
-    inc_process2(ds, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
     assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
 

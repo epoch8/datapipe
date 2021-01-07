@@ -391,13 +391,17 @@ class DataStore:
                 yield [inp.get_data(idx[i:i+chunksize], con=con) for inp in inputs]
 
 
-def inc_process2(
+def inc_process(
     ds: DataStore,
     input_dts: List[DataTable],
     res_dt: DataTable,
     proc_func: Callable,
     chunksize: int = 1000,
 ) -> None:
+    '''
+    Инкрементальная обработка на основании `input_dts` и `DataTable(name)`
+    '''
+
     chunks = []
 
     con = create_engine(ds.connstr)
@@ -421,62 +425,19 @@ def inc_process2(
     res_dt.sync_meta(chunks, processed_idx=idx, con=con)
 
 
-def inc_process(
-    ds: DataStore,
-    input_dts: List[DataTable],
-    name: str,
-    data_sql_schema: DataSchema,
-    proc_func: Callable,
-    chunksize: int = 1000,
-) -> DataTable:
-    '''
-    Инкрементальная обработка на основании `input_dts` и `DataTable(name)`
-    '''
-    res_dt = ds.get_table(
-        name=name,
-        data_sql_schema=data_sql_schema,
-    )
-
-    inc_process2(
-        ds,
-        input_dts,
-        res_dt,
-        proc_func,
-        chunksize,
-    )
-
-    return res_dt
-
-
-def gen_process2(
+def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Iterator[pd.DataFrame]],
 ) -> None:
+    '''
+    Создание новой таблицы из результатов запуска `proc_func`
+    '''
+
     chunks = []
 
     for chunk_df in proc_func():
         chunks.append(dt.store_chunk(chunk_df))
     
     return dt.sync_meta(chunks=chunks)
-
-
-def gen_process(
-    ds: DataStore,
-    name: str,
-    data_sql_schema: DataSchema,
-    proc_func: Callable[[], Iterator[pd.DataFrame]],
-) -> DataTable:
-    '''
-    Создание новой таблицы из результатов запуска `proc_func`
-    '''
-
-    res_dt = ds.get_table(
-        name=name,
-        data_sql_schema=data_sql_schema,
-    )
-
-    gen_process2(res_dt, proc_func)
-
-    return res_dt
 
 
