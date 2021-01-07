@@ -225,7 +225,8 @@ class DataTable:
         # найти что добавилось
         new_idx = new_meta_df.index.difference(existing_meta_df.index)
 
-        self.event_logger.log_event(self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0)
+        if len(new_idx) > 0 or len(changed_idx) > 0:
+            self.event_logger.log_event(self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0)
 
         # удалить измененные строки
         to_write_idx = changed_idx.union(new_idx)
