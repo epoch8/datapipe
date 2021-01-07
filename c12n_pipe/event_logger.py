@@ -36,9 +36,7 @@ class EventLogger:
         self.constr = constr
         self.schema = schema
 
-        self.con = create_engine(constr)
-
-        self.events_table = make_event_table(schema, self.con)
+        self.events_table = make_event_table(schema, create_engine(constr))
     
     def log_event(self, table_name, added_count, updated_count, deleted_count):
         logger.info(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
@@ -50,5 +48,5 @@ class EventLogger:
             deleted_count=deleted_count,
         )
 
-        self.con.execute(ins)
+        create_engine(self.constr).execute(ins)
 

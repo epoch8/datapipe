@@ -1,6 +1,7 @@
 import pytest
 import os
 
+import cloudpickle
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
@@ -29,6 +30,15 @@ def test_schema():
     yield 'ok'
 
     eng.execute('DROP SCHEMA test CASCADE')
+
+
+@pytest.mark.usefixtures('test_schema')
+def test_cloudpickle():
+    ds = DataStore(DBCONNSTR, schema='test')
+
+    tbl = ds.get_table('test', TEST_SCHEMA)
+
+    cloudpickle.dumps([ds, tbl])
 
 
 @pytest.mark.usefixtures('test_schema')
