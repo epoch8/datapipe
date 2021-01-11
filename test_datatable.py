@@ -35,6 +35,11 @@ def yield_df(data):
 def test_schema():
     eng = create_engine(DBCONNSTR)
 
+    try:
+        eng.execute('DROP SCHEMA test CASCADE')
+    except:
+        pass
+
     eng.execute('CREATE SCHEMA test')
 
     yield 'ok'
@@ -58,6 +63,12 @@ def check_df_equal(a, b):
         return False
 
 
+def assert_idx_equal(a, b):
+    a = sorted(list(a))
+    b = sorted(list(b))
+
+    assert(a == b)
+
 @pytest.mark.usefixtures('test_schema')
 def test_cloudpickle():
     ds = DataStore(DBCONNSTR, schema='test')
@@ -77,6 +88,19 @@ def test_simple():
 
 
 @pytest.mark.usefixtures('test_schema')
+def test_store_less_values():
+    ds = DataStore(DBCONNSTR, schema='test')
+
+    tbl = ds.get_table('test', TEST_SCHEMA)
+
+    tbl.store(TEST_DF)
+    assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
+
+    tbl.store(TEST_DF[:5])
+    assert_idx_equal(tbl.get_metadata().index, TEST_DF[:5].index)
+
+
+@pytest.mark.usefixtures('test_schema')
 def test_get_process_ids():
     ds = DataStore(DBCONNSTR, schema='test')
 
@@ -93,7 +117,7 @@ def test_get_process_ids():
     upd_df = TEST_DF[:5].copy()
     upd_df['a'] += 1
 
-    tbl1.store(upd_df)
+    tbl1.store_chunk(upd_df)
 
     idx = ds.get_process_ids([tbl1], tbl2)
     assert(list(idx) == list(upd_df.index))
@@ -152,28 +176,28 @@ def test_inc_process_modify_values() -> None:
 
 ### FIXME make it work!!!
 
-# @pytest.mark.usefixtures('test_schema')
-# def test_inc_process_delete_values_from_input() -> None:
-#     ds = DataStore(DBCONNSTR, schema='test')
+@pytest.mark.usefixtures('test_schema')
+def test_inc_process_delete_values_from_input() -> None:
+    ds = DataStore(DBCONNSTR, schema='test')
 
-#     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-#     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
+    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
 
-#     def id_func(df):
-#         return df
+    def id_func(df):
+        return df
     
-#     tbl1.store(TEST_DF)
+    tbl1.store(TEST_DF)
 
-#     ds.inc_process2([tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-#     assert(check_df_equal(tbl2.get_data(), TEST_DF))
+    assert(check_df_equal(tbl2.get_data(), TEST_DF))
 
-#     ##########################
-#     tbl1.store(TEST_DF[:5])
+    ##########################
+    tbl1.store(TEST_DF[:5])
 
-#     ds.inc_process2([tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-#     assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
 @pytest.mark.usefixtures('test_schema')
