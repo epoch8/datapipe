@@ -195,7 +195,7 @@ def test_inc_process_delete_values_from_input() -> None:
     ##########################
     tbl1.store(TEST_DF[:5])
 
-    inc_process(ds, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func, chunksize=2)
 
     assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
 

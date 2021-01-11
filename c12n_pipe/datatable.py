@@ -415,9 +415,10 @@ def inc_process(
         for i in range(0, len(idx), chunksize):
             input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
 
-            chunk_df = proc_func(*input_dfs)
+            if sum(len(i) for i in input_dfs) > 0:
+                chunk_df = proc_func(*input_dfs)
 
-            chunks.append(res_dt.store_chunk(chunk_df))
+                chunks.append(res_dt.store_chunk(chunk_df))
 
     res_dt.sync_meta(chunks, processed_idx=idx, con=con)
 
