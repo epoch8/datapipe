@@ -117,7 +117,7 @@ def test_get_process_ids():
     upd_df = TEST_DF[:5].copy()
     upd_df['a'] += 1
 
-    tbl1.store(upd_df)
+    tbl1.store_chunk(upd_df)
 
     idx = ds.get_process_ids([tbl1], tbl2)
     assert(list(idx) == list(upd_df.index))
