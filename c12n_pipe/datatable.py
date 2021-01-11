@@ -126,7 +126,7 @@ class DataTable:
             )
             con.execute(sql, ids=list(idx))
 
-    def get_metadata(self, idx: Optional[Index], con: Engine) -> pd.DataFrame:
+    def get_metadata(self, idx: Optional[Index] = None, con: Engine = None) -> pd.DataFrame:
         if con is None:
             con = create_engine(self.constr)
 
@@ -257,6 +257,7 @@ class DataTable:
             self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
             self._delete_data(deleted_idx, con=con)
+            self._delete_metadata(deleted_idx, con=con)
 
     def store(self, df: pd.DataFrame, con: Engine = None) -> None:
         if con is None:
@@ -343,13 +344,13 @@ class DataStore:
             full join {self.schema}.{t.meta_table_name()} t{i+1} using (id)
             ''' for i, t in enumerate(inputs[1:])) +
             f'''
-            left join {self.schema}.{output.meta_table_name()} out using (id)
+            full join {self.schema}.{output.meta_table_name()} out using (id)
             where
             out.process_ts is null
             ''' +
             ''.join(
             f'''
-            or (t{i}.update_ts is not null and out.process_ts < t{i}.update_ts)
+            or (t{i}.update_ts is not null and out.process_ts < t{i}.update_ts) or t{i}.update_ts is null
             '''
                 for i, t in enumerate(inputs)
             )
