@@ -9,6 +9,10 @@ def modify_and_import_code():
         "return ['completions-dir', 's3-completions', 'gcs-completions']",
         "return ['completions-dir', 's3-completions', 'gcs-completions', 'completions-dir-modified']",
     )
+    new_source = new_source.replace(
+        "return ['tasks-json', 's3', 'gcs']",
+        "return ['tasks-json', 's3', 'gcs', 'tasks-json-modified']"
+    )
     module = importlib.util.module_from_spec(spec)
     codeobj = compile(new_source, module.__spec__.origin, 'exec')
     exec(codeobj, module.__dict__)
@@ -28,9 +32,14 @@ def main():
     modify_and_import_code()
 
     from label_studio.storage.base import register_storage
-    from c12n_pipe.label_studio_utils.filesystem_modified import CompletionsDirStorageModified
+    from c12n_pipe.label_studio_utils.filesystem_modified import (
+        ExternalTasksJSONStorageModified, CompletionsDirStorageModified
+    )
+    register_storage('tasks-json-modified', ExternalTasksJSONStorageModified)
     register_storage('completions-dir-modified', CompletionsDirStorageModified)
 
+    if '--source' not in sys.argv and '--source_path' not in sys.argv:
+        sys.argv.extend(['--source', 'tasks-json-modified', '--source-path', 'tasks.json'])
     if '--target' not in sys.argv and '--target_path' not in sys.argv:
         sys.argv.extend(['--target', 'completions-dir-modified', '--target-path', 'completions'])
 
