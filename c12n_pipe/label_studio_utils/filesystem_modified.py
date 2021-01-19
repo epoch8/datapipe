@@ -144,7 +144,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         self._ids_keys_map.pop(id)
         self._keys_ids_map.pop(full_key)
 
-    def _ids(self):
+    def _data_table_ids(self):
         return [int(x) for x in self.data_table.get_indexes()]
 
     def remove(self, id):
@@ -156,25 +156,24 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             self._save_ids()
 
             logger.debug('Remove id=' + str(id) + ' from tasks.json')
-            keys = [str(other_key) for other_key in self.ids() if other_key != id]
+            keys = [str(other_key) for other_key in self._dt_ids() if other_key != id]
             self.data_table.sync_meta(chunks=[keys])
 
     def remove_all(self, ids=None):
+        logger.info(f"ExternalTasksJSONStorageModified: Use remove: {ids=}")
         with self.thread_lock:
-            if ids is None:
-                remove_ids = [str(id) for id in self.ids()]
-            else:
-                remove_ids = [
-                    str(id) for id in self.ids()
-                ] if ids is None else [str(id) for id in self.ids() if id not in ids]
+            remove_ids = self._data_table_ids() if ids is None else ids
 
             logger.debug('Remove ' + str(len(remove_ids)) + ' records from ids.json')
             for id in remove_ids:
-                self._remove_id_from_keys_map(id)
+                self._remove_id_from_keys_map(int(id))
             self._save_ids()
 
             logger.debug('Remove all data from tasks.json')
-            self.data_table.sync_meta(chunks=[ids])
+            sync_meta_ids = [
+                str(id) for id in self._data_table_ids()
+            ] if ids is None else [str(id) for id in self._data_table_ids() if id not in ids]
+            self.data_table.sync_meta(chunks=[sync_meta_ids])
 
 
 class DirJSONsStorageModified(BaseStorage):
@@ -234,12 +233,8 @@ class DirJSONsStorageModified(BaseStorage):
 
     def set(self, id, value):
         id = str(id)
-        df = pd.DataFrame({
-            'data': [json.dumps(value)]
-        }, index=[id])
-        self.data_table.store_chunk(
-            data_df=df
-        )
+        df = pd.DataFrame({'data': [json.dumps(value)]}, index=[id])
+        self.data_table.store_chunk(data_df=df)
 
     def set_many(self, keys, values):
         raise NotImplementedError
@@ -258,7 +253,6 @@ class DirJSONsStorageModified(BaseStorage):
         ]
 
     def remove(self, key):
-        key = str(key)
         keys = [str(other_key) for other_key in self.ids() if other_key != key]
         self.data_table.sync_meta(chunks=[keys])
 
