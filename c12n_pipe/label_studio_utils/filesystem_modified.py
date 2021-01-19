@@ -160,11 +160,9 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             self.data_table.sync_meta(chunks=[keys])
 
     def remove_all(self, ids=None):
-        logger.info(f"ExternalTasksJSONStorageModified: Use remove: {ids=}")
         with self.thread_lock:
             remove_ids = self._data_table_ids() if ids is None else ids
 
-            logger.debug('Remove ' + str(len(remove_ids)) + ' records from ids.json')
             for id in remove_ids:
                 self._remove_id_from_keys_map(int(id))
             self._save_ids()
