@@ -68,7 +68,6 @@ def parse_rectangle_labels(
 
 def parse_detection_completion(completions_json: Dict) -> ImageData:
     image_path = Path(completions_json['data']['src_image_path'])
-    print(f"parse_detection_completion: {image_path=}")
     image_data = ImageData(image_path=image_path, bboxes_data=[])
 
     if 'completions' not in completions_json:
@@ -367,7 +366,6 @@ class LabelStudioProject_Detection_Classification:
                 lambda imaga_data_json: BboxData.from_dict(json.loads(imaga_data_json))
             )
         )
-        print(f"{bboxes_data=}")
         image_path_to_bboxes_data = {}
         for bbox_data in bboxes_data:
             if bbox_data.image_path not in image_path_to_bboxes_data:
