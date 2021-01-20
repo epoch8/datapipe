@@ -1,17 +1,17 @@
 import logging
 import ujson as json
-import os
 import datetime
 from pathlib import Path
-from typing import Union
+from typing import List, Tuple
 
 import pandas as pd
-from c12n_pipe.datatable import DataStore, inc_process
+from c12n_pipe.datatable import DataStore
 from sqlalchemy.sql.sqltypes import String
 import sqlalchemy as sql
 
 from label_studio.storage.base import CloudStorage, BaseForm
-from label_studio.storage.filesystem import BaseStorage, DirJSONsStorage
+from label_studio.storage.filesystem import BaseStorage
+from label_studio.project import Project
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +25,16 @@ DATA_JSON_SQL_SCHEMA = [sql.Column('data', String)]
 
 
 def get_data_table_name_from_project(
-    project_path: Union[str, Path],
-    name: str,
+    project: Project,
     base_data_table_name: str
 ) -> str:
-    if project_path is not None:
-        project_path = Path(project_path)
-        with open(project_path / 'config.json', 'r', encoding='utf8') as src:
-            config = json.load(src)
-        if f'data_table_name_{base_data_table_name}' in config:
-            data_table_name = config[f'data_table_name_{base_data_table_name}']
-        else:
-            now = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-            data_table_name = f"{project_path.name}_{now}_{name}_{base_data_table_name}"
-            config[f'data_table_name_{base_data_table_name}'] = data_table_name
-            with open(project_path / 'config.json', 'w', encoding='utf8') as out:
-                json.dump(config, out, ensure_ascii=False)
+    if f'data_table_name_{base_data_table_name}' in project.config:
+        data_table_name = project.config[f'data_table_name_{base_data_table_name}']
     else:
-        data_table_name = f"{name}_{base_data_table_name}"
+        now = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        data_table_name = f"{Path(project.name).name}_{now}_{base_data_table_name}"
+        project.config[f'data_table_name_{base_data_table_name}'] = data_table_name
+        project._save_config()
     return data_table_name
 
 
@@ -65,18 +57,24 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         return _data_table
 
     def __init__(
-        self, name, path, project_path,
-        prefix=None, create_local_copy=False, regex='.*', **kwargs
+        self, name: str,
+        path: str,
+        project_path: str,
+        project: Project,
+        prefix: str = None,
+        create_local_copy: bool = False,
+        regex: str = '.*',
+        **kwargs
     ):
         self.data_table_name = get_data_table_name_from_project(
-            project_path=project_path,
-            name=name,
-            base_data_table_name='tasks_json'
+            project=project,
+            base_data_table_name='tasks'
         )
         super().__init__(
             name=name,
             project_path=project_path,
-            path=os.path.join(project_path, 'tasks.json'),
+            project=project,
+            path=str(Path(project_path) / 'tasks.json'),
             use_blob_urls=False,
             prefix=None,
             regex=None,
@@ -99,34 +97,34 @@ class ExternalTasksJSONStorageModified(CloudStorage):
     def readable_path(self):
         return str(self.path)
 
-    def _get_value(self, key, inplace=False):
+    def _get_value(self, key: int, inplace=False):
         key = str(key)
         df = self.data_table.get_data(idx=[key])
         data = json.loads(df.loc[key, 'data'])
         return data
 
-    def _set_value(self, key, value):
+    def _set_value(self, key: int, value: str):
         key = str(key)
         df = pd.DataFrame({'data': [json.dumps(value)]}, index=[key])
         self.data_table.store_chunk(df)
 
-    def set(self, id, value):
+    def set(self, id: int, value: str):
         with self.thread_lock:
             super().set(id, value)
 
-    def set_many(self, ids, values):
+    def set_many(self, ids: List[int], values: List[str]):
         with self.thread_lock:
             for id, value in zip(ids, values):
                 super()._pre_set(id, value)
             self._save_ids()
 
-    def _extract_task_id(self, full_key):
+    def _extract_task_id(self, full_key: str) -> int:
         return int(full_key.split(self.key_prefix, 1)[-1])
 
-    def iter_full_keys(self):
+    def iter_full_keys(self) -> Tuple[List[int]]:
         return (self.key_prefix + key for key in self._get_objects())
 
-    def _get_objects(self):
+    def _get_objects(self) -> Tuple[List[str]]:
         df = self.data_table.get_data(idx=None)
         if len(df) > 0:
             data = {
@@ -136,7 +134,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             data = {}
         return (str(id) for id in data)
 
-    def _remove_id_from_keys_map(self, id):
+    def _remove_id_from_keys_map(self, id: int):
         full_key = self.key_prefix + str(id)
         assert id in self._ids_keys_map, 'No such task id: ' + str(id)
         assert self._ids_keys_map[id]['key'] == full_key, (self._ids_keys_map[id]['key'], full_key)
@@ -147,7 +145,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
     def _data_table_ids(self):
         return [int(x) for x in self.data_table.get_indexes()]
 
-    def remove(self, id):
+    def remove(self, id: int):
         with self.thread_lock:
             id = int(id)
 
@@ -159,7 +157,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             keys = [str(other_key) for other_key in self._dt_ids() if other_key != id]
             self.data_table.sync_meta(chunks=[keys])
 
-    def remove_all(self, ids=None):
+    def remove_all(self, ids: List[int] = None):
         with self.thread_lock:
             remove_ids = self._data_table_ids() if ids is None else ids
 
@@ -174,21 +172,14 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             self.data_table.sync_meta(chunks=[sync_meta_ids])
 
 
-class DirJSONsStorageModified(BaseStorage):
+class CompletionsDirStorageModified(BaseStorage):
 
+    form = BaseForm
     description = 'Directory with JSON task files (modified)'
 
     @property
     def data_store(self):
         return DATA_STORE
-
-    @property
-    def data_table_tasks(self):
-        _data_table = DATA_STORE.get_table(
-            name=self.data_table_name_tasks,
-            data_sql_schema=TASKS_JSON_SQL_SCHEMA
-        )
-        return _data_table
 
     @property
     def data_table(self):
@@ -198,16 +189,18 @@ class DirJSONsStorageModified(BaseStorage):
         )
         return _data_table
 
-    def __init__(self, name, path, base_data_table_name='directory', project_path=None, project=None, **kwargs):
-        self.data_table_name_tasks = get_data_table_name_from_project(
-            project_path=project_path,
-            name=name,
-            base_data_table_name='tasks_json'
-        )
+    def __init__(
+        self,
+        name: str,
+        path: str,
+        project_path: str = None,
+        project: Project = None,
+        **kwargs
+    ):
+        path = str(Path(project_path) / 'annotation')
         self.data_table_name = get_data_table_name_from_project(
-            project_path=project_path,
-            name=name,
-            base_data_table_name=base_data_table_name
+            project=project,
+            base_data_table_name='annotation'
         )
         super().__init__(
             name=name, path=path, project_path=project_path, project=project, **kwargs
@@ -265,15 +258,58 @@ class DirJSONsStorageModified(BaseStorage):
         pass
 
 
-class CompletionsDirStorageModified(DirJSONsStorageModified):
+class ExternalTasksJSONStorageModifiedNoSetNoRemove(ExternalTasksJSONStorageModified):
 
     form = BaseForm
-    description = 'Local [completions are in "completions" directory] (modified)'
+    description = 'Local [loading tasks from "tasks.json" file] without set/remove'
 
-    def __init__(self, name, path, project_path, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        path: str,
+        project_path: str,
+        project: Project,
+        prefix: str = None,
+        create_local_copy: bool = False,
+        regex: str = '.*',
+        **kwargs
+    ):
         super().__init__(
             name=name,
+            path=str(Path(project_path) / 'tasks.json'),
             project_path=project_path,
-            path=os.path.join(project_path, 'completions'),
-            base_data_table_name='completions'
+            project=project,
+            prefix=None,
+            create_local_copy=False,
+            regex=None,
+            **kwargs
         )
+
+    def _get_client(self):
+        pass
+
+    def validate_connection(self):
+        pass
+
+    @property
+    def url_prefix(self):
+        return ''
+
+    @property
+    def readable_path(self):
+        return str(self.path)
+
+    def _set_value(self, key: int, value: str):
+        pass
+
+    def set(self, id: int, value: str):
+        pass
+
+    def set_many(self, ids: List[int], values: List[str]):
+        pass
+
+    def remove(self, id: int):
+        pass
+
+    def remove_all(self, ids: List[int] = None):
+        pass
