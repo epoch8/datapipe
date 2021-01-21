@@ -121,14 +121,14 @@ class LabelStudioProject_Detection_Classification:
         self,
         images_dir: str,
         bboxes_images_dir: str,
-        annotation_path: str,
+        total_annotation_path: str,
         project_path: Union[str, Path],
         log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = None
     ):
         self.images_dir = Path(images_dir)
         self.bboxes_images_dir = Path(bboxes_images_dir)
         self.bboxes_images_dir.mkdir(parents=True, exist_ok=True)
-        self.annotation_path = annotation_path
+        self.total_annotation_path = total_annotation_path
         self.project_path = Path(project_path)
         self.log_level = log_level
 
@@ -174,7 +174,7 @@ class LabelStudioProject_Detection_Classification:
             label_config=str(CLASSIFICATION_CONFIG_XML),
             log_level=log_level
         )
-        Project.get_or_create(
+        classification_project = Project.get_or_create(
             self.label_studio_config_classification.project_name,
             self.label_studio_config_classification,
             context={'multi_session': False}
@@ -186,7 +186,7 @@ class LabelStudioProject_Detection_Classification:
         self.dt_classification_tasks_name = classification_project_config['data_table_name_tasks']
         self.dt_classification_annotation_name = classification_project_config['data_table_name_annotation']
         self.dt_classification_annotation_parsed_name = get_data_table_name_from_project(
-            project=detection_project,
+            project=classification_project,
             base_data_table_name='annotation_parsed'
         )
 
@@ -233,21 +233,21 @@ class LabelStudioProject_Detection_Classification:
         )
 
     def get_source_images(self):
-        images_paths = sorted(self.images_dir.glob('*.jp*g'))
+        image_paths = sorted(self.images_dir.glob('*.jp*g'))
         df_source = pd.DataFrame(
             {
-                'image_path': [str(image_path) for image_path in images_paths]
+                'image_path': [str(image_path) for image_path in image_paths]
             },
-            index=[str(id) for id in range(len(images_paths))]
+            index=[str(id) for id in range(len(image_paths))]
         )
         df_source.index.name = 'id'
         self.dt_tasks_source.store(df=df_source)
 
     def add_tasks_to_detection_project(self):
         def proc_func(df_source: pd.DataFrame) -> pd.DataFrame:
-            images_paths = df_source['image_path'].apply(Path)
+            image_paths = df_source['image_path'].apply(Path)
             (self.project_path_detection / 'upload').mkdir(exist_ok=True)
-            for image_path in images_paths:
+            for image_path in image_paths:
                 uploaded_image_path = self.project_path_detection / 'upload' / image_path.name
                 if not uploaded_image_path.exists():
                     logger.info(f'Copy {image_path} -> {uploaded_image_path}')
@@ -293,7 +293,7 @@ class LabelStudioProject_Detection_Classification:
                 lambda imaga_data_json: ImageData.from_dict(json.loads(imaga_data_json))
             )
         )
-        tasks_ids, src_bboxes_data, bbox_src_images_paths, bboxes_images_urls = [], [], [], []
+        tasks_ids, src_bboxes_data, bbox_src_image_paths, bboxes_images_urls = [], [], [], []
         for task_id, image_data in zip(df_detection_annotation_parsed.index, images_data):
             image_path = image_data.image_path
             for id, bbox_data in enumerate(image_data.bboxes_data):
@@ -314,7 +314,7 @@ class LabelStudioProject_Detection_Classification:
                     Image.fromarray(bbox_data_image_in_task).save(bbox_image_path_in_task)
                 tasks_ids.append(bbox_task_id)
                 src_bboxes_data.append(bbox_data)
-                bbox_src_images_paths.append(bbox_image_path)
+                bbox_src_image_paths.append(bbox_image_path)
                 bboxes_images_urls.append(bbox_image_url)
         df_tasks = pd.DataFrame(
             {
@@ -326,7 +326,7 @@ class LabelStudioProject_Detection_Classification:
                         'src_bbox_data': src_bbox_data.asdict()
                     }
                 }) for id, src_bbox_data, bbox_image_url, src_bbox_image_path in zip(
-                    tasks_ids, src_bboxes_data, bboxes_images_urls, bbox_src_images_paths
+                    tasks_ids, src_bboxes_data, bboxes_images_urls, bbox_src_image_paths
                 )]
             },
             index=[str(id) for id in tasks_ids]
@@ -361,9 +361,9 @@ class LabelStudioProject_Detection_Classification:
 
     def get_total_annotation_json(self):
         df_cls_annotation_parsed = self.dt_classification_annotation_parsed.get_data()
-        bboxes_data: List[ImageData] = list(
+        bboxes_data: List[BboxData] = list(
             df_cls_annotation_parsed['data'].apply(
-                lambda imaga_data_json: BboxData.from_dict(json.loads(imaga_data_json))
+                lambda bbox_data_json: BboxData.from_dict(json.loads(bbox_data_json))
             )
         )
         image_path_to_bboxes_data = {}
@@ -377,9 +377,9 @@ class LabelStudioProject_Detection_Classification:
             for image_path in image_path_to_bboxes_data
         ]
         annotation_json = BrickitDataConverter().get_annot_from_images_data(images_data)
-        with open(self.annotation_path, 'w') as out:
+        with open(self.total_annotation_path, 'w') as out:
             json.dump(annotation_json, out)
-        logger.info(f"Annotation saved: {self.annotation_path}")
+        logger.info(f"Annotation saved: {self.total_annotation_path}")
 
     def _callbacks(self) -> List[Callable[[], None]]:
         return [
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     project = LabelStudioProject_Detection_Classification(
         images_dir='/mnt/c/Users/bobokvsky/YandexDisk-bobok100500@yandex.ru/Job/images/dataset_example',
         bboxes_images_dir='/mnt/c/Users/bobokvsky/YandexDisk-bobok100500@yandex.ru/Job/images/dataset_example/bboxes',
-        annotation_path='/mnt/c/Users/bobokvsky/YandexDisk-bobok100500@yandex.ru/Job/images/dataset_example/ls_annotation.json',
+        total_annotation_path='/mnt/c/Users/bobokvsky/YandexDisk-bobok100500@yandex.ru/Job/images/dataset_example/ls_annotation.json',
         project_path='/mnt/c/Users/bobokvsky/YandexDisk-bobok100500@yandex.ru/Job/temp/ls_project_test',
         log_level='INFO'
     )
