@@ -414,7 +414,7 @@ class LabelStudioProject_TwoStageClassfication:
             self.get_stage1_good_annotation,
             self.add_tasks_to_stage2_project,
             self.parse_stage2_annotation,
-            self.get_df_total_annotation, 
+            self.get_df_total_annotation,
             self.get_total_annotation_json
         ]
 
