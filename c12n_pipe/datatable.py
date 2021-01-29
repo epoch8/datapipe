@@ -416,7 +416,7 @@ def inc_process(
         for i in range(0, len(idx), chunksize):
             input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
 
-            if sum(len(i) for i in input_dfs) > 0:
+            if sum(len(j) for j in input_dfs) > 0:
                 chunk_df = proc_func(*input_dfs, **kwargs)
 
                 chunks.append(res_dt.store_chunk(chunk_df))
@@ -436,7 +436,53 @@ def gen_process(
 
     for chunk_df in proc_func():
         chunks.append(dt.store_chunk(chunk_df))
-    
+
     return dt.sync_meta(chunks=chunks)
 
 
+def inc_process_many(
+    ds: DataStore,
+    input_dts: List[DataTable],
+    res_dts: List[DataTable],
+    proc_func: Callable,
+    chunksize: int = 1000,
+    **kwargs
+) -> None:
+    '''
+    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
+    '''
+
+    con = create_engine(ds.connstr)
+    res_dt_k_to_idxs = {}
+    res_dts_chunks = {}
+    for k, res_dt in enumerate(res_dts):
+        # Создаем словарь изменяющихся индексов для K результирующих табличек
+        res_dt_k_to_idxs[k] = ds.get_process_ids(
+            inputs=input_dts,
+            output=res_dt,
+            con=con,
+        )
+        res_dts_chunks[k] = []
+    
+    # Ищем все индексы, которые нужно обработать
+    idx = list(set([item for sublist in res_dt_k_to_idxs.values() for item in sublist]))
+    logger.info(f'Items to update {len(idx)}')
+
+    if len(idx) > 0:
+        for i in range(0, len(idx), chunksize):
+            input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
+
+            if sum(len(j) for j in input_dfs) > 0:
+                chunks_df = proc_func(*input_dfs, **kwargs)
+                for k, res_dt in enumerate(res_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
+                    # Для каждой k результирующей таблички ищем обработанные внутри неё индексы
+                    res_dt_i_chunks_idxs = list(set(res_dt_k_to_idxs[i]) & set(chunk_df_k.index))
+                    chunk_df_k_idxs = chunk_df_k.loc[res_dt_i_chunks_idxs]
+                    # Добавляем результат в результирующие чанки
+                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k_idxs))
+
+    # Синхронизируем мета-данные для всех K табличек
+    for k, res_dt in enumerate(res_dts):
+        res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx, con=con)
