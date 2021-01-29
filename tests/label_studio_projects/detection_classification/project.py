@@ -11,12 +11,16 @@ import pandas as pd
 from PIL import Image
 
 from cv_pipeliner.core.data import ImageData, BboxData
-from c12n_pipe.io.catalog import DataCatalog
+from c12n_pipe.io.catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
+from sqlalchemy.engine import create_engine
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
 
 
 logger = logging.getLogger(__name__)
-DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
+DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
+# DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
 CLASSIFICATION_CONFIG_XML = Path(__file__).parent / 'classification_config.xml'
 
@@ -208,7 +212,6 @@ def parse_classification_annotation(df_annotation: pd.DataFrame) -> pd.DataFrame
 
 
 def main(
-    catalog_path: str,
     images_dir: str,
     project_path: str,
     bboxes_images_dir: str,
@@ -218,14 +221,39 @@ def main(
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
+    # eng = create_engine(connstr)
+    # if eng.dialect.has_schema(eng, schema=schema):
+    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     images_dir = Path(images_dir)
     project_path = Path(project_path)
     project_path_detection = project_path / 'detection'
     project_path_classification = project_path / 'classification'
     bboxes_images_dir = Path(bboxes_images_dir)
-    catalog = DataCatalog.from_config(
-        config_path=catalog_path,
+    catalog = DataCatalog(
+        catalog={
+            'input_images': AbstractDataTable([
+                Column('image_path', String)
+            ]),
+            'detection_tasks': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'detection_annotation': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'detection_annotation_parsed': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'classification_tasks': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'classification_annotation': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'classification_annotation_parsed': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+        },
         connstr=connstr,
         schema=schema
     )
@@ -290,7 +318,6 @@ def main(
 
 if __name__ == '__main__':
     main(
-        catalog_path='catalog.yaml',
         images_dir='dataset/',
         bboxes_images_dir='dataset/bboxes',
         project_path='ls_project_detection_cls/'

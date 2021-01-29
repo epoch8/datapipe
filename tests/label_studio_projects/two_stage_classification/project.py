@@ -3,6 +3,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, List
+from c12n_pipe.datatable import DataTable
 from cv_pipeliner.data_converters.brickit import BrickitDataConverter
 
 
@@ -10,13 +11,17 @@ import pandas as pd
 from PIL import Image
 
 from cv_pipeliner.core.data import BboxData
+from sqlalchemy.engine import create_engine
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
-from c12n_pipe.io.catalog import DataCatalog
+from c12n_pipe.io.catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 
 
 logger = logging.getLogger(__name__)
-DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
+DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
+# DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
 STAGE1_CONFIG_XML = Path(__file__).parent / 'stage1_config.xml'
 STAGE2_CONFIG_XML = Path(__file__).parent / 'stage2_config.xml'
 
@@ -160,7 +165,6 @@ def get_df_total_annotation(
 
 
 def main(
-    catalog_path: str,
     src_annotation_path: str,
     bboxes_images_dir: str,
     images_dir: str,
@@ -171,6 +175,9 @@ def main(
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
+    # eng = create_engine(connstr)
+    # if eng.dialect.has_schema(eng, schema=schema):
+    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     images_dir = Path(images_dir)
     src_annotation_path = str(src_annotation_path)
@@ -179,8 +186,39 @@ def main(
     project_path = Path(project_path)
     project_path_stage1 = project_path / 'stage1'
     project_path_stage2 = project_path / 'stage2'
-    catalog = DataCatalog.from_config(
-        config_path=catalog_path,
+    catalog = DataCatalog(
+        catalog={
+            'input_bboxes': AbstractDataTable([
+                Column('data', String)
+            ]),
+            'stage1_tasks': AbstractDataTable([
+                Column('data', String)
+            ]),
+            'stage1_annotation': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'stage1_annotation_parsed': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'stage1_annotation_parsed_good': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'stage1_annotation_parsed_bad': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'stage2_tasks': AbstractDataTable([
+                Column('data', String)
+            ]),
+            'stage2_annotation': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'stage2_annotation_parsed': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'total_annotation': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+        },
         connstr=connstr,
         schema=schema
     )
@@ -259,7 +297,6 @@ def main(
 
 if __name__ == '__main__':
     main(
-        catalog_path='catalog.yaml',
         images_dir='dataset/',
         src_annotation_path='dataset/annotations.json',
         bboxes_images_dir='dataset/bboxes/',
