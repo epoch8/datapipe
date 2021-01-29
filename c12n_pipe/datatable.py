@@ -478,7 +478,7 @@ def inc_process_many(
                     # Берем k-ое значение функции для k-ой таблички
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
                     # Для каждой k результирующей таблички ищем обработанные внутри неё индексы
-                    res_dt_i_chunks_idxs = list(set(res_dt_k_to_idxs[i]) & set(chunk_df_k.index))
+                    res_dt_i_chunks_idxs = list(set(res_dt_k_to_idxs[k]) & set(chunk_df_k.index))
                     chunk_df_k_idxs = chunk_df_k.loc[res_dt_i_chunks_idxs]
                     # Добавляем результат в результирующие чанки
                     res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k_idxs))
