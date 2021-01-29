@@ -1,0 +1,34 @@
+input_images:
+    type: DataTable
+    columns:
+        image_path: string
+
+detection_tasks:
+    type: DataTable
+    columns:
+        data: json
+
+detection_annotation:
+    type: DataTable
+    columns:
+        data: json
+
+detection_annotation_parsed:
+    type: DataTable
+    columns:
+        data: json
+
+classification_tasks:
+    type: DataTable
+    columns:
+        data: json
+
+classification_annotation:
+    type: DataTable
+    columns:
+        data: json
+
+classification_annotation_parsed:
+    type: DataTable
+    columns:
+        data: json
