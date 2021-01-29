@@ -394,6 +394,7 @@ def inc_process(
     res_dt: DataTable,
     proc_func: Callable,
     chunksize: int = 1000,
+    **kwargs
 ) -> None:
     '''
     Инкрементальная обработка на основании `input_dts` и `DataTable(name)`
@@ -416,7 +417,7 @@ def inc_process(
             input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
 
             if sum(len(i) for i in input_dfs) > 0:
-                chunk_df = proc_func(*input_dfs)
+                chunk_df = proc_func(*input_dfs, **kwargs)
 
                 chunks.append(res_dt.store_chunk(chunk_df))
 
