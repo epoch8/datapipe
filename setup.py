@@ -5,7 +5,7 @@ with open('requirements.txt') as f:
 
 setuptools.setup(
     name='c12n_pipe',
-    version='0.1.2',
+    version='0.2.0',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=install_requires,
