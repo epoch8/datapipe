@@ -1,9 +1,0 @@
-{
-    "python.linting.mypyEnabled": true,
-    "python.testing.pytestArgs": [
-        "."
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.nosetestsEnabled": false,
-    "python.testing.pytestEnabled": true
-}
