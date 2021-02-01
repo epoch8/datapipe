@@ -486,7 +486,7 @@ def inc_process_many(
 
     # Синхронизируем мета-данные для всех K табличек
     for k, res_dt in enumerate(res_dts):
-        res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx, con=con)
+        res_dt.sync_meta(res_dts_chunks[k], processed_idx=res_dt_k_to_idxs[k], con=con)
 
 
 def inc_process(
