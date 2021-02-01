@@ -1,12 +1,13 @@
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Union
+from typing import Any, Callable, Dict, Iterator, List, Literal, Tuple, Union
 from multiprocessing import Process
 
-from c12n_pipe.io.catalog import DataCatalog
-from c12n_pipe.datatable import inc_process_many
+from c12n_pipe.io.data_catalog import DataCatalog
+from c12n_pipe.datatable import gen_process_many, inc_process_many
 from c12n_pipe.label_studio_utils.label_studio_c12n import LabelStudioConfig, run_app
 from label_studio.project import Project
+import pandas as pd
 
 
 logger = logging.getLogger('c12n_pipe.node')
@@ -15,20 +16,21 @@ logger = logging.getLogger('c12n_pipe.node')
 class StoreNode:
     def __init__(
         self,
-        proc_func: Callable,
-        kwargs: Dict[str, Any],
-        outputs: List[str]
+        proc_func: Callable[[], Iterator[Tuple[pd.DataFrame, ...]]],
+        outputs: List[str],
+        kwargs: Dict[str, Any] = {},
     ):
         self.proc_func = proc_func
         self.kwargs = kwargs
         self.outputs = outputs
 
-    def run(self, catalog: DataCatalog, chunksize: int = 1000):
-        outputs_dt = [catalog.get_data_table(output) for output in self.outputs]
-        dfs = self.proc_func(**self.kwargs)
-        dfs = (dfs,) if len(outputs_dt) == 1 else dfs
-        for df, output_dt in zip(dfs, outputs_dt):
-            output_dt.store(df=df)
+    def run(self, data_catalog: DataCatalog, chunksize: int = 1000):
+        outputs_dt = [data_catalog.get_data_table(output) for output in self.outputs]
+        gen_process_many(
+            dts=outputs_dt,
+            proc_func=self.proc_func,
+            **self.kwargs
+        )
 
     @property
     def name(self):
@@ -50,13 +52,13 @@ class PythonNode:
 
     def run(
         self,
-        catalog: DataCatalog,
+        data_catalog: DataCatalog,
         chunksize: int = 1000
     ):
-        inputs_dt = [catalog.get_data_table(input) for input in self.inputs]
-        outputs_dt = [catalog.get_data_table(output) for output in self.outputs]
+        inputs_dt = [data_catalog.get_data_table(input) for input in self.inputs]
+        outputs_dt = [data_catalog.get_data_table(output) for output in self.outputs]
         inc_process_many(
-            ds=catalog.data_store,
+            ds=data_catalog.data_store,
             input_dts=inputs_dt,
             res_dts=outputs_dt,
             proc_func=self.proc_func,
@@ -76,7 +78,7 @@ class LabelStudioNode:
         input: str,
         output: str,
         port: int,
-        label_config: str,
+        label_config: str = None,
         log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = 'INFO'
     ):
         self.process = None
@@ -103,14 +105,14 @@ class LabelStudioNode:
     def _run_app(self):
         run_app(label_studio_config=self.project_config)
 
-    def change_config(self, catalog: DataCatalog):
-        self.project_config.source_params['connstr'] = catalog.connstr
-        self.project_config.source_params['schema'] = catalog.schema
-        self.project_config.target_params['connstr'] = catalog.connstr
-        self.project_config.target_params['schema'] = catalog.schema
+    def change_config(self, data_catalog: DataCatalog):
+        self.project_config.source_params['connstr'] = data_catalog.connstr
+        self.project_config.source_params['schema'] = data_catalog.schema
+        self.project_config.target_params['connstr'] = data_catalog.connstr
+        self.project_config.target_params['schema'] = data_catalog.schema
 
-    def process_data(self, catalog):
-        self.change_config(catalog)
+    def process_data(self, data_catalog):
+        self.change_config(data_catalog)
         Project._storage = {}  # Clear Project memory
         Project.get_or_create(
             self.project_config.project_name,
@@ -124,34 +126,37 @@ class LabelStudioNode:
             self.process = Process(target=self._run_app)
             self.process.start()
 
-    def run(self, catalog: DataCatalog, **kwargs):
-        self.process_data(catalog)
-        self.run_services()  # Runs only once
-
-    def __del__(self):
+    def terminate_services(self):
         if self.process is not None:
             self.process.terminate()
             self.process.join()
 
+    def run(self, data_catalog: DataCatalog, **kwargs):
+        self.process_data(data_catalog)
+        self.run_services()  # Runs only once
+
+    def __del__(self):
+        self.terminate_services()
+
     @property
     def name(self):
-        return f"{type(self)}_{self.project_path.name}"
+        return f"{type(self).__name__}_{self.project_path.name}"
 
 
 class Pipeline:
     def __init__(
         self,
-        catalog: DataCatalog,
-        pipeline: List[Union[StoreNode, PythonNode]]
+        data_catalog: DataCatalog,
+        pipeline: List[Union[StoreNode, PythonNode, LabelStudioNode]]
     ):
-        self.catalog = catalog
+        self.data_catalog = data_catalog
         self.pipeline = pipeline
         self.transformation_graph = self._get_transformation_graph()
 
     def run(self, chunksize: int = 1000):
         for node in self.pipeline:
             logger.info(f"Running node '{node.name}'")
-            node.run(catalog=self.catalog, chunksize=chunksize)
+            node.run(data_catalog=self.data_catalog, chunksize=chunksize)
 
     def _get_transformation_graph(self) -> Dict[str, List[str]]:
         transformation_graph = {}

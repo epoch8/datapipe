@@ -62,15 +62,15 @@ class DataCatalog:
         return self.catalog[name].get_data_table(name, self.data_store)
 
     @classmethod
-    def from_yaml(
+    def from_config(
         cls,
-        yaml_path: str,
+        config_path: str,
         connstr: str,
         schema: str
     ):
         catalog = {
             k: v
-            for k, v in anyconfig.load(yaml_path).items()
+            for k, v in anyconfig.load(config_path).items()
             if not k.startswith("_")
         }
         catalog = {
