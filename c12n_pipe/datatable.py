@@ -1,4 +1,5 @@
-from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Union
+import inspect
+from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Tuple, Union
 import logging
 import time
 
@@ -199,9 +200,11 @@ class DataTable:
         new_idx = new_meta_df.index.difference(existing_meta_df.index)
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
-            self.event_logger.log_event(self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0)
+            self.event_logger.log_event(
+                self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
+            )
 
-        ### обновить данные (удалить только то, что изменилось, записать новое)
+        # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
         self._delete_data(to_write_idx, con)
 
@@ -217,7 +220,7 @@ class DataTable:
                 dtype=_sql_schema_to_dtype(self.data_sql_schema),
             )
 
-        ### обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
+        # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
 
         if len(new_meta_df) > 0:
             self._delete_metadata(new_meta_df.index, con)
@@ -374,7 +377,6 @@ class DataStore:
         if con is None:
             con = create_engine(self.connstr)
 
-
         idx = self.get_process_ids(
             inputs=inputs,
             output=output,
@@ -388,54 +390,118 @@ class DataStore:
                 yield [inp.get_data(idx[i:i+chunksize], con=con) for inp in inputs]
 
 
-def inc_process(
-    ds: DataStore,
-    input_dts: List[DataTable],
-    res_dt: DataTable,
-    proc_func: Callable,
-    chunksize: int = 1000,
+def gen_process_many(
+    dts: List[DataTable],
+    proc_func: Callable[[], Union[
+        Tuple[pd.DataFrame, ...],
+        Iterator[Tuple[pd.DataFrame, ...]]]
+    ],
+    **kwargs
 ) -> None:
     '''
-    Инкрементальная обработка на основании `input_dts` и `DataTable(name)`
+    Создание новой таблицы из результатов запуска `proc_func`.
+    Функция может быть как обычной, так и генерирующейся
     '''
 
-    chunks = []
+    chunks_k = {
+        k: [] for k in range(len(dts))
+    }
 
-    con = create_engine(ds.connstr)
+    if inspect.isgeneratorfunction(proc_func):
+        iterable = proc_func(**kwargs)
+    else:
+        iterable = [proc_func(**kwargs)]
 
-    idx = ds.get_process_ids(
-        inputs=input_dts,
-        output=res_dt,
-        con=con,
+    for chunk_dfs in iterable:
+        for k, dt_k in enumerate(dts):
+            chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
+            chunks_k[k].append(dt_k.store_chunk(chunk_df_kth))
+
+    for k, dt_k in enumerate(dts):
+        dt_k.sync_meta(chunks=chunks_k[k])
+
+
+def gen_process(
+    dt: DataTable,
+    proc_func: Callable[[], Union[
+        pd.DataFrame,
+        Iterator[pd.DataFrame]]
+    ],
+    **kwargs
+) -> None:
+    return gen_process_many(
+        dts=[dt],
+        proc_func=proc_func,
+        **kwargs
     )
 
+
+def inc_process_many(
+    ds: DataStore,
+    input_dts: List[DataTable],
+    res_dts: List[DataTable],
+    proc_func: Callable,
+    chunksize: int = 1000,
+    **kwargs
+) -> None:
+    '''
+    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
+    '''
+
+    con = create_engine(ds.connstr)
+    res_dt_k_to_idxs = {}
+    res_dts_chunks = {}
+    for k, res_dt in enumerate(res_dts):
+        # Создаем словарь изменяющихся индексов для K результирующих табличек
+        res_dt_k_to_idxs[k] = ds.get_process_ids(
+            inputs=input_dts,
+            output=res_dt,
+            con=con,
+        )
+        res_dts_chunks[k] = []
+
+    # Ищем все индексы, которые нужно обработать
+    idx = list(set([item for sublist in res_dt_k_to_idxs.values() for item in sublist]))
     logger.info(f'Items to update {len(idx)}')
 
     if len(idx) > 0:
         for i in range(0, len(idx), chunksize):
             input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
 
-            if sum(len(i) for i in input_dfs) > 0:
-                chunk_df = proc_func(*input_dfs)
+            if sum(len(j) for j in input_dfs) > 0:
+                chunks_df = proc_func(*input_dfs, **kwargs)
+                for k, res_dt in enumerate(res_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
+                    # Для каждой k результирующей таблички ищем обработанные внутри неё индексы
+                    res_dt_i_chunks_idxs = set(res_dt_k_to_idxs[k]) & set(chunk_df_k.index)
+                    # Располагаем индексы в таком же порядке, в каком они были изначально
+                    res_dt_i_chunks_idxs_arranged = [
+                        idx for idx in res_dt_k_to_idxs[k] if idx in res_dt_i_chunks_idxs
+                    ]
+                    # Читаем табличку с этими индексами
+                    chunk_df_k_idxs = chunk_df_k.loc[res_dt_i_chunks_idxs_arranged]
+                    # Добавляем результат в результирующие чанки
+                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k_idxs))
 
-                chunks.append(res_dt.store_chunk(chunk_df))
+    # Синхронизируем мета-данные для всех K табличек
+    for k, res_dt in enumerate(res_dts):
+        res_dt.sync_meta(res_dts_chunks[k], processed_idx=res_dt_k_to_idxs[k], con=con)
 
-    res_dt.sync_meta(chunks, processed_idx=idx, con=con)
 
-
-def gen_process(
-    dt: DataTable,
-    proc_func: Callable[[], Iterator[pd.DataFrame]],
+def inc_process(
+    ds: DataStore,
+    input_dts: List[DataTable],
+    res_dt: DataTable,
+    proc_func: Callable,
+    chunksize: int = 1000,
+    **kwargs
 ) -> None:
-    '''
-    Создание новой таблицы из результатов запуска `proc_func`
-    '''
-
-    chunks = []
-
-    for chunk_df in proc_func():
-        chunks.append(dt.store_chunk(chunk_df))
-    
-    return dt.sync_meta(chunks=chunks)
-
-
+    inc_process_many(
+        ds=ds,
+        input_dts=input_dts,
+        res_dts=[res_dt],
+        proc_func=proc_func,
+        chunksize=chunksize,
+        **kwargs
+    )

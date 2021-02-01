@@ -49,4 +49,3 @@ class EventLogger:
         )
 
         create_engine(self.constr).execute(ins)
-
