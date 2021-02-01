@@ -12,7 +12,7 @@ import pandas as pd
 from PIL import Image
 
 from cv_pipeliner.core.data import ImageData, BboxData
-from c12n_pipe.io.catalog import AbstractDataTable, DataCatalog
+from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
@@ -231,7 +231,7 @@ def main(
     project_path_detection = project_path / 'detection'
     project_path_classification = project_path / 'classification'
     bboxes_images_dir = Path(bboxes_images_dir)
-    catalog = DataCatalog(
+    data_catalog = DataCatalog(
         catalog={
             'input_images': AbstractDataTable([
                 Column('image_path', String)
@@ -259,7 +259,7 @@ def main(
         schema=schema
     )
     pipeline = Pipeline(
-        catalog=catalog,
+        data_catalog=data_catalog,
         pipeline=[
             StoreNode(
                 proc_func=get_source_images,

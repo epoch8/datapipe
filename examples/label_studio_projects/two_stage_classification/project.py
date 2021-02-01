@@ -16,7 +16,7 @@ from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
-from c12n_pipe.io.catalog import AbstractDataTable, DataCatalog
+from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 
 
@@ -75,7 +75,7 @@ def get_source_bboxes(
         index=[str(id) for id in tasks_ids]
     )
     df_source.index.name = 'id'
-    return df_source
+    yield df_source
 
 
 def add_tasks_to_project(
@@ -187,7 +187,7 @@ def main(
     project_path = Path(project_path)
     project_path_stage1 = project_path / 'stage1'
     project_path_stage2 = project_path / 'stage2'
-    catalog = DataCatalog(
+    data_catalog = DataCatalog(
         catalog={
             'input_bboxes': AbstractDataTable([
                 Column('data', String)
@@ -224,7 +224,7 @@ def main(
         schema=schema
     )
     pipeline = Pipeline(
-        catalog=catalog,
+        data_catalog=data_catalog,
         pipeline=[
             StoreNode(
                 proc_func=get_source_bboxes,
