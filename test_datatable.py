@@ -371,6 +371,36 @@ def test_inc_process_many_modify_values() -> None:
 
 
 @pytest.mark.usefixtures('test_schema')
+def test_inc_process_many_several_outputs():
+    ds = DataStore(DBCONNSTR, schema='test')
+
+    BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
+    GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
+
+    tbl = ds.get_table('tbl', TEST_SCHEMA)
+    tbl_good = ds.get_table('tbl_good', TEST_SCHEMA)
+    tbl_bad = ds.get_table('tbl_bad', TEST_SCHEMA)
+
+    tbl.store(TEST_DF)
+
+    def inc_func(df):
+        df_good = df.drop(index=BAD_IDXS)
+        df_bad = df.drop(index=GOOD_IDXS)
+        return df_good, df_bad
+
+    inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
+    assert(check_df_equal(tbl.get_data(), TEST_DF))
+    assert(check_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
+    assert(check_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+
+    # Check this not delete the tables
+    inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
+    assert(check_df_equal(tbl.get_data(), TEST_DF))
+    assert(check_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
+    assert(check_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+
+
+@pytest.mark.usefixtures('test_schema')
 def test_data_catalog() -> None:
     data_catalog = DataCatalog(
         catalog={
