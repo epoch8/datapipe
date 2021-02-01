@@ -163,7 +163,7 @@ def test_gen_process():
         yield TEST_DF[:5]
 
     def func2():
-        yield TEST_DF[:5]
+        return TEST_DF[:5]
 
     gen_process(
         tbl1_gen,
