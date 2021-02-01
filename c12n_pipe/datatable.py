@@ -425,7 +425,7 @@ def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
         pd.DataFrame,
-        Tuple[pd.DataFrame, ...]]
+        Iterator[pd.DataFrame]]
     ],
     **kwargs
 ) -> None:
