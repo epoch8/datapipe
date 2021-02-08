@@ -17,7 +17,9 @@ from tqdm import tqdm
 from object_detection import model_lib_v2
 
 from cv_pipeliner.core.data import ImageData
+from cv_pipeliner.inference_models.detection.object_detection_api import ObjectDetectionAPI_ModelSpec
 from cv_pipeliner.utils.object_detection_api import convert_to_tf_records, set_config
+from cv_pipeliner.reporters.detection import DetectionReporter
 
 from c12n_pipe.io.node import Node
 from c12n_pipe.io.data_catalog import DataCatalog
@@ -60,7 +62,7 @@ def download_and_extract_tar_gz_to_directory(
 class ObjectDetectionTrainNode(Node):
     def __init__(
         self,
-        dt_input_images_data: str,
+        dt_train_images_data: str,
         dt_output_models: str,
 
         class_names: List[str],
@@ -70,8 +72,11 @@ class ObjectDetectionTrainNode(Node):
         train_batch_size: int,
         train_num_steps: int,
         checkpoint_every_n: int,
+
+        dt_test_images_data: str = None,
     ):
-        self.dt_input_images_data = dt_input_images_data
+        self.dt_train_images_data = dt_train_images_data
+        self.dt_test_images_data = dt_test_images_data
         self.dt_output_models = dt_output_models
         self.class_names = class_names
         self.output_model_directory = Path(output_model_directory)
@@ -88,9 +93,10 @@ class ObjectDetectionTrainNode(Node):
     def _get_images_data(
         self,
         data_catalog: DataCatalog,
-        chunksize: int
+        chunksize: int,
+        dt_input_images_data: str
     ):
-        dt_input_images_data = data_catalog.get_data_table(self.dt_input_images_data)
+        dt_input_images_data = data_catalog.get_data_table(dt_input_images_data)
         images_data = []
         for df_input_images_data in dt_input_images_data.get_data_chunked(chunksize=chunksize):
             images_data.extend(list(
@@ -102,7 +108,7 @@ class ObjectDetectionTrainNode(Node):
 
     def prepare_data(
         self,
-        images_data: List[ImageData],
+        train_images_data: List[ImageData],
         num_workers: int = 4,
         num_shards: int = 1,
         max_pictures_per_worker: int = 1000
@@ -123,7 +129,7 @@ class ObjectDetectionTrainNode(Node):
             for id, class_name in enumerate(self.class_names)
         }
         convert_to_tf_records(
-            images_data=images_data,
+            images_data=train_images_data,
             label_map=label_map,
             filepath=tf_records_train_path,
             num_workers=num_workers,
@@ -143,8 +149,8 @@ class ObjectDetectionTrainNode(Node):
 
     def train_loop(
         self,
-        new_model_directory: Union[str, Path]
-    ):
+        new_model_directory: Path
+    ) -> Path:
         strategy = tf.compat.v2.distribute.MirroredStrategy()
         with strategy.scope():
             model_lib_v2.train_loop(
@@ -154,14 +160,54 @@ class ObjectDetectionTrainNode(Node):
                 checkpoint_every_n=self.checkpoint_every_n,
                 checkpoint_max_to_keep=1000,
             )
+        # Get last checkpoint
+        checkpoint_path = max(
+            (new_model_directory / 'checkpoint').glob('ckpt-*.index'),
+            key=lambda ckpt_path: int(ckpt_path.stem.split('-')[1])
+        )
+        return checkpoint_path
+
+    def write_report(
+        self,
+        new_model_directory: Path,
+        checkpoint_path: Path,
+        train_images_data: List[ImageData],
+        test_images_data: List[ImageData],
+    ):
+        logger.info('Inference train/test data & writing report')
+        detection_model_spec = ObjectDetectionAPI_ModelSpec(
+            config_path=new_model_directory/'pipeline.config',
+            checkpoint_path=checkpoint_path
+        )
+        detection_reporter = DetectionReporter()
+        detection_reporter.report(
+            models_specs=[detection_model_spec],
+            tags=[self.new_model_directory.name],
+            score_thresholds=[0.5],  # TODO: find best by test images data
+            output_directory=new_model_directory / 'report_train',
+            true_images_data=train_images_data,
+            minimum_iou=0.5,
+        )
+        if test_images_data is not None:
+            detection_reporter.report(
+                models_specs=[detection_model_spec],
+                tags=[self.new_model_directory.name],
+                score_thresholds=[0.5],  # TODO: find best by test images data
+                output_directory=new_model_directory / 'report_test',
+                true_images_data=test_images_data,
+                minimum_iou=0.5,
+            )
 
     def write_detection_model_to_output(
         self,
         data_catalog: DataCatalog,
-        new_model_directory: Union[str, Path]
+        new_model_directory: Path,
+        checkpoint_path: Path
     ):
         df_output_model = pd.DataFrame({
-            'model_directory': str(new_model_directory)
+            'config_path': [str(new_model_directory / 'pipeline.config')],
+            'checkpoint_path': [str(checkpoint_path)],
+            'score_threshold': [0.5]  # TODO: find best by test images data
         }, index=[new_model_directory.name])
         dt_output_models = data_catalog.get_data_table(self.dt_output_models)
         chunk = dt_output_models.store_chunk(df_output_model)
@@ -169,26 +215,48 @@ class ObjectDetectionTrainNode(Node):
 
     def main_train_process(
         self,
-        images_data: List[ImageData],
-        data_catalog: DataCatalog
+        data_catalog: DataCatalog,
+        chunksize: int,
     ):
-        new_model_directory = self.prepare_data(images_data=images_data)
-        self.train_loop(new_model_directory=new_model_directory)
-        self.write_detection_model_to_output(
-            data_catalog=data_catalog, new_model_directory=new_model_directory
-        )
+        try:
+            train_images_data = self._get_images_data(
+                data_catalog=data_catalog,
+                chunksize=chunksize,
+                dt_input_images_data=self.dt_train_images_data
+            )
+            test_images_data = self._get_images_data(
+                data_catalog=data_catalog,
+                chunksize=chunksize,
+                dt_input_images_data=self.dt_test_images_data
+            ) if self.dt_test_images_data is not None else None
+            new_model_directory = self.prepare_data(train_images_data=train_images_data)
+            checkpoint_path = self.train_loop(new_model_directory=new_model_directory)
+            self.write_report(
+                new_model_directory=new_model_directory,
+                checkpoint_path=checkpoint_path,
+                train_images_data=train_images_data,
+                test_images_data=test_images_data
+            )
+            self.write_detection_model_to_output(
+                data_catalog=data_catalog,
+                new_model_directory=new_model_directory,
+                checkpoint_path=checkpoint_path
+            )
+        finally:
+            self.is_training = False
 
     def start_train_process(
         self,
         data_catalog: DataCatalog,
-        images_data: List[ImageData]
+        chunksize: int
     ):
-        self.train_process = Process(
-            target=self.main_train_process,
-            args=(images_data, data_catalog)
-        )
-        self.is_training = True
-        self.train_process.start()
+        if self.train_process is None:
+            self.train_process = Process(
+                target=self.main_train_process,
+                args=(data_catalog, chunksize)
+            )
+            self.is_training = True
+            self.train_process.start()
 
     def terminate_train_process(self):
         if self.train_process is not None:
@@ -203,31 +271,33 @@ class ObjectDetectionTrainNode(Node):
         chunksize: int = 1000,
         **kwargs
     ):
-        if not self.is_training and object_detection_node_count_value >= self.current_count + self.start_train_every_n:
-            logger.info("Train event start!")
-            images_data = self._get_images_data(
-                data_catalog=data_catalog,
-                chunksize=chunksize
-            )
-            self.start_train_process(
-                data_catalog=data_catalog,
-                images_data=images_data
-            )
-        elif not self.is_training and self.train_process is not None:
+        if self.is_training:
+            logging.info("Training is still running...")
+            return
+
+        if self.train_process is not None:
             self.terminate_train_process()
-            logger.info("Training end!")
+            logger.info("Training ended!")
             self.current_count += self.start_train_every_n
+            return
+
+        if object_detection_node_count_value >= self.current_count + self.start_train_every_n:
+            logger.info("Train event start!")
+            self.start_train_process(data_catalog=data_catalog, chunksize=chunksize, **kwargs)
 
     def __del__(self):
         self.terminate_train()
 
     @property
     def inputs(self):
-        return [self.dt_input_images_data]
+        return [self.dt_train_images_data, self.dt_test_images_data]
 
     @property
     def outputs(self):
-        return [self.dt_output_models]
+        _outputs = [self.dt_output_models]
+        if self.dt_tasks_from_detection_project is not None:
+            _outputs += [self.dt_tasks_from_detection_project]
+        return _outputs
 
     @property
     def name(self):

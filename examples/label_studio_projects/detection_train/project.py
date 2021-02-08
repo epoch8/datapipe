@@ -4,8 +4,13 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
+from c12n_pipe.datatable import DataTable
+from c12n_pipe.label_studio_utils.label_studio_ml_node import LabelStudioMLNode
 from c12n_pipe.object_detection_api_utils.object_detection_node import ObjectDetectionTrainNode
+from cv_pipeliner.batch_generators.image_data import BatchGeneratorImageData
+from cv_pipeliner.inference_models.detection.object_detection_api import ObjectDetectionAPI_ModelSpec
+from cv_pipeliner.inferencers.detection import DetectionInferencer
 
 
 import numpy as np
@@ -17,12 +22,13 @@ from c12n_pipe.io.node import StoreNode, PythonNode, Pipeline
 from c12n_pipe.label_studio_utils.label_studio_node import LabelStudioNode
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, Numeric, String
+from sqlalchemy.sql.sqltypes import Float, JSON, Numeric, String
 
 
 logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
+DETECTION_BACKEND_SCRIPT = Path(__file__).parent / 'backend.py'
 
 
 def parse_rectangle_labels(
@@ -89,28 +95,6 @@ def parse_detection_completion(completions_json: Dict) -> Dict:
     return image_data.asdict()
 
 
-def parse_classification_completion(completions_json: Dict) -> Dict:
-    bbox_data = BboxData.from_dict(completions_json['data']['src_bbox_data'])
-
-    if len(completions_json['completions']) > 1:
-        logger.warning(
-            f"Find a task with two or more completions, fix it. Task_id: {completions_json['id']}"
-        )
-
-    completion = completions_json['completions'][-1]
-
-    if 'skipped' in completion and completion['skipped']:
-        return bbox_data.asdict()
-    else:
-        label = None
-        for result in completion['result']:
-            from_name = result['from_name']
-            if from_name == 'label':
-                label = result['value']['choices'][0]
-        bbox_data.label = label
-    return bbox_data.asdict()
-
-
 def get_source_images(images_dir: str) -> pd.DataFrame:
     image_paths = sorted(
         Path(images_dir).glob('*.jp*g'),
@@ -161,6 +145,54 @@ def parse_detection_annotation_and_counts(
     return df_annotation
 
 
+def split_train_test(
+    df_input_images_data: pd.DataFrame,
+    test_size: float
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    train_indexes, test_indexes = [], []
+    for idx in df_input_images_data.index:
+        if np.random.rand() <= test_size:
+            test_indexes.append(idx)
+        else:
+            train_indexes.append(idx)
+    return df_input_images_data.loc[train_indexes], df_input_images_data.loc[test_indexes]
+
+
+def inference_for_ml_backend(
+    df_detection_models: pd.DataFrame,
+    dt_detection_tasks: DataTable,
+    data_catalog: DataCatalog,
+    batch_size: int
+):
+    assert len(df_detection_models) == 1
+    logger.info('Inference LS detection project data for ML backend')
+    idx = df_detection_models.index[0]
+    dt_detection_tasks = data_catalog.get_data_table(dt_detection_tasks)
+    df_detection_tasks = dt_detection_tasks.get_data()
+    images_data: ImageData = list(df_detection_tasks['data'].apply(
+        lambda task_json: ImageData(image_path=task_json['data']['src_image_path'])
+    ))
+    detection_model_spec = ObjectDetectionAPI_ModelSpec(
+        config_path=df_detection_models.loc[idx, 'config_path'],
+        checkpoint_path=df_detection_models.loc[idx, 'checkpoint_path']
+    )
+    score_threshold = df_detection_models.loc[idx, 'score_threshold']
+    detection_model = detection_model_spec.load()
+    inferencer = DetectionInferencer(detection_model)
+    images_data_gen = BatchGeneratorImageData(
+        data=images_data, batch_size=batch_size, use_not_caught_elements_as_last_batch=True
+    )
+    pred_images_data = inferencer.predict(images_data_gen, score_threshold=score_threshold)
+    for idx, pred_image_data in zip(dt_detection_tasks.index, pred_images_data):
+        df_detection_tasks.loc[idx, 'data']['pred_image_data'] = pred_image_data.asdict()
+    chunk = dt_detection_tasks.store(df_detection_tasks)
+    dt_detection_tasks.sync_meta(
+        chunks=[chunk],
+        processed_idx=dt_detection_tasks.index
+    )
+    return df_detection_models
+
+
 def main(
     images_dir: str,
     project_path_detection: str,
@@ -178,6 +210,7 @@ def main(
 
     images_dir = Path(images_dir)
     project_path_detection = Path(project_path_detection)
+    project_path_ml = project_path_detection / 'backend'
     output_model_directory = project_path_detection / 'detection_models'
     data_catalog = DataCatalog(
         catalog={
@@ -199,8 +232,21 @@ def main(
             'input_images_data': AbstractDataTable([
                 Column('data', JSON)
             ]),
+            'train_images_data': AbstractDataTable([
+                Column('data', JSON)
+            ]),
+            'test_images_data': AbstractDataTable([
+                Column('data', JSON)
+            ]),
             'detection_models': AbstractDataTable([
-                Column('model_directory', JSON)
+                Column('config_path', String),
+                Column('checkpoint_path', String),
+                Column('score_threshold', Float)
+            ]),
+            'detection_models_processed': AbstractDataTable([
+                Column('config_path', String),
+                Column('checkpoint_path', String),
+                Column('score_threshold', Float)
             ]),
         },
         connstr=connstr,
@@ -216,12 +262,18 @@ def main(
                 },
                 outputs=['input_images']
             ),
+            LabelStudioMLNode(
+                project_path=project_path_ml,
+                script=str(DETECTION_BACKEND_SCRIPT),
+                port=9090
+            ),
             LabelStudioNode(
                 project_path=project_path_detection,
                 input='detection_tasks',
                 output='detection_annotation',
                 port=8080,
-                label_config=str(DETECTION_CONFIG_XML)
+                label_config=str(DETECTION_CONFIG_XML),
+                ml_backends=['http://localhost:9090/']
             ),
             PythonNode(
                 proc_func=add_tasks_to_detection_project,
@@ -239,6 +291,11 @@ def main(
                     'counter': counter
                 }
             ),
+            PythonNode(
+                proc_func=split_train_test,
+                inputs=['input_images_data'],
+                outputs=['train_images_data', 'test_images_data']
+            ),
             ObjectDetectionTrainNode(
                 dt_input_images_data='input_images_data',
                 dt_output_models='detection_models',
@@ -246,12 +303,21 @@ def main(
                 output_model_directory=output_model_directory,
                 start_train_every_n=2,
                 zoo_model_url=(
-                    'http://download.tensorflow.org/models/object_detection/tf2/20200711/ssd_mobilenet_v2_320x320_coco17_tpu-8.tar.gz'
+                    'http://download.tensorflow.org/models/object_detection/tf2/20200711/centernet_resnet50_v1_fpn_512x512_coco17_tpu-8.tar.gz'
                 ),
                 train_batch_size=2,
                 train_num_steps=50,
                 checkpoint_every_n=10,
-            )
+            ),
+            PythonNode(
+                proc_func=split_train_test,
+                inputs=['detection_models'],
+                outputs=['detection_models_processed'],
+                kwargs={
+                    'data_catalog': data_catalog,
+                    'dt_detection_tasks': 'detection_tasks'
+                }
+            ),
         ]
     )
 

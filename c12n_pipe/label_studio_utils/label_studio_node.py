@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Literal, Union
+from typing import List, Literal, Union
 from multiprocessing import Process
 
 from label_studio.project import Project
@@ -19,13 +19,14 @@ class LabelStudioNode(Node):
         output: str,
         port: int,
         label_config: str = None,
-        log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = 'INFO'
+        log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = 'INFO',
+        ml_backends: List[str] = None
     ):
         self.process = None
         self.project_path = Path(project_path)
         self.input = input
         self.output = output
-        self.project_config = LabelStudioConfig(
+        self.label_studio_config = LabelStudioConfig(
             project_name=str(self.project_path),
             source='tasks-json-modified',
             source_path='tasks.json',
@@ -39,11 +40,12 @@ class LabelStudioNode(Node):
             },
             port=port,
             label_config=label_config,
-            log_level=log_level
+            log_level=log_level,
+            ml_backends=ml_backends
         )
 
     def _run_app(self):
-        run_app(label_studio_config=self.project_config)
+        run_app(label_studio_config=self.label_studio_config)
 
     def change_config(self, data_catalog: DataCatalog):
         self.project_config.source_params['connstr'] = data_catalog.connstr
