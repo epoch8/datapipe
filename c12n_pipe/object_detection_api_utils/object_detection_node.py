@@ -1,12 +1,12 @@
 import logging
 import shutil
 import tarfile
-
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Union
 
-from multiprocessing import Process
+from multiprocessing import Process, Event
 
 import pandas as pd
 
@@ -74,6 +74,7 @@ class ObjectDetectionTrainNode(Node):
         checkpoint_every_n: int,
 
         dt_test_images_data: str = None,
+        score_threshold: float = 0.5
     ):
         self.dt_train_images_data = dt_train_images_data
         self.dt_test_images_data = dt_test_images_data
@@ -85,10 +86,11 @@ class ObjectDetectionTrainNode(Node):
         self.start_train_every_n = start_train_every_n
         self.checkpoint_every_n = checkpoint_every_n
         self.train_num_steps = train_num_steps
+        self.score_threshold = 0.3
 
         self.current_count = 0
         self.train_process = None
-        self.is_training = False
+        self.training_process_event: Event = None
 
     def _get_images_data(
         self,
@@ -109,7 +111,7 @@ class ObjectDetectionTrainNode(Node):
     def prepare_data(
         self,
         train_images_data: List[ImageData],
-        num_workers: int = 4,
+        num_workers: int = 1,
         num_shards: int = 1,
         max_pictures_per_worker: int = 1000
     ) -> Path:
@@ -124,10 +126,9 @@ class ObjectDetectionTrainNode(Node):
         (new_model_directory / 'checkpoint').mkdir()
         (new_model_directory / 'input_data').mkdir()
         tf_records_train_path = new_model_directory / 'input_data' / 'train_dataset.record'
-        label_map = {
-            class_name: id+1
-            for id, class_name in enumerate(self.class_names)
-        }
+        label_map = defaultdict(int)
+        for id, class_name in enumerate(self.class_names):
+            label_map[class_name] = id + 1
         convert_to_tf_records(
             images_data=train_images_data,
             label_map=label_map,
@@ -182,20 +183,22 @@ class ObjectDetectionTrainNode(Node):
         detection_reporter = DetectionReporter()
         detection_reporter.report(
             models_specs=[detection_model_spec],
-            tags=[self.new_model_directory.name],
-            score_thresholds=[0.5],  # TODO: find best by test images data
+            tags=[new_model_directory.parent.name],
+            scores_thresholds=[self.score_threshold],  # TODO: find best by test images data
+            compare_tag=new_model_directory.parent.name,
             output_directory=new_model_directory / 'report_train',
             true_images_data=train_images_data,
-            minimum_iou=0.5,
+            minimum_iou=self.score_threshold
         )
-        if test_images_data is not None:
+        if test_images_data is not None and len(test_images_data) > 0:
             detection_reporter.report(
                 models_specs=[detection_model_spec],
-                tags=[self.new_model_directory.name],
-                score_thresholds=[0.5],  # TODO: find best by test images data
+                tags=[new_model_directory.parent.name],
+                scores_thresholds=[self.score_threshold],  # TODO: find best by test images data
+                compare_tag=new_model_directory.parent.name,
                 output_directory=new_model_directory / 'report_test',
                 true_images_data=test_images_data,
-                minimum_iou=0.5,
+                minimum_iou=self.score_threshold,
             )
 
     def write_detection_model_to_output(
@@ -207,7 +210,7 @@ class ObjectDetectionTrainNode(Node):
         df_output_model = pd.DataFrame({
             'config_path': [str(new_model_directory / 'pipeline.config')],
             'checkpoint_path': [str(checkpoint_path)],
-            'score_threshold': [0.5]  # TODO: find best by test images data
+            'score_threshold': [self.score_threshold]  # TODO: find best by test images data
         }, index=[new_model_directory.name])
         dt_output_models = data_catalog.get_data_table(self.dt_output_models)
         chunk = dt_output_models.store_chunk(df_output_model)
@@ -217,6 +220,7 @@ class ObjectDetectionTrainNode(Node):
         self,
         data_catalog: DataCatalog,
         chunksize: int,
+        training_process_event: Event
     ):
         try:
             train_images_data = self._get_images_data(
@@ -231,6 +235,7 @@ class ObjectDetectionTrainNode(Node):
             ) if self.dt_test_images_data is not None else None
             new_model_directory = self.prepare_data(train_images_data=train_images_data)
             checkpoint_path = self.train_loop(new_model_directory=new_model_directory)
+#             checkpoint_path = new_model_directory / 'fine_tune_checkpoint' / 'ckpt-0'
             self.write_report(
                 new_model_directory=new_model_directory,
                 checkpoint_path=checkpoint_path,
@@ -243,24 +248,26 @@ class ObjectDetectionTrainNode(Node):
                 checkpoint_path=checkpoint_path
             )
         finally:
-            self.is_training = False
+            logger.info("Training has been ended! (Child process)")
+            training_process_event.set()
 
     def start_train_process(
         self,
         data_catalog: DataCatalog,
-        chunksize: int
+        chunksize: int,
+        training_process_event: Event
     ):
         if self.train_process is None:
             self.train_process = Process(
                 target=self.main_train_process,
-                args=(data_catalog, chunksize)
+                args=(data_catalog, chunksize, training_process_event)
             )
-            self.is_training = True
             self.train_process.start()
-
-    def terminate_train_process(self):
+            
+    def join_train_process(self, terminate: bool = False):
         if self.train_process is not None:
-            self.train_process.terminate()
+            if terminate:
+                self.train_process.terminate()
             self.train_process.join()
             self.train_process = None
 
@@ -271,22 +278,31 @@ class ObjectDetectionTrainNode(Node):
         chunksize: int = 1000,
         **kwargs
     ):
-        if self.is_training:
+        if self.training_process_event is not None and not self.training_process_event.is_set():
             logging.info("Training is still running...")
             return
 
         if self.train_process is not None:
-            self.terminate_train_process()
+            self.join_train_process()
+            self.training_process_event = None
             logger.info("Training ended!")
             self.current_count += self.start_train_every_n
             return
 
         if object_detection_node_count_value >= self.current_count + self.start_train_every_n:
             logger.info("Train event start!")
-            self.start_train_process(data_catalog=data_catalog, chunksize=chunksize, **kwargs)
+            self.training_process_event = Event()
+            self.start_train_process(
+                data_catalog=data_catalog,
+                chunksize=chunksize,
+                training_process_event=self.training_process_event,
+                **kwargs
+            )
+        else:
+            logger.info(f"Train: waiting until {object_detection_node_count_value=}>={(self.current_count + self.start_train_every_n)=}")
 
     def __del__(self):
-        self.terminate_train()
+        self.join_train_process(terminate=True)
 
     @property
     def inputs(self):
@@ -294,10 +310,7 @@ class ObjectDetectionTrainNode(Node):
 
     @property
     def outputs(self):
-        _outputs = [self.dt_output_models]
-        if self.dt_tasks_from_detection_project is not None:
-            _outputs += [self.dt_tasks_from_detection_project]
-        return _outputs
+        return [self.dt_output_models]
 
     @property
     def name(self):

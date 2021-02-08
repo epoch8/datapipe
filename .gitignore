@@ -4,3 +4,4 @@ __pycache__/
 *.egg-info
 .vscode/
 .pytest_cache/
+ls_project*/

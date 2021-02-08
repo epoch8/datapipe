@@ -28,7 +28,7 @@ from sqlalchemy.sql.sqltypes import Float, JSON, Numeric, String
 logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
-DETECTION_BACKEND_SCRIPT = Path(__file__).parent / 'backend.py'
+DETECTION_BACKEND_SCRIPT = Path(__file__).parent / 'detection_backend.py'
 
 
 def parse_rectangle_labels(
@@ -125,7 +125,7 @@ def add_tasks_to_detection_project(
     df_source['data'] = [{
         'id': int(id),
         'data': {
-            'image': f'http://localhost:8080/data/upload/{Path(image_path).name}',
+            'image': f'https://k8s-ml.epoch8.co:31390/notebook/research/bobokvsky/proxy/8080/data/upload/{Path(image_path).name}',
             'src_image_path': image_path
         }
     } for id, image_path in zip(df_source.index, df_source['image_path'])]
@@ -141,7 +141,7 @@ def parse_detection_annotation_and_counts(
     counter: Counter
 ) -> pd.DataFrame:
     df_annotation['data'] = df_annotation['data'].apply(parse_detection_completion)
-    counter.value += 1
+    counter.value += len(df_annotation)
     return df_annotation
 
 
@@ -183,35 +183,36 @@ def inference_for_ml_backend(
         data=images_data, batch_size=batch_size, use_not_caught_elements_as_last_batch=True
     )
     pred_images_data = inferencer.predict(images_data_gen, score_threshold=score_threshold)
-    for idx, pred_image_data in zip(dt_detection_tasks.index, pred_images_data):
+    for idx, pred_image_data in zip(df_detection_tasks.index, pred_images_data):
         df_detection_tasks.loc[idx, 'data']['pred_image_data'] = pred_image_data.asdict()
-    chunk = dt_detection_tasks.store(df_detection_tasks)
+    chunk = dt_detection_tasks.store_chunk(df_detection_tasks)
     dt_detection_tasks.sync_meta(
         chunks=[chunk],
-        processed_idx=dt_detection_tasks.index
+        processed_idx=df_detection_tasks.index
     )
     return df_detection_models
 
 
 def main(
     images_dir: str,
-    project_path_detection: str,
+    project_path: str,
     connstr: str = DBCONNSTR,
     schema: str = 'detection_train'
 ):
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    eng = create_engine(connstr)
-    if eng.dialect.has_schema(eng, schema=schema):
-        eng.execute(f'DROP SCHEMA {schema} CASCADE;')
+#     eng = create_engine(connstr)
+#     if eng.dialect.has_schema(eng, schema=schema):
+#         eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     counter = Counter()
 
     images_dir = Path(images_dir)
-    project_path_detection = Path(project_path_detection)
-    project_path_ml = project_path_detection / 'backend'
-    output_model_directory = project_path_detection / 'detection_models'
+    project_path_base = Path(project_path)
+    project_path_detection = project_path_base / 'main'
+    project_path_ml = project_path_base / 'backend'
+    output_model_directory = project_path_base / 'detection_models'
     data_catalog = DataCatalog(
         catalog={
             'input_images': AbstractDataTable([
@@ -262,11 +263,6 @@ def main(
                 },
                 outputs=['input_images']
             ),
-            LabelStudioMLNode(
-                project_path=project_path_ml,
-                script=str(DETECTION_BACKEND_SCRIPT),
-                port=9090
-            ),
             LabelStudioNode(
                 project_path=project_path_detection,
                 input='detection_tasks',
@@ -274,6 +270,11 @@ def main(
                 port=8080,
                 label_config=str(DETECTION_CONFIG_XML),
                 ml_backends=['http://localhost:9090/']
+            ),
+            LabelStudioMLNode(
+                project_path=project_path_ml,
+                script=str(DETECTION_BACKEND_SCRIPT),
+                port=9090
             ),
             PythonNode(
                 proc_func=add_tasks_to_detection_project,
@@ -294,28 +295,33 @@ def main(
             PythonNode(
                 proc_func=split_train_test,
                 inputs=['input_images_data'],
-                outputs=['train_images_data', 'test_images_data']
+                outputs=['train_images_data', 'test_images_data'],
+                kwargs={
+                    'test_size': 0.2
+                }
             ),
             ObjectDetectionTrainNode(
-                dt_input_images_data='input_images_data',
+                dt_train_images_data='train_images_data',
+                dt_test_images_data='test_images_data',
                 dt_output_models='detection_models',
                 class_names=['bbox'],
                 output_model_directory=output_model_directory,
-                start_train_every_n=2,
+                start_train_every_n=5,
                 zoo_model_url=(
                     'http://download.tensorflow.org/models/object_detection/tf2/20200711/centernet_resnet50_v1_fpn_512x512_coco17_tpu-8.tar.gz'
                 ),
-                train_batch_size=2,
+                train_batch_size=4,
                 train_num_steps=50,
                 checkpoint_every_n=10,
             ),
             PythonNode(
-                proc_func=split_train_test,
+                proc_func=inference_for_ml_backend,
                 inputs=['detection_models'],
                 outputs=['detection_models_processed'],
                 kwargs={
                     'data_catalog': data_catalog,
-                    'dt_detection_tasks': 'detection_tasks'
+                    'dt_detection_tasks': 'detection_tasks',
+                    'batch_size': 16
                 }
             ),
         ]
@@ -326,11 +332,11 @@ def main(
             chunksize=1000,
             object_detection_node_count_value=counter.value
         )
-        time.sleep(5)
+        time.sleep(60)
 
 
 if __name__ == '__main__':
     main(
         images_dir='dataset/',
-        project_path_detection='ls_project/'
+        project_path='ls_project/'
     )

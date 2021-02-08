@@ -48,17 +48,17 @@ class LabelStudioNode(Node):
         run_app(label_studio_config=self.label_studio_config)
 
     def change_config(self, data_catalog: DataCatalog):
-        self.project_config.source_params['connstr'] = data_catalog.connstr
-        self.project_config.source_params['schema'] = data_catalog.schema
-        self.project_config.target_params['connstr'] = data_catalog.connstr
-        self.project_config.target_params['schema'] = data_catalog.schema
+        self.label_studio_config.source_params['connstr'] = data_catalog.connstr
+        self.label_studio_config.source_params['schema'] = data_catalog.schema
+        self.label_studio_config.target_params['connstr'] = data_catalog.connstr
+        self.label_studio_config.target_params['schema'] = data_catalog.schema
 
     def process_data(self, data_catalog):
         self.change_config(data_catalog)
         Project._storage = {}  # Clear Project memory
         Project.get_or_create(
-            self.project_config.project_name,
-            self.project_config,
+            self.label_studio_config.project_name,
+            self.label_studio_config,
             context={'multi_session': False}
         )
 

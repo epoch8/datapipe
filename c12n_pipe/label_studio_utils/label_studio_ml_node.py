@@ -15,17 +15,16 @@ logger = logging.getLogger(__name__)
 class LabelStudioMLNode(Node):
     def __init__(
         self,
-        project_name: Union[str, Path],
+        project_path: Union[str, Path],
         script: Union[str, Path],
         port: int,
         log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = 'INFO'
     ):
         self.process = None
-        self.project_name = Path(project_name)
-        self.script = Path(script)
+        self.project_path = Path(project_path)
         self.label_studio_ml_config = LabelStudioMLConfig(
             command='start',
-            project_name=str(self.project_name),
+            project_name=str(self.project_path),
             script=str(script),
             port=port,
             log_level=log_level

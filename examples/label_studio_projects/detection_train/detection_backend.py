@@ -1,8 +1,10 @@
+import logging
 from typing import Dict
 from label_studio.ml import LabelStudioMLBase
 
 from cv_pipeliner.core.data import ImageData
 
+logger = logging.getLogger(__name__)
 
 def convert_to_rectangle_labels(
     image_data: ImageData
@@ -31,7 +33,7 @@ def convert_to_rectangle_labels(
                 "y": y,
                 "width": width,
                 "height": height,
-                "rectanglelabels": [bbox_data.label],
+                "rectanglelabels": ['bbox'],
                 "rotation": bbox_data.angle,
             }
         })
@@ -42,23 +44,25 @@ class DetectionBackend(LabelStudioMLBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.from_name = 'bbox'
-        self.info = self.parsed_label_config['bbox']
         self.to_name = 'image'
 
     def predict(self, tasks, **kwargs):
         # collect input images
+        logger.info(f"Got {tasks=}")
         predictions = []
         for task in tasks:
-            if 'pred_image_data' in task['data']:
-                pred_image_data = ImageData.from_dict(task['data']['pred_image_data'])
-                predictions.append(
-                    {
-                        'result': convert_to_rectangle_labels(pred_image_data),
-                        'score': pred_image_data.detection_score
-                    }
-                )
+            if 'pred_image_data' in task:
+                pred_image_data = ImageData.from_dict(task['pred_image_data'])
+                result = convert_to_rectangle_labels(pred_image_data)
             else:
-                predictions.append({})
+                result = []
+            predictions.append(
+                {
+                    'result': result,
+                    'score': 1.
+                }
+            )
+        logger.info(f"Return: {predictions=}")
         return predictions
 
     def fit(self, completions, workdir=None, **kwargs):
