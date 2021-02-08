@@ -1,5 +1,5 @@
 import logging
-import os
+import shutil
 import tarfile
 
 from datetime import datetime
@@ -114,6 +114,8 @@ class ObjectDetectionTrainNode(Node):
             directory=timestamp_directory
         )
         new_model_directory = next(timestamp_directory.glob('*'))  # TODO: FIX THIS CRUTCH
+        shutil.move(new_model_directory / 'checkpoint', new_model_directory / 'fine_tune_checkpoint')
+        (new_model_directory / 'checkpoint').mkdir()
         (new_model_directory / 'input_data').mkdir()
         tf_records_train_path = new_model_directory / 'input_data' / 'train_dataset.record'
         label_map = {
@@ -130,7 +132,7 @@ class ObjectDetectionTrainNode(Node):
         )
         set_config(
             config_path=new_model_directory / 'pipeline.config',
-            checkpoint_path=new_model_directory / 'checkpoint' / 'ckpt-0',
+            checkpoint_path=new_model_directory / 'fine_tune_checkpoint' / 'ckpt-0',
             tf_records_train_path=Path(f"{tf_records_train_path}-?????-of-{str(num_shards).zfill(5)}"),
             label_map=label_map,
             label_map_filepath=new_model_directory / 'input_data' / 'label_map.txt',
@@ -146,10 +148,6 @@ class ObjectDetectionTrainNode(Node):
         chunksize: int = 1000,
         **kwargs
     ):
-        print(
-            f"{object_detection_node_count_value=}",
-            f"{(self.current_count + self.start_train_every_n)=}",
-        )
         if not self.is_training and object_detection_node_count_value >= self.current_count + self.start_train_every_n:
             logger.info("Train event start!")
             images_data = self._get_images_data(
@@ -162,6 +160,7 @@ class ObjectDetectionTrainNode(Node):
             )
         elif not self.is_training and self.train_process is not None:
             self.terminate_train()
+            logger.info("Training end!")
             self.current_count += self.start_train_every_n
 
     def train_loop(
@@ -170,10 +169,8 @@ class ObjectDetectionTrainNode(Node):
         images_data: List[ImageData],
     ):
         try:
-            print("START TRAINING 1")
             new_model_directory = self.prepare_data(images_data=images_data)
             strategy = tf.compat.v2.distribute.MirroredStrategy()
-            print("START TRAINING 2")
             with strategy.scope():
                 model_lib_v2.train_loop(
                     pipeline_config_path=str(new_model_directory / 'pipeline.config'),
@@ -182,7 +179,6 @@ class ObjectDetectionTrainNode(Node):
                     checkpoint_every_n=self.checkpoint_every_n,
                     checkpoint_max_to_keep=1000,
                 )
-            print("START TRAINING 3")
             df_output_model = pd.DataFrame({
                 'model_directory': str(new_model_directory)
             }, index=[new_model_directory.name])
