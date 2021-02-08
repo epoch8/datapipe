@@ -141,6 +141,61 @@ class ObjectDetectionTrainNode(Node):
         )
         return new_model_directory
 
+    def train_loop(
+        self,
+        new_model_directory: Union[str, Path]
+    ):
+        strategy = tf.compat.v2.distribute.MirroredStrategy()
+        with strategy.scope():
+            model_lib_v2.train_loop(
+                pipeline_config_path=str(new_model_directory / 'pipeline.config'),
+                model_dir=str(new_model_directory / 'checkpoint'),
+                train_steps=self.train_num_steps,
+                checkpoint_every_n=self.checkpoint_every_n,
+                checkpoint_max_to_keep=1000,
+            )
+
+    def write_detection_model_to_output(
+        self,
+        data_catalog: DataCatalog,
+        new_model_directory: Union[str, Path]
+    ):
+        df_output_model = pd.DataFrame({
+            'model_directory': str(new_model_directory)
+        }, index=[new_model_directory.name])
+        dt_output_models = data_catalog.get_data_table(self.dt_output_models)
+        chunk = dt_output_models.store_chunk(df_output_model)
+        dt_output_models.sync_meta(chunks=[chunk], processed_idx=new_model_directory.name)
+
+    def main_train_process(
+        self,
+        images_data: List[ImageData],
+        data_catalog: DataCatalog
+    ):
+        new_model_directory = self.prepare_data(images_data=images_data)
+        self.train_loop(new_model_directory=new_model_directory)
+        self.write_detection_model_to_output(
+            data_catalog=data_catalog, new_model_directory=new_model_directory
+        )
+
+    def start_train_process(
+        self,
+        data_catalog: DataCatalog,
+        images_data: List[ImageData]
+    ):
+        self.train_process = Process(
+            target=self.main_train_process,
+            args=(data_catalog, images_data, )
+        )
+        self.is_training = True
+        self.train_process.start()
+
+    def terminate_train_process(self):
+        if self.train_process is not None:
+            self.train_process.terminate()
+            self.train_process.join()
+            self.train_process = None
+
     def run(
         self,
         data_catalog: DataCatalog,
@@ -154,57 +209,14 @@ class ObjectDetectionTrainNode(Node):
                 data_catalog=data_catalog,
                 chunksize=chunksize
             )
-            self.start_train(
+            self.start_train_process(
                 data_catalog=data_catalog,
                 images_data=images_data
             )
         elif not self.is_training and self.train_process is not None:
-            self.terminate_train()
+            self.terminate_train_process()
             logger.info("Training end!")
             self.current_count += self.start_train_every_n
-
-    def train_loop(
-        self,
-        data_catalog: DataCatalog,
-        images_data: List[ImageData],
-    ):
-        try:
-            new_model_directory = self.prepare_data(images_data=images_data)
-            strategy = tf.compat.v2.distribute.MirroredStrategy()
-            with strategy.scope():
-                model_lib_v2.train_loop(
-                    pipeline_config_path=str(new_model_directory / 'pipeline.config'),
-                    model_dir=str(new_model_directory / 'checkpoint'),
-                    train_steps=self.train_num_steps,
-                    checkpoint_every_n=self.checkpoint_every_n,
-                    checkpoint_max_to_keep=1000,
-                )
-            df_output_model = pd.DataFrame({
-                'model_directory': str(new_model_directory)
-            }, index=[new_model_directory.name])
-            dt_output_models = data_catalog.get_data_table(self.dt_output_models)
-            chunk = dt_output_models.store_chunk(df_output_model)
-            dt_output_models.sync_meta(chunks=[chunk], processed_idx=new_model_directory.name)
-        finally:
-            self.is_training = False
-
-    def start_train(
-        self,
-        data_catalog: DataCatalog,
-        images_data: List[ImageData]
-    ):
-        self.train_process = Process(
-            target=self.train_loop,
-            args=(data_catalog, images_data, )
-        )
-        self.is_training = True
-        self.train_process.start()
-
-    def terminate_train(self):
-        if self.train_process is not None:
-            self.train_process.terminate()
-            self.train_process.join()
-            self.train_process = None
 
     def __del__(self):
         self.terminate_train()
