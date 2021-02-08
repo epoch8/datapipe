@@ -185,7 +185,7 @@ class ObjectDetectionTrainNode(Node):
     ):
         self.train_process = Process(
             target=self.main_train_process,
-            args=(data_catalog, images_data, )
+            args=(images_data, data_catalog)
         )
         self.is_training = True
         self.train_process.start()
