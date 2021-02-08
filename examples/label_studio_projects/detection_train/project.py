@@ -241,7 +241,7 @@ def main(
             ),
             ObjectDetectionTrainNode(
                 dt_input_images_data='input_images_data',
-                dt_output_models='model_directory',
+                dt_output_models='detection_models',
                 class_names=['bbox'],
                 output_model_directory=output_model_directory,
                 start_train_every_n=2,

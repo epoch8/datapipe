@@ -126,8 +126,6 @@ class Pipeline:
                 if input not in transformation_graph:
                     transformation_graph[input] = []
                 for output in node.outputs:
-                    if output not in transformation_graph:
-                        transformation_graph[input] = []
                     if output not in transformation_graph[input]:
                         transformation_graph[input].append(output)
         return transformation_graph
