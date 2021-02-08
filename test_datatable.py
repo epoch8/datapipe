@@ -12,7 +12,8 @@ from sqlalchemy import create_engine, Column, Numeric
 
 from c12n_pipe.datatable import DataStore, gen_process, gen_process_many, inc_process, inc_process_many
 from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
-from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
+from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode
+from c12n_pipe.label_studio_utils.label_studio_node import LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON
 
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'

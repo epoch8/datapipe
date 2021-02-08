@@ -4,12 +4,12 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
+from c12n_pipe.object_detection_api_utils.object_detection_node import ObjectDetectionTrainNode
 
 
 import numpy as np
 import pandas as pd
-from PIL import Image
 
 from cv_pipeliner.core.data import ImageData, BboxData
 from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
@@ -17,13 +17,12 @@ from c12n_pipe.io.node import StoreNode, PythonNode, Pipeline
 from c12n_pipe.label_studio_utils.label_studio_node import LabelStudioNode
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
+from sqlalchemy.sql.sqltypes import JSON, Numeric, String
 
 
 logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
-CLASSIFICATION_CONFIG_XML = Path(__file__).parent / 'classification_config.xml'
 
 
 def parse_rectangle_labels(
@@ -149,95 +148,44 @@ def add_tasks_to_detection_project(
     return df_source.loc[:, ['data']]
 
 
-def parse_detection_annotation(df_annotation: pd.DataFrame) -> pd.DataFrame:
-    df_annotation['data'] = df_annotation['data'].apply(parse_detection_completion)
-    return df_annotation
+class Counter:
+    value = 0
 
 
-# TODO: Refactor it to one-to-many transformation later
-def add_tasks_to_classification_project(
-    df_detection_annotation_parsed: pd.DataFrame,
-    project_path_classification: str,
-    bboxes_images_dir: str
+def parse_detection_annotation_and_counts(
+    df_annotation: pd.DataFrame,
+    counter: Counter
 ) -> pd.DataFrame:
-    project_path_classification = Path(project_path_classification)
-    bboxes_images_dir = Path(bboxes_images_dir)
-    bboxes_images_dir.mkdir(exist_ok=True)
-    images_data: List[ImageData] = list(
-        df_detection_annotation_parsed['data'].apply(
-            lambda imaga_data_json: ImageData.from_dict(imaga_data_json)
-        )
-    )
-    (project_path_classification / 'upload').mkdir(exist_ok=True)
-    tasks_ids, src_bboxes_data, bbox_src_image_paths, bboxes_images_urls = [], [], [], []
-    for task_id, image_data in zip(df_detection_annotation_parsed.index, images_data):
-        image_path = image_data.image_path
-        for id, bbox_data in enumerate(image_data.bboxes_data):
-            bbox_task_id = str(10000 + 3000 * int(task_id) + int(id))
-            bbox = (bbox_data.xmin, bbox_data.ymin, bbox_data.xmax, bbox_data.ymax)
-            bbox_image_path = bboxes_images_dir / f'{task_id}_{image_path.stem}_{bbox}{image_path.suffix}'
-            bbox_image_path_in_task = project_path_classification / 'upload' / bbox_image_path.name
-            bbox_image_url = f'http://localhost:8090/data/upload/{Path(bbox_image_path_in_task).name}'
-            if not bbox_image_path.exists():
-                bbox_data_image = bbox_data.open_cropped_image()
-                Image.fromarray(bbox_data_image).save(bbox_image_path)
-            if not bbox_image_path_in_task.exists():
-                bbox_data_image_in_task = bbox_data.open_cropped_image(
-                    xmin_offset=150, ymin_offset=150, xmax_offset=150, ymax_offset=150,
-                    draw_rectangle_with_color=[0, 255, 0]
-                )
-                Image.fromarray(bbox_data_image_in_task).save(bbox_image_path_in_task)
-            tasks_ids.append(bbox_task_id)
-            src_bboxes_data.append(bbox_data)
-            bbox_src_image_paths.append(bbox_image_path)
-            bboxes_images_urls.append(bbox_image_url)
-    df_tasks = pd.DataFrame(
-        {
-            'data': [{
-                'id': int(id),
-                'data': {
-                    'image': bbox_image_url,
-                    'src_bbox_image_path': str(src_bbox_image_path),
-                    'src_bbox_data': src_bbox_data.asdict()
-                }
-            } for id, src_bbox_data, bbox_image_url, src_bbox_image_path in zip(
-                tasks_ids, src_bboxes_data, bboxes_images_urls, bbox_src_image_paths
-            )]
-        },
-        index=[str(id) for id in tasks_ids]
-    )
-    return df_tasks
-
-
-def parse_classification_annotation(df_annotation: pd.DataFrame) -> pd.DataFrame:
-    df_annotation['data'] = df_annotation['data'].apply(parse_classification_completion)
-
+    df_annotation['data'] = df_annotation['data'].apply(parse_detection_completion)
+    counter.value += 1
     return df_annotation
 
 
 def main(
     images_dir: str,
-    project_path: str,
-    bboxes_images_dir: str,
+    project_path_detection: str,
     connstr: str = DBCONNSTR,
-    schema: str = 'detection_cls'
+    schema: str = 'detection_train'
 ):
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    # eng = create_engine(connstr)
-    # if eng.dialect.has_schema(eng, schema=schema):
-    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
+    eng = create_engine(connstr)
+    if eng.dialect.has_schema(eng, schema=schema):
+        eng.execute(f'DROP SCHEMA {schema} CASCADE;')
+
+    counter = Counter()
 
     images_dir = Path(images_dir)
-    project_path = Path(project_path)
-    project_path_detection = project_path / 'detection'
-    project_path_classification = project_path / 'classification'
-    bboxes_images_dir = Path(bboxes_images_dir)
+    project_path_detection = Path(project_path_detection)
+    output_model_directory = project_path_detection / 'detection_models'
     data_catalog = DataCatalog(
         catalog={
             'input_images': AbstractDataTable([
                 Column('image_path', String)
+            ]),
+            'counter': AbstractDataTable([
+                Column('counter', Numeric)
             ]),
             'detection_tasks': AbstractDataTable([
                 Column('data', JSON)
@@ -248,14 +196,11 @@ def main(
             'detection_annotation_parsed': AbstractDataTable([
                 Column('data', JSON)
             ]),
-            'classification_tasks': AbstractDataTable([
+            'input_images_data': AbstractDataTable([
                 Column('data', JSON)
             ]),
-            'classification_annotation': AbstractDataTable([
-                Column('data', JSON)
-            ]),
-            'classification_annotation_parsed': AbstractDataTable([
-                Column('data', JSON)
+            'detection_models': AbstractDataTable([
+                Column('model_directory', JSON)
             ]),
         },
         connstr=connstr,
@@ -287,42 +232,39 @@ def main(
                 }
             ),
             PythonNode(
-                proc_func=parse_detection_annotation,
+                proc_func=parse_detection_annotation_and_counts,
                 inputs=['detection_annotation'],
-                outputs=['detection_annotation_parsed']
-            ),
-            LabelStudioNode(
-                project_path=project_path_classification,
-                input='classification_tasks',
-                output='classification_annotation',
-                port=8090,
-                label_config=str(CLASSIFICATION_CONFIG_XML)
-            ),
-            PythonNode(
-                proc_func=add_tasks_to_classification_project,
-                inputs=['detection_annotation_parsed'],
-                outputs=['classification_tasks'],
+                outputs=['input_images_data'],
                 kwargs={
-                    'project_path_classification': str(project_path_classification),
-                    'bboxes_images_dir': str(bboxes_images_dir)
+                    'counter': counter
                 }
             ),
-            PythonNode(
-                proc_func=parse_classification_annotation,
-                inputs=['classification_annotation'],
-                outputs=['classification_annotation_parsed']
+            ObjectDetectionTrainNode(
+                dt_input_images_data='input_images_data',
+                dt_output_models='model_directory',
+                class_names=['bbox'],
+                output_model_directory=output_model_directory,
+                start_train_every_n=2,
+                zoo_model_url=(
+                    'http://download.tensorflow.org/models/object_detection/tf2/20200711/ssd_mobilenet_v2_320x320_coco17_tpu-8.tar.gz'
+                ),
+                train_batch_size=2,
+                train_num_steps=50,
+                checkpoint_every_n=10,
             )
         ]
     )
 
     while True:
-        pipeline.run()
+        pipeline.run(
+            chunksize=1000,
+            object_detection_node_count_value=counter.value
+        )
         time.sleep(5)
 
 
 if __name__ == '__main__':
     main(
         images_dir='dataset/',
-        bboxes_images_dir='dataset/bboxes',
-        project_path='ls_project_detection_cls/'
+        project_path_detection='ls_project/'
     )

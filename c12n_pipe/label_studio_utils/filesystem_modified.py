@@ -90,7 +90,11 @@ class ExternalTasksJSONStorageModified(CloudStorage):
     def _set_value(self, key: int, value: str):
         key = str(key)
         df = pd.DataFrame({'data': [value]}, index=[key])
-        self.data_table.store_chunk(df)
+        chunk = self.data_table.store_chunk(df)
+        self.data_table.sync_meta(
+            chunks=[chunk],
+            processed_idx=[key]
+        )
 
     def set(self, id: int, value: str):
         with self.thread_lock:
@@ -216,7 +220,12 @@ class CompletionsDirStorageModified(BaseStorage):
     def set(self, id, value):
         id = str(id)
         df = pd.DataFrame({'data': [value]}, index=[id])
-        self.data_table.store_chunk(data_df=df)
+        chunk = self.data_table.store_chunk(df)
+        self.data_table.sync_meta(
+            chunks=[chunk],
+            processed_idx=[id]
+        )
+
 
     def set_many(self, keys, values):
         raise NotImplementedError

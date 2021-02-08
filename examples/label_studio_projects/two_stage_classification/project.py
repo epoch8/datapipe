@@ -17,12 +17,12 @@ from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
 from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
-from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
+from c12n_pipe.io.node import StoreNode, PythonNode, Pipeline
+from c12n_pipe.label_studio_utils.label_studio_node import LabelStudioNode
 
 
 logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
-# DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
 STAGE1_CONFIG_XML = Path(__file__).parent / 'stage1_config.xml'
 STAGE2_CONFIG_XML = Path(__file__).parent / 'stage2_config.xml'
 
@@ -55,7 +55,10 @@ def get_source_bboxes(
 ) -> pd.DataFrame:
     images_dir = Path(images_dir)
     src_annotation_path = Path(src_annotation_path)
-    image_paths = sorted(images_dir.glob('*.jp*g'))
+    image_paths = sorted(
+        images_dir.glob('*.jp*g'),
+        key=lambda image_path: image_path.stat().st_mtime
+    )
     images_data = BrickitDataConverter().get_images_data_from_annots(
         image_paths=image_paths,
         annots=src_annotation_path
