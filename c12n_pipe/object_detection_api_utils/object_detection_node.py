@@ -6,8 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Union
 
-from multiprocessing import Process, Event
-
 import pandas as pd
 
 import requests
@@ -86,11 +84,9 @@ class ObjectDetectionTrainNode(Node):
         self.start_train_every_n = start_train_every_n
         self.checkpoint_every_n = checkpoint_every_n
         self.train_num_steps = train_num_steps
-        self.score_threshold = 0.3
+        self.score_threshold = score_threshold
 
         self.current_count = 0
-        self.train_process = None
-        self.training_process_event: Event = None
 
     def _get_images_data(
         self,
@@ -216,93 +212,44 @@ class ObjectDetectionTrainNode(Node):
         chunk = dt_output_models.store_chunk(df_output_model)
         dt_output_models.sync_meta(chunks=[chunk], processed_idx=new_model_directory.name)
 
-    def main_train_process(
+    def _train(
         self,
         data_catalog: DataCatalog,
-        chunksize: int,
-        training_process_event: Event
+        chunksize: int
     ):
-        try:
-            train_images_data = self._get_images_data(
-                data_catalog=data_catalog,
-                chunksize=chunksize,
-                dt_input_images_data=self.dt_train_images_data
-            )
-            test_images_data = self._get_images_data(
-                data_catalog=data_catalog,
-                chunksize=chunksize,
-                dt_input_images_data=self.dt_test_images_data
-            ) if self.dt_test_images_data is not None else None
-            new_model_directory = self.prepare_data(train_images_data=train_images_data)
-            checkpoint_path = self.train_loop(new_model_directory=new_model_directory)
-#             checkpoint_path = new_model_directory / 'fine_tune_checkpoint' / 'ckpt-0'
-            self.write_report(
-                new_model_directory=new_model_directory,
-                checkpoint_path=checkpoint_path,
-                train_images_data=train_images_data,
-                test_images_data=test_images_data
-            )
-            self.write_detection_model_to_output(
-                data_catalog=data_catalog,
-                new_model_directory=new_model_directory,
-                checkpoint_path=checkpoint_path
-            )
-        finally:
-            logger.info("Training has been ended! (Child process)")
-            training_process_event.set()
+        train_images_data = self._get_images_data(
+            data_catalog=data_catalog,
+            chunksize=chunksize,
+            dt_input_images_data=self.dt_train_images_data
+        )
+        test_images_data = self._get_images_data(
+            data_catalog=data_catalog,
+            chunksize=chunksize,
+            dt_input_images_data=self.dt_test_images_data
+        ) if self.dt_test_images_data is not None else None
+        new_model_directory = self.prepare_data(train_images_data=train_images_data)
+        checkpoint_path = self.train_loop(new_model_directory=new_model_directory)
+        # checkpoint_path = new_model_directory / 'fine_tune_checkpoint' / 'ckpt-0'
+        self.write_report(
+            new_model_directory=new_model_directory,
+            checkpoint_path=checkpoint_path,
+            train_images_data=train_images_data,
+            test_images_data=test_images_data
+        )
+        self.write_detection_model_to_output(
+            data_catalog=data_catalog,
+            new_model_directory=new_model_directory,
+            checkpoint_path=checkpoint_path
+        )
 
-    def start_train_process(
+    def heavy_run(
         self,
         data_catalog: DataCatalog,
-        chunksize: int,
-        training_process_event: Event
-    ):
-        if self.train_process is None:
-            self.train_process = Process(
-                target=self.main_train_process,
-                args=(data_catalog, chunksize, training_process_event)
-            )
-            self.train_process.start()
-            
-    def join_train_process(self, terminate: bool = False):
-        if self.train_process is not None:
-            if terminate:
-                self.train_process.terminate()
-            self.train_process.join()
-            self.train_process = None
-
-    def run(
-        self,
-        data_catalog: DataCatalog,
-        object_detection_node_count_value: int,
         chunksize: int = 1000,
         **kwargs
     ):
-        if self.training_process_event is not None and not self.training_process_event.is_set():
-            logging.info("Training is still running...")
-            return
-
-        if self.train_process is not None:
-            self.join_train_process()
-            self.training_process_event = None
-            logger.info("Training ended!")
-            self.current_count += self.start_train_every_n
-            return
-
-        if object_detection_node_count_value >= self.current_count + self.start_train_every_n:
-            logger.info("Train event start!")
-            self.training_process_event = Event()
-            self.start_train_process(
-                data_catalog=data_catalog,
-                chunksize=chunksize,
-                training_process_event=self.training_process_event,
-                **kwargs
-            )
-        else:
-            logger.info(f"Train: waiting until {object_detection_node_count_value=}>={(self.current_count + self.start_train_every_n)=}")
-
-    def __del__(self):
-        self.join_train_process(terminate=True)
+        logger.info("Train event start!")
+        self._train(data_catalog=data_catalog, chunksize=chunksize)
 
     @property
     def inputs(self):

@@ -506,9 +506,10 @@ def test_label_studio_node() -> None:
         output='data_annotation',
         port=8080
     )
+    label_studio_node.run_services(data_catalog=data_catalog)
     label_studio_node.run(data_catalog=data_catalog)
     time.sleep(2)
-    label_studio_node.terminate_services()
+    label_studio_node.terminate_services(data_catalog=data_catalog)
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -556,7 +557,10 @@ def test_pipeline() -> None:
         ]
     )
 
+    pipeline.run_services()
     pipeline.run()
+    pipeline.heavy_run()
+    pipeline.terminate_services()
 
     tbl = data_catalog.get_data_table('test_df')
     tbl1 = data_catalog.get_data_table('test_df_inc1')

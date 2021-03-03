@@ -44,9 +44,6 @@ class LabelStudioNode(Node):
             ml_backends=ml_backends
         )
 
-    def _run_app(self):
-        run_app(label_studio_config=self.label_studio_config)
-
     def change_config(self, data_catalog: DataCatalog):
         self.label_studio_config.source_params['connstr'] = data_catalog.connstr
         self.label_studio_config.source_params['schema'] = data_catalog.schema
@@ -62,6 +59,9 @@ class LabelStudioNode(Node):
             context={'multi_session': False}
         )
 
+    def _run_app(self):
+        run_app(label_studio_config=self.label_studio_config)
+
     def run_services(self):
         if self.process is None:
             logger.info('Start project...')
@@ -76,7 +76,6 @@ class LabelStudioNode(Node):
 
     def run(self, data_catalog: DataCatalog, **kwargs):
         self.process_data(data_catalog)
-        self.run_services()  # Runs only once
 
     def __del__(self):
         self.terminate_services()

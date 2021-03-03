@@ -4,7 +4,7 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 from c12n_pipe.datatable import DataTable
 from c12n_pipe.label_studio_utils.label_studio_ml_node import LabelStudioMLNode
 from c12n_pipe.object_detection_api_utils.object_detection_node import ObjectDetectionTrainNode
@@ -132,16 +132,8 @@ def add_tasks_to_detection_project(
     return df_source.loc[:, ['data']]
 
 
-class Counter:
-    value = 0
-
-
-def parse_detection_annotation_and_counts(
-    df_annotation: pd.DataFrame,
-    counter: Counter
-) -> pd.DataFrame:
+def parse_detection_annotation_and_counts(df_annotation: pd.DataFrame) -> pd.DataFrame:
     df_annotation['data'] = df_annotation['data'].apply(parse_detection_completion)
-    counter.value += len(df_annotation)
     return df_annotation
 
 
@@ -202,11 +194,9 @@ def main(
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-#     eng = create_engine(connstr)
-#     if eng.dialect.has_schema(eng, schema=schema):
-#         eng.execute(f'DROP SCHEMA {schema} CASCADE;')
-
-    counter = Counter()
+    eng = create_engine(connstr)
+    if eng.dialect.has_schema(eng, schema=schema):
+        eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     images_dir = Path(images_dir)
     project_path_base = Path(project_path)
@@ -287,10 +277,7 @@ def main(
             PythonNode(
                 proc_func=parse_detection_annotation_and_counts,
                 inputs=['detection_annotation'],
-                outputs=['input_images_data'],
-                kwargs={
-                    'counter': counter
-                }
+                outputs=['input_images_data']
             ),
             PythonNode(
                 proc_func=split_train_test,
@@ -327,12 +314,20 @@ def main(
         ]
     )
 
+    current_counter = len(data_catalog.get_data_table('detection_annotation').get_indexes())
+    step = 100
+
+    pipeline.run_services()
     while True:
-        pipeline.run(
-            chunksize=1000,
-            object_detection_node_count_value=counter.value
-        )
+        pipeline.run(chunksize=1000)
         time.sleep(60)
+
+        # Training run
+        if len(data_catalog.get_data_table('detection_annotation').get_indexes()) >= current_counter + step:
+            pipeline.heavy_run()
+            current_counter = current_counter % step
+
+    pipeline.terminate_services()
 
 
 if __name__ == '__main__':

@@ -45,9 +45,6 @@ class LabelStudioMLNode(Node):
             self.process.join()
             self.process = None
 
-    def run(self, data_catalog: DataCatalog, **kwargs):
-        self.run_services()  # Runs only once
-
     def __del__(self):
         self.terminate_services()
 

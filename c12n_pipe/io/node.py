@@ -11,8 +11,16 @@ logger = logging.getLogger('c12n_pipe.node')
 
 
 class Node:
-    @abstractmethod
     def run(data_catalog: DataCatalog, **kwargs):
+        pass
+
+    def run_services(data_catalog: DataCatalog, **kwargs):
+        pass
+
+    def terminate_services(data_catalog: DataCatalog, **kwargs):
+        pass
+
+    def heavy_run(data_catalog: DataCatalog, **kwargs):
         pass
 
     @property
@@ -113,10 +121,25 @@ class Pipeline:
         self.pipeline = pipeline
         self.transformation_graph = self._get_transformation_graph()
 
-    def run(self, chunksize: int = 1000, **kwargs):
+    def run(self, **kwargs):
         for node in self.pipeline:
             logger.info(f"Running node '{node.name}'")
-            node.run(data_catalog=self.data_catalog, chunksize=chunksize, **kwargs)
+            node.run(data_catalog=self.data_catalog, **kwargs)
+
+    def heavy_run(self, **kwargs):
+        for node in self.pipeline:
+            logger.info(f"Running heavy node '{node.name}'")
+            node.heavy_run(data_catalog=self.data_catalog, **kwargs)
+
+    def run_services(self, **kwargs):
+        for node in self.pipeline:
+            logger.info(f"Starting services of node '{node.name}'")
+            node.run_services(data_catalog=self.data_catalog, **kwargs)
+
+    def terminate_services(self, **kwargs):
+        for node in self.pipeline:
+            logger.info(f"Terminate services of node '{node.name}'")
+            node.terminate_services(data_catalog=self.data_catalog, **kwargs)
 
     def _get_transformation_graph(self) -> Dict[str, List[str]]:
         transformation_graph = {}

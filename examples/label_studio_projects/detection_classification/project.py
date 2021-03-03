@@ -315,9 +315,11 @@ def main(
         ]
     )
 
+    pipeline.run_services()
     while True:
         pipeline.run()
         time.sleep(5)
+    pipeline.terminate_services()
 
 
 if __name__ == '__main__':
