@@ -78,7 +78,7 @@ class ObjectDetectionTrainNode(Node):
         self.dt_test_images_data = dt_test_images_data
         self.dt_output_models = dt_output_models
         self.class_names = class_names
-        self.output_model_directory = Path(output_model_directory)
+        self.output_model_directory = Path(output_model_directory).absolute()
         self.zoo_model_url = zoo_model_url
         self.train_batch_size = train_batch_size
         self.start_train_every_n = start_train_every_n
@@ -162,6 +162,7 @@ class ObjectDetectionTrainNode(Node):
             (new_model_directory / 'checkpoint').glob('ckpt-*.index'),
             key=lambda ckpt_path: int(ckpt_path.stem.split('-')[1])
         )
+        checkpoint_path = checkpoint_path.parent / checkpoint_path.stem  # Just 'ckpt-x'
         return checkpoint_path
 
     def write_report(

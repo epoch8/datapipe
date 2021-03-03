@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
 DETECTION_BACKEND_SCRIPT = Path(__file__).parent / 'detection_backend.py'
-CURRENT_URL = 'http://localhost:8080'
+CURRENT_URL = 'https://k8s-ml.epoch8.co:31390/notebook/research/bobokvsky7/proxy/8080'
 
 
 def parse_rectangle_labels(
@@ -299,8 +299,8 @@ def main(
                     'http://download.tensorflow.org/models/object_detection/tf2/20200711/centernet_resnet50_v1_fpn_512x512_coco17_tpu-8.tar.gz'
                 ),
                 train_batch_size=4,
-                train_num_steps=50,
-                checkpoint_every_n=10,
+                train_num_steps=400,
+                checkpoint_every_n=200,
             ),
             PythonNode(
                 proc_func=inference_for_ml_backend,
@@ -315,8 +315,8 @@ def main(
         ]
     )
 
-    current_counter = len(data_catalog.get_data_table('detection_annotation').get_indexes())
     step = 20
+    current_counter = len(data_catalog.get_data_table('detection_annotation').get_indexes()) % step
 
     pipeline.run_services()
     while True:
@@ -327,7 +327,7 @@ def main(
         detection_annotation_images_len = len(data_catalog.get_data_table('detection_annotation').get_indexes())
         if detection_annotation_images_len >= current_counter + step:
             pipeline.heavy_run()
-            current_counter = current_counter % step
+            current_counter += step
         else:
             logger.info(f"---> Current step: {detection_annotation_images_len - current_counter}/{step}")
 
