@@ -226,7 +226,6 @@ class CompletionsDirStorageModified(BaseStorage):
             processed_idx=[id]
         )
 
-
     def set_many(self, keys, values):
         raise NotImplementedError
 

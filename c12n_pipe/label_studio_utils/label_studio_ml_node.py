@@ -33,13 +33,13 @@ class LabelStudioMLNode(Node):
     def _run_app(self):
         run_app(label_studio_ml_config=self.label_studio_ml_config)
 
-    def run_services(self):
+    def run_services(self, **kwargs):
         if self.process is None:
             logger.info('Start project...')
             self.process = Process(target=self._run_app)
             self.process.start()
 
-    def terminate_services(self):
+    def terminate_services(self, **kwargs):
         if self.process is not None:
             self.process.terminate()
             self.process.join()

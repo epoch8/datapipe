@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
 DETECTION_BACKEND_SCRIPT = Path(__file__).parent / 'detection_backend.py'
+CURRENT_URL = 'http://localhost:8080'
 
 
 def parse_rectangle_labels(
@@ -125,7 +126,7 @@ def add_tasks_to_detection_project(
     df_source['data'] = [{
         'id': int(id),
         'data': {
-            'image': f'https://k8s-ml.epoch8.co:31390/notebook/research/bobokvsky/proxy/8080/data/upload/{Path(image_path).name}',
+            'image': f'{CURRENT_URL}/data/upload/{Path(image_path).name}',
             'src_image_path': image_path
         }
     } for id, image_path in zip(df_source.index, df_source['image_path'])]
@@ -315,17 +316,20 @@ def main(
     )
 
     current_counter = len(data_catalog.get_data_table('detection_annotation').get_indexes())
-    step = 100
+    step = 20
 
     pipeline.run_services()
     while True:
         pipeline.run(chunksize=1000)
-        time.sleep(60)
+        time.sleep(10)
 
         # Training run
-        if len(data_catalog.get_data_table('detection_annotation').get_indexes()) >= current_counter + step:
+        detection_annotation_images_len = len(data_catalog.get_data_table('detection_annotation').get_indexes())
+        if detection_annotation_images_len >= current_counter + step:
             pipeline.heavy_run()
             current_counter = current_counter % step
+        else:
+            logger.info(f"---> Current step: {detection_annotation_images_len - current_counter}/{step}")
 
     pipeline.terminate_services()
 

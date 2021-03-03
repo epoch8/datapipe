@@ -1,7 +1,6 @@
 import time
 import tempfile
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 import os
@@ -30,9 +29,9 @@ TEST_DF = pd.DataFrame(
 )
 
 
-TEST_DF_INC1 = TEST_DF.assign(a = lambda df: df['a'] + 1)
-TEST_DF_INC2 = TEST_DF.assign(a = lambda df: df['a'] + 2)
-TEST_DF_INC3 = TEST_DF.assign(a = lambda df: df['a'] + 3)
+TEST_DF_INC1 = TEST_DF.assign(a=lambda df: df['a'] + 1)
+TEST_DF_INC2 = TEST_DF.assign(a=lambda df: df['a'] + 2)
+TEST_DF_INC3 = TEST_DF.assign(a=lambda df: df['a'] + 3)
 
 
 def yield_df(data):
@@ -79,6 +78,7 @@ def assert_idx_equal(a, b):
     b = sorted(list(b))
 
     assert(a == b)
+
 
 @pytest.mark.usefixtures('test_schema')
 def test_cloudpickle():

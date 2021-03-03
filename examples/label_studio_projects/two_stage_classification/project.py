@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 STAGE1_CONFIG_XML = Path(__file__).parent / 'stage1_config.xml'
 STAGE2_CONFIG_XML = Path(__file__).parent / 'stage2_config.xml'
+CURRENT_URL = 'http://localhost'
 
 
 def parse_classification_completion(completions_json: Dict) -> Dict:
@@ -103,7 +104,7 @@ def add_tasks_to_project(
         bbox = (bbox_data.xmin, bbox_data.ymin, bbox_data.xmax, bbox_data.ymax)
         bbox_image_path = bboxes_images_dir / f'{task_id}_{image_path.stem}_{bbox}{image_path.suffix}'
         bbox_image_path_in_task = project_path / 'upload' / bbox_image_path.name
-        bbox_image_url = f'http://localhost:{port}/data/upload/{Path(bbox_image_path_in_task).name}'
+        bbox_image_url = f'{CURRENT_URL}:{port}/data/upload/{Path(bbox_image_path_in_task).name}'
         if not bbox_image_path.exists():
             bbox_data_image = bbox_data.open_cropped_image()
             Image.fromarray(bbox_data_image).save(bbox_image_path)
@@ -179,9 +180,9 @@ def main(
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    # eng = create_engine(connstr)
-    # if eng.dialect.has_schema(eng, schema=schema):
-    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
+    eng = create_engine(connstr)
+    if eng.dialect.has_schema(eng, schema=schema):
+        eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     images_dir = Path(images_dir)
     src_annotation_path = str(src_annotation_path)

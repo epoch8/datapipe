@@ -59,23 +59,21 @@ class LabelStudioNode(Node):
             context={'multi_session': False}
         )
 
-    def _run_app(self):
+    def _run_app(self, data_catalog: DataCatalog):
+        self.process_data(data_catalog)
         run_app(label_studio_config=self.label_studio_config)
 
-    def run_services(self):
+    def run_services(self, data_catalog: DataCatalog, **kwargs):
         if self.process is None:
             logger.info('Start project...')
-            self.process = Process(target=self._run_app)
+            self.process = Process(target=self._run_app, args=(data_catalog, ))
             self.process.start()
 
-    def terminate_services(self):
+    def terminate_services(self, **kwargs):
         if self.process is not None:
             self.process.terminate()
             self.process.join()
             self.process = None
-
-    def run(self, data_catalog: DataCatalog, **kwargs):
-        self.process_data(data_catalog)
 
     def __del__(self):
         self.terminate_services()

@@ -11,16 +11,16 @@ logger = logging.getLogger('c12n_pipe.node')
 
 
 class Node:
-    def run(data_catalog: DataCatalog, **kwargs):
+    def run(self, data_catalog: DataCatalog, **kwargs):
         pass
 
-    def run_services(data_catalog: DataCatalog, **kwargs):
+    def run_services(self, data_catalog: DataCatalog, **kwargs):
         pass
 
-    def terminate_services(data_catalog: DataCatalog, **kwargs):
+    def terminate_services(self, data_catalog: DataCatalog, **kwargs):
         pass
 
-    def heavy_run(data_catalog: DataCatalog, **kwargs):
+    def heavy_run(self, data_catalog: DataCatalog, **kwargs):
         pass
 
     @property

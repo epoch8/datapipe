@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
 CLASSIFICATION_CONFIG_XML = Path(__file__).parent / 'classification_config.xml'
-
+CURRENT_URL = 'http://localhost:8080'
 
 def parse_rectangle_labels(
     image_path: str,
@@ -142,7 +142,7 @@ def add_tasks_to_detection_project(
     df_source['data'] = [{
         'id': int(id),
         'data': {
-            'image': f'http://localhost:8080/data/upload/{Path(image_path).name}',
+            'image': f'{CURRENT_URL}/data/upload/{Path(image_path).name}',
             'src_image_path': image_path
         }
     } for id, image_path in zip(df_source.index, df_source['image_path'])]
@@ -225,9 +225,9 @@ def main(
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    # eng = create_engine(connstr)
-    # if eng.dialect.has_schema(eng, schema=schema):
-    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
+    eng = create_engine(connstr)
+    if eng.dialect.has_schema(eng, schema=schema):
+        eng.execute(f'DROP SCHEMA {schema} CASCADE;')
 
     images_dir = Path(images_dir)
     project_path = Path(project_path)
