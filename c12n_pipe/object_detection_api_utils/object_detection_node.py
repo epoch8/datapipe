@@ -1,7 +1,6 @@
 import logging
 import shutil
 import tarfile
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Union
@@ -122,7 +121,7 @@ class ObjectDetectionTrainNode(Node):
         (new_model_directory / 'checkpoint').mkdir()
         (new_model_directory / 'input_data').mkdir()
         tf_records_train_path = new_model_directory / 'input_data' / 'train_dataset.record'
-        label_map = defaultdict(int)
+        label_map = {}
         for id, class_name in enumerate(self.class_names):
             label_map[class_name] = id + 1
         convert_to_tf_records(
