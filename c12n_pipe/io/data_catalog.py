@@ -27,46 +27,33 @@ class AbstractDataTable:
     ):
         self.data_sql_schema = data_sql_schema
 
-    def get_data_table(
-        self,
-        name: str,
-        data_store: DataStore
-    ) -> DataTable:
-        return data_store.get_table(
-            name=name,
-            data_sql_schema=self.data_sql_schema
-        )
-
 
 class DataCatalog:
     def __init__(
         self,
+        ds: DataStore,
         catalog: Dict[str, AbstractDataTable],
-        connstr: str,
-        schema: str
     ):
+        self.ds = ds
         self.catalog = catalog
-        self.connstr = connstr
-        self.schema = schema
 
-        eng = create_engine(connstr)
-        if not eng.dialect.has_schema(eng, schema=schema):
-            eng.execute(f'CREATE SCHEMA {schema};')
+        self.catalog_tables = {
+            name: self.ds.get_table(name, t.data_sql_schema, create_tables=True)
+            for name, t in self.catalog.items()
+        }
 
-        self.data_store = DataStore(
-            connstr=connstr,
-            schema=schema
-        )
+        # eng = create_engine(connstr)
+        # if not eng.dialect.has_schema(eng, schema=schema):
+        #     eng.execute(f'CREATE SCHEMA {schema};')
 
     def get_data_table(self, name: str):
-        return self.catalog[name].get_data_table(name, self.data_store)
+        return self.catalog_tables[name]
 
     @classmethod
     def from_config(
         cls,
         config_path: str,
-        connstr: str,
-        schema: str
+        ds: DataStore,
     ):
         catalog = {
             k: v
@@ -84,7 +71,6 @@ class DataCatalog:
             for name, config in catalog.items()
         }
         return cls(
+            ds=ds,
             catalog=catalog,
-            connstr=connstr,
-            schema=schema
         )

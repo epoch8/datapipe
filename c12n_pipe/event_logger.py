@@ -10,33 +10,29 @@ from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
 logger = logging.getLogger('c12n_pipe.event_logger')
 
-
-def make_event_table(schema, con):
-    metadata = MetaData(schema=schema)
-    tbl =  Table(
-        'datapipe_events',
-        metadata,
-
-        Column('id', Integer, primary_key=True, autoincrement=True),
-        Column('event_ts', DateTime, server_default=func.now()),
-
-        Column('table_name', String(100)),
-
-        Column('added_count', Integer),
-        Column('updated_count', Integer),
-        Column('deleted_count', Integer),
-    )
-
-    metadata.create_all(con)
-
-    return tbl
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from c12n_pipe.datatable import DataStore
 
 class EventLogger:
-    def __init__(self, constr: str, schema: str):
-        self.constr = constr
-        self.schema = schema
+    def __init__(self, ds: 'DataStore'):
+        self.ds = ds
 
-        self.events_table = make_event_table(schema, create_engine(constr))
+        self.events_table =  Table(
+            'datapipe_events',
+            ds.sqla_metadata,
+
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('event_ts', DateTime, server_default=func.now()),
+
+            Column('table_name', String(100)),
+
+            Column('added_count', Integer),
+            Column('updated_count', Integer),
+            Column('deleted_count', Integer),
+        )
+
+        self.events_table.create(self.ds.con, checkfirst=True)
     
     def log_event(self, table_name, added_count, updated_count, deleted_count):
         logger.info(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
@@ -48,4 +44,4 @@ class EventLogger:
             deleted_count=deleted_count,
         )
 
-        create_engine(self.constr).execute(ins)
+        self.ds.con.execute(ins)

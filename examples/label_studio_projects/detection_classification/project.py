@@ -5,6 +5,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List
+from c12n_pipe.datatable import DataStore
 
 
 import numpy as np
@@ -20,8 +21,6 @@ from sqlalchemy.sql.sqltypes import JSON, String
 
 
 logger = logging.getLogger(__name__)
-DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
-# DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
 DETECTION_CONFIG_XML = Path(__file__).parent / 'detection_config.xml'
 CLASSIFICATION_CONFIG_XML = Path(__file__).parent / 'classification_config.xml'
 
@@ -216,22 +215,20 @@ def main(
     images_dir: str,
     project_path: str,
     bboxes_images_dir: str,
-    connstr: str = DBCONNSTR,
-    schema: str = 'detection_cls'
+    connstr: str = 'sqlite:///./detection_classification.db',
+    schema: str = None  # 'detection_classification'
 ):
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    # eng = create_engine(connstr)
-    # if eng.dialect.has_schema(eng, schema=schema):
-    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
-
     images_dir = Path(images_dir)
     project_path = Path(project_path)
     project_path_detection = project_path / 'detection'
     project_path_classification = project_path / 'classification'
     bboxes_images_dir = Path(bboxes_images_dir)
+    ds = DataStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
+        ds=ds,
         catalog={
             'input_images': AbstractDataTable([
                 Column('image_path', String)
@@ -254,9 +251,7 @@ def main(
             'classification_annotation_parsed': AbstractDataTable([
                 Column('data', JSON)
             ]),
-        },
-        connstr=connstr,
-        schema=schema
+        }
     )
     pipeline = Pipeline(
         data_catalog=data_catalog,

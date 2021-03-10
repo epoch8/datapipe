@@ -16,13 +16,13 @@ from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
+
+from c12n_pipe.datatable import DataStore
 from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 
 
 logger = logging.getLogger(__name__)
-DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
-# DBCONNSTR = 'postgresql://postgres:qwertyisALICE666@localhost/postgres'  # FIXME
 STAGE1_CONFIG_XML = Path(__file__).parent / 'stage1_config.xml'
 STAGE2_CONFIG_XML = Path(__file__).parent / 'stage2_config.xml'
 
@@ -170,16 +170,12 @@ def main(
     bboxes_images_dir: str,
     images_dir: str,
     project_path: str,
-    connstr: str = DBCONNSTR,
-    schema: str = 'two_stage_cls'
+    connstr: str = 'sqlite:///./two_stage_cls.db',
+    schema: str = None  # 'two_stage_cls'
 ):
     with open(Path(__file__).absolute().parent.parent / 'logger.json', 'r') as f:
         logging.config.dictConfig(json.load(f))
     logging.root.setLevel('INFO')
-    # eng = create_engine(connstr)
-    # if eng.dialect.has_schema(eng, schema=schema):
-    #     eng.execute(f'DROP SCHEMA {schema} CASCADE;')
-
     images_dir = Path(images_dir)
     src_annotation_path = str(src_annotation_path)
     bboxes_images_dir = Path(bboxes_images_dir)
@@ -187,7 +183,9 @@ def main(
     project_path = Path(project_path)
     project_path_stage1 = project_path / 'stage1'
     project_path_stage2 = project_path / 'stage2'
+    ds = DataStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
+        ds=ds,
         catalog={
             'input_bboxes': AbstractDataTable([
                 Column('data', String)
@@ -219,9 +217,7 @@ def main(
             'total_annotation': AbstractDataTable([
                 Column('data', JSON)
             ]),
-        },
-        connstr=connstr,
-        schema=schema
+        }
     )
     pipeline = Pipeline(
         data_catalog=data_catalog,

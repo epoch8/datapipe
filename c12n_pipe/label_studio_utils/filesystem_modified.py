@@ -22,17 +22,6 @@ class ExternalTasksJSONStorageModified(CloudStorage):
     form = BaseForm
     description = 'Local [loading tasks from "tasks.json" file]'
 
-    @property
-    def data_table(self):
-        if self.data_store is None:
-            return None
-
-        _data_table = self.data_store.get_table(
-            name=self.data_table_name,
-            data_sql_schema=TASKS_JSON_SQL_SCHEMA
-        )
-        return _data_table
-
     def __init__(
         self,
         name: str,
@@ -44,16 +33,11 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         regex: str = '.*',
         **kwargs
     ):
-        self.data_table_name = kwargs['data_table_name']
-        connstr = kwargs.get('connstr', None)
-        schema = kwargs.get('schema', None)
-        if connstr is not None and schema is not None:
-            self.data_store = DataStore(
-                connstr=connstr,
-                schema=schema
-            )
-        else:
-            self.data_store = None
+        self.data_store = DataStore(kwargs['connstr'], kwargs['schema'])
+        self.data_table = self.data_store.get_table(
+            name=kwargs['data_table_name'],
+            data_sql_schema=DATA_JSON_SQL_SCHEMA
+        )
         super().__init__(
             name=name,
             project_path=project_path,
@@ -164,17 +148,6 @@ class CompletionsDirStorageModified(BaseStorage):
     form = BaseForm
     description = 'Directory with JSON task files (modified)'
 
-    @property
-    def data_table(self):
-        if self.data_store is None:
-            return None
-
-        _data_table = self.data_store.get_table(
-            name=self.data_table_name,
-            data_sql_schema=DATA_JSON_SQL_SCHEMA
-        )
-        return _data_table
-
     def __init__(
         self,
         name: str,
@@ -183,16 +156,11 @@ class CompletionsDirStorageModified(BaseStorage):
         project: Project,
         **kwargs
     ):
-        self.data_table_name = kwargs['data_table_name']
-        connstr = kwargs.get('connstr', None)
-        schema = kwargs.get('schema', None)
-        if connstr is not None and schema is not None:
-            self.data_store = DataStore(
-                connstr=connstr,
-                schema=schema
-            )
-        else:
-            self.data_store = None
+        self.data_store = DataStore(kwargs['connstr'], kwargs['schema'])
+        self.data_table = self.data_store.get_table(
+            name=kwargs['data_table_name'],
+            data_sql_schema=DATA_JSON_SQL_SCHEMA
+        )
         path = str(Path(project_path) / 'annotation')
         super().__init__(
             name=name, path=path, project_path=project_path, project=project, **kwargs
