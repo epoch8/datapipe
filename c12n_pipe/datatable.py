@@ -237,26 +237,7 @@ class DataTable:
             yield self.get_data(meta_df.index[i:i+chunksize])
 
     def get_indexes(self, idx: Optional[Index] = None) -> Index:
-        if idx is None:
-            return pd.read_sql_query(
-                f'''
-                select id from {self.ds.schema}.{self.meta_table_name()}
-                ''',
-                con=self.ds.con,
-                index_col='id',
-            ).index.tolist()
-        else:
-            return pd.read_sql_query(
-                f'''
-                select id from {self.ds.schema}.{self.meta_table_name()}
-                where id = ANY(%(ids)s)
-                ''',
-                con=self.ds.con,
-                index_col='id',
-                params={
-                    'ids': list(idx)
-                },
-            ).index.tolist()
+        return self.get_metadata(idx).index.tolist()
 
 
 class DataStore:
