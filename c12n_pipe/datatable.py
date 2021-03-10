@@ -7,7 +7,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.sql import text
 from sqlalchemy import create_engine, MetaData, Table, Column, Float, String, Numeric
 import pandas as pd
-from sqlalchemy.sql.expression import delete, or_, select
+from sqlalchemy.sql.expression import delete, and_, or_, select
 
 from c12n_pipe.event_logger import EventLogger
 
@@ -300,6 +300,21 @@ class DataStore:
     ) -> pd.Index:
         idx = None
 
+        def left_join(tbl_a, tbl_bbb):
+            q = tbl_a.join(
+                tbl_bbb[0],
+                tbl_a.c.id == tbl_bbb[0].c.id,
+                isouter=True
+            )
+            for tbl_b in tbl_bbb[1:]:
+                q = q.join(
+                    tbl_b,
+                    tbl_a.c.id == tbl_b.c.id,
+                    isouter=True
+                )
+            
+            return q
+
         for inp in inputs:
             sql = select([inp.meta_table.c.id]).select_from(
                 inp.meta_table.join(
@@ -325,6 +340,23 @@ class DataStore:
             else:
                 idx = idx.union(idx_df.index)
 
+        sql = select([output.meta_table.c.id]).select_from(
+            left_join(output.meta_table, [inp.meta_table for inp in inputs])
+        ).where(
+            and_(inp.meta_table.c.id.is_(None) for inp in inputs)
+        )
+
+        idx_df = pd.read_sql_query(
+            sql,
+            con=self.con,
+            index_col='id',
+        )
+
+        if idx is None:
+            idx = idx_df.index
+        else:
+            idx = idx.union(idx_df.index)
+        
         return idx
 
     def get_process_chunks(
