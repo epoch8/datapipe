@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.sql import text
 from sqlalchemy import create_engine, MetaData, Table, Column, Float, String, Numeric
 import pandas as pd
+from sqlalchemy.sql.expression import delete, select
 
 from c12n_pipe.event_logger import EventLogger
 
@@ -26,10 +27,10 @@ PRIMARY_KEY = [
 
 METADATA_SQL_SCHEMA = [
     Column('hash', Numeric),
-    Column('create_ts', Float),
-    Column('update_ts', Float),
-    Column('process_ts', Float),
-    Column('delete_ts', Float),
+    Column('create_ts', Float),  # Время создания строки
+    Column('update_ts', Float),  # Время последнего изменения
+    Column('process_ts', Float), # Время последней успешной обработки
+    Column('delete_ts', Float),  # Время удаления
 ]
 
 
@@ -42,40 +43,35 @@ def _sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
 class DataTable:
     def __init__(
         self,
-        constr: str,
-        schema: str,
+        ds: 'DataStore',
         name: str,
         data_sql_schema: List[Column],
-        event_logger: EventLogger,
         create_tables: bool = True,
     ):
-        self.constr = constr
-        self.schema = schema
+        self.ds = ds
+
         self.name = name
         self.data_sql_schema = data_sql_schema
-        self.event_logger = event_logger
 
-        con = create_engine(self.constr)
+        self.meta_table = Table(
+            self.meta_table_name(), self.ds.sqla_metadata,
+            *[i.copy() for i in PRIMARY_KEY + METADATA_SQL_SCHEMA]
+        )
+
+        self.data_table = Table(
+            self.data_table_name(), self.ds.sqla_metadata,
+            *[i.copy() for i in PRIMARY_KEY + self.data_sql_schema]
+        )
+
         if create_tables:
-            self._create_table(con, self.meta_table_name(), METADATA_SQL_SCHEMA)
-            self._create_table(con, self.data_table_name(), self.data_sql_schema)
+            self.meta_table.create(self.ds.con, checkfirst=True)
+            self.data_table.create(self.ds.con, checkfirst=True)
 
     def meta_table_name(self) -> str:
         return f'{self.name}_meta'
 
     def data_table_name(self) -> str:
         return f'{self.name}_data'
-
-    def _create_table(self, con: Engine, name: str, sql_schema: List[Column]) -> None:
-        if not con.dialect.has_table(con, name, schema=self.schema):
-            logger.info(f'Creating table {self.schema}.{name}')
-            md = MetaData()
-            table = Table(
-                name, md,
-                *[i.copy() for i in PRIMARY_KEY + sql_schema],
-                schema=self.schema
-            )
-            table.create(con)
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -95,100 +91,64 @@ class DataTable:
         return res
 
     def load_all(self) -> pd.DataFrame:
-        con = create_engine(self.constr)
         return pd.read_sql_table(
             table_name=self.data_table_name(),
-            con=con,
-            schema=self.schema,
+            con=self.ds.con,
+            schema=self.ds.schema,
             index_col='id',
         )
 
-    def _delete_data(self, idx: Index, con: Engine) -> None:
+    def _delete_data(self, idx: Index) -> None:
         if len(idx) > 0:
             logger.info(f'Deleting {len(idx)} rows from {self.name} data')
 
-            sql = text(
-                f'''
-                delete from {self.schema}.{self.data_table_name()}
-                where id = ANY(:ids)
-                '''
-            )
-            con.execute(sql, ids=list(idx))
+            sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
+            self.ds.con.execute(sql)
 
-    def _delete_metadata(self, idx: Index, con: Engine) -> None:
+    def _delete_metadata(self, idx: Index) -> None:
         if len(idx) > 0:
             logger.info(f'Deleting {len(idx)} rows from {self.name} metadata')
 
-            sql = text(
-                f'''
-                delete from {self.schema}.{self.meta_table_name()}
-                where id = ANY(:ids)
-                '''
-            )
-            con.execute(sql, ids=list(idx))
+            sql = delete(self.meta_table).where(self.meta_table.c.id.in_(list(idx)))
+            self.ds.con.execute(sql)
 
-    def get_metadata(self, idx: Optional[Index] = None, con: Engine = None) -> pd.DataFrame:
-        if con is None:
-            con = create_engine(self.constr)
-
+    def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
         if idx is None:
             return pd.read_sql_query(
-                f'''
-                select id, hash, create_ts, update_ts, delete_ts from {self.schema}.{self.meta_table_name()}
-                ''',
-                con=con,
+                select([self.meta_table]),
+                con=self.ds.con,
                 index_col='id',
             )
 
         else:
             return pd.read_sql_query(
-                f'''
-                select id, hash, create_ts, update_ts, delete_ts from {self.schema}.{self.meta_table_name()}
-                where id = ANY(%(ids)s)
-                ''',
-                con=con,
+                select([self.meta_table]).where(self.meta_table.c.id.in_(list(idx))),
+                con=self.ds.con,
                 index_col='id',
-                params={
-                    'ids': list(idx)
-                },
             )
 
-    def get_data(self, idx: Optional[Index] = None, con: Engine = None) -> pd.DataFrame:
-        if con is None:
-            con = create_engine(self.constr)
-
+    def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
         if idx is None:
             return pd.read_sql_query(
-                f'''
-                select * from {self.schema}.{self.data_table_name()}
-                ''',
-                con=con,
+                select([self.data_table]),
+                con=self.ds.con,
                 index_col='id',
             )
         else:
             return pd.read_sql_query(
-                f'''
-                select * from {self.schema}.{self.data_table_name()}
-                where id = ANY(%(ids)s)
-                ''',
-                con=con,
+                select([self.data_table]).where(self.data_table.c.id.in_(list(idx))),
+                con=self.ds.con,
                 index_col='id',
-                params={
-                    'ids': list(idx)
-                },
             )
 
-    def store_chunk(self, data_df: pd.DataFrame, con: Engine = None, now: float = None) -> ChunkMeta:
-        if con is None:
-            con = create_engine(self.constr)
-
+    def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         if now is None:
             now = time.time()
 
         logger.info(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_df.index, con)
+        existing_meta_df = self.get_metadata(data_df.index)
 
         # найти что изменилось
         new_meta_df = self._make_new_metadata_df(now, data_df)
@@ -200,19 +160,19 @@ class DataTable:
         new_idx = new_meta_df.index.difference(existing_meta_df.index)
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
-            self.event_logger.log_event(
+            self.ds.event_logger.log_event(
                 self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
             )
 
         # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
-        self._delete_data(to_write_idx, con)
+        self._delete_data(to_write_idx)
 
         if len(data_df.loc[to_write_idx]) > 0:
             data_df.loc[to_write_idx].to_sql(
                 name=self.data_table_name(),
-                con=con,
-                schema=self.schema,
+                con=self.ds.con,
+                schema=self.ds.schema,
                 if_exists='append',
                 index_label='id',
                 chunksize=1000,
@@ -223,7 +183,7 @@ class DataTable:
         # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
 
         if len(new_meta_df) > 0:
-            self._delete_metadata(new_meta_df.index, con)
+            self._delete_metadata(new_meta_df.index)
 
             not_changed_idx = existing_meta_df.index.difference(changed_idx)
 
@@ -232,8 +192,8 @@ class DataTable:
 
             new_meta_df.to_sql(
                 name=self.meta_table_name(),
-                con=con,
-                schema=self.schema,
+                con=self.ds.con,
+                schema=self.ds.schema,
                 if_exists='append',
                 index_label='id',
                 chunksize=1000,
@@ -243,68 +203,55 @@ class DataTable:
 
         return data_df.index
 
-    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None, con: Engine = None) -> None:
+    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
-        if con is None:
-            con = create_engine(self.constr)
-
         idx = pd.Index([])
         for chunk in chunks:
             idx = idx.union(chunk)
 
-        existing_meta_df = self.get_metadata(idx=processed_idx, con=con)
+        existing_meta_df = self.get_metadata(idx=processed_idx)
 
         deleted_idx = existing_meta_df.index.difference(idx)
 
         if len(deleted_idx) > 0:
-            self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+            self.ds.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
-            self._delete_data(deleted_idx, con=con)
-            self._delete_metadata(deleted_idx, con=con)
+            self._delete_data(deleted_idx)
+            self._delete_metadata(deleted_idx)
 
-    def store(self, df: pd.DataFrame, con: Engine = None) -> None:
-        if con is None:
-            con = create_engine(self.constr)
-
+    def store(self, df: pd.DataFrame) -> None:
         now = time.time()
 
         chunk = self.store_chunk(
             data_df=df,
-            con=con,
             now=now
         )
         self.sync_meta(
             chunks=[chunk],
-            con=con,
         )
 
     def get_data_chunked(self, chunksize: int = 1000) -> Generator[pd.DataFrame, None, None]:
-        con = create_engine(self.constr)
-
-        meta_df = self.get_metadata(idx=None, con=con)
+        meta_df = self.get_metadata(idx=None)
 
         for i in range(0, len(meta_df.index), chunksize):
-            yield self.get_data(meta_df.index[i:i+chunksize], con=con)
+            yield self.get_data(meta_df.index[i:i+chunksize])
 
-    def get_indexes(self, idx: Optional[Index] = None, con: Engine = None) -> Index:
-        if con is None:
-            con = create_engine(self.constr)
-
+    def get_indexes(self, idx: Optional[Index] = None) -> Index:
         if idx is None:
             return pd.read_sql_query(
                 f'''
-                select id from {self.schema}.{self.meta_table_name()}
+                select id from {self.ds.schema}.{self.meta_table_name()}
                 ''',
-                con=con,
+                con=self.ds.con,
                 index_col='id',
             ).index.tolist()
         else:
             return pd.read_sql_query(
                 f'''
-                select id from {self.schema}.{self.meta_table_name()}
+                select id from {self.ds.schema}.{self.meta_table_name()}
                 where id = ANY(%(ids)s)
                 ''',
-                con=con,
+                con=self.ds.con,
                 index_col='id',
                 params={
                     'ids': list(idx)
@@ -314,30 +261,40 @@ class DataTable:
 
 class DataStore:
     def __init__(self, connstr: str, schema: str):
+        self._init(connstr, schema)
+
+    def _init(self, connstr: str, schema: str) -> None:
         self.connstr = connstr
         self.schema = schema
 
-        self.event_logger = EventLogger(self.connstr, self.schema)
+        self.con = create_engine(connstr)
+
+        self.sqla_metadata = MetaData(schema=schema)
+
+        self.event_logger = EventLogger(self)
+
+    def __getstate__(self):
+        return {
+            'connstr': self.connstr,
+            'schema': self.schema
+        }
+    
+    def __setstate__(self, state):
+        self._init(state['connstr'], state['schema'])
 
     def get_table(self, name: str, data_sql_schema: List[Column], create_tables: bool = True) -> DataTable:
         return DataTable(
-            constr=self.connstr,
-            schema=self.schema,
+            ds=self,
             name=name,
             data_sql_schema=data_sql_schema,
             create_tables=create_tables,
-            event_logger=self.event_logger,
         )
 
     def get_process_ids(
         self,
         inputs: List[DataTable],
         output: DataTable,
-        con: Engine = None,
     ) -> pd.Index:
-        if con is None:
-            con = create_engine(self.connstr)
-
         sql = text(
             f'''
             select id
@@ -361,7 +318,7 @@ class DataStore:
 
         idx_df = pd.read_sql_query(
             sql,
-            con=con,
+            con=self.con,
             index_col='id',
         )
 
@@ -372,27 +329,22 @@ class DataStore:
         inputs: List[DataTable],
         output: DataTable,
         chunksize: int = 1000,
-        con: Engine = None,
     ) -> Iterator[List[pd.DataFrame]]:
-        if con is None:
-            con = create_engine(self.connstr)
-
         idx = self.get_process_ids(
             inputs=inputs,
             output=output,
-            con=con,
         )
 
         logger.info(f'Items to update {len(idx)}')
 
         if len(idx) > 0:
             for i in range(0, len(idx), chunksize):
-                yield [inp.get_data(idx[i:i+chunksize], con=con) for inp in inputs]
+                yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
 
 
 def gen_process_many(
     dts: List[DataTable],
-    proc_func: Callable[[], Union[
+    proc_func: Callable[..., Union[
         Tuple[pd.DataFrame, ...],
         Iterator[Tuple[pd.DataFrame, ...]]]
     ],
@@ -403,14 +355,14 @@ def gen_process_many(
     Функция может быть как обычной, так и генерирующейся
     '''
 
-    chunks_k = {
+    chunks_k: Dict[int, ChunkMeta] = {
         k: [] for k in range(len(dts))
     }
 
     if inspect.isgeneratorfunction(proc_func):
         iterable = proc_func(**kwargs)
     else:
-        iterable = [proc_func(**kwargs)]
+        iterable = (proc_func(**kwargs),)
 
     for chunk_dfs in iterable:
         for k, dt_k in enumerate(dts):
@@ -448,15 +400,13 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    con = create_engine(ds.connstr)
     res_dt_k_to_idxs = {}
-    res_dts_chunks = {}
+    res_dts_chunks: Dict[int, ChunkMeta] = {}
     for k, res_dt in enumerate(res_dts):
         # Создаем словарь изменяющихся индексов для K результирующих табличек
         res_dt_k_to_idxs[k] = ds.get_process_ids(
             inputs=input_dts,
             output=res_dt,
-            con=con,
         )
         res_dts_chunks[k] = []
 
@@ -466,7 +416,7 @@ def inc_process_many(
 
     if len(idx) > 0:
         for i in range(0, len(idx), chunksize):
-            input_dfs = [inp.get_data(idx[i:i+chunksize], con=con) for inp in input_dts]
+            input_dfs = [inp.get_data(idx[i:i+chunksize]) for inp in input_dts]
 
             if sum(len(j) for j in input_dfs) > 0:
                 chunks_df = proc_func(*input_dfs, **kwargs)
@@ -486,7 +436,7 @@ def inc_process_many(
 
     # Синхронизируем мета-данные для всех K табличек
     for k, res_dt in enumerate(res_dts):
-        res_dt.sync_meta(res_dts_chunks[k], processed_idx=res_dt_k_to_idxs[k], con=con)
+        res_dt.sync_meta(res_dts_chunks[k], processed_idx=res_dt_k_to_idxs[k])
 
 
 def inc_process(

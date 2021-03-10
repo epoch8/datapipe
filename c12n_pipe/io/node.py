@@ -58,7 +58,7 @@ class PythonNode:
         inputs_dt = [data_catalog.get_data_table(input) for input in self.inputs]
         outputs_dt = [data_catalog.get_data_table(output) for output in self.outputs]
         inc_process_many(
-            ds=data_catalog.data_store,
+            ds=data_catalog.ds,
             input_dts=inputs_dt,
             res_dts=outputs_dt,
             proc_func=self.proc_func,
