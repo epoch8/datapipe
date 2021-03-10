@@ -250,7 +250,6 @@ class DataStore:
 
         self.con = create_engine(
             connstr,
-            echo=True,
         )
 
         self.sqla_metadata = MetaData(schema=schema)
@@ -262,7 +261,7 @@ class DataStore:
             'connstr': self.connstr,
             'schema': self.schema
         }
-    
+
     def __setstate__(self, state):
         self._init(state['connstr'], state['schema'])
 
@@ -293,7 +292,7 @@ class DataStore:
                     tbl_a.c.id == tbl_b.c.id,
                     isouter=True
                 )
-            
+
             return q
 
         for inp in inputs:
@@ -333,7 +332,7 @@ class DataStore:
             idx = idx_df.index
         else:
             idx = idx.union(idx_df.index)
-        
+
         return idx
 
     def get_process_chunks(
