@@ -7,7 +7,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.sql import text
 from sqlalchemy import create_engine, MetaData, Table, Column, Float, String, Numeric
 import pandas as pd
-from sqlalchemy.sql.expression import delete, select
+from sqlalchemy.sql.expression import delete, or_, select
 
 from c12n_pipe.event_logger import EventLogger
 
@@ -267,7 +267,10 @@ class DataStore:
         self.connstr = connstr
         self.schema = schema
 
-        self.con = create_engine(connstr)
+        self.con = create_engine(
+            connstr,
+            echo=True,
+        )
 
         self.sqla_metadata = MetaData(schema=schema)
 
@@ -295,34 +298,34 @@ class DataStore:
         inputs: List[DataTable],
         output: DataTable,
     ) -> pd.Index:
-        sql = text(
-            f'''
-            select id
-            from {self.schema}.{inputs[0].meta_table_name()} t0
-            ''' +
-            ''.join(f'''
-            full join {self.schema}.{t.meta_table_name()} t{i+1} using (id)
-            ''' for i, t in enumerate(inputs[1:])) +
-            f'''
-            full join {self.schema}.{output.meta_table_name()} out using (id)
-            where
-            out.process_ts is null
-            ''' +
-            ''.join(
-            f'''
-            or (t{i}.update_ts is not null and out.process_ts < t{i}.update_ts) or t{i}.update_ts is null
-            '''
-                for i, t in enumerate(inputs)
+        idx = None
+
+        for inp in inputs:
+            sql = select([inp.meta_table.c.id]).select_from(
+                inp.meta_table.join(
+                    output.meta_table,
+                    output.meta_table.c.id == inp.meta_table.c.id,
+                    isouter=True
+                )
+            ).where(
+                or_(
+                    output.meta_table.c.process_ts < inp.meta_table.c.update_ts,
+                    output.meta_table.c.process_ts.is_(None)
+                )
             )
-        )
 
-        idx_df = pd.read_sql_query(
-            sql,
-            con=self.con,
-            index_col='id',
-        )
+            idx_df = pd.read_sql_query(
+                sql,
+                con=self.con,
+                index_col='id',
+            )
 
-        return idx_df.index
+            if idx is None:
+                idx = idx_df.index
+            else:
+                idx = idx.union(idx_df.index)
+
+        return idx
 
     def get_process_chunks(
         self,
