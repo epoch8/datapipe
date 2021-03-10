@@ -317,11 +317,7 @@ class DataStore:
 
         for inp in inputs:
             sql = select([inp.meta_table.c.id]).select_from(
-                inp.meta_table.join(
-                    output.meta_table,
-                    output.meta_table.c.id == inp.meta_table.c.id,
-                    isouter=True
-                )
+                left_join(inp.meta_table, [output.meta_table])
             ).where(
                 or_(
                     output.meta_table.c.process_ts < inp.meta_table.c.update_ts,
