@@ -118,7 +118,7 @@ def test_store_less_values():
 
 
 @pytest.mark.usefixtures('test_schema')
-def test_get_process_ids():
+def test_get_process_ids() -> None:
     ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
@@ -126,7 +126,7 @@ def test_get_process_ids():
 
     tbl1.store(TEST_DF)
 
-    idx = ds.get_process_ids([tbl1], tbl2)
+    idx = ds.get_process_ids([tbl1], [tbl2])
     assert(list(idx) == list(TEST_DF.index))
 
     tbl2.store(tbl1.get_data())
@@ -136,7 +136,7 @@ def test_get_process_ids():
 
     tbl1.store_chunk(upd_df)
 
-    idx = ds.get_process_ids([tbl1], tbl2)
+    idx = ds.get_process_ids([tbl1], [tbl2])
     assert(list(idx) == list(upd_df.index))
 
 
@@ -266,19 +266,19 @@ def test_inc_process_proc_no_change() -> None:
     tbl2.store(TEST_DF)
     tbl1.store(TEST_DF)
 
-    assert(len(ds.get_process_ids([tbl1], tbl2)) == len(TEST_DF))
+    assert(len(ds.get_process_ids([tbl1], [tbl2])) == len(TEST_DF))
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(len(ds.get_process_ids([tbl1], tbl2)) == 0)
+    assert(len(ds.get_process_ids([tbl1], [tbl2])) == 0)
 
     tbl1.store(TEST_DF_INC1)
 
-    assert(len(ds.get_process_ids([tbl1], tbl2)) == len(TEST_DF))
+    assert(len(ds.get_process_ids([tbl1], [tbl2])) == len(TEST_DF))
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(len(ds.get_process_ids([tbl1], tbl2)) == 0)
+    assert(len(ds.get_process_ids([tbl1], [tbl2])) == 0)
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
