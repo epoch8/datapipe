@@ -118,7 +118,7 @@ def test_store_less_values():
 
 
 @pytest.mark.usefixtures('test_schema')
-def test_get_process_ids() -> None:
+def test_get_process_ids():
     ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
