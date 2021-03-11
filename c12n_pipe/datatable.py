@@ -276,7 +276,7 @@ class DataStore:
     def get_process_ids(
         self,
         inputs: List[DataTable],
-        output: DataTable,
+        outputs: List[DataTable],
     ) -> pd.Index:
         idx = None
 
@@ -297,11 +297,14 @@ class DataStore:
 
         for inp in inputs:
             sql = select([inp.meta_table.c.id]).select_from(
-                left_join(inp.meta_table, [output.meta_table])
+                left_join(inp.meta_table, [out.meta_table for out in outputs])
             ).where(
                 or_(
-                    output.meta_table.c.process_ts < inp.meta_table.c.update_ts,
-                    output.meta_table.c.process_ts.is_(None)
+                    or_(
+                        out.meta_table.c.process_ts < inp.meta_table.c.update_ts,
+                        out.meta_table.c.process_ts.is_(None)
+                    )
+                    for out in outputs
                 )
             )
 
@@ -316,42 +319,45 @@ class DataStore:
             else:
                 idx = idx.union(idx_df.index)
 
-        sql = select([output.meta_table.c.id]).select_from(
-            left_join(output.meta_table, [inp.meta_table for inp in inputs])
-        ).where(
-            and_(inp.meta_table.c.id.is_(None) for inp in inputs)
-        )
+        for out in outputs:
+            sql = select([out.meta_table.c.id]).select_from(
+                left_join(out.meta_table, [inp.meta_table for inp in inputs])
+            ).where(
+                and_(inp.meta_table.c.id.is_(None) for inp in inputs)
+            )
 
-        idx_df = pd.read_sql_query(
-            sql,
-            con=self.con,
-            index_col='id',
-        )
+            idx_df = pd.read_sql_query(
+                sql,
+                con=self.con,
+                index_col='id',
+            )
 
-        if idx is None:
-            idx = idx_df.index
-        else:
-            idx = idx.union(idx_df.index)
+            if idx is None:
+                idx = idx_df.index
+            else:
+                idx = idx.union(idx_df.index)
 
         return idx
 
     def get_process_chunks(
         self,
         inputs: List[DataTable],
-        output: DataTable,
+        outputs: List[DataTable],
         chunksize: int = 1000,
-    ) -> Iterator[List[pd.DataFrame]]:
+    ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
         idx = self.get_process_ids(
             inputs=inputs,
-            output=output,
+            outputs=outputs,
         )
 
         logger.info(f'Items to update {len(idx)}')
 
-        if len(idx) > 0:
-            for i in range(0, len(idx), chunksize):
-                yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
+        def gen():
+            if len(idx) > 0:
+                for i in range(0, len(idx), chunksize):
+                    yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
 
+        return idx, gen()
 
 def gen_process_many(
     dts: List[DataTable],
@@ -411,43 +417,24 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    res_dt_k_to_idxs = {}
-    res_dts_chunks: Dict[int, ChunkMeta] = {}
-    for k, res_dt in enumerate(res_dts):
-        # Создаем словарь изменяющихся индексов для K результирующих табличек
-        res_dt_k_to_idxs[k] = ds.get_process_ids(
-            inputs=input_dts,
-            output=res_dt,
-        )
-        res_dts_chunks[k] = []
+    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k,_ in enumerate(res_dts)}
 
-    # Ищем все индексы, которые нужно обработать
-    idx = list(set([item for sublist in res_dt_k_to_idxs.values() for item in sublist]))
-    logger.info(f'Items to update {len(idx)}')
+    idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
 
-    if len(idx) > 0:
-        for i in range(0, len(idx), chunksize):
-            input_dfs = [inp.get_data(idx[i:i+chunksize]) for inp in input_dts]
+    for input_dfs in input_dfs_gen:
+        if sum(len(j) for j in input_dfs) > 0:
+            chunks_df = proc_func(*input_dfs, **kwargs)
 
-            if sum(len(j) for j in input_dfs) > 0:
-                chunks_df = proc_func(*input_dfs, **kwargs)
-                for k, res_dt in enumerate(res_dts):
-                    # Берем k-ое значение функции для k-ой таблички
-                    chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
-                    # Для каждой k результирующей таблички ищем обработанные внутри неё индексы
-                    res_dt_i_chunks_idxs = set(res_dt_k_to_idxs[k]) & set(chunk_df_k.index)
-                    # Располагаем индексы в таком же порядке, в каком они были изначально
-                    res_dt_i_chunks_idxs_arranged = [
-                        idx for idx in res_dt_k_to_idxs[k] if idx in res_dt_i_chunks_idxs
-                    ]
-                    # Читаем табличку с этими индексами
-                    chunk_df_k_idxs = chunk_df_k.loc[res_dt_i_chunks_idxs_arranged]
-                    # Добавляем результат в результирующие чанки
-                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k_idxs))
+            for k, res_dt in enumerate(res_dts):
+                # Берем k-ое значение функции для k-ой таблички
+                chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
+
+                # Добавляем результат в результирующие чанки
+                res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
 
     # Синхронизируем мета-данные для всех K табличек
     for k, res_dt in enumerate(res_dts):
-        res_dt.sync_meta(res_dts_chunks[k], processed_idx=res_dt_k_to_idxs[k])
+        res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
 
 
 def inc_process(
