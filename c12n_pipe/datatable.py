@@ -40,6 +40,76 @@ def _sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     }
 
 
+class DataTable_DataStore:
+    def __init__(self, 
+        ds: 'DataStore',
+        name: str,
+        data_sql_schema: List[Column],
+        create_table: bool = True
+    ) -> None:
+        self.ds = ds
+        self.name = name
+
+        self.data_sql_schema = data_sql_schema
+
+        self.data_table = Table(
+            self.data_table_name(), self.ds.sqla_metadata,
+            *[i.copy() for i in PRIMARY_KEY + self.data_sql_schema]
+        )
+
+        if create_table:
+            self.data_table.create(self.ds.con, checkfirst=True)
+
+    def data_table_name(self) -> str:
+        return f'{self.name}_data'
+
+    def load_all(self) -> pd.DataFrame:
+        return pd.read_sql_table(
+            table_name=self.data_table_name(),
+            con=self.ds.con,
+            schema=self.ds.schema,
+            index_col='id',
+        )
+
+    def delete_rows(self, idx: Index) -> None:
+        if len(idx) > 0:
+            logger.info(f'Deleting {len(idx)} rows from {self.name} data')
+
+            sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
+            self.ds.con.execute(sql)
+
+    def insert_rows(self, df: pd.DataFrame) -> None:
+        if len(df) > 0:
+            df.to_sql(
+                name=self.data_table_name(),
+                con=self.ds.con,
+                schema=self.ds.schema,
+                if_exists='append',
+                index_label='id',
+                chunksize=1000,
+                method='multi',
+                dtype=_sql_schema_to_dtype(self.data_sql_schema),
+            )
+
+    def update_rows(self, df: pd.DataFrame) -> None:
+        self.delete_rows(df.index)
+        self.insert_rows(df)
+
+    def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
+        if idx is None:
+            return pd.read_sql_query(
+                select([self.data_table]),
+                con=self.ds.con,
+                index_col='id',
+            )
+        else:
+            return pd.read_sql_query(
+                select([self.data_table]).where(self.data_table.c.id.in_(list(idx))),
+                con=self.ds.con,
+                index_col='id',
+            )
+
+
 class DataTable:
     def __init__(
         self,
@@ -51,27 +121,19 @@ class DataTable:
         self.ds = ds
 
         self.name = name
-        self.data_sql_schema = data_sql_schema
+
+        self.table_data = DataTable_DataStore(ds, name, data_sql_schema, create_tables)
 
         self.meta_table = Table(
             self.meta_table_name(), self.ds.sqla_metadata,
             *[i.copy() for i in PRIMARY_KEY + METADATA_SQL_SCHEMA]
         )
 
-        self.data_table = Table(
-            self.data_table_name(), self.ds.sqla_metadata,
-            *[i.copy() for i in PRIMARY_KEY + self.data_sql_schema]
-        )
-
         if create_tables:
             self.meta_table.create(self.ds.con, checkfirst=True)
-            self.data_table.create(self.ds.con, checkfirst=True)
 
     def meta_table_name(self) -> str:
         return f'{self.name}_meta'
-
-    def data_table_name(self) -> str:
-        return f'{self.name}_data'
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -89,21 +151,6 @@ class DataTable:
         res = old_meta_df.loc[deleted_idx]
         res.loc[:, 'delete_ts'] = now
         return res
-
-    def load_all(self) -> pd.DataFrame:
-        return pd.read_sql_table(
-            table_name=self.data_table_name(),
-            con=self.ds.con,
-            schema=self.ds.schema,
-            index_col='id',
-        )
-
-    def _delete_data(self, idx: Index) -> None:
-        if len(idx) > 0:
-            logger.info(f'Deleting {len(idx)} rows from {self.name} data')
-
-            sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
-            self.ds.con.execute(sql)
 
     def _delete_metadata(self, idx: Index) -> None:
         if len(idx) > 0:
@@ -128,18 +175,7 @@ class DataTable:
             )
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        if idx is None:
-            return pd.read_sql_query(
-                select([self.data_table]),
-                con=self.ds.con,
-                index_col='id',
-            )
-        else:
-            return pd.read_sql_query(
-                select([self.data_table]).where(self.data_table.c.id.in_(list(idx))),
-                con=self.ds.con,
-                index_col='id',
-            )
+        return self.table_data.get_data(idx)
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         if now is None:
@@ -166,19 +202,8 @@ class DataTable:
 
         # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
-        self._delete_data(to_write_idx)
 
-        if len(data_df.loc[to_write_idx]) > 0:
-            data_df.loc[to_write_idx].to_sql(
-                name=self.data_table_name(),
-                con=self.ds.con,
-                schema=self.ds.schema,
-                if_exists='append',
-                index_label='id',
-                chunksize=1000,
-                method='multi',
-                dtype=_sql_schema_to_dtype(self.data_sql_schema),
-            )
+        self.table_data.update_rows(data_df.loc[to_write_idx])
 
         # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
 
@@ -216,7 +241,7 @@ class DataTable:
         if len(deleted_idx) > 0:
             self.ds.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
-            self._delete_data(deleted_idx)
+            self.table_data.delete_rows(deleted_idx)
             self._delete_metadata(deleted_idx)
 
     def store(self, df: pd.DataFrame) -> None:
