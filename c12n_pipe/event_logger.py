@@ -1,10 +1,8 @@
 import logging
 
-from typing import Any
-from sqlalchemy.engine import create_engine
 
 from sqlalchemy.sql import func
-from sqlalchemy.sql.schema import Column, MetaData, Table
+from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
 
@@ -12,7 +10,7 @@ logger = logging.getLogger('c12n_pipe.event_logger')
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from c12n_pipe.datatable import DataStore
+    from c12n_pipe.datastore import DataStore
 
 class EventLogger:
     def __init__(self, ds: 'DataStore'):

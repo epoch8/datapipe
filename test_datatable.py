@@ -10,7 +10,8 @@ import cloudpickle
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
-from c12n_pipe.datatable import DataStore, gen_process, gen_process_many, inc_process, inc_process_many
+from c12n_pipe.datatable import gen_process, gen_process_many, inc_process, inc_process_many
+from c12n_pipe.datastore import DataStore
 from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON

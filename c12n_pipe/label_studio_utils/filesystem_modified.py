@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
-from c12n_pipe.datatable import DataStore
+from c12n_pipe.datastore import DataStore
 from sqlalchemy.sql.sqltypes import JSON
 import sqlalchemy as sql
 

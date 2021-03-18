@@ -3,6 +3,7 @@ TODO:
 [ ] Не удалять метаданные при удалении строк
 [ ] Many-to-one, one-to-many
 [ ] Поддержка внешних хранилищ для данных (папка с файлами)
+[ ] Переехать на SQLAlchemy 1.4 https://www.sqlalchemy.org/blog/2021/03/15/sqlalchemy-1.4.0-released/
 
 Done:
 [x] Полноценные тесты

@@ -2,12 +2,11 @@ import anyconfig
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 import sqlalchemy as sql
-from sqlalchemy import create_engine
 from sqlalchemy.sql.sqltypes import (
     String, Integer, Float, JSON
 )
 
-from c12n_pipe.datatable import DataStore, DataTable
+from c12n_pipe.datastore import DataStore
 
 
 COLUMN_TYPE_TO_SQL_COLUMN = {
