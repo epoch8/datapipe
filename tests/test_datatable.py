@@ -16,6 +16,9 @@ from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON
 
+from tests.util import assert_df_equal, assert_idx_equal
+
+
 # DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
 DBCONNSTR = 'sqlite:///:memory:'
 DB_TEST_SCHEMA = None
@@ -64,28 +67,6 @@ def test_schema():
     else:
         yield 'ok'
 
-
-def check_df_equal(a, b):
-    eq_rows = (a == b).all(axis='columns')
-
-    if eq_rows.all():
-        return True
-
-    else:
-        print('Difference')
-        print('A:')
-        print(a.loc[-eq_rows])
-        print('B:')
-        print(b.loc[-eq_rows])
-
-        return False
-
-
-def assert_idx_equal(a, b):
-    a = sorted(list(a))
-    b = sorted(list(b))
-
-    assert(a == b)
 
 @pytest.mark.usefixtures('test_schema')
 def test_cloudpickle():
@@ -164,8 +145,8 @@ def test_gen_process():
         func
     )
 
-    assert(check_df_equal(tbl1_gen.get_data(), TEST_DF))
-    assert(check_df_equal(tbl1.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF))
 
     def gen2():
         yield TEST_DF[:5]
@@ -183,8 +164,8 @@ def test_gen_process():
         func2
     )
 
-    assert(check_df_equal(tbl1_gen.get_data(), TEST_DF[:5]))
-    assert(check_df_equal(tbl1.get_data(), TEST_DF[:5]))
+    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF[:5]))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF[:5]))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -201,14 +182,14 @@ def test_inc_process_modify_values() -> None:
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(check_df_equal(tbl2.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
 
     ##########################
     tbl1.store(TEST_DF_INC1)
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -225,14 +206,14 @@ def test_inc_process_delete_values_from_input() -> None:
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(check_df_equal(tbl2.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
 
     ##########################
     tbl1.store(TEST_DF[:5])
 
     inc_process(ds, [tbl1], tbl2, id_func, chunksize=2)
 
-    assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -251,7 +232,7 @@ def test_inc_process_delete_values_from_proc() -> None:
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(check_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -314,14 +295,14 @@ def test_gen_process_many():
         func
     )
 
-    assert(check_df_equal(tbl_gen.get_data(), TEST_DF))
-    assert(check_df_equal(tbl1_gen.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2_gen.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3_gen.get_data(), TEST_DF_INC3))
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl_gen.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2_gen.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3_gen.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -346,9 +327,9 @@ def test_inc_process_many_modify_values() -> None:
 
     inc_process_many(ds, [tbl], [tbl1, tbl2, tbl3], inc_func)
 
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
     ##########################
     tbl.store(TEST_DF[:5])
@@ -364,18 +345,18 @@ def test_inc_process_many_modify_values() -> None:
 
     inc_process_many(ds, [tbl], [tbl3, tbl2, tbl1], inc_func_inv)
 
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1[:5]))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2[:5]))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3[:5]))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1[:5]))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2[:5]))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3[:5]))
 
     ##########################
 
     tbl.store_chunk(TEST_DF[5:])
 
     inc_process_many(ds, [tbl], [tbl1, tbl2, tbl3], inc_func)
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -397,15 +378,15 @@ def test_inc_process_many_several_outputs():
         return df_good, df_bad
 
     inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
-    assert(check_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(check_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
+    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
 
     # Check this not delete the tables
     inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
-    assert(check_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(check_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
+    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -420,7 +401,7 @@ def test_data_catalog() -> None:
 
     tbl = data_catalog.get_data_table('test_df')
     tbl.store(TEST_DF)
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -443,7 +424,7 @@ def test_store_node() -> None:
     store_node.run(data_catalog=data_catalog)
 
     tbl = data_catalog.get_data_table('test_df')
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
 
 
 @pytest.mark.usefixtures('test_schema')
@@ -481,10 +462,10 @@ def test_python_node() -> None:
     tbl2 = data_catalog.get_data_table('test_df_inc2')
     tbl3 = data_catalog.get_data_table('test_df_inc3')
 
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
 @pytest.fixture
@@ -570,7 +551,7 @@ def test_pipeline() -> None:
     tbl2 = data_catalog.get_data_table('test_df_inc2')
     tbl3 = data_catalog.get_data_table('test_df_inc3')
 
-    assert(check_df_equal(tbl.get_data(), TEST_DF))
-    assert(check_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(check_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(check_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert(assert_df_equal(tbl.get_data(), TEST_DF))
+    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
+    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
