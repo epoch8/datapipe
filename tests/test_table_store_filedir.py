@@ -1,14 +1,16 @@
 import json
 import pandas as pd
+import numpy as np
 
 import tempfile
 
 import pytest
 import fsspec
+from PIL import Image
 
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir
+from c12n_pipe.store.table_store_filedir import PILAdapter, JSONAdapter, TableStoreFiledir
 
-from tests.util import assert_df_equal
+from tests.util import assert_df_equal, assert_idx_equal
 
 TEST_DF = pd.DataFrame(
     {
@@ -31,27 +33,27 @@ def tmp_dir():
 
 
 @pytest.fixture
-def tmp_dir_with_data(tmp_dir):
+def tmp_dir_with_json_data(tmp_dir):
     for fn, data in TEST_JSONS.items():
         with fsspec.open(f'{tmp_dir}/{fn}.json', 'w+') as f:
             json.dump(data, f)
     yield tmp_dir
 
 
-def test_read_rows(tmp_dir_with_data):
+def test_read_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_data,
+        path=tmp_dir_with_json_data,
         ext='.json',
-        adapter=json
+        adapter=JSONAdapter()
     )
 
     assert_df_equal(ts.read_rows(), TEST_DF)
 
-def test_insert_rows(tmp_dir_with_data):
+def test_insert_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_data,
+        path=tmp_dir_with_json_data,
         ext='.json',
-        adapter=json
+        adapter=JSONAdapter()
     )
 
     ts.insert_rows(pd.DataFrame(
@@ -59,5 +61,41 @@ def test_insert_rows(tmp_dir_with_data):
         index=['ccc']
     ))
 
-    with open(f'{tmp_dir_with_data}/ccc.json') as f:
+    with open(f'{tmp_dir_with_json_data}/ccc.json') as f:
         assert(json.load(f) == {'a': 3, 'b': 30})
+
+
+@pytest.fixture
+def tmp_dir_with_img_data(tmp_dir):
+    with fsspec.open(f'{tmp_dir}/aaa.png', 'wb+') as f:
+        im = Image.fromarray(np.zeros((100, 100, 3), dtype='u8'), 'RGB')
+        im.save(f, format='png')
+
+    yield tmp_dir
+
+
+def test_read_png_rows(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        path=tmp_dir_with_img_data,
+        ext='.png',
+        adapter=PILAdapter('png')
+    )
+
+    rows = ts.read_rows()
+
+    assert_idx_equal(rows.index, ['aaa'])
+    assert('image' in rows.columns)
+
+def test_insert_png_rows(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        path=tmp_dir_with_img_data,
+        ext='.png',
+        adapter=PILAdapter('png')
+    )
+
+    ts.insert_rows(pd.DataFrame(
+        {'image': [Image.fromarray(np.zeros((100,100,3), 'u8'), 'RGB')]},
+        index=['bbb']
+    ))
+
+    assert(fsspec.open(f'{tmp_dir_with_img_data}/bbb.png'))
