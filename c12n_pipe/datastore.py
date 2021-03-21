@@ -11,7 +11,7 @@ from c12n_pipe.datatable import DataTable
 from c12n_pipe.event_logger import EventLogger
 
 
-logger = logging.getLogger('c12n_pipe.datatable')
+logger = logging.getLogger('c12n_pipe.datastore')
 
 
 if TYPE_CHECKING:
@@ -74,13 +74,13 @@ class DataStore:
             return q
 
         for inp in inputs:
-            sql = select([inp.meta_table.c.id]).select_from(
-                left_join(inp.meta_table, [out.meta_table for out in outputs])
+            sql = select([inp.table_meta.data_table.c.id]).select_from(
+                left_join(inp.table_meta.data_table, [out.table_meta.data_table for out in outputs])
             ).where(
                 or_(
                     or_(
-                        out.meta_table.c.process_ts < inp.meta_table.c.update_ts,
-                        out.meta_table.c.process_ts.is_(None)
+                        out.table_meta.data_table.c.process_ts < inp.table_meta.data_table.c.update_ts,
+                        out.table_meta.data_table.c.process_ts.is_(None)
                     )
                     for out in outputs
                 )
@@ -98,10 +98,10 @@ class DataStore:
                 idx = idx.union(idx_df.index)
 
         for out in outputs:
-            sql = select([out.meta_table.c.id]).select_from(
-                left_join(out.meta_table, [inp.meta_table for inp in inputs])
+            sql = select([out.table_meta.data_table.c.id]).select_from(
+                left_join(out.table_meta.data_table, [inp.table_meta.data_table for inp in inputs])
             ).where(
-                and_(inp.meta_table.c.id.is_(None) for inp in inputs)
+                and_(inp.table_meta.data_table.c.id.is_(None) for inp in inputs)
             )
 
             idx_df = pd.read_sql_query(
