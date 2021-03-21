@@ -1,5 +1,7 @@
-import inspect
 from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
+from abc import ABC
+
+import inspect
 import logging
 import time
 
@@ -41,7 +43,21 @@ def _sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     }
 
 
-class DataTable_DataStore:
+class DataTable_Store(ABC):
+    def delete_rows(self, idx: Index) -> None:
+        raise NotImplemented
+    
+    def insert_rows(self, df: pd.DataFrame) -> None:
+        raise NotImplemented
+    
+    def update_rows(self, df: pd.DataFrame) -> None:
+        raise NotImplemented
+    
+    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+        raise NotImplemented
+
+
+class DataTable_DBStore(DataTable_Store):
     def __init__(self, 
         ds: 'DataStore',
         name: str,
@@ -54,23 +70,12 @@ class DataTable_DataStore:
         self.data_sql_schema = data_sql_schema
 
         self.data_table = Table(
-            self.data_table_name(), self.ds.sqla_metadata,
+            self.name, self.ds.sqla_metadata,
             *[i.copy() for i in PRIMARY_KEY + self.data_sql_schema]
         )
 
         if create_table:
             self.data_table.create(self.ds.con, checkfirst=True)
-
-    def data_table_name(self) -> str:
-        return f'{self.name}_data'
-
-    def load_all(self) -> pd.DataFrame:
-        return pd.read_sql_table(
-            table_name=self.data_table_name(),
-            con=self.ds.con,
-            schema=self.ds.schema,
-            index_col='id',
-        )
 
     def delete_rows(self, idx: Index) -> None:
         if len(idx) > 0:
@@ -82,7 +87,7 @@ class DataTable_DataStore:
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
             df.to_sql(
-                name=self.data_table_name(),
+                name=self.name,
                 con=self.ds.con,
                 schema=self.ds.schema,
                 if_exists='append',
@@ -96,7 +101,7 @@ class DataTable_DataStore:
         self.delete_rows(df.index)
         self.insert_rows(df)
 
-    def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         if idx is None:
             return pd.read_sql_query(
                 select([self.data_table]),
@@ -123,7 +128,7 @@ class DataTable:
 
         self.name = name
 
-        self.table_data = DataTable_DataStore(ds, name, data_sql_schema, create_tables)
+        self.table_data = DataTable_DBStore(ds, f'{name}_data', data_sql_schema, create_tables)
 
         self.meta_table = Table(
             self.meta_table_name(), self.ds.sqla_metadata,
@@ -176,7 +181,7 @@ class DataTable:
             )
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_data.get_data(idx)
+        return self.table_data.read_rows(idx)
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         if now is None:
