@@ -23,23 +23,23 @@ ChunkMeta = Index
 DataSchema = List[Column]
 
 
-PRIMARY_KEY = [
-    Column('id', String(100), primary_key=True),
-]
+def PRIMARY_KEY():
+    return [Column('id', String(100), primary_key=True)]
 
 
-METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
-    Column('create_ts', Float),  # Время создания строки
-    Column('update_ts', Float),  # Время последнего изменения
-    Column('process_ts', Float), # Время последней успешной обработки
-    Column('delete_ts', Float),  # Время удаления
-]
+def METADATA_SQL_SCHEMA():
+    return [
+        Column('hash', Numeric),
+        Column('create_ts', Float),  # Время создания строки
+        Column('update_ts', Float),  # Время последнего изменения
+        Column('process_ts', Float), # Время последней успешной обработки
+        Column('delete_ts', Float),  # Время удаления
+    ]
 
 
 def _sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     return {
-        i.name: i.type for i in PRIMARY_KEY + schema
+        i.name: i.type for i in PRIMARY_KEY() + schema
     }
 
 
@@ -71,7 +71,7 @@ class DataTable_DBStore(DataTable_Store):
 
         self.data_table = Table(
             self.name, self.ds.sqla_metadata,
-            *[i.copy() for i in PRIMARY_KEY + self.data_sql_schema]
+            *(PRIMARY_KEY() + [i.copy() for i in self.data_sql_schema])
         )
 
         if create_table:
@@ -128,18 +128,18 @@ class DataTable:
 
         self.name = name
 
-        self.table_data = DataTable_DBStore(ds, f'{name}_data', data_sql_schema, create_tables)
-
-        self.meta_table = Table(
-            self.meta_table_name(), self.ds.sqla_metadata,
-            *[i.copy() for i in PRIMARY_KEY + METADATA_SQL_SCHEMA]
+        self.table_meta = DataTable_DBStore(
+            ds,
+            f'{name}_meta',
+            PRIMARY_KEY() + METADATA_SQL_SCHEMA(),
+            create_tables
         )
-
-        if create_tables:
-            self.meta_table.create(self.ds.con, checkfirst=True)
-
-    def meta_table_name(self) -> str:
-        return f'{self.name}_meta'
+        self.table_data = DataTable_DBStore(
+            ds, 
+            f'{name}_data', 
+            PRIMARY_KEY() + data_sql_schema, 
+            create_tables
+        )
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -158,27 +158,8 @@ class DataTable:
         res.loc[:, 'delete_ts'] = now
         return res
 
-    def _delete_metadata(self, idx: Index) -> None:
-        if len(idx) > 0:
-            logger.info(f'Deleting {len(idx)} rows from {self.name} metadata')
-
-            sql = delete(self.meta_table).where(self.meta_table.c.id.in_(list(idx)))
-            self.ds.con.execute(sql)
-
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        if idx is None:
-            return pd.read_sql_query(
-                select([self.meta_table]),
-                con=self.ds.con,
-                index_col='id',
-            )
-
-        else:
-            return pd.read_sql_query(
-                select([self.meta_table]).where(self.meta_table.c.id.in_(list(idx))),
-                con=self.ds.con,
-                index_col='id',
-            )
+        return self.table_meta.read_rows(idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.table_data.read_rows(idx)
@@ -214,23 +195,14 @@ class DataTable:
         # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
 
         if len(new_meta_df) > 0:
-            self._delete_metadata(new_meta_df.index)
+            self.table_meta.delete_rows(new_meta_df.index)
 
             not_changed_idx = existing_meta_df.index.difference(changed_idx)
 
             new_meta_df.loc[changed_idx, 'create_ts'] = existing_meta_df.loc[changed_idx, 'create_ts']
             new_meta_df.loc[not_changed_idx, 'update_ts'] = existing_meta_df.loc[not_changed_idx, 'update_ts']
 
-            new_meta_df.to_sql(
-                name=self.meta_table_name(),
-                con=self.ds.con,
-                schema=self.ds.schema,
-                if_exists='append',
-                index_label='id',
-                chunksize=1000,
-                method='multi',
-                dtype=_sql_schema_to_dtype(METADATA_SQL_SCHEMA),
-            )
+            self.table_meta.insert_rows(new_meta_df)
 
         return data_df.index
 
@@ -248,7 +220,7 @@ class DataTable:
             self.ds.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
             self.table_data.delete_rows(deleted_idx)
-            self._delete_metadata(deleted_idx)
+            self.table_meta.delete_rows(deleted_idx)
 
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
