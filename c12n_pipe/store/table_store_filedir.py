@@ -21,6 +21,10 @@ class Adapter(Protocol):
 
 
 class JSONAdapter(Adapter):
+    '''
+    Converts each JSON file into Pandas record
+    '''
+
     mode = 't'
 
     def load(self, f: IO) -> Dict[str, Any]:
@@ -29,7 +33,12 @@ class JSONAdapter(Adapter):
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         return json.dump(obj, f)
 
+
 class PILAdapter(Adapter):
+    '''
+    Uses `image` column with PIL.Image for save/load
+    '''
+
     mode = 'b'
 
     def __init__(self, format: str) -> None:
