@@ -5,8 +5,7 @@ import inspect
 import logging
 import time
 
-from sqlalchemy import Table, Column, Float, String, Numeric
-from sqlalchemy.sql.expression import delete, select
+from sqlalchemy import Column
 import pandas as pd
 
 

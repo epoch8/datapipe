@@ -1,9 +1,8 @@
-from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Iterator, List, Tuple, TYPE_CHECKING
 import logging
 
-from sqlalchemy.engine import Engine
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Float, String, Numeric
+from sqlalchemy import create_engine, MetaData, Column
 from sqlalchemy.sql.expression import delete, and_, or_, select
 import pandas as pd
 
