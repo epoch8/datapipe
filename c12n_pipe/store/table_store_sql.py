@@ -2,10 +2,10 @@ from typing import List, Any, Dict, Optional, TYPE_CHECKING
 
 import logging
 import pandas as pd
-from sqlalchemy import Column, Table
+from sqlalchemy import Column, Table, String
 from sqlalchemy.sql.expression import select, delete
 
-from c12n_pipe.store.types import Index, PRIMARY_KEY
+from c12n_pipe.store.types import Index
 from c12n_pipe.store.table_store import TableStore
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ logger = logging.getLogger('c12n_pipe.store.table_store_sql')
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     return {
-        i.name: i.type for i in PRIMARY_KEY() + schema
+        i.name: i.type for i in schema
     }
 
 
@@ -35,7 +35,7 @@ class TableStoreDB(TableStore):
 
         self.data_table = Table(
             self.name, self.ds.sqla_metadata,
-            *(PRIMARY_KEY() + [i.copy() for i in self.data_sql_schema])
+            *[i.copy() for i in self.data_sql_schema]
         )
 
         if create_table:

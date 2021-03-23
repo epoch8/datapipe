@@ -5,11 +5,12 @@ import inspect
 import logging
 import time
 
-from sqlalchemy import Column
+from sqlalchemy import Column, String, Numeric, Float
 import pandas as pd
 
 
-from c12n_pipe.store.types import PRIMARY_KEY, METADATA_SQL_SCHEMA, Index, ChunkMeta
+from c12n_pipe.store.types import DataSchema, Index, ChunkMeta
+from c12n_pipe.store.table_store import TableStore
 from c12n_pipe.store.table_store_sql import TableStoreDB
 
 
@@ -20,30 +21,50 @@ if TYPE_CHECKING:
 logger = logging.getLogger('c12n_pipe.datatable')
 
 
+PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
+
+
+METADATA_SQL_SCHEMA = [
+    Column('hash', Numeric),
+    Column('create_ts', Float),  # Время создания строки
+    Column('update_ts', Float),  # Время последнего изменения
+    Column('process_ts', Float), # Время последней успешной обработки
+    Column('delete_ts', Float),  # Время удаления
+]
+
+
 class DataTable:
     def __init__(
         self,
         ds: 'DataStore',
         name: str,
-        data_sql_schema: List[Column],
+        data_sql_schema: DataSchema,
         create_tables: bool = True,
+        meta_store: TableStore = None, # Если None - создается по дефолту
+        data_store: TableStore = None, # Если None - создается по дефолту
     ):
         self.ds = ds
-
         self.name = name
 
-        self.table_meta = TableStoreDB(
-            ds,
-            f'{name}_meta',
-            PRIMARY_KEY() + METADATA_SQL_SCHEMA(),
-            create_tables
-        )
-        self.table_data = TableStoreDB(
-            ds, 
-            f'{name}_data', 
-            PRIMARY_KEY() + data_sql_schema, 
-            create_tables
-        )
+        if meta_store is None:
+            self.table_meta = TableStoreDB(
+                ds,
+                f'{name}_meta',
+                PRIMARY_KEY + METADATA_SQL_SCHEMA,
+                create_tables
+            )
+        else:
+            self.table_meta = meta_store
+        
+        if data_store is None:
+            self.table_data = TableStoreDB(
+                ds, 
+                f'{name}_data', 
+                PRIMARY_KEY + data_sql_schema, 
+                create_tables
+            )
+        else:
+            self.table_data = data_store
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
