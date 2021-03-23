@@ -14,7 +14,8 @@ class TableStore(ABC):
         raise NotImplemented
     
     def update_rows(self, df: pd.DataFrame) -> None:
-        raise NotImplemented
+        self.delete_rows(df.index)
+        self.insert_rows(df)
     
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         raise NotImplemented

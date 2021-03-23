@@ -1,4 +1,4 @@
-from typing import Iterator, List, Tuple, TYPE_CHECKING
+from typing import Iterator, List, Tuple, Optional, TYPE_CHECKING
 import logging
 
 
@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
 
 class DataStore:
-    def __init__(self, connstr: str, schema: str):
+    def __init__(self, connstr: str, schema: str = None):
         self._init(connstr, schema)
 
-    def _init(self, connstr: str, schema: str) -> None:
+    def _init(self, connstr: str, schema: Optional[str]) -> None:
         self.connstr = connstr
         self.schema = schema
 

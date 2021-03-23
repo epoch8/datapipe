@@ -45,7 +45,9 @@ class PILAdapter(Adapter):
         self.format = format
 
     def load(self, f: IO) -> Dict[str, Any]:
-        return {'image': Image.open(f)}
+        im = Image.open(f)
+        im.load()
+        return {'image': im}
     
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         im : Image.Image = obj['image']
