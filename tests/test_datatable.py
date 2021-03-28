@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, Column, Numeric
 
 from c12n_pipe.datatable import gen_process, gen_process_many, inc_process, inc_process_many
 from c12n_pipe.datastore import DataStore
-from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
+from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON
 
@@ -395,7 +395,7 @@ def test_data_catalog() -> None:
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'test_df': AbstractDataTable([Column('a', Numeric)])
+            'test_df': DBTable([Column('a', Numeric)])
         },
     )
 
@@ -410,7 +410,7 @@ def test_store_node() -> None:
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'test_df': AbstractDataTable([Column('a', Numeric)])
+            'test_df': DBTable([Column('a', Numeric)])
         },
     )
 
@@ -433,10 +433,10 @@ def test_python_node() -> None:
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'test_df': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc1': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc2': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc3': AbstractDataTable([Column('a', Numeric)])
+            'test_df': DBTable([Column('a', Numeric)]),
+            'test_df_inc1': DBTable([Column('a', Numeric)]),
+            'test_df_inc2': DBTable([Column('a', Numeric)]),
+            'test_df_inc3': DBTable([Column('a', Numeric)])
         },
     )
     data_catalog.get_data_table('test_df').store(TEST_DF)
@@ -483,8 +483,8 @@ def test_label_studio_node() -> None:
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'data_input': AbstractDataTable([Column('data', JSON)]),
-            'data_annotation': AbstractDataTable([Column('data', JSON)])
+            'data_input': DBTable([Column('data', JSON)]),
+            'data_annotation': DBTable([Column('data', JSON)])
         },
     )
 
@@ -505,10 +505,10 @@ def test_pipeline() -> None:
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'test_df': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc1': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc2': AbstractDataTable([Column('a', Numeric)]),
-            'test_df_inc3': AbstractDataTable([Column('a', Numeric)])
+            'test_df': DBTable([Column('a', Numeric)]),
+            'test_df_inc1': DBTable([Column('a', Numeric)]),
+            'test_df_inc2': DBTable([Column('a', Numeric)]),
+            'test_df_inc3': DBTable([Column('a', Numeric)])
         },
     )
 

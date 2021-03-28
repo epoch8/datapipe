@@ -19,19 +19,24 @@ COLUMN_TYPE_TO_SQL_COLUMN = {
 
 
 @dataclass
-class AbstractDataTable:
+class DBTable:
     def __init__(
         self,
         data_sql_schema: List[Tuple[str, sql.Column]]
     ):
         self.data_sql_schema = data_sql_schema
 
+# class JSONFiledir:
+
+# class PILImageFiledir:
+#     ...
+
 
 class DataCatalog:
     def __init__(
         self,
         ds: DataStore,
-        catalog: Dict[str, AbstractDataTable],
+        catalog: Dict[str, DBTable],
     ):
         self.ds = ds
         self.catalog = catalog
@@ -60,7 +65,7 @@ class DataCatalog:
             if not k.startswith("_")
         }
         catalog = {
-            name: AbstractDataTable(
+            name: DBTable(
                 data_sql_schema=[
                     sql.Column(column, COLUMN_TYPE_TO_SQL_COLUMN[column_type])
                     for column, column_type in config['columns'].items()

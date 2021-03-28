@@ -45,16 +45,17 @@ def test_image_datatables(tmp_dir):
         )
     )
 
-    idx = [f'im_{i}' for i in range(10)]
-    df = pd.DataFrame(
-        {
-            'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in idx]
-        },
-        index=idx
-    )
+    def make_df():
+        idx = [f'im_{i}' for i in range(10)]
+        return pd.DataFrame(
+            {
+                'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in idx]
+            },
+            index=idx
+        )
 
     def gen_images():
-        yield df
+        yield make_df()
 
     gen_process(
         tbl1,
