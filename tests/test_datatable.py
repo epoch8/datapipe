@@ -1,3 +1,4 @@
+from c12n_pipe.store.table_store_sql import TableStoreDB
 import time
 import tempfile
 from pathlib import Path
@@ -10,8 +11,8 @@ import cloudpickle
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
-from c12n_pipe.datatable import gen_process, gen_process_many, inc_process, inc_process_many
-from c12n_pipe.metastore import MetaStore
+from c12n_pipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
+from c12n_pipe.metastore import DBConn, MetaStore, PRIMARY_KEY
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON
@@ -24,7 +25,7 @@ DBCONNSTR = 'sqlite:///:memory:'
 DB_TEST_SCHEMA = None
 DB_CREATE_SCHEMA = False
 
-TEST_SCHEMA = [
+TEST_SCHEMA = PRIMARY_KEY + [
     Column('a', Numeric),
 ]
 
@@ -49,48 +50,44 @@ def yield_df(data):
 
 
 @pytest.fixture
-def test_schema():
+def dbconn():
     if DB_CREATE_SCHEMA:
         eng = create_engine(DBCONNSTR)
 
         try:
-            eng.execute('DROP SCHEMA test CASCADE')
+            eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
         except:
             pass
 
-        eng.execute('CREATE SCHEMA test')
+        eng.execute(f'CREATE SCHEMA {DB_TEST_SCHEMA}')
 
-        yield 'ok'
+        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
-        eng.execute('DROP SCHEMA test CASCADE')
+        eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
     
     else:
-        yield 'ok'
+        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
+def test_cloudpickle(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-@pytest.mark.usefixtures('test_schema')
-def test_cloudpickle():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
-
-    tbl = ds.get_table('test', TEST_SCHEMA)
+    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     cloudpickle.dumps([ds, tbl])
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_simple():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_simple(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl = ds.get_table('test', TEST_SCHEMA)
+    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_store_less_values():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_store_less_values(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl = ds.get_table('test', TEST_SCHEMA)
+    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
     assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
@@ -99,12 +96,11 @@ def test_store_less_values():
     assert_idx_equal(tbl.get_metadata().index, TEST_DF[:5].index)
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_get_process_ids():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_get_process_ids(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     tbl1.store(TEST_DF)
 
@@ -122,12 +118,11 @@ def test_get_process_ids():
     assert(list(idx) == list(upd_df.index))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_gen_process():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_gen_process(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1_gen = ds.get_table('tbl1_gen', TEST_SCHEMA)
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
+    tbl1_gen = DataTable(ds, 'tbl1_gen', data_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
 
     def gen():
         yield TEST_DF
@@ -168,12 +163,11 @@ def test_gen_process():
     assert(assert_df_equal(tbl1.get_data(), TEST_DF[:5]))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_modify_values() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_modify_values(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -192,12 +186,11 @@ def test_inc_process_modify_values() -> None:
     assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_delete_values_from_input() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_delete_values_from_input(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -216,12 +209,11 @@ def test_inc_process_delete_values_from_input() -> None:
     assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_delete_values_from_proc() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_delete_values_from_proc(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df[:5]
@@ -235,12 +227,11 @@ def test_inc_process_delete_values_from_proc() -> None:
     assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_proc_no_change() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_proc_no_change(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return TEST_DF
@@ -266,18 +257,17 @@ def test_inc_process_proc_no_change() -> None:
 # TODO тест inc_process 2->1, удаление строки, 2->1
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_gen_process_many():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_gen_process_many(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl_gen = ds.get_table('tbl_gen', TEST_SCHEMA)
-    tbl1_gen = ds.get_table('tbl1_gen', TEST_SCHEMA)
-    tbl2_gen = ds.get_table('tbl2_gen', TEST_SCHEMA)
-    tbl3_gen = ds.get_table('tbl3_gen', TEST_SCHEMA)
-    tbl = ds.get_table('tbl', TEST_SCHEMA)
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
-    tbl3 = ds.get_table('tbl3', TEST_SCHEMA)
+    tbl_gen = DataTable(ds, 'tbl_gen', data_store=TableStoreDB(dbconn, 'tbl_gen_data',TEST_SCHEMA, True))
+    tbl1_gen = DataTable(ds, 'tbl1_gen', data_store=TableStoreDB(dbconn, 'tbl1_gen_data',TEST_SCHEMA, True))
+    tbl2_gen = DataTable(ds, 'tbl2_gen', data_store=TableStoreDB(dbconn, 'tbl2_gen_data',TEST_SCHEMA, True))
+    tbl3_gen = DataTable(ds, 'tbl3_gen', data_store=TableStoreDB(dbconn, 'tbl3_gen_data',TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data',TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data',TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data',TEST_SCHEMA, True))
+    tbl3 = DataTable(ds, 'tbl3', data_store=TableStoreDB(dbconn, 'tbl3_data',TEST_SCHEMA, True))
 
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)
@@ -305,14 +295,13 @@ def test_gen_process_many():
     assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_many_modify_values() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_many_modify_values(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
-    tbl = ds.get_table('tbl', TEST_SCHEMA)
-    tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
-    tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
-    tbl3 = ds.get_table('tbl3', TEST_SCHEMA)
+    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl3 = DataTable(ds, 'tbl3', data_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
 
     def inc_func(df):
         df1 = df.copy()
@@ -359,16 +348,15 @@ def test_inc_process_many_modify_values() -> None:
     assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_inc_process_many_several_outputs():
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_inc_process_many_several_outputs(dbconn) -> None:
+    ds = MetaStore(dbconn)
 
     BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
     GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
 
-    tbl = ds.get_table('tbl', TEST_SCHEMA)
-    tbl_good = ds.get_table('tbl_good', TEST_SCHEMA)
-    tbl_bad = ds.get_table('tbl_bad', TEST_SCHEMA)
+    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+    tbl_good = DataTable(ds, 'tbl_good', data_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
+    tbl_bad = DataTable(ds, 'tbl_bad', data_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
 
@@ -389,9 +377,8 @@ def test_inc_process_many_several_outputs():
     assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_data_catalog() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_data_catalog(dbconn) -> None:
+    ds = MetaStore(dbconn)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -404,9 +391,8 @@ def test_data_catalog() -> None:
     assert(assert_df_equal(tbl.get_data(), TEST_DF))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_store_node() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_store_node(dbconn) -> None:
+    ds = MetaStore(dbconn)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -427,9 +413,8 @@ def test_store_node() -> None:
     assert(assert_df_equal(tbl.get_data(), TEST_DF))
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_python_node() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_python_node(dbconn) -> None:
+    ds = MetaStore(dbconn)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -477,9 +462,9 @@ def temp_dir():
         os.chdir(old_cwd)
 
 
-@pytest.mark.usefixtures('test_schema', 'temp_dir')
-def test_label_studio_node() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+@pytest.mark.usefixtures('temp_dir')
+def test_label_studio_node(dbconn) -> None:
+    ds = MetaStore(dbconn)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -499,9 +484,8 @@ def test_label_studio_node() -> None:
     label_studio_node.terminate_services()
 
 
-@pytest.mark.usefixtures('test_schema')
-def test_pipeline() -> None:
-    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+def test_pipeline(dbconn) -> None:
+    ds = MetaStore(dbconn)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={

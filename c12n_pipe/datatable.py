@@ -25,22 +25,12 @@ class DataTable:
         self,
         ds: 'MetaStore',
         name: str,
-        data_sql_schema: DataSchema,
-        create_tables: bool = True,
-        data_store: TableStore = None, # Если None - создается по дефолту
+        data_store: TableStore, # Если None - создается по дефолту
     ):
         self.ds = ds
         self.name = name
 
-        if data_store is None:
-            self.table_data = TableStoreDB(
-                ds, 
-                f'{name}_data', 
-                data_sql_schema, 
-                create_tables
-            )
-        else:
-            self.table_data = data_store
+        self.table_data = data_store
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
         res = old_meta_df.loc[deleted_idx]

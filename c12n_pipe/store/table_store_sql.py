@@ -9,7 +9,7 @@ from c12n_pipe.store.types import Index
 from c12n_pipe.store.table_store import TableStore
 
 if TYPE_CHECKING:
-    from c12n_pipe.metastore import MetaStore
+    from c12n_pipe.metastore import DBConn
 
 
 logger = logging.getLogger('c12n_pipe.store.table_store_sql')
@@ -23,37 +23,37 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
 
 class TableStoreDB(TableStore):
     def __init__(self, 
-        ds: 'MetaStore',
+        dbconn: 'DBConn',
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = True
     ) -> None:
-        self.ds = ds
+        self.dbconn = dbconn
         self.name = name
 
         self.data_sql_schema = data_sql_schema
 
         self.data_table = Table(
-            self.name, self.ds.sqla_metadata,
+            self.name, self.dbconn.sqla_metadata,
             *[i.copy() for i in self.data_sql_schema]
         )
 
         if create_table:
-            self.data_table.create(self.ds.con, checkfirst=True)
+            self.data_table.create(self.dbconn.con, checkfirst=True)
 
     def delete_rows(self, idx: Index) -> None:
         if len(idx) > 0:
             logger.info(f'Deleting {len(idx)} rows from {self.name} data')
 
             sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
-            self.ds.con.execute(sql)
+            self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
             df.to_sql(
                 name=self.name,
-                con=self.ds.con,
-                schema=self.ds.schema,
+                con=self.dbconn.con,
+                schema=self.dbconn.schema,
                 if_exists='append',
                 index_label='id',
                 chunksize=1000,
@@ -69,13 +69,13 @@ class TableStoreDB(TableStore):
         if idx is None:
             return pd.read_sql_query(
                 select([self.data_table]),
-                con=self.ds.con,
+                con=self.dbconn.con,
                 index_col='id',
             )
         else:
             return pd.read_sql_query(
                 select([self.data_table]).where(self.data_table.c.id.in_(list(idx))),
-                con=self.ds.con,
+                con=self.dbconn.con,
                 index_col='id',
             )
 

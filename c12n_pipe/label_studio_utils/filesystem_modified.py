@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
-from c12n_pipe.metastore import MetaStore
 from sqlalchemy.sql.sqltypes import JSON
 import sqlalchemy as sql
+
+from c12n_pipe.metastore import DBConn, MetaStore, PRIMARY_KEY
+from c12n_pipe.datatable import DataTable
+from c12n_pipe.store.table_store_sql import TableStoreDB
 
 from label_studio.storage.base import CloudStorage, BaseForm
 from label_studio.storage.filesystem import BaseStorage
@@ -33,10 +36,15 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         regex: str = '.*',
         **kwargs
     ):
-        self.data_store = MetaStore(kwargs['connstr'], kwargs['schema'])
-        self.data_table = self.data_store.get_table(
+        self.data_store = MetaStore(DBConn(kwargs['connstr'], kwargs['schema']))
+        self.data_table = DataTable(
+            self.data_store,
             name=kwargs['data_table_name'],
-            data_sql_schema=DATA_JSON_SQL_SCHEMA
+            data_store=TableStoreDB(
+                self.data_store.dbconn,
+                f'{kwargs["data_table_name"]}_data',
+                data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA
+            )
         )
         super().__init__(
             name=name,
@@ -156,10 +164,15 @@ class CompletionsDirStorageModified(BaseStorage):
         project: Project,
         **kwargs
     ):
-        self.data_store = MetaStore(kwargs['connstr'], kwargs['schema'])
-        self.data_table = self.data_store.get_table(
+        self.data_store = MetaStore(DBConn(kwargs['connstr'], kwargs['schema']))
+        self.data_table = DataTable(
+            self.data_store,
             name=kwargs['data_table_name'],
-            data_sql_schema=DATA_JSON_SQL_SCHEMA
+            data_store=TableStoreDB(
+                self.data_store.dbconn,
+                f'{kwargs["data_table_name"]}_data',
+                data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA    
+            )
         )
         path = str(Path(project_path) / 'annotation')
         super().__init__(

@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from c12n_pipe.metastore import MetaStore
+from c12n_pipe.metastore import MetaStore, DBConn
 from c12n_pipe.datatable import DataTable, gen_process, inc_process
 from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILAdapter
 
@@ -17,14 +17,11 @@ def tmp_dir():
 
 
 def test_image_datatables(tmp_dir):
-    ds = MetaStore(f'sqlite:///{tmp_dir}/db.sqlite')
+    ds = MetaStore(DBConn(f'sqlite:///{tmp_dir}/db.sqlite'))
 
     tbl1 = DataTable(
         ds,
         'tbl1',
-        [
-            ('image', None),
-        ],
         data_store=TableStoreFiledir(
             f'{tmp_dir}/tbl1',
             '.png',
@@ -35,9 +32,6 @@ def test_image_datatables(tmp_dir):
     tbl2 = DataTable(
         ds,
         'tbl2',
-        [
-            ('image', None),
-        ],
         data_store=TableStoreFiledir(
             f'{tmp_dir}/tbl2',
             '.png',

@@ -33,7 +33,7 @@ METADATA_SQL_SCHEMA = [
 ]
 
 
-class MetaStore:
+class DBConn:
     def __init__(self, connstr: str, schema: str = None):
         self._init(connstr, schema)
 
@@ -47,10 +47,6 @@ class MetaStore:
 
         self.sqla_metadata = MetaData(schema=schema)
 
-        self.event_logger = EventLogger(self)
-
-        self.meta_tables: Dict[str, TableStoreDB] = {}
-
     def __getstate__(self):
         return {
             'connstr': self.connstr,
@@ -60,10 +56,18 @@ class MetaStore:
     def __setstate__(self, state):
         self._init(state['connstr'], state['schema'])
 
+
+class MetaStore:
+    def __init__(self, dbconn: DBConn) -> None:
+        self.dbconn = dbconn
+        self.event_logger = EventLogger(self.dbconn)
+
+        self.meta_tables: Dict[str, TableStoreDB] = {}
+
     def get_meta_table(self, name:str) -> TableStoreDB:
         if name not in self.meta_tables:
             self.meta_tables[name] = TableStoreDB(
-                self, 
+                self.dbconn,
                 f'{name}_meta',
                 PRIMARY_KEY + METADATA_SQL_SCHEMA,
                 create_table=True
@@ -131,14 +135,6 @@ class MetaStore:
         if len(deleted_idx) > 0:
             self.get_meta_table(name).delete_rows(deleted_idx)
 
-    def get_table(self, name: str, data_sql_schema: List[Column], create_tables: bool = True) -> DataTable:
-        return DataTable(
-            ds=self,
-            name=name,
-            data_sql_schema=PRIMARY_KEY + data_sql_schema,
-            create_tables=create_tables,
-        )
-
     def get_process_ids(
         self,
         inputs: List[DataTable],
@@ -176,7 +172,7 @@ class MetaStore:
 
             idx_df = pd.read_sql_query(
                 sql,
-                con=self.con,
+                con=self.dbconn.con,
                 index_col='id',
             )
 
@@ -194,7 +190,7 @@ class MetaStore:
 
             idx_df = pd.read_sql_query(
                 sql,
-                con=self.con,
+                con=self.dbconn.con,
                 index_col='id',
             )
 

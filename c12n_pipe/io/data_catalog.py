@@ -6,7 +6,9 @@ from sqlalchemy.sql.sqltypes import (
     String, Integer, Float, JSON
 )
 
-from c12n_pipe.metastore import MetaStore
+from c12n_pipe.metastore import MetaStore, PRIMARY_KEY
+from c12n_pipe.datatable import DataTable
+from c12n_pipe.store.table_store_sql import TableStoreDB
 
 
 COLUMN_TYPE_TO_SQL_COLUMN = {
@@ -42,7 +44,7 @@ class DataCatalog:
         self.catalog = catalog
 
         self.catalog_tables = {
-            name: self.ds.get_table(name, t.data_sql_schema, create_tables=True)
+            name: DataTable(self.ds, name, data_store=TableStoreDB(self.ds.dbconn, f'{name}_data', PRIMARY_KEY + t.data_sql_schema, True))
             for name, t in self.catalog.items()
         }
 

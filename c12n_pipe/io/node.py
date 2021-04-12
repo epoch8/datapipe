@@ -106,10 +106,10 @@ class LabelStudioNode:
         run_app(label_studio_config=self.project_config)
 
     def change_config(self, data_catalog: DataCatalog):
-        self.project_config.source_params['connstr'] = data_catalog.ds.connstr
-        self.project_config.source_params['schema'] = data_catalog.ds.schema
-        self.project_config.target_params['connstr'] = data_catalog.ds.connstr
-        self.project_config.target_params['schema'] = data_catalog.ds.schema
+        self.project_config.source_params['connstr'] = data_catalog.ds.dbconn.connstr
+        self.project_config.source_params['schema'] = data_catalog.ds.dbconn.schema
+        self.project_config.target_params['connstr'] = data_catalog.ds.dbconn.connstr
+        self.project_config.target_params['schema'] = data_catalog.ds.dbconn.schema
 
     def process_data(self, data_catalog):
         self.change_config(data_catalog)
