@@ -5,7 +5,6 @@ import inspect
 import logging
 import time
 
-from sqlalchemy import Column, String, Numeric, Float
 import pandas as pd
 
 
@@ -21,18 +20,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger('c12n_pipe.datatable')
 
 
-PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
-
-
-METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
-    Column('create_ts', Float),  # Время создания строки
-    Column('update_ts', Float),  # Время последнего изменения
-    Column('process_ts', Float), # Время последней успешной обработки
-    Column('delete_ts', Float),  # Время удаления
-]
-
-
 class DataTable:
     def __init__(
         self,
@@ -40,43 +27,20 @@ class DataTable:
         name: str,
         data_sql_schema: DataSchema,
         create_tables: bool = True,
-        meta_store: TableStore = None, # Если None - создается по дефолту
         data_store: TableStore = None, # Если None - создается по дефолту
     ):
         self.ds = ds
         self.name = name
 
-        if meta_store is None:
-            self.table_meta = TableStoreDB(
-                ds,
-                f'{name}_meta',
-                PRIMARY_KEY + METADATA_SQL_SCHEMA,
-                create_tables
-            )
-        else:
-            self.table_meta = meta_store
-        
         if data_store is None:
             self.table_data = TableStoreDB(
                 ds, 
                 f'{name}_data', 
-                PRIMARY_KEY + data_sql_schema, 
+                data_sql_schema, 
                 create_tables
             )
         else:
             self.table_data = data_store
-
-    def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
-        return pd.DataFrame(
-            {
-                'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
-                'create_ts': now,
-                'update_ts': now,
-                'process_ts': now,
-                'delete_ts': None,
-            },
-            index=df.index
-        )
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
         res = old_meta_df.loc[deleted_idx]
@@ -84,28 +48,15 @@ class DataTable:
         return res
 
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_meta.read_rows(idx)
+        return self.ds.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.table_data.read_rows(idx)
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
-        if now is None:
-            now = time.time()
-
         logger.info(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
-        # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_df.index)
-
-        # найти что изменилось
-        new_meta_df = self._make_new_metadata_df(now, data_df)
-
-        common_idx = existing_meta_df.index.intersection(new_meta_df.index)
-        changed_idx = common_idx[new_meta_df.loc[common_idx, 'hash'] != existing_meta_df.loc[common_idx, 'hash']]
-
-        # найти что добавилось
-        new_idx = new_meta_df.index.difference(existing_meta_df.index)
+        new_idx, changed_idx, new_meta_df = self.ds.get_changes_for_store_chunk(self.name, data_df, now)
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
             self.ds.event_logger.log_event(
@@ -117,35 +68,20 @@ class DataTable:
 
         self.table_data.update_rows(data_df.loc[to_write_idx])
 
-        # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
-
-        if len(new_meta_df) > 0:
-            self.table_meta.delete_rows(new_meta_df.index)
-
-            not_changed_idx = existing_meta_df.index.difference(changed_idx)
-
-            new_meta_df.loc[changed_idx, 'create_ts'] = existing_meta_df.loc[changed_idx, 'create_ts']
-            new_meta_df.loc[not_changed_idx, 'update_ts'] = existing_meta_df.loc[not_changed_idx, 'update_ts']
-
-            self.table_meta.insert_rows(new_meta_df)
+        self.ds.update_meta_for_store_chunk(self.name, new_meta_df)
 
         return data_df.index
 
     def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
-        idx = pd.Index([])
-        for chunk in chunks:
-            idx = idx.union(chunk)
-
-        existing_meta_df = self.get_metadata(idx=processed_idx)
-
-        deleted_idx = existing_meta_df.index.difference(idx)
+        deleted_idx = self.ds.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
         if len(deleted_idx) > 0:
             self.ds.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
             self.table_data.delete_rows(deleted_idx)
-            self.table_meta.delete_rows(deleted_idx)
+
+        self.ds.update_meta_for_sync_meta(self.name, deleted_idx)
 
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
@@ -159,13 +95,13 @@ class DataTable:
         )
 
     def get_data_chunked(self, chunksize: int = 1000) -> Generator[pd.DataFrame, None, None]:
-        meta_df = self.get_metadata(idx=None)
+        meta_df = self.ds.get_metadata(self.name, idx=None)
 
         for i in range(0, len(meta_df.index), chunksize):
             yield self.get_data(meta_df.index[i:i+chunksize])
 
     def get_indexes(self, idx: Optional[Index] = None) -> Index:
-        return self.get_metadata(idx).index.tolist()
+        return self.ds.get_metadata(self.name, idx).index.tolist()
 
 
 def gen_process_many(
