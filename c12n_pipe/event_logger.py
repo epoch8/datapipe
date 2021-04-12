@@ -10,10 +10,10 @@ logger = logging.getLogger('c12n_pipe.event_logger')
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from c12n_pipe.datastore import DataStore
+    from c12n_pipe.metastore import MetaStore
 
 class EventLogger:
-    def __init__(self, ds: 'DataStore'):
+    def __init__(self, ds: 'MetaStore'):
         self.ds = ds
 
         self.events_table =  Table(

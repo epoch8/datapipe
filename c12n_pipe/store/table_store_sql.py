@@ -9,7 +9,7 @@ from c12n_pipe.store.types import Index
 from c12n_pipe.store.table_store import TableStore
 
 if TYPE_CHECKING:
-    from c12n_pipe.datastore import DataStore
+    from c12n_pipe.metastore import MetaStore
 
 
 logger = logging.getLogger('c12n_pipe.store.table_store_sql')
@@ -23,7 +23,7 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
 
 class TableStoreDB(TableStore):
     def __init__(self, 
-        ds: 'DataStore',
+        ds: 'MetaStore',
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = True

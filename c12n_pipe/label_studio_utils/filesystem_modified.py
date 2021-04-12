@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
-from c12n_pipe.datastore import DataStore
+from c12n_pipe.metastore import MetaStore
 from sqlalchemy.sql.sqltypes import JSON
 import sqlalchemy as sql
 
@@ -33,7 +33,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         regex: str = '.*',
         **kwargs
     ):
-        self.data_store = DataStore(kwargs['connstr'], kwargs['schema'])
+        self.data_store = MetaStore(kwargs['connstr'], kwargs['schema'])
         self.data_table = self.data_store.get_table(
             name=kwargs['data_table_name'],
             data_sql_schema=DATA_JSON_SQL_SCHEMA
@@ -156,7 +156,7 @@ class CompletionsDirStorageModified(BaseStorage):
         project: Project,
         **kwargs
     ):
-        self.data_store = DataStore(kwargs['connstr'], kwargs['schema'])
+        self.data_store = MetaStore(kwargs['connstr'], kwargs['schema'])
         self.data_table = self.data_store.get_table(
             name=kwargs['data_table_name'],
             data_sql_schema=DATA_JSON_SQL_SCHEMA

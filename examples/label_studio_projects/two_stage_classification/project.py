@@ -17,7 +17,7 @@ from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
 
-from c12n_pipe.datatable import DataStore
+from c12n_pipe.datatable import MetaStore
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 
@@ -183,7 +183,7 @@ def main(
     project_path = Path(project_path)
     project_path_stage1 = project_path / 'stage1'
     project_path_stage2 = project_path / 'stage2'
-    ds = DataStore(connstr=connstr, schema=schema)
+    ds = MetaStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={

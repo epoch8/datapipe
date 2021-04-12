@@ -5,7 +5,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List
-from c12n_pipe.datatable import DataStore
+from c12n_pipe.datatable import MetaStore
 
 
 import numpy as np
@@ -226,7 +226,7 @@ def main(
     project_path_detection = project_path / 'detection'
     project_path_classification = project_path / 'classification'
     bboxes_images_dir = Path(bboxes_images_dir)
-    ds = DataStore(connstr=connstr, schema=schema)
+    ds = MetaStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={

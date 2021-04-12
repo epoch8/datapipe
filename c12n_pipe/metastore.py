@@ -10,14 +10,14 @@ from c12n_pipe.datatable import DataTable
 from c12n_pipe.event_logger import EventLogger
 
 
-logger = logging.getLogger('c12n_pipe.datastore')
+logger = logging.getLogger('c12n_pipe.metastore')
 
 
 if TYPE_CHECKING:
     from c12n_pipe.datatable import DataTable
 
 
-class DataStore:
+class MetaStore:
     def __init__(self, connstr: str, schema: str = None):
         self._init(connstr, schema)
 

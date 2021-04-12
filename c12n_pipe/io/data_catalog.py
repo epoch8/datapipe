@@ -6,7 +6,7 @@ from sqlalchemy.sql.sqltypes import (
     String, Integer, Float, JSON
 )
 
-from c12n_pipe.datastore import DataStore
+from c12n_pipe.metastore import MetaStore
 
 
 COLUMN_TYPE_TO_SQL_COLUMN = {
@@ -35,7 +35,7 @@ class DBTable:
 class DataCatalog:
     def __init__(
         self,
-        ds: DataStore,
+        ds: MetaStore,
         catalog: Dict[str, DBTable],
     ):
         self.ds = ds
@@ -57,7 +57,7 @@ class DataCatalog:
     def from_config(
         cls,
         config_path: str,
-        ds: DataStore,
+        ds: MetaStore,
     ):
         catalog = {
             k: v

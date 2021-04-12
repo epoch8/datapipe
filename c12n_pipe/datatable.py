@@ -15,7 +15,7 @@ from c12n_pipe.store.table_store_sql import TableStoreDB
 
 
 if TYPE_CHECKING:
-    from c12n_pipe.datastore import DataStore
+    from c12n_pipe.metastore import MetaStore
 
 
 logger = logging.getLogger('c12n_pipe.datatable')
@@ -36,7 +36,7 @@ METADATA_SQL_SCHEMA = [
 class DataTable:
     def __init__(
         self,
-        ds: 'DataStore',
+        ds: 'MetaStore',
         name: str,
         data_sql_schema: DataSchema,
         create_tables: bool = True,
@@ -215,7 +215,7 @@ def gen_process(
 
 
 def inc_process_many(
-    ds: 'DataStore',
+    ds: 'MetaStore',
     input_dts: List[DataTable],
     res_dts: List[DataTable],
     proc_func: Callable,
@@ -247,7 +247,7 @@ def inc_process_many(
 
 
 def inc_process(
-    ds: 'DataStore',
+    ds: 'MetaStore',
     input_dts: List[DataTable],
     res_dt: DataTable,
     proc_func: Callable,

@@ -11,7 +11,7 @@ import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
 from c12n_pipe.datatable import gen_process, gen_process_many, inc_process, inc_process_many
-from c12n_pipe.datastore import DataStore
+from c12n_pipe.metastore import MetaStore
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON
@@ -70,7 +70,7 @@ def test_schema():
 
 @pytest.mark.usefixtures('test_schema')
 def test_cloudpickle():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl = ds.get_table('test', TEST_SCHEMA)
 
@@ -79,7 +79,7 @@ def test_cloudpickle():
 
 @pytest.mark.usefixtures('test_schema')
 def test_simple():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl = ds.get_table('test', TEST_SCHEMA)
 
@@ -88,7 +88,7 @@ def test_simple():
 
 @pytest.mark.usefixtures('test_schema')
 def test_store_less_values():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl = ds.get_table('test', TEST_SCHEMA)
 
@@ -101,7 +101,7 @@ def test_store_less_values():
 
 @pytest.mark.usefixtures('test_schema')
 def test_get_process_ids():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
@@ -124,7 +124,7 @@ def test_get_process_ids():
 
 @pytest.mark.usefixtures('test_schema')
 def test_gen_process():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1_gen = ds.get_table('tbl1_gen', TEST_SCHEMA)
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
@@ -170,7 +170,7 @@ def test_gen_process():
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_modify_values() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
@@ -194,7 +194,7 @@ def test_inc_process_modify_values() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_delete_values_from_input() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
@@ -218,7 +218,7 @@ def test_inc_process_delete_values_from_input() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_delete_values_from_proc() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
@@ -237,7 +237,7 @@ def test_inc_process_delete_values_from_proc() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_proc_no_change() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
     tbl2 = ds.get_table('tbl2', TEST_SCHEMA)
@@ -268,7 +268,7 @@ def test_inc_process_proc_no_change() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_gen_process_many():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl_gen = ds.get_table('tbl_gen', TEST_SCHEMA)
     tbl1_gen = ds.get_table('tbl1_gen', TEST_SCHEMA)
@@ -307,7 +307,7 @@ def test_gen_process_many():
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_many_modify_values() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     tbl = ds.get_table('tbl', TEST_SCHEMA)
     tbl1 = ds.get_table('tbl1', TEST_SCHEMA)
@@ -361,7 +361,7 @@ def test_inc_process_many_modify_values() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_inc_process_many_several_outputs():
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
 
     BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
     GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
@@ -391,7 +391,7 @@ def test_inc_process_many_several_outputs():
 
 @pytest.mark.usefixtures('test_schema')
 def test_data_catalog() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -406,7 +406,7 @@ def test_data_catalog() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_store_node() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -429,7 +429,7 @@ def test_store_node() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_python_node() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -479,7 +479,7 @@ def temp_dir():
 
 @pytest.mark.usefixtures('test_schema', 'temp_dir')
 def test_label_studio_node() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
@@ -501,7 +501,7 @@ def test_label_studio_node() -> None:
 
 @pytest.mark.usefixtures('test_schema')
 def test_pipeline() -> None:
-    ds = DataStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
+    ds = MetaStore(DBCONNSTR, schema=DB_TEST_SCHEMA)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
