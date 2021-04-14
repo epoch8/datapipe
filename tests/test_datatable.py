@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, Column, Numeric
 
 from datapipe.store.table_store_sql import TableStoreDB, DBConn
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
-from datapipe.metastore import MetaStore, PRIMARY_KEY
+from datapipe.metastore import MetaStore
 
 from tests.util import assert_df_equal, assert_idx_equal
 
@@ -17,7 +17,7 @@ from tests.util import assert_df_equal, assert_idx_equal
 DBCONNSTR = 'sqlite:///:memory:'
 DB_TEST_SCHEMA = None
 
-TEST_SCHEMA = PRIMARY_KEY + [
+TEST_SCHEMA = [
     Column('a', Numeric),
 ]
 

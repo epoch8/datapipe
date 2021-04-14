@@ -6,7 +6,7 @@ import pandas as pd
 from sqlalchemy.sql.sqltypes import JSON
 import sqlalchemy as sql
 
-from datapipe.metastore import MetaStore, PRIMARY_KEY
+from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable
 from datapipe.store.table_store_sql import TableStoreDB, DBConn
 
@@ -43,7 +43,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
             table_store=TableStoreDB(
                 self.data_store.dbconn,
                 f'{kwargs["data_table_name"]}_data',
-                data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA
+                data_sql_schema=DATA_JSON_SQL_SCHEMA
             )
         )
         super().__init__(
@@ -171,7 +171,7 @@ class CompletionsDirStorageModified(BaseStorage):
             table_store=TableStoreDB(
                 self.data_store.dbconn,
                 f'{kwargs["data_table_name"]}_data',
-                data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA    
+                data_sql_schema=DATA_JSON_SQL_SCHEMA    
             )
         )
         path = str(Path(project_path) / 'annotation')

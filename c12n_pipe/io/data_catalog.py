@@ -6,7 +6,7 @@ from sqlalchemy.sql.sqltypes import (
     String, Integer, Float, JSON
 )
 
-from datapipe.metastore import MetaStore, PRIMARY_KEY
+from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable
 from datapipe.store.table_store_sql import TableStoreDB
 
@@ -44,7 +44,7 @@ class DataCatalog:
         self.catalog = catalog
 
         self.catalog_tables = {
-            name: DataTable(self.ds, name, table_store=TableStoreDB(self.ds.dbconn, f'{name}_data', PRIMARY_KEY + t.data_sql_schema, True))
+            name: DataTable(self.ds, name, table_store=TableStoreDB(self.ds.dbconn, f'{name}_data', t.data_sql_schema, True))
             for name, t in self.catalog.items()
         }
 

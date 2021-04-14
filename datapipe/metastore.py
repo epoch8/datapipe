@@ -17,9 +17,6 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 
-PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
-
-
 METADATA_SQL_SCHEMA = [
     Column('hash', Numeric),
     Column('create_ts', Float),  # Время создания строки
@@ -44,7 +41,7 @@ class MetaStore:
             self.meta_tables[name] = TableStoreDB(
                 self.dbconn,
                 f'{name}_meta',
-                PRIMARY_KEY + METADATA_SQL_SCHEMA,
+                METADATA_SQL_SCHEMA,
                 create_table=True
             )
         

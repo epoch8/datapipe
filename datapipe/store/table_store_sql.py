@@ -12,6 +12,9 @@ from datapipe.store.table_store import TableDataStore
 logger = logging.getLogger('datapipe.store.table_store_sql')
 
 
+PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
+
+
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     return {
         i.name: i.type for i in schema
@@ -55,7 +58,7 @@ class TableStoreDB(TableDataStore):
             self.dbconn = dbconn
         self.name = name
 
-        self.data_sql_schema = data_sql_schema
+        self.data_sql_schema = PRIMARY_KEY + data_sql_schema
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
