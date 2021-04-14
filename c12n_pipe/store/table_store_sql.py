@@ -43,14 +43,14 @@ class TableStoreDB(TableDataStore):
 
     def delete_rows(self, idx: Index) -> None:
         if len(idx) > 0:
-            logger.info(f'Deleting {len(idx)} rows from {self.name} data')
+            logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
 
             sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
-            logger.info(f'Inserting {len(df)} rows into {self.name} data')
+            logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
             df.to_sql(
                 name=self.name,

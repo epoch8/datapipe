@@ -33,7 +33,7 @@ class EventLogger:
         self.events_table.create(self.dbconn.con, checkfirst=True)
     
     def log_event(self, table_name, added_count, updated_count, deleted_count):
-        logger.info(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+        logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
 
         ins = self.events_table.insert().values(
             table_name=table_name,

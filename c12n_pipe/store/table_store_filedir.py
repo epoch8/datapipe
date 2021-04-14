@@ -23,7 +23,7 @@ class FileStoreAdapter(ABC):
         raise NotImplemented
 
 
-class JSONAdapter(FileStoreAdapter):
+class JSONFile(FileStoreAdapter):
     '''
     Converts each JSON file into Pandas record
     '''
@@ -37,7 +37,7 @@ class JSONAdapter(FileStoreAdapter):
         return json.dump(obj, f)
 
 
-class PILAdapter(FileStoreAdapter):
+class PILFile(FileStoreAdapter):
     '''
     Uses `image` column with PIL.Image for save/load
     '''

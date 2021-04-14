@@ -44,7 +44,7 @@ class DataCatalog:
         self.catalog = catalog
 
         self.catalog_tables = {
-            name: DataTable(self.ds, name, data_store=TableStoreDB(self.ds.dbconn, f'{name}_data', PRIMARY_KEY + t.data_sql_schema, True))
+            name: DataTable(self.ds, name, table_store=TableStoreDB(self.ds.dbconn, f'{name}_data', PRIMARY_KEY + t.data_sql_schema, True))
             for name, t in self.catalog.items()
         }
 

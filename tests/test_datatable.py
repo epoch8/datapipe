@@ -71,7 +71,7 @@ def dbconn():
 def test_cloudpickle(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     cloudpickle.dumps([ds, tbl])
 
@@ -79,7 +79,7 @@ def test_cloudpickle(dbconn) -> None:
 def test_simple(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
 
@@ -87,7 +87,7 @@ def test_simple(dbconn) -> None:
 def test_store_less_values(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl = DataTable(ds, 'test', data_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
     assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
@@ -99,8 +99,8 @@ def test_store_less_values(dbconn) -> None:
 def test_get_process_ids(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     tbl1.store(TEST_DF)
 
@@ -121,8 +121,8 @@ def test_get_process_ids(dbconn) -> None:
 def test_gen_process(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1_gen = DataTable(ds, 'tbl1_gen', data_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl1_gen = DataTable(ds, 'tbl1_gen', table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
 
     def gen():
         yield TEST_DF
@@ -166,8 +166,8 @@ def test_gen_process(dbconn) -> None:
 def test_inc_process_modify_values(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -189,8 +189,8 @@ def test_inc_process_modify_values(dbconn) -> None:
 def test_inc_process_delete_values_from_input(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -212,8 +212,8 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
 def test_inc_process_delete_values_from_proc(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return df[:5]
@@ -230,8 +230,8 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
 def test_inc_process_proc_no_change(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
     def id_func(df):
         return TEST_DF
@@ -260,14 +260,14 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 def test_gen_process_many(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl_gen = DataTable(ds, 'tbl_gen', data_store=TableStoreDB(dbconn, 'tbl_gen_data',TEST_SCHEMA, True))
-    tbl1_gen = DataTable(ds, 'tbl1_gen', data_store=TableStoreDB(dbconn, 'tbl1_gen_data',TEST_SCHEMA, True))
-    tbl2_gen = DataTable(ds, 'tbl2_gen', data_store=TableStoreDB(dbconn, 'tbl2_gen_data',TEST_SCHEMA, True))
-    tbl3_gen = DataTable(ds, 'tbl3_gen', data_store=TableStoreDB(dbconn, 'tbl3_gen_data',TEST_SCHEMA, True))
-    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data',TEST_SCHEMA, True))
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data',TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data',TEST_SCHEMA, True))
-    tbl3 = DataTable(ds, 'tbl3', data_store=TableStoreDB(dbconn, 'tbl3_data',TEST_SCHEMA, True))
+    tbl_gen = DataTable(ds, 'tbl_gen', table_store=TableStoreDB(dbconn, 'tbl_gen_data',TEST_SCHEMA, True))
+    tbl1_gen = DataTable(ds, 'tbl1_gen', table_store=TableStoreDB(dbconn, 'tbl1_gen_data',TEST_SCHEMA, True))
+    tbl2_gen = DataTable(ds, 'tbl2_gen', table_store=TableStoreDB(dbconn, 'tbl2_gen_data',TEST_SCHEMA, True))
+    tbl3_gen = DataTable(ds, 'tbl3_gen', table_store=TableStoreDB(dbconn, 'tbl3_gen_data',TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(dbconn, 'tbl_data',TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data',TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data',TEST_SCHEMA, True))
+    tbl3 = DataTable(ds, 'tbl3', table_store=TableStoreDB(dbconn, 'tbl3_data',TEST_SCHEMA, True))
 
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)
@@ -298,10 +298,10 @@ def test_gen_process_many(dbconn) -> None:
 def test_inc_process_many_modify_values(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl1 = DataTable(ds, 'tbl1', data_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', data_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
-    tbl3 = DataTable(ds, 'tbl3', data_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl3 = DataTable(ds, 'tbl3', table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
 
     def inc_func(df):
         df1 = df.copy()
@@ -354,9 +354,9 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
     GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
 
-    tbl = DataTable(ds, 'tbl', data_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl_good = DataTable(ds, 'tbl_good', data_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
-    tbl_bad = DataTable(ds, 'tbl_bad', data_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+    tbl_good = DataTable(ds, 'tbl_good', table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
+    tbl_bad = DataTable(ds, 'tbl_bad', table_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
 

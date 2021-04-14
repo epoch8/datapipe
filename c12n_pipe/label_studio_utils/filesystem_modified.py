@@ -40,7 +40,7 @@ class ExternalTasksJSONStorageModified(CloudStorage):
         self.data_table = DataTable(
             self.data_store,
             name=kwargs['data_table_name'],
-            data_store=TableStoreDB(
+            table_store=TableStoreDB(
                 self.data_store.dbconn,
                 f'{kwargs["data_table_name"]}_data',
                 data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA
@@ -168,7 +168,7 @@ class CompletionsDirStorageModified(BaseStorage):
         self.data_table = DataTable(
             self.data_store,
             name=kwargs['data_table_name'],
-            data_store=TableStoreDB(
+            table_store=TableStoreDB(
                 self.data_store.dbconn,
                 f'{kwargs["data_table_name"]}_data',
                 data_sql_schema=PRIMARY_KEY + DATA_JSON_SQL_SCHEMA    

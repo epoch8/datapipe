@@ -8,7 +8,7 @@ import pytest
 import fsspec
 from PIL import Image
 
-from c12n_pipe.store.table_store_filedir import PILAdapter, JSONAdapter, TableStoreFiledir
+from c12n_pipe.store.table_store_filedir import PILFile, JSONFile, TableStoreFiledir
 
 from tests.util import assert_df_equal, assert_idx_equal
 
@@ -43,7 +43,7 @@ def tmp_dir_with_json_data(tmp_dir):
 def test_read_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
-        adapter=JSONAdapter()
+        adapter=JSONFile()
     )
 
     assert_df_equal(ts.read_rows(), TEST_DF)
@@ -51,7 +51,7 @@ def test_read_json_rows(tmp_dir_with_json_data):
 def test_insert_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
-        adapter=JSONAdapter()
+        adapter=JSONFile()
     )
 
     ts.insert_rows(pd.DataFrame(
@@ -75,7 +75,7 @@ def tmp_dir_with_img_data(tmp_dir):
 def test_read_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_img_data}/{{id}}.png',
-        adapter=PILAdapter('png')
+        adapter=PILFile('png')
     )
 
     rows = ts.read_rows()
@@ -86,7 +86,7 @@ def test_read_png_rows(tmp_dir_with_img_data):
 def test_insert_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_img_data}/{{id}}.png',
-        adapter=PILAdapter('png')
+        adapter=PILFile('png')
     )
 
     ts.insert_rows(pd.DataFrame(

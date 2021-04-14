@@ -6,7 +6,7 @@ import logging
 import time
 
 import pandas as pd
-
+import tqdm
 
 from c12n_pipe.store.types import DataSchema, Index, ChunkMeta
 from c12n_pipe.store.table_store import TableDataStore
@@ -25,12 +25,12 @@ class DataTable:
         self,
         ms: 'MetaStore',
         name: str,
-        data_store: TableDataStore, # Если None - создается по дефолту
+        table_store: TableDataStore, # Если None - создается по дефолту
     ):
         self.ms = ms
         self.name = name
 
-        self.table_data = data_store
+        self.table_store = table_store
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
         res = old_meta_df.loc[deleted_idx]
@@ -41,17 +41,17 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_data.read_rows(idx)
+        return self.table_store.read_rows(idx)
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
-        logger.info(f'Inserting chunk {len(data_df)} rows into {self.name}')
+        logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
         new_idx, changed_idx, new_meta_df = self.ms.get_changes_for_store_chunk(self.name, data_df, now)
 
         # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
 
-        self.table_data.update_rows(data_df.loc[to_write_idx])
+        self.table_store.update_rows(data_df.loc[to_write_idx])
 
         self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
 
@@ -62,7 +62,7 @@ class DataTable:
         deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
         if len(deleted_idx) > 0:
-            self.table_data.delete_rows(deleted_idx)
+            self.table_store.delete_rows(deleted_idx)
 
         self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
 
@@ -149,7 +149,7 @@ def inc_process_many(
 
     idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
 
-    for input_dfs in input_dfs_gen:
+    for input_dfs in tqdm.tqdm(input_dfs_gen):
         if sum(len(j) for j in input_dfs) > 0:
             chunks_df = proc_func(*input_dfs, **kwargs)
 

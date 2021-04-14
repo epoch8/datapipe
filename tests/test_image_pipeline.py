@@ -7,7 +7,7 @@ from PIL import Image
 
 from c12n_pipe.metastore import MetaStore, DBConn
 from c12n_pipe.datatable import DataTable, gen_process, inc_process
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILAdapter
+from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILFile
 
 
 @pytest.fixture
@@ -22,18 +22,18 @@ def test_image_datatables(tmp_dir):
     tbl1 = DataTable(
         ds,
         'tbl1',
-        data_store=TableStoreFiledir(
+        table_store=TableStoreFiledir(
             f'{tmp_dir}/tbl1/{{id}}.png',
-            adapter=PILAdapter('png')
+            adapter=PILFile('png')
         )
     )
 
     tbl2 = DataTable(
         ds,
         'tbl2',
-        data_store=TableStoreFiledir(
+        table_store=TableStoreFiledir(
             f'{tmp_dir}/tbl2/{{id}}.png',
-            adapter=PILAdapter('png')
+            adapter=PILFile('png')
         )
     )
 
