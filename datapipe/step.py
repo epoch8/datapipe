@@ -2,8 +2,8 @@ from typing import List, TYPE_CHECKING
 from dataclasses import dataclass
 
 if TYPE_CHECKING:
-    from c12n_pipe.metastore import MetaStore
-    from c12n_pipe.datatable import DataTable
+    from datapipe.metastore import MetaStore
+    from datapipe.datatable import DataTable
 
 
 @dataclass

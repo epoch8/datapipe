@@ -8,13 +8,13 @@ from sqlalchemy.sql.expression import delete, and_, or_, select
 from sqlalchemy import Column, String, Numeric, Float
 import pandas as pd
 
-from c12n_pipe.store.types import DataSchema, Index, ChunkMeta
-from c12n_pipe.datatable import DataTable
-from c12n_pipe.store.table_store_sql import TableStoreDB
-from c12n_pipe.event_logger import EventLogger
+from datapipe.store.types import DataSchema, Index, ChunkMeta
+from datapipe.datatable import DataTable
+from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.event_logger import EventLogger
 
 
-logger = logging.getLogger('c12n_pipe.metastore')
+logger = logging.getLogger('datapipe.metastore')
 
 
 PRIMARY_KEY = [Column('id', String(100), primary_key=True)]

@@ -9,8 +9,8 @@ import pandas as pd
 
 from PIL import Image
 
-from c12n_pipe.store.types import Index
-from c12n_pipe.store.table_store import TableDataStore
+from datapipe.store.types import Index
+from datapipe.store.table_store import TableDataStore
 
 
 class FileStoreAdapter(ABC):

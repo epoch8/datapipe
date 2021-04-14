@@ -6,9 +6,9 @@ from sqlalchemy.sql.sqltypes import (
     String, Integer, Float, JSON
 )
 
-from c12n_pipe.metastore import MetaStore, PRIMARY_KEY
-from c12n_pipe.datatable import DataTable
-from c12n_pipe.store.table_store_sql import TableStoreDB
+from datapipe.metastore import MetaStore, PRIMARY_KEY
+from datapipe.datatable import DataTable
+from datapipe.store.table_store_sql import TableStoreDB
 
 
 COLUMN_TYPE_TO_SQL_COLUMN = {

@@ -5,14 +5,14 @@ import pandas as pd
 from sqlalchemy import Column, Table, String
 from sqlalchemy.sql.expression import select, delete
 
-from c12n_pipe.store.types import Index
-from c12n_pipe.store.table_store import TableDataStore
+from datapipe.store.types import Index
+from datapipe.store.table_store import TableDataStore
 
 if TYPE_CHECKING:
-    from c12n_pipe.metastore import DBConn
+    from datapipe.metastore import DBConn
 
 
-logger = logging.getLogger('c12n_pipe.store.table_store_sql')
+logger = logging.getLogger('datapipe.store.table_store_sql')
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:

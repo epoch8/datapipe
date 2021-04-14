@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 import logging
 
-from c12n_pipe.metastore import MetaStore
-from c12n_pipe.datatable import DataTable, inc_process_many, ExternalTableUpdater
+from datapipe.metastore import MetaStore
+from datapipe.datatable import DataTable, inc_process_many, ExternalTableUpdater
 
 from .dsl import ExternalTable, Catalog, Pipeline, BatchTransform
 from .step import ComputeStep

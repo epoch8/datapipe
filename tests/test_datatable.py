@@ -1,4 +1,3 @@
-from c12n_pipe.store.table_store_sql import TableStoreDB
 import time
 import tempfile
 from pathlib import Path
@@ -11,8 +10,9 @@ import cloudpickle
 import pandas as pd
 from sqlalchemy import create_engine, Column, Numeric
 
-from c12n_pipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
-from c12n_pipe.metastore import DBConn, MetaStore, PRIMARY_KEY
+from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
+from datapipe.metastore import DBConn, MetaStore, PRIMARY_KEY
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode
 from sqlalchemy.sql.sqltypes import JSON

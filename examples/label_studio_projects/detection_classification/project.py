@@ -5,7 +5,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List
-from c12n_pipe.datatable import MetaStore
+from datapipe.datatable import MetaStore
 
 
 import numpy as np

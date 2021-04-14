@@ -4,17 +4,16 @@ from pathlib import Path
 
 import pandas as pd
 
-from c12n_pipe.metastore import MetaStore
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILFile
-
+from datapipe.metastore import MetaStore
+from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
 from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform
-from datapipe.compute import build_compute, run_steps
+from datapipe.compute import run_pipeline
 
 
 CATALOG_DIR = Path('test_data/mnist')
 
 
-cat = Catalog({
+catalog = Catalog({
     'input_images': ExternalTable(
         store=TableStoreFiledir(CATALOG_DIR / 'testSet/testSet/img_{id}.jpg', PILFile('jpg')),
     ),
@@ -44,9 +43,8 @@ pipeline = Pipeline([
 
 def main() -> None:
     ms = MetaStore('sqlite:///./test_data/metadata.sqlite')
-    steps = build_compute(ms, cat, pipeline)
 
-    run_steps(ms, steps)
+    run_pipeline(ms, catalog, pipeline)
 
 
 if __name__ == '__main__':

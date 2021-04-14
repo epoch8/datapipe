@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from c12n_pipe.metastore import MetaStore, DBConn
-from c12n_pipe.datatable import DataTable, gen_process, inc_process
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILFile
+from datapipe.metastore import MetaStore, DBConn
+from datapipe.datatable import DataTable, gen_process, inc_process
+from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
 
 
 @pytest.fixture

@@ -6,11 +6,11 @@ from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
 
-logger = logging.getLogger('c12n_pipe.event_logger')
+logger = logging.getLogger('datapipe.event_logger')
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from c12n_pipe.metastore import DBConn
+    from datapipe.metastore import DBConn
 
 class EventLogger:
     def __init__(self, dbconn: 'DBConn'):

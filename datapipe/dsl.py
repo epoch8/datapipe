@@ -1,12 +1,12 @@
-from c12n_pipe.datatable import DataTable
 from typing import Callable, Dict, List, IO, Any, Union
 
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
 
-from c12n_pipe.store.table_store import TableDataStore
-from c12n_pipe.metastore import MetaStore
+from datapipe.datatable import DataTable
+from datapipe.store.table_store import TableDataStore
+from datapipe.metastore import MetaStore
 
 
 @dataclass

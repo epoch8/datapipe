@@ -4,20 +4,21 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, List
-from c12n_pipe.datatable import DataTable
-from cv_pipeliner.data_converters.brickit import BrickitDataConverter
 
 
 import pandas as pd
 from PIL import Image
 
-from cv_pipeliner.core.data import BboxData
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
 
-from c12n_pipe.datatable import MetaStore
+from cv_pipeliner.data_converters.brickit import BrickitDataConverter
+from cv_pipeliner.core.data import BboxData
+
+from datapipe.datatable import DataTable
+from datapipe.datatable import MetaStore
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 

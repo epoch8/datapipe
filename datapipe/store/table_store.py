@@ -3,7 +3,7 @@ from typing import Optional
 
 import pandas as pd
 
-from c12n_pipe.store.types import Index
+from datapipe.store.types import Index
 
 
 class TableDataStore(ABC):

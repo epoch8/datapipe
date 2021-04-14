@@ -8,7 +8,7 @@ import pytest
 import fsspec
 from PIL import Image
 
-from c12n_pipe.store.table_store_filedir import PILFile, JSONFile, TableStoreFiledir
+from datapipe.store.table_store_filedir import PILFile, JSONFile, TableStoreFiledir
 
 from tests.util import assert_df_equal, assert_idx_equal
 

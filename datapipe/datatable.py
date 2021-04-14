@@ -9,17 +9,17 @@ import math
 import pandas as pd
 import tqdm
 
-from c12n_pipe.store.types import DataSchema, Index, ChunkMeta
-from c12n_pipe.store.table_store import TableDataStore
+from datapipe.store.types import DataSchema, Index, ChunkMeta
+from datapipe.store.table_store import TableDataStore
 
 from datapipe.step import ComputeStep
 
 
 if TYPE_CHECKING:
-    from c12n_pipe.metastore import MetaStore
+    from datapipe.metastore import MetaStore
 
 
-logger = logging.getLogger('c12n_pipe.datatable')
+logger = logging.getLogger('datapipe.datatable')
 
 
 class DataTable:

@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Iterator, List, Literal, Tuple, Union
 from multiprocessing import Process
 
 from c12n_pipe.io.data_catalog import DataCatalog
-from c12n_pipe.datatable import gen_process_many, inc_process_many
+from datapipe.datatable import gen_process_many, inc_process_many
 from c12n_pipe.label_studio_utils.label_studio_c12n import LabelStudioConfig, run_app
 from label_studio.project import Project
 import pandas as pd

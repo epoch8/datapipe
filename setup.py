@@ -4,8 +4,8 @@ with open('requirements.txt') as f:
     install_requires = f.read().splitlines()
 
 setuptools.setup(
-    name='c12n_pipe',
-    version='0.3.1',
+    name='datapipe',
+    version='0.4.0',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=install_requires,
