@@ -6,7 +6,7 @@ import pandas as pd
 from c12n_pipe.store.types import Index
 
 
-class TableStore(ABC):
+class TableDataStore(ABC):
     def delete_rows(self, idx: Index) -> None:
         raise NotImplemented
     

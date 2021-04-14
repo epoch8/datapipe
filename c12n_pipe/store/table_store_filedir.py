@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 
 from c12n_pipe.store.types import Index
-from c12n_pipe.store.table_store import TableStore
+from c12n_pipe.store.table_store import TableDataStore
 
 
 class Adapter(Protocol):
@@ -54,7 +54,7 @@ class PILAdapter(Adapter):
         im.save(f, format=self.format)
 
 
-class TableStoreFiledir(TableStore):
+class TableStoreFiledir(TableDataStore):
     def __init__(self, path: str, ext: str, adapter: Adapter):
         self.path = path
         self.ext = ext

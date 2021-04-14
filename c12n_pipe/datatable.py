@@ -9,7 +9,7 @@ import pandas as pd
 
 
 from c12n_pipe.store.types import DataSchema, Index, ChunkMeta
-from c12n_pipe.store.table_store import TableStore
+from c12n_pipe.store.table_store import TableDataStore
 from c12n_pipe.store.table_store_sql import TableStoreDB
 
 
@@ -25,7 +25,7 @@ class DataTable:
         self,
         ds: 'MetaStore',
         name: str,
-        data_store: TableStore, # Если None - создается по дефолту
+        data_store: TableDataStore, # Если None - создается по дефолту
     ):
         self.ds = ds
         self.name = name

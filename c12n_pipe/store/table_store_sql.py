@@ -6,7 +6,7 @@ from sqlalchemy import Column, Table, String
 from sqlalchemy.sql.expression import select, delete
 
 from c12n_pipe.store.types import Index
-from c12n_pipe.store.table_store import TableStore
+from c12n_pipe.store.table_store import TableDataStore
 
 if TYPE_CHECKING:
     from c12n_pipe.metastore import DBConn
@@ -21,7 +21,7 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     }
 
 
-class TableStoreDB(TableStore):
+class TableStoreDB(TableDataStore):
     def __init__(self, 
         dbconn: 'DBConn',
         name: str,
