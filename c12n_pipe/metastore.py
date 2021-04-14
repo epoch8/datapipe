@@ -17,10 +17,6 @@ from c12n_pipe.event_logger import EventLogger
 logger = logging.getLogger('c12n_pipe.metastore')
 
 
-if TYPE_CHECKING:
-    from c12n_pipe.datatable import DataTable
-
-
 PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
 
 

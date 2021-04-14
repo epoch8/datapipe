@@ -1,28 +1,30 @@
-from typing import List
+from typing import List, Callable
+from dataclasses import dataclass
 
 import logging
 
 from c12n_pipe.metastore import MetaStore
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir
+from c12n_pipe.datatable import DataTable, inc_process_many, ExternalTableUpdater
 
-from ..dsl import ExternalTable, Catalog, Pipeline, BatchTransform
-from .filedir import ExternalFiledirUpdater
-from .steps import ComputeStep, BatchTransformIncStep
-
+from .dsl import ExternalTable, Catalog, Pipeline, BatchTransform
+from .step import ComputeStep
 
 logger = logging.getLogger('datapipe.compute')
 
 
-def build_external_table_updater(ms: MetaStore, catalog: Catalog, name: str) -> ComputeStep:
-    table = catalog.get_datatable(ms, name)
+@dataclass
+class BatchTransformIncStep(ComputeStep):
+    func: Callable
+    chunk_size: int
 
-    if isinstance(table.table_store, TableStoreFiledir):
-        return ExternalFiledirUpdater(
-            name=f'update_{name}',
-            table=table
+    def run(self, ms: MetaStore):
+        return inc_process_many(
+            ms,
+            self.input_dts,
+            self.output_dts,
+            self.func,
+            self.chunk_size
         )
-    else:
-        raise NotImplemented
 
 
 def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
@@ -30,7 +32,10 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
-            res.append(build_external_table_updater(ms, catalog, name))
+            res.append(ExternalTableUpdater(
+                name=f'update_{name}',
+                table=catalog.get_datatable(ms, name)
+            ))
     
     for step in pipeline.steps:
         if isinstance(step, BatchTransform):
