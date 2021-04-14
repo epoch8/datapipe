@@ -23,11 +23,11 @@ logger = logging.getLogger('c12n_pipe.datatable')
 class DataTable:
     def __init__(
         self,
-        ds: 'MetaStore',
+        ms: 'MetaStore',
         name: str,
         data_store: TableDataStore, # Если None - создается по дефолту
     ):
-        self.ds = ds
+        self.ms = ms
         self.name = name
 
         self.table_data = data_store
@@ -38,7 +38,7 @@ class DataTable:
         return res
 
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.ds.get_metadata(self.name, idx)
+        return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.table_data.read_rows(idx)
@@ -46,25 +46,25 @@ class DataTable:
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.info(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
-        new_idx, changed_idx, new_meta_df = self.ds.get_changes_for_store_chunk(self.name, data_df, now)
+        new_idx, changed_idx, new_meta_df = self.ms.get_changes_for_store_chunk(self.name, data_df, now)
 
         # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
 
         self.table_data.update_rows(data_df.loc[to_write_idx])
 
-        self.ds.update_meta_for_store_chunk(self.name, new_meta_df)
+        self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
 
         return data_df.index
 
     def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
-        deleted_idx = self.ds.get_changes_for_sync_meta(self.name, chunks, processed_idx)
+        deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
         if len(deleted_idx) > 0:
             self.table_data.delete_rows(deleted_idx)
 
-        self.ds.update_meta_for_sync_meta(self.name, deleted_idx)
+        self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
 
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
@@ -78,13 +78,13 @@ class DataTable:
         )
 
     def get_data_chunked(self, chunksize: int = 1000) -> Generator[pd.DataFrame, None, None]:
-        meta_df = self.ds.get_metadata(self.name, idx=None)
+        meta_df = self.ms.get_metadata(self.name, idx=None)
 
         for i in range(0, len(meta_df.index), chunksize):
             yield self.get_data(meta_df.index[i:i+chunksize])
 
     def get_indexes(self, idx: Optional[Index] = None) -> Index:
-        return self.ds.get_metadata(self.name, idx).index.tolist()
+        return self.ms.get_metadata(self.name, idx).index.tolist()
 
 
 def gen_process_many(
