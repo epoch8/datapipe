@@ -1,23 +1,22 @@
 from dataclasses import dataclass
-from datapipe.compute.metastore import MetaStore
 from typing import List, Any
 
 import logging
 
-from ..dsl import ExternalTable, Catalog, Filedir, Pipeline, Transform
-from .filedir import FiledirUpdater
+from c12n_pipe.metastore import MetaStore, DBConn
+
+from ..dsl import ExternalTable, Catalog, TableStoreFiledir, Pipeline, Transform
+from .filedir import ExternalFiledirUpdater
 from .steps import ComputeStep, IncStep
 
 
 logger = logging.getLogger('datapipe.compute')
 
 
-def build_table_updater(name, tbl: ExternalTable) -> ComputeStep:
-    if isinstance(tbl.store, Filedir):
-        return FiledirUpdater(
+def build_external_table_updater(name, tbl: ExternalTable) -> ComputeStep:
+    if isinstance(tbl.store, TableStoreFiledir):
+        return ExternalFiledirUpdater(
             name=f'update_{name}',
-            inputs=[],
-            outputs=[name,],
             table_name=name,
             filedir=tbl.store
         )
@@ -35,7 +34,7 @@ def build_compute(catalog: Catalog, pipeline: Pipeline):
 
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
-            res.append(build_table_updater(name, tbl))
+            res.append(build_external_table_updater(name, tbl))
     
     for step in pipeline.steps:
         if isinstance(step, Transform):

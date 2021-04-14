@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Callable
 
-from .metastore import MetaStore
+from c12n_pipe.metastore import MetaStore
 
 
 @dataclass

@@ -42,8 +42,7 @@ def tmp_dir_with_json_data(tmp_dir):
 
 def test_read_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_json_data,
-        ext='.json',
+        f'{tmp_dir_with_json_data}/{{id}}.json',
         adapter=JSONAdapter()
     )
 
@@ -51,8 +50,7 @@ def test_read_json_rows(tmp_dir_with_json_data):
 
 def test_insert_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_json_data,
-        ext='.json',
+        f'{tmp_dir_with_json_data}/{{id}}.json',
         adapter=JSONAdapter()
     )
 
@@ -76,8 +74,7 @@ def tmp_dir_with_img_data(tmp_dir):
 
 def test_read_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_img_data,
-        ext='.png',
+        f'{tmp_dir_with_img_data}/{{id}}.png',
         adapter=PILAdapter('png')
     )
 
@@ -88,8 +85,7 @@ def test_read_png_rows(tmp_dir_with_img_data):
 
 def test_insert_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
-        path=tmp_dir_with_img_data,
-        ext='.png',
+        f'{tmp_dir_with_img_data}/{{id}}.png',
         adapter=PILAdapter('png')
     )
 

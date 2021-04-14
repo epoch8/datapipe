@@ -20,4 +20,8 @@ class TableDataStore(ABC):
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         raise NotImplemented
 
-
+    def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
+        '''
+        Подготовить датафрейм с "какбы данными" на основе которых посчитается хеш и обновятся метаданные
+        '''
+        raise NotImplemented

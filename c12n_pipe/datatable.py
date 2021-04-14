@@ -48,11 +48,6 @@ class DataTable:
 
         new_idx, changed_idx, new_meta_df = self.ds.get_changes_for_store_chunk(self.name, data_df, now)
 
-        if len(new_idx) > 0 or len(changed_idx) > 0:
-            self.ds.event_logger.log_event(
-                self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
-            )
-
         # обновить данные (удалить только то, что изменилось, записать новое)
         to_write_idx = changed_idx.union(new_idx)
 
@@ -67,8 +62,6 @@ class DataTable:
         deleted_idx = self.ds.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
         if len(deleted_idx) > 0:
-            self.ds.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
-
             self.table_data.delete_rows(deleted_idx)
 
         self.ds.update_meta_for_sync_meta(self.name, deleted_idx)

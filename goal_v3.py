@@ -2,23 +2,23 @@ from pathlib import Path
 
 import pandas as pd
 
-from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, Transform, Filedir
-from datapipe.dsl_io import PILImage, CSVFile
-from datapipe.compute import MetaStore, build_compute, run_steps
+from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, Transform, TableStoreFiledir
+from datapipe.dsl_io import PILAdapter, CSVFile
+from datapipe.compute import MetaStore, DBConn, build_compute, run_steps
 
 
-CATALOG_DIR = Path('tests/mnist')
+CATALOG_DIR = Path('test_data/mnist')
 
 
 cat = Catalog({
     'input_images': ExternalTable(
-        store=Filedir(CATALOG_DIR / 'testSet/testSet/img_{id}.jpg', PILImage('jpg')),
+        store=TableStoreFiledir(CATALOG_DIR / 'testSet/testSet/img_{id}.jpg', PILAdapter('jpg')),
     ),
     # 'input_img_metadata': ExternalTable(
     #     store=Filedir(CATALOG_DIR / 'input/{id}.csv', CSVFile()),
     # ),
     'preprocessed_images': Table(
-        store=Filedir(CATALOG_DIR / 'ppcs/{id}.png', PILImage('png')),
+        store=TableStoreFiledir(CATALOG_DIR / 'ppcs/{id}.png', PILAdapter('png')),
     )
 })
 
@@ -37,7 +37,7 @@ pipeline = Pipeline([
 
 
 def main() -> None:
-    ms = MetaStore('sqlite:///')
+    ms = MetaStore(DBConn('sqlite:///./test_data/test.sqlite'))
     steps = build_compute(cat, pipeline)
 
     run_steps(ms, steps)

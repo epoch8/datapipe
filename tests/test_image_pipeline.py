@@ -23,8 +23,7 @@ def test_image_datatables(tmp_dir):
         ds,
         'tbl1',
         data_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl1',
-            '.png',
+            f'{tmp_dir}/tbl1/{{id}}.png',
             adapter=PILAdapter('png')
         )
     )
@@ -33,8 +32,7 @@ def test_image_datatables(tmp_dir):
         ds,
         'tbl2',
         data_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl2',
-            '.png',
+            f'{tmp_dir}/tbl2/{{id}}.png',
             adapter=PILAdapter('png')
         )
     )

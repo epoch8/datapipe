@@ -50,6 +50,8 @@ class TableStoreDB(TableDataStore):
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
+            logger.info(f'Inserting {len(df)} rows into {self.name} data')
+
             df.to_sql(
                 name=self.name,
                 con=self.dbconn.con,

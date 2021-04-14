@@ -4,14 +4,13 @@ from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
 
-
-class TableStore(ABC):
-    pass
+from c12n_pipe.store.table_store_filedir import TableStoreFiledir, FileStoreAdapter
+from c12n_pipe.store.table_store import TableDataStore
 
 
 @dataclass
 class Table:
-    store: TableStore
+    store: TableDataStore
 
 
 @dataclass
@@ -42,25 +41,3 @@ class Transform(PipelineStep):
     func: Callable
     inputs: List[str]
     outputs: List[str]
-
-
-class FileStoreAdapter(ABC):
-    def load(self, f: IO) -> Dict[str, Any]:
-        raise NotImplemented
-
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        raise NotImplemented
-
-
-class Filedir(TableStore):
-    def __init__(
-        self, 
-        filename_pattern: Union[str, Path],
-        adapter: FileStoreAdapter
-    ):    
-        if isinstance(filename_pattern, Path):
-            self.filename_pattern = str(filename_pattern.resolve())
-        else:
-            self.filename_pattern = filename_pattern
-        
-        self.adapter = adapter
