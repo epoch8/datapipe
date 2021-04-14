@@ -3,14 +3,14 @@ from typing import Iterator, List, Tuple, Optional, TYPE_CHECKING, Dict, Union
 import logging
 import time
 
-from sqlalchemy import create_engine, MetaData, Column
+from sqlalchemy import Column
 from sqlalchemy.sql.expression import delete, and_, or_, select
 from sqlalchemy import Column, String, Numeric, Float
 import pandas as pd
 
 from datapipe.store.types import DataSchema, Index, ChunkMeta
 from datapipe.datatable import DataTable
-from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.store.table_store_sql import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
 
 
@@ -27,30 +27,6 @@ METADATA_SQL_SCHEMA = [
     Column('process_ts', Float), # Время последней успешной обработки
     Column('delete_ts', Float),  # Время удаления
 ]
-
-
-class DBConn:
-    def __init__(self, connstr: str, schema: str = None):
-        self._init(connstr, schema)
-
-    def _init(self, connstr: str, schema: Optional[str]) -> None:
-        self.connstr = connstr
-        self.schema = schema
-
-        self.con = create_engine(
-            connstr,
-        )
-
-        self.sqla_metadata = MetaData(schema=schema)
-
-    def __getstate__(self):
-        return {
-            'connstr': self.connstr,
-            'schema': self.schema
-        }
-
-    def __setstate__(self, state):
-        self._init(state['connstr'], state['schema'])
 
 
 class MetaStore:

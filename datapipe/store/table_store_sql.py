@@ -1,15 +1,12 @@
-from typing import List, Any, Dict, Optional, TYPE_CHECKING
+from typing import List, Any, Dict, Union, Optional, TYPE_CHECKING
 
 import logging
 import pandas as pd
-from sqlalchemy import Column, Table, String
+from sqlalchemy import Column, Table, String, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete
 
 from datapipe.store.types import Index
 from datapipe.store.table_store import TableDataStore
-
-if TYPE_CHECKING:
-    from datapipe.metastore import DBConn
 
 
 logger = logging.getLogger('datapipe.store.table_store_sql')
@@ -21,14 +18,41 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     }
 
 
+class DBConn:
+    def __init__(self, connstr: str, schema: str = None):
+        self._init(connstr, schema)
+
+    def _init(self, connstr: str, schema: Optional[str]) -> None:
+        self.connstr = connstr
+        self.schema = schema
+
+        self.con = create_engine(
+            connstr,
+        )
+
+        self.sqla_metadata = MetaData(schema=schema)
+
+    def __getstate__(self):
+        return {
+            'connstr': self.connstr,
+            'schema': self.schema
+        }
+
+    def __setstate__(self, state):
+        self._init(state['connstr'], state['schema'])
+
+
 class TableStoreDB(TableDataStore):
     def __init__(self, 
-        dbconn: 'DBConn',
+        dbconn: Union['DBConn', str],
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = True
     ) -> None:
-        self.dbconn = dbconn
+        if isinstance(dbconn, str):
+            self.dbconn = DBConn(dbconn)
+        else:
+            self.dbconn = dbconn
         self.name = name
 
         self.data_sql_schema = data_sql_schema

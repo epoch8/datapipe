@@ -6,9 +6,9 @@ import pandas as pd
 from sqlalchemy.sql.sqltypes import JSON
 import sqlalchemy as sql
 
-from datapipe.metastore import DBConn, MetaStore, PRIMARY_KEY
+from datapipe.metastore import MetaStore, PRIMARY_KEY
 from datapipe.datatable import DataTable
-from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.store.table_store_sql import TableStoreDB, DBConn
 
 from label_studio.storage.base import CloudStorage, BaseForm
 from label_studio.storage.filesystem import BaseStorage

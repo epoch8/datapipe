@@ -9,9 +9,9 @@ import time
 from sqlalchemy.sql.sqltypes import JSON
 from sqlalchemy import create_engine, Column, Numeric
 
-from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.store.table_store_sql import DBConn
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
-from datapipe.metastore import DBConn, MetaStore, PRIMARY_KEY
+from datapipe.metastore import MetaStore, PRIMARY_KEY
 
 from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import Pipeline, StoreNode, PythonNode, LabelStudioNode

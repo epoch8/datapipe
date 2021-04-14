@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.metastore import MetaStore, DBConn
+from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
 
@@ -17,7 +17,7 @@ def tmp_dir():
 
 
 def test_image_datatables(tmp_dir):
-    ds = MetaStore(DBConn(f'sqlite:///{tmp_dir}/db.sqlite'))
+    ds = MetaStore(f'sqlite:///{tmp_dir}/db.sqlite')
 
     tbl1 = DataTable(
         ds,
