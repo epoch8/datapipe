@@ -5,7 +5,6 @@ from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
 
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir
 from c12n_pipe.store.table_store import TableDataStore
 from c12n_pipe.metastore import MetaStore
 
@@ -42,7 +41,7 @@ class Pipeline:
 
 
 @dataclass
-class Transform(PipelineStep):
+class BatchTransform(PipelineStep):
     func: Callable
     inputs: List[str]
     outputs: List[str]

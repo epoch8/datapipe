@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, Transform, TableStoreFiledir
-from c12n_pipe.store.table_store_filedir import PILFile
-from datapipe.compute import MetaStore, DBConn, build_compute, run_steps
+from c12n_pipe.metastore import MetaStore
+from c12n_pipe.store.table_store_filedir import TableStoreFiledir, PILFile
+
+from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform
+from datapipe.compute import build_compute, run_steps
 
 
 CATALOG_DIR = Path('test_data/mnist')
@@ -25,14 +27,14 @@ cat = Catalog({
 })
 
 
-def preprocess_images(df: pd.DataFrame) -> pd.DataFrame:
+def batch_preprocess_images(df: pd.DataFrame) -> pd.DataFrame:
     df['image'] = df['image'].apply(lambda im: im.resize((50,50)))
     return df
 
 
 pipeline = Pipeline([
-    Transform(
-        preprocess_images,
+    BatchTransform(
+        batch_preprocess_images,
         inputs=['input_images'],
         outputs=['preprocessed_images'],
         chunk_size=100
@@ -41,7 +43,7 @@ pipeline = Pipeline([
 
 
 def main() -> None:
-    ms = MetaStore(DBConn('sqlite:///./test_data/test.sqlite'))
+    ms = MetaStore('sqlite:///./test_data/metadata.sqlite')
     steps = build_compute(ms, cat, pipeline)
 
     run_steps(ms, steps)

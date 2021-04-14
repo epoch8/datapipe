@@ -15,7 +15,7 @@ class ComputeStep:
 
 
 @dataclass
-class IncStep(ComputeStep):
+class BatchTransformIncStep(ComputeStep):
     func: Callable
     chunk_size: int
 

@@ -1,4 +1,4 @@
-from typing import Iterator, List, Tuple, Optional, TYPE_CHECKING, Dict
+from typing import Iterator, List, Tuple, Optional, TYPE_CHECKING, Dict, Union
 
 import logging
 import time
@@ -58,8 +58,11 @@ class DBConn:
 
 
 class MetaStore:
-    def __init__(self, dbconn: DBConn) -> None:
-        self.dbconn = dbconn
+    def __init__(self, dbconn: Union[str, DBConn]) -> None:
+        if isinstance(dbconn, str):
+            self.dbconn = DBConn(dbconn)
+        else:
+            self.dbconn = dbconn
         self.event_logger = EventLogger(self.dbconn)
 
         self.meta_tables: Dict[str, TableStoreDB] = {}

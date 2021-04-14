@@ -4,6 +4,7 @@ from abc import ABC
 import inspect
 import logging
 import time
+import math
 
 import pandas as pd
 import tqdm
@@ -149,20 +150,21 @@ def inc_process_many(
 
     idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
 
-    for input_dfs in tqdm.tqdm(input_dfs_gen):
-        if sum(len(j) for j in input_dfs) > 0:
-            chunks_df = proc_func(*input_dfs, **kwargs)
+    if len(idx) > 0:
+        for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
+            if sum(len(j) for j in input_dfs) > 0:
+                chunks_df = proc_func(*input_dfs, **kwargs)
 
-            for k, res_dt in enumerate(res_dts):
-                # Берем k-ое значение функции для k-ой таблички
-                chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
+                for k, res_dt in enumerate(res_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
-                # Добавляем результат в результирующие чанки
-                res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
+                    # Добавляем результат в результирующие чанки
+                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
 
-    # Синхронизируем мета-данные для всех K табличек
-    for k, res_dt in enumerate(res_dts):
-        res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
+        # Синхронизируем мета-данные для всех K табличек
+        for k, res_dt in enumerate(res_dts):
+            res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
 
 
 def inc_process(

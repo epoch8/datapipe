@@ -1,8 +1,6 @@
 from c12n_pipe.datatable import DataTable
-from c12n_pipe.store.table_store_filedir import TableStoreFiledir
 from c12n_pipe.metastore import MetaStore
 
-from ..dsl import TableStoreFiledir
 from .steps import ComputeStep
 
 
