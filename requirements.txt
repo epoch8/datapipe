@@ -12,6 +12,10 @@ attrs==20.3.0
     # via
     #   jsonschema
     #   label-studio
+azure-core==1.13.0
+    # via azure-storage-blob
+azure-storage-blob==12.8.0
+    # via label-studio
 blis==0.4.1
     # via label-studio
 boto3==1.17.52
@@ -29,7 +33,10 @@ catalogue==2.0.3
 certifi==2019.11.28
     # via
     #   label-studio
+    #   msrest
     #   requests
+cffi==1.14.5
+    # via cryptography
 chardet==3.0.4
     # via
     #   label-studio
@@ -44,6 +51,8 @@ cloudpickle==1.6.0
     # via -r requirements.in
 colorama==0.4.4
     # via label-studio
+cryptography==3.4.7
+    # via azure-storage-blob
 cymem==2.0.3
     # via label-studio
 et-xmlfile==1.0.1
@@ -84,6 +93,8 @@ idna==2.8
     # via
     #   label-studio
     #   requests
+isodate==0.6.0
+    # via msrest
 itsdangerous==1.1.0
     # via
     #   flask
@@ -101,9 +112,9 @@ joblib==1.0.1
     # via nltk
 jsonschema==3.2.0
     # via label-studio
-label-studio-converter==0.0.28
+label-studio-converter==0.0.23rc3
     # via label-studio
-label-studio==0.9.0.post5
+label-studio==0.9.1.post1
     # via -r requirements.in
 lxml==4.6.3
     # via label-studio
@@ -114,6 +125,8 @@ markupsafe==1.1.1
     #   wtforms
 mixpanel==4.4.0
     # via label-studio
+msrest==0.6.21
+    # via azure-storage-blob
 nltk==3.5
     # via label-studio-converter
 numpy==1.20.2
@@ -121,6 +134,8 @@ numpy==1.20.2
     #   blis
     #   label-studio
     #   pandas
+oauthlib==3.1.0
+    # via requests-oauthlib
 openpyxl==3.0.7
     # via -r requirements.in
 ordered-set==4.0.2
@@ -150,6 +165,8 @@ pyasn1==0.4.8
     # via
     #   pyasn1-modules
     #   rsa
+pycparser==2.20
+    # via cffi
 pyparsing==2.4.7
     # via packaging
 pyrsistent==0.17.3
@@ -171,14 +188,21 @@ pyyaml==5.3.1
 rarfile==3.1
     # via label-studio
 redis==3.5.3
-    # via rq
+    # via
+    #   label-studio
+    #   rq
 regex==2021.4.4
     # via nltk
+requests-oauthlib==1.3.0
+    # via msrest
 requests==2.25.1
     # via
+    #   azure-core
     #   google-api-core
     #   label-studio
     #   label-studio-converter
+    #   msrest
+    #   requests-oauthlib
 rq==1.8.0
     # via label-studio
 rsa==4.7.2
@@ -187,10 +211,12 @@ s3transfer==0.3.7
     # via boto3
 six==1.15.0
     # via
+    #   azure-core
     #   google-api-core
     #   google-auth
     #   google-cloud-core
     #   google-resumable-media
+    #   isodate
     #   jsonschema
     #   label-studio
     #   mixpanel
