@@ -3,12 +3,13 @@ name: Python package
 on: [push]
 
 jobs:
-  build:
+  build_and_test:
 
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.8]
+        test-db-env: ['postgres', 'sqlite']
 
     services:
       # Label used to access the service container

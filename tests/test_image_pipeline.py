@@ -12,6 +12,8 @@ from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
 
+from .util import dbconn
+
 
 @pytest.fixture
 def tmp_dir():
@@ -36,8 +38,8 @@ def resize_images(df):
     return df
 
 
-def test_image_datatables(tmp_dir):
-    ms = MetaStore(f'sqlite:///{tmp_dir}/db.sqlite')
+def test_image_datatables(dbconn, tmp_dir):
+    ms = MetaStore(dbconn)
 
     tbl1 = DataTable(
         ms,
@@ -76,7 +78,7 @@ def test_image_datatables(tmp_dir):
     assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 10)
 
 
-def test_image_pipeline(tmp_dir):
+def test_image_pipeline(dbconn, tmp_dir):
     catalog = Catalog({
         'tbl1': Table(
             store=TableStoreFiledir(
@@ -107,7 +109,7 @@ def test_image_pipeline(tmp_dir):
     assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 0)
     assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 0)
 
-    ms = MetaStore(f'sqlite:///{tmp_dir}/db.sqlite')
+    ms = MetaStore(dbconn)
     run_pipeline(ms, catalog, pipeline)
 
     assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 10)
