@@ -49,6 +49,7 @@ jobs:
       run: |
         pytest
       env:
+        TEST_DB_ENV: ${{ matrix.test-db-env }}
         # The hostname used to communicate with the PostgreSQL service container
         POSTGRES_HOST: localhost
         # The default PostgreSQL port
