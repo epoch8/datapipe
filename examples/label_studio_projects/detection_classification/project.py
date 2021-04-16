@@ -5,7 +5,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List
-from c12n_pipe.datatable import DataStore
+from datapipe.datatable import MetaStore
 
 
 import numpy as np
@@ -13,7 +13,7 @@ import pandas as pd
 from PIL import Image
 
 from cv_pipeliner.core.data import ImageData, BboxData
-from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
+from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
@@ -226,29 +226,29 @@ def main(
     project_path_detection = project_path / 'detection'
     project_path_classification = project_path / 'classification'
     bboxes_images_dir = Path(bboxes_images_dir)
-    ds = DataStore(connstr=connstr, schema=schema)
+    ds = MetaStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'input_images': AbstractDataTable([
+            'input_images': DBTable([
                 Column('image_path', String)
             ]),
-            'detection_tasks': AbstractDataTable([
+            'detection_tasks': DBTable([
                 Column('data', JSON)
             ]),
-            'detection_annotation': AbstractDataTable([
+            'detection_annotation': DBTable([
                 Column('data', JSON)
             ]),
-            'detection_annotation_parsed': AbstractDataTable([
+            'detection_annotation_parsed': DBTable([
                 Column('data', JSON)
             ]),
-            'classification_tasks': AbstractDataTable([
+            'classification_tasks': DBTable([
                 Column('data', JSON)
             ]),
-            'classification_annotation': AbstractDataTable([
+            'classification_annotation': DBTable([
                 Column('data', JSON)
             ]),
-            'classification_annotation_parsed': AbstractDataTable([
+            'classification_annotation_parsed': DBTable([
                 Column('data', JSON)
             ]),
         }

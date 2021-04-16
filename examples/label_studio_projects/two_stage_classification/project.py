@@ -4,21 +4,22 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, List
-from c12n_pipe.datatable import DataTable
-from cv_pipeliner.data_converters.brickit import BrickitDataConverter
 
 
 import pandas as pd
 from PIL import Image
 
-from cv_pipeliner.core.data import BboxData
 from sqlalchemy.engine import create_engine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 from tqdm import tqdm
 
-from c12n_pipe.datatable import DataStore
-from c12n_pipe.io.data_catalog import AbstractDataTable, DataCatalog
+from cv_pipeliner.data_converters.brickit import BrickitDataConverter
+from cv_pipeliner.core.data import BboxData
+
+from datapipe.datatable import DataTable
+from datapipe.datatable import MetaStore
+from c12n_pipe.io.data_catalog import DBTable, DataCatalog
 from c12n_pipe.io.node import StoreNode, PythonNode, LabelStudioNode, Pipeline
 
 
@@ -183,38 +184,38 @@ def main(
     project_path = Path(project_path)
     project_path_stage1 = project_path / 'stage1'
     project_path_stage2 = project_path / 'stage2'
-    ds = DataStore(connstr=connstr, schema=schema)
+    ds = MetaStore(connstr=connstr, schema=schema)
     data_catalog = DataCatalog(
         ds=ds,
         catalog={
-            'input_bboxes': AbstractDataTable([
+            'input_bboxes': DBTable([
                 Column('data', String)
             ]),
-            'stage1_tasks': AbstractDataTable([
+            'stage1_tasks': DBTable([
                 Column('data', String)
             ]),
-            'stage1_annotation': AbstractDataTable([
+            'stage1_annotation': DBTable([
                 Column('data', JSON)
             ]),
-            'stage1_annotation_parsed': AbstractDataTable([
+            'stage1_annotation_parsed': DBTable([
                 Column('data', JSON)
             ]),
-            'stage1_annotation_parsed_good': AbstractDataTable([
+            'stage1_annotation_parsed_good': DBTable([
                 Column('data', JSON)
             ]),
-            'stage1_annotation_parsed_bad': AbstractDataTable([
+            'stage1_annotation_parsed_bad': DBTable([
                 Column('data', JSON)
             ]),
-            'stage2_tasks': AbstractDataTable([
+            'stage2_tasks': DBTable([
                 Column('data', String)
             ]),
-            'stage2_annotation': AbstractDataTable([
+            'stage2_annotation': DBTable([
                 Column('data', JSON)
             ]),
-            'stage2_annotation_parsed': AbstractDataTable([
+            'stage2_annotation_parsed': DBTable([
                 Column('data', JSON)
             ]),
-            'total_annotation': AbstractDataTable([
+            'total_annotation': DBTable([
                 Column('data', JSON)
             ]),
         }

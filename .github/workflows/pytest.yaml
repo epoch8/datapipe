@@ -3,12 +3,13 @@ name: Python package
 on: [push]
 
 jobs:
-  build:
+  build_and_test:
 
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.8]
+        test-db-env: ['postgres', 'sqlite']
 
     services:
       # Label used to access the service container
@@ -48,6 +49,7 @@ jobs:
       run: |
         pytest
       env:
+        TEST_DB_ENV: ${{ matrix.test-db-env }}
         # The hostname used to communicate with the PostgreSQL service container
         POSTGRES_HOST: localhost
         # The default PostgreSQL port

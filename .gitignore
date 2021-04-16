@@ -1,5 +1,7 @@
+.DS_Store
 .mypy_cache/
 .pytest_cache/
 .venv/
 __pycache__/
 *.egg-info
+test_data/
