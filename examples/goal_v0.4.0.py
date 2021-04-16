@@ -1,11 +1,9 @@
-from typing import TYPE_CHECKING
-
 from pathlib import Path
 
 import pandas as pd
 
 from datapipe.metastore import MetaStore
-from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
+from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform
 from datapipe.compute import run_pipeline
 
@@ -27,7 +25,7 @@ catalog = Catalog({
 
 
 def batch_preprocess_images(df: pd.DataFrame) -> pd.DataFrame:
-    df['image'] = df['image'].apply(lambda im: im.resize((50,50)))
+    df['image'] = df['image'].apply(lambda im: im.resize((50, 50)))
     return df
 
 

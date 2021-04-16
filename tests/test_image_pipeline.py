@@ -11,7 +11,7 @@ from PIL import Image
 from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable, gen_process, inc_process
-from datapipe.store.table_store_filedir import TableStoreFiledir, PILFile
+from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
 
 from .util import dbconn
