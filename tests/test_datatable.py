@@ -1,21 +1,15 @@
-from typing import Tuple
-
 import pytest
 
 import cloudpickle
 import pandas as pd
-from sqlalchemy import create_engine, Column, Numeric
+from sqlalchemy import Column, Numeric
 
-from datapipe.store.table_store_sql import TableStoreDB, DBConn
+from datapipe.store.table_store_sql import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
 
-from tests.util import assert_df_equal, assert_idx_equal
+from tests.util import assert_df_equal, assert_idx_equal, dbconn
 
-
-# DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
-DBCONNSTR = 'sqlite:///:memory:'
-DB_TEST_SCHEMA = None
 
 TEST_SCHEMA = [
     Column('a', Numeric),
@@ -40,25 +34,6 @@ def yield_df(data):
 
     return f
 
-
-@pytest.fixture
-def dbconn():
-    if DB_TEST_SCHEMA:
-        eng = create_engine(DBCONNSTR)
-
-        try:
-            eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
-        except:
-            pass
-
-        eng.execute(f'CREATE SCHEMA {DB_TEST_SCHEMA}')
-
-        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
-
-        eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
-    
-    else:
-        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
 def test_cloudpickle(dbconn) -> None:
     ds = MetaStore(dbconn)
