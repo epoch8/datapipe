@@ -4,13 +4,13 @@ from abc import ABC
 from dataclasses import dataclass
 
 from datapipe.datatable import DataTable
-from datapipe.store.table_store import TableDataStore
+from datapipe.store.table_store import TableStore
 from datapipe.metastore import MetaStore
 
 
 @dataclass
 class Table:
-    store: TableDataStore
+    store: TableStore
 
 
 @dataclass

@@ -6,7 +6,7 @@ from sqlalchemy import Column, Table, String, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete
 
 from datapipe.store.types import Index
-from datapipe.store.table_store import TableDataStore
+from datapipe.store.table_store import TableStore
 
 
 logger = logging.getLogger('datapipe.store.database')
@@ -45,7 +45,7 @@ class DBConn:
         self._init(state['connstr'], state['schema'])
 
 
-class TableStoreDB(TableDataStore):
+class TableStoreDB(TableStore):
     def __init__(
         self,
         dbconn: Union['DBConn', str],

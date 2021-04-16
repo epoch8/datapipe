@@ -10,10 +10,10 @@ import pandas as pd
 from PIL import Image
 
 from datapipe.store.types import Index
-from datapipe.store.table_store import TableDataStore
+from datapipe.store.table_store import TableStore
 
 
-class FileStoreAdapter(ABC):
+class ItemStoreFileAdapter(ABC):
     mode: str
 
     def load(self, f: IO) -> Dict[str, Any]:
@@ -23,7 +23,7 @@ class FileStoreAdapter(ABC):
         raise NotImplementedError
 
 
-class JSONFile(FileStoreAdapter):
+class JSONFile(ItemStoreFileAdapter):
     '''
     Converts each JSON file into Pandas record
     '''
@@ -37,7 +37,7 @@ class JSONFile(FileStoreAdapter):
         return json.dump(obj, f)
 
 
-class PILFile(FileStoreAdapter):
+class PILFile(ItemStoreFileAdapter):
     '''
     Uses `image` column with PIL.Image for save/load
     '''
@@ -69,8 +69,8 @@ def _pattern_to_match(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
 
 
-class TableStoreFiledir(TableDataStore):
-    def __init__(self, filename_pattern: Union[str, Path], adapter: FileStoreAdapter):
+class TableStoreFiledir(TableStore):
+    def __init__(self, filename_pattern: Union[str, Path], adapter: ItemStoreFileAdapter):
         if isinstance(filename_pattern, Path):
             self.filename_pattern = str(filename_pattern.resolve())
         else:

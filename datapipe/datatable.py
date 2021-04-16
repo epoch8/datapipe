@@ -9,7 +9,7 @@ import pandas as pd
 import tqdm
 
 from datapipe.store.types import Index, ChunkMeta
-from datapipe.store.table_store import TableDataStore
+from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
 
@@ -26,7 +26,7 @@ class DataTable:
         self,
         ms: 'MetaStore',
         name: str,
-        table_store: TableDataStore,  # Если None - создается по дефолту
+        table_store: TableStore,  # Если None - создается по дефолту
     ):
         self.ms = ms
         self.name = name

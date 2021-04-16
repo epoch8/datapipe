@@ -8,7 +8,7 @@ from pathlib import Path
 from datapipe.store.types import Index
 
 
-class TableDataStore(ABC):
+class TableStore(ABC):
     def delete_rows(self, idx: Index) -> None:
         raise NotImplementedError
 
@@ -32,7 +32,7 @@ class TableDataStore(ABC):
 
 
 @dataclass
-class TableDataSingleFileStore(TableDataStore):
+class TableDataSingleFileStore(TableStore):
     filename: Union[Path, str]
 
     def load_file(self) -> Optional[pd.DataFrame]:
