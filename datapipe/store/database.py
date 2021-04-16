@@ -9,7 +9,7 @@ from datapipe.store.types import Index
 from datapipe.store.table_store import TableDataStore
 
 
-logger = logging.getLogger('datapipe.store.table_store_sql')
+logger = logging.getLogger('datapipe.store.database')
 
 
 PRIMARY_KEY = [Column('id', String(100), primary_key=True)]

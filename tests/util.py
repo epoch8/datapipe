@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from sqlalchemy import create_engine
 
-from datapipe.store.table_store_sql import DBConn
+from datapipe.store.database import DBConn
 
 
 def assert_idx_equal(a, b):
@@ -35,7 +35,9 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
 @pytest.fixture
 def dbconn():
     if os.environ.get('TEST_DB_ENV') == 'postgres':
-        DBCONNSTR = f'postgresql://postgres:password@{os.getenv("POSTGRES_HOST", "localhost")}:{os.getenv("POSTGRES_PORT", 5432)}/postgres'
+        pg_host = os.getenv("POSTGRES_HOST", "localhost")
+        pg_port = os.getenv("POSTGRES_PORT", "5432")
+        DBCONNSTR = f'postgresql://postgres:password@{pg_host}:{pg_port}/postgres'
         DB_TEST_SCHEMA = 'test'
     else:
         DBCONNSTR = 'sqlite:///:memory:'
@@ -46,7 +48,7 @@ def dbconn():
 
         try:
             eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
-        except:
+        except Exception:
             pass
 
         eng.execute(f'CREATE SCHEMA {DB_TEST_SCHEMA}')
@@ -54,7 +56,6 @@ def dbconn():
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
         eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
-    
+
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
-

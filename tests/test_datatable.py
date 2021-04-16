@@ -4,7 +4,7 @@ import cloudpickle
 import pandas as pd
 from sqlalchemy import Column, Numeric
 
-from datapipe.store.table_store_sql import TableStoreDB
+from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
 

@@ -9,7 +9,7 @@ import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.datatable import DataTable
-from datapipe.store.table_store_sql import TableStoreDB, DBConn
+from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
 
 
