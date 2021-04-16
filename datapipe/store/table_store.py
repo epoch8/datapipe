@@ -10,17 +10,17 @@ from datapipe.store.types import Index
 
 class TableDataStore(ABC):
     def delete_rows(self, idx: Index) -> None:
-        raise NotImplemented
-    
+        raise NotImplementedError
+
     def insert_rows(self, df: pd.DataFrame) -> None:
-        raise NotImplemented
-    
+        raise NotImplementedError
+
     def update_rows(self, df: pd.DataFrame) -> None:
         self.delete_rows(df.index)
         self.insert_rows(df)
-    
+
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        raise NotImplemented
+        raise NotImplementedError
 
     def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
         '''
@@ -37,10 +37,10 @@ class TableDataSingleFileStore(TableDataStore):
 
     def load_file(self) -> Optional[pd.DataFrame]:
         raise NotImplementedError
-    
+
     def save_file(self, df: pd.DataFrame) -> None:
         raise NotImplementedError
-    
+
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         file_df = self.load_file()
 
@@ -49,7 +49,7 @@ class TableDataSingleFileStore(TableDataStore):
                 return file_df.loc[idx]
             else:
                 return file_df
-        
+
         else:
             return pd.DataFrame()
 
@@ -62,7 +62,7 @@ class TableDataSingleFileStore(TableDataStore):
             new_df = file_df.append(df)
 
         self.save_file(new_df)
-    
+
     def delete_rows(self, idx: Index) -> None:
         file_df = self.load_file()
 
@@ -70,7 +70,7 @@ class TableDataSingleFileStore(TableDataStore):
             new_df = file_df.loc[file_df.index.difference(idx)]
 
             self.save_file(new_df)
-    
+
     def update_rows(self, df: pd.DataFrame) -> None:
         file_df = self.load_file()
 

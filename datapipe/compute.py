@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import logging
 
 from datapipe.metastore import MetaStore
-from datapipe.datatable import DataTable, gen_process_many, inc_process_many, ExternalTableUpdater
+from datapipe.datatable import gen_process_many, inc_process_many, ExternalTableUpdater
 
 from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform
 from .step import ComputeStep
@@ -21,6 +21,7 @@ class BatchGenerateStep(ComputeStep):
             self.output_dts,
             self.func
         )
+
 
 @dataclass
 class BatchTransformIncStep(ComputeStep):
@@ -46,7 +47,7 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
                 name=f'update_{name}',
                 table=catalog.get_datatable(ms, name)
             ))
-    
+
     for step in pipeline.steps:
         if isinstance(step, BatchGenerate):
             output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
@@ -63,15 +64,15 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
             output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
 
             res.append(BatchTransformIncStep(
-                f'{step.func.__name__}', 
-                input_dts=input_dts, 
+                f'{step.func.__name__}',
+                input_dts=input_dts,
                 output_dts=output_dts,
                 func=step.func,
                 chunk_size=step.chunk_size
             ))
-    
+
     return res
-    
+
 
 def print_compute(steps: List[ComputeStep]) -> None:
     import pprint

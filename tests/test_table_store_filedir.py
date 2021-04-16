@@ -48,6 +48,7 @@ def test_read_json_rows(tmp_dir_with_json_data):
 
     assert_df_equal(ts.read_rows(), TEST_DF)
 
+
 def test_insert_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
@@ -83,6 +84,7 @@ def test_read_png_rows(tmp_dir_with_img_data):
     assert_idx_equal(rows.index, ['aaa'])
     assert('image' in rows.columns)
 
+
 def test_insert_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_img_data}/{{id}}.png',
@@ -90,7 +92,7 @@ def test_insert_png_rows(tmp_dir_with_img_data):
     )
 
     ts.insert_rows(pd.DataFrame(
-        {'image': [Image.fromarray(np.zeros((100,100,3), 'u8'), 'RGB')]},
+        {'image': [Image.fromarray(np.zeros((100, 100, 3), 'u8'), 'RGB')]},
         index=['bbb']
     ))
 

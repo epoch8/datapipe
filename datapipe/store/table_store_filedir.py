@@ -17,10 +17,10 @@ class FileStoreAdapter(ABC):
     mode: str
 
     def load(self, f: IO) -> Dict[str, Any]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class JSONFile(FileStoreAdapter):
@@ -32,7 +32,7 @@ class JSONFile(FileStoreAdapter):
 
     def load(self, f: IO) -> Dict[str, Any]:
         return json.load(f)
-    
+
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         return json.dump(obj, f)
 
@@ -51,17 +51,19 @@ class PILFile(FileStoreAdapter):
         im = Image.open(f)
         im.load()
         return {'image': im}
-    
+
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im : Image.Image = obj['image']
+        im: Image.Image = obj['image']
         im.save(f, format=self.format)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
     return re.findall(r'\{([^/]+?)\}', pat)
 
+
 def _pattern_to_glob(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', '*', pat)
+
 
 def _pattern_to_match(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
@@ -73,7 +75,7 @@ class TableStoreFiledir(TableDataStore):
             self.filename_pattern = str(filename_pattern.resolve())
         else:
             self.filename_pattern = str(filename_pattern)
-        
+
         self.adapter = adapter
 
         # Другие схемы идентификации еще не реализованы
@@ -100,7 +102,7 @@ class TableStoreFiledir(TableDataStore):
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         if idx is None:
             idx = self.read_rows_meta_pseudo_df().index
-        
+
         def _gen():
             for i in idx:
                 with fsspec.open(self._filename(i), f'r{self.adapter.mode}') as f:
@@ -114,7 +116,7 @@ class TableStoreFiledir(TableDataStore):
     def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
         # Not implemented yet
         assert(idx is None)
-        
+
         files = fsspec.open_files(self.filename_glob)
 
         ids = []

@@ -1,5 +1,4 @@
-from typing import Callable, Generator, Iterator, List, Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
-from abc import ABC
+from typing import Callable, Generator, Iterator, List, Dict, Optional, Tuple, Union, TYPE_CHECKING
 
 import inspect
 import logging
@@ -9,7 +8,7 @@ import math
 import pandas as pd
 import tqdm
 
-from datapipe.store.types import DataSchema, Index, ChunkMeta
+from datapipe.store.types import Index, ChunkMeta
 from datapipe.store.table_store import TableDataStore
 
 from datapipe.step import ComputeStep
@@ -27,7 +26,7 @@ class DataTable:
         self,
         ms: 'MetaStore',
         name: str,
-        table_store: TableDataStore, # Если None - создается по дефолту
+        table_store: TableDataStore,  # Если None - создается по дефолту
     ):
         self.ms = ms
         self.name = name
@@ -147,7 +146,7 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k,_ in enumerate(res_dts)}
+    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
 
     idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
 

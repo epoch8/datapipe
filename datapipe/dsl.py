@@ -1,8 +1,7 @@
-from typing import Callable, Dict, List, IO, Any, Union
+from typing import Callable, Dict, List
 
 from abc import ABC
 from dataclasses import dataclass
-from pathlib import Path
 
 from datapipe.datatable import DataTable
 from datapipe.store.table_store import TableDataStore

@@ -1,4 +1,4 @@
-import pytest
+# flake8: noqa
 
 import cloudpickle
 import pandas as pd
@@ -8,7 +8,8 @@ from datapipe.store.table_store_sql import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
 
-from tests.util import assert_df_equal, assert_idx_equal, dbconn
+from tests.util import assert_df_equal, assert_idx_equal
+from .util import dbconn
 
 
 TEST_SCHEMA = [
@@ -23,9 +24,9 @@ TEST_DF = pd.DataFrame(
 )
 
 
-TEST_DF_INC1 = TEST_DF.assign(a = lambda df: df['a'] + 1)
-TEST_DF_INC2 = TEST_DF.assign(a = lambda df: df['a'] + 2)
-TEST_DF_INC3 = TEST_DF.assign(a = lambda df: df['a'] + 3)
+TEST_DF_INC1 = TEST_DF.assign(a=lambda df: df['a'] + 1)
+TEST_DF_INC2 = TEST_DF.assign(a=lambda df: df['a'] + 2)
+TEST_DF_INC3 = TEST_DF.assign(a=lambda df: df['a'] + 3)
 
 
 def yield_df(data):
@@ -227,14 +228,14 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 def test_gen_process_many(dbconn) -> None:
     ds = MetaStore(dbconn)
 
-    tbl_gen = DataTable(ds, 'tbl_gen', table_store=TableStoreDB(dbconn, 'tbl_gen_data',TEST_SCHEMA, True))
-    tbl1_gen = DataTable(ds, 'tbl1_gen', table_store=TableStoreDB(dbconn, 'tbl1_gen_data',TEST_SCHEMA, True))
-    tbl2_gen = DataTable(ds, 'tbl2_gen', table_store=TableStoreDB(dbconn, 'tbl2_gen_data',TEST_SCHEMA, True))
-    tbl3_gen = DataTable(ds, 'tbl3_gen', table_store=TableStoreDB(dbconn, 'tbl3_gen_data',TEST_SCHEMA, True))
-    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(dbconn, 'tbl_data',TEST_SCHEMA, True))
-    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data',TEST_SCHEMA, True))
-    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data',TEST_SCHEMA, True))
-    tbl3 = DataTable(ds, 'tbl3', table_store=TableStoreDB(dbconn, 'tbl3_data',TEST_SCHEMA, True))
+    tbl_gen = DataTable(ds, 'tbl_gen', table_store=TableStoreDB(dbconn, 'tbl_gen_data', TEST_SCHEMA, True))
+    tbl1_gen = DataTable(ds, 'tbl1_gen', table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
+    tbl2_gen = DataTable(ds, 'tbl2_gen', table_store=TableStoreDB(dbconn, 'tbl2_gen_data', TEST_SCHEMA, True))
+    tbl3_gen = DataTable(ds, 'tbl3_gen', table_store=TableStoreDB(dbconn, 'tbl3_gen_data', TEST_SCHEMA, True))
+    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+    tbl3 = DataTable(ds, 'tbl3', table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
 
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)

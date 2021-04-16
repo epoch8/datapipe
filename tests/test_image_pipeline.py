@@ -1,3 +1,5 @@
+# flake8: noqa
+
 import pytest
 
 import glob
@@ -30,11 +32,13 @@ def make_df():
         index=idx
     )
 
+
 def gen_images():
     yield make_df()
 
+
 def resize_images(df):
-    df['image'] = df['image'].apply(lambda im: im.resize((50,50)))
+    df['image'] = df['image'].apply(lambda im: im.resize((50, 50)))
     return df
 
 

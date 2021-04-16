@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Union, Optional, TYPE_CHECKING
+from typing import List, Any, Dict, Union, Optional
 
 import logging
 import pandas as pd
@@ -46,7 +46,8 @@ class DBConn:
 
 
 class TableStoreDB(TableDataStore):
-    def __init__(self, 
+    def __init__(
+        self,
         dbconn: Union['DBConn', str],
         name: str,
         data_sql_schema: List[Column],
@@ -107,4 +108,3 @@ class TableStoreDB(TableDataStore):
                 con=self.dbconn.con,
                 index_col='id',
             )
-

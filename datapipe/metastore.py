@@ -1,14 +1,13 @@
-from typing import Iterator, List, Tuple, Optional, TYPE_CHECKING, Dict, Union
+from typing import Iterator, List, Tuple, Optional, Dict, Union
 
 import logging
 import time
 
-from sqlalchemy import Column
-from sqlalchemy.sql.expression import delete, and_, or_, select
-from sqlalchemy import Column, String, Numeric, Float
+from sqlalchemy.sql.expression import and_, or_, select
+from sqlalchemy import Column, Numeric, Float
 import pandas as pd
 
-from datapipe.store.types import DataSchema, Index, ChunkMeta
+from datapipe.store.types import Index, ChunkMeta
 from datapipe.datatable import DataTable
 from datapipe.store.table_store_sql import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
@@ -19,10 +18,10 @@ logger = logging.getLogger('datapipe.metastore')
 
 METADATA_SQL_SCHEMA = [
     Column('hash', Numeric),
-    Column('create_ts', Float),  # Время создания строки
-    Column('update_ts', Float),  # Время последнего изменения
-    Column('process_ts', Float), # Время последней успешной обработки
-    Column('delete_ts', Float),  # Время удаления
+    Column('create_ts', Float),   # Время создания строки
+    Column('update_ts', Float),   # Время последнего изменения
+    Column('process_ts', Float),  # Время последней успешной обработки
+    Column('delete_ts', Float),   # Время удаления
 ]
 
 
@@ -36,7 +35,7 @@ class MetaStore:
 
         self.meta_tables: Dict[str, TableStoreDB] = {}
 
-    def get_meta_table(self, name:str) -> TableStoreDB:
+    def get_meta_table(self, name: str) -> TableStoreDB:
         if name not in self.meta_tables:
             self.meta_tables[name] = TableStoreDB(
                 self.dbconn,
@@ -44,7 +43,7 @@ class MetaStore:
                 METADATA_SQL_SCHEMA,
                 create_table=True
             )
-        
+
         return self.meta_tables[name]
 
     def get_metadata(self, name: str, idx: Optional[Index] = None) -> pd.DataFrame:
@@ -63,7 +62,12 @@ class MetaStore:
         )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
-    def get_changes_for_store_chunk(self, name: str, data_df: pd.DataFrame, now: float = None) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
+    def get_changes_for_store_chunk(
+        self,
+        name: str,
+        data_df: pd.DataFrame,
+        now: float = None
+    ) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
         if now is None:
             now = time.time()
 
@@ -92,7 +96,7 @@ class MetaStore:
             )
 
         return new_idx, changed_idx, new_meta_df
-    
+
     def update_meta_for_store_chunk(self, name: str, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
             self.get_meta_table(name).update_rows(new_meta_df)
@@ -139,11 +143,18 @@ class MetaStore:
 
         for inp in inputs:
             sql = select([self.get_meta_table(inp.name).data_table.c.id]).select_from(
-                left_join(self.get_meta_table(inp.name).data_table, [self.get_meta_table(out.name).data_table for out in outputs])
+                left_join(
+                    self.get_meta_table(inp.name).data_table,
+                    [self.get_meta_table(out.name).data_table for out in outputs]
+                )
             ).where(
                 or_(
                     or_(
-                        self.get_meta_table(out.name).data_table.c.process_ts < self.get_meta_table(inp.name).data_table.c.update_ts,
+                        (
+                            self.get_meta_table(out.name).data_table.c.process_ts
+                            <
+                            self.get_meta_table(inp.name).data_table.c.update_ts
+                        ),
                         self.get_meta_table(out.name).data_table.c.process_ts.is_(None)
                     )
                     for out in outputs
@@ -163,7 +174,10 @@ class MetaStore:
 
         for out in outputs:
             sql = select([self.get_meta_table(out.name).data_table.c.id]).select_from(
-                left_join(self.get_meta_table(out.name).data_table, [self.get_meta_table(inp.name).data_table for inp in inputs])
+                left_join(
+                    self.get_meta_table(out.name).data_table,
+                    [self.get_meta_table(inp.name).data_table for inp in inputs]
+                )
             ).where(
                 and_(self.get_meta_table(inp.name).data_table.c.id.is_(None) for inp in inputs)
             )
@@ -200,4 +214,3 @@ class MetaStore:
                     yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
 
         return idx, gen()
-
