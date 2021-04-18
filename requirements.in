@@ -12,4 +12,4 @@ openpyxl >= 3.0.7
 toml>=0.10.2
 click>=7.1.2
 dash>=1.20.0
-git+git://github.com/epoch8/e8_dash_app.git
+git+ssh://git@github.com/epoch8/e8_dash_app.git

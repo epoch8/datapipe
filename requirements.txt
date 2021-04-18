@@ -26,7 +26,7 @@ dash==1.20.0
     #   e8-dash-app
 dash_renderer==1.9.1
     # via dash
-git+git://github.com/epoch8/e8_dash_app.git
+git+ssh://git@github.com/epoch8/e8_dash_app.git
     # via -r requirements.in
 et-xmlfile==1.0.1
     # via openpyxl
