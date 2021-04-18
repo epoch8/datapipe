@@ -38,7 +38,7 @@ class BatchTransformIncStep(ComputeStep):
         )
 
 
-def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
+def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     res: List[ComputeStep] = []
 
     for name, tbl in catalog.catalog.items():

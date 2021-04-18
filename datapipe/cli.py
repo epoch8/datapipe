@@ -17,4 +17,9 @@ def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
         from .compute import run_pipeline 
         run_pipeline(ms, catalog, pipeline)
 
+    @cli.command()
+    def debug_ui():
+        from .debug_ui import main
+        main(ms, catalog, pipeline)
+
     cli()
