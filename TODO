@@ -1,6 +1,7 @@
 TODO:
 [ ] Сделать прогрессбар для gen_* шага
 [ ] Добавить возможность передавать аргументы в *Generate и *Transform
+[ ] Сделать возможность передавать fsspec urls в TableStoreFiledir, ex: zip://{label}/{id}_test.jpg::./CATALOG_DIR/archive.zip
 [ ] Ускорить обновление метадаты: заменить удаление/создание на апдейт
 [ ] Не удалять метаданные при удалении строк
 [ ] Many-to-one, one-to-many
