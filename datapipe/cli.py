@@ -18,15 +18,9 @@ def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
         run_pipeline(ms, catalog, pipeline)
 
     @cli.command()
-    def ui_pipeline_overview():
-        from .debug_ui import ui_pipeline_overview
-        app = ui_pipeline_overview(ms, catalog, pipeline)
-        app.run_server(host='0.0.0.0')
-
-    @cli.command()
-    def ui_table_view():
-        from .debug_ui import ui_table_view
-        app = ui_table_view(ms, catalog, pipeline)
+    def ui():
+        from .debug_ui import ui_main
+        app = ui_main(ms, catalog, pipeline)
         app.run_server(host='0.0.0.0')
 
     cli()
