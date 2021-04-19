@@ -88,7 +88,7 @@ def ui_table_view(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 
             return [dt.DataTable(
                 columns=[{"name": f'_{i}', "id": i} for i in data_df.columns],
-                data=data_df.to_dict('records')
+                data=data_df.applymap(str).to_dict('records')
             )]
         else:
             return []
