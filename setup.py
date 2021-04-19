@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.4.0+imp6',
+    version='0.4.0+imp7',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
@@ -20,7 +20,7 @@ setuptools.setup(
         "toml >=0.10.2",
         "click >=7.1.2",
         "dash >=1.20.0",
-        "e8_dash_app @ git+ssh://git@github.com/epoch8/e8_dash_app.git#egg=e8_dash_app"
+        "e8_dash_app @ git+https://github.com/epoch8/e8_dash_app.git#egg=e8_dash_app"
     ],
     python_requires='>=3.8'
 )
