@@ -66,14 +66,6 @@ def ui_pipeline_overview(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 def ui_table_view(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     app = e8_dash_app.E8Dash('Datapipe', e8_nav_links=[], e8_contact_us_button=False)
 
-    table_name = 'input_images'
-
-    meta_df = ms.get_metadata(table_name).head()
-    data_df = catalog.catalog[table_name].store.read_rows(meta_df.index)
-    data_df = data_df.reset_index()
-
-    print(data_df)
-
     def _dash_index():
         return html.Div([
             dcc.Dropdown(
