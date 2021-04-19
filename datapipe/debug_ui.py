@@ -82,13 +82,13 @@ def ui_table_view(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     )
     def update_table(table_name):
         if table_name:
-            meta_df = ms.get_metadata(table_name).head()
+            meta_df = ms.get_metadata(table_name).head(20)
             data_df = catalog.catalog[table_name].store.read_rows(meta_df.index)
-            data_df = data_df.reset_index()
+            data_df = data_df.reset_index().applymap(str).applymap(lambda x: x if len(x) < 100 else x[:100] + '...')
 
             return [dt.DataTable(
-                columns=[{"name": f'_{i}', "id": i} for i in data_df.columns],
-                data=data_df.applymap(str).to_dict('records')
+                columns=[{"name": i if i != 'id' else '_id', "id": i} for i in data_df.columns],
+                data=data_df.to_dict('records')
             )]
         else:
             return []
