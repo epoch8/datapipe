@@ -46,14 +46,17 @@ def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 
 
     def _dash_index():
-        return dcc.Tabs([
-            dcc.Tab(label='Catalog', children=[
-                _build_dash_catalog_list(),
-            ]),
-            dcc.Tab(label='Compute steps', children=[
-                _build_dash_pipeline_list(),
+        return [
+            html.H1('Pipeline overview'),
+            dcc.Tabs([
+                dcc.Tab(label='Catalog', children=[
+                    _build_dash_catalog_list(),
+                ]),
+                dcc.Tab(label='Compute steps', children=[
+                    _build_dash_pipeline_list(),
+                ])
             ])
-        ])
+        ]
 
 
     return _dash_index()

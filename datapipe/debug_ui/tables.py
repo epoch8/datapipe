@@ -24,6 +24,7 @@ def ui_tables_setup(app, ms, catalog, pipeline):
 
 def ui_tables_index(app, ms, catalog, pipeline):
     return [
+        html.H1('Tables data'),
         dcc.Dropdown(
             id='table-name',
             options=[{'label': k, 'value': k} for k,v in catalog.catalog.items()],
