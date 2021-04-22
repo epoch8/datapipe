@@ -1,6 +1,7 @@
-import subprocess
 import logging
 import time
+from multiprocessing import Process
+from subprocess import Popen
 from functools import partial, update_wrapper
 from pathlib import Path
 from urllib.parse import urljoin
@@ -17,8 +18,7 @@ from sqlalchemy.sql.schema import Column
 from datapipe.metastore import MetaStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.dsl import BatchGenerate, Catalog, ExternalTable, Table, Pipeline, BatchTransform
-from datapipe.label_studio.run_server import LabelStudioConfig
-from datapipe.label_studio.service import LabelStudioService
+from datapipe.label_studio.run_server import LabelStudioConfig, start_label_studio_app
 
 
 def wrapped_partial(func, *args, **kwargs):
@@ -194,15 +194,18 @@ def run_project(
     session = requests.Session()
     session.auth = (label_studio_config.username, label_studio_config.password)
 
-    label_studio_service = LabelStudioService(
-        label_studio_config=label_studio_config,
+    label_studio_service = Process(
+        target=start_label_studio_app,
+        kwargs={
+            'label_studio_config': label_studio_config
+        }
     )
-    label_studio_service.run_services()
+    label_studio_service.start()
 
     html_server_host = 'localhost'
     html_server_port = '8081'
     files_url = f'http://{html_server_host}:{html_server_port}/'
-    http_server_service = subprocess.Popen([  # For hosting images files
+    http_server_service = Popen([  # For hosting images files
         'python', '-m', 'http.server', '--bind', html_server_host,
         '-d', str(data_dir), html_server_port,
     ])
@@ -268,8 +271,8 @@ def run_project(
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received, exiting.")
+        label_studio_service.terminate()
         http_server_service.terminate()
-        label_studio_service.terminate_services()
         raise
 
 
