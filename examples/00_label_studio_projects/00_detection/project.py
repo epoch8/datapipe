@@ -106,7 +106,6 @@ def upload_tasks(
     input_images_df['tasks_id'] = [task['id'] for task in new_tasks]
     input_images_df['annotations'] = [task['annotations'] for task in new_tasks]
     input_images_df = input_images_df[['tasks_id', 'annotations']]
-    logging.info(f'input_images_df=\n{input_images_df}\n\n')
     return input_images_df
 
 
@@ -179,7 +178,7 @@ def run_project(
         'tasks_raw': ExternalTable(  # Autmatical gets when someone annotates
             store=TableStoreFiledir(data_dir / '01_annotations_raw' / '{id}.json', JSONFile()),
         ),
-        'tasks_parsed': Table(  # Autmatical gets when someone annotates
+        'tasks_parsed': Table(
             store=TableStoreFiledir(data_dir / '02_annotations' / '{id}.json', JSONFile()),
         )
     })
