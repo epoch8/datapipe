@@ -1,4 +1,3 @@
-
 import subprocess
 import logging
 import time
@@ -95,13 +94,13 @@ def upload_tasks(
             url=urljoin(ls_url, '/api/tasks/'),
             json={
                 'data': {
-                    'unique_id': index,
-                    'image': urljoin(files_url, f"00_dataset/{index}.jpeg")
+                    'unique_id': id,
+                    'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
                 },
                 'project': project_id
             }
         ).json()
-        for index in input_images_df.index
+        for id in input_images_df.index
     ]
     input_images_df['tasks_id'] = [task['id'] for task in new_tasks]
     input_images_df['annotations'] = [task['annotations'] for task in new_tasks]
