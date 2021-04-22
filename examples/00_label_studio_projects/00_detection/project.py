@@ -175,7 +175,7 @@ def run_project(
         'input_images': ExternalTable(
             store=TableStoreFiledir(data_dir / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
         ),
-        'tasks_raw': ExternalTable(  # Autmatical gets when someone annotates
+        'tasks_raw': ExternalTable(  # Updates when someone is annotating
             store=TableStoreFiledir(data_dir / '01_annotations_raw' / '{id}.json', JSONFile()),
         ),
         'tasks_parsed': Table(
@@ -203,10 +203,10 @@ def run_project(
     html_server_host = 'localhost'
     html_server_port = '8081'
     files_url = f'http://{html_server_host}:{html_server_port}/'
-    http_server_service = subprocess.Popen([
+    http_server_service = subprocess.Popen([  # For hosting images files
         'python', '-m', 'http.server', '--bind', html_server_host,
         '-d', str(data_dir), html_server_port,
-    ])  # For hosting images files
+    ])
 
     # Wait until services are up
     while True:
