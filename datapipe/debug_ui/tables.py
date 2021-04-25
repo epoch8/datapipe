@@ -4,6 +4,17 @@ import dash_table as dt
 
 from dash.dependencies import Input, Output
 
+def ui_tables_index(app, ms, catalog, pipeline):
+    return [
+        html.H1('Tables data'),
+        dcc.Dropdown(
+            id='table-name',
+            options=[{'label': k, 'value': k} for k,v in catalog.catalog.items()],
+        ),
+        html.Div(id='table-content')
+    ]
+
+
 def ui_tables_setup(app, ms, catalog, pipeline):
     @app.callback(
         Output('table-content', 'children'),
@@ -21,13 +32,3 @@ def ui_tables_setup(app, ms, catalog, pipeline):
             )]
         else:
             return []
-
-def ui_tables_index(app, ms, catalog, pipeline):
-    return [
-        html.H1('Tables data'),
-        dcc.Dropdown(
-            id='table-name',
-            options=[{'label': k, 'value': k} for k,v in catalog.catalog.items()],
-        ),
-        html.Div(id='table-content')
-    ]

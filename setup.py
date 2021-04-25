@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.4.0+imp8',
+    version='0.4.0+imp10',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
@@ -21,6 +21,7 @@ setuptools.setup(
         "click >=7.1.2",
         "dash >=1.20.0",
         "dash_bootstrap_components >= 0.12.0",
+        "dash_interactive_graphviz >=0.3.0",
     ],
     python_requires='>=3.8'
 )
