@@ -14,12 +14,14 @@ from datapipe.dsl import Catalog, Pipeline
 
 from .overview import ui_overview_setup, ui_overview_index
 from .tables import ui_tables_setup, ui_tables_index
+from .e2e import ui_e2e_setup, ui_e2e_index
 
 def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     app = Dash('Datapipe', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
     ui_overview_setup(app, ms, catalog, pipeline)
     ui_tables_setup(app, ms, catalog, pipeline)
+    ui_e2e_setup(app, ms, catalog, pipeline)
 
     sidebar = html.Div(
         [
@@ -50,7 +52,7 @@ def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
             ),
             dbc.Col(
                 content,
-                width=4
+                width=10
             )
         ])
     ])
@@ -65,7 +67,7 @@ def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
         elif url == '/tables':
             return ui_tables_index(app, ms, catalog, pipeline)
         elif url == '/e2e':
-            return 'E2E'
+            return ui_e2e_index(app, ms, catalog, pipeline)
         
         else:
             return f'Unknown route {url}'

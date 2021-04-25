@@ -1,6 +1,7 @@
 import dash_html_components as html
 import dash_core_components as dcc
-
+import dash_interactive_graphviz as gv
+from dash.dependencies import Input, Output
 
 from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, Pipeline
@@ -8,10 +9,32 @@ from datapipe.compute import build_compute
 
 
 def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
-    pass
+    @app.callback(
+        Output('overview_text', 'children'),
+        [Input('pipeline_graph', 'selected_node')]
+    )
+    def graph_node_selected(node_name):
+        return node_name
 
 def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     steps = build_compute(ms, catalog, pipeline)
+
+    steps_dots = []
+
+    for step in steps:
+        steps_dots.append(f'{step.name} [shape=parallelogram]')
+        for inp in step.input_dts:
+            steps_dots.append(f'{inp.name} -> {step.name}')
+        for out in step.output_dts:
+            steps_dots.append(f'{step.name} -> {out.name}')
+
+    steps_dot = '\n'.join(steps_dots)
+
+    dot_source = f'''
+digraph {{
+{steps_dot}
+}}
+'''
 
     def _build_dash_catalog_list():
         res = []
@@ -46,14 +69,17 @@ def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 
 
     def _dash_index():
-        return dcc.Tabs([
-            dcc.Tab(label='Catalog', children=[
-                _build_dash_catalog_list(),
-            ]),
-            dcc.Tab(label='Compute steps', children=[
-                _build_dash_pipeline_list(),
-            ])
-        ])
+        return [
+            html.H1('Pipeline overview'),
+            html.Div(
+                gv.DashInteractiveGraphviz(
+                    id='pipeline_graph',
+                    dot_source=dot_source,
+                    style={'height': '1000px'}
+                )
+            ),
+            html.Div(id='overview_text'),
+        ]
 
 
     return _dash_index()
