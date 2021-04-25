@@ -1,10 +1,11 @@
+from dataclasses import dataclass
 from typing import Iterator, List, Tuple, Optional, Dict, Union
 
 import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float
+from sqlalchemy import Column, Numeric, Float, func
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
@@ -23,6 +24,12 @@ METADATA_SQL_SCHEMA = [
     Column('process_ts', Float),  # Время последней успешной обработки
     Column('delete_ts', Float),   # Время удаления
 ]
+
+
+@dataclass
+class TableDebugInfo:
+    name: str
+    size: int
 
 
 class MetaStore:
@@ -48,6 +55,15 @@ class MetaStore:
 
     def get_metadata(self, name: str, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.get_meta_table(name).read_rows(idx)
+
+    def get_table_debug_info(self, name: str) -> TableDebugInfo:
+        tbl = self.get_meta_table(name)
+
+        return TableDebugInfo(
+            name=name,
+            size=self.dbconn.con.execute(select([func.count()]).select_from(tbl.data_table)).fetchone()[0]
+        )
+        
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -124,6 +140,9 @@ class MetaStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
     ) -> pd.Index:
+        if len(inputs) == 0:
+            return pd.Index([])
+
         idx = None
 
         def left_join(tbl_a, tbl_bbb):
