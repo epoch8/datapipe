@@ -37,43 +37,43 @@ LABEL_CONFIG = '''<View>
 </View>'''
 
 
-def create_or_get_project(
-    session: requests.Session,
-    ls_url: str
-):
-    projects = session.get(urljoin(ls_url, '/api/projects/')).json()
-    if not projects:
-        project = session.post(
-            urljoin(ls_url, '/api/projects/'),
-            json={
-                "title": "Detection Project!",
-                "description": "Detection project",
-                "label_config": LABEL_CONFIG,
-                "expert_instruction": "",
-                "show_instruction": False,
-                "show_skip_button": True,
-                "enable_empty_annotation": True,
-                "show_annotation_history": False,
-                "organization": 1,
-                "color": "#FFFFFF",
-                "maximum_annotations": 1,
-                "is_published": False,
-                "model_version": "",
-                "is_draft": False,
-                "min_annotations_to_start_training": 10,
-                "show_collab_predictions": True,
-                "sampling": "Sequential sampling",
-                "show_ground_truth_first": True,
-                "show_overlap_first": True,
-                "overlap_cohort_percentage": 100,
-                "task_data_login": None,
-                "task_data_password": None,
-                "control_weights": {}
-            }
-        ).json()
-        return project
-    else:
-        return projects[0]
+# def create_or_get_project(
+#     session: requests.Session,
+#     ls_url: str
+# ):
+#     projects = session.get(urljoin(ls_url, '/api/projects/')).json()
+#     if not projects:
+#         project = session.post(
+#             urljoin(ls_url, '/api/projects/'),
+#             json={
+#                 "title": "Detection Project!",
+#                 "description": "Detection project",
+#                 "label_config": LABEL_CONFIG,
+#                 "expert_instruction": "",
+#                 "show_instruction": False,
+#                 "show_skip_button": True,
+#                 "enable_empty_annotation": True,
+#                 "show_annotation_history": False,
+#                 "organization": 1,
+#                 "color": "#FFFFFF",
+#                 "maximum_annotations": 1,
+#                 "is_published": False,
+#                 "model_version": "",
+#                 "is_draft": False,
+#                 "min_annotations_to_start_training": 10,
+#                 "show_collab_predictions": True,
+#                 "sampling": "Sequential sampling",
+#                 "show_ground_truth_first": True,
+#                 "show_overlap_first": True,
+#                 "overlap_cohort_percentage": 100,
+#                 "task_data_login": None,
+#                 "task_data_password": None,
+#                 "control_weights": {}
+#             }
+#         ).json()
+#         return project
+#     else:
+#         return projects[0]
 
 
 TASKS_SQL_SCHEMA = [
@@ -190,17 +190,17 @@ def run_project(
         username='bobokvsky@epoch8.co',
         password='qwertyisALICE666',
     )
-    ls_url = f'http://{label_studio_config.internal_host}:{label_studio_config.port}/'
-    session = requests.Session()
-    session.auth = (label_studio_config.username, label_studio_config.password)
+    # ls_url = f'http://{label_studio_config.internal_host}:{label_studio_config.port}/'
+    # session = requests.Session()
+    # session.auth = (label_studio_config.username, label_studio_config.password)
 
-    label_studio_service = Process(
-        target=start_label_studio_app,
-        kwargs={
-            'label_studio_config': label_studio_config
-        }
-    )
-    label_studio_service.start()
+    # label_studio_service = Process(
+    #     target=start_label_studio_app,
+    #     kwargs={
+    #         'label_studio_config': label_studio_config
+    #     }
+    # )
+    # label_studio_service.start()
 
     html_server_host = 'localhost'
     html_server_port = '8081'
@@ -210,22 +210,10 @@ def run_project(
         '-d', str(data_dir), html_server_port,
     ])
 
-    # Wait until services are up
-    while True:
-        try:
-            session.head(ls_url)
-            session.head(files_url)
-            break
-        except requests.exceptions.ConnectionError:
-            logging.info(
-                f'Trying to connect both {ls_url} (label studio) and {files_url} (html.server)...'
-            )
-            time.sleep(2.)
-
-    project = create_or_get_project(
-        session=session, ls_url=ls_url
-    )
-    project_id = project['id']
+    # project = create_or_get_project(
+    #     session=session, ls_url=ls_url
+    # )
+    # project_id = project['id']
 
     pipeline = Pipeline([
         BatchTransform(
