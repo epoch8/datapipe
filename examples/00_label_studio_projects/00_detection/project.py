@@ -118,7 +118,7 @@ def run_project(
             store=TableStoreFiledir(data_dir / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
         ),
         'LS_data_raw': Table(
-            store=TableStoreFiledir(data_dir / '01_LS_data_raw' / '{id}.jpeg', JSONFile()),
+            store=TableStoreFiledir(data_dir / '01_LS_data_raw' / '{id}.json', JSONFile()),
         ),
         'tasks_raw': Table(  # Updates when someone is annotating
             store=TableStoreFiledir(data_dir / '02_annotations_raw' / '{id}.json', JSONFile()),
