@@ -1,15 +1,12 @@
 import logging
 import time
-from multiprocessing import Process
+
 from subprocess import Popen
 from functools import partial, update_wrapper
 from pathlib import Path
 from urllib.parse import urljoin
 from datapipe.compute import run_pipeline
-
-
-import pandas as pd
-import requests
+from datapipe.label_studio.session import LabelStudioSession
 
 from sqlalchemy.sql.sqltypes import JSON, String
 from sqlalchemy.sql.schema import Column
@@ -17,8 +14,8 @@ from sqlalchemy.sql.schema import Column
 
 from datapipe.metastore import MetaStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
-from datapipe.dsl import BatchGenerate, Catalog, ExternalTable, Table, Pipeline, BatchTransform
-from datapipe.label_studio.run_server import LabelStudioConfig, start_label_studio_app
+from datapipe.dsl import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
+from datapipe.label_studio.run_server import LabelStudioConfig
 
 
 def wrapped_partial(func, *args, **kwargs):
@@ -35,46 +32,31 @@ LABEL_CONFIG = '''<View>
     <Label value="Class2" background="#0000ff"/>
 </RectangleLabels>
 </View>'''
-
-
-# def create_or_get_project(
-#     session: requests.Session,
-#     ls_url: str
-# ):
-#     projects = session.get(urljoin(ls_url, '/api/projects/')).json()
-#     if not projects:
-#         project = session.post(
-#             urljoin(ls_url, '/api/projects/'),
-#             json={
-#                 "title": "Detection Project!",
-#                 "description": "Detection project",
-#                 "label_config": LABEL_CONFIG,
-#                 "expert_instruction": "",
-#                 "show_instruction": False,
-#                 "show_skip_button": True,
-#                 "enable_empty_annotation": True,
-#                 "show_annotation_history": False,
-#                 "organization": 1,
-#                 "color": "#FFFFFF",
-#                 "maximum_annotations": 1,
-#                 "is_published": False,
-#                 "model_version": "",
-#                 "is_draft": False,
-#                 "min_annotations_to_start_training": 10,
-#                 "show_collab_predictions": True,
-#                 "sampling": "Sequential sampling",
-#                 "show_ground_truth_first": True,
-#                 "show_overlap_first": True,
-#                 "overlap_cohort_percentage": 100,
-#                 "task_data_login": None,
-#                 "task_data_password": None,
-#                 "control_weights": {}
-#             }
-#         ).json()
-#         return project
-#     else:
-#         return projects[0]
-
+PROJECT_SETTING = {
+    "title": "Detection Project",
+    "description": "Detection project",
+    "label_config": LABEL_CONFIG,
+    "expert_instruction": "",
+    "show_instruction": False,
+    "show_skip_button": True,
+    "enable_empty_annotation": True,
+    "show_annotation_history": False,
+    "organization": 1,
+    "color": "#FFFFFF",
+    "maximum_annotations": 1,
+    "is_published": False,
+    "model_version": "",
+    "is_draft": False,
+    "min_annotations_to_start_training": 10,
+    "show_collab_predictions": True,
+    "sampling": "Sequential sampling",
+    "show_ground_truth_first": True,
+    "show_overlap_first": True,
+    "overlap_cohort_percentage": 100,
+    "task_data_login": None,
+    "task_data_password": None,
+    "control_weights": {}
+}
 
 TASKS_SQL_SCHEMA = [
     Column('tasks_id', String),
@@ -84,50 +66,20 @@ TASKS_SQL_SCHEMA = [
 
 def upload_tasks(
     input_images_df,
-    session: requests.Session,
-    ls_url: str,
-    files_url: str,
-    project_id: str,
+    files_url: str
 ):
-    new_tasks = [
-        session.post(
-            url=urljoin(ls_url, '/api/tasks/'),
-            json={
-                'data': {
-                    'unique_id': id,
-                    'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
-                },
-                'project': project_id
-            }
-        ).json()
-        for id in input_images_df.index
-    ]
-    input_images_df['tasks_id'] = [task['id'] for task in new_tasks]
-    input_images_df['annotations'] = [task['annotations'] for task in new_tasks]
-    input_images_df = input_images_df[['tasks_id', 'annotations']]
-    return input_images_df
-
-
-def get_current_tasks_df(
-    session: requests.Session,
-    ls_url: str,
-    project_id: str,
-):
-    tasks = session.get(
-        url=urljoin(ls_url, f'/api/projects/{project_id}/tasks/'),
-    ).json()
-    tasks_df = pd.DataFrame(
-        data={
-            'tasks_id': [task['id'] for task in tasks],
-            'annotations': [task['annotations'] for task in tasks]
-        },
-        index=[task['data']['unique_id'] for task in tasks]
+    input_images_df['data'] = input_images_df.index.map(
+        lambda id: {
+            'unique_id': id,
+            'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
+        }
     )
+    return input_images_df[['data']]
 
-    return tasks_df
 
-
-def parse_annotations(tasks_df):
+def parse_annotations(
+    tasks_df
+):
     def parse_annotation(annotations):
         bboxes_data = []
         if not annotations:
@@ -174,11 +126,14 @@ def run_project(
         'input_images': ExternalTable(
             store=TableStoreFiledir(data_dir / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
         ),
+        'LS_data_raw': ExternalTable(
+            store=TableStoreFiledir(data_dir / '01_LS_data_raw' / '{id}.jpeg', JSONFile()),
+        ),
         'tasks_raw': ExternalTable(  # Updates when someone is annotating
-            store=TableStoreFiledir(data_dir / '01_annotations_raw' / '{id}.json', JSONFile()),
+            store=TableStoreFiledir(data_dir / '02_annotations_raw' / '{id}.json', JSONFile()),
         ),
         'tasks_parsed': Table(
-            store=TableStoreFiledir(data_dir / '02_annotations' / '{id}.json', JSONFile()),
+            store=TableStoreFiledir(data_dir / '03_annotations' / '{id}.json', JSONFile()),
         )
     })
 
@@ -190,18 +145,9 @@ def run_project(
         username='bobokvsky@epoch8.co',
         password='qwertyisALICE666',
     )
-    # ls_url = f'http://{label_studio_config.internal_host}:{label_studio_config.port}/'
-    # session = requests.Session()
-    # session.auth = (label_studio_config.username, label_studio_config.password)
-
-    # label_studio_service = Process(
-    #     target=start_label_studio_app,
-    #     kwargs={
-    #         'label_studio_config': label_studio_config
-    #     }
-    # )
-    # label_studio_service.start()
-
+    label_studio_session = LabelStudioSession(
+        label_studio_config=label_studio_config
+    )
     html_server_host = 'localhost'
     html_server_port = '8081'
     files_url = f'http://{html_server_host}:{html_server_port}/'
@@ -210,31 +156,20 @@ def run_project(
         '-d', str(data_dir), html_server_port,
     ])
 
-    # project = create_or_get_project(
-    #     session=session, ls_url=ls_url
-    # )
-    # project_id = project['id']
-
     pipeline = Pipeline([
         BatchTransform(
             wrapped_partial(
                 upload_tasks,
-                session=session,
-                ls_url=ls_url,
                 files_url=files_url,
-                project_id=project_id
             ),
             inputs=['input_images'],
-            outputs=['tasks_raw']
+            outputs=['LS_data_raw']
         ),
-        BatchGenerate(
-            wrapped_partial(
-                get_current_tasks_df,
-                session=session,
-                ls_url=ls_url,
-                project_id=project_id
-            ),
-            outputs=['tasks_raw']
+        LabelStudioModeration(
+            label_studio_session=label_studio_session,
+            project_setting=PROJECT_SETTING,
+            inputs=['LS_data_raw'],
+            outputs=['tasks_raw'],
         ),
         BatchTransform(
             parse_annotations,
@@ -253,13 +188,13 @@ def run_project(
         while True:
             run_pipeline(ms, catalog, pipeline)
             debug_catalog('input_images')
+            debug_catalog('LS_data_raw')
             debug_catalog('tasks_raw')
             debug_catalog('tasks_parsed')
             time.sleep(5)
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received, exiting.")
-        label_studio_service.terminate()
         http_server_service.terminate()
         raise
 
