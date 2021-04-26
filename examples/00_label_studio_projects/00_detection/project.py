@@ -8,10 +8,6 @@ from urllib.parse import urljoin
 from datapipe.compute import run_pipeline
 from datapipe.label_studio.session import LabelStudioSession
 
-from sqlalchemy.sql.sqltypes import JSON, String
-from sqlalchemy.sql.schema import Column
-
-
 from datapipe.metastore import MetaStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.dsl import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
@@ -58,13 +54,8 @@ PROJECT_SETTING = {
     "control_weights": {}
 }
 
-TASKS_SQL_SCHEMA = [
-    Column('tasks_id', String),
-    Column('annotations', JSON),
-]
 
-
-def upload_tasks(
+def convert_to_ls_input_data(
     input_images_df,
     files_url: str
 ):
@@ -126,10 +117,10 @@ def run_project(
         'input_images': ExternalTable(
             store=TableStoreFiledir(data_dir / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
         ),
-        'LS_data_raw': ExternalTable(
+        'LS_data_raw': Table(
             store=TableStoreFiledir(data_dir / '01_LS_data_raw' / '{id}.jpeg', JSONFile()),
         ),
-        'tasks_raw': ExternalTable(  # Updates when someone is annotating
+        'tasks_raw': Table(  # Updates when someone is annotating
             store=TableStoreFiledir(data_dir / '02_annotations_raw' / '{id}.json', JSONFile()),
         ),
         'tasks_parsed': Table(
@@ -159,7 +150,7 @@ def run_project(
     pipeline = Pipeline([
         BatchTransform(
             wrapped_partial(
-                upload_tasks,
+                convert_to_ls_input_data,
                 files_url=files_url,
             ),
             inputs=['input_images'],
