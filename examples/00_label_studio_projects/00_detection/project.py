@@ -120,24 +120,23 @@ def run_project(
         'LS_data_raw': Table(
             store=TableStoreFiledir(data_dir / '01_LS_data_raw' / '{id}.json', JSONFile()),
         ),
-        'tasks_raw': Table(  # Updates when someone is annotating
+        'annotation_raw': Table(  # Updates when someone is annotating
             store=TableStoreFiledir(data_dir / '02_annotations_raw' / '{id}.json', JSONFile()),
         ),
-        'tasks_parsed': Table(
+        'annotation_parsed': Table(
             store=TableStoreFiledir(data_dir / '03_annotations' / '{id}.json', JSONFile()),
         )
     })
 
-    label_studio_config = LabelStudioConfig(
-        no_browser=True,
-        database=data_dir / 'xx_datatables' / 'ls.db',
-        internal_host='localhost',
-        port='8080',
-        username='bobokvsky@epoch8.co',
-        password='qwertyisALICE666',
-    )
     label_studio_session = LabelStudioSession(
-        label_studio_config=label_studio_config
+        label_studio_config=LabelStudioConfig(
+            no_browser=True,
+            database=data_dir / 'xx_datatables' / 'ls.db',
+            internal_host='localhost',
+            port='8080',
+            username='bobokvsky@epoch8.co',
+            password='qwertyisALICE666',
+        )
     )
     html_server_host = 'localhost'
     html_server_port = '8081'
@@ -160,12 +159,12 @@ def run_project(
             label_studio_session=label_studio_session,
             project_setting=PROJECT_SETTING,
             inputs=['LS_data_raw'],
-            outputs=['tasks_raw'],
+            outputs=['annotation_raw'],
         ),
         BatchTransform(
             parse_annotations,
-            inputs=['tasks_raw'],
-            outputs=['tasks_parsed']
+            inputs=['annotation_raw'],
+            outputs=['annotation_parsed']
         )
     ])
 
@@ -180,8 +179,8 @@ def run_project(
             run_pipeline(ms, catalog, pipeline)
             debug_catalog('input_images')
             debug_catalog('LS_data_raw')
-            debug_catalog('tasks_raw')
-            debug_catalog('tasks_parsed')
+            debug_catalog('annotation_raw')
+            debug_catalog('annotation_parsed')
             time.sleep(5)
 
     except KeyboardInterrupt:
