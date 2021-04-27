@@ -28,6 +28,11 @@ jobs:
         ports:
           - 5432:5432
 
+      label-studio:
+        image: heartexlabs/label-studio:1.0.1
+        ports:
+            - 8080:8080
+
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -54,3 +59,6 @@ jobs:
         POSTGRES_HOST: localhost
         # The default PostgreSQL port
         POSTGRES_PORT: 5432
+
+        LABEL_STUDIO_HOST: localhost
+        LABEL_STUDIO_PORT: 8080

@@ -7,3 +7,8 @@ services:
       - 5432:5432
     environment:
       POSTGRES_PASSWORD: password
+
+  label-studio:
+    image: heartexlabs/label-studio:1.0.1
+    ports:
+        - 8080:8080

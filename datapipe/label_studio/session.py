@@ -1,9 +1,7 @@
 import logging
 
 from dataclasses import dataclass
-import time
-from multiprocessing import Process
-from typing import Dict
+from typing import Dict, Tuple
 from urllib.parse import urljoin
 
 from datapipe.datatable import gen_process_many, inc_process_many
@@ -13,43 +11,42 @@ import pandas as pd
 
 import requests
 
-from datapipe.label_studio.run_server import LabelStudioConfig, start_label_studio_app
-
-
 logger = logging.getLogger('datapipe.label_studio.service')
 
 
 class LabelStudioSession:
     def __init__(
         self,
-        label_studio_config: LabelStudioConfig,
+        ls_url: str,
+        auth: Tuple[str, str] = ('admin@epoch8.co', 'qwertyisALICE666')
     ):
-        self.label_studio_config = label_studio_config
+        self.ls_url = ls_url
         self.session = requests.Session()
-        self.session.auth = (label_studio_config.username, label_studio_config.password)
-        self.ls_url = f'http://{label_studio_config.internal_host}:{label_studio_config.port}/'
-        self.label_studio_process: Process = Process(
-            target=start_label_studio_app,
-            kwargs={
-                'label_studio_config': label_studio_config
+        self.session.auth = auth
+
+    def is_auth_ok(self, raise_exception: bool):
+        response = self.session.get(
+            url=urljoin(self.ls_url, '/api/current-user/whoami')
+        )
+        if not response.ok and raise_exception:
+            raise ValueError(f'Authorization failed: {response.json()}')
+        return response.ok
+
+    def sign_up(self):
+        username, password = self.session.auth
+        response = self.session.get(
+            url=urljoin(self.ls_url, '/user/signup/')
+        )
+        response_signup = self.session.post(
+            url=urljoin(self.ls_url, '/user/signup/'),
+            data={
+                'csrfmiddlewaretoken': response.cookies['csrftoken'],
+                'email': username,
+                'password': password
             }
         )
-        self.label_studio_process.start()
-
-        # Wait until Label Studio is up
-        while True:
-            try:
-                self.session.head(self.ls_url)
-                break
-            except requests.exceptions.ConnectionError:
-                logger.info(
-                    f'Waiting until connect to {self.ls_url} (Label Studio) success.'
-                )
-                time.sleep(2.)
-
-    def __del__(self):
-        self.label_studio_process.terminate()
-        self.label_studio_process.join()
+        if not response_signup.ok or not self.is_auth_ok(raise_exception=False):
+            raise ValueError('Signup failed.')
 
     def get_project(self, project_id: str) -> Dict[str, str]:
         return self.session.get(
@@ -114,32 +111,80 @@ class LabelStudioSession:
 
         return output_df
 
+    def is_service_up(self, raise_exception: bool = False) -> bool:
+        try:
+            self.session.head(self.ls_url)
+            return True
+        except requests.exceptions.ConnectionError:
+            if raise_exception:
+                raise
+            else:
+                return False
+
+    def add_annotation_to_task(
+        self,
+        task_id: str,
+        result: Dict
+    ):
+        result = self.session.post(
+            url=urljoin(self.ls_url, f'/api/tasks/{task_id}/annotations/'),
+            json={
+                'result': result,
+                'was_cancelled': False,
+                'task': task_id
+            }
+        ).json()
+
+        return result
+
+    def get_all_tasks(
+        self,
+        project_id: str
+    ):
+        tasks = self.session.get(
+            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
+        ).json()
+
+        return tasks
+
 
 @dataclass
 class LabelStudioModerationStep(ComputeStep):
-    label_studio_session: LabelStudioSession
+    ls_url: str
     project_setting: Dict[str, str]
     chunk_size: int
 
     def __post_init__(self):
-        self.project_id = self.label_studio_session.get_project_id_by_title(self.project_setting['title'])
-        if self.project_id is None:
-            project = self.label_studio_session.create_project(self.project_setting)
-            self.project_id = project['id']
+        self.label_studio_session = LabelStudioSession(self.ls_url)
+        if self.label_studio_session.is_service_up():
+            if not self.label_studio_session.is_auth_ok(raise_exception=False):
+                self.label_studio_session.sign_up()
+                self.label_studio_session.is_auth_ok(raise_exception=True)
+
+            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_setting['title'])
+            if self.project_id is None:
+                project = self.label_studio_session.create_project(self.project_setting)
+                self.project_id = project['id']
+        else:
+            self.project_id = None
 
     def run(self, ms: MetaStore) -> None:
-        # Upload Tasks from inputs to outputs
-        inc_process_many(
-            ms,
-            self.input_dts,
-            self.output_dts,
-            self.label_studio_session.upload_tasks,
-            self.chunk_size,
-            project_id=self.project_id
-        )
-        # Update current annotations in outputs
-        gen_process_many(
-            self.output_dts,
-            self.label_studio_session.get_current_tasks,
-            project_id=self.project_id
-        )
+        if self.label_studio_session.is_service_up():
+            if self.project_id is None:
+                self.__post_init__()
+
+            # Upload Tasks from inputs to outputs
+            inc_process_many(
+                ms,
+                self.input_dts,
+                self.output_dts,
+                self.label_studio_session.upload_tasks,
+                self.chunk_size,
+                project_id=self.project_id
+            )
+            # Update current annotations in outputs
+            gen_process_many(
+                self.output_dts,
+                self.label_studio_session.get_current_tasks,
+                project_id=self.project_id
+            )

@@ -27,7 +27,7 @@ class ExternalTable(Table):
 class Catalog:
     catalog: Dict[str, Table]
 
-    def get_datatable(self, ms: MetaStore, name: str):
+    def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
         return DataTable(ms, name, self.catalog[name].store)
 
 
@@ -56,7 +56,7 @@ class BatchGenerate(PipelineStep):
 
 @dataclass
 class LabelStudioModeration:
-    label_studio_session: LabelStudioSession
+    ls_url: str
     project_setting: Dict[str, str]
     inputs: List[str]
     outputs: List[str]

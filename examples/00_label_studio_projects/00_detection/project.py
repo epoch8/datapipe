@@ -1,17 +1,14 @@
-import logging
 import time
 
 from subprocess import Popen
 from functools import partial, update_wrapper
 from pathlib import Path
 from urllib.parse import urljoin
-from datapipe.compute import run_pipeline
-from datapipe.label_studio.session import LabelStudioSession
 
+from datapipe.compute import build_compute, run_steps
 from datapipe.metastore import MetaStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.dsl import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
-from datapipe.label_studio.run_server import LabelStudioConfig
 
 
 def wrapped_partial(func, *args, **kwargs):
@@ -53,6 +50,9 @@ PROJECT_SETTING = {
     "task_data_password": None,
     "control_weights": {}
 }
+HOST = 'localhost'
+LS_PORT = '8080'
+HTML_FILES_PORT = '8090'
 
 
 def convert_to_ls_input_data(
@@ -113,6 +113,7 @@ def run_project(
     data_dir = Path(data_dir).absolute()
     (data_dir / 'xx_datatables').mkdir(exist_ok=True)
 
+    ms = MetaStore('sqlite:///' + str(data_dir / 'xx_datatables/metadata.sqlite'))
     catalog = Catalog({
         'input_images': ExternalTable(
             store=TableStoreFiledir(data_dir / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
@@ -128,35 +129,17 @@ def run_project(
         )
     })
 
-    label_studio_session = LabelStudioSession(
-        label_studio_config=LabelStudioConfig(
-            no_browser=True,
-            database=data_dir / 'xx_datatables' / 'ls.db',
-            internal_host='localhost',
-            port='8080',
-            username='bobokvsky@epoch8.co',
-            password='qwertyisALICE666',
-        )
-    )
-    html_server_host = 'localhost'
-    html_server_port = '8081'
-    files_url = f'http://{html_server_host}:{html_server_port}/'
-    http_server_service = Popen([  # For hosting images files
-        'python', '-m', 'http.server', '--bind', html_server_host,
-        '-d', str(data_dir), html_server_port,
-    ])
-
     pipeline = Pipeline([
         BatchTransform(
             wrapped_partial(
                 convert_to_ls_input_data,
-                files_url=files_url,
+                files_url=f'http://{HOST}:{HTML_FILES_PORT}/',
             ),
             inputs=['input_images'],
             outputs=['LS_data_raw']
         ),
         LabelStudioModeration(
-            label_studio_session=label_studio_session,
+            ls_url=f'http://{HOST}:{LS_PORT}/',
             project_setting=PROJECT_SETTING,
             inputs=['LS_data_raw'],
             outputs=['annotation_raw'],
@@ -168,32 +151,41 @@ def run_project(
         )
     ])
 
-    ms = MetaStore('sqlite:///' + str(data_dir / 'xx_datatables/metadata.sqlite'))
-
-    def debug_catalog(dt_name):
-        df = catalog.get_datatable(ms=ms, name=dt_name).get_data()
-        logging.debug(f'{dt_name=}\n{df}\n\n')
+    steps = build_compute(ms, catalog, pipeline)
 
     try:
         while True:
-            run_pipeline(ms, catalog, pipeline)
-            debug_catalog('input_images')
-            debug_catalog('LS_data_raw')
-            debug_catalog('annotation_raw')
-            debug_catalog('annotation_parsed')
+            run_steps(ms, steps)
             time.sleep(5)
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received, exiting.")
-        http_server_service.terminate()
         raise
 
 
 if __name__ == '__main__':
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(name)s] [%(levelname)s] %(message)s"
-    )
-    run_project(
-        data_dir='data/',
-    )
+    data_dir = Path('data/')
+    (data_dir / 'xx_datatables').mkdir(exist_ok=True)
+    label_studio_service = Popen([
+        'label-studio',
+        '--database', str(data_dir / 'xx_datatables' / 'ls.db'),
+        '--internal-host', HOST,
+        '--port', LS_PORT,
+        '--no-browser'
+    ])
+
+    http_server_service = Popen([  # For hosting images files
+        'python', '-m', 'http.server',
+        '--bind', HOST,
+        '-d', str(data_dir),
+        HTML_FILES_PORT
+    ])
+
+    try:
+        run_project(
+            data_dir='data/',
+        )
+    except Exception:
+        label_studio_service.terminate()
+        http_server_service.terminate()
+        raise

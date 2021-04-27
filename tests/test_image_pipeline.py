@@ -1,9 +1,5 @@
 # flake8: noqa
 
-import pytest
-
-import glob
-import tempfile
 import pandas as pd
 import numpy as np
 from PIL import Image
@@ -14,13 +10,7 @@ from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
 
-from .util import dbconn
-
-
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield d
+from .util import dbconn, tmp_dir
 
 
 def make_df():
@@ -49,7 +39,7 @@ def test_image_datatables(dbconn, tmp_dir):
         ms,
         'tbl1',
         table_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl1/{{id}}.png',
+            tmp_dir / 'tbl1' / '{id}.png',
             adapter=PILFile('png')
         )
     )
@@ -58,13 +48,13 @@ def test_image_datatables(dbconn, tmp_dir):
         ms,
         'tbl2',
         table_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl2/{{id}}.png',
+            tmp_dir / 'tbl2' / '{id}.png',
             adapter=PILFile('png')
         )
     )
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 0)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 0)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
     gen_process(
         tbl1,
@@ -78,21 +68,21 @@ def test_image_datatables(dbconn, tmp_dir):
         resize_images
     )
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 10)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 10)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
 
 
 def test_image_pipeline(dbconn, tmp_dir):
     catalog = Catalog({
         'tbl1': Table(
             store=TableStoreFiledir(
-                f'{tmp_dir}/tbl1/{{id}}.png',
+                tmp_dir / 'tbl1' / '{id}.png',
                 adapter=PILFile('png')
             )
         ),
         'tbl2': Table(
             store=TableStoreFiledir(
-                f'{tmp_dir}/tbl2/{{id}}.png',
+                tmp_dir / 'tbl2' / '{id}.png',
                 adapter=PILFile('png')
             )
         ),
@@ -110,11 +100,11 @@ def test_image_pipeline(dbconn, tmp_dir):
         )
     ])
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 0)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 0)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
     ms = MetaStore(dbconn)
     run_pipeline(ms, catalog, pipeline)
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 10)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 10)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10

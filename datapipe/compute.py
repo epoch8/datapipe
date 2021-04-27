@@ -80,7 +80,7 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 name=f"LabelStudioModeration (Project {step.project_setting['title']})",
                 input_dts=input_dts,
                 output_dts=output_dts,
-                label_studio_session=step.label_studio_session,
+                ls_url=step.ls_url,
                 project_setting=step.project_setting,
                 chunk_size=step.chunk_size
             ))

@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 import pytest
 import os
 
@@ -5,6 +8,13 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from datapipe.store.database import DBConn
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        yield d
 
 
 def assert_idx_equal(a, b):
