@@ -26,6 +26,9 @@ setuptools.setup(
             "dash >=1.20.0",
             "dash_bootstrap_components >= 0.12.0",
             "dash_interactive_graphviz >=0.3.0",
+        ],
+        "label-studio": [
+            "label-studio >=1.0.1"
         ]
     },
     python_requires='>=3.8'

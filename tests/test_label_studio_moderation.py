@@ -1,5 +1,6 @@
 # flake8: noqa
 import os
+import distutils.util
 from subprocess import Popen
 
 import time
@@ -59,7 +60,7 @@ def ls_url(tmp_dir):
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Runn the process manually
-    if os.environ.get('TEST_ENABLE_LABEL_STUDIO_MANUALLY', True):
+    if bool(distutils.util.strtobool(os.environ.get('TEST_ENABLE_LABEL_STUDIO_MANUALLY', 'True'))):
         label_studio_service = Popen([
             'label-studio',
             '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
