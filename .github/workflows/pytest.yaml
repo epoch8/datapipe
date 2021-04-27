@@ -62,3 +62,4 @@ jobs:
 
         LABEL_STUDIO_HOST: localhost
         LABEL_STUDIO_PORT: 8080
+        TEST_ENABLE_LABEL_STUDIO_MANUALLY: False
