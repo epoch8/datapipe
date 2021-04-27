@@ -19,15 +19,13 @@ setuptools.setup(
         "openpyxl >=3.0.7",
         "toml >=0.10.2",
         "click >=7.1.2",
+        "requests >= 2.24.0"
     ],
     extras_require={
         "ui": [
             "dash >=1.20.0",
             "dash_bootstrap_components >= 0.12.0",
             "dash_interactive_graphviz >=0.3.0",
-        ],
-        "label-studio": [
-            "label-studio >=1.0.1"
         ]
     },
     python_requires='>=3.8'
