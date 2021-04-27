@@ -133,11 +133,9 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     steps = build_compute(ms, catalog, pipeline)
     label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
-    # Check if it works without label studio:
     run_steps(ms, steps)
 
     assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
-    assert len(catalog.get_datatable(ms, 'annotations').get_data()) == 0
 
     # Wait until Label Studio is up
     label_studio_session = LabelStudioSession(ls_url)
