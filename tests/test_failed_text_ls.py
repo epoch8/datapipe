@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 
 import pandas as pd
+import threading
+import time
 
 from datapipe.compute import build_compute, run_steps
 from datapipe.store.database import DBConn
@@ -72,10 +74,26 @@ def main(connection_string: str, schema: str, input_file: Path, ls_url: str):
         raise
 
 
+def cause_removing_failure():
+    time.sleep(5)
+    test_data_file = Path(__file__).parent.joinpath("data", "data.json")
+    with open(test_data_file, "w") as target:
+        target.write("{\"text\":\"3\\u043d\\u0434\\u0444\\u043b \\u0431\\u043b\\u0430\\u043d\\u043a\\u0438\",\"prediction\":\"\\u0414\\u0440\\u0443\\u0433\\u043e\\u0435\",\"id\":\"0\",\"category\":\"\"}")
+    time.sleep(5)
+
+
 if __name__ == "__main__":
-    main(
-        connection_string="sqlite:///./text_classification.db",
-        schema=None,
-        input_file=Path(__file__).parent.joinpath("data", "data.json"),
-        ls_url="http://localhost:8080",
-    )
+    test_data_file = Path(__file__).parent.joinpath("data", "data.json")
+    with open(test_data_file, "r") as src:
+        test_data = src.read()
+    threading.Thread(target=cause_removing_failure).start()
+    try:
+        main(
+            connection_string="sqlite:///./text_classification.db",
+            schema=None,
+            input_file=Path(__file__).parent.joinpath("data", "data.json"),
+            ls_url="http://localhost:8080",
+        )
+    finally:
+        with open(test_data_file, "w") as target:
+            target.write(test_data)
