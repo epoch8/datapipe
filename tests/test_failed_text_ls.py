@@ -49,13 +49,16 @@ def main(connection_string: str, schema: str, input_file: Path, ls_url: str):
     catalogue = Catalog({
         "input_texts": ExternalTable(
             store=TableStoreJsonLine(input_fname),
+        ),
+        "output_texts": ExternalTable(
+            store=TableStoreJsonLine(input_fname.replace(".json", "-output.json")),
         )
     })
     pipeline = Pipeline([
         BatchTransform(
             _convert_to_ls_input_data,
             inputs=["input_texts"],
-            outputs=[]
+            outputs=["output_texts"],
         )
     ])
     steps = build_compute(ms, catalogue, pipeline)
