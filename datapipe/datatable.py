@@ -199,4 +199,4 @@ class ExternalTableUpdater(ComputeStep):
         ms.update_meta_for_store_chunk(self.table.name, new_meta_df)
 
         deleted_idx = ms.get_changes_for_sync_meta(self.table.name, [ps_df.index])
-        ms.update_meta_for_store_chunk(self.table.name, deleted_idx)
+        ms.update_meta_for_sync_meta(self.table.name, deleted_idx)
