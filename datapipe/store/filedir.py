@@ -103,15 +103,23 @@ class TableStoreFiledir(TableStore):
         if idx is None:
             idx = self.read_rows_meta_pseudo_df().index
 
-        def _gen():
-            for i in idx:
-                with fsspec.open(self._filename(i), f'r{self.adapter.mode}') as f:
-                    yield self.adapter.load(f)
+        df_data = []
+        df_idx = []
 
-        return pd.DataFrame.from_records(
-            _gen(),
-            index=idx
-        )
+        for i in idx:
+            of = fsspec.open(self._filename(i), f'r{self.adapter.mode}')
+            if of.fs.exists(of.path):
+                with of as f:
+                    df_data.append(self.adapter.load(f))
+                    df_idx.append(i)
+
+        if len(df_data) > 0:
+            return pd.DataFrame.from_records(
+                df_data,
+                index=df_idx
+            )
+        else:
+            return pd.DataFrame()
 
     def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
         # Not implemented yet

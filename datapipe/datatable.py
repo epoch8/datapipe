@@ -42,7 +42,7 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_store.read_rows(idx)
+        return self.table_store.read_rows(self.ms.get_existing_idx(self.name, idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
@@ -199,4 +199,4 @@ class ExternalTableUpdater(ComputeStep):
         ms.update_meta_for_store_chunk(self.table.name, new_meta_df)
 
         deleted_idx = ms.get_changes_for_sync_meta(self.table.name, [ps_df.index])
-        ms.update_meta_for_store_chunk(self.table.name, deleted_idx)
+        ms.update_meta_for_sync_meta(self.table.name, deleted_idx)
