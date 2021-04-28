@@ -43,6 +43,7 @@ class TableDataSingleFileStore(TableStore):
 
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         file_df = self.load_file()
+        file_df.index = pd.Series(file_df.index).apply(str)
 
         if file_df is not None:
             if idx is not None:
