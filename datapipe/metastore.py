@@ -89,11 +89,9 @@ class MetaStore:
 
         # получить meta по чанку
         existing_meta_df = self.get_metadata(name, data_df.index)
-        existing_meta_df.index = pd.Series(existing_meta_df.index).apply(str)
 
         # найти что изменилось
         new_meta_df = self._make_new_metadata_df(now, data_df)
-        new_meta_df.index = pd.Series(new_meta_df.index).apply(str)
 
         common_idx = existing_meta_df.index.intersection(new_meta_df.index)
         changed_idx = common_idx[new_meta_df.loc[common_idx, 'hash'] != existing_meta_df.loc[common_idx, 'hash']]
@@ -123,10 +121,8 @@ class MetaStore:
         idx = pd.Index([])
         for chunk in chunks:
             idx = idx.union(chunk)
-        idx = pd.Series(idx).apply(str)
 
         existing_meta_df = self.get_metadata(name, idx=processed_idx)
-        existing_meta_df.index = pd.Series(existing_meta_df.index).apply(str)
 
         deleted_idx = existing_meta_df.index.difference(idx)
 
