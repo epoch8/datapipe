@@ -166,7 +166,7 @@ def main(connection_string: str, schema: str, input_file: Path, ls_url: str):
 if __name__ == "__main__":
     label_studio = _run_labelstudio(
         data_dir=Path(__file__).parent.joinpath("data"),
-        host="localhost",
+        host="0.0.0.0",
         port=8080,
     )
     try:
