@@ -42,7 +42,7 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_store.read_rows(idx)
+        return self.table_store.read_rows(self.ms.get_existing_idx(self.name, idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')

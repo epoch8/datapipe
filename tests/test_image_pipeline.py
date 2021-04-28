@@ -160,7 +160,9 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 5
     assert len(catalog.get_datatable(ms, 'tbl1').get_data()) == 5
+    assert len(catalog.get_datatable(ms, 'tbl1').get_metadata()) == 5
 
     # TODO: uncomment follow when we make files deletion
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 5
     assert len(catalog.get_datatable(ms, 'tbl2').get_data()) == 5
+    assert len(catalog.get_datatable(ms, 'tbl2').get_metadata()) == 5
