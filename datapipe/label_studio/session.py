@@ -168,10 +168,18 @@ class LabelStudioModerationStep(ComputeStep):
 
     def get_current_tasks_as_df(self):
         tasks = self.label_studio_session.get_tasks(project_id=self.project_id, page_size=-1)
+
+        # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
+        def _cleanup_annotations(annotations):
+            for ann in annotations:
+                if 'created_ago' in ann:
+                    del ann['created_ago']
+            return annotations
+        
         output_df = pd.DataFrame(
             data={
                 'tasks_id': [str(task['id']) for task in tasks],
-                'annotations': [task['annotations'] for task in tasks]
+                'annotations': [_cleanup_annotations(task['annotations']) for task in tasks]
             },
             index=[task['data']['unique_id'] for task in tasks]
         )
