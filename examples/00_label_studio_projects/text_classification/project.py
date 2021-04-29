@@ -100,6 +100,7 @@ def _convert_to_ls_input_data(input_df: pd.DataFrame):
 
 
 def _parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
+    # TODO Переписать на jsonpath-ng? https://pypi.org/project/jsonpath-ng/
     def _get_category(val):
         keys = [0, "result", 0, "value", "choices", 0]
         if not val:
