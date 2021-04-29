@@ -92,7 +92,8 @@ def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
             val = val[key]
         return val
 
-    input_texts_df["category"] = annotation_df["annotations"].apply(get_category)
+    if len(annotation_df) > 0:
+        input_texts_df["category"] = annotation_df["annotations"].apply(get_category)
 
     return input_texts_df
 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     label_studio_service = Popen([
         'label-studio',
         '--database', str(DATA_DIR / 'xx_datatables' / 'ls.db'),
-        '--internal-host', HOST,
+        '--internal-host', '0.0.0.0',
         '--port', LS_PORT,
         '--no-browser'
     ])
