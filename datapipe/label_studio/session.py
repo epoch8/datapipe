@@ -1,4 +1,4 @@
-import logging
+import json
 
 from dataclasses import dataclass
 from typing import Dict, Tuple
@@ -11,8 +11,6 @@ import pandas as pd
 
 import requests
 
-logger = logging.getLogger('datapipe.label_studio.service')
-
 
 class LabelStudioSession:
     def __init__(
@@ -24,7 +22,7 @@ class LabelStudioSession:
         self.session = requests.Session()
         self.session.auth = auth
 
-    def is_auth_ok(self, raise_exception: bool):
+    def is_auth_ok(self, raise_exception: bool) -> bool:
         response = self.session.get(
             url=urljoin(self.ls_url, '/api/current-user/whoami')
         )
@@ -73,43 +71,15 @@ class LabelStudioSession:
 
     def upload_tasks(
         self,
-        input_df: pd.DataFrame,
+        data: str,  # as json.dumps(Dict)
         project_id: str
-    ):
-        assert 'data' in input_df.columns, "There must be column 'data' in input_df"
-        for data in input_df['data']:
-            assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
-        new_tasks = [
-            self.session.post(
-                url=urljoin(self.ls_url, '/api/tasks/'),
-                json={
-                    'data': input_df.loc[id, 'data'],
-                    'project': project_id
-                }
-            ).json()
-            for id in input_df.index
-        ]
-        input_df['tasks_id'] = [task['id'] for task in new_tasks]
-        input_df['annotations'] = [task['annotations'] for task in new_tasks]
-        input_df = input_df[['tasks_id', 'annotations']]
-        return input_df
-
-    def get_current_tasks(
-        self,
-        project_id: str
-    ):
-        tasks = self.session.get(
-            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
+    ) -> Dict:
+        results = self.session.post(
+            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/bulk/'),
+            headers={"Content-Type": "application/json"},
+            data=data
         ).json()
-        output_df = pd.DataFrame(
-            data={
-                'tasks_id': [task['id'] for task in tasks],
-                'annotations': [task['annotations'] for task in tasks]
-            },
-            index=[task['data']['unique_id'] for task in tasks]
-        )
-
-        return output_df
+        return results
 
     def is_service_up(self, raise_exception: bool = False) -> bool:
         try:
@@ -125,7 +95,7 @@ class LabelStudioSession:
         self,
         task_id: str,
         result: Dict
-    ):
+    ) -> Dict:
         result = self.session.post(
             url=urljoin(self.ls_url, f'/api/tasks/{task_id}/annotations/'),
             json={
@@ -137,12 +107,18 @@ class LabelStudioSession:
 
         return result
 
-    def get_all_tasks(
+    def get_tasks(
         self,
-        project_id: str
-    ):
+        project_id: str,
+        page: int = 1,  # current page
+        page_size: int = -1  # tasks per page, use -1 to obtain all tasks
+    ) -> Dict:
         tasks = self.session.get(
             url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
+            params={
+                'page': page,
+                'page_size': page_size
+            }
         ).json()
 
         return tasks
@@ -168,6 +144,40 @@ class LabelStudioModerationStep(ComputeStep):
         else:
             self.project_id = None
 
+    def upload_tasks_from_df(
+        self,
+        input_df: pd.DataFrame
+    ):
+        assert 'data' in input_df.columns, "There must be column 'data' in input_df"
+        for data in input_df['data']:
+            assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
+
+        data = json.dumps([
+            {
+                'data': input_df.loc[id, 'data'],
+            }
+            for id in input_df.index
+        ])
+
+        self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
+
+        input_df['tasks_id'] = ["Unknown" for i in range(len(input_df))]
+        input_df['annotations'] = [[] for i in range(len(input_df))]
+        input_df = input_df[['tasks_id', 'annotations']]
+        return input_df
+
+    def get_current_tasks_as_df(self):
+        tasks = self.label_studio_session.get_tasks(project_id=self.project_id, page_size=-1)
+        output_df = pd.DataFrame(
+            data={
+                'tasks_id': [str(task['id']) for task in tasks],
+                'annotations': [task['annotations'] for task in tasks]
+            },
+            index=[task['data']['unique_id'] for task in tasks]
+        )
+
+        return output_df
+
     def run(self, ms: MetaStore) -> None:
         if self.label_studio_session.is_service_up():
             if self.project_id is None:
@@ -178,13 +188,11 @@ class LabelStudioModerationStep(ComputeStep):
                 ms,
                 self.input_dts,
                 self.output_dts,
-                self.label_studio_session.upload_tasks,
-                self.chunk_size,
-                project_id=self.project_id
+                self.upload_tasks_from_df,
+                self.chunk_size
             )
             # Update current annotations in outputs
             gen_process_many(
                 self.output_dts,
-                self.label_studio_session.get_current_tasks,
-                project_id=self.project_id
+                self.get_current_tasks_as_df
             )
