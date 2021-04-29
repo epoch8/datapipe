@@ -23,7 +23,7 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     input_file = tmp_dir / "data.json"
 
     ms = MetaStore(dbconn)
-    catalogue = Catalog({
+    catalog = Catalog({
         "input_data": ExternalTable(
             store=TableStoreJsonLine(tmp_dir / "data.json"),
         ),
@@ -42,9 +42,17 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     # Create data, pipeline it
     make_file1(input_file)
 
-    steps = build_compute(ms, catalogue, pipeline)
+    steps = build_compute(ms, catalog, pipeline)
     run_steps(ms, steps)
+
+    assert len(catalog.get_datatable(ms, 'input_data').get_data()) == 3
+    assert len(catalog.get_datatable(ms, 'transfomed_data').get_data()) == 3
 
     # Remove {"id": "0"} from file, pipeline it
     make_file2(input_file)
     run_steps(ms, steps)
+
+    # TODO: uncomment follow when we make files deletion
+    # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
+    assert len(catalog.get_datatable(ms, 'input_data').get_data()) == 2
+    assert len(catalog.get_datatable(ms, 'transfomed_data').get_data()) == 2

@@ -4,7 +4,6 @@ from abc import ABC
 from dataclasses import dataclass
 
 from datapipe.datatable import DataTable
-from datapipe.label_studio.session import LabelStudioSession
 from datapipe.store.table_store import TableStore
 from datapipe.metastore import MetaStore
 
