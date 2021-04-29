@@ -153,7 +153,10 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     assert len(catalog.get_datatable(ms, 'annotations').get_data()) == 10
 
     # Person annotation imitation & incremental processing
-    tasks = label_studio_session.get_all_tasks(project_id=label_studio_moderation_step.project_id)
+    tasks = label_studio_session.get_tasks(
+        project_id=label_studio_moderation_step.project_id,
+        page_size=-1
+    )
     tasks = np.array(tasks)
     for idxs in [[0, 3, 6, 7, 9], [1, 2, 4, 5, 8]]:
         for task in tasks[idxs]:
