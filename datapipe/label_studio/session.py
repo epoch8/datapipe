@@ -57,7 +57,7 @@ class LabelStudioSession:
 
     def delete_project(self, project_id: str):
         return self.session.delete(
-            urljoin(self.ls_url, f'/api/projects/{project_id}')
+            urljoin(self.ls_url, f'/api/projects/{project_id}/')
         )
 
     def get_project_id_by_title(
