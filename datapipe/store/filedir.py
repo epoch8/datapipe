@@ -23,6 +23,21 @@ class ItemStoreFileAdapter(ABC):
         raise NotImplementedError
 
 
+class TextFile(ItemStoreFileAdapter):
+    '''
+    Reads file 
+    '''
+
+    mode = 't'
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {'text': f.read()}
+    
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        assert('text' in obj)
+        f.write(obj['text'])
+
+
 class JSONFile(ItemStoreFileAdapter):
     '''
     Converts each JSON file into Pandas record
