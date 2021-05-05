@@ -149,11 +149,28 @@ class LabelStudioModerationStep(ComputeStep):
         for data in input_df['data']:
             assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
 
-        if 'annotations' in input_df.columns:
+        if 'annotations' in input_df.columns and 'predictions' in input_df.columns:
             data = [
                 {
                     'data': input_df.loc[id, 'data'],
-                    'annotations': input_df.loc[id, 'annotations']
+                    'annotations': input_df.loc[id, 'annotations'],
+                    'predictions': input_df.loc[id, 'predictions']
+                }
+                for id in input_df.index
+            ]
+        elif 'annotations' in input_df.columns:
+            data = [
+                {
+                    'data': input_df.loc[id, 'data'],
+                    'annotations': input_df.loc[id, 'annotations'],
+                }
+                for id in input_df.index
+            ]
+        elif 'predictions' in input_df.columns:
+            data = [
+                {
+                    'data': input_df.loc[id, 'data'],
+                    'predictions': input_df.loc[id, 'predictions'],
                 }
                 for id in input_df.index
             ]
