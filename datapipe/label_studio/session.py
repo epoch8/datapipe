@@ -14,7 +14,7 @@ class LabelStudioSession:
     def __init__(
         self,
         ls_url: str,
-        auth: Tuple[str, str] = ('admin@epoch8.co', 'qwertyisALICE666')
+        auth: Tuple[str, str]
     ):
         self.ls_url = ls_url
         self.session = requests.Session()
@@ -55,6 +55,11 @@ class LabelStudioSession:
             json=project_setting
         ).json()
 
+    def delete_project(self, project_id: str):
+        return self.session.delete(
+            urljoin(self.ls_url, f'/api/projects/{project_id}/')
+        )
+
     def get_project_id_by_title(
         self,
         title: str
@@ -63,6 +68,7 @@ class LabelStudioSession:
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
+            assert titles.count(title) == 1, f'There is already the task with title="{title}"'
             return project_ids[titles.index(title)]
 
         return None
@@ -126,9 +132,13 @@ class LabelStudioModerationStep(ComputeStep):
     ls_url: str
     project_setting: Dict[str, str]
     chunk_size: int
+    auth: Tuple[str, str]
 
     def __post_init__(self):
-        self.label_studio_session = LabelStudioSession(self.ls_url)
+        self.label_studio_session = LabelStudioSession(
+            ls_url=self.ls_url,
+            auth=self.auth
+        )
         if self.label_studio_session.is_service_up():
             if not self.label_studio_session.is_auth_ok(raise_exception=False):
                 self.label_studio_session.sign_up()

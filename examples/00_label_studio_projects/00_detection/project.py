@@ -140,6 +140,7 @@ pipeline = Pipeline([
         project_setting=PROJECT_SETTING,
         inputs=['LS_data_raw'],
         outputs=['annotation_raw'],
+        auth=('admin@epoch8.co', 'qwertyisALICE666')
     ),
     BatchTransform(
         parse_annotations,

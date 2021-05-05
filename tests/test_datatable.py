@@ -315,6 +315,109 @@ def test_inc_process_many_modify_values(dbconn) -> None:
     assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
+def test_inc_process_many_several_inputs(dbconn) -> None:
+    ds = MetaStore(dbconn)
+
+    tbl = DataTable(ds, 'tbl', table_store=TableStoreDB(
+        dbconn, 'tbl_data', [Column('a_first', Numeric), Column('a_second', Numeric)], True)
+    )
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+
+    def inc_func(df1, df2):
+        df = pd.merge(
+            left=df1,
+            right=df2,
+            left_index=True,
+            right_index=True,
+            suffixes=('_first', '_second')
+        )
+        df['a_first'] += 1
+        df['a_second'] += 2
+        return df
+
+    tbl1.store(TEST_DF)
+    tbl2.store(TEST_DF)
+
+
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
+    assert(
+        assert_df_equal(tbl.get_data(), pd.DataFrame(
+            {
+                'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            },
+                index=[f'id_{i}' for i in range(10)]
+            )
+        )
+    )
+
+    changed_indexes = [f'id_{i}' for i in [0, 4, 6]]
+    not_changed_indexes = [f'id_{i}' for i in [1, 2, 3, 5, 7, 8, 9]]
+
+    tbl2.store_chunk(pd.DataFrame(
+        {
+            'a': [10, 10, 10]
+        },
+            index=changed_indexes
+        )
+    )
+
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
+
+    assert(
+        assert_df_equal(tbl.get_data(idx=changed_indexes), pd.DataFrame(
+            {
+                'a_first': [1, 5, 7],
+                'a_second': [12, 12, 12]
+            },
+                index=changed_indexes
+            )
+        )
+    )
+    assert(
+        assert_df_equal(tbl.get_data(idx=not_changed_indexes), pd.DataFrame(
+            {
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            },
+                index=not_changed_indexes
+            )
+        )
+    )
+
+    tbl1.store_chunk(pd.DataFrame(
+        {
+            'a': [20, 20, 20]
+        },
+            index=changed_indexes
+        )
+    )
+
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
+
+    assert(
+        assert_df_equal(tbl.get_data(idx=changed_indexes), pd.DataFrame(
+            {
+                'a_first': [21, 21, 21],
+                'a_second': [12, 12, 12]
+            },
+                index=changed_indexes
+            )
+        )
+    )
+    assert(
+        assert_df_equal(tbl.get_data(idx=not_changed_indexes), pd.DataFrame(
+            {
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            },
+                index=not_changed_indexes
+            )
+        )
+    )
+
+
 def test_inc_process_many_several_outputs(dbconn) -> None:
     ds = MetaStore(dbconn)
 

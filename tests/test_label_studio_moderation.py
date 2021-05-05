@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.dsl import Catalog, ExternalTable, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.metastore import MetaStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
@@ -17,6 +17,8 @@ from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudio
 
 from .util import dbconn, tmp_dir
 
+
+LABEL_STUDIO_AUTH = ('admin@epoch8.co', 'qwertyisALICE666')
 
 LABEL_CONFIG_TEST = '''<View>
 <Text name="text" value="$unique_id"/>
@@ -27,8 +29,8 @@ LABEL_CONFIG_TEST = '''<View>
 </RectangleLabels>
 </View>'''
 
-PROJECT_SETTING = {
-    "title": "Detection Project",
+PROJECT_SETTING_TEST1 = {
+    "title": "Detection Project Test 1",
     "description": "Detection project",
     "label_config": LABEL_CONFIG_TEST,
     "expert_instruction": "",
@@ -52,6 +54,10 @@ PROJECT_SETTING = {
     "task_data_password": None,
     "control_weights": {}
 }
+PROJECT_SETTING_TEST2 = PROJECT_SETTING_TEST1.copy()
+PROJECT_SETTING_TEST2["title"] = "Detection Project Test 2"
+PROJECT_SETTING_TEST3 = PROJECT_SETTING_TEST1.copy()
+PROJECT_SETTING_TEST3["title"] = "Detection Project Test 3"
 
 
 @pytest.fixture
@@ -60,7 +66,7 @@ def ls_url(tmp_dir):
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
+    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'False'))):
         label_studio_service = Popen([
             'label-studio',
             '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
@@ -97,6 +103,15 @@ def convert_to_ls_input_data(
     )
     return images_df[['data']]
 
+def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
+    raise_exception = False
+    counter = 0
+    while not label_studio_session.is_service_up(raise_exception=raise_exception):
+        time.sleep(1.)
+        counter += 1
+        if counter >= 60:
+            raise_exception = True
+
 
 def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     ms = MetaStore(dbconn)
@@ -124,28 +139,18 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING,
+            project_setting=PROJECT_SETTING_TEST1,
             inputs=['data'],
             outputs=['annotations'],
+            auth=LABEL_STUDIO_AUTH
         ),
     ])
 
     steps = build_compute(ms, catalog, pipeline)
     label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
-    run_steps(ms, steps)
-
-    assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
-
-    # Wait until Label Studio is up
-    label_studio_session = LabelStudioSession(ls_url)
-    raise_exception = False
-    counter = 0
-    while not label_studio_session.is_service_up(raise_exception=raise_exception):
-        time.sleep(1.)
-        counter += 1
-        if counter >= 60:
-            raise_exception = True
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
+    wait_until_label_studio_is_up(label_studio_session)
 
     # These steps should upload tasks
     run_steps(ms, steps)
@@ -193,6 +198,9 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     # Check if pipeline works after service is over
     run_steps(ms, steps)
 
+    # Delete the project after the test
+    res = label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
+
 
 def convert_to_ls_input_data_with_preannotations(
     images_df,
@@ -234,7 +242,7 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         'data': Table(
             store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
         ),
-        'annotations': Table(  # Updates when someone is annotating
+        'annotations': Table(
             store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
         ),
     })
@@ -251,27 +259,18 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING,
+            project_setting=PROJECT_SETTING_TEST2,
             inputs=['data'],
             outputs=['annotations'],
+            auth=LABEL_STUDIO_AUTH
         ),
     ])
 
     steps = build_compute(ms, catalog, pipeline)
+    label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
-    run_steps(ms, steps)
-
-    assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
-
-    # Wait until Label Studio is up
-    label_studio_session = LabelStudioSession(ls_url)
-    raise_exception = False
-    counter = 0
-    while not label_studio_session.is_service_up(raise_exception=raise_exception):
-        time.sleep(1.)
-        counter += 1
-        if counter >= 60:
-            raise_exception = True
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
+    wait_until_label_studio_is_up(label_studio_session)
 
     # These steps should upload tasks with preannotations
     run_steps(ms, steps)
@@ -283,3 +282,54 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
             ["Class1", "Class2"]
         )
+
+    # Delete the project after the test
+    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
+
+# TODO: Uncomment below when we make delete
+
+# def test_label_studio_moderation_when_input_data_changed(dbconn, tmp_dir, ls_url):
+#     ms = MetaStore(dbconn)
+#     catalog = Catalog({
+#         'images': Table(
+#             store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
+#         ),
+#         'data': Table(
+#             store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
+#         ),
+#         'annotations': Table(
+#             store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
+#         ),
+#     })
+
+#     pipeline = Pipeline([
+#         BatchGenerate(
+#             gen_images,
+#             outputs=['images'],
+#         ),
+#         BatchTransform(
+#             convert_to_ls_input_data,
+#             inputs=['images'],
+#             outputs=['data']
+#         ),
+#         LabelStudioModeration(
+#             ls_url=ls_url,
+#             project_setting=PROJECT_SETTING_TEST3,
+#             inputs=['data'],
+#             outputs=['annotations'],
+#             auth=LABEL_STUDIO_AUTH
+#         ),
+#     ])
+
+#     steps = build_compute(ms, catalog, pipeline)
+#     label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
+
+#     assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
+
+#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
+#     wait_until_label_studio_is_up(label_studio_session)
+
+#     # These steps should upload tasks with preannotations
+#     run_steps(ms, steps)
+#     # This should delete old tasks and create new tasks which contains new data
+#     run_steps(ms, steps)
