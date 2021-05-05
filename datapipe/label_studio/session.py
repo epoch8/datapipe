@@ -68,6 +68,7 @@ class LabelStudioSession:
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
+            assert titles.count(title) == 1, f'There is already the task with title="{title}"'
             return project_ids[titles.index(title)]
 
         return None
