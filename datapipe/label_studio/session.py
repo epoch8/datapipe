@@ -166,9 +166,12 @@ class LabelStudioModerationStep(ComputeStep):
             ]
 
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
-
-        input_df['tasks_id'] = ["Unknown" for i in range(len(input_df))]
-        input_df['annotations'] = [[] for i in range(len(input_df))]
+        input_df['tasks_id'] = ["Unknown" for id in input_df.index]
+        input_df['annotations'] = (
+            [input_df.loc[id, 'annotations'] for id in input_df.index]
+            if 'annotations' in input_df.columns else
+            [[] for id in input_df.index]
+        )
         input_df = input_df[['tasks_id', 'annotations']]
         return input_df
 
