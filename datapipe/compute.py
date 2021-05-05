@@ -82,6 +82,7 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 output_dts=output_dts,
                 ls_url=step.ls_url,
                 project_setting=step.project_setting,
+                auth=step.auth,
                 chunk_size=step.chunk_size
             ))
 

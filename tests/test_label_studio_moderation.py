@@ -18,6 +18,8 @@ from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudio
 from .util import dbconn, tmp_dir
 
 
+LABEL_STUDIO_AUTH = ('admin@epoch8.co', 'qwertyisALICE666')
+
 LABEL_CONFIG_TEST = '''<View>
 <Text name="text" value="$unique_id"/>
 <Image name="image" value="$image"/>
@@ -129,6 +131,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
             project_setting=PROJECT_SETTING_TEST1,
             inputs=['data'],
             outputs=['annotations'],
+            auth=LABEL_STUDIO_AUTH
         ),
     ])
 
@@ -140,7 +143,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
 
     # Wait until Label Studio is up
-    label_studio_session = LabelStudioSession(ls_url)
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
     raise_exception = False
     counter = 0
     while not label_studio_session.is_service_up(raise_exception=raise_exception):
@@ -259,6 +262,7 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
             project_setting=PROJECT_SETTING_TEST2,
             inputs=['data'],
             outputs=['annotations'],
+            auth=LABEL_STUDIO_AUTH
         ),
     ])
 
@@ -270,7 +274,7 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
     assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
 
     # Wait until Label Studio is up
-    label_studio_session = LabelStudioSession(ls_url)
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
     raise_exception = False
     counter = 0
     while not label_studio_session.is_service_up(raise_exception=raise_exception):

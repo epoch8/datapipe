@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Tuple
 
 from abc import ABC
 from dataclasses import dataclass
@@ -59,4 +59,5 @@ class LabelStudioModeration:
     project_setting: Dict[str, str]
     inputs: List[str]
     outputs: List[str]
+    auth: Tuple[str, str]
     chunk_size: int = 1000
