@@ -71,13 +71,13 @@ class LabelStudioSession:
 
     def upload_tasks(
         self,
-        data: str,  # as json.dumps(Dict)
+        data: Dict,
         project_id: str
     ) -> Dict:
         results = self.session.post(
             url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/bulk/'),
             headers={"Content-Type": "application/json"},
-            data=data
+            data=json.dumps(data)
         ).json()
         return results
 
@@ -152,12 +152,12 @@ class LabelStudioModerationStep(ComputeStep):
         for data in input_df['data']:
             assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
 
-        data = json.dumps([
+        data = [
             {
                 'data': input_df.loc[id, 'data'],
             }
             for id in input_df.index
-        ])
+        ]
 
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
 
@@ -175,7 +175,7 @@ class LabelStudioModerationStep(ComputeStep):
                 if 'created_ago' in ann:
                     del ann['created_ago']
             return annotations
-        
+
         output_df = pd.DataFrame(
             data={
                 'tasks_id': [str(task['id']) for task in tasks],
