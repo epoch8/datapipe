@@ -5,7 +5,7 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float, func
+from sqlalchemy import Column, Float, String, func
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
@@ -18,7 +18,7 @@ logger = logging.getLogger('datapipe.metastore')
 
 
 METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
+    Column('hash', String),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
     Column('process_ts', Float),  # Время последней успешной обработки
@@ -71,7 +71,7 @@ class MetaStore:
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
             {
-                'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
+                'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)).apply(str),
                 'create_ts': now,
                 'update_ts': now,
                 'process_ts': now,

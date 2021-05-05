@@ -146,7 +146,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     while not label_studio_session.is_service_up(raise_exception=raise_exception):
         time.sleep(1.)
         counter += 1
-        if counter >= 30:
+        if counter >= 60:
             raise_exception = True
 
     # These steps should upload tasks
@@ -276,7 +276,7 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
     while not label_studio_session.is_service_up(raise_exception=raise_exception):
         time.sleep(1.)
         counter += 1
-        if counter >= 30:
+        if counter >= 60:
             raise_exception = True
 
     # These steps should upload tasks with preannotations
