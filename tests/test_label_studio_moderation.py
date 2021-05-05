@@ -27,8 +27,8 @@ LABEL_CONFIG_TEST = '''<View>
 </RectangleLabels>
 </View>'''
 
-PROJECT_SETTING = {
-    "title": "Detection Project",
+PROJECT_SETTING_TEST1 = {
+    "title": "Detection Project Test 1",
     "description": "Detection project",
     "label_config": LABEL_CONFIG_TEST,
     "expert_instruction": "",
@@ -52,6 +52,8 @@ PROJECT_SETTING = {
     "task_data_password": None,
     "control_weights": {}
 }
+PROJECT_SETTING_TEST2 = PROJECT_SETTING_TEST1.copy()
+PROJECT_SETTING_TEST2["title"] = "Detection Project Test 2"
 
 
 @pytest.fixture
@@ -124,7 +126,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING,
+            project_setting=PROJECT_SETTING_TEST1,
             inputs=['data'],
             outputs=['annotations'],
         ),
@@ -193,6 +195,9 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     # Check if pipeline works after service is over
     run_steps(ms, steps)
 
+    # Delete the project after the test
+    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
+
 
 def convert_to_ls_input_data_with_preannotations(
     images_df,
@@ -251,13 +256,14 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING,
+            project_setting=PROJECT_SETTING_TEST2,
             inputs=['data'],
             outputs=['annotations'],
         ),
     ])
 
     steps = build_compute(ms, catalog, pipeline)
+    label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
     run_steps(ms, steps)
 
@@ -283,3 +289,6 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
             ["Class1", "Class2"]
         )
+
+    # Delete the project after the test
+    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
