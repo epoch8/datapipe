@@ -192,3 +192,94 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
 
     # Check if pipeline works after service is over
     run_steps(ms, steps)
+
+
+def convert_to_ls_input_data_with_preannotations(
+    images_df,
+):
+    images_df['data'] = images_df.index.map(
+        lambda id: {
+            'unique_id': id,
+            'image': f"00_dataset/{id}.jpg"  # For tests we do not see images, so it's like that
+        }
+    )
+    images_df['annotations'] = [[{
+        'result': [{
+            "original_width": 100,
+            "original_height": 100,
+            "image_rotation": 0,
+            "value": {
+                "x": np.random.random_sample(),
+                "y": np.random.random_sample(),
+                "width": 10 * np.random.random_sample(),
+                "height": 10 * np.random.random_sample(), 
+                "rotation": 0, 
+                "rectanglelabels": [np.random.choice(["Class1", "Class2"])]
+            },
+            "from_name": "label",
+            "to_name": "image",
+            "type": "rectanglelabels"
+        }]
+    }] for i in range(10)]
+
+    return images_df[['data', 'annotations']]
+
+
+def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
+    ms = MetaStore(dbconn)
+    catalog = Catalog({
+        'images': Table(
+            store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
+        ),
+        'data': Table(
+            store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
+        ),
+        'annotations': Table(  # Updates when someone is annotating
+            store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
+        ),
+    })
+
+    pipeline = Pipeline([
+        BatchGenerate(
+            gen_images,
+            outputs=['images'],
+        ),
+        BatchTransform(
+            convert_to_ls_input_data_with_preannotations,
+            inputs=['images'],
+            outputs=['data']
+        ),
+        LabelStudioModeration(
+            ls_url=ls_url,
+            project_setting=PROJECT_SETTING,
+            inputs=['data'],
+            outputs=['annotations'],
+        ),
+    ])
+
+    steps = build_compute(ms, catalog, pipeline)
+
+    run_steps(ms, steps)
+
+    assert len(catalog.get_datatable(ms, 'data').get_data()) == 10
+
+    # Wait until Label Studio is up
+    label_studio_session = LabelStudioSession(ls_url)
+    raise_exception = False
+    counter = 0
+    while not label_studio_session.is_service_up(raise_exception=raise_exception):
+        time.sleep(1.)
+        counter += 1
+        if counter >= 30:
+            raise_exception = True
+
+    # These steps should upload tasks with preannotations
+    run_steps(ms, steps)
+
+    assert len(catalog.get_datatable(ms, 'annotations').get_data()) == 10
+    df_annotation = catalog.get_datatable(ms, 'annotations').get_data()
+    for idx in df_annotation.index:
+        assert len(df_annotation.loc[idx, 'annotations']) == 1
+        assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
+            ["Class1", "Class2"]
+        )

@@ -1,5 +1,3 @@
-import json
-
 from dataclasses import dataclass
 from typing import Dict, Tuple
 from urllib.parse import urljoin
@@ -76,8 +74,7 @@ class LabelStudioSession:
     ) -> Dict:
         results = self.session.post(
             url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/bulk/'),
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(data)
+            json=data
         ).json()
         return results
 
@@ -152,12 +149,21 @@ class LabelStudioModerationStep(ComputeStep):
         for data in input_df['data']:
             assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
 
-        data = [
-            {
-                'data': input_df.loc[id, 'data'],
-            }
-            for id in input_df.index
-        ]
+        if 'annotations' in input_df.columns:
+            data = [
+                {
+                    'data': input_df.loc[id, 'data'],
+                    'annotations': input_df.loc[id, 'annotations']
+                }
+                for id in input_df.index
+            ]
+        else:
+            data = [
+                {
+                    'data': input_df.loc[id, 'data'],
+                }
+                for id in input_df.index
+            ]
 
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
 
