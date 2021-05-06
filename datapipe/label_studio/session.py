@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 from urllib.parse import urljoin
 
+import pandas as pd
+import requests
+
 from datapipe.datatable import gen_process_many, inc_process_many
 from datapipe.metastore import MetaStore
 from datapipe.step import ComputeStep
-import pandas as pd
 
-import requests
+from tqdm import tqdm
 
 
 class LabelStudioSession:
@@ -115,16 +117,25 @@ class LabelStudioSession:
         project_id: str,
         page: int = 1,  # current page
         page_size: int = -1  # tasks per page, use -1 to obtain all tasks
-    ) -> Dict:
-        tasks = self.session.get(
+    ) -> Tuple[Dict, int]:
+        response = self.session.get(
             url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
             params={
                 'page': page,
                 'page_size': page_size
             }
-        ).json()
+        )
 
-        return tasks
+        return response.json(), response.status_code
+
+    def get_project_summary(
+        self,
+        project_id: str
+    ) -> Dict[str, str]:
+        summary = self.session.get(urljoin(self.ls_url, '/api/projects/1/summary/')).json()
+
+        return summary
+
 
 
 @dataclass
@@ -202,8 +213,25 @@ class LabelStudioModerationStep(ComputeStep):
         input_df = input_df[['tasks_id', 'annotations']]
         return input_df
 
-    def get_current_tasks_as_df(self):
-        tasks = self.label_studio_session.get_tasks(project_id=self.project_id, page_size=-1)
+    def get_current_tasks_as_df(
+        self,
+        page_size: int = 100
+    ):
+        project_summary = self.label_studio_session.get_project_summary(self.project_id)
+        total_tasks_count = project_summary['all_data_columns']['unique_id']
+        total_pages = total_tasks_count // page_size + 1
+        tasks = []
+        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
+            tasks_page, status_code = self.label_studio_session.get_tasks(
+                project_id=self.project_id,
+                page=page,
+                page_size=100
+            )
+            assert status_code in [200, 500]
+            if status_code == 200:
+                tasks.extend(tasks_page)
+            else:
+                break
 
         # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
         def _cleanup_annotations(annotations):

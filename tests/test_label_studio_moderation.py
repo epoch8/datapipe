@@ -66,7 +66,7 @@ def ls_url(tmp_dir):
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_ENABLE_LABEL_STUDIO_MANUALLY', 'False'))):
+    if bool(distutils.util.strtobool(os.environ.get('TEST_ENABLE_LABEL_STUDIO_MANUALLY', 'True'))):
         label_studio_service = Popen([
             'label-studio',
             '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
@@ -158,7 +158,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
     assert len(catalog.get_datatable(ms, 'annotations').get_data()) == 10
 
     # Person annotation imitation & incremental processing
-    tasks = label_studio_session.get_tasks(
+    tasks, _ = label_studio_session.get_tasks(
         project_id=label_studio_moderation_step.project_id,
         page_size=-1
     )
