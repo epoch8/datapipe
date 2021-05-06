@@ -132,7 +132,7 @@ class LabelStudioSession:
         self,
         project_id: str
     ) -> Dict[str, str]:
-        summary = self.session.get(urljoin(self.ls_url, '/api/projects/1/summary/')).json()
+        summary = self.session.get(urljoin(self.ls_url, f'/api/projects/{project_id}/summary/')).json()
 
         return summary
 
@@ -217,7 +217,9 @@ class LabelStudioModerationStep(ComputeStep):
         self,
         page_size: int = 100
     ):
+        print(f"{self.project_id=}")
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
+        print(f"{project_summary=}")
         total_tasks_count = project_summary['all_data_columns']['unique_id']
         total_pages = total_tasks_count // page_size + 1
         tasks = []
