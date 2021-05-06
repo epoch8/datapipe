@@ -137,7 +137,6 @@ class LabelStudioSession:
         return summary
 
 
-
 @dataclass
 class LabelStudioModerationStep(ComputeStep):
     ls_url: str
@@ -215,19 +214,16 @@ class LabelStudioModerationStep(ComputeStep):
 
     def get_current_tasks_as_df(
         self,
-        page_size: int = 100
     ):
-        print(f"{self.project_id=}")
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        print(f"{project_summary=}")
         total_tasks_count = project_summary['all_data_columns']['unique_id']
-        total_pages = total_tasks_count // page_size + 1
+        total_pages = total_tasks_count // self.chunk_size + 1
         tasks = []
         for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
             tasks_page, status_code = self.label_studio_session.get_tasks(
                 project_id=self.project_id,
                 page=page,
-                page_size=100
+                page_size=self.chunk_size
             )
             assert status_code in [200, 500]
             if status_code == 200:
