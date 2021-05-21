@@ -23,6 +23,7 @@ def get_embedder_conversion(url: str, request_count: int) -> Callable[[pd.DataFr
             assert "predictions" in response_content
             df["embedding"] = response_content["predictions"]
             break
+        assert response.status_code == 200, f"Got wrong answer {response.status_code}: {response.content}"
 
         return df
 
@@ -42,6 +43,7 @@ def get_classifier_conversion(url: str, request_count: int) -> Callable[[pd.Data
             assert "predictions" in response_content
             df["classification"] = response_content["classification"]
             break
+        assert response.status_code == 200, f"Got wrong answer {response.status_code}: {response.content}"
 
         return df
 
