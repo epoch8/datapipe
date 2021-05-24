@@ -9,6 +9,7 @@ def request_retries(url: str, data: bytes, retries_count: int, sleep_timeout: in
     assert retries_count > 0
     assert sleep_timeout > 0
     for i in range(retries_count):
+        print(f"{i}-th attempt")
         response = requests.post(url, data=data)
         if response.status_code == 500:
             time.sleep(sleep_timeout)
@@ -45,7 +46,7 @@ def get_classifier_conversion(url: str, request_count: int, sleep_timeout: int, 
         response = request_retries(url, body, request_count, sleep_timeout)
         response_content = json.loads(response.content)
         assert "predictions" in response_content
-        df[output_field] = response_content["classification"]
+        df[output_field] = response_content["predictions"]
 
         return df
 
