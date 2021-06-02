@@ -69,21 +69,16 @@ def _pattern_to_match(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
 
 
-def get_path_with_protocol(open_file: fsspec.core.OpenFile) -> str:
-    protocol = open_file.fs.protocol
-    if isinstance(protocol, tuple):
-        protocol = protocol[0]
-    prefix = f"{protocol}://" if protocol != "file" else ""
-    path = f"{prefix}{open_file.path}"
-    return path
-
-
 class TableStoreFiledir(TableStore):
     def __init__(self, filename_pattern: Union[str, Path], adapter: ItemStoreFileAdapter):
-        if isinstance(filename_pattern, Path):
-            self.filename_pattern = str(filename_pattern.resolve())
+        protocol, path = fsspec.core.split_protocol(filename_pattern)
+
+        if protocol is None or protocol == 'file':
+            self.filename_pattern = str(Path(path).resolve())
+            filename_pattern_for_match = self.filename_pattern
         else:
             self.filename_pattern = str(filename_pattern)
+            filename_pattern_for_match = path
 
         self.adapter = adapter
 
@@ -91,7 +86,7 @@ class TableStoreFiledir(TableStore):
         assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
 
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
-        self.filename_match = _pattern_to_match(self.filename_pattern)
+        self.filename_match = _pattern_to_match(filename_pattern_for_match)
 
     def delete_rows(self, idx: Index) -> None:
         # FIXME: Реализовать
@@ -137,32 +132,28 @@ class TableStoreFiledir(TableStore):
         files = fsspec.open_files(self.filename_glob)
 
         ids = []
-        rows = []
+        ukeys = []
 
         for f in files:
-            path = get_path_with_protocol(f)
-            m = re.match(self.filename_match, path)
+            m = re.match(self.filename_match, f.path)
             assert(m is not None)
 
             ids.append(m.group('id'))
 
-            rows.append(files.fs.info(path))
+            ukeys.append(files.fs.ukey(f.path))
 
-        keys = ['size', 'mtime', 'updated']
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
-                rows,
+                {
+                    'ukey': ukeys,
+                },
                 index=ids
             )
-            missing_keys = [key for key in keys if key not in pseudo_data_df.columns]
-            for missing_key in missing_keys:
-                pseudo_data_df[missing_key] = None
-            return pseudo_data_df[keys]
+            return pseudo_data_df
         else:
             return pd.DataFrame(
                 {
-                    key: []
-                    for key in keys
+                    'ukey': []
                 },
                 index=pd.Series([], dtype=str)
             )
