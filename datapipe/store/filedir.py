@@ -140,18 +140,21 @@ class TableStoreFiledir(TableStore):
 
             rows.append(files.fs.info(path))
 
+        keys = ['size', 'mtime', 'updated']
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
                 rows,
                 index=ids
             )
-
-            return pseudo_data_df[['size', 'mtime']]
+            missing_keys = [key for key in keys if key not in pseudo_data_df.columns]
+            for missing_key in missing_keys:
+                pseudo_data_df[missing_key] = None
+            return pseudo_data_df[keys]
         else:
             return pd.DataFrame(
                 {
-                    'size': [],
-                    'mtime': [],
+                    key: []
+                    for key in keys
                 },
                 index=pd.Series([], dtype=str)
             )
