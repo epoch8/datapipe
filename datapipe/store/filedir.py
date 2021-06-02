@@ -73,9 +73,9 @@ def get_path_with_protocol(open_file: fsspec.core.OpenFile) -> str:
     protocol = open_file.fs.protocol
     if isinstance(protocol, tuple):
         protocol = protocol[0]
-    prefix = f"{protocol}://" if protocol == "file" else ""
-    image_path_str = f"{prefix}{open_file.path}"
-    return image_path_str
+    prefix = f"{protocol}://" if protocol != "file" else ""
+    path = f"{prefix}{open_file.path}"
+    return path
 
 
 class TableStoreFiledir(TableStore):
