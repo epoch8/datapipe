@@ -124,7 +124,7 @@ class TableStoreFiledir(TableStore):
         files = fsspec.open_files(self.filename_glob)
 
         ids = []
-        rows = []
+        ukeys = []
 
         for f in files:
             m = re.match(self.filename_match, f.path)
@@ -132,23 +132,20 @@ class TableStoreFiledir(TableStore):
 
             ids.append(m.group('id'))
 
-            rows.append(files.fs.info(f.path))
+            ukeys.append(files.fs.ukey(f.path))
 
-        keys = ['size', 'mtime', 'updated']
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
-                rows,
+                {
+                    'ukey': ukeys,
+                },
                 index=ids
             )
-            missing_keys = [key for key in keys if key not in pseudo_data_df.columns]
-            for missing_key in missing_keys:
-                pseudo_data_df[missing_key] = None
-            return pseudo_data_df[keys]
+            return pseudo_data_df
         else:
             return pd.DataFrame(
                 {
-                    key: []
-                    for key in keys
+                    'ukey': []
                 },
                 index=pd.Series([], dtype=str)
             )
