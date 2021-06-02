@@ -5,8 +5,9 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float, func
+from sqlalchemy import Column, Numeric, Float, func, String
 import pandas as pd
+from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.datatable import DataTable
@@ -17,12 +18,13 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 
-METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
-    Column('create_ts', Float),   # Время создания строки
-    Column('update_ts', Float),   # Время последнего изменения
-    Column('process_ts', Float),  # Время последней успешной обработки
-    Column('delete_ts', Float),   # Время удаления
+COMMON_METADATA_SQL_SCHEMA = [
+    Column('_id', Integer, primary_key=True),
+    Column('_hash', Numeric),
+    Column('_create_ts', Float),   # Время создания строки
+    Column('_update_ts', Float),   # Время последнего изменения
+    Column('_process_ts', Float),  # Время последней успешной обработки
+    Column('_delete_ts', Float),   # Время удаления
 ]
 
 
@@ -32,40 +34,39 @@ class TableDebugInfo:
     size: int
 
 
-class MetaStore:
-    def __init__(self, dbconn: Union[str, DBConn]) -> None:
-        if isinstance(dbconn, str):
-            self.dbconn = DBConn(dbconn)
-        else:
-            self.dbconn = dbconn
-        self.event_logger = EventLogger(self.dbconn)
+@dataclass
+class MetaTableChangeData:
+    meta_df: pd.DataFrame  # Полный датафрейм для референса
+    changed_meta_df: pd.DataFrame  # Измененные объекты
+    deleted_meta_df: pd.DataFrame  # Удаленные объекты
 
-        self.meta_tables: Dict[str, TableStoreDB] = {}
 
-    def get_meta_table(self, name: str) -> TableStoreDB:
-        if name not in self.meta_tables:
-            self.meta_tables[name] = TableStoreDB(
-                self.dbconn,
-                f'{name}_meta',
-                METADATA_SQL_SCHEMA,
-                create_table=True
-            )
+class MetaTable:
+    def __init__(self, dbconn: DBConn, name: str, data_columns: List[str], event_logger: EventLogger):
+        data_columns_sqla = [
+            Column(col_name, String(100), index=True)
+            for col_name in data_columns
+        ]
 
-        return self.meta_tables[name]
+        self.dbconn = dbconn
+        self.name = name
+        self.event_logger = event_logger
 
-    def get_metadata(self, name: str, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.get_meta_table(name).read_rows(idx)
+        self.data_columns = data_columns
 
-    def get_table_debug_info(self, name: str) -> TableDebugInfo:
-        tbl = self.get_meta_table(name)
-
-        return TableDebugInfo(
-            name=name,
-            size=self.dbconn.con.execute(select([func.count()]).select_from(tbl.data_table)).fetchone()[0]
+        self.store = TableStoreDB(
+            self.dbconn,
+            f'{name}_meta',
+            COMMON_METADATA_SQL_SCHEMA + data_columns_sqla,
+            create_table=True
         )
-        
+
+    def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
+        return self.store.read_rows(idx)
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
+        # data
+
         return pd.DataFrame(
             {
                 'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
@@ -77,10 +78,15 @@ class MetaStore:
             index=df.index
         )
 
+    def get_table_debug_info(self, name: str) -> TableDebugInfo:
+        return TableDebugInfo(
+            name=name,
+            size=self.dbconn.con.execute(select([func.count()]).select_from(self.store.data_table)).fetchone()[0]
+        )
+
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
-    def get_changes_for_store_chunk(
+    def update_data(
         self,
-        name: str,
         data_df: pd.DataFrame,
         now: float = None
     ) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
@@ -88,7 +94,7 @@ class MetaStore:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(name, data_df.index)
+        existing_meta_df = self.get_metadata(data_df.index)
 
         # найти что изменилось
         new_meta_df = self._make_new_metadata_df(now, data_df)
@@ -108,14 +114,46 @@ class MetaStore:
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
             self.event_logger.log_event(
-                name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
+                self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
             )
 
         return new_idx, changed_idx, new_meta_df
 
     def update_meta_for_store_chunk(self, name: str, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
-            self.get_meta_table(name).update_rows(new_meta_df)
+            self.store.update_rows(new_meta_df)
+
+
+class MetaStore:
+    '''
+    MetaStore - основной класс для работы с метаданными.
+
+    Идея такая: мета-таблица, это таблица с мета-данными, на основании которых
+    происходят все джоины и индексация данных.
+    '''
+
+    def __init__(self, dbconn: Union[str, DBConn]) -> None:
+        if isinstance(dbconn, str):
+            self.dbconn = DBConn(dbconn)
+        else:
+            self.dbconn = dbconn
+        self.event_logger = EventLogger(self.dbconn)
+
+        self.meta_tables: Dict[str, MetaTable] = {}
+
+    def create_meta_table(self, name: str, data_columns: List[str]) -> MetaTable:
+        assert(name not in self.meta_tables)
+
+        res = MetaTable(
+            dbconn=self.dbconn, 
+            name=name, 
+            data_columns=data_columns,
+            event_logger=self.event_logger,
+        )
+
+        self.meta_tables[name] = res
+
+        return res
 
     def get_changes_for_sync_meta(self, name: str, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
         idx = pd.Index([])

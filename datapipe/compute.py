@@ -42,6 +42,8 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
     res: List[ComputeStep] = []
 
     for name, tbl in catalog.catalog.items():
+        ms.create_meta_table(name, tbl.metadata)
+
         if isinstance(tbl, ExternalTable):
             res.append(ExternalTableUpdater(
                 name=f'update_{name}',

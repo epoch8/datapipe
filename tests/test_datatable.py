@@ -1,5 +1,3 @@
-# flake8: noqa
-
 import cloudpickle
 import pandas as pd
 from sqlalchemy import Column, Numeric
@@ -9,7 +7,6 @@ from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_pro
 from datapipe.metastore import MetaStore
 
 from tests.util import assert_df_equal, assert_idx_equal
-from .util import dbconn
 
 
 TEST_SCHEMA = [

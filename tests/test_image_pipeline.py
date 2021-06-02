@@ -1,5 +1,3 @@
-# flake8: noqa
-
 import pytest
 
 import glob
@@ -13,8 +11,6 @@ from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
-
-from .util import dbconn
 
 
 @pytest.fixture
@@ -85,12 +81,14 @@ def test_image_datatables(dbconn, tmp_dir):
 def test_image_pipeline(dbconn, tmp_dir):
     catalog = Catalog({
         'tbl1': Table(
+            metadata=['id'],
             store=TableStoreFiledir(
                 f'{tmp_dir}/tbl1/{{id}}.png',
                 adapter=PILFile('png')
             )
         ),
         'tbl2': Table(
+            metadata=['id'],
             store=TableStoreFiledir(
                 f'{tmp_dir}/tbl2/{{id}}.png',
                 adapter=PILFile('png')

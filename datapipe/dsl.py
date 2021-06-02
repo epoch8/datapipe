@@ -10,6 +10,7 @@ from datapipe.metastore import MetaStore
 
 @dataclass
 class Table:
+    metadata: List[str]
     store: TableStore
 
 
@@ -27,7 +28,11 @@ class Catalog:
     catalog: Dict[str, Table]
 
     def get_datatable(self, ms: MetaStore, name: str):
-        return DataTable(ms, name, self.catalog[name].store)
+        return DataTable(
+            ms,
+            name,
+            table_store=self.catalog[name].store
+        )
 
 
 class PipelineStep(ABC):
