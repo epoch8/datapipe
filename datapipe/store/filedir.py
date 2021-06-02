@@ -138,7 +138,7 @@ class TableStoreFiledir(TableStore):
 
             ids.append(m.group('id'))
 
-            rows.append(files.fs.info(f.path))
+            rows.append(files.fs.info(path))
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
