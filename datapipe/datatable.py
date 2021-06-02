@@ -54,7 +54,7 @@ class DataTable:
 
         self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
 
-        return data_df.index
+        return list(data_df.index)
 
     def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''

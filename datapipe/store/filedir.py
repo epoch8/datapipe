@@ -69,6 +69,15 @@ def _pattern_to_match(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
 
 
+def get_path_with_protocol(open_file: fsspec.core.OpenFile) -> str:
+    protocol = open_file.fs.protocol
+    if isinstance(protocol, tuple):
+        protocol = protocol[0]
+    prefix = f"{protocol}://" if protocol != "file" else ""
+    path = f"{prefix}{open_file.path}"
+    return path
+
+
 class TableStoreFiledir(TableStore):
     def __init__(self, filename_pattern: Union[str, Path], adapter: ItemStoreFileAdapter):
         if isinstance(filename_pattern, Path):
@@ -131,12 +140,13 @@ class TableStoreFiledir(TableStore):
         rows = []
 
         for f in files:
-            m = re.match(self.filename_match, f.path)
+            path = get_path_with_protocol(f)
+            m = re.match(self.filename_match, path)
             assert(m is not None)
 
             ids.append(m.group('id'))
 
-            rows.append(files.fs.info(f.path))
+            rows.append(files.fs.info(path))
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
