@@ -66,7 +66,7 @@ def test_table_classification_pipepline(dbconn, tmp_dir):
     assert len(catalog.get_datatable(ms, 'input_data').get_data()) == 6
     assert len(df_transformed) == 6
     assert all(
-        pd.read_csv("tmp-table-classification.csv")["classification"].apply(eval).apply(lambda data: data['category_name']).values == \
+        df_transformed["classification"].apply(lambda data: data['category_name']).values == \
         [
             'Продукты питания->Хлеб и кондитерские изделия->Пастила',
             'Красота и здоровье->Косметика для ухода->Скраб для тела',
