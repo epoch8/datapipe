@@ -21,7 +21,7 @@ def make_file(file):
         out.write('{"id": "5", "text": "Компьютерная мышь logitech"}\n')
 
 
-def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
+def test_table_classification_pipepline(dbconn, tmp_dir):
     input_file = tmp_dir / "data.json"
     intermediate_file = tmp_dir / "intermediate.json"
     output_file = tmp_dir / "data_transformed.json"
