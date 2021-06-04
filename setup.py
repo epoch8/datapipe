@@ -2,17 +2,19 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.5.0+ls1',
+    version='0.5.3',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
+        "fsspec ==2021.5.0",
+        "gcsfs ==2021.5.0",
+
         "pandas >=1.1.4",
         "SQLAlchemy >=1.3.20, <1.4",
         "psycopg2_binary >=2.8.4",
         "cloudpickle >=1.6.0",
         "PyYAML >=5.3.1",
         "anyconfig >=0.10.0",
-        "fsspec >=0.8.7",
         "Pillow >=7.2.0",
         "tqdm >=4.60.0",
         "xlrd >=2.0.1",
