@@ -49,6 +49,24 @@ def test_read_json_rows(tmp_dir_with_json_data):
     assert_df_equal(ts.read_rows(), TEST_DF)
 
 
+def test_read_json_rows_file_fs(tmp_dir_with_json_data):
+    ts = TableStoreFiledir(
+        f'file://{tmp_dir_with_json_data}/{{id}}.json',
+        adapter=JSONFile()
+    )
+
+    assert_df_equal(ts.read_rows(), TEST_DF)
+
+
+def test_read_json_rows_gcs_fs():
+    ts = TableStoreFiledir(
+        'gs://datapipe-test/{id}.json',
+        adapter=JSONFile()
+    )
+
+    assert_df_equal(ts.read_rows(), TEST_DF)
+
+
 def test_insert_json_rows(tmp_dir_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
