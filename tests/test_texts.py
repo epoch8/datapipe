@@ -7,14 +7,11 @@ from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
 from datapipe.store.pandas import TableStoreJsonLine
 import tempfile
+import shutil
+import os
 from .util import dbconn
 import pytest
-
-
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield d
+import datetime
 
 
 def make_file(file):
@@ -27,10 +24,12 @@ def make_file(file):
         out.write('{"id": "5", "text": "Компьютерная мышь logitech"}\n')
 
 
-def test_table_classification_pipepline(dbconn, tmp_dir):
-    input_file = tmp_dir / "data.json"
-    intermediate_file = tmp_dir / "intermediate.json"
-    output_file = tmp_dir / "data_transformed.json"
+def test_table_classification_pipepline(dbconn):
+    tmp_dir = "data"#tempfile.mkdtemp()
+    
+    input_file = os.path.join(tmp_dir, "data.json")
+    intermediate_file = os.path.join(tmp_dir, "intermediate.json")
+    output_file = os.path.join(tmp_dir, "data_transformed.json")
 
     ms = MetaStore(dbconn)
     catalog = Catalog({
@@ -67,7 +66,9 @@ def test_table_classification_pipepline(dbconn, tmp_dir):
     make_file(input_file)
 
     steps = build_compute(ms, catalog, pipeline)
+    print("RUNNING CONVERSION", datetime.datetime.now())
     run_steps(ms, steps)
+    print("FINISHED CONVERSION", datetime.datetime.now())
 
     df_transformed = catalog.get_datatable(ms, 'transfomed_data').get_data()
 
@@ -83,3 +84,5 @@ def test_table_classification_pipepline(dbconn, tmp_dir):
             'Электроника->Устройство ручного ввода->Мышь'
         ]
     )
+    
+    shutil.rmtree(tmp_dir)

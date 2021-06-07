@@ -27,12 +27,14 @@ def get_embedder_conversion(url: str, request_count: int, sleep_timeout: int, in
         ]
 
     def _func(df: pd.DataFrame) -> pd.DataFrame:
+        print("RUNNED EMBEDDER CONVERSION")
         encoded_inputs = _preprocess_inputs(df[input_field].tolist())
         body = json.dumps({"instances": encoded_inputs}).encode("utf-8")
         response = request_retries(url, body, request_count, sleep_timeout)
         response_content = json.loads(response.content)
         assert "predictions" in response_content
         df[output_field] = response_content["predictions"]
+        print("FINISHED EMBEDDER CONVERSION")
 
         return df
 
@@ -41,12 +43,14 @@ def get_embedder_conversion(url: str, request_count: int, sleep_timeout: int, in
 
 def get_classifier_conversion(url: str, request_count: int, sleep_timeout: int, input_field: str='embedding', output_field='classification') -> Callable[[pd.DataFrame], pd.DataFrame]:
     def _func(df: pd.DataFrame) -> pd.DataFrame:
+        print("RUNNED CLASSIFIER CONVERSION")
         encoded_inputs = df[input_field].tolist()
         body = json.dumps({"instances": encoded_inputs}).encode("utf-8")
         response = request_retries(url, body, request_count, sleep_timeout)
         response_content = json.loads(response.content)
         assert "predictions" in response_content
         df[output_field] = response_content["predictions"]
+        print("FINISHED CLASSIFIER CONVERSION")
 
         return df
 
