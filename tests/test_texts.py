@@ -10,12 +10,10 @@ import tempfile
 import shutil
 import os
 from .util import dbconn
-import pytest
-import datetime
 
 
 def make_file(file):
-    with open(file, 'w') as out:
+    with open(file, 'w', encoding="utf-8") as out:
         out.write('{"id": "0", "text": "пастила Хрустящие кус без сах 35г Белев"}\n')
         out.write('{"id": "1", "text": "Скраб д/тела ECOLAB солевой Лифтинг"}\n')
         out.write('{"id": "2", "text": "БАРС ошейник инсектоакорицид. д/собак мелк.пород"}\n')
@@ -25,7 +23,7 @@ def make_file(file):
 
 
 def test_table_classification_pipepline(dbconn):
-    tmp_dir = "data"#tempfile.mkdtemp()
+    tmp_dir = tempfile.mkdtemp()
     
     input_file = os.path.join(tmp_dir, "data.json")
     intermediate_file = os.path.join(tmp_dir, "intermediate.json")
@@ -66,9 +64,7 @@ def test_table_classification_pipepline(dbconn):
     make_file(input_file)
 
     steps = build_compute(ms, catalog, pipeline)
-    print("RUNNING CONVERSION", datetime.datetime.now())
     run_steps(ms, steps)
-    print("FINISHED CONVERSION", datetime.datetime.now())
 
     df_transformed = catalog.get_datatable(ms, 'transfomed_data').get_data()
 
