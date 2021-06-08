@@ -123,6 +123,8 @@ def tmp_several_dirs_with_json_data(tmp_dir):
         for j in range(3):
             with fsspec.open(f'{tmp_dir}/folder{i}/folder{j}/{i}{j}.json', 'w') as out:
                 out.write(f'{{"a": {i}, "b": {j}}}')
+        with fsspec.open(f'{tmp_dir}/folder{i}/{i}.json', 'w') as out:
+            out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
 
 
@@ -145,10 +147,10 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
 
 TEST_DF_FOLDER_RECURSIVELY = pd.DataFrame(
     {
-        "a": [0, 0, 0, 1, 1, 1, 2, 2, 2],
-        "b": [0, 1, 2, 0, 1, 2, 0, 1, 2],
+        "a": [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],
+        "b": [-1, 0, 1, 2, -1, 0, 1, 2, -1, 0, 1, 2],
     },
-    index=['00', '01', '02', '10', '11', '12', '20', '21', '22'],
+    index=['0', '00', '01', '02', '1', '10', '11', '12', '2', '20', '21', '22'],
 )
 
 
