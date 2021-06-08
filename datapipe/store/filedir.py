@@ -66,7 +66,10 @@ def _pattern_to_glob(pat: str) -> str:
 
 
 def _pattern_to_match(pat: str) -> str:
-    return re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
+    pat = re.sub(r'\*\*', r'([^/]+/)*[^/]+', pat)
+    pat = re.sub(r'\*', r'[^/]+', pat)
+    pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
+    return pat
 
 
 class TableStoreFiledir(TableStore):
