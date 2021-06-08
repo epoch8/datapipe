@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.5.2',
+    version='0.5.3',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
