@@ -66,8 +66,11 @@ def _pattern_to_glob(pat: str) -> str:
 
 
 def _pattern_to_match(pat: str) -> str:
-    pat = re.sub(r'\*\*', r'([^/]+/)*[^/]+', pat)
-    pat = re.sub(r'\*', r'[^/]+', pat)
+    # TODO сделать трансформацию правильнее
+    # * -> r'[^/]+'
+    # ** -> r'([^/]+/)*?[^/]+'
+
+    pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)
     pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
     return pat
 
