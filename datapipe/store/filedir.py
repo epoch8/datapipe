@@ -83,6 +83,11 @@ class TableStoreFiledir(TableStore):
             self.filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
 
+        if '*' in path:
+            self.readonly = True
+        else:
+            self.readonly = False
+
         self.adapter = adapter
 
         # Другие схемы идентификации еще не реализованы
@@ -94,12 +99,15 @@ class TableStoreFiledir(TableStore):
     def delete_rows(self, idx: Index) -> None:
         # FIXME: Реализовать
         # Do not delete old files for now
+        # Consider self.readonly as well
         pass
 
     def _filename(self, item_id: str) -> str:
         return re.sub(r'\{id\}', item_id, self.filename_pattern)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
+        assert(not self.readonly)
+
         for i, data in zip(df.index, df.to_dict('records')):
             filename = self._filename(i)
 
