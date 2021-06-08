@@ -10,7 +10,6 @@ import pandas as pd
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.types import Index, ChunkMeta
-from datapipe.datatable import DataTable
 from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
 
@@ -42,17 +41,17 @@ class MetaTableChangeData:
 
 
 class MetaTable:
-    def __init__(self, dbconn: DBConn, name: str, data_columns: List[str], event_logger: EventLogger):
+    def __init__(self, dbconn: DBConn, name: str, index_columns: List[str], event_logger: EventLogger):
         data_columns_sqla = [
             Column(col_name, String(100), index=True)
-            for col_name in data_columns
+            for col_name in index_columns
         ]
 
         self.dbconn = dbconn
         self.name = name
         self.event_logger = event_logger
 
-        self.data_columns = data_columns
+        self.index_columns = index_columns
 
         self.store = TableStoreDB(
             self.dbconn,
@@ -123,6 +122,24 @@ class MetaTable:
         if len(new_meta_df) > 0:
             self.store.update_rows(new_meta_df)
 
+    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
+        idx = pd.Index([])
+        for chunk in chunks:
+            idx = idx.union(chunk)
+
+        existing_meta_df = self.get_metadata(idx=processed_idx)
+
+        deleted_idx = existing_meta_df.index.difference(idx)
+
+        if len(deleted_idx) > 0:
+            self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+
+        return deleted_idx
+
+    def update_meta_for_sync_meta(self, deleted_idx: pd.Index) -> None:
+        if len(deleted_idx) > 0:
+            self.store.delete_rows(deleted_idx)
+
 
 class MetaStore:
     '''
@@ -141,13 +158,13 @@ class MetaStore:
 
         self.meta_tables: Dict[str, MetaTable] = {}
 
-    def create_meta_table(self, name: str, data_columns: List[str]) -> MetaTable:
+    def create_meta_table(self, name: str, index_columns: List[str]) -> MetaTable:
         assert(name not in self.meta_tables)
 
         res = MetaTable(
-            dbconn=self.dbconn, 
-            name=name, 
-            data_columns=data_columns,
+            dbconn=self.dbconn,
+            name=name,
+            index_columns=index_columns,
             event_logger=self.event_logger,
         )
 
@@ -155,28 +172,10 @@ class MetaStore:
 
         return res
 
-    def get_changes_for_sync_meta(self, name: str, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
-        idx = pd.Index([])
-        for chunk in chunks:
-            idx = idx.union(chunk)
-
-        existing_meta_df = self.get_metadata(name, idx=processed_idx)
-
-        deleted_idx = existing_meta_df.index.difference(idx)
-
-        if len(deleted_idx) > 0:
-            self.event_logger.log_event(name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
-
-        return deleted_idx
-
-    def update_meta_for_sync_meta(self, name: str, deleted_idx: pd.Index) -> None:
-        if len(deleted_idx) > 0:
-            self.get_meta_table(name).delete_rows(deleted_idx)
-
     def get_process_ids(
         self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
+        inputs: List[MetaTable],
+        outputs: List[MetaTable],
     ) -> pd.Index:
         if len(inputs) == 0:
             return pd.Index([])
@@ -199,20 +198,20 @@ class MetaStore:
             return q
 
         for inp in inputs:
-            sql = select([self.get_meta_table(inp.name).data_table.c.id]).select_from(
+            sql = select([inp.store.data_table.c.id]).select_from(
                 left_join(
-                    self.get_meta_table(inp.name).data_table,
-                    [self.get_meta_table(out.name).data_table for out in outputs]
+                    inp.store.data_table,
+                    [out.store.data_table for out in outputs]
                 )
             ).where(
                 or_(
                     or_(
                         (
-                            self.get_meta_table(out.name).data_table.c.process_ts
+                            out.store.data_table.c.process_ts
                             <
-                            self.get_meta_table(inp.name).data_table.c.update_ts
+                            inp.store.data_table.c.update_ts
                         ),
-                        self.get_meta_table(out.name).data_table.c.process_ts.is_(None)
+                        out.store.data_table.c.process_ts.is_(None)
                     )
                     for out in outputs
                 )
@@ -230,13 +229,13 @@ class MetaStore:
                 idx = idx.union(idx_df.index)
 
         for out in outputs:
-            sql = select([self.get_meta_table(out.name).data_table.c.id]).select_from(
+            sql = select([out.store.data_table.c.id]).select_from(
                 left_join(
-                    self.get_meta_table(out.name).data_table,
-                    [self.get_meta_table(inp.name).data_table for inp in inputs]
+                    out.store.data_table,
+                    [inp.store.data_table for inp in inputs]
                 )
             ).where(
-                and_(self.get_meta_table(inp.name).data_table.c.id.is_(None) for inp in inputs)
+                and_(inp.store.data_table.c.id.is_(None) for inp in inputs)
             )
 
             idx_df = pd.read_sql_query(
@@ -254,8 +253,8 @@ class MetaStore:
 
     def get_process_chunks(
         self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
+        inputs: List[MetaTable],
+        outputs: List[MetaTable],
         chunksize: int = 1000,
     ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
         idx = self.get_process_ids(
