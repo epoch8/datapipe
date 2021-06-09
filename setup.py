@@ -24,6 +24,7 @@ setuptools.setup(
         "dash >=1.20.0",
         "dash_bootstrap_components >= 0.12.0",
         "dash_interactive_graphviz >=0.3.0",
+        "requests-mock == 1.9.3",
     ],
     python_requires='>=3.8'
 )
