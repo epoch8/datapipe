@@ -18,7 +18,7 @@ from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudio
 from .util import dbconn, tmp_dir
 
 
-LABEL_STUDIO_AUTH = ('admin@epoch8.co', 'qwertyisALICE666')
+LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
 
 LABEL_CONFIG_TEST = '''<View>
 <Text name="text" value="$unique_id"/>
@@ -80,6 +80,23 @@ def ls_url(tmp_dir):
         yield ls_url
 
 
+def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
+    raise_exception = False
+    counter = 0
+    while not label_studio_session.is_service_up(raise_exception=raise_exception):
+        time.sleep(1.)
+        counter += 1
+        if counter >= 60:
+            raise_exception = True
+
+def test_sign_up(ls_url):
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+    wait_until_label_studio_is_up(label_studio_session)
+    assert not label_studio_session.is_auth_ok(raise_exception=False)
+    label_studio_session.sign_up()
+    assert label_studio_session.is_auth_ok(raise_exception=False)
+
+
 def make_df():
     idx = [f'im_{i}' for i in range(10)]
     return pd.DataFrame(
@@ -103,14 +120,6 @@ def convert_to_ls_input_data(
     )
     return images_df[['data']]
 
-def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
-    raise_exception = False
-    counter = 0
-    while not label_studio_session.is_service_up(raise_exception=raise_exception):
-        time.sleep(1.)
-        counter += 1
-        if counter >= 60:
-            raise_exception = True
 
 
 def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
