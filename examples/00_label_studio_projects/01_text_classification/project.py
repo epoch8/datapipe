@@ -47,7 +47,6 @@ DATA_DIR = Path('data/').absolute()
 def convert_to_ls_input_data(input_df: pd.DataFrame):
     input_df['data'] = input_df.index.map(
         lambda id: {
-            'unique_id': id,
             "text": str(input_df.loc[id, "text"]),
             "prediction": str(input_df.loc[id, "prediction"]),
             "category": str(input_df.loc[id, "category"]),

@@ -18,7 +18,6 @@ def wrapped_partial(func, *args, **kwargs):
 
 
 LABEL_CONFIG = '''<View>
-<Text name="text" value="$unique_id"/>
 <Image name="image" value="$image"/>
 <RectangleLabels name="label" toName="image">
     <Label value="Class1" background="#6600ff"/>
@@ -37,7 +36,6 @@ def convert_to_ls_input_data(
 ):
     input_images_df['data'] = input_images_df.index.map(
         lambda id: {
-            'unique_id': id,
             'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
         }
     )

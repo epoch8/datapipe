@@ -196,44 +196,18 @@ class LabelStudioModerationStep(ComputeStep):
         input_df: pd.DataFrame
     ):
         assert 'data' in input_df.columns, "There must be column 'data' in input_df"
-        for data in input_df['data']:
-            assert 'unique_id' in data, "There must be 'unique_id' in input data"
-
-        if 'annotations' in input_df.columns and 'predictions' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'annotations': input_df.loc[id, 'annotations'],
-                    'predictions': input_df.loc[id, 'predictions']
-                }
-                for id in input_df.index
-            ]
-        elif 'annotations' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'annotations': input_df.loc[id, 'annotations'],
-                }
-                for id in input_df.index
-            ]
-        elif 'predictions' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'predictions': input_df.loc[id, 'predictions'],
-                }
-                for id in input_df.index
-            ]
-        else:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                }
-                for id in input_df.index
-            ]
-
+        for idx in input_df.index:
+            input_df.loc[idx, 'data']['LabelStudioModerationStep__unique_id'] = idx
+        data = [
+            {
+                column: input_df.loc[id, column]
+                for column in ['data', 'annotations', 'predictions']
+                if column in input_df.columns
+            }
+            for id in input_df.index
+        ]
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
-        input_df['tasks_id'] = ["Unknown" for id in input_df.index]
+        input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
         input_df['annotations'] = (
             [input_df.loc[id, 'annotations'] for id in input_df.index]
             if 'annotations' in input_df.columns else
@@ -242,24 +216,10 @@ class LabelStudioModerationStep(ComputeStep):
         input_df = input_df[['tasks_id', 'annotations']]
         return input_df
 
-    def get_current_tasks_as_df(
-        self,
-    ):
+    def get_current_tasks_as_df(self):
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        total_tasks_count = project_summary['all_data_columns']['unique_id']
+        total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
         total_pages = total_tasks_count // self.chunk_size + 1
-        tasks = []
-        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
-            tasks_page, status_code = self.label_studio_session.get_tasks(
-                project_id=self.project_id,
-                page=page,
-                page_size=self.chunk_size
-            )
-            assert status_code in [200, 500]
-            if status_code == 200:
-                tasks.extend(tasks_page)
-            else:
-                break
 
         # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
         def _cleanup_annotations(annotations):
@@ -268,15 +228,25 @@ class LabelStudioModerationStep(ComputeStep):
                     del ann['created_ago']
             return annotations
 
-        output_df = pd.DataFrame(
-            data={
-                'tasks_id': [str(task['id']) for task in tasks],
-                'annotations': [_cleanup_annotations(task['annotations']) for task in tasks]
-            },
-            index=[task['data']['unique_id'] for task in tasks]
-        )
+        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
+            tasks_page, status_code = self.label_studio_session.get_tasks(
+                project_id=self.project_id,
+                page=page,
+                page_size=self.chunk_size
+            )
+            assert status_code in [200, 500]
+            if status_code == 500:
+                break
 
-        return output_df
+            output_df = pd.DataFrame(
+                data={
+                    'tasks_id': [str(task['id']) for task in tasks_page],
+                    'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
+                },
+                index=[task['data']['LabelStudioModerationStep__unique_id'] for task in tasks_page]
+            )
+
+            yield output_df
 
     def run(self, ms: MetaStore) -> None:
         if self.label_studio_session.is_service_up():

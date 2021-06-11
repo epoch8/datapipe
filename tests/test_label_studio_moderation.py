@@ -21,7 +21,6 @@ from .util import dbconn, tmp_dir
 LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
 
 LABEL_CONFIG_TEST = '''<View>
-<Text name="text" value="$unique_id"/>
 <Image name="image" value="$image"/>
 <RectangleLabels name="label" toName="image">
     <Label value="Class1" background="#6600ff"/>
@@ -90,7 +89,6 @@ def convert_to_ls_input_data(
 ):
     images_df['data'] = images_df.index.map(
         lambda id: {
-            'unique_id': id,
             'image': f"00_dataset/{id}.jpg"  # For tests we do not see images, so it's like that
         }
     )
@@ -129,7 +127,8 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
             auth=LABEL_STUDIO_AUTH,
             project_title=PROJECT_NAME_TEST1,
             project_description=PROJECT_DESCRIPTION_TEST,
-            project_label_config=PROJECT_LABEL_CONFIG_TEST
+            project_label_config=PROJECT_LABEL_CONFIG_TEST,
+            chunk_size=2
         ),
     ])
 
@@ -174,7 +173,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
                 ]
         )
         run_steps(ms, steps)
-        idxs_df = [task['data']['unique_id'] for task in tasks[idxs]]
+        idxs_df = [task['data']['LabelStudioModerationStep__unique_id'] for task in tasks[idxs]]
         df_annotation = catalog.get_datatable(ms, 'annotations').get_data(idx=idxs_df)
         for idx_df in idxs_df:
             assert len(df_annotation.loc[idx_df, 'annotations']) == 1
@@ -194,7 +193,6 @@ def convert_to_ls_input_data_with_preannotations(
 ):
     images_df['data'] = images_df.index.map(
         lambda id: {
-            'unique_id': id,
             'image': f"00_dataset/{id}.jpg"  # For tests we do not see images, so it's like that
         }
     )
@@ -251,7 +249,8 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
             auth=LABEL_STUDIO_AUTH,
             project_title=PROJECT_NAME_TEST2,
             project_description=PROJECT_DESCRIPTION_TEST,
-            project_label_config=PROJECT_LABEL_CONFIG_TEST
+            project_label_config=PROJECT_LABEL_CONFIG_TEST,
+            chunk_size=2
         ),
     ])
 
@@ -308,7 +307,8 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
 #             auth=LABEL_STUDIO_AUTH,
 #             project_title=PROJECT_NAME_TEST3,
 #             project_description=PROJECT_DESCRIPTION_TEST,
-#             project_label_config=PROJECT_LABEL_CONFIG_TEST
+#             project_label_config=PROJECT_LABEL_CONFIG_TEST,
+#             chunk_size=2
 #         ),
 #     ])
 
