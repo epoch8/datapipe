@@ -29,35 +29,11 @@ LABEL_CONFIG_TEST = '''<View>
 </RectangleLabels>
 </View>'''
 
-PROJECT_SETTING_TEST1 = {
-    "title": "Detection Project Test 1",
-    "description": "Detection project",
-    "label_config": LABEL_CONFIG_TEST,
-    "expert_instruction": "",
-    "show_instruction": False,
-    "show_skip_button": True,
-    "enable_empty_annotation": True,
-    "show_annotation_history": False,
-    "organization": 1,
-    "color": "#FFFFFF",
-    "maximum_annotations": 1,
-    "is_published": False,
-    "model_version": "",
-    "is_draft": False,
-    "min_annotations_to_start_training": 10,
-    "show_collab_predictions": True,
-    "sampling": "Sequential sampling",
-    "show_ground_truth_first": True,
-    "show_overlap_first": True,
-    "overlap_cohort_percentage": 100,
-    "task_data_login": None,
-    "task_data_password": None,
-    "control_weights": {}
-}
-PROJECT_SETTING_TEST2 = PROJECT_SETTING_TEST1.copy()
-PROJECT_SETTING_TEST2["title"] = "Detection Project Test 2"
-PROJECT_SETTING_TEST3 = PROJECT_SETTING_TEST1.copy()
-PROJECT_SETTING_TEST3["title"] = "Detection Project Test 3"
+PROJECT_NAME_TEST1 = 'Detection Project Test 1'
+PROJECT_NAME_TEST2 = 'Detection Project Test 2'
+PROJECT_NAME_TEST3 = 'Detection Project Test 3'
+PROJECT_DESCRIPTION_TEST = 'Detection project'
+PROJECT_LABEL_CONFIG_TEST = LABEL_CONFIG_TEST
 
 
 @pytest.fixture
@@ -148,10 +124,12 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING_TEST1,
             inputs=['data'],
             outputs=['annotations'],
-            auth=LABEL_STUDIO_AUTH
+            auth=LABEL_STUDIO_AUTH,
+            project_title=PROJECT_NAME_TEST1,
+            project_description=PROJECT_DESCRIPTION_TEST,
+            project_label_config=PROJECT_LABEL_CONFIG_TEST
         ),
     ])
 
@@ -268,10 +246,12 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
         ),
         LabelStudioModeration(
             ls_url=ls_url,
-            project_setting=PROJECT_SETTING_TEST2,
             inputs=['data'],
             outputs=['annotations'],
-            auth=LABEL_STUDIO_AUTH
+            auth=LABEL_STUDIO_AUTH,
+            project_title=PROJECT_NAME_TEST2,
+            project_description=PROJECT_DESCRIPTION_TEST,
+            project_label_config=PROJECT_LABEL_CONFIG_TEST
         ),
     ])
 
@@ -323,10 +303,12 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url):
 #         ),
 #         LabelStudioModeration(
 #             ls_url=ls_url,
-#             project_setting=PROJECT_SETTING_TEST3,
 #             inputs=['data'],
 #             outputs=['annotations'],
-#             auth=LABEL_STUDIO_AUTH
+#             auth=LABEL_STUDIO_AUTH,
+#             project_title=PROJECT_NAME_TEST3,
+#             project_description=PROJECT_DESCRIPTION_TEST,
+#             project_label_config=PROJECT_LABEL_CONFIG_TEST
 #         ),
 #     ])
 

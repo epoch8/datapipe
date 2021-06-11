@@ -39,31 +39,6 @@ LS_LABEL_CONFIG_XML = """
         </Choices>
     </View>
 """
-LS_PROJECT_CONFIG = {
-    "title": "Text classification project",
-    "description": "Text classification project",
-    "label_config": LS_LABEL_CONFIG_XML,
-    "expert_instruction": "",
-    "show_instruction": False,
-    "show_skip_button": True,
-    "enable_empty_annotation": True,
-    "show_annotation_history": False,
-    "organization": 1,
-    "color": "#FFFFFF",
-    "maximum_annotations": 1,
-    "is_published": False,
-    "model_version": "",
-    "is_draft": False,
-    "min_annotations_to_start_training": 10,
-    "show_collab_predictions": True,
-    "sampling": "Sequential sampling",
-    "show_ground_truth_first": True,
-    "show_overlap_first": True,
-    "overlap_cohort_percentage": 100,
-    "task_data_login": None,
-    "task_data_password": None,
-    "control_weights": {}
-}
 HOST = 'localhost'
 LS_PORT = '8080'
 DATA_DIR = Path('data/').absolute()
@@ -122,10 +97,12 @@ pipeline = Pipeline([
     ),
     LabelStudioModeration(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        project_setting=LS_PROJECT_CONFIG,
         inputs=["LS_data_raw"],
         outputs=["annotation_raw"],
-        auth=('admin@epoch8.co', 'qwertyisALICE666')
+        auth=('moderation@epoch8.co', 'qwerty123'),
+        project_title='Text classification project',
+        project_description='Text classification project!',
+        project_label_config=LS_LABEL_CONFIG_XML
     ),
     BatchTransform(
         parse_annotation,

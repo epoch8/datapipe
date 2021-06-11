@@ -70,7 +70,7 @@ class LabelStudioSession:
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
-            assert titles.count(title) == 1, f'There is already the task with title="{title}"'
+            assert titles.count(title) == 1, f'There are 2 or more tasks with title="{title}"'
             return project_ids[titles.index(title)]
 
         return None
@@ -140,9 +140,11 @@ class LabelStudioSession:
 @dataclass
 class LabelStudioModerationStep(ComputeStep):
     ls_url: str
-    project_setting: Dict[str, str]
     chunk_size: int
     auth: Tuple[str, str]
+    project_title: str
+    project_description: str
+    project_label_config: str
 
     def __post_init__(self):
         self.label_studio_session = LabelStudioSession(
@@ -150,13 +152,41 @@ class LabelStudioModerationStep(ComputeStep):
             auth=self.auth
         )
         if self.label_studio_session.is_service_up():
+
+            # Authorize or sign up
             if not self.label_studio_session.is_auth_ok(raise_exception=False):
                 self.label_studio_session.sign_up()
                 self.label_studio_session.is_auth_ok(raise_exception=True)
 
-            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_setting['title'])
+            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
             if self.project_id is None:
-                project = self.label_studio_session.create_project(self.project_setting)
+                project = self.label_studio_session.create_project(
+                    project_setting={
+                        "title": self.project_title,
+                        "description": self.project_description,
+                        "label_config": self.project_label_config,
+                        "expert_instruction": "",
+                        "show_instruction": False,
+                        "show_skip_button": False,
+                        "enable_empty_annotation": True,
+                        "show_annotation_history": False,
+                        "organization": 1,
+                        "color": "#FFFFFF",
+                        "maximum_annotations": 1,
+                        "is_published": False,
+                        "model_version": "",
+                        "is_draft": False,
+                        "min_annotations_to_start_training": 10,
+                        "show_collab_predictions": True,
+                        "sampling": "Sequential sampling",
+                        "show_ground_truth_first": True,
+                        "show_overlap_first": True,
+                        "overlap_cohort_percentage": 100,
+                        "task_data_login": None,
+                        "task_data_password": None,
+                        "control_weights": {}
+                    }
+                )
                 self.project_id = project['id']
         else:
             self.project_id = None
@@ -167,7 +197,7 @@ class LabelStudioModerationStep(ComputeStep):
     ):
         assert 'data' in input_df.columns, "There must be column 'data' in input_df"
         for data in input_df['data']:
-            assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
+            assert 'unique_id' in data, "There must be 'unique_id' in input data"
 
         if 'annotations' in input_df.columns and 'predictions' in input_df.columns:
             data = [

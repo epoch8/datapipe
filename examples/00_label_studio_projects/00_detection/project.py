@@ -25,31 +25,6 @@ LABEL_CONFIG = '''<View>
     <Label value="Class2" background="#0000ff"/>
 </RectangleLabels>
 </View>'''
-PROJECT_SETTING = {
-    "title": "Detection Project",
-    "description": "Detection project",
-    "label_config": LABEL_CONFIG,
-    "expert_instruction": "",
-    "show_instruction": False,
-    "show_skip_button": True,
-    "enable_empty_annotation": True,
-    "show_annotation_history": False,
-    "organization": 1,
-    "color": "#FFFFFF",
-    "maximum_annotations": 1,
-    "is_published": False,
-    "model_version": "",
-    "is_draft": False,
-    "min_annotations_to_start_training": 10,
-    "show_collab_predictions": True,
-    "sampling": "Sequential sampling",
-    "show_ground_truth_first": True,
-    "show_overlap_first": True,
-    "overlap_cohort_percentage": 100,
-    "task_data_login": None,
-    "task_data_password": None,
-    "control_weights": {}
-}
 HOST = 'localhost'
 LS_PORT = '8080'
 HTML_FILES_PORT = '8090'
@@ -137,10 +112,12 @@ pipeline = Pipeline([
     ),
     LabelStudioModeration(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        project_setting=PROJECT_SETTING,
         inputs=['LS_data_raw'],
         outputs=['annotation_raw'],
-        auth=('admin@epoch8.co', 'qwertyisALICE666')
+        auth=('moderation@epoch8.co', 'qwerty123'),
+        project_title='Detection Project',
+        project_description='Detection Project!',
+        project_label_config=LABEL_CONFIG
     ),
     BatchTransform(
         parse_annotations,
