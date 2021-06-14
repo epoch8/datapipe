@@ -6,7 +6,7 @@ from datapipe.store.database import TableStoreDB
 from sqlalchemy import Column, String, Numeric
 import pandas as pd
 
-from .util import assert_df_equal
+from .util import assert_otm_df_equal
 
 TEST_SCHEMA = [
     Column('id', String(100)),
@@ -20,6 +20,8 @@ TEST_DF = pd.DataFrame(
     },
 )
 
+TEST_INDEX_COLS = ['id']
+
 
 def make_table_store_db(dbconn, tmp_dir):
     return TableStoreDB(dbconn, 'test', TEST_SCHEMA)
@@ -30,6 +32,7 @@ def make_table_store_json_line(dbconn, tmp_dir):
 
 
 # TODO Посмотреть на https://smarie.github.io/python-pytest-cases/
+# TODO добавить сюда все реализации TableStore
 @pytest.fixture(params=[
     make_table_store_db,
     make_table_store_json_line,
@@ -43,7 +46,18 @@ def test_simple(ts: TableStore):
 
     res_df = ts.read_rows()
 
-    assert_df_equal(res_df, TEST_DF)
+    assert_otm_df_equal(res_df, TEST_DF, TEST_INDEX_COLS)
+
+
+def test_changed_pd_index(ts: TableStore):
+    INSERT_DF = TEST_DF.copy()
+    INSERT_DF.index += 1
+
+    ts.insert_rows(INSERT_DF)
+
+    res_df = ts.read_rows()
+
+    assert_otm_df_equal(res_df, TEST_DF, TEST_INDEX_COLS)
 
 
 def test_update(ts: TableStore):
@@ -56,4 +70,4 @@ def test_update(ts: TableStore):
 
     res_df = ts.read_rows()
 
-    assert_df_equal(res_df, UPDATE_DF)
+    assert_otm_df_equal(res_df, UPDATE_DF, TEST_INDEX_COLS)

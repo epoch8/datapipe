@@ -15,7 +15,7 @@ from datapipe.step import ComputeStep
 
 
 if TYPE_CHECKING:
-    from datapipe.metastore import MetaTable
+    from datapipe.metastore import MetaTable, MetaStore
 
 
 logger = logging.getLogger('datapipe.datatable')
