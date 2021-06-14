@@ -44,17 +44,6 @@ LS_PORT = '8080'
 DATA_DIR = Path('data/').absolute()
 
 
-def convert_to_ls_input_data(input_df: pd.DataFrame):
-    input_df['data'] = input_df.index.map(
-        lambda id: {
-            "text": str(input_df.loc[id, "text"]),
-            "prediction": str(input_df.loc[id, "prediction"]),
-            "category": str(input_df.loc[id, "category"]),
-        }
-    )
-    return input_df[['data']]
-
-
 def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
     def get_category(val):
         keys = [0, "result", 0, "value", "choices", 0]
@@ -75,38 +64,32 @@ def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
 (DATA_DIR / 'xx_datatables').mkdir(exist_ok=True, parents=True)
 ms = MetaStore('sqlite:///' + str(DATA_DIR / 'xx_datatables' / 'metadata.sqlite'))
 catalogue = Catalog({
-    "input_texts": ExternalTable(
+    "00_input_texts": ExternalTable(
         store=TableStoreJsonLine(DATA_DIR / '00_data.json'),
     ),
-    "LS_data_raw": Table(
-        store=TableStoreJsonLine(DATA_DIR / "01_ls_data_raw.json"),
+    "01_annotation_raw": Table(
+        store=TableStoreJsonLine(DATA_DIR / "01_annotation_raw.json"),
     ),
-    "annotation_raw": Table(
-        store=TableStoreJsonLine(DATA_DIR / "02_annotation_raw.json"),
-    ),
-    "annotation_parsed": Table(
-        store=TableStoreJsonLine(DATA_DIR / "03_annotation_parsed.json")
+    "02_annotation_parsed": Table(
+        store=TableStoreJsonLine(DATA_DIR / "02_annotation_parsed.json")
     ),
 })
 pipeline = Pipeline([
-    BatchTransform(
-        convert_to_ls_input_data,
-        inputs=["input_texts"],
-        outputs=["LS_data_raw"]
-    ),
     LabelStudioModeration(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        inputs=["LS_data_raw"],
-        outputs=["annotation_raw"],
+        inputs=["00_input_texts"],
+        outputs=["01_annotation_raw"],
         auth=('moderation@epoch8.co', 'qwerty123'),
         project_title='Text classification project',
         project_description='Text classification project!',
-        project_label_config=LS_LABEL_CONFIG_XML
+        project_label_config=LS_LABEL_CONFIG_XML,
+        data=['text', 'prediction', 'category'],
+        chunk_size=1000
     ),
     BatchTransform(
         parse_annotation,
-        inputs=["input_texts", "annotation_raw"],
-        outputs=["annotation_parsed"],
+        inputs=["00_input_texts", "01_annotation_raw"],
+        outputs=["02_annotation_parsed"],
     ),
 ])
 steps = build_compute(ms, catalogue, pipeline)

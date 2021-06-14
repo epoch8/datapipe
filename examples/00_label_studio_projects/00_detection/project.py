@@ -34,12 +34,10 @@ def convert_to_ls_input_data(
     input_images_df,
     files_url: str
 ):
-    input_images_df['data'] = input_images_df.index.map(
-        lambda id: {
-            'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
-        }
+    input_images_df['image'] = input_images_df.index.map(
+        lambda id: urljoin(files_url, f"00_dataset/{id}.jpeg")
     )
-    return input_images_df[['data']]
+    return input_images_df[['image']]
 
 
 def parse_annotations(
@@ -115,7 +113,8 @@ pipeline = Pipeline([
         auth=('moderation@epoch8.co', 'qwerty123'),
         project_title='Detection Project',
         project_description='Detection Project!',
-        project_label_config=LABEL_CONFIG
+        project_label_config=LABEL_CONFIG,
+        data=['image']
     ),
     BatchTransform(
         parse_annotations,
