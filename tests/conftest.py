@@ -2,6 +2,7 @@ import pytest
 
 import os
 from sqlalchemy import create_engine
+import tempfile
 
 from datapipe.store.database import DBConn
 
@@ -33,3 +34,9 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as d:
+        yield d

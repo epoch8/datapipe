@@ -1,6 +1,7 @@
 import cloudpickle
 import pandas as pd
 from sqlalchemy import Column, Numeric
+from sqlalchemy.sql.sqltypes import String
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
@@ -10,14 +11,15 @@ from tests.util import assert_df_equal, assert_idx_equal
 
 
 TEST_SCHEMA = [
+    Column('id', String(100)),
     Column('a', Numeric),
 ]
 
 TEST_DF = pd.DataFrame(
     {
+        'id': [f'id_{i}' for i in range(10)],
         'a': range(10)
     },
-    index=[f'id_{i}' for i in range(10)]
 )
 
 
@@ -28,25 +30,32 @@ TEST_DF_INC3 = TEST_DF.assign(a=lambda df: df['a'] + 3)
 
 def yield_df(data):
     def f(*args, **kwargs):
-        yield pd.DataFrame.from_records(data, columns=['id', 'a']).set_index('id')
+        yield pd.DataFrame.from_records(data, columns=['id', 'a'])
 
     return f
 
 
 def test_cloudpickle(dbconn) -> None:
-    ds = MetaStore(dbconn)
+    ms = MetaStore(dbconn)
+    mt = ms.create_meta_table('test_data', ['id'])
 
-    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    tbl = DataTable(mt, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
-    cloudpickle.dumps([ds, tbl])
+    cloudpickle.dumps([ms, tbl])
 
 
 def test_simple(dbconn) -> None:
-    ds = MetaStore(dbconn)
+    ms = MetaStore(dbconn)
 
-    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    mt = ms.create_meta_table('test_data', ['id'])
+
+    tbl = DataTable(mt, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+
+    assert(len(tbl.get_data()) == 0)
 
     tbl.store(TEST_DF)
+
+    assert(len(tbl.get_data()) == 10)
 
 
 def test_store_less_values(dbconn) -> None:

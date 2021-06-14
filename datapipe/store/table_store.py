@@ -5,10 +5,13 @@ from dataclasses import dataclass
 import pandas as pd
 from pathlib import Path
 
-from datapipe.store.types import Index
+from datapipe.store.types import Index, IndexMeta
 
 
 class TableStore(ABC):
+    def __init__(self, index_columns: IndexMeta) -> None:
+        self.index_columns = index_columns
+
     def delete_rows(self, idx: Index) -> None:
         raise NotImplementedError
 
@@ -16,7 +19,7 @@ class TableStore(ABC):
         raise NotImplementedError
 
     def update_rows(self, df: pd.DataFrame) -> None:
-        self.delete_rows(df.index)
+        self.delete_rows(df[[self.index_columns]])
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:

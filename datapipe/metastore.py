@@ -68,11 +68,11 @@ class MetaTable:
 
         return pd.DataFrame(
             {
-                'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
-                'create_ts': now,
-                'update_ts': now,
-                'process_ts': now,
-                'delete_ts': None,
+                '_hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
+                '_create_ts': now,
+                '_update_ts': now,
+                '_process_ts': now,
+                '_delete_ts': None,
             },
             index=df.index
         )
@@ -84,7 +84,7 @@ class MetaTable:
         )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
-    def update_data(
+    def get_changes_for_store_chunk(
         self,
         data_df: pd.DataFrame,
         now: float = None
@@ -99,7 +99,7 @@ class MetaTable:
         new_meta_df = self._make_new_metadata_df(now, data_df)
 
         common_idx = existing_meta_df.index.intersection(new_meta_df.index)
-        changed_idx = common_idx[new_meta_df.loc[common_idx, 'hash'] != existing_meta_df.loc[common_idx, 'hash']]
+        changed_idx = common_idx[new_meta_df.loc[common_idx, '_hash'] != existing_meta_df.loc[common_idx, '_hash']]
 
         # найти что добавилось
         new_idx = new_meta_df.index.difference(existing_meta_df.index)
@@ -108,8 +108,8 @@ class MetaTable:
         if len(new_meta_df) > 0:
             not_changed_idx = existing_meta_df.index.difference(changed_idx)
 
-            new_meta_df.loc[changed_idx, 'create_ts'] = existing_meta_df.loc[changed_idx, 'create_ts']
-            new_meta_df.loc[not_changed_idx, 'update_ts'] = existing_meta_df.loc[not_changed_idx, 'update_ts']
+            new_meta_df.loc[changed_idx, '_create_ts'] = existing_meta_df.loc[changed_idx, '_create_ts']
+            new_meta_df.loc[not_changed_idx, '_update_ts'] = existing_meta_df.loc[not_changed_idx, '_update_ts']
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
             self.event_logger.log_event(

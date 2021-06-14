@@ -2,8 +2,9 @@ from typing import List, Any, Dict, Union, Optional
 
 import logging
 import pandas as pd
-from sqlalchemy import Column, Table, String, create_engine, MetaData
+from sqlalchemy import Column, Table, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete
+from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.types import Index
 from datapipe.store.table_store import TableStore
@@ -12,7 +13,7 @@ from datapipe.store.table_store import TableStore
 logger = logging.getLogger('datapipe.store.database')
 
 
-PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
+PRIMARY_KEY = [Column('_id', Integer, primary_key=True, autoincrement=True)]
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
@@ -73,7 +74,7 @@ class TableStoreDB(TableStore):
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
 
-            sql = delete(self.data_table).where(self.data_table.c.id.in_(list(idx)))
+            sql = delete(self.data_table).where(self.data_table.c._id.in_(list(idx)))
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
@@ -85,9 +86,12 @@ class TableStoreDB(TableStore):
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
                 if_exists='append',
-                index_label='id',
                 chunksize=1000,
                 method='multi',
+
+                index=True,
+                index_label='_id',
+
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
             )
 
@@ -99,12 +103,11 @@ class TableStoreDB(TableStore):
         if idx is None:
             return pd.read_sql_query(
                 select([self.data_table]),
+                index_col='_id',
                 con=self.dbconn.con,
-                index_col='id',
             )
         else:
             return pd.read_sql_query(
                 select([self.data_table]).where(self.data_table.c.id.in_(list(idx))),
                 con=self.dbconn.con,
-                index_col='id',
             )
