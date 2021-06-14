@@ -28,7 +28,6 @@ class TableStoreJsonLine(TableDataSingleFileStore):
 
         if of.fs.exists(of.path):
             df = pd.read_json(of.open(), orient='records', lines=True)
-            df = df.set_index('_id')
 
             return df
         else:
