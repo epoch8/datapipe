@@ -22,7 +22,6 @@ class TableStoreExcel(TableDataSingleFileStore, ABC):
         return df
 
 
-@dataclass
 class TableStoreJsonLine(TableDataSingleFileStore):
     def load_file(self) -> Optional[pd.DataFrame]:
         of = fsspec.open(self.filename)

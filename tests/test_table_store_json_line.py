@@ -15,6 +15,6 @@ def test_table_store_json_line_reading(tmp_dir):
         filename=test_fname
     )
     df = store.load_file()
-    df.to_pickle("df.pkl")
+
     assert all(df.reset_index(drop=False)["id"].values == test_df["id"].values)
     assert all(df["record"].values == test_df["record"].values)

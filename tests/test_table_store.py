@@ -25,15 +25,23 @@ TEST_INDEX_COLS = ['id']
 
 
 def case_table_store_db(dbconn):
-    return TableStoreDB(dbconn, 'test', TEST_SCHEMA)
+    return TableStoreDB(
+        dbconn=dbconn,
+        name='test',
+        data_sql_schema=TEST_SCHEMA,
+        index_columns=TEST_INDEX_COLS,
+    )
 
 
 def case_table_store_json_line(tmp_dir):
-    return TableStoreJsonLine(f'{tmp_dir}/test.jsonline')
+    return TableStoreJsonLine(
+        filename=f'{tmp_dir}/test.jsonline',
+        index_columns=TEST_INDEX_COLS,
+    )
 
 
-@parametrize_with_cases('ts', cases='.')
-def test_simple(ts: TableStore):
+@parametrize_with_cases('ts', cases='.', prefix='case_table_store_')
+def test_insert_read_no_filter(ts: TableStore):
     ts.insert_rows(TEST_DF)
 
     res_df = ts.read_rows()
@@ -41,8 +49,8 @@ def test_simple(ts: TableStore):
     assert_otm_df_equal(res_df, TEST_DF, TEST_INDEX_COLS)
 
 
-@parametrize_with_cases('ts', cases='.')
-def test_changed_pd_index(ts: TableStore):
+@parametrize_with_cases('ts', cases='.', prefix='case_table_store_')
+def test_changed_df_index(ts: TableStore):
     INSERT_DF = TEST_DF.copy()
     INSERT_DF.index += 1
 
@@ -54,7 +62,19 @@ def test_changed_pd_index(ts: TableStore):
 
 
 @parametrize_with_cases('ts', cases='.')
-def test_update(ts: TableStore):
+def test_delete_no_filter(ts: TableStore):
+    ts.insert_rows(TEST_DF)
+
+    DEL_DF = TEST_DF.loc[5:].set_index(pd.Index(range(5)))
+
+    ts.delete_rows(TEST_DF[:5])
+
+    res_df = ts.read_rows()
+    assert_otm_df_equal(res_df, DEL_DF, TEST_INDEX_COLS)
+
+
+@parametrize_with_cases('ts', cases='.')
+def test_update_no_filter(ts: TableStore):
     ts.insert_rows(TEST_DF)
 
     UPDATE_DF = TEST_DF.copy()

@@ -3,17 +3,13 @@ from typing import List, Any, Dict, Union, Optional
 import logging
 import pandas as pd
 from sqlalchemy import Column, Table, create_engine, MetaData
-from sqlalchemy.sql.expression import select, delete
-from sqlalchemy.sql.sqltypes import Integer
+from sqlalchemy.sql.expression import bindparam, select, delete, and_
 
-from datapipe.store.types import Index
+from datapipe.store.types import Index, IndexMeta
 from datapipe.store.table_store import TableStore
 
 
 logger = logging.getLogger('datapipe.store.database')
-
-
-PRIMARY_KEY = [Column('_id', Integer, primary_key=True, autoincrement=True)]
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
@@ -52,6 +48,7 @@ class TableStoreDB(TableStore):
         dbconn: Union['DBConn', str],
         name: str,
         data_sql_schema: List[Column],
+        index_columns: IndexMeta,
         create_table: bool = True
     ) -> None:
         if isinstance(dbconn, str):
@@ -60,7 +57,8 @@ class TableStoreDB(TableStore):
             self.dbconn = dbconn
         self.name = name
 
-        self.data_sql_schema = PRIMARY_KEY + data_sql_schema
+        self.data_sql_schema = data_sql_schema
+        self.index_columns = index_columns
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
@@ -71,13 +69,27 @@ class TableStoreDB(TableStore):
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
     def delete_rows(self, idx: Index) -> None:
+        idx = idx[self.index_columns]
+        assert(set(idx.columns) == set(self.index_columns))
+
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
 
-            sql = delete(self.data_table).where(self.data_table.c._id.in_(list(idx)))
-            self.dbconn.con.execute(sql)
+            where_clause = [
+                (self.data_table.c[i] == bindparam(i))
+                for i in self.index_columns
+            ]
+
+            sql = delete(self.data_table).where(and_(*where_clause))
+            self.dbconn.con.execute(
+                sql,
+                idx.to_dict(orient='records')
+            )
 
     def insert_rows(self, df: pd.DataFrame) -> None:
+        for i in self.index_columns:
+            assert(i in df.columns)
+
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -89,21 +101,19 @@ class TableStoreDB(TableStore):
                 chunksize=1000,
                 method='multi',
 
-                index=True,
-                index_label='_id',
+                index=False,
 
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
             )
 
     def update_rows(self, df: pd.DataFrame) -> None:
-        self.delete_rows(df.index)
+        self.delete_rows(df[self.index_columns])
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         if idx is None:
             return pd.read_sql_query(
                 select([self.data_table]),
-                index_col='_id',
                 con=self.dbconn.con,
             )
         else:

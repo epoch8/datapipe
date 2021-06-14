@@ -29,8 +29,8 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
 
 
 def assert_otm_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_columns: List[str]) -> bool:
-    a = a.set_index(index_columns)
-    b = b.set_index(index_columns)
+    a = a.set_index(index_columns).sort_index()
+    b = b.set_index(index_columns).sort_index()
 
     assert_idx_equal(a.index, b.index)
 

@@ -34,9 +34,10 @@ class TableStore(ABC):
         return self.read_rows(idx)
 
 
-@dataclass
 class TableDataSingleFileStore(TableStore):
-    filename: Union[Path, str]
+    def __init__(self, filename: Union[Path, str], index_columns: IndexMeta) -> None:
+        super().__init__(index_columns)
+        self.filename = filename
 
     def load_file(self) -> Optional[pd.DataFrame]:
         raise NotImplementedError
@@ -70,9 +71,12 @@ class TableDataSingleFileStore(TableStore):
         file_df = self.load_file()
 
         if file_df is not None:
-            new_df = file_df.loc[file_df.index.difference(idx)]
+            file_df = file_df.set_index(self.index_columns)
+            idx = idx.set_index(self.index_columns)
 
-            self.save_file(new_df)
+            new_df = file_df.loc[file_df.index.difference(idx.index)]
+
+            self.save_file(new_df.reset_index())
 
     def update_rows(self, df: pd.DataFrame) -> None:
         file_df = self.load_file()
