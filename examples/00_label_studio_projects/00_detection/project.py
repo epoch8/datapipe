@@ -18,38 +18,12 @@ def wrapped_partial(func, *args, **kwargs):
 
 
 LABEL_CONFIG = '''<View>
-<Text name="text" value="$unique_id"/>
 <Image name="image" value="$image"/>
 <RectangleLabels name="label" toName="image">
     <Label value="Class1" background="#6600ff"/>
     <Label value="Class2" background="#0000ff"/>
 </RectangleLabels>
 </View>'''
-PROJECT_SETTING = {
-    "title": "Detection Project",
-    "description": "Detection project",
-    "label_config": LABEL_CONFIG,
-    "expert_instruction": "",
-    "show_instruction": False,
-    "show_skip_button": True,
-    "enable_empty_annotation": True,
-    "show_annotation_history": False,
-    "organization": 1,
-    "color": "#FFFFFF",
-    "maximum_annotations": 1,
-    "is_published": False,
-    "model_version": "",
-    "is_draft": False,
-    "min_annotations_to_start_training": 10,
-    "show_collab_predictions": True,
-    "sampling": "Sequential sampling",
-    "show_ground_truth_first": True,
-    "show_overlap_first": True,
-    "overlap_cohort_percentage": 100,
-    "task_data_login": None,
-    "task_data_password": None,
-    "control_weights": {}
-}
 HOST = 'localhost'
 LS_PORT = '8080'
 HTML_FILES_PORT = '8090'
@@ -60,13 +34,10 @@ def convert_to_ls_input_data(
     input_images_df,
     files_url: str
 ):
-    input_images_df['data'] = input_images_df.index.map(
-        lambda id: {
-            'unique_id': id,
-            'image': urljoin(files_url, f"00_dataset/{id}.jpeg")
-        }
+    input_images_df['image'] = input_images_df.index.map(
+        lambda id: urljoin(files_url, f"00_dataset/{id}.jpeg")
     )
-    return input_images_df[['data']]
+    return input_images_df[['image']]
 
 
 def parse_annotations(
@@ -137,10 +108,13 @@ pipeline = Pipeline([
     ),
     LabelStudioModeration(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        project_setting=PROJECT_SETTING,
         inputs=['LS_data_raw'],
         outputs=['annotation_raw'],
-        auth=('admin@epoch8.co', 'qwertyisALICE666')
+        auth=('moderation@epoch8.co', 'qwerty123'),
+        project_title='Detection Project',
+        project_description='Detection Project!',
+        project_label_config=LABEL_CONFIG,
+        data=['image']
     ),
     BatchTransform(
         parse_annotations,

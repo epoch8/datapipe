@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple, Union
 from urllib.parse import urljoin
 
 import pandas as pd
@@ -70,7 +70,7 @@ class LabelStudioSession:
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
-            assert titles.count(title) == 1, f'There is already the task with title="{title}"'
+            assert titles.count(title) == 1, f'There are 2 or more tasks with title="{title}"'
             return project_ids[titles.index(title)]
 
         return None
@@ -140,9 +140,14 @@ class LabelStudioSession:
 @dataclass
 class LabelStudioModerationStep(ComputeStep):
     ls_url: str
-    project_setting: Dict[str, str]
     chunk_size: int
     auth: Tuple[str, str]
+    project_title: str
+    project_description: str
+    project_label_config: str
+    data: List[str]
+    annotations: Union[str, None]
+    predictions: Union[str, None]
 
     def __post_init__(self):
         self.label_studio_session = LabelStudioSession(
@@ -150,13 +155,41 @@ class LabelStudioModerationStep(ComputeStep):
             auth=self.auth
         )
         if self.label_studio_session.is_service_up():
+
+            # Authorize or sign up
             if not self.label_studio_session.is_auth_ok(raise_exception=False):
                 self.label_studio_session.sign_up()
                 self.label_studio_session.is_auth_ok(raise_exception=True)
 
-            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_setting['title'])
+            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
             if self.project_id is None:
-                project = self.label_studio_session.create_project(self.project_setting)
+                project = self.label_studio_session.create_project(
+                    project_setting={
+                        "title": self.project_title,
+                        "description": self.project_description,
+                        "label_config": self.project_label_config,
+                        "expert_instruction": "",
+                        "show_instruction": False,
+                        "show_skip_button": False,
+                        "enable_empty_annotation": True,
+                        "show_annotation_history": False,
+                        "organization": 1,
+                        "color": "#FFFFFF",
+                        "maximum_annotations": 1,
+                        "is_published": False,
+                        "model_version": "",
+                        "is_draft": False,
+                        "min_annotations_to_start_training": 10,
+                        "show_collab_predictions": True,
+                        "sampling": "Sequential sampling",
+                        "show_ground_truth_first": True,
+                        "show_overlap_first": True,
+                        "overlap_cohort_percentage": 100,
+                        "task_data_login": None,
+                        "task_data_password": None,
+                        "control_weights": {}
+                    }
+                )
                 self.project_id = project['id']
         else:
             self.project_id = None
@@ -165,71 +198,32 @@ class LabelStudioModerationStep(ComputeStep):
         self,
         input_df: pd.DataFrame
     ):
-        assert 'data' in input_df.columns, "There must be column 'data' in input_df"
-        for data in input_df['data']:
-            assert 'unique_id' in data, "There must be 'unique_id' in input data (add it to label config)"
-
-        if 'annotations' in input_df.columns and 'predictions' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'annotations': input_df.loc[id, 'annotations'],
-                    'predictions': input_df.loc[id, 'predictions']
-                }
-                for id in input_df.index
-            ]
-        elif 'annotations' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'annotations': input_df.loc[id, 'annotations'],
-                }
-                for id in input_df.index
-            ]
-        elif 'predictions' in input_df.columns:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                    'predictions': input_df.loc[id, 'predictions'],
-                }
-                for id in input_df.index
-            ]
-        else:
-            data = [
-                {
-                    'data': input_df.loc[id, 'data'],
-                }
-                for id in input_df.index
-            ]
-
+        data = [
+            {
+                'data': {
+                    'LabelStudioModerationStep__unique_id': idx,
+                    **{
+                        column: input_df.loc[idx, column]
+                        for column in self.data
+                    }
+                },
+                'annotations': input_df.loc[idx, self.annotations] if self.annotations is not None else [],
+                'predictions': input_df.loc[idx, self.predictions] if self.predictions is not None else [],
+            }
+            for idx in input_df.index
+        ]
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
-        input_df['tasks_id'] = ["Unknown" for id in input_df.index]
-        input_df['annotations'] = (
-            [input_df.loc[id, 'annotations'] for id in input_df.index]
-            if 'annotations' in input_df.columns else
-            [[] for id in input_df.index]
-        )
+        input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
+        input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
+            [] for _ in input_df.index
+        ]
         input_df = input_df[['tasks_id', 'annotations']]
         return input_df
 
-    def get_current_tasks_as_df(
-        self,
-    ):
+    def get_current_tasks_as_df(self):
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        total_tasks_count = project_summary['all_data_columns']['unique_id']
+        total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
         total_pages = total_tasks_count // self.chunk_size + 1
-        tasks = []
-        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
-            tasks_page, status_code = self.label_studio_session.get_tasks(
-                project_id=self.project_id,
-                page=page,
-                page_size=self.chunk_size
-            )
-            assert status_code in [200, 500]
-            if status_code == 200:
-                tasks.extend(tasks_page)
-            else:
-                break
 
         # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
         def _cleanup_annotations(annotations):
@@ -238,15 +232,25 @@ class LabelStudioModerationStep(ComputeStep):
                     del ann['created_ago']
             return annotations
 
-        output_df = pd.DataFrame(
-            data={
-                'tasks_id': [str(task['id']) for task in tasks],
-                'annotations': [_cleanup_annotations(task['annotations']) for task in tasks]
-            },
-            index=[task['data']['unique_id'] for task in tasks]
-        )
+        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
+            tasks_page, status_code = self.label_studio_session.get_tasks(
+                project_id=self.project_id,
+                page=page,
+                page_size=self.chunk_size
+            )
+            assert status_code in [200, 500]
+            if status_code == 500:
+                break
 
-        return output_df
+            output_df = pd.DataFrame(
+                data={
+                    'tasks_id': [str(task['id']) for task in tasks_page],
+                    'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
+                },
+                index=[task['data']['LabelStudioModerationStep__unique_id'] for task in tasks_page]
+            )
+
+            yield output_df
 
     def run(self, ms: MetaStore) -> None:
         if self.label_studio_session.is_service_up():

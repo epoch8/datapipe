@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 
 from abc import ABC
 from dataclasses import dataclass
@@ -56,8 +56,13 @@ class BatchGenerate(PipelineStep):
 @dataclass
 class LabelStudioModeration:
     ls_url: str
-    project_setting: Dict[str, str]
     inputs: List[str]
     outputs: List[str]
     auth: Tuple[str, str]
-    chunk_size: int = 1000
+    project_title: str
+    project_description: str
+    project_label_config: str
+    data: List[str]
+    annotations: Union[str, None] = None
+    predictions: Union[str, None] = None
+    chunk_size: int = 100
