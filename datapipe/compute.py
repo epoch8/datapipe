@@ -82,10 +82,13 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 output_dts=output_dts,
                 ls_url=step.ls_url,
                 auth=step.auth,
-                chunk_size=step.chunk_size,
                 project_title=step.project_title,
                 project_description=step.project_description,
-                project_label_config=step.project_label_config
+                project_label_config=step.project_label_config,
+                data=step.data,
+                annotations=step.annotations,
+                predictions=step.predictions,
+                chunk_size=step.chunk_size,
             ))
 
     return res

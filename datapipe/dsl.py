@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 
 from abc import ABC
 from dataclasses import dataclass
@@ -62,4 +62,7 @@ class LabelStudioModeration:
     project_title: str
     project_description: str
     project_label_config: str
+    data: List[str]
+    annotations: Union[str, None] = None
+    predictions: Union[str, None] = None
     chunk_size: int = 100

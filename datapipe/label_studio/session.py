@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple, Union
 from urllib.parse import urljoin
 
 import pandas as pd
@@ -145,6 +145,9 @@ class LabelStudioModerationStep(ComputeStep):
     project_title: str
     project_description: str
     project_label_config: str
+    data: List[str]
+    annotations: Union[str, None]
+    predictions: Union[str, None]
 
     def __post_init__(self):
         self.label_studio_session = LabelStudioSession(
@@ -195,24 +198,25 @@ class LabelStudioModerationStep(ComputeStep):
         self,
         input_df: pd.DataFrame
     ):
-        assert 'data' in input_df.columns, "There must be column 'data' in input_df"
-        for idx in input_df.index:
-            input_df.loc[idx, 'data']['LabelStudioModerationStep__unique_id'] = idx
         data = [
             {
-                column: input_df.loc[id, column]
-                for column in ['data', 'annotations', 'predictions']
-                if column in input_df.columns
+                'data': {
+                    'LabelStudioModerationStep__unique_id': idx,
+                    **{
+                        column: input_df.loc[idx, column]
+                        for column in self.data
+                    }
+                },
+                'annotations': input_df.loc[idx, self.annotations] if self.annotations is not None else [],
+                'predictions': input_df.loc[idx, self.predictions] if self.predictions is not None else [],
             }
-            for id in input_df.index
+            for idx in input_df.index
         ]
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
         input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
-        input_df['annotations'] = (
-            [input_df.loc[id, 'annotations'] for id in input_df.index]
-            if 'annotations' in input_df.columns else
-            [[] for id in input_df.index]
-        )
+        input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
+            [] for _ in input_df.index
+        ]
         input_df = input_df[['tasks_id', 'annotations']]
         return input_df
 
