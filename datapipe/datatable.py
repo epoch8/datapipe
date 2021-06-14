@@ -24,13 +24,13 @@ logger = logging.getLogger('datapipe.datatable')
 class DataTable:
     def __init__(
         self,
-        mt: 'MetaTable',
         name: str,
+        meta_table: 'MetaTable',
         table_store: TableStore,  # Если None - создается по дефолту
     ):
-        self.mt = mt
         self.name = name
 
+        self.mt = meta_table
         self.table_store = table_store
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:

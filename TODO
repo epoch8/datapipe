@@ -1,10 +1,10 @@
 TODO:
+[ ] Many-to-one, one-to-many
 [ ] Сделать прогрессбар для gen_* шага
 [ ] Добавить возможность передавать аргументы в *Generate и *Transform
 [ ] Сделать возможность передавать fsspec urls в TableStoreFiledir, ex: zip://{label}/{id}_test.jpg::./CATALOG_DIR/archive.zip
 [ ] Ускорить обновление метадаты: заменить удаление/создание на апдейт
 [ ] Не удалять метаданные при удалении строк
-[ ] Many-to-one, one-to-many
 [ ] Переехать на SQLAlchemy 1.4 https://www.sqlalchemy.org/blog/2021/03/15/sqlalchemy-1.4.0-released/
 [ ] Сделать "контекст записи"/"контекст чтения" для TableDataStore чтобы можно было кешировать операции чтения
 [ ] Сделать синхронизацию DataStore с метадатой, как отдельный шаг

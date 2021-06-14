@@ -40,7 +40,7 @@ def case_table_store_json_line(tmp_dir):
     )
 
 
-@parametrize_with_cases('ts', cases='.', prefix='case_table_store_')
+@parametrize_with_cases('ts', cases='.')
 def test_insert_read_no_filter(ts: TableStore):
     ts.insert_rows(TEST_DF)
 
@@ -49,7 +49,7 @@ def test_insert_read_no_filter(ts: TableStore):
     assert_otm_df_equal(res_df, TEST_DF, TEST_INDEX_COLS)
 
 
-@parametrize_with_cases('ts', cases='.', prefix='case_table_store_')
+@parametrize_with_cases('ts', cases='.')
 def test_changed_df_index(ts: TableStore):
     INSERT_DF = TEST_DF.copy()
     INSERT_DF.index += 1

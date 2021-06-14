@@ -4,6 +4,7 @@ import pandas as pd
 
 from datapipe.metastore import MetaStore
 
+
 @pytest.fixture
 def ms(dbconn) -> MetaStore:
     return MetaStore(dbconn=dbconn)
@@ -21,4 +22,4 @@ def test_store_chunk(ms: MetaStore):
         'text': ['line 1', 'line 2'],
     })
 
-    _ = a_meta.update_data(data_df)
+    _ = a_meta.get_changes_for_store_chunk(data_df)

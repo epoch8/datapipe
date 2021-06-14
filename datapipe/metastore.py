@@ -18,7 +18,6 @@ logger = logging.getLogger('datapipe.metastore')
 
 
 COMMON_METADATA_SQL_SCHEMA = [
-    Column('_id', Integer, primary_key=True),
     Column('_hash', Numeric),
     Column('_create_ts', Float),   # Время создания строки
     Column('_update_ts', Float),   # Время последнего изменения
@@ -42,22 +41,23 @@ class MetaTableChangeData:
 
 class MetaTable:
     def __init__(self, dbconn: DBConn, name: str, index_columns: List[str], event_logger: EventLogger):
-        data_columns_sqla = [
-            Column(col_name, String(100), index=True)
-            for col_name in index_columns
-        ]
-
         self.dbconn = dbconn
         self.name = name
         self.event_logger = event_logger
 
         self.index_columns = index_columns
 
+        index_columns_sqla = [
+            Column(col_name, String(100), index=True)
+            for col_name in index_columns
+        ]
+
         self.store = TableStoreDB(
-            self.dbconn,
-            f'{name}_meta',
-            COMMON_METADATA_SQL_SCHEMA + data_columns_sqla,
-            create_table=True
+            dbconn=self.dbconn,
+            name=f'{name}_meta',
+            data_sql_schema=COMMON_METADATA_SQL_SCHEMA + index_columns_sqla,
+            create_table=True,
+            index_columns=index_columns,
         )
 
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
@@ -66,16 +66,14 @@ class MetaTable:
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         # data
 
-        return pd.DataFrame(
-            {
-                '_hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
-                '_create_ts': now,
-                '_update_ts': now,
-                '_process_ts': now,
-                '_delete_ts': None,
-            },
-            index=df.index
-        )
+        meta_df = df[self.index_columns]
+        meta_df['_hash'] = pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
+        meta_df['_create_ts'] = now
+        meta_df['_update_ts'] = now
+        meta_df['_process_ts'] = now
+        meta_df['_delete_ts'] = None
+
+        return meta_df
 
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         return TableDebugInfo(

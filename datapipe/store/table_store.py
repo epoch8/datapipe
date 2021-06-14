@@ -1,6 +1,5 @@
 from abc import ABC
 from typing import Optional, Union
-from dataclasses import dataclass
 
 import pandas as pd
 from pathlib import Path

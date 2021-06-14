@@ -1,9 +1,12 @@
+from pytest_cases import parametrize_with_cases
+
 import cloudpickle
 import pandas as pd
 from sqlalchemy import Column, Numeric
 from sqlalchemy.sql.sqltypes import String
 
 from datapipe.store.database import TableStoreDB
+from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
 
@@ -22,6 +25,7 @@ TEST_DF = pd.DataFrame(
     },
 )
 
+TEST_INDEX_COLS = ['id']
 
 TEST_DF_INC1 = TEST_DF.assign(a=lambda df: df['a'] + 1)
 TEST_DF_INC2 = TEST_DF.assign(a=lambda df: df['a'] + 2)
@@ -35,22 +39,52 @@ def yield_df(data):
     return f
 
 
-def test_cloudpickle(dbconn) -> None:
+def case_table_store_db(dbconn):
+    ms = MetaStore(dbconn)
+    mt = ms.create_meta_table('test_data', TEST_INDEX_COLS)
+
+    ts = TableStoreDB(
+        dbconn=dbconn,
+        name='test_data',
+        data_sql_schema=TEST_SCHEMA,
+        create_table=True,
+        index_columns=TEST_INDEX_COLS,
+    )
+
+    tbl = DataTable(
+        name='test',
+        meta_table=mt,
+        table_store=ts,
+    )
+
+    return ms, tbl
+
+
+def case_table_store_json_line(dbconn, tmp_dir):
     ms = MetaStore(dbconn)
     mt = ms.create_meta_table('test_data', ['id'])
 
-    tbl = DataTable(mt, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+    ts = TableStoreJsonLine(
+        filename=f'{tmp_dir}/test.jsonline',
+        index_columns=TEST_INDEX_COLS,
+    )
 
+    tbl = DataTable(
+        name='test',
+        meta_table=mt,
+        table_store=ts,
+    )
+
+    return ms, tbl
+
+
+@parametrize_with_cases('ms,tbl', cases='.')
+def test_cloudpickle(ms, tbl) -> None:
     cloudpickle.dumps([ms, tbl])
 
 
-def test_simple(dbconn) -> None:
-    ms = MetaStore(dbconn)
-
-    mt = ms.create_meta_table('test_data', ['id'])
-
-    tbl = DataTable(mt, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
-
+@parametrize_with_cases('ms,tbl', cases='.')
+def test_simple(ms, tbl) -> None:
     assert(len(tbl.get_data()) == 0)
 
     tbl.store(TEST_DF)
@@ -58,11 +92,8 @@ def test_simple(dbconn) -> None:
     assert(len(tbl.get_data()) == 10)
 
 
-def test_store_less_values(dbconn) -> None:
-    ds = MetaStore(dbconn)
-
-    tbl = DataTable(ds, 'test', table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
-
+@parametrize_with_cases('ms,tbl', cases='.')
+def test_store_less_values(ms, tbl) -> None:
     tbl.store(TEST_DF)
     assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
 
