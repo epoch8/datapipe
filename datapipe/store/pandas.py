@@ -34,6 +34,5 @@ class TableStoreJsonLine(TableDataSingleFileStore):
             return None
 
     def save_file(self, df: pd.DataFrame) -> None:
-        df.index.rename('_id', inplace=True)
         with fsspec.open(self.filename, 'w+') as f:
-            df.reset_index().to_json(f, orient='records', lines=True)
+            df.to_json(f, orient='records', lines=True)
