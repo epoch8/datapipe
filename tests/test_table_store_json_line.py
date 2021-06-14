@@ -1,3 +1,5 @@
+import pandas as pd
+
 from datapipe.compute import build_compute, run_steps
 from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
@@ -17,6 +19,22 @@ def make_file2(file):
     with open(file, 'w') as out:
         out.write('{"id": "0", "text": "text0"}\n')
         out.write('{"id": "2", "text": "text2"}\n')
+
+
+def test_table_store_json_line_reading(tmp_dir):
+    test_df = pd.DataFrame({
+        "id": ["0", "1", "2"],
+        "record": ["rec1", "rec2", "rec3"]
+    })
+    test_fname = tmp_dir / "table-pandas.json"
+    test_df.to_json(test_fname, orient="records", lines=True)
+
+    store = TableStoreJsonLine(
+        filename=test_fname
+    )
+    df = store.load_file()
+    assert all(df.reset_index(drop=False)["id"].values == test_df["id"].values)
+    assert all(df["record"].values == test_df["record"].values)
 
 
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
