@@ -222,7 +222,11 @@ class LabelStudioModerationStep(ComputeStep):
 
     def get_current_tasks_as_df(self):
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
+        if 'all_data_columns' not in project_summary:
+            total_tasks_count = 0
+        else:
+            total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
+
         total_pages = total_tasks_count // self.chunk_size + 1
 
         # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос

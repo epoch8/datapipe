@@ -182,11 +182,12 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ms, steps)
     run_steps(ms, steps)
 
-    # This step should upload tasks (it also can be BatchGenerate as first step of pipeline)
+    # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
     gen_process(
         dt=catalog.get_datatable(ms, '00_images'),
         proc_func=gen_images
     )
+    run_steps(ms, steps)
 
     assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
 
