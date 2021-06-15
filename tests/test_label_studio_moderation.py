@@ -5,6 +5,7 @@ import distutils.util
 from subprocess import Popen
 
 import time
+from datapipe.datatable import gen_process
 import pytest
 import pandas as pd
 import numpy as np
@@ -147,10 +148,6 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     })
 
     pipeline = Pipeline([
-        BatchGenerate(
-            gen_images,
-            outputs=['00_images'],
-        ),
         BatchTransform(
             wrapped_partial(
                 convert_to_ls_input_data,
@@ -181,8 +178,15 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
     wait_until_label_studio_is_up(label_studio_session)
 
-    # These steps should upload tasks
+    # This should be ok (project will be created, but without data)
     run_steps(ms, steps)
+    run_steps(ms, steps)
+
+    # This step should upload tasks (it also can be BatchGenerate as first step of pipeline)
+    gen_process(
+        dt=catalog.get_datatable(ms, '00_images'),
+        proc_func=gen_images
+    )
 
     assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
 
