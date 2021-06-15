@@ -222,7 +222,9 @@ class LabelStudioModerationStep(ComputeStep):
 
     def get_current_tasks_as_df(self):
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        if 'all_data_columns' not in project_summary:
+        if 'all_data_columns' not in project_summary or (
+            'LabelStudioModerationStep__unique_id' not in project_summary['all_data_columns']
+        ):
             total_tasks_count = 0
         else:
             total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
