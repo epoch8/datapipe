@@ -83,16 +83,16 @@ def parse_annotations(
 
 ms = MetaStore('sqlite:///' + str(DATA_DIR / 'xx_datatables/metadata.sqlite'))
 catalog = Catalog({
-    'input_images': ExternalTable(
+    '00_input_images': ExternalTable(
         store=TableStoreFiledir(DATA_DIR / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
     ),
-    'LS_data_raw': Table(
+    '01_LS_data_raw': Table(
         store=TableStoreFiledir(DATA_DIR / '01_LS_data_raw' / '{id}.json', JSONFile()),
     ),
-    'annotation_raw': Table(  # Updates when someone is annotating
+    '02_annotations_raw': Table(  # Updates when someone is annotating
         store=TableStoreFiledir(DATA_DIR / '02_annotations_raw' / '{id}.json', JSONFile()),
     ),
-    'annotation_parsed': Table(
+    '03_annotations': Table(
         store=TableStoreFiledir(DATA_DIR / '03_annotations' / '{id}.json', JSONFile()),
     )
 })
@@ -103,13 +103,13 @@ pipeline = Pipeline([
             convert_to_ls_input_data,
             files_url=f'http://{HOST}:{HTML_FILES_PORT}/',
         ),
-        inputs=['input_images'],
-        outputs=['LS_data_raw']
+        inputs=['00_input_images'],
+        outputs=['01_LS_data_raw']
     ),
     LabelStudioModeration(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        inputs=['LS_data_raw'],
-        outputs=['annotation_raw'],
+        inputs=['01_LS_data_raw'],
+        outputs=['02_annotations_raw'],
         auth=('moderation@epoch8.co', 'qwerty123'),
         project_title='Detection Project',
         project_description='Detection Project!',
@@ -118,8 +118,8 @@ pipeline = Pipeline([
     ),
     BatchTransform(
         parse_annotations,
-        inputs=['annotation_raw'],
-        outputs=['annotation_parsed']
+        inputs=['02_annotations_raw'],
+        outputs=['03_annotations']
     )
 ])
 
