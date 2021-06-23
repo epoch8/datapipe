@@ -229,7 +229,7 @@ class MetaStore:
 
         if idx is not None and diff_chunksize is not None:
             idx = idx[:diff_chunksize]
-            logger.info(f'Ttal items need to be updated: {len(idx)}, chosen items to update: {diff_chunksize}')
+            logger.info(f'Total items need to be updated: {len(idx)}, chosen items to update: {diff_chunksize}')
         else:
             logger.info(f'Items to update {len(idx)}')
 
