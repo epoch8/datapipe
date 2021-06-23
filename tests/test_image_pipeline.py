@@ -14,13 +14,7 @@ from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
 
-from .util import dbconn
-
-
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield d
+from .util import tmp_dir, dbconn
 
 
 def make_df():

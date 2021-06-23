@@ -76,15 +76,22 @@ def _pattern_to_match(pat: str) -> str:
 
 
 class TableStoreFiledir(TableStore):
-    def __init__(self, filename_pattern: Union[str, Path], adapter: ItemStoreFileAdapter):
+    def __init__(
+        self,
+        filename_pattern: Union[str, Path],
+        adapter: ItemStoreFileAdapter,
+        write_filepath: bool = False
+    ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
         if protocol is None or protocol == 'file':
             self.filename_pattern = str(Path(path).resolve())
             filename_pattern_for_match = self.filename_pattern
+            self.protocol_str = "" if protocol is None else "file://"
         else:
             self.filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
+            self.protocol_str = f"{protocol}://"
 
         if '*' in path:
             self.readonly = True
@@ -92,6 +99,7 @@ class TableStoreFiledir(TableStore):
             self.readonly = False
 
         self.adapter = adapter
+        self.write_filepath = write_filepath
 
         # Другие схемы идентификации еще не реализованы
         assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
@@ -123,8 +131,11 @@ class TableStoreFiledir(TableStore):
 
         def _gen():
             for i in idx:
-                with fsspec.open(self._filename(i), f'r{self.adapter.mode}') as f:
-                    yield self.adapter.load(f)
+                with (file_open := fsspec.open(self._filename(i), f'r{self.adapter.mode}')) as f:
+                    data = self.adapter.load(f)
+                    if self.write_filepath:
+                        data['filepath'] = f"{self.protocol_str}{file_open.path}"
+                    yield data
 
         return pd.DataFrame.from_records(
             _gen(),
