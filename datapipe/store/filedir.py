@@ -76,15 +76,22 @@ def _pattern_to_match(pat: str) -> str:
 
 
 class TableStoreFiledir(TableStore):
-    def __init__(self, filename_pattern: Union[str, Path], adapter: ItemStoreFileAdapter):
+    def __init__(
+        self,
+        filename_pattern: Union[str, Path],
+        adapter: ItemStoreFileAdapter,
+        add_filepath_column: bool = False
+    ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
         if protocol is None or protocol == 'file':
             self.filename_pattern = str(Path(path).resolve())
             filename_pattern_for_match = self.filename_pattern
+            self.protocol_str = "" if protocol is None else "file://"
         else:
             self.filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
+            self.protocol_str = f"{protocol}://"
 
         if '*' in path:
             self.readonly = True
@@ -92,6 +99,7 @@ class TableStoreFiledir(TableStore):
             self.readonly = False
 
         self.adapter = adapter
+        self.add_filepath_column = add_filepath_column
 
         # Другие схемы идентификации еще не реализованы
         assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
@@ -121,23 +129,18 @@ class TableStoreFiledir(TableStore):
         if idx is None:
             idx = self.read_rows_meta_pseudo_df().index
 
-        df_data = []
-        df_idx = []
+        def _gen():
+            for i in idx:
+                with (file_open := fsspec.open(self._filename(i), f'r{self.adapter.mode}')) as f:
+                    data = self.adapter.load(f)
+                    if self.add_filepath_column:
+                        data['filepath'] = f"{self.protocol_str}{file_open.path}"
+                    yield data
 
-        for i in idx:
-            of = fsspec.open(self._filename(i), f'r{self.adapter.mode}')
-            if of.fs.exists(of.path):
-                with of as f:
-                    df_data.append(self.adapter.load(f))
-                    df_idx.append(i)
-
-        if len(df_data) > 0:
-            return pd.DataFrame.from_records(
-                df_data,
-                index=df_idx
-            )
-        else:
-            return pd.DataFrame()
+        return pd.DataFrame.from_records(
+            _gen(),
+            index=idx
+        )
 
     def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
         # Not implemented yet

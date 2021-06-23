@@ -8,19 +8,6 @@ from datapipe.store.pandas import TableStoreJsonLine
 from .util import dbconn, tmp_dir
 
 
-def make_file1(file):
-    with open(file, 'w') as out:
-        out.write('{"id": "0", "text": "text0"}\n')
-        out.write('{"id": "1", "text": "text1"}\n')
-        out.write('{"id": "2", "text": "text2"}\n')
-
-
-def make_file2(file):
-    with open(file, 'w') as out:
-        out.write('{"id": "0", "text": "text0"}\n')
-        out.write('{"id": "2", "text": "text2"}\n')
-
-
 def test_table_store_json_line_reading(tmp_dir):
     test_df = pd.DataFrame({
         "id": ["0", "1", "2"],
@@ -35,6 +22,19 @@ def test_table_store_json_line_reading(tmp_dir):
     df = store.load_file()
     assert all(df.reset_index(drop=False)["id"].values == test_df["id"].values)
     assert all(df["record"].values == test_df["record"].values)
+    
+
+def make_file1(file):
+    with open(file, 'w') as out:
+        out.write('{"id": "0", "text": "text0"}\n')
+        out.write('{"id": "1", "text": "text1"}\n')
+        out.write('{"id": "2", "text": "text2"}\n')
+
+
+def make_file2(file):
+    with open(file, 'w') as out:
+        out.write('{"id": "0", "text": "text0"}\n')
+        out.write('{"id": "2", "text": "text2"}\n')
 
 
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
