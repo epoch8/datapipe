@@ -154,7 +154,7 @@ def test_inc_process_modify_values(dbconn) -> None:
     assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
     
 
-def test_inc_process_values_with_diff_chunksize(dbconn) -> None:
+def test_inc_process_with_diff_chunksize(dbconn) -> None:
     ds = MetaStore(dbconn)
 
     tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
