@@ -212,9 +212,6 @@ class MetaStore:
             else:
                 idx = idx.union(idx_df.index)
 
-        if idx is not None and diff_chunksize is not None:
-            idx = idx[:diff_chunksize]
-
         return idx
 
     def get_process_chunks(
@@ -230,7 +227,11 @@ class MetaStore:
             diff_chunksize=diff_chunksize
         )
 
-        logger.info(f'Items to update {len(idx)}')
+        if idx is not None and diff_chunksize is not None:
+            idx = idx[:diff_chunksize]
+            logger.info(f'Ttal items need to be updated: {len(idx)}, chosen items to update: {diff_chunksize}')
+        else:
+            logger.info(f'Items to update {len(idx)}')
 
         def gen():
             if len(idx) > 0:
