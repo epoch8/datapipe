@@ -80,7 +80,7 @@ class TableStoreFiledir(TableStore):
         self,
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
-        write_filepath: bool = False
+        add_filepath_column: bool = False
     ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
@@ -99,7 +99,7 @@ class TableStoreFiledir(TableStore):
             self.readonly = False
 
         self.adapter = adapter
-        self.write_filepath = write_filepath
+        self.add_filepath_column = add_filepath_column
 
         # Другие схемы идентификации еще не реализованы
         assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
@@ -133,7 +133,7 @@ class TableStoreFiledir(TableStore):
             for i in idx:
                 with (file_open := fsspec.open(self._filename(i), f'r{self.adapter.mode}')) as f:
                     data = self.adapter.load(f)
-                    if self.write_filepath:
+                    if self.add_filepath_column:
                         data['filepath'] = f"{self.protocol_str}{file_open.path}"
                     yield data
 

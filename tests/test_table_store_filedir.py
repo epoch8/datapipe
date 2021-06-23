@@ -50,7 +50,7 @@ def test_read_json_rows(tmp_dir_with_json_data):
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
-        adapter=JSONFile(), write_filepath=True
+        adapter=JSONFile(), add_filepath_column=True
     )
     assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, tmp_dir_with_json_data))
 
@@ -65,7 +65,7 @@ def test_read_json_rows_file_fs(tmp_dir_with_json_data):
 
     ts_with_filepath = TableStoreFiledir(
         f'file://{tmp_dir_with_json_data}/{{id}}.json',
-        adapter=JSONFile(), write_filepath=True
+        adapter=JSONFile(), add_filepath_column=True
     )
     assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, f'file://{tmp_dir_with_json_data}'))
 
@@ -80,7 +80,7 @@ def test_read_json_rows_gcs_fs():
 
     ts_with_filepath = TableStoreFiledir(
         'gs://datapipe-test/{id}.json',
-        adapter=JSONFile(), write_filepath=True
+        adapter=JSONFile(), add_filepath_column=True
     )
     assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, 'gs://datapipe-test'))
 
@@ -164,7 +164,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json',
-        adapter=JSONFile(), write_filepath=True
+        adapter=JSONFile(), add_filepath_column=True
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER0_WITH_FILEPATH.index.map(
@@ -193,7 +193,7 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/**/{{id}}.json',
-        adapter=JSONFile(), write_filepath=True
+        adapter=JSONFile(), add_filepath_column=True
     )
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH = TEST_DF_FOLDER_RECURSIVELY.copy()
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH.index.map(
