@@ -45,6 +45,7 @@ class BatchTransform(PipelineStep):
     inputs: List[str]
     outputs: List[str]
     chunk_size: int = 1000
+    diff_chunk_size: Union[int, None] = None
 
 
 @dataclass

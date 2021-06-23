@@ -1,4 +1,4 @@
-from typing import List, Callable
+from typing import List, Callable, Union
 from dataclasses import dataclass
 
 import logging
@@ -27,6 +27,7 @@ class BatchGenerateStep(ComputeStep):
 class BatchTransformIncStep(ComputeStep):
     func: Callable
     chunk_size: int
+    diff_chunk_size: Union[int, None] = None
 
     def run(self, ms: MetaStore):
         return inc_process_many(
@@ -34,7 +35,8 @@ class BatchTransformIncStep(ComputeStep):
             self.input_dts,
             self.output_dts,
             self.func,
-            self.chunk_size
+            self.chunk_size,
+            self.diff_chunk_size
         )
 
 
@@ -68,7 +70,8 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=step.func,
-                chunk_size=step.chunk_size
+                chunk_size=step.chunk_size,
+                diff_chunk_size=step.diff_chunk_size
             ))
 
     return res

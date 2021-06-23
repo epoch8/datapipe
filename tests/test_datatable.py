@@ -152,6 +152,30 @@ def test_inc_process_modify_values(dbconn) -> None:
     inc_process(ds, [tbl1], tbl2, id_func)
 
     assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
+    
+
+def test_inc_process_values_with_diff_chunksize(dbconn) -> None:
+    ds = MetaStore(dbconn)
+
+    tbl1 = DataTable(ds, 'tbl1', table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+    tbl2 = DataTable(ds, 'tbl2', table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+
+    def id_func(df):
+        return df
+
+    tbl1.store(TEST_DF)
+
+    inc_process(ds, [tbl1], tbl2, id_func, diff_chunksize=3)
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF.loc[[f'id_{i}' for i in range(3)]]))
+    
+    inc_process(ds, [tbl1], tbl2, id_func, diff_chunksize=3)
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF.loc[[f'id_{i}' for i in range(6)]]))
+    
+    inc_process(ds, [tbl1], tbl2, id_func, diff_chunksize=3)
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF.loc[[f'id_{i}' for i in range(9)]]))
+    
+    inc_process(ds, [tbl1], tbl2, id_func, diff_chunksize=3)
+    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
 
 
 def test_inc_process_delete_values_from_input(dbconn) -> None:

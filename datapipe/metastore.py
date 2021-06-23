@@ -63,7 +63,6 @@ class MetaStore:
             name=name,
             size=self.dbconn.con.execute(select([func.count()]).select_from(tbl.data_table)).fetchone()[0]
         )
-        
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -139,6 +138,7 @@ class MetaStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
+        diff_chunksize: Union[int, None] = None
     ) -> pd.Index:
         if len(inputs) == 0:
             return pd.Index([])
@@ -212,6 +212,9 @@ class MetaStore:
             else:
                 idx = idx.union(idx_df.index)
 
+        if idx is not None and diff_chunksize is not None:
+            idx = idx[:diff_chunksize]
+
         return idx
 
     def get_process_chunks(
@@ -219,10 +222,12 @@ class MetaStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         chunksize: int = 1000,
+        diff_chunksize: Union[int, None] = None
     ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
         idx = self.get_process_ids(
             inputs=inputs,
             outputs=outputs,
+            diff_chunksize=diff_chunksize
         )
 
         logger.info(f'Items to update {len(idx)}')

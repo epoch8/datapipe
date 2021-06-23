@@ -140,6 +140,7 @@ def inc_process_many(
     res_dts: List[DataTable],
     proc_func: Callable,
     chunksize: int = 1000,
+    diff_chunksize: Union[int, None] = None,
     **kwargs
 ) -> None:
     '''
@@ -148,7 +149,9 @@ def inc_process_many(
 
     res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
 
-    idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
+    idx, input_dfs_gen = ds.get_process_chunks(
+        inputs=input_dts, outputs=res_dts, chunksize=chunksize, diff_chunksize=diff_chunksize
+    )
 
     if len(idx) > 0:
         for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
@@ -173,6 +176,7 @@ def inc_process(
     res_dt: DataTable,
     proc_func: Callable,
     chunksize: int = 1000,
+    diff_chunksize: Union[int, None] = None,
     **kwargs
 ) -> None:
     inc_process_many(
@@ -181,6 +185,7 @@ def inc_process(
         res_dts=[res_dt],
         proc_func=proc_func,
         chunksize=chunksize,
+        diff_chunksize=diff_chunksize,
         **kwargs
     )
 
