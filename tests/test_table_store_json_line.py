@@ -1,7 +1,7 @@
 import os
 import pandas as pd
-
 from datapipe.store.pandas import TableStoreJsonLine
+
 from .util import tmp_dir
 
 
