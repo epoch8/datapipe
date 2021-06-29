@@ -1,0 +1,50 @@
+import os
+import numpy as np
+import pandas as pd
+from datapipe.compute import build_compute, run_steps
+from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.metastore import MetaStore
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
+from .util import tmp_dir, dbconn
+
+
+CHUNK_SIZE = 1000
+
+
+def test_table_store_json_line_reading(tmp_dir, dbconn):
+    def conversion(df):
+        df["y"] = df["x"] ** 2
+        return df
+
+    x = pd.Series(np.arange(2 * CHUNK_SIZE, dtype=np.int32)).apply(str)
+    test_df = pd.DataFrame({
+        "id": x,
+        "x": x,
+    })
+    test_input_fname = os.path.join(tmp_dir, "table-input-pandas.json")
+    test_output_fname = os.path.join(tmp_dir, "table-output-pandas.json")
+    test_df.to_json(test_input_fname, orient="records", lines=True)
+
+    ms = MetaStore(dbconn)
+    catalog = Catalog({
+        "input_data": ExternalTable(
+            store=TableStoreJsonLine(test_input_fname),
+        ),
+        "output_data": Table(
+            store=TableStoreJsonLine(test_output_fname),
+        ),
+    })
+    pipeline = Pipeline([
+        BatchTransform(
+            conversion,
+            inputs=["input_data"],
+            outputs=["output_data"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ])
+
+    steps = build_compute(ms, catalog, pipeline)
+    run_steps(ms, steps)
+
+    df_transformed = catalog.get_datatable(ms, 'output_data').get_data()
+    print(df_transformed)
