@@ -16,9 +16,9 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
         df["y"] = df["x"] ** 2
         return df
 
-    x = pd.Series(np.arange(2 * CHUNK_SIZE, dtype=np.int32)).apply(str)
+    x = pd.Series(np.arange(2 * CHUNK_SIZE, dtype=np.int32))
     test_df = pd.DataFrame({
-        "id": x,
+        "id": x.apply(str),
         "x": x,
     })
     test_input_fname = os.path.join(tmp_dir, "table-input-pandas.json")
@@ -47,4 +47,6 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
     run_steps(ms, steps)
 
     df_transformed = catalog.get_datatable(ms, 'output_data').get_data()
-    print(df_transformed)
+    assert len(df_transformed) == 2 * CHUNK_SIZE
+    assert all(df_transformed["y"].values == (df_transformed["x"].values ** 2))
+    assert len(set(df_transformed["x"].values).symmetric_difference(set(x))) == 0
