@@ -72,8 +72,10 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store(TEST_DF)
 
-    idx = ds.get_process_ids([tbl1], [tbl2])
-    assert(list(idx) == list(TEST_DF.index))
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    idx = pd.concat(list(idx_dfs))
+
+    assert(sorted(list(idx.index)) == list(TEST_DF.index))
 
     tbl2.store(tbl1.get_data())
 
@@ -82,8 +84,9 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(upd_df)
 
-    idx = ds.get_process_ids([tbl1], [tbl2])
-    assert(list(idx) == list(upd_df.index))
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    idx = pd.concat(list(idx_dfs))
+    assert(sorted(list(idx.index)) == list(upd_df.index))
 
 
 def test_gen_process(dbconn) -> None:
@@ -207,19 +210,33 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     tbl2.store(TEST_DF)
     tbl1.store(TEST_DF)
 
-    assert(len(ds.get_process_ids([tbl1], [tbl2])) == len(TEST_DF))
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    idx = pd.concat(list(idx_dfs))
+
+    assert(len(idx) == len(TEST_DF))
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(len(ds.get_process_ids([tbl1], [tbl2])) == 0)
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == 0)
 
     tbl1.store(TEST_DF_INC1)
 
-    assert(len(ds.get_process_ids([tbl1], [tbl2])) == len(TEST_DF))
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    idx = pd.concat(list(idx_dfs))
+
+    assert(len(idx) == len(TEST_DF))
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(len(ds.get_process_ids([tbl1], [tbl2])) == 0)
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == 0)
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
