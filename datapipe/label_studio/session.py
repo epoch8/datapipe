@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 from urllib.parse import urljoin
 
 import pandas as pd
@@ -65,7 +65,7 @@ class LabelStudioSession:
     def get_project_id_by_title(
         self,
         title: str
-    ) -> Dict[str, str]:
+    ) -> Optional[Dict[str, str]]:
         projects = self.session.get(urljoin(self.ls_url, '/api/projects/')).json()
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]

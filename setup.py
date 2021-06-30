@@ -14,22 +14,23 @@ setuptools.setup(
         "psycopg2_binary >=2.8.4",
         "cloudpickle >=1.6.0",
         "PyYAML >=5.3.1",
-        "anyconfig >=0.10.0",
         "Pillow >=7.2.0",
         "tqdm >=4.60.0",
-        "xlrd >=2.0.1",
-        "openpyxl >=3.0.7",
         "toml >=0.10.2",
         "click >=7.1.2",
-        "requests >= 2.24.0"
     ],
     extras_require={
+        "excel": [
+            "xlrd >=2.0.1",
+            "openpyxl >=3.0.7",
+        ],
         "ui": [
             "dash >=1.20.0",
             "dash_bootstrap_components >= 0.12.0",
             "dash_interactive_graphviz >=0.3.0",
         ],
         "label-studio": [
+            "requests >= 2.24.0"
             "label-studio >=1.0.1"
         ]
     },
