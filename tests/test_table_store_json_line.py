@@ -2,8 +2,6 @@ import os
 import pandas as pd
 from datapipe.store.pandas import TableStoreJsonLine
 
-from .util import tmp_dir
-
 
 def test_table_store_json_line_reading(tmp_dir):
     test_df = pd.DataFrame({

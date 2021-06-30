@@ -5,7 +5,6 @@ from datapipe.compute import build_compute, run_steps
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
-from .util import tmp_dir, dbconn
 
 
 CHUNK_SIZE = 1000

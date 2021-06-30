@@ -14,8 +14,6 @@ from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import run_pipeline
 
-from .util import tmp_dir, dbconn
-
 
 def make_df():
     idx = [f'im_{i}' for i in range(10)]
