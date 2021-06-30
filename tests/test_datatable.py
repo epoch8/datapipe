@@ -8,7 +8,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
 
-from .util import assert_df_equal, assert_idx_equal, dbconn
+from .util import assert_df_equal, assert_idx_equal
 
 
 TEST_SCHEMA = [

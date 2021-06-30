@@ -5,8 +5,6 @@ from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
 from datapipe.store.pandas import TableStoreJsonLine
 
-from .util import dbconn, tmp_dir
-
 
 def test_table_store_json_line_reading(tmp_dir):
     test_df = pd.DataFrame({
@@ -22,7 +20,7 @@ def test_table_store_json_line_reading(tmp_dir):
     df = store.load_file()
     assert all(df.reset_index(drop=False)["id"].values == test_df["id"].values)
     assert all(df["record"].values == test_df["record"].values)
-    
+
 
 def make_file1(file):
     with open(file, 'w') as out:

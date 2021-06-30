@@ -17,8 +17,6 @@ from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
 from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudioSession
 
-from .util import dbconn, tmp_dir
-
 
 LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
 

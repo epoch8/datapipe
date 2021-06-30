@@ -77,6 +77,10 @@ class TableDataSingleFileStore(TableStore):
         if file_df is None:
             file_df = df
         else:
-            file_df.loc[df.index] = df
+            updated_idx = df.index.intersection(file_df.index)
+            new_idx = df.index.difference(file_df.index)
+
+            file_df.loc[updated_idx] = df.loc[updated_idx]
+            file_df = file_df.append(df.loc[new_idx])
 
         self.save_file(file_df)
