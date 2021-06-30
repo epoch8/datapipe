@@ -18,6 +18,7 @@ setuptools.setup(
         "tqdm >=4.60.0",
         "toml >=0.10.2",
         "click >=7.1.2",
+        "requests >= 2.24.0",
     ],
     extras_require={
         "excel": [
@@ -30,8 +31,7 @@ setuptools.setup(
             "dash_interactive_graphviz >=0.3.0",
         ],
         "label-studio": [
-            "requests >= 2.24.0",
-            "label-studio >=1.0.1"
+            "label-studio >=1.0.1",
         ]
     },
     python_requires='>=3.8'
