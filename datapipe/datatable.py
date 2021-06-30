@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable, Generator, Iterator, List, Dict, Optional, Tuple, Union, TYPE_CHECKING
 
 import inspect
@@ -8,7 +9,7 @@ import math
 import pandas as pd
 import tqdm
 
-from datapipe.store.types import Index, ChunkMeta
+from datapipe.store.types import Index, ChunkMeta, IndexMeta
 from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
@@ -19,6 +20,13 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('datapipe.datatable')
+
+
+@dataclass
+class TableSchema:
+    name: str
+    index_schema: IndexMeta
+    data_schema: 
 
 
 class DataTable:
