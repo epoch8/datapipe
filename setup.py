@@ -30,7 +30,7 @@ setuptools.setup(
             "dash_interactive_graphviz >=0.3.0",
         ],
         "label-studio": [
-            "requests >= 2.24.0"
+            "requests >= 2.24.0",
             "label-studio >=1.0.1"
         ]
     },
