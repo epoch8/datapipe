@@ -5,7 +5,7 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float, func
+from sqlalchemy import Column, Numeric, Float, func, union, alias
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
@@ -63,7 +63,6 @@ class MetaStore:
             name=name,
             size=self.dbconn.con.execute(select([func.count()]).select_from(tbl.data_table)).fetchone()[0]
         )
-        
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -139,11 +138,10 @@ class MetaStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
+        chunksize: int = 1000,
     ) -> pd.Index:
         if len(inputs) == 0:
             return pd.Index([])
-
-        idx = None
 
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(
@@ -159,6 +157,8 @@ class MetaStore:
                 )
 
             return q
+
+        sql_requests = []
 
         for inp in inputs:
             sql = select([self.get_meta_table(inp.name).data_table.c.id]).select_from(
@@ -180,16 +180,7 @@ class MetaStore:
                 )
             )
 
-            idx_df = pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-                index_col='id',
-            )
-
-            if idx is None:
-                idx = idx_df.index
-            else:
-                idx = idx.union(idx_df.index)
+            sql_requests.append(sql)
 
         for out in outputs:
             sql = select([self.get_meta_table(out.name).data_table.c.id]).select_from(
@@ -201,18 +192,23 @@ class MetaStore:
                 and_(self.get_meta_table(inp.name).data_table.c.id.is_(None) for inp in inputs)
             )
 
-            idx_df = pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-                index_col='id',
+            sql_requests.append(sql)
+
+        u1 = union(*sql_requests)
+
+        idx_count = self.dbconn.con.execute(
+            select([func.count()])
+            .select_from(
+                alias(u1, name='union_select')
             )
+        ).scalar()
 
-            if idx is None:
-                idx = idx_df.index
-            else:
-                idx = idx.union(idx_df.index)
-
-        return idx
+        return idx_count, pd.read_sql_query(
+            u1,
+            con=self.dbconn.con,
+            index_col='id',
+            chunksize=chunksize
+        )
 
     def get_process_chunks(
         self,
@@ -220,16 +216,18 @@ class MetaStore:
         outputs: List[DataTable],
         chunksize: int = 1000,
     ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
-        idx = self.get_process_ids(
+        idx_count, idx_gen = self.get_process_ids(
             inputs=inputs,
             outputs=outputs,
+            chunksize=chunksize
         )
 
-        logger.info(f'Items to update {len(idx)}')
+        logger.info(f'Items to update {idx_count}')
 
         def gen():
-            if len(idx) > 0:
-                for i in range(0, len(idx), chunksize):
-                    yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
+            if idx_count > 0:
+                for idx in idx_gen:
+                    yield idx, [inp.get_data(idx.index) for inp in inputs]
 
-        return idx, gen()
+        return idx_count, gen()
+        

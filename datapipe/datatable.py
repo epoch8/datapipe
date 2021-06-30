@@ -145,13 +145,10 @@ def inc_process_many(
     '''
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
+    idx_count, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
 
-    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
-
-    idx, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
-
-    if len(idx) > 0:
-        for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
+    if idx_count > 0:
+        for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
                 chunks_df = proc_func(*input_dfs, **kwargs)
 
@@ -160,11 +157,12 @@ def inc_process_many(
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
                     # Добавляем результат в результирующие чанки
-                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
+                    res_index = res_dt.store_chunk(chunk_df_k)
+                    res_dt.sync_meta([res_index], processed_idx=idx.index)
 
-        # Синхронизируем мета-данные для всех K табличек
-        for k, res_dt in enumerate(res_dts):
-            res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
+            else:
+                for k, res_dt in enumerate(res_dts):
+                    res_dt.sync_meta([], processed_idx=idx.index)
 
 
 def inc_process(
