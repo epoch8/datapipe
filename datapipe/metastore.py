@@ -56,6 +56,9 @@ class MetaStore:
     def get_metadata(self, name: str, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.get_meta_table(name).read_rows(idx)
 
+    def get_existing_idx(self, name: str, idx: Index = None) -> Index:
+        return self.get_metadata(name, idx).index
+
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         tbl = self.get_meta_table(name)
 

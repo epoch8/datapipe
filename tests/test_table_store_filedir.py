@@ -1,4 +1,5 @@
 import json
+from datapipe.metastore import MetaStore
 import pandas as pd
 import numpy as np
 
@@ -7,6 +8,7 @@ import fsspec
 from PIL import Image
 
 from datapipe.store.filedir import PILFile, JSONFile, TableStoreFiledir
+from datapipe.dsl import Catalog, Table
 
 from .util import assert_df_equal, assert_idx_equal
 
