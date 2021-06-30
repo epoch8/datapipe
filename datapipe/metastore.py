@@ -63,7 +63,7 @@ class MetaStore:
             name=name,
             size=self.dbconn.con.execute(select([func.count()]).select_from(tbl.data_table)).fetchone()[0]
         )
-        
+
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         return pd.DataFrame(
@@ -233,3 +233,15 @@ class MetaStore:
                     yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
 
         return idx, gen()
+
+    def get_not_process_idx(self, name: str, start_time: float) -> pd.DataFrame:
+        meta_table = self.get_meta_table(name)
+
+        return pd.read_sql_query(
+            select([meta_table.data_table.c.id]).where(
+                meta_table.data_table.c.process_ts < start_time
+            ),
+            con=meta_table.dbconn.con,
+            index_col='id',
+            chunksize=1000
+        )

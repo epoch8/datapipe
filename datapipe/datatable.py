@@ -88,6 +88,15 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx).index.tolist()
 
 
+def delete_rows(dt: DataTable, start_time: float) -> None:
+    deleted_dfs = dt.ms.get_not_process_idx(dt.name, start_time)
+
+    for deleted_df in deleted_dfs:
+        deleted_idx = deleted_df.index
+        dt.table_store.delete_rows(deleted_idx)
+        dt.ms.update_meta_for_sync_meta(dt.name, deleted_idx)
+
+
 def gen_process_many(
     dts: List[DataTable],
     proc_func: Callable[..., Union[
@@ -101,9 +110,7 @@ def gen_process_many(
     Функция может быть как обычной, так и генерирующейся
     '''
 
-    chunks_k: Dict[int, ChunkMeta] = {
-        k: [] for k in range(len(dts))
-    }
+    now = time.time()
 
     if inspect.isgeneratorfunction(proc_func):
         iterable = proc_func(**kwargs)
@@ -113,10 +120,10 @@ def gen_process_many(
     for chunk_dfs in iterable:
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
-            chunks_k[k].append(dt_k.store_chunk(chunk_df_kth))
+            dt_k.store_chunk(chunk_df_kth)
 
     for k, dt_k in enumerate(dts):
-        dt_k.sync_meta(chunks=chunks_k[k])
+        delete_rows(dt_k, now)
 
 
 def gen_process(
