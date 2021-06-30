@@ -28,6 +28,11 @@ jobs:
         ports:
           - 5432:5432
 
+      label-studio:
+        image: heartexlabs/label-studio:1.0.1
+        ports:
+            - 8080:8080
+
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -38,7 +43,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -e .
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -54,3 +59,7 @@ jobs:
         POSTGRES_HOST: localhost
         # The default PostgreSQL port
         POSTGRES_PORT: 5432
+
+        LABEL_STUDIO_HOST: localhost
+        LABEL_STUDIO_PORT: 8080
+        TEST_START_LABEL_STUDIO: False

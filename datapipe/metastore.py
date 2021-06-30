@@ -75,6 +75,9 @@ class MetaTable:
 
         return meta_df
 
+    def get_existing_idx(self, name: str, idx: Index = None) -> Index:
+        return self.get_metadata(name, idx).index
+
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         return TableDebugInfo(
             name=name,

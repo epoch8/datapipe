@@ -35,4 +35,4 @@ class TableStoreJsonLine(TableDataSingleFileStore):
 
     def save_file(self, df: pd.DataFrame) -> None:
         with fsspec.open(self.filename, 'w+') as f:
-            df.to_json(f, orient='records', lines=True)
+            df.to_json(f, orient='records', lines=True, force_ascii=False)

@@ -1,16 +1,17 @@
+# flake8: noqa
 import pytest
 
-import glob
 import tempfile
+
 import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
-from datapipe.compute import run_pipeline
+from datapipe.compute import build_compute, run_pipeline, run_steps
 
 
 @pytest.fixture
@@ -45,7 +46,7 @@ def test_image_datatables(dbconn, tmp_dir):
         ms,
         'tbl1',
         table_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl1/{{id}}.png',
+            tmp_dir / 'tbl1' / '{id}.png',
             adapter=PILFile('png')
         )
     )
@@ -54,13 +55,13 @@ def test_image_datatables(dbconn, tmp_dir):
         ms,
         'tbl2',
         table_store=TableStoreFiledir(
-            f'{tmp_dir}/tbl2/{{id}}.png',
+            tmp_dir / 'tbl2' / '{id}.png',
             adapter=PILFile('png')
         )
     )
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 0)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 0)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
     gen_process(
         tbl1,
@@ -74,8 +75,8 @@ def test_image_datatables(dbconn, tmp_dir):
         resize_images
     )
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 10)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 10)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
 
 
 def test_image_pipeline(dbconn, tmp_dir):
@@ -83,14 +84,14 @@ def test_image_pipeline(dbconn, tmp_dir):
         'tbl1': Table(
             metadata=['id'],
             store=TableStoreFiledir(
-                f'{tmp_dir}/tbl1/{{id}}.png',
+                tmp_dir / 'tbl1' / '{id}.png',
                 adapter=PILFile('png')
             )
         ),
         'tbl2': Table(
             metadata=['id'],
             store=TableStoreFiledir(
-                f'{tmp_dir}/tbl2/{{id}}.png',
+                tmp_dir / 'tbl2' / '{id}.png',
                 adapter=PILFile('png')
             )
         ),
@@ -108,11 +109,71 @@ def test_image_pipeline(dbconn, tmp_dir):
         )
     ])
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 0)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 0)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
     ms = MetaStore(dbconn)
     run_pipeline(ms, catalog, pipeline)
 
-    assert(len(glob.glob(f'{tmp_dir}/tbl1/*.png')) == 10)
-    assert(len(glob.glob(f'{tmp_dir}/tbl2/*.png')) == 10)
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
+
+
+def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
+
+    # Add images to tmp_dir
+    df_images = make_df()
+    (tmp_dir / 'tbl1').mkdir()
+    for id in df_images.index:
+        df_images.loc[id, 'image'].save(tmp_dir / 'tbl1' / f'{id}.png')
+
+    catalog = Catalog({
+        'tbl1': ExternalTable(
+            store=TableStoreFiledir(
+                tmp_dir / 'tbl1' / '{id}.png',
+                adapter=PILFile('png')
+            )
+        ),
+        'tbl2': Table(
+            store=TableStoreFiledir(
+                tmp_dir / 'tbl2' / '{id}.png',
+                adapter=PILFile('png')
+            )
+        ),
+    })
+
+    pipeline = Pipeline([
+        BatchTransform(
+            lambda df: df,
+            inputs=["tbl1"],
+            outputs=["tbl2"]
+        )
+    ])
+
+    print(f"{list(tmp_dir.glob('tbl1/*.png'))=}")
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
+
+    ms = MetaStore(dbconn)
+    steps = build_compute(ms, catalog, pipeline)
+    run_steps(ms, steps)
+
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
+    assert len(catalog.get_datatable(ms, 'tbl1').get_data()) == 10
+    assert len(catalog.get_datatable(ms, 'tbl2').get_data()) == 10
+
+    # Delete some files from the folder
+    for id in [0, 5, 7, 8, 9]:
+        (tmp_dir / 'tbl1' / f'im_{id}.png').unlink()
+
+    run_steps(ms, steps)
+
+    assert len(list(tmp_dir.glob('tbl1/*.png'))) == 5
+    assert len(catalog.get_datatable(ms, 'tbl1').get_data()) == 5
+    assert len(catalog.get_datatable(ms, 'tbl1').get_metadata()) == 5
+
+    # TODO: uncomment follow when we make files deletion
+    # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 5
+    assert len(catalog.get_datatable(ms, 'tbl2').get_data()) == 5
+    assert len(catalog.get_datatable(ms, 'tbl2').get_metadata()) == 5
