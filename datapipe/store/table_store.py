@@ -77,10 +77,10 @@ class TableDataSingleFileStore(TableStore):
         if file_df is None:
             file_df = df
         else:
-            known_indices = set(file_df.index)
-            common_idx = [idx for idx in df.index if idx in known_indices]
-            new_idx = [idx for idx in df.index if idx not in known_indices]
-            file_df.loc[common_idx] = df.loc[common_idx]
+            updated_idx = df.index.intersection(file_df.index)
+            new_idx = df.index.difference(file_df.index)
+
+            file_df.loc[updated_idx] = df.loc[updated_idx]
             file_df = file_df.append(df.loc[new_idx])
 
         self.save_file(file_df)
