@@ -42,17 +42,15 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_store.read_rows(idx)
+        return self.table_store.read_rows(self.ms.get_existing_idx(self.name, idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
         new_idx, changed_idx, new_meta_df = self.ms.get_changes_for_store_chunk(self.name, data_df, now)
 
-        # обновить данные (удалить только то, что изменилось, записать новое)
-        to_write_idx = changed_idx.union(new_idx)
-
-        self.table_store.update_rows(data_df.loc[to_write_idx])
+        self.table_store.insert_rows(data_df.loc[new_idx])
+        self.table_store.update_rows(data_df.loc[changed_idx])
 
         self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
 
