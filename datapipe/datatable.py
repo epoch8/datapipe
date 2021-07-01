@@ -56,7 +56,7 @@ class DataTable:
 
         return list(data_df.index)
 
-    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
+    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
@@ -80,7 +80,7 @@ class DataTable:
             data_df=df,
             now=now
         )
-        self.sync_meta(
+        self.sync_meta_by_idx_chunks(
             chunks=[chunk],
         )
 
@@ -168,7 +168,7 @@ def inc_process_many(
 
         # Синхронизируем мета-данные для всех K табличек
         for k, res_dt in enumerate(res_dts):
-            res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
+            res_dt.sync_meta_by_idx_chunks(res_dts_chunks[k], processed_idx=idx)
 
 
 def inc_process(
