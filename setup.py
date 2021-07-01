@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.6.1',
+    version='0.6.2',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
@@ -14,7 +14,7 @@ setuptools.setup(
         "psycopg2_binary >=2.8.4",
         "cloudpickle >=1.6.0",
         "PyYAML >=5.3.1",
-        "Pillow >=7.2.0",
+        "Pillow >=7.2.0, <8",
         "tqdm >=4.60.0",
         "toml >=0.10.2",
         "click >=7.1.2",

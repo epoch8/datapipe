@@ -56,7 +56,7 @@ class DataTable:
 
         return list(data_df.index)
 
-    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
+    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
@@ -65,6 +65,14 @@ class DataTable:
 
         self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
 
+    def sync_meta_by_process_ts(self, process_ts: float) -> None:
+        deleted_dfs = self.ms.get_stale_idx(self.name, process_ts)
+
+        for deleted_df in deleted_dfs:
+            deleted_idx = deleted_df.index
+            self.table_store.delete_rows(deleted_idx)
+            self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
+
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
 
@@ -72,7 +80,7 @@ class DataTable:
             data_df=df,
             now=now
         )
-        self.sync_meta(
+        self.sync_meta_by_idx_chunks(
             chunks=[chunk],
         )
 
@@ -99,9 +107,7 @@ def gen_process_many(
     Функция может быть как обычной, так и генерирующейся
     '''
 
-    chunks_k: Dict[int, ChunkMeta] = {
-        k: [] for k in range(len(dts))
-    }
+    now = time.time()
 
     if inspect.isgeneratorfunction(proc_func):
         iterable = proc_func(**kwargs)
@@ -111,10 +117,10 @@ def gen_process_many(
     for chunk_dfs in iterable:
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
-            chunks_k[k].append(dt_k.store_chunk(chunk_df_kth))
+            dt_k.store_chunk(chunk_df_kth)
 
     for k, dt_k in enumerate(dts):
-        dt_k.sync_meta(chunks=chunks_k[k])
+        dt_k.sync_meta_by_process_ts(now)
 
 
 def gen_process(
@@ -162,7 +168,7 @@ def inc_process_many(
 
         # Синхронизируем мета-данные для всех K табличек
         for k, res_dt in enumerate(res_dts):
-            res_dt.sync_meta(res_dts_chunks[k], processed_idx=idx)
+            res_dt.sync_meta_by_idx_chunks(res_dts_chunks[k], processed_idx=idx)
 
 
 def inc_process(
