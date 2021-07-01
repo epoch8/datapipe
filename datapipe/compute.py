@@ -2,11 +2,12 @@ from typing import List, Callable
 from dataclasses import dataclass
 
 import logging
+from datapipe.label_studio.session import LabelStudioModerationStep
 
 from datapipe.metastore import MetaStore
 from datapipe.datatable import gen_process_many, inc_process_many, ExternalTableUpdater
 
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform
+from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
 from .step import ComputeStep
 
 logger = logging.getLogger('datapipe.compute')
@@ -17,7 +18,7 @@ class BatchGenerateStep(ComputeStep):
     func: Callable
 
     def run(self, ms: MetaStore):
-        return gen_process_many(
+        gen_process_many(
             self.output_dts,
             self.func
         )
@@ -29,7 +30,7 @@ class BatchTransformIncStep(ComputeStep):
     chunk_size: int
 
     def run(self, ms: MetaStore):
-        return inc_process_many(
+        inc_process_many(
             ms,
             self.input_dts,
             self.output_dts,
@@ -69,6 +70,25 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 output_dts=output_dts,
                 func=step.func,
                 chunk_size=step.chunk_size
+            ))
+
+        if isinstance(step, LabelStudioModeration):
+            input_dts = [catalog.get_datatable(ms, name) for name in step.inputs]
+            output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
+
+            res.append(LabelStudioModerationStep(
+                name=f"LabelStudioModeration (Project {step.project_title})",
+                input_dts=input_dts,
+                output_dts=output_dts,
+                ls_url=step.ls_url,
+                auth=step.auth,
+                project_title=step.project_title,
+                project_description=step.project_description,
+                project_label_config=step.project_label_config,
+                data=step.data,
+                annotations=step.annotations,
+                predictions=step.predictions,
+                chunk_size=step.chunk_size,
             ))
 
     return res

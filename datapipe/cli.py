@@ -14,7 +14,7 @@ def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
 
     @cli.command()
     def run():
-        from .compute import run_pipeline 
+        from .compute import run_pipeline
         run_pipeline(ms, catalog, pipeline)
 
     @cli.command()

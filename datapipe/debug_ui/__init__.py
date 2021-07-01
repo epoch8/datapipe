@@ -1,20 +1,16 @@
-from typing import List
-from dash_bootstrap_components._components.NavItem import NavItem
-
 import dash_html_components as html
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
-import dash_table as dt
 from dash import Dash
 from dash.dependencies import Input, Output
 
-from datapipe.compute import build_compute, ComputeStep
 from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, Pipeline
 
 from .overview import ui_overview_setup, ui_overview_index
 from .tables import ui_tables_setup, ui_tables_index
 from .e2e import ui_e2e_setup, ui_e2e_index
+
 
 def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     app = Dash('Datapipe', external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -29,9 +25,7 @@ def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
                 dbc.NavItem(dbc.NavLink('Overview', href='/', active='exact')),
                 dbc.NavItem(dbc.NavLink('Tables', href='/tables', active='exact')),
                 dbc.NavItem(dbc.NavLink('E2E', href='/e2e', active='exact')),
-            ], 
-            pills=True,
-            vertical=True),
+            ], pills=True, vertical=True),
         ],
         style={
             'padding': '2rem 1rem',
@@ -68,8 +62,8 @@ def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
             return ui_tables_index(app, ms, catalog, pipeline)
         elif url == '/e2e':
             return ui_e2e_index(app, ms, catalog, pipeline)
-        
+
         else:
             return f'Unknown route {url}'
-    
+
     return app
