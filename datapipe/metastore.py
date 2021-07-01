@@ -233,7 +233,7 @@ class MetaStore:
                     yield idx, [inp.get_data(idx.index) for inp in inputs]
 
         return idx_count, gen()
-        
+
     def get_stale_idx(self, name: str, process_ts: float) -> pd.DataFrame:
         meta_table = self.get_meta_table(name)
 
