@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Tuple, Union
 
 from abc import ABC
 from dataclasses import dataclass
@@ -26,7 +26,7 @@ class ExternalTable(Table):
 class Catalog:
     catalog: Dict[str, Table]
 
-    def get_datatable(self, ms: MetaStore, name: str):
+    def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
         return DataTable(ms, name, self.catalog[name].store)
 
 
@@ -51,3 +51,18 @@ class BatchTransform(PipelineStep):
 class BatchGenerate(PipelineStep):
     func: Callable
     outputs: List[str]
+
+
+@dataclass
+class LabelStudioModeration:
+    ls_url: str
+    inputs: List[str]
+    outputs: List[str]
+    auth: Tuple[str, str]
+    project_title: str
+    project_description: str
+    project_label_config: str
+    data: List[str]
+    annotations: Union[str, None] = None
+    predictions: Union[str, None] = None
+    chunk_size: int = 100

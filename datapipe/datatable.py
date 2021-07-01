@@ -42,23 +42,21 @@ class DataTable:
         return self.ms.get_metadata(self.name, idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_store.read_rows(idx)
+        return self.table_store.read_rows(self.ms.get_existing_idx(self.name, idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
         new_idx, changed_idx, new_meta_df = self.ms.get_changes_for_store_chunk(self.name, data_df, now)
 
-        # обновить данные (удалить только то, что изменилось, записать новое)
-        to_write_idx = changed_idx.union(new_idx)
-
-        self.table_store.update_rows(data_df.loc[to_write_idx])
+        self.table_store.insert_rows(data_df.loc[new_idx])
+        self.table_store.update_rows(data_df.loc[changed_idx])
 
         self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
 
         return list(data_df.index)
 
-    def sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
+    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
 
@@ -67,6 +65,14 @@ class DataTable:
 
         self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
 
+    def sync_meta_by_process_ts(self, process_ts: float) -> None:
+        deleted_dfs = self.ms.get_stale_idx(self.name, process_ts)
+
+        for deleted_df in deleted_dfs:
+            deleted_idx = deleted_df.index
+            self.table_store.delete_rows(deleted_idx)
+            self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
+
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
 
@@ -74,7 +80,7 @@ class DataTable:
             data_df=df,
             now=now
         )
-        self.sync_meta(
+        self.sync_meta_by_idx_chunks(
             chunks=[chunk],
         )
 
@@ -101,9 +107,7 @@ def gen_process_many(
     Функция может быть как обычной, так и генерирующейся
     '''
 
-    chunks_k: Dict[int, ChunkMeta] = {
-        k: [] for k in range(len(dts))
-    }
+    now = time.time()
 
     if inspect.isgeneratorfunction(proc_func):
         iterable = proc_func(**kwargs)
@@ -113,10 +117,10 @@ def gen_process_many(
     for chunk_dfs in iterable:
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
-            chunks_k[k].append(dt_k.store_chunk(chunk_df_kth))
+            dt_k.store_chunk(chunk_df_kth)
 
     for k, dt_k in enumerate(dts):
-        dt_k.sync_meta(chunks=chunks_k[k])
+        dt_k.sync_meta_by_process_ts(now)
 
 
 def gen_process(
@@ -162,7 +166,7 @@ def inc_process_many(
 
             else:
                 for k, res_dt in enumerate(res_dts):
-                    res_dt.sync_meta([], processed_idx=idx.index)
+                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
 
 
 def inc_process(

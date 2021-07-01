@@ -56,6 +56,9 @@ class MetaStore:
     def get_metadata(self, name: str, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.get_meta_table(name).read_rows(idx)
 
+    def get_existing_idx(self, name: str, idx: Index = None) -> Index:
+        return self.get_metadata(name, idx).index
+
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         tbl = self.get_meta_table(name)
 
@@ -231,3 +234,14 @@ class MetaStore:
 
         return idx_count, gen()
         
+    def get_stale_idx(self, name: str, process_ts: float) -> pd.DataFrame:
+        meta_table = self.get_meta_table(name)
+
+        return pd.read_sql_query(
+            select([meta_table.data_table.c.id]).where(
+                meta_table.data_table.c.process_ts < process_ts
+            ),
+            con=meta_table.dbconn.con,
+            index_col='id',
+            chunksize=1000
+        )
