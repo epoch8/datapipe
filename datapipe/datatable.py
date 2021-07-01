@@ -1,4 +1,4 @@
-from typing import Callable, Generator, Iterator, List, Dict, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import inspect
 import logging
@@ -162,7 +162,7 @@ def inc_process_many(
 
                     # Добавляем результат в результирующие чанки
                     res_index = res_dt.store_chunk(chunk_df_k)
-                    res_dt.sync_meta([res_index], processed_idx=idx.index)
+                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx.index)
 
             else:
                 for k, res_dt in enumerate(res_dts):
