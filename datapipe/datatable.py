@@ -67,6 +67,14 @@ class DataTable:
 
         self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
 
+    def sync_meta_by_process_ts(self, process_ts: float) -> None:
+        deleted_dfs = self.ms.get_stale_idx(self.name, process_ts)
+
+        for deleted_df in deleted_dfs:
+            deleted_idx = deleted_df.index
+            self.table_store.delete_rows(deleted_idx)
+            self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
+
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
 
@@ -86,15 +94,6 @@ class DataTable:
 
     def get_indexes(self, idx: Optional[Index] = None) -> Index:
         return self.ms.get_metadata(self.name, idx).index.tolist()
-
-
-def delete_rows(dt: DataTable, start_time: float) -> None:
-    deleted_dfs = dt.ms.get_not_process_idx(dt.name, start_time)
-
-    for deleted_df in deleted_dfs:
-        deleted_idx = deleted_df.index
-        dt.table_store.delete_rows(deleted_idx)
-        dt.ms.update_meta_for_sync_meta(dt.name, deleted_idx)
 
 
 def gen_process_many(
@@ -123,7 +122,7 @@ def gen_process_many(
             dt_k.store_chunk(chunk_df_kth)
 
     for k, dt_k in enumerate(dts):
-        delete_rows(dt_k, now)
+        dt_k.sync_meta_by_process_ts(now)
 
 
 def gen_process(
