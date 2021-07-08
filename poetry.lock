@@ -22,7 +22,7 @@ name = "appdirs"
 version = "1.4.4"
 description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -30,7 +30,7 @@ name = "asgiref"
 version = "3.4.1"
 description = "ASGI specs, helper code, and adapters"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -57,7 +57,7 @@ name = "attr"
 version = "0.3.1"
 description = "Simple decorator to set attributes of target function or class in a DRY way."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -78,7 +78,7 @@ name = "azure-core"
 version = "1.16.0"
 description = "Microsoft Azure Core Library for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -90,7 +90,7 @@ name = "azure-storage-blob"
 version = "12.8.1"
 description = "Microsoft Azure Blob Storage Client Library for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -103,7 +103,7 @@ name = "boto"
 version = "2.49.0"
 description = "Amazon Web Services Library"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -111,7 +111,7 @@ name = "boto3"
 version = "1.16.28"
 description = "The AWS SDK for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -124,7 +124,7 @@ name = "botocore"
 version = "1.19.28"
 description = "Low-level, data-driven core of boto 3."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -137,7 +137,7 @@ name = "boxing"
 version = "0.1.4"
 description = "Draw boxes like never before!"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -145,7 +145,7 @@ name = "brotli"
 version = "1.0.9"
 description = "Python bindings for the Brotli compression library"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -169,7 +169,7 @@ name = "cffi"
 version = "1.14.5"
 description = "Foreign Function Interface for Python calling C code."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -215,7 +215,7 @@ name = "coreapi"
 version = "2.3.3"
 description = "Python client library for Core API."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -229,7 +229,7 @@ name = "coreschema"
 version = "0.0.4"
 description = "Core Schema."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -240,7 +240,7 @@ name = "cryptography"
 version = "3.4.7"
 description = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -259,7 +259,7 @@ name = "dash"
 version = "1.20.0"
 description = "A Python framework for building reactive web-apps. Developed by Plotly."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [package.dependencies]
@@ -281,7 +281,7 @@ name = "dash-bootstrap-components"
 version = "0.12.2"
 description = "Bootstrap themed components for use in Plotly Dash"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, <4"
 
 [package.dependencies]
@@ -295,7 +295,7 @@ name = "dash-core-components"
 version = "1.16.0"
 description = "Core component suite for Dash"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -303,7 +303,7 @@ name = "dash-html-components"
 version = "1.1.3"
 description = "Vanilla HTML components for Dash"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -311,7 +311,7 @@ name = "dash-interactive-graphviz"
 version = "0.3.0"
 description = "An interactive graphviz viewer for Dash"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -319,7 +319,7 @@ name = "dash-renderer"
 version = "1.9.1"
 description = "Front-end component renderer for Dash"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -327,7 +327,7 @@ name = "dash-table"
 version = "4.11.3"
 description = "Dash table"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -343,7 +343,7 @@ name = "django"
 version = "3.1.4"
 description = "A high-level Python Web framework that encourages rapid development and clean, pragmatic design."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -360,7 +360,7 @@ name = "django-annoying"
 version = "0.10.6"
 description = "This is a django application that tries to eliminate annoying things in the Django framework."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -372,7 +372,7 @@ name = "django-cors-headers"
 version = "3.6.0"
 description = "django-cors-headers is a Django application for handling the server headers required for Cross-Origin Resource Sharing (CORS)."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -383,7 +383,7 @@ name = "django-debug-toolbar"
 version = "3.2"
 description = "A configurable set of panels that display various debug information about the current request/response."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -395,7 +395,7 @@ name = "django-extensions"
 version = "3.1.0"
 description = "Extensions for Django"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -403,7 +403,7 @@ name = "django-filter"
 version = "2.4.0"
 description = "Django-filter is a reusable Django application for allowing users to filter querysets dynamically."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [package.dependencies]
@@ -414,18 +414,29 @@ name = "django-model-utils"
 version = "4.1.1"
 description = "Django model mixins and utilities"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
 Django = ">=2.0.1"
 
 [[package]]
+name = "django-ranged-fileresponse"
+version = "0.1.2"
+description = "Modified Django FileResponse that adds Content-Range headers."
+category = "main"
+optional = true
+python-versions = "*"
+
+[package.extras]
+test = ["pytest (>=3.0.5)", "pytest-cov (>=2.4.0)", "pytest-flake8 (>=0.8.1)", "django (>=1.8.0)"]
+
+[[package]]
 name = "django-redis-cache"
 version = "3.0.0"
 description = "Redis Cache Backend for Django"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -436,7 +447,7 @@ name = "django-rest-swagger"
 version = "2.2.0"
 description = "Swagger UI for Django REST Framework 3.5+"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -450,7 +461,7 @@ name = "django-rq"
 version = "2.3.2"
 description = "An app that provides django integration for RQ (Redis Queue)"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -467,7 +478,7 @@ name = "django-user-agents"
 version = "0.4.0"
 description = "A django package that allows easy identification of visitors' browser, operating system and device information (mobile phone, tablet or has touch capabilities)."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -479,7 +490,7 @@ name = "djangorestframework"
 version = "3.12.4"
 description = "Web APIs for Django, made easy."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [package.dependencies]
@@ -490,7 +501,7 @@ name = "drf-dynamic-fields"
 version = "0.3.0"
 description = "Dynamically return subset of Django REST Framework serializer fields"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -498,7 +509,7 @@ name = "drf-generators"
 version = "0.3.0"
 description = "Generate DRF Serializers, Views, and urls for your API aplication."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -509,7 +520,7 @@ name = "drf-yasg"
 version = "1.20.0"
 description = "Automated generation of real Swagger/OpenAPI 2.0 schemas from Django Rest Framework code."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -530,7 +541,7 @@ name = "et-xmlfile"
 version = "1.1.0"
 description = "An implementation of lxml.xmlfile for the standard library"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -551,7 +562,7 @@ name = "flask"
 version = "1.1.2"
 description = "A simple framework for building complex web applications."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.dependencies]
@@ -570,7 +581,7 @@ name = "flask-compress"
 version = "1.10.1"
 description = "Compress responses in your Flask app with gzip, deflate or brotli."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -607,7 +618,7 @@ name = "future"
 version = "0.18.2"
 description = "Clean single-source support for Python 3 and 2"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -635,7 +646,7 @@ name = "google-api-core"
 version = "1.30.0"
 description = "Google API client core library"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*"
 
 [package.dependencies]
@@ -691,7 +702,7 @@ name = "google-cloud-core"
 version = "1.7.1"
 description = "Google Cloud API client core library"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*"
 
 [package.dependencies]
@@ -707,7 +718,7 @@ name = "google-cloud-storage"
 version = "1.28.1"
 description = "Google Cloud Storage API client library"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*"
 
 [package.dependencies]
@@ -720,7 +731,7 @@ name = "google-resumable-media"
 version = "0.5.1"
 description = "Utilities for Google Media Downloads and Resumable Uploads"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*"
 
 [package.dependencies]
@@ -734,7 +745,7 @@ name = "googleapis-common-protos"
 version = "1.53.0"
 description = "Common protobufs used in Google APIs"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -748,7 +759,7 @@ name = "htmlmin"
 version = "0.1.12"
 description = "An HTML Minifier"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -764,7 +775,7 @@ name = "inflection"
 version = "0.5.1"
 description = "A port of Ruby on Rails inflector to Python"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -780,7 +791,7 @@ name = "isodate"
 version = "0.6.0"
 description = "An ISO 8601 date/time/duration parser and formatter"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -791,7 +802,7 @@ name = "itsdangerous"
 version = "2.0.1"
 description = "Safely pass data to untrusted environments and back."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -799,7 +810,7 @@ name = "itypes"
 version = "1.2.0"
 description = "Simple immutable types for python."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -807,7 +818,7 @@ name = "jinja2"
 version = "2.11.3"
 description = "A very fast and expressive template engine."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.dependencies]
@@ -821,7 +832,7 @@ name = "jmespath"
 version = "0.10.0"
 description = "JSON Matching Expressions"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -829,7 +840,7 @@ name = "joblib"
 version = "1.0.1"
 description = "Lightweight pipelining with Python functions"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -837,7 +848,7 @@ name = "jsonschema"
 version = "3.2.0"
 description = "An implementation of JSON Schema validation for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -851,10 +862,10 @@ format_nongpl = ["idna", "jsonpointer (>1.13)", "webcolors", "rfc3986-validator 
 
 [[package]]
 name = "label-studio"
-version = "1.0.1"
+version = "1.0.2.post0"
 description = "Label Studio annotation tool"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -874,6 +885,7 @@ django-debug-toolbar = "3.2"
 django-extensions = "3.1.0"
 django-filter = "2.4.0"
 django-model-utils = "4.1.1"
+django-ranged-fileresponse = "0.1.2"
 django-redis-cache = "3.0.0"
 django-rest-swagger = "2.2.0"
 django-rq = "2.3.2"
@@ -909,7 +921,7 @@ name = "label-studio-converter"
 version = "0.0.28"
 description = "Format converter add-on for Label Studio"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -923,7 +935,7 @@ name = "lockfile"
 version = "0.12.2"
 description = "Platform-independent file locking module"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -931,7 +943,7 @@ name = "lxml"
 version = "4.6.3"
 description = "Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, != 3.4.*"
 
 [package.extras]
@@ -945,7 +957,7 @@ name = "markupsafe"
 version = "1.1.1"
 description = "Safely add untrusted strings to HTML/XML markup."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*"
 
 [[package]]
@@ -961,7 +973,7 @@ name = "mock"
 version = "4.0.3"
 description = "Rolling backport of unittest.mock for all Pythons"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -974,7 +986,7 @@ name = "more-itertools"
 version = "8.8.0"
 description = "More routines for operating on iterables, beyond itertools"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -982,7 +994,7 @@ name = "moto"
 version = "1.3.16.dev122"
 description = "A library that allows your python tests to easily mock out the boto library"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1027,7 +1039,7 @@ name = "msrest"
 version = "0.6.21"
 description = "AutoRest swagger generator Python client runtime."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1052,7 +1064,7 @@ name = "nltk"
 version = "3.5"
 description = "Natural Language Toolkit"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1095,7 +1107,7 @@ name = "openapi-codec"
 version = "1.3.2"
 description = "An OpenAPI codec for Core API."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1106,7 +1118,7 @@ name = "openpyxl"
 version = "3.0.7"
 description = "A Python library to read/write Excel 2010 xlsx/xlsm files"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6,"
 
 [package.dependencies]
@@ -1117,7 +1129,7 @@ name = "ordered-set"
 version = "4.0.2"
 description = "A set that remembers its order, and allows looking up its items by their index in that order."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -1160,7 +1172,7 @@ name = "plotly"
 version = "5.1.0"
 description = "An open-source, interactive data visualization library for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -1183,7 +1195,7 @@ name = "protobuf"
 version = "3.17.3"
 description = "Protocol Buffers"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1237,7 +1249,7 @@ name = "pycparser"
 version = "2.20"
 description = "C parser in Python"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
@@ -1245,7 +1257,7 @@ name = "pydantic"
 version = "1.7.3"
 description = "Data validation and settings management using python 3.6 type hinting"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -1274,7 +1286,7 @@ name = "pyrsistent"
 version = "0.18.0"
 description = "Persistent/Functional/Immutable data structures"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -1331,7 +1343,7 @@ name = "redis"
 version = "3.5.3"
 description = "Python client for Redis key-value store"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.extras]
@@ -1342,7 +1354,7 @@ name = "regex"
 version = "2021.7.6"
 description = "Alternative regular expression module, to replace re."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -1383,7 +1395,7 @@ name = "responses"
 version = "0.13.3"
 description = "A utility library for mocking out the `requests` Python library."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.dependencies]
@@ -1399,7 +1411,7 @@ name = "rq"
 version = "1.7.0"
 description = "RQ is a simple, lightweight, library for creating background jobs, and processing them."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [package.dependencies]
@@ -1422,7 +1434,7 @@ name = "ruamel.yaml"
 version = "0.17.10"
 description = "ruamel.yaml is a YAML parser/emitter that supports roundtrip preservation of comments, seq/map flow style, and map key order"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3"
 
 [package.dependencies]
@@ -1437,7 +1449,7 @@ name = "ruamel.yaml.clib"
 version = "0.2.6"
 description = "C version of reader, parser and emitter for ruamel.yaml derived from libyaml"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
@@ -1445,7 +1457,7 @@ name = "rules"
 version = "2.2"
 description = "Awesome Django authorization, without the database"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -1453,7 +1465,7 @@ name = "s3transfer"
 version = "0.3.7"
 description = "An Amazon S3 Transfer Manager"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1464,7 +1476,7 @@ name = "simplejson"
 version = "3.17.2"
 description = "Simple, fast, extensible JSON encoder/decoder for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.5, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -1500,19 +1512,16 @@ name = "sqlparse"
 version = "0.4.1"
 description = "A non-validating SQL parser."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5"
 
 [[package]]
 name = "tenacity"
-version = "7.0.0"
+version = "8.0.0"
 description = "Retry code until it succeeds"
 category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-six = ">=1.9.0"
+optional = true
+python-versions = ">=3.6"
 
 [package.extras]
 doc = ["reno", "sphinx", "tornado (>=4.5)"]
@@ -1554,7 +1563,7 @@ name = "ua-parser"
 version = "0.10.0"
 description = "Python port of Browserscope's user agent parser"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -1562,7 +1571,7 @@ name = "ujson"
 version = "4.0.2"
 description = "Ultra fast JSON encoder and decoder for Python"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -1570,7 +1579,7 @@ name = "uritemplate"
 version = "3.0.1"
 description = "URI templates"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
@@ -1591,7 +1600,7 @@ name = "user-agents"
 version = "2.2.0"
 description = "A library to identify devices (phones, tablets) and their capabilities by parsing browser user agent strings."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -1602,7 +1611,7 @@ name = "werkzeug"
 version = "2.0.1"
 description = "The comprehensive WSGI web application library."
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -1613,7 +1622,7 @@ name = "xlrd"
 version = "2.0.1"
 description = "Library for developers to extract data from Microsoft Excel (tm) .xls spreadsheet files"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
 
 [package.extras]
@@ -1626,7 +1635,7 @@ name = "xmljson"
 version = "0.2.0"
 description = "Converts XML into JSON/Python dicts/arrays and vice-versa."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -1634,7 +1643,7 @@ name = "xmltodict"
 version = "0.12.0"
 description = "Makes working with XML feel like you are working with JSON"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
@@ -1654,7 +1663,7 @@ name = "zipp"
 version = "3.5.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -1664,7 +1673,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "1d64dc5e53a3837e95b870aee6dd343e4ee92f46bd4a417f45e94fb616200ad6"
+content-hash = "d090a6f859153a941e2a63c57015ce6f81fe279227152ffb1232d90cc79a8af5"
 
 [metadata.files]
 aiohttp = [
@@ -1930,6 +1939,9 @@ django-model-utils = [
     {file = "django-model-utils-4.1.1.tar.gz", hash = "sha256:eb5dd05ef7d7ce6bc79cae54ea7c4a221f6f81e2aad7722933aee66489e7264b"},
     {file = "django_model_utils-4.1.1-py3-none-any.whl", hash = "sha256:ef7c440024e797796a3811432abdd2be8b5225ae64ef346f8bfc6de7d8e5d73c"},
 ]
+django-ranged-fileresponse = [
+    {file = "django-ranged-fileresponse-0.1.2.tar.gz", hash = "sha256:afafc1b0bbabfe8457e903e06139f1b18b9a1951a80a37453749b8afd5a63a73"},
+]
 django-redis-cache = [
     {file = "django-redis-cache-3.0.0.tar.gz", hash = "sha256:9a2eebef421d996a82098a19d17ff6b321265cd73178fa398913019764e8394a"},
 ]
@@ -2059,8 +2071,8 @@ jsonschema = [
     {file = "jsonschema-3.2.0.tar.gz", hash = "sha256:c8a85b28d377cc7737e46e2d9f2b4f44ee3c0e1deac6bf46ddefc7187d30797a"},
 ]
 label-studio = [
-    {file = "label-studio-1.0.1.tar.gz", hash = "sha256:2e1b69c6a2850b6b831aeef2b63a8f2223e001e0bcc0479796cd65696bc276c0"},
-    {file = "label_studio-1.0.1-py3-none-any.whl", hash = "sha256:66e366a853bcf6496e04677868ec6a8daeb80e0a5dc6e234e56e9f4aad69baa6"},
+    {file = "label-studio-1.0.2.post0.tar.gz", hash = "sha256:e9abae77020d824b42f294c86cc320a49d4a2bca21e7e10d5fc1748217f78be2"},
+    {file = "label_studio-1.0.2.post0-py3-none-any.whl", hash = "sha256:376659405db60cde29a9bc8b9290cd52da68283ef5d9bfd93d2c11fa5cb28181"},
 ]
 label-studio-converter = [
     {file = "label-studio-converter-0.0.28.tar.gz", hash = "sha256:cfc33087587e883419ba0a27ce01590cb2db1917e4532314c27d4a925d4bbd37"},
@@ -2728,8 +2740,8 @@ sqlparse = [
     {file = "sqlparse-0.4.1.tar.gz", hash = "sha256:0f91fd2e829c44362cbcfab3e9ae12e22badaa8a29ad5ff599f9ec109f0454e8"},
 ]
 tenacity = [
-    {file = "tenacity-7.0.0-py2.py3-none-any.whl", hash = "sha256:a0ce48587271515db7d3a5e700df9ae69cce98c4b57c23a4886da15243603dd8"},
-    {file = "tenacity-7.0.0.tar.gz", hash = "sha256:5bd16ef5d3b985647fe28dfa6f695d343aa26479a04e8792b9d3c8f49e361ae1"},
+    {file = "tenacity-8.0.0-py3-none-any.whl", hash = "sha256:352cc77bb3dffb070111c83c548ef5afb78acf93f89a28d753c5570066411b57"},
+    {file = "tenacity-8.0.0.tar.gz", hash = "sha256:6011fc69be55e0e20a9ceccdd8a7d969e42f892a81ea3a007de56e764d3551dd"},
 ]
 toml = [
     {file = "toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b"},

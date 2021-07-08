@@ -22,14 +22,20 @@ toml = ">=0.10.2"
 click = ">=7.1.2"
 requests = ">= 2.24.0"
 
-xlrd = ">=2.0.1"
-openpyxl = ">=3.0.7"
+xlrd = {version=">=2.0.1", optional=true}
+openpyxl = {version=">=3.0.7", optional=true}
 
-dash = ">=1.20.0"
-dash_bootstrap_components = ">= 0.12.0"
-dash_interactive_graphviz = ">=0.3.0"
+dash = {version=">=1.20.0", optional=true}
+dash_bootstrap_components = {version=">= 0.12.0", optional=true}
+dash_interactive_graphviz = {version=">=0.3.0", optional=true}
 
-label-studio = "==1.0.1"
+label-studio = {version=">=1.0.1,<1.1", optional=true}
+
+[tool.poetry.extras]
+
+excel = ["xlrd", "openpyxl"]
+ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
+ls = ["label-studio"]
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
