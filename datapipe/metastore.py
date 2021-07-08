@@ -3,6 +3,7 @@ from typing import Iterator, List, Tuple, Optional, Dict, Union
 
 import logging
 import time
+import typing
 
 from sqlalchemy.sql.expression import and_, or_, select
 from sqlalchemy import Column, Numeric, Float, func, String
@@ -11,6 +12,9 @@ import pandas as pd
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
+
+if typing.TYPE_CHECKING:
+    from datapipe.datatable import DataTable
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -264,8 +268,8 @@ class MetaStore:
     # TODO унести в DataTable
     def get_process_chunks(
         self,
-        inputs: List[MetaTable],
-        outputs: List[MetaTable],
+        inputs: List['DataTable'],
+        outputs: List['DataTable'],
         chunksize: int = 1000,
     ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
         idx = self.get_process_ids(
