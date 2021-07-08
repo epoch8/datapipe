@@ -331,6 +331,17 @@ optional = true
 python-versions = "*"
 
 [[package]]
+name = "decopatch"
+version = "1.4.8"
+description = "Create decorators easily in python."
+category = "dev"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+makefun = ">=1.5.0"
+
+[[package]]
 name = "decorator"
 version = "5.0.9"
 description = "Decorators for Humans"
@@ -953,6 +964,14 @@ htmlsoup = ["beautifulsoup4"]
 source = ["Cython (>=0.29.7)"]
 
 [[package]]
+name = "makefun"
+version = "1.11.3"
+description = "Small library to dynamically create python functions."
+category = "dev"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "markupsafe"
 version = "1.1.1"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -1310,6 +1329,18 @@ toml = "*"
 [package.extras]
 checkqa_mypy = ["mypy (==0.780)"]
 testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "requests", "xmlschema"]
+
+[[package]]
+name = "pytest-cases"
+version = "3.6.2"
+description = "Separate test code from test cases in pytest."
+category = "dev"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+decopatch = "*"
+makefun = ">=1.9.5"
 
 [[package]]
 name = "python-dateutil"
@@ -1678,7 +1709,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "99b520719ddb7658c0b31e62bd383d197abcc878db75172ddf03711f587e0315"
+content-hash = "52c61ec92d70d806d5c075732120ad247e2e29ff61b51c15b725689e37dab3cd"
 
 [metadata.files]
 aiohttp = [
@@ -1912,6 +1943,10 @@ dash-renderer = [
 dash-table = [
     {file = "dash_table-4.11.3.tar.gz", hash = "sha256:0a4f22a5cf5120882a252a3348fc15ef45a1b75bf900934783e338aceac52f56"},
 ]
+decopatch = [
+    {file = "decopatch-1.4.8-py2.py3-none-any.whl", hash = "sha256:29a74d5d753423b188d5b537532da4f4b88e33ddccb95a8a20a5eff5b13265d4"},
+    {file = "decopatch-1.4.8.tar.gz", hash = "sha256:c66b0815f15db04de7bb52b0b276432b76b7346fe7046f28033f48a14340d144"},
+]
 decorator = [
     {file = "decorator-5.0.9-py3-none-any.whl", hash = "sha256:6e5c199c16f7a9f0e3a61a4a54b3d27e7dad0dbdde92b944426cb20914376323"},
     {file = "decorator-5.0.9.tar.gz", hash = "sha256:72ecfba4320a893c53f9706bebb2d55c270c1e51a28789361aa93e4a21319ed5"},
@@ -2124,6 +2159,10 @@ lxml = [
     {file = "lxml-4.6.3-cp39-cp39-win32.whl", hash = "sha256:33bb934a044cf32157c12bfcfbb6649807da20aa92c062ef51903415c704704f"},
     {file = "lxml-4.6.3-cp39-cp39-win_amd64.whl", hash = "sha256:542d454665a3e277f76954418124d67516c5f88e51a900365ed54a9806122b83"},
     {file = "lxml-4.6.3.tar.gz", hash = "sha256:39b78571b3b30645ac77b95f7c69d1bffc4cf8c3b157c435a34da72e78c82468"},
+]
+makefun = [
+    {file = "makefun-1.11.3-py2.py3-none-any.whl", hash = "sha256:a19bddf07efb6bf92e3ccde5d593e49bc59001fd6c17cf7301d7a73a2647ae83"},
+    {file = "makefun-1.11.3.tar.gz", hash = "sha256:033eed65e2c1804fca84161a38d1fc8bb8650d32a89ac1c5dc7e54b2b2c2e88c"},
 ]
 markupsafe = [
     {file = "MarkupSafe-1.1.1-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:09027a7803a62ca78792ad89403b1b7a73a01c8cb65909cd876f7fcebd79b161"},
@@ -2511,6 +2550,10 @@ pyrsistent = [
 pytest = [
     {file = "pytest-6.1.2-py3-none-any.whl", hash = "sha256:4288fed0d9153d9646bfcdf0c0428197dba1ecb27a33bb6e031d002fa88653fe"},
     {file = "pytest-6.1.2.tar.gz", hash = "sha256:c0a7e94a8cdbc5422a51ccdad8e6f1024795939cc89159a0ae7f0b316ad3823e"},
+]
+pytest-cases = [
+    {file = "pytest-cases-3.6.2.tar.gz", hash = "sha256:5353e193488279beaf323364aa5d8e2dfa7a7a70519da2e819bd9da4c7a937c2"},
+    {file = "pytest_cases-3.6.2-py2.py3-none-any.whl", hash = "sha256:61fa79d5913710a30a033631959bcd3d0a24c2ae2d8c635bce3bc955928f417e"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.1.tar.gz", hash = "sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c"},
