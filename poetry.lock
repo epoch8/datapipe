@@ -1678,7 +1678,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "aa323604ec4f6c23d3a13c1d2a0e97d8ef5d7eb30d0d6f426be8893bbfbf4d04"
+content-hash = "99b520719ddb7658c0b31e62bd383d197abcc878db75172ddf03711f587e0315"
 
 [metadata.files]
 aiohttp = [

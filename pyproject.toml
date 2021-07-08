@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe"
-version = "0.7.0"
+version = "0.7.0-poetry"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 
@@ -20,7 +20,7 @@ Pillow = ">=7.2.0, <8"
 tqdm = ">=4.60.0"
 toml = ">=0.10.2"
 click = ">=7.1.2"
-requests = ">= 2.24.0"
+requests = ">=2.24.0"
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
