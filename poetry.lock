@@ -1670,10 +1670,15 @@ python-versions = ">=3.6"
 docs = ["sphinx", "jaraco.packaging (>=8.2)", "rst.linker (>=1.9)"]
 testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-cov", "pytest-enabler (>=1.0.1)", "jaraco.itertools", "func-timeout", "pytest-black (>=0.3.7)", "pytest-mypy"]
 
+[extras]
+excel = ["xlrd", "openpyxl"]
+ls = ["label-studio"]
+ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
+
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "d090a6f859153a941e2a63c57015ce6f81fe279227152ffb1232d90cc79a8af5"
+content-hash = "aa323604ec4f6c23d3a13c1d2a0e97d8ef5d7eb30d0d6f426be8893bbfbf4d04"
 
 [metadata.files]
 aiohttp = [
