@@ -14,12 +14,6 @@ from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_pipeline, run_steps
 
 
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield d
-
-
 def make_df():
     idx = [f'im_{i}' for i in range(10)]
     return pd.DataFrame(
@@ -43,8 +37,8 @@ def test_image_datatables(dbconn, tmp_dir):
     ms = MetaStore(dbconn)
 
     tbl1 = DataTable(
-        ms,
         'tbl1',
+        meta_table=ms.create_meta_table('tbl1'),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl1' / '{id}.png',
             adapter=PILFile('png')
@@ -52,8 +46,8 @@ def test_image_datatables(dbconn, tmp_dir):
     )
 
     tbl2 = DataTable(
-        ms,
         'tbl2',
+        meta_table=ms.create_meta_table('tbl2'),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl2' / '{id}.png',
             adapter=PILFile('png')

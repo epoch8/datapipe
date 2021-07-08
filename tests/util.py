@@ -1,16 +1,6 @@
 from typing import List
-import tempfile
-from pathlib import Path
 
-import pytest
 import pandas as pd
-
-
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        d = Path(d)
-        yield d
 
 
 def assert_idx_equal(a, b):

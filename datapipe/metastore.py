@@ -7,7 +7,6 @@ import time
 from sqlalchemy.sql.expression import and_, or_, select
 from sqlalchemy import Column, Numeric, Float, func, String
 import pandas as pd
-from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.store.database import TableStoreDB, DBConn
@@ -75,8 +74,8 @@ class MetaTable:
 
         return meta_df
 
-    def get_existing_idx(self, name: str, idx: Index = None) -> Index:
-        return self.get_metadata(name, idx).index
+    def get_existing_idx(self, idx: Index = None) -> Index:
+        return self.get_metadata(idx).index
 
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         return TableDebugInfo(
@@ -119,7 +118,7 @@ class MetaTable:
 
         return new_idx, changed_idx, new_meta_df
 
-    def update_meta_for_store_chunk(self, name: str, new_meta_df: pd.DataFrame) -> None:
+    def update_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
             self.store.update_rows(new_meta_df)
 
@@ -136,6 +135,16 @@ class MetaTable:
             self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
         return deleted_idx
+
+    def get_stale_idx(self, process_ts: float) -> pd.DataFrame:
+        return pd.read_sql_query(
+            select([self.store.data_table.c.id]).where(
+                self.store.data_table.c.process_ts < process_ts
+            ),
+            con=self.store.dbconn.con,
+            index_col='id',
+            chunksize=1000
+        )
 
     def update_meta_for_sync_meta(self, deleted_idx: pd.Index) -> None:
         if len(deleted_idx) > 0:
@@ -252,6 +261,7 @@ class MetaStore:
 
         return idx
 
+    # TODO унести в DataTable
     def get_process_chunks(
         self,
         inputs: List[MetaTable],
@@ -259,8 +269,8 @@ class MetaStore:
         chunksize: int = 1000,
     ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
         idx = self.get_process_ids(
-            inputs=inputs,
-            outputs=outputs,
+            inputs=[i.meta_table for i in inputs],
+            outputs=[i.meta_table for i in outputs],
         )
 
         logger.info(f'Items to update {len(idx)}')

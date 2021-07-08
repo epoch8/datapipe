@@ -3,8 +3,17 @@ import pytest
 import os
 from sqlalchemy import create_engine
 import tempfile
+from pathlib import Path
+
 
 from datapipe.store.database import DBConn
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        yield d
 
 
 @pytest.fixture
@@ -34,9 +43,3 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
-
-
-@pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield d
