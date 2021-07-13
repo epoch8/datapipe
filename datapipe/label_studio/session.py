@@ -22,13 +22,34 @@ class LabelStudioSession:
         self.session = requests.Session()
         self.session.auth = auth
 
-    def is_auth_ok(self, raise_exception: bool) -> bool:
+    def login(self) -> int:
+        username, password = self.session.auth
+        response = self.session.get(
+            url=urljoin(self.ls_url, '/user/login/')
+        )
+        self.session.post(
+            url=urljoin(self.ls_url, '/user/login/'),
+            data={
+                'csrfmiddlewaretoken': response.cookies['csrftoken'],
+                'email': username,
+                'password': password
+            }
+        )
+        return self.is_auth_ok()
+
+    def is_auth_ok(self, raise_exception: bool = False) -> bool:
         response = self.session.get(
             url=urljoin(self.ls_url, '/api/current-user/whoami')
         )
         if not response.ok and raise_exception:
             raise ValueError(f'Authorization failed: {response.json()}')
         return response.ok
+
+    def get_current_token(self) -> str:
+        token = self.session.get(
+            url=urljoin(self.ls_url, '/api/current-user/token')
+        ).json()
+        return token['token']
 
     def sign_up(self):
         username, password = self.session.auth
@@ -157,7 +178,7 @@ class LabelStudioModerationStep(ComputeStep):
         if self.label_studio_session.is_service_up():
 
             # Authorize or sign up
-            if not self.label_studio_session.is_auth_ok(raise_exception=False):
+            if not self.label_studio_session.login():
                 self.label_studio_session.sign_up()
                 self.label_studio_session.is_auth_ok(raise_exception=True)
 

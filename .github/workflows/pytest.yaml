@@ -29,7 +29,7 @@ jobs:
           - 5432:5432
 
       label-studio:
-        image: heartexlabs/label-studio:1.0.1
+        image: heartexlabs/label-studio:1.1.0
         ports:
             - 8080:8080
 

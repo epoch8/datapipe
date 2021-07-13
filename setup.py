@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='datapipe',
-    version='0.7.0',
+    version='0.7.1',
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=[
@@ -31,7 +31,7 @@ setuptools.setup(
             "dash_interactive_graphviz >=0.3.0",
         ],
         "label-studio": [
-            "label-studio >=1.0.1",
+            "label-studio >=1.1.0",
         ]
     },
     python_requires='>=3.8'

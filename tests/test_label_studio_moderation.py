@@ -188,8 +188,9 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ms, steps)
 
     assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
-
+    
     # Person annotation imitation & incremental processing
+    label_studio_session.login()
     tasks, _ = label_studio_session.get_tasks(
         project_id=label_studio_moderation_step.project_id,
         page_size=-1
@@ -231,7 +232,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ms, steps)
 
     # Delete the project after the test
-    res = label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
+    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
 
 
 @pytest.mark.parametrize("include_annotations,include_predictions", [(True, False), (True, True)])
@@ -307,4 +308,5 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url, in
         )
 
     # Delete the project after the test
+    label_studio_session.login()
     label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
