@@ -188,7 +188,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ms, steps)
 
     assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
-    
+
     # Person annotation imitation & incremental processing
     label_studio_session.login()
     tasks, _ = label_studio_session.get_tasks(
