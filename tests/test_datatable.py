@@ -600,7 +600,7 @@ def test_handling_exceptions(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
     # Checks that records are not being deleted
     gen_process_many(
         dts=[tbl],
@@ -608,7 +608,7 @@ def test_handling_exceptions(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    assert(assert_df_equal(tbl.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
 
     inc_process_many(
         ms,
@@ -618,4 +618,4 @@ def test_handling_exceptions(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
