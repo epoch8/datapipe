@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import Column, Numeric
 
 from datapipe.store.database import TableStoreDB
-from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
+from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many, gen_process_many
 from datapipe.metastore import MetaStore, MetaTable
 
 from .util import assert_df_equal, assert_idx_equal
@@ -51,7 +51,7 @@ def test_simple(dbconn) -> None:
     ms = MetaStore(dbconn)
 
     tbl = DataTable(
-        'test', 
+        'test',
         meta_table=ms.create_meta_table('test'),
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
@@ -528,3 +528,94 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     assert(assert_df_equal(tbl.get_data(), TEST_DF))
     assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
     assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+
+
+def test_handling_exceptions(dbconn) -> None:
+    BAD_ID = 'id_3'
+    GOOD_IDXS1 = ['id_0', 'id_1', 'id_2', 'id_3', 'id_4', 'id_5']
+    GOOD_IDXS2 = ['id_0', 'id_1', 'id_4', 'id_5']
+    CHUNKSIZE = 2
+
+    ms = MetaStore(dbconn)
+
+    tbl = DataTable(
+        'tbl',
+        meta_table=ms.create_meta_table('tbl'),
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+
+    tbl_good = DataTable(
+        'tbl_good',
+        meta_table=ms.create_meta_table('tbl_good'),
+        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
+
+    def gen_bad1(chunksize: int = 1000):
+        idx = TEST_DF.index
+
+        for i in range(0, len(idx), chunksize):
+            if i >= chunksize * 3:
+                raise Exception("Test")
+
+            yield TEST_DF.loc[idx[i:i+chunksize]]
+
+    def gen_bad2(chunksize: int = 1000):
+        idx = TEST_DF.index
+
+        for i in range(0, len(idx), chunksize):
+            if i >= chunksize * 2:
+                raise Exception("Test")
+
+            yield TEST_DF.loc[idx[i:i+chunksize]]
+
+    gen_process_many(
+        dts=[tbl],
+        proc_func=gen_bad1,
+        chunksize=CHUNKSIZE
+    )
+
+    assert(assert_df_equal(tbl.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+
+    def inc_func_bad(df):
+        if BAD_ID in df.index:
+            raise Exception('TEST')
+        return df
+
+    def inc_func_good(df):
+        return df
+
+    inc_process_many(
+        ms,
+        [tbl],
+        [tbl_good],
+        inc_func_bad,
+        chunksize=CHUNKSIZE
+    )
+
+    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS2]))
+
+    inc_process_many(
+        ms,
+        [tbl],
+        [tbl_good],
+        inc_func_good,
+        chunksize=CHUNKSIZE
+    )
+
+    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    # Checks that records are not being deleted
+    gen_process_many(
+        dts=[tbl],
+        proc_func=gen_bad2,
+        chunksize=CHUNKSIZE
+    )
+
+    assert(assert_df_equal(tbl.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+
+    inc_process_many(
+        ms,
+        [tbl],
+        [tbl_good],
+        inc_func_bad,
+        chunksize=CHUNKSIZE
+    )
+
+    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS1]))

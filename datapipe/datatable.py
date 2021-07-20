@@ -112,9 +112,20 @@ def gen_process_many(
     if inspect.isgeneratorfunction(proc_func):
         iterable = proc_func(**kwargs)
     else:
-        iterable = (proc_func(**kwargs),)
+        def gen_func(**kwargs):
+            yield proc_func(**kwargs)
 
-    for chunk_dfs in iterable:
+        iterable = gen_func(**kwargs)
+
+    while True:
+        try:
+            chunk_dfs = next(iterable)
+        except StopIteration:
+            break
+        except Exception as e:
+            logger.error(f"Generating failed ({proc_func.__name__}): {str(e)}")
+            return
+
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
             dt_k.store_chunk(chunk_df_kth)
@@ -153,15 +164,25 @@ def inc_process_many(
     res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
 
     idx, input_dfs_gen = ms.get_process_chunks(
-        inputs=input_dts, 
-        outputs=res_dts, 
+        inputs=input_dts,
+        outputs=res_dts,
         chunksize=chunksize
     )
 
     if len(idx) > 0:
         for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
-                chunks_df = proc_func(*input_dfs, **kwargs)
+                try:
+                    chunks_df = proc_func(*input_dfs, **kwargs)
+                except Exception as e:
+                    logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
+
+                    idx = pd.concat(input_dfs).index
+
+                    for k, res_dt in enumerate(res_dts):
+                        res_dts_chunks[k].append(list(idx))
+
+                    continue
 
                 for k, res_dt in enumerate(res_dts):
                     # Берем k-ое значение функции для k-ой таблички
