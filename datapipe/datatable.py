@@ -124,6 +124,9 @@ def gen_process_many(
             break
         except Exception as e:
             logger.error(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+            if dts:
+                dts[0].meta_table.event_logger.log_exception(e)
             return
 
         for k, dt_k in enumerate(dts):
@@ -176,6 +179,7 @@ def inc_process_many(
                     chunks_df = proc_func(*input_dfs, **kwargs)
                 except Exception as e:
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
+                    ms.event_logger.log_exception(e)
 
                     idx = pd.concat(input_dfs).index
 

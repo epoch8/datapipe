@@ -100,7 +100,7 @@ class MetaTable:
             new_meta_df.loc[not_changed_idx, 'update_ts'] = existing_meta_df.loc[not_changed_idx, 'update_ts']
 
         if len(new_idx) > 0 or len(changed_idx) > 0:
-            self.event_logger.log_event(
+            self.event_logger.log_state(
                 self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
             )
 
@@ -124,7 +124,7 @@ class MetaTable:
         deleted_idx = existing_meta_df.index.difference(idx)
 
         if len(deleted_idx) > 0:
-            self.event_logger.log_event(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
         return deleted_idx
 
