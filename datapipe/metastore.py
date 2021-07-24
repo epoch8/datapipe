@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, Optional, Dict, Union
+from typing import List, Tuple, Optional, Dict, Union
 
 import logging
 import time
@@ -9,7 +9,6 @@ from sqlalchemy import Column, Numeric, Float, func
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
-from datapipe.datatable import DataTable
 from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
 
@@ -242,24 +241,3 @@ class MetaStore:
                 idx = idx.union(idx_df.index)
 
         return idx
-
-    # TODO унести в DataTable
-    def get_process_chunks(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        chunksize: int = 1000,
-    ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
-        idx = self.get_process_ids(
-            inputs=[i.meta_table for i in inputs],
-            outputs=[i.meta_table for i in outputs],
-        )
-
-        logger.info(f'Items to update {len(idx)}')
-
-        def gen():
-            if len(idx) > 0:
-                for i in range(0, len(idx), chunksize):
-                    yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
-
-        return idx, gen()
