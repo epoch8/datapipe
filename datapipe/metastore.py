@@ -5,18 +5,19 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float, func, union, alias
+from sqlalchemy import Table, Column, Numeric, Float, String, func, union, alias, delete
+
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
-from datapipe.store.database import TableStoreDB, DBConn
+from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.event_logger import EventLogger
 
 
 logger = logging.getLogger('datapipe.metastore')
 
-
 METADATA_SQL_SCHEMA = [
+    Column('id', String(100), primary_key=True),
     Column('hash', Numeric),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
@@ -37,15 +38,27 @@ class MetaTable:
         self.name = name
         self.event_logger = event_logger
 
-        self.store = TableStoreDB(
-            dbconn=self.dbconn,
-            name=f'{name}_meta',
-            data_sql_schema=METADATA_SQL_SCHEMA,
-            create_table=True,
+        self.sql_schema = [i.copy() for i in METADATA_SQL_SCHEMA]
+
+        self.sql_table = Table(
+            f'{self.name}_meta',
+            self.dbconn.sqla_metadata,
+            *self.sql_schema,
         )
 
+        self.sql_table.create(self.dbconn.con, checkfirst=True)
+
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.store.read_rows(idx)
+        sql = select(self.sql_schema)
+
+        if idx is not None:
+            sql = sql.where(self.sql_table.c.id.in_(list(idx)))
+
+        return pd.read_sql_query(
+            sql,
+            con=self.dbconn.con,
+            index_col='id',
+        )
 
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         # data
@@ -67,7 +80,7 @@ class MetaTable:
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         return TableDebugInfo(
             name=name,
-            size=self.dbconn.con.execute(select([func.count()]).select_from(self.store.data_table)).fetchone()[0]
+            size=self.dbconn.con.execute(select([func.count()]).select_from(self.sql_table)).fetchone()[0]
         )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
@@ -76,6 +89,11 @@ class MetaTable:
         data_df: pd.DataFrame,
         now: float = None
     ) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
+        '''
+        Returns:
+            new_idx, changed_idx, new_meta_df
+        '''
+
         if now is None:
             now = time.time()
 
@@ -106,13 +124,43 @@ class MetaTable:
 
         return new_idx, changed_idx, new_meta_df
 
+    def _delete_rows(self, idx: pd.Index) -> None:
+        if len(idx) > 0:
+            logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
+
+            sql = delete(self.sql_table).where(
+                self.sql_table.c.id.in_(list(idx))
+            )
+
+            self.dbconn.con.execute(sql)
+
+    def _insert_rows(self, df: pd.DataFrame) -> None:
+        if len(df) > 0:
+            logger.debug(f'Inserting {len(df)} rows into {self.name} data')
+
+            df.to_sql(
+                name=self.sql_table.name,
+                con=self.dbconn.con,
+                schema=self.dbconn.schema,
+                if_exists='append',
+                index_label='id',
+                chunksize=1000,
+                method='multi',
+                dtype=sql_schema_to_dtype(self.sql_schema),
+            )
+
+    def _update_rows(self, df: pd.DataFrame) -> None:
+        # FIXME implement proper update
+        self._delete_rows(df.index)
+        self._insert_rows(df)
+
     def update_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
-            self.store.update_rows(new_meta_df)
+            self._update_rows(new_meta_df)
 
     def update_meta_for_sync_meta(self, deleted_idx: pd.Index) -> None:
         if len(deleted_idx) > 0:
-            self.store.delete_rows(deleted_idx)
+            self._delete_rows(deleted_idx)
 
     def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
         idx = pd.Index([])
@@ -131,10 +179,10 @@ class MetaTable:
 
     def get_stale_idx(self, process_ts: float) -> Iterator[pd.DataFrame]:
         return pd.read_sql_query(
-            select([self.store.data_table.c.id]).where(
-                self.store.data_table.c.process_ts < process_ts
+            select([self.sql_table.c.id]).where(
+                self.sql_table.c.process_ts < process_ts
             ),
-            con=self.store.dbconn.con,
+            con=self.dbconn.con,
             index_col='id',
             chunksize=1000
         )
@@ -198,20 +246,20 @@ class MetaStore:
         sql_requests = []
 
         for inp in inputs:
-            sql = select([inp.store.data_table.c.id]).select_from(
+            sql = select([inp.sql_table.c.id]).select_from(
                 left_join(
-                    inp.store.data_table,
-                    [out.store.data_table for out in outputs]
+                    inp.sql_table,
+                    [out.sql_table for out in outputs]
                 )
             ).where(
                 or_(
                     or_(
                         (
-                            out.store.data_table.c.process_ts
+                            out.sql_table.c.process_ts
                             <
-                            inp.store.data_table.c.update_ts
+                            inp.sql_table.c.update_ts
                         ),
-                        out.store.data_table.c.process_ts.is_(None)
+                        out.sql_table.c.process_ts.is_(None)
                     )
                     for out in outputs
                 )
@@ -220,13 +268,13 @@ class MetaStore:
             sql_requests.append(sql)
 
         for out in outputs:
-            sql = select([out.store.data_table.c.id]).select_from(
+            sql = select([out.sql_table.c.id]).select_from(
                 left_join(
-                    out.store.data_table,
-                    [inp.store.data_table for inp in inputs]
+                    out.sql_table,
+                    [inp.sql_table for inp in inputs]
                 )
             ).where(
-                and_(inp.store.data_table.c.id.is_(None) for inp in inputs)
+                and_(inp.sql_table.c.id.is_(None) for inp in inputs)
             )
 
             sql_requests.append(sql)
