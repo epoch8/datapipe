@@ -557,7 +557,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
 
 
-def test_handling_exceptions(dbconn) -> None:
+def test_error_handling(dbconn) -> None:
     BAD_ID = 'id_3'
     GOOD_IDXS1 = ['id_0', 'id_1', 'id_2', 'id_3', 'id_4', 'id_5']
     GOOD_IDXS2 = ['id_0', 'id_1', 'id_4', 'id_5']
