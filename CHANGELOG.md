@@ -1,8 +1,12 @@
 # 0.8.0
 
-## Breaking changes
+## Breaking changes DB
 
-* агрумент в gen_process всегда должен быть генератором
+* Таблица datapipe_events изменила структуру (требует пересоздания)
+
+## Breaking changes code
+
+* агрумент ф-ии в gen_process всегда должен быть генератором
 
 # 0.7.0
 
