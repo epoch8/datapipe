@@ -20,7 +20,7 @@ TEST_DF = pd.DataFrame(
     {
         'a': range(10)
     },
-    index=[f'id_{i}' for i in range(10)]
+    index=pd.Index([f'id_{i}' for i in range(10)], name='id'),
 )
 
 
