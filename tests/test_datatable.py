@@ -2,7 +2,8 @@ import pytest
 
 import cloudpickle
 import pandas as pd
-from sqlalchemy import Column, Numeric
+from sqlalchemy import Column
+from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
@@ -12,14 +13,14 @@ from .util import assert_df_equal, assert_idx_equal
 
 
 TEST_SCHEMA = [
-    Column('a', Numeric),
+    Column('a', Integer),
 ]
 
 TEST_DF = pd.DataFrame(
     {
         'a': range(10)
     },
-    index=[f'id_{i}' for i in range(10)]
+    index=pd.Index([f'id_{i}' for i in range(10)], name='id'),
 )
 
 
@@ -88,8 +89,10 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store(TEST_DF)
 
-    idx = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
-    assert(list(idx) == list(TEST_DF.index))
+    count, idx_dfs = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx = pd.concat(list(idx_dfs))
+
+    assert(sorted(list(idx.index)) == list(TEST_DF.index))
 
     tbl2.store(tbl1.get_data())
 
@@ -98,8 +101,9 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(upd_df)
 
-    idx = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
-    assert(list(idx) == list(upd_df.index))
+    count, idx_dfs = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx = pd.concat(list(idx_dfs))
+    assert(sorted(list(idx.index)) == list(upd_df.index))
 
 
 def test_gen_process(dbconn) -> None:
@@ -253,19 +257,35 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     tbl2.store(TEST_DF)
     tbl1.store(TEST_DF)
 
-    assert(len(ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])) == len(TEST_DF))
+    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == len(TEST_DF))
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(len(ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])) == 0)
+    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == 0)
 
     tbl1.store(TEST_DF_INC1)
 
-    assert(len(ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])) == len(TEST_DF))
+    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == len(TEST_DF))
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(len(ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])) == 0)
+    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    idx_dfs = list(idx_gen)
+    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+
+    assert(len(idx) == 0)
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
@@ -402,7 +422,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(
-            dbconn, 'tbl_data', [Column('a_first', Numeric), Column('a_second', Numeric)], True
+            dbconn, 'tbl_data', [Column('a_first', Integer), Column('a_second', Integer)], True
         )
     )
     tbl1 = DataTable(

@@ -5,7 +5,7 @@ import pandas as pd
 
 from dataclasses import dataclass
 from sqlalchemy import Column, Table, String, create_engine, MetaData
-from sqlalchemy.sql.expression import select, delete, func
+from sqlalchemy.sql.expression import select, delete
 
 from datapipe.store.types import Index
 from datapipe.store.table_store import TableStore

@@ -11,7 +11,7 @@ def assert_idx_equal(a, b):
 def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
     assert_idx_equal(a.index, b.index)
 
-    eq_rows = (a == b).all(axis='columns')
+    eq_rows = (a.sort_index() == b.sort_index()).all(axis='columns')
 
     if eq_rows.all():
         return True

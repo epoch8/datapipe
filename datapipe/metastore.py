@@ -1,15 +1,14 @@
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, Optional, Dict, Union
+from typing import List, Tuple, Optional, Dict, Union, Iterator
 
 import logging
 import time
 
 from sqlalchemy.sql.expression import and_, or_, select
-from sqlalchemy import Column, Numeric, Float, func
+from sqlalchemy import Column, Numeric, Float, func, union, alias
 import pandas as pd
 
 from datapipe.store.types import Index, ChunkMeta
-from datapipe.datatable import DataTable
 from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.event_logger import EventLogger
 
@@ -130,7 +129,7 @@ class MetaTable:
 
         return deleted_idx
 
-    def get_stale_idx(self, process_ts: float) -> pd.DataFrame:
+    def get_stale_idx(self, process_ts: float) -> Iterator[pd.DataFrame]:
         return pd.read_sql_query(
             select([self.store.data_table.c.id]).where(
                 self.store.data_table.c.process_ts < process_ts
@@ -168,11 +167,18 @@ class MetaStore:
         self,
         inputs: List[MetaTable],
         outputs: List[MetaTable],
-    ) -> pd.Index:
-        if len(inputs) == 0:
-            return pd.Index([])
+        chunksize: int = 1000,
+    ) -> Tuple[int, Iterator[pd.DataFrame]]:
+        '''
+        Метод для получения перечня индексов для обработки.
 
-        idx = None
+        Returns: (idx_size, iterator<idx_df>)
+            idx_size - количество индексов требующих обработки
+            idx_df - датафрейм без колонок с данными, только индексная колонка
+        '''
+
+        if len(inputs) == 0:
+            return (0, iter([]))
 
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(
@@ -188,6 +194,8 @@ class MetaStore:
                 )
 
             return q
+
+        sql_requests = []
 
         for inp in inputs:
             sql = select([inp.store.data_table.c.id]).select_from(
@@ -209,16 +217,7 @@ class MetaStore:
                 )
             )
 
-            idx_df = pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-                index_col='id',
-            )
-
-            if idx is None:
-                idx = idx_df.index
-            else:
-                idx = idx.union(idx_df.index)
+            sql_requests.append(sql)
 
         for out in outputs:
             sql = select([out.store.data_table.c.id]).select_from(
@@ -230,36 +229,20 @@ class MetaStore:
                 and_(inp.store.data_table.c.id.is_(None) for inp in inputs)
             )
 
-            idx_df = pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-                index_col='id',
+            sql_requests.append(sql)
+
+        u1 = union(*sql_requests)
+
+        idx_count = self.dbconn.con.execute(
+            select([func.count()])
+            .select_from(
+                alias(u1, name='union_select')
             )
+        ).scalar()
 
-            if idx is None:
-                idx = idx_df.index
-            else:
-                idx = idx.union(idx_df.index)
-
-        return idx
-
-    # TODO унести в DataTable
-    def get_process_chunks(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        chunksize: int = 1000,
-    ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
-        idx = self.get_process_ids(
-            inputs=[i.meta_table for i in inputs],
-            outputs=[i.meta_table for i in outputs],
+        return idx_count, pd.read_sql_query(
+            u1,
+            con=self.dbconn.con,
+            index_col='id',
+            chunksize=chunksize
         )
-
-        logger.info(f'Items to update {len(idx)}')
-
-        def gen():
-            if len(idx) > 0:
-                for i in range(0, len(idx), chunksize):
-                    yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
-
-        return idx, gen()
