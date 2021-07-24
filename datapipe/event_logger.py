@@ -32,7 +32,6 @@ class EventLogger:
     def __init__(self, dbconn: 'DBConn'):
         self.dbconn = dbconn
 
-        print(EVENT_TABLE_SHCEMA)
         self.events_table = Table(
             'datapipe_events',
             dbconn.sqla_metadata,
@@ -57,6 +56,7 @@ class EventLogger:
         self.dbconn.con.execute(ins)
 
     def log_error(self, type, message, description, params):
+        logger.debug(f'Error {type} {message}')
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,
             event={
@@ -71,8 +71,8 @@ class EventLogger:
 
     def log_exception(self, exc: Exception):
         self.log_error(
-            type(exc).__name__,
-            str(exc),
-            traceback.format_exc(),
-            exc.args
+            type=type(exc).__name__,
+            message=str(exc),
+            description=traceback.format_exc(),
+            params=exc.args
         )

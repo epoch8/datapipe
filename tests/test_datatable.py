@@ -5,8 +5,8 @@ import pandas as pd
 from sqlalchemy import Column, Numeric
 
 from datapipe.store.database import TableStoreDB
-from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many, gen_process_many
-from datapipe.metastore import MetaStore, MetaTable
+from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
+from datapipe.metastore import MetaStore
 
 from .util import assert_df_equal, assert_idx_equal
 
@@ -62,7 +62,8 @@ def test_simple(dbconn) -> None:
 def test_store_less_values(dbconn) -> None:
     ms = MetaStore(dbconn)
 
-    tbl = DataTable('test',
+    tbl = DataTable(
+        'test',
         meta_table=ms.create_meta_table('test'),
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
@@ -124,13 +125,13 @@ def test_gen_process(dbconn) -> None:
         gen
     )
 
-    gen_process(
-        tbl1,
-        func
-    )
+    with pytest.raises(Exception):
+        gen_process(
+            tbl1,
+            func
+        )
 
     assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF))
 
     def gen2():
         yield TEST_DF[:5]
@@ -143,13 +144,13 @@ def test_gen_process(dbconn) -> None:
         gen2
     )
 
-    gen_process(
-        tbl1,
-        func2
-    )
+    with pytest.raises(Exception):
+        gen_process(
+            tbl1,
+            func2
+        )
 
     assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF[:5]))
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF[:5]))
 
 
 def test_inc_process_modify_values(dbconn) -> None:
@@ -273,28 +274,36 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 def test_gen_process_many(dbconn) -> None:
     ms = MetaStore(dbconn)
 
-    tbl_gen = DataTable('tbl_gen',
+    tbl_gen = DataTable(
+        'tbl_gen',
         meta_table=ms.create_meta_table('tbl_gen'),
         table_store=TableStoreDB(dbconn, 'tbl_gen_data', TEST_SCHEMA, True))
-    tbl1_gen = DataTable('tbl1_gen',
+    tbl1_gen = DataTable(
+        'tbl1_gen',
         meta_table=ms.create_meta_table('tbl1_gen'),
         table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
-    tbl2_gen = DataTable('tbl2_gen',
+    tbl2_gen = DataTable(
+        'tbl2_gen',
         meta_table=ms.create_meta_table('tbl2_gen'),
         table_store=TableStoreDB(dbconn, 'tbl2_gen_data', TEST_SCHEMA, True))
-    tbl3_gen = DataTable('tbl3_gen',
+    tbl3_gen = DataTable(
+        'tbl3_gen',
         meta_table=ms.create_meta_table('tbl3_gen'),
         table_store=TableStoreDB(dbconn, 'tbl3_gen_data', TEST_SCHEMA, True))
-    tbl = DataTable('tbl',
+    tbl = DataTable(
+        'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl1 = DataTable('tbl1',
+    tbl1 = DataTable(
+        'tbl1',
         meta_table=ms.create_meta_table('tbl1'),
         table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable('tbl2',
+    tbl2 = DataTable(
+        'tbl2',
         meta_table=ms.create_meta_table('tbl2'),
         table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
-    tbl3 = DataTable('tbl3',
+    tbl3 = DataTable(
+        'tbl3',
         meta_table=ms.create_meta_table('tbl3'),
         table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
 
@@ -309,34 +318,35 @@ def test_gen_process_many(dbconn) -> None:
         gen
     )
 
-    gen_process_many(
-        [tbl, tbl1, tbl2, tbl3],
-        func
-    )
+    with pytest.raises(Exception):
+        gen_process_many(
+            [tbl, tbl1, tbl2, tbl3],
+            func
+        )
 
     assert(assert_df_equal(tbl_gen.get_data(), TEST_DF))
     assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF_INC1))
     assert(assert_df_equal(tbl2_gen.get_data(), TEST_DF_INC2))
     assert(assert_df_equal(tbl3_gen.get_data(), TEST_DF_INC3))
-    assert(assert_df_equal(tbl.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
 
 
 def test_inc_process_many_modify_values(dbconn) -> None:
     ms = MetaStore(dbconn)
 
-    tbl = DataTable('tbl',
+    tbl = DataTable(
+        'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl1 = DataTable('tbl1',
+    tbl1 = DataTable(
+        'tbl1',
         meta_table=ms.create_meta_table('tbl1'),
         table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable('tbl2',
+    tbl2 = DataTable(
+        'tbl2',
         meta_table=ms.create_meta_table('tbl2'),
         table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
-    tbl3 = DataTable('tbl3',
+    tbl3 = DataTable(
+        'tbl3',
         meta_table=ms.create_meta_table('tbl3'),
         table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
 
@@ -388,16 +398,19 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 def test_inc_process_many_several_inputs(dbconn) -> None:
     ms = MetaStore(dbconn)
 
-    tbl = DataTable('tbl',
+    tbl = DataTable(
+        'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(
             dbconn, 'tbl_data', [Column('a_first', Numeric), Column('a_second', Numeric)], True
         )
     )
-    tbl1 = DataTable('tbl1',
+    tbl1 = DataTable(
+        'tbl1',
         meta_table=ms.create_meta_table('tbl1'),
         table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable('tbl2',
+    tbl2 = DataTable(
+        'tbl2',
         meta_table=ms.create_meta_table('tbl2'),
         table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
 
@@ -416,14 +429,15 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     tbl1.store(TEST_DF)
     tbl2.store(TEST_DF)
 
-
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
     assert(
-        assert_df_equal(tbl.get_data(), pd.DataFrame(
-            {
-                'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-            },
+        assert_df_equal(
+            tbl.get_data(),
+            pd.DataFrame(
+                {
+                    'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                },
                 index=[f'id_{i}' for i in range(10)]
             )
         )
@@ -432,10 +446,11 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     changed_indexes = [f'id_{i}' for i in [0, 4, 6]]
     not_changed_indexes = [f'id_{i}' for i in [1, 2, 3, 5, 7, 8, 9]]
 
-    tbl2.store_chunk(pd.DataFrame(
-        {
-            'a': [10, 10, 10]
-        },
+    tbl2.store_chunk(
+        pd.DataFrame(
+            {
+                'a': [10, 10, 10]
+            },
             index=changed_indexes
         )
     )
@@ -443,30 +458,35 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
 
     assert(
-        assert_df_equal(tbl.get_data(idx=changed_indexes), pd.DataFrame(
-            {
-                'a_first': [1, 5, 7],
-                'a_second': [12, 12, 12]
-            },
+        assert_df_equal(
+            tbl.get_data(idx=changed_indexes),
+            pd.DataFrame(
+                {
+                    'a_first': [1, 5, 7],
+                    'a_second': [12, 12, 12]
+                },
                 index=changed_indexes
             )
         )
     )
     assert(
-        assert_df_equal(tbl.get_data(idx=not_changed_indexes), pd.DataFrame(
-            {
-                'a_first': [2, 3, 4, 6, 8, 9, 10],
-                'a_second': [3, 4, 5, 7, 9, 10, 11]
-            },
+        assert_df_equal(
+            tbl.get_data(idx=not_changed_indexes),
+            pd.DataFrame(
+                {
+                    'a_first': [2, 3, 4, 6, 8, 9, 10],
+                    'a_second': [3, 4, 5, 7, 9, 10, 11]
+                },
                 index=not_changed_indexes
             )
         )
     )
 
-    tbl1.store_chunk(pd.DataFrame(
-        {
-            'a': [20, 20, 20]
-        },
+    tbl1.store_chunk(
+        pd.DataFrame(
+            {
+                'a': [20, 20, 20]
+            },
             index=changed_indexes
         )
     )
@@ -474,21 +494,25 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
 
     assert(
-        assert_df_equal(tbl.get_data(idx=changed_indexes), pd.DataFrame(
-            {
-                'a_first': [21, 21, 21],
-                'a_second': [12, 12, 12]
-            },
+        assert_df_equal(
+            tbl.get_data(idx=changed_indexes),
+            pd.DataFrame(
+                {
+                    'a_first': [21, 21, 21],
+                    'a_second': [12, 12, 12]
+                },
                 index=changed_indexes
             )
         )
     )
     assert(
-        assert_df_equal(tbl.get_data(idx=not_changed_indexes), pd.DataFrame(
-            {
-                'a_first': [2, 3, 4, 6, 8, 9, 10],
-                'a_second': [3, 4, 5, 7, 9, 10, 11]
-            },
+        assert_df_equal(
+            tbl.get_data(idx=not_changed_indexes),
+            pd.DataFrame(
+                {
+                    'a_first': [2, 3, 4, 6, 8, 9, 10],
+                    'a_second': [3, 4, 5, 7, 9, 10, 11]
+                },
                 index=not_changed_indexes
             )
         )
@@ -501,13 +525,16 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
     GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
 
-    tbl = DataTable('tbl',
+    tbl = DataTable(
+        'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl_good = DataTable('tbl_good',
+    tbl_good = DataTable(
+        'tbl_good',
         meta_table=ms.create_meta_table('tbl_good'),
         table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
-    tbl_bad = DataTable('tbl_bad',
+    tbl_bad = DataTable(
+        'tbl_bad',
         meta_table=ms.create_meta_table('tbl_bad'),
         table_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True))
 
