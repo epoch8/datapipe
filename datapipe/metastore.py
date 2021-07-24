@@ -168,9 +168,17 @@ class MetaStore:
         inputs: List[MetaTable],
         outputs: List[MetaTable],
         chunksize: int = 1000,
-    ) -> pd.Index:
+    ) -> Tuple[int, Iterator[pd.DataFrame]]:
+        '''
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+            idx_size - количество индексов требующих обработки
+            idx_df - датафрейм без колонок с данными, только индексная колонка
+        '''
+
         if len(inputs) == 0:
-            return pd.Index([])
+            return (0, iter([]))
 
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(

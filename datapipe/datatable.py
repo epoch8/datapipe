@@ -97,19 +97,20 @@ def get_process_chunks(
     outputs: List[DataTable],
     chunksize: int = 1000,
 ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
-    idx = ms.get_process_ids(
+    idx_count, idx_gen = ms.get_process_ids(
         inputs=[i.meta_table for i in inputs],
         outputs=[i.meta_table for i in outputs],
+        chunksize=chunksize
     )
 
-    logger.info(f'Items to update {len(idx)}')
+    logger.info(f'Items to update {idx_count}')
 
     def gen():
-        if len(idx) > 0:
-            for i in range(0, len(idx), chunksize):
-                yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
+        if idx_count > 0:
+            for idx in idx_gen:
+                yield idx, [inp.get_data(idx.index) for inp in inputs]
 
-    return idx, gen()
+    return idx_count, gen()
 
 
 # FIXME перенести в compute.BatchGenerateStep
@@ -195,7 +196,15 @@ def inc_process_many(
     if idx_count > 0:
         for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
-                chunks_df = proc_func(*input_dfs, **kwargs)
+                try:
+                    chunks_df = proc_func(*input_dfs, **kwargs)
+                except Exception as e:
+                    logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
+                    ms.event_logger.log_exception(e)
+
+                    idx = pd.concat(input_dfs).index
+
+                    continue
 
                 for k, res_dt in enumerate(res_dts):
                     # Берем k-ое значение функции для k-ой таблички
