@@ -113,7 +113,7 @@ def get_process_chunks(
     return idx_count, gen()
 
 
-# FIXME перенести в compute.BatchGenerateStep
+# TODO перенести в compute.BatchGenerateStep
 def gen_process_many(
     dts: List[DataTable],
     proc_func: Callable[
@@ -144,7 +144,7 @@ def gen_process_many(
         except Exception as e:
             logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
 
-            # FIXME перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
+            # TODO перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
             if dts:
                 dts[0].meta_table.event_logger.log_exception(e)
             return
@@ -157,7 +157,7 @@ def gen_process_many(
         dt_k.sync_meta_by_process_ts(now)
 
 
-# FIXME перенести в compute.BatchGenerateStep
+# TODO перенести в compute.BatchGenerateStep
 def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
@@ -173,7 +173,7 @@ def gen_process(
     )
 
 
-# FIXME перенести в compute.BatchGenerateStep
+# TODO перенести в compute.BatchGenerateStep
 def inc_process_many(
     ms: MetaStore,
     input_dts: List[DataTable],
@@ -219,7 +219,7 @@ def inc_process_many(
                     res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
 
 
-# FIXME перенести в compute.BatchTransformStep
+# TODO перенести в compute.BatchTransformStep
 def inc_process(
     ds: MetaStore,
     input_dts: List[DataTable],
