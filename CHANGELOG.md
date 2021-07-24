@@ -1,0 +1,31 @@
+# 0.8.1
+
+* Функция `MetaStore.get_process_chunks` перестала быть методом `MetaStore` и переехала в модуль `datatable`
+
+# 0.8.0
+
+* Добавлена обработка ошибок в gen_process: исключение ловится, логгируется и выполнение переходит к следующим шагам
+* Добавлена обработка ошибок в inc_process: исключение ловится, чанк с ошибкой игнорируется и выполнение продолжается
+
+## Breaking changes DB
+
+* Таблица datapipe_events изменила структуру (требует пересоздания)
+
+## Breaking changes code
+
+* агрумент ф-ии в gen_process всегда должен быть генератором
+
+# 0.7.0
+
+* Добавлен аттрибут `const_idx` в `TableStoreDB`, позволяет хранить данные разных шагов/пайплайнов в одной физической таблице с помощью доп.идентификаторов
+* Добавлен класс `metastore.MetaTable`, который собирает в себе все задачи по работе с метаданными одной таблицы.
+
+**Важно**: Поменялся интерфейс создания `DataTable`.
+
+Было: `DataTable(meta_store, name, data_store)`
+
+Стало: `DataTable(name, meta_store.create_meta_table(name), data_store)`
+
+# 0.2.0 (2021-02-01)
+- Add major code with Label Studio implementation
+- Add Data cataloges and Nodes

@@ -1,4 +1,4 @@
-from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -8,14 +8,11 @@ import math
 import pandas as pd
 import tqdm
 
+from datapipe.metastore import MetaTable, MetaStore
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
-
-
-if TYPE_CHECKING:
-    from datapipe.metastore import MetaStore
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -24,13 +21,13 @@ logger = logging.getLogger('datapipe.datatable')
 class DataTable:
     def __init__(
         self,
-        ms: 'MetaStore',
         name: str,
+        meta_table: MetaTable,
         table_store: TableStore,  # Если None - создается по дефолту
     ):
-        self.ms = ms
         self.name = name
 
+        self.meta_table = meta_table
         self.table_store = table_store
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
@@ -39,39 +36,39 @@ class DataTable:
         return res
 
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.ms.get_metadata(self.name, idx)
+        return self.meta_table.get_metadata(idx)
 
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        return self.table_store.read_rows(self.ms.get_existing_idx(self.name, idx))
+        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
-        new_idx, changed_idx, new_meta_df = self.ms.get_changes_for_store_chunk(self.name, data_df, now)
+        new_idx, changed_idx, new_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
         self.table_store.insert_rows(data_df.loc[new_idx])
         self.table_store.update_rows(data_df.loc[changed_idx])
 
-        self.ms.update_meta_for_store_chunk(self.name, new_meta_df)
+        self.meta_table.update_meta_for_store_chunk(new_meta_df)
 
         return list(data_df.index)
 
     def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
-        deleted_idx = self.ms.get_changes_for_sync_meta(self.name, chunks, processed_idx)
+        deleted_idx = self.meta_table.get_changes_for_sync_meta(chunks, processed_idx)
 
         if len(deleted_idx) > 0:
             self.table_store.delete_rows(deleted_idx)
 
-        self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
+        self.meta_table.update_meta_for_sync_meta(deleted_idx)
 
     def sync_meta_by_process_ts(self, process_ts: float) -> None:
-        deleted_dfs = self.ms.get_stale_idx(self.name, process_ts)
+        deleted_dfs = self.meta_table.get_stale_idx(process_ts)
 
         for deleted_df in deleted_dfs:
             deleted_idx = deleted_df.index
             self.table_store.delete_rows(deleted_idx)
-            self.ms.update_meta_for_sync_meta(self.name, deleted_idx)
+            self.meta_table.update_meta_for_sync_meta(deleted_idx)
 
     def store(self, df: pd.DataFrame) -> None:
         now = time.time()
@@ -85,20 +82,42 @@ class DataTable:
         )
 
     def get_data_chunked(self, chunksize: int = 1000) -> Generator[pd.DataFrame, None, None]:
-        meta_df = self.ms.get_metadata(self.name, idx=None)
+        meta_df = self.meta_table.get_metadata(idx=None)
 
         for i in range(0, len(meta_df.index), chunksize):
             yield self.get_data(meta_df.index[i:i+chunksize])
 
     def get_indexes(self, idx: Optional[Index] = None) -> Index:
-        return self.ms.get_metadata(self.name, idx).index.tolist()
+        return self.meta_table.get_metadata(idx).index.tolist()
 
 
+def get_process_chunks(
+    ms: MetaStore,
+    inputs: List[DataTable],
+    outputs: List[DataTable],
+    chunksize: int = 1000,
+) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
+    idx = ms.get_process_ids(
+        inputs=[i.meta_table for i in inputs],
+        outputs=[i.meta_table for i in outputs],
+    )
+
+    logger.info(f'Items to update {len(idx)}')
+
+    def gen():
+        if len(idx) > 0:
+            for i in range(0, len(idx), chunksize):
+                yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
+
+    return idx, gen()
+
+
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process_many(
     dts: List[DataTable],
-    proc_func: Callable[..., Union[
-        Tuple[pd.DataFrame, ...],
-        Iterator[Tuple[pd.DataFrame, ...]]]
+    proc_func: Callable[
+        ...,
+        Iterator[Tuple[pd.DataFrame, ...]]
     ],
     **kwargs
 ) -> None:
@@ -109,12 +128,26 @@ def gen_process_many(
 
     now = time.time()
 
-    if inspect.isgeneratorfunction(proc_func):
-        iterable = proc_func(**kwargs)
-    else:
-        iterable = (proc_func(**kwargs),)
+    assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
-    for chunk_dfs in iterable:
+    try:
+        iterable = proc_func(**kwargs)
+    except Exception as e:
+        logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+    while True:
+        try:
+            chunk_dfs = next(iterable)
+        except StopIteration:
+            break
+        except Exception as e:
+            logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+            # FIXME перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
+            if dts:
+                dts[0].meta_table.event_logger.log_exception(e)
+            return
+
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
             dt_k.store_chunk(chunk_df_kth)
@@ -123,6 +156,7 @@ def gen_process_many(
         dt_k.sync_meta_by_process_ts(now)
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
@@ -138,8 +172,9 @@ def gen_process(
     )
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def inc_process_many(
-    ds: 'MetaStore',
+    ms: MetaStore,
     input_dts: List[DataTable],
     res_dts: List[DataTable],
     proc_func: Callable,
@@ -149,7 +184,13 @@ def inc_process_many(
     '''
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
-    idx_count, input_dfs_gen = ds.get_process_chunks(inputs=input_dts, outputs=res_dts, chunksize=chunksize)
+
+    idx_count, input_dfs_gen = get_process_chunks(
+        ms,
+        inputs=input_dts,
+        outputs=res_dts,
+        chunksize=chunksize
+    )
 
     if idx_count > 0:
         for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
@@ -169,8 +210,9 @@ def inc_process_many(
                     res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
 
 
+# FIXME перенести в compute.BatchTransformStep
 def inc_process(
-    ds: 'MetaStore',
+    ds: MetaStore,
     input_dts: List[DataTable],
     res_dt: DataTable,
     proc_func: Callable,
@@ -178,7 +220,7 @@ def inc_process(
     **kwargs
 ) -> None:
     inc_process_many(
-        ds=ds,
+        ms=ds,
         input_dts=input_dts,
         res_dts=[res_dt],
         proc_func=proc_func,
@@ -194,11 +236,11 @@ class ExternalTableUpdater(ComputeStep):
         self.input_dts = []
         self.output_dts = [table]
 
-    def run(self, ms: 'MetaStore') -> None:
+    def run(self, ms: MetaStore) -> None:
         ps_df = self.table.table_store.read_rows_meta_pseudo_df()
 
-        _, _, new_meta_df = ms.get_changes_for_store_chunk(self.table.name, ps_df)
-        ms.update_meta_for_store_chunk(self.table.name, new_meta_df)
+        _, _, new_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
+        self.table.meta_table.update_meta_for_store_chunk(new_meta_df)
 
-        deleted_idx = ms.get_changes_for_sync_meta(self.table.name, [ps_df.index])
-        ms.update_meta_for_sync_meta(self.table.name, deleted_idx)
+        deleted_idx = self.table.meta_table.get_changes_for_sync_meta([ps_df.index])
+        self.table.meta_table.update_meta_for_sync_meta(deleted_idx)
