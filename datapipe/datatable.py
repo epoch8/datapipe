@@ -110,7 +110,7 @@ def gen_process_many(
 
     now = time.time()
 
-    assert(inspect.isgeneratorfunction(proc_func))
+    assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
     try:
         iterable = proc_func(**kwargs)
