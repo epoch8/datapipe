@@ -94,11 +94,12 @@ class DataTable:
         return self.meta_table.get_metadata(idx).index.tolist()
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process_many(
     dts: List[DataTable],
-    proc_func: Callable[..., Union[
-        Tuple[pd.DataFrame, ...],
-        Iterator[Tuple[pd.DataFrame, ...]]]
+    proc_func: Callable[
+        ...,
+        Iterator[Tuple[pd.DataFrame, ...]]
     ],
     **kwargs
 ) -> None:
@@ -109,12 +110,26 @@ def gen_process_many(
 
     now = time.time()
 
-    if inspect.isgeneratorfunction(proc_func):
-        iterable = proc_func(**kwargs)
-    else:
-        iterable = (proc_func(**kwargs),)
+    assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
-    for chunk_dfs in iterable:
+    try:
+        iterable = proc_func(**kwargs)
+    except Exception as e:
+        logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+    while True:
+        try:
+            chunk_dfs = next(iterable)
+        except StopIteration:
+            break
+        except Exception as e:
+            logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+            # FIXME перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
+            if dts:
+                dts[0].meta_table.event_logger.log_exception(e)
+            return
+
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
             dt_k.store_chunk(chunk_df_kth)
@@ -123,6 +138,7 @@ def gen_process_many(
         dt_k.sync_meta_by_process_ts(now)
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
@@ -138,6 +154,7 @@ def gen_process(
     )
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def inc_process_many(
     ms: 'MetaStore',
     input_dts: List[DataTable],
@@ -153,15 +170,26 @@ def inc_process_many(
     res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
 
     idx, input_dfs_gen = ms.get_process_chunks(
-        inputs=input_dts, 
-        outputs=res_dts, 
+        inputs=input_dts,
+        outputs=res_dts,
         chunksize=chunksize
     )
 
     if len(idx) > 0:
         for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
-                chunks_df = proc_func(*input_dfs, **kwargs)
+                try:
+                    chunks_df = proc_func(*input_dfs, **kwargs)
+                except Exception as e:
+                    logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
+                    ms.event_logger.log_exception(e)
+
+                    idx = pd.concat(input_dfs).index
+
+                    for k, res_dt in enumerate(res_dts):
+                        res_dts_chunks[k].append(list(idx))
+
+                    continue
 
                 for k, res_dt in enumerate(res_dts):
                     # Берем k-ое значение функции для k-ой таблички
@@ -175,6 +203,7 @@ def inc_process_many(
             res_dt.sync_meta_by_idx_chunks(res_dts_chunks[k], processed_idx=idx)
 
 
+# FIXME перенести в compute.BatchTransformStep
 def inc_process(
     ds: 'MetaStore',
     input_dts: List[DataTable],

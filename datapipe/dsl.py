@@ -35,7 +35,7 @@ class Catalog:
                 meta_table=ms.create_meta_table(name),
                 table_store=self.catalog[name].store
             )
-        
+
         return self.data_tables[name]
 
 
