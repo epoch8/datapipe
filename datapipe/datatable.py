@@ -1,4 +1,4 @@
-from typing import Callable, Generator, Iterator, List, Dict, Optional, Tuple, Union
+from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -97,19 +97,20 @@ def get_process_chunks(
     outputs: List[DataTable],
     chunksize: int = 1000,
 ) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
-    idx = ms.get_process_ids(
+    idx_count, idx_gen = ms.get_process_ids(
         inputs=[i.meta_table for i in inputs],
         outputs=[i.meta_table for i in outputs],
+        chunksize=chunksize
     )
 
-    logger.info(f'Items to update {len(idx)}')
+    logger.info(f'Items to update {idx_count}')
 
     def gen():
-        if len(idx) > 0:
-            for i in range(0, len(idx), chunksize):
-                yield [inp.get_data(idx[i:i+chunksize]) for inp in inputs]
+        if idx_count > 0:
+            for idx in idx_gen:
+                yield idx, [inp.get_data(idx.index) for inp in inputs]
 
-    return idx, gen()
+    return idx_count, gen()
 
 
 # FIXME перенести в compute.BatchGenerateStep
@@ -185,17 +186,15 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
-
-    idx, input_dfs_gen = get_process_chunks(
+    idx_count, input_dfs_gen = get_process_chunks(
         ms,
         inputs=input_dts,
         outputs=res_dts,
         chunksize=chunksize
     )
 
-    if len(idx) > 0:
-        for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
+    if idx_count > 0:
+        for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
                 try:
                     chunks_df = proc_func(*input_dfs, **kwargs)
@@ -205,9 +204,6 @@ def inc_process_many(
 
                     idx = pd.concat(input_dfs).index
 
-                    for k, res_dt in enumerate(res_dts):
-                        res_dts_chunks[k].append(list(idx))
-
                     continue
 
                 for k, res_dt in enumerate(res_dts):
@@ -215,11 +211,12 @@ def inc_process_many(
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
                     # Добавляем результат в результирующие чанки
-                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
+                    res_index = res_dt.store_chunk(chunk_df_k)
+                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx.index)
 
-        # Синхронизируем мета-данные для всех K табличек
-        for k, res_dt in enumerate(res_dts):
-            res_dt.sync_meta_by_idx_chunks(res_dts_chunks[k], processed_idx=idx)
+            else:
+                for k, res_dt in enumerate(res_dts):
+                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
 
 
 # FIXME перенести в compute.BatchTransformStep

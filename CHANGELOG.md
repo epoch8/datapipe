@@ -1,3 +1,7 @@
+# 0.8.2
+
+* `inc_process_many` работает полностью инкрементально
+
 # 0.8.1
 
 * Функция `MetaStore.get_process_chunks` перестала быть методом `MetaStore` и переехала в модуль `datatable`
