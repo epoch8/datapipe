@@ -1,4 +1,4 @@
-from typing import Callable, Generator, Iterator, List, Dict, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -8,14 +8,11 @@ import math
 import pandas as pd
 import tqdm
 
+from datapipe.metastore import MetaTable, MetaStore
 from datapipe.store.types import Index, ChunkMeta
 from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
-
-
-if TYPE_CHECKING:
-    from datapipe.metastore import MetaTable, MetaStore
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -25,7 +22,7 @@ class DataTable:
     def __init__(
         self,
         name: str,
-        meta_table: 'MetaTable',
+        meta_table: MetaTable,
         table_store: TableStore,  # Если None - создается по дефолту
     ):
         self.name = name
@@ -94,11 +91,34 @@ class DataTable:
         return self.meta_table.get_metadata(idx).index.tolist()
 
 
+def get_process_chunks(
+    ms: MetaStore,
+    inputs: List[DataTable],
+    outputs: List[DataTable],
+    chunksize: int = 1000,
+) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
+    idx_count, idx_gen = ms.get_process_ids(
+        inputs=[i.meta_table for i in inputs],
+        outputs=[i.meta_table for i in outputs],
+        chunksize=chunksize
+    )
+
+    logger.info(f'Items to update {idx_count}')
+
+    def gen():
+        if idx_count > 0:
+            for idx in idx_gen:
+                yield idx, [inp.get_data(idx.index) for inp in inputs]
+
+    return idx_count, gen()
+
+
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process_many(
     dts: List[DataTable],
-    proc_func: Callable[..., Union[
-        Tuple[pd.DataFrame, ...],
-        Iterator[Tuple[pd.DataFrame, ...]]]
+    proc_func: Callable[
+        ...,
+        Iterator[Tuple[pd.DataFrame, ...]]
     ],
     **kwargs
 ) -> None:
@@ -109,12 +129,26 @@ def gen_process_many(
 
     now = time.time()
 
-    if inspect.isgeneratorfunction(proc_func):
-        iterable = proc_func(**kwargs)
-    else:
-        iterable = (proc_func(**kwargs),)
+    assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
-    for chunk_dfs in iterable:
+    try:
+        iterable = proc_func(**kwargs)
+    except Exception as e:
+        logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+    while True:
+        try:
+            chunk_dfs = next(iterable)
+        except StopIteration:
+            break
+        except Exception as e:
+            logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+
+            # FIXME перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
+            if dts:
+                dts[0].meta_table.event_logger.log_exception(e)
+            return
+
         for k, dt_k in enumerate(dts):
             chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
             dt_k.store_chunk(chunk_df_kth)
@@ -123,6 +157,7 @@ def gen_process_many(
         dt_k.sync_meta_by_process_ts(now)
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
@@ -138,8 +173,9 @@ def gen_process(
     )
 
 
+# FIXME перенести в compute.BatchGenerateStep
 def inc_process_many(
-    ms: 'MetaStore',
+    ms: MetaStore,
     input_dts: List[DataTable],
     res_dts: List[DataTable],
     proc_func: Callable,
@@ -150,33 +186,42 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    res_dts_chunks: Dict[int, ChunkMeta] = {k: [] for k, _ in enumerate(res_dts)}
-
-    idx, input_dfs_gen = ms.get_process_chunks(
-        inputs=input_dts, 
-        outputs=res_dts, 
+    idx_count, input_dfs_gen = get_process_chunks(
+        ms,
+        inputs=input_dts,
+        outputs=res_dts,
         chunksize=chunksize
     )
 
-    if len(idx) > 0:
-        for input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(len(idx) / chunksize)):
+    if idx_count > 0:
+        for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
             if sum(len(j) for j in input_dfs) > 0:
-                chunks_df = proc_func(*input_dfs, **kwargs)
+                try:
+                    chunks_df = proc_func(*input_dfs, **kwargs)
+                except Exception as e:
+                    logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
+                    ms.event_logger.log_exception(e)
+
+                    idx = pd.concat(input_dfs).index
+
+                    continue
 
                 for k, res_dt in enumerate(res_dts):
                     # Берем k-ое значение функции для k-ой таблички
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
                     # Добавляем результат в результирующие чанки
-                    res_dts_chunks[k].append(res_dt.store_chunk(chunk_df_k))
+                    res_index = res_dt.store_chunk(chunk_df_k)
+                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx.index)
 
-        # Синхронизируем мета-данные для всех K табличек
-        for k, res_dt in enumerate(res_dts):
-            res_dt.sync_meta_by_idx_chunks(res_dts_chunks[k], processed_idx=idx)
+            else:
+                for k, res_dt in enumerate(res_dts):
+                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
 
 
+# FIXME перенести в compute.BatchTransformStep
 def inc_process(
-    ds: 'MetaStore',
+    ds: MetaStore,
     input_dts: List[DataTable],
     res_dt: DataTable,
     proc_func: Callable,
@@ -200,7 +245,7 @@ class ExternalTableUpdater(ComputeStep):
         self.input_dts = []
         self.output_dts = [table]
 
-    def run(self, ms: 'MetaStore') -> None:
+    def run(self, ms: MetaStore) -> None:
         ps_df = self.table.table_store.read_rows_meta_pseudo_df()
 
         _, _, new_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
