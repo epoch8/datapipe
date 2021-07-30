@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Dict, Union, Iterator
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, or_, select
+from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
 from sqlalchemy import Table, Column, Numeric, Float, String, func, union, alias, delete
 
 import pandas as pd
@@ -75,6 +75,7 @@ class MetaTable:
         )
 
     def get_existing_idx(self, idx: Index = None) -> Index:
+        # FIXME more effective implementation
         return self.get_metadata(idx).index
 
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
@@ -149,10 +150,36 @@ class MetaTable:
                 dtype=sql_schema_to_dtype(self.sql_schema),
             )
 
+    def _update_existing_rows(self, df: pd.DataFrame) -> None:
+        if len(df) > 0:
+            stmt = (
+                update(self.sql_table)
+                .where(self.sql_table.c.id == bindparam('b_id'))
+                .values({
+                    'hash': bindparam('b_hash'),
+                    'update_ts': bindparam('b_update_ts'),
+                    'process_ts': bindparam('b_process_ts'),
+                    'delete_ts': bindparam('b_delete_ts'),
+                })
+            )
+
+            self.dbconn.con.execute(
+                stmt,
+                [
+                    {f'b_{k}': v for k, v in row.items()}
+                    for row in
+                    df.reset_index()[['id', 'hash', 'update_ts', 'process_ts', 'delete_ts']]
+                    .to_dict(orient='records')
+                ]
+            )
+
     def _update_rows(self, df: pd.DataFrame) -> None:
-        # FIXME implement proper update
-        self._delete_rows(df.index)
-        self._insert_rows(df)
+        existing_idx = self.get_existing_idx(df.index)
+
+        missing_idx = df.index.difference(existing_idx)
+
+        self._update_existing_rows(df.loc[existing_idx])
+        self._insert_rows(df.loc[missing_idx])
 
     def update_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
