@@ -22,11 +22,12 @@ class DataTable:
     def __init__(
         self,
         name: str,
+        meta_keys: List[str],
         meta_table: MetaTable,
         table_store: TableStore,  # Если None - создается по дефолту
     ):
         self.name = name
-
+        self.meta_keys = tuple(meta_keys)
         self.meta_table = meta_table
         self.table_store = table_store
 

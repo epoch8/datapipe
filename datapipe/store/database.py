@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 
 from dataclasses import dataclass
-from sqlalchemy import Column, Table, String, create_engine, MetaData
+from sqlalchemy import Column, Table, Integer, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete
 
 from datapipe.store.types import Index
@@ -14,7 +14,7 @@ from datapipe.store.table_store import TableStore
 logger = logging.getLogger('datapipe.store.database')
 
 
-PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
+PRIMARY_KEY = [Column('id', Integer(), primary_key=True)]
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
@@ -88,6 +88,15 @@ class TableStoreDB(TableStore):
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
+
+    def get_meta_schema(self, meta_keys: List[str]) -> List[Column]:
+        columns = [column for column in self.data_sql_schema if column.name in meta_keys]
+        find_keys = [column.name for column in columns]
+
+        if sorted(meta_keys) != sorted(find_keys):
+            raise ValueError('Finded columns in TableStoreDB doesn`t equal meta_keys')
+
+        return columns
 
     def delete_rows(self, idx: Index) -> None:
         if len(idx) > 0:

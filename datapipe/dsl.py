@@ -10,6 +10,7 @@ from datapipe.metastore import MetaStore
 
 @dataclass
 class Table:
+    meta_keys: List[str]
     store: TableStore
 
 
@@ -25,15 +26,24 @@ class ExternalTable(Table):
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
-
         self.data_tables: Dict[str, DataTable] = {}
 
     def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
         if name not in self.data_tables:
+            meta_keys = self.catalog[name].meta_keys
+
+            if 'id' in meta_keys:
+                raise ValueError('meta_keys cannot contain a item with a name `id`')
+
+            store = self.catalog[name].store
+            meta_schema = store.get_meta_schema(meta_keys)
+
             self.data_tables[name] = DataTable(
                 name=name,
-                meta_table=ms.create_meta_table(name),
-                table_store=self.catalog[name].store
+                meta_keys=meta_keys,
+                meta_table=ms.create_meta_table(name, meta_schema),
+                table_store=store
+
             )
 
         return self.data_tables[name]

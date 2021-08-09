@@ -1,14 +1,19 @@
 from abc import ABC
-from typing import Optional, Union
+from typing import Optional, Union, List
 from dataclasses import dataclass
 
 import pandas as pd
 from pathlib import Path
 
+from sqlalchemy import Column
+
 from datapipe.store.types import Index
 
 
 class TableStore(ABC):
+    def get_meta_schema(self, meta_keys: List[str]) -> List[Column]:
+        raise NotImplementedError
+
     def delete_rows(self, idx: Index) -> None:
         raise NotImplementedError
 

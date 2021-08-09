@@ -5,7 +5,7 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, Numeric, Float, String, func, union, alias, delete
+from sqlalchemy import Table, Column, Numeric, Integer, Float, func, union, alias, delete
 
 import pandas as pd
 
@@ -17,7 +17,6 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 METADATA_SQL_SCHEMA = [
-    Column('id', String(100), primary_key=True),
     Column('hash', Numeric),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
@@ -33,12 +32,15 @@ class TableDebugInfo:
 
 
 class MetaTable:
-    def __init__(self, dbconn: DBConn, name: str, event_logger: EventLogger):
+    def __init__(self, dbconn: DBConn, name: str, meta_schema: List[Column], event_logger: EventLogger):
         self.dbconn = dbconn
         self.name = name
         self.event_logger = event_logger
 
-        self.sql_schema = [i.copy() for i in METADATA_SQL_SCHEMA]
+        id_schema = [Column('id', Integer(), primary_key=True, autoincrement=False)]
+        sql_schema = id_schema + meta_schema + METADATA_SQL_SCHEMA
+
+        self.sql_schema = [i.copy() for i in sql_schema]
 
         self.sql_table = Table(
             f'{self.name}_meta',
@@ -48,6 +50,7 @@ class MetaTable:
 
         self.sql_table.create(self.dbconn.con, checkfirst=True)
 
+    # Indec -> pd.DataFrame and schema
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
         sql = select(self.sql_schema)
 
@@ -60,6 +63,7 @@ class MetaTable:
             index_col='id',
         )
 
+    # + INdex cols
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
         # data
 
@@ -225,12 +229,14 @@ class MetaStore:
 
         self.meta_tables: Dict[str, MetaTable] = {}
 
-    def create_meta_table(self, name: str) -> MetaTable:
+    # + Index cols
+    def create_meta_table(self, name: str, meta_schema: List[Column]) -> MetaTable:
         assert(name not in self.meta_tables)
 
         res = MetaTable(
             dbconn=self.dbconn,
             name=name,
+            meta_schema=meta_schema,
             event_logger=self.event_logger,
         )
 
