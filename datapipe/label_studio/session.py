@@ -25,10 +25,10 @@ class LabelStudioSession:
     def login(self) -> int:
         username, password = self.session.auth
         response = self.session.get(
-            url=urljoin(self.ls_url, '/user/login/')
+            url=urljoin(self.ls_url, 'user/login/')
         )
         self.session.post(
-            url=urljoin(self.ls_url, '/user/login/'),
+            url=urljoin(self.ls_url, 'user/login/'),
             data={
                 'csrfmiddlewaretoken': response.cookies['csrftoken'],
                 'email': username,
@@ -39,7 +39,7 @@ class LabelStudioSession:
 
     def is_auth_ok(self, raise_exception: bool = False) -> bool:
         response = self.session.get(
-            url=urljoin(self.ls_url, '/api/current-user/whoami')
+            url=urljoin(self.ls_url, 'api/current-user/whoami')
         )
         if not response.ok and raise_exception:
             raise ValueError(f'Authorization failed: {response.json()}')
@@ -47,17 +47,17 @@ class LabelStudioSession:
 
     def get_current_token(self) -> str:
         token = self.session.get(
-            url=urljoin(self.ls_url, '/api/current-user/token')
+            url=urljoin(self.ls_url, 'api/current-user/token')
         ).json()
         return token['token']
 
     def sign_up(self):
         username, password = self.session.auth
         response = self.session.get(
-            url=urljoin(self.ls_url, '/user/signup/')
+            url=urljoin(self.ls_url, 'user/signup/')
         )
         response_signup = self.session.post(
-            url=urljoin(self.ls_url, '/user/signup/'),
+            url=urljoin(self.ls_url, 'user/signup/'),
             data={
                 'csrfmiddlewaretoken': response.cookies['csrftoken'],
                 'email': username,
@@ -69,25 +69,25 @@ class LabelStudioSession:
 
     def get_project(self, project_id: str) -> Dict[str, str]:
         return self.session.get(
-            urljoin(self.ls_url, f'/api/projects/{project_id}/')
+            urljoin(self.ls_url, f'api/projects/{project_id}/')
         ).json()
 
     def create_project(self, project_setting: Dict[str, str]) -> Dict[str, str]:
         return self.session.post(
-            urljoin(self.ls_url, '/api/projects/'),
+            urljoin(self.ls_url, 'api/projects/'),
             json=project_setting
         ).json()
 
     def delete_project(self, project_id: str):
         return self.session.delete(
-            urljoin(self.ls_url, f'/api/projects/{project_id}/')
+            urljoin(self.ls_url, f'api/projects/{project_id}/')
         )
 
     def get_project_id_by_title(
         self,
         title: str
     ) -> Optional[Dict[str, str]]:
-        projects = self.session.get(urljoin(self.ls_url, '/api/projects/')).json()
+        projects = self.session.get(urljoin(self.ls_url, 'api/projects/')).json()
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
@@ -102,7 +102,7 @@ class LabelStudioSession:
         project_id: str
     ) -> Dict:
         results = self.session.post(
-            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/bulk/'),
+            url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/bulk/'),
             json=data
         ).json()
         return results
@@ -123,7 +123,7 @@ class LabelStudioSession:
         result: Dict
     ) -> Dict:
         result = self.session.post(
-            url=urljoin(self.ls_url, f'/api/tasks/{task_id}/annotations/'),
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/annotations/'),
             json={
                 'result': result,
                 'was_cancelled': False,
@@ -140,7 +140,7 @@ class LabelStudioSession:
         page_size: int = -1  # tasks per page, use -1 to obtain all tasks
     ) -> Tuple[Dict, int]:
         response = self.session.get(
-            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
+            url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/'),
             params={
                 'page': page,
                 'page_size': page_size
@@ -153,7 +153,7 @@ class LabelStudioSession:
         self,
         project_id: str
     ) -> Dict[str, str]:
-        summary = self.session.get(urljoin(self.ls_url, f'/api/projects/{project_id}/summary/')).json()
+        summary = self.session.get(urljoin(self.ls_url, f'api/projects/{project_id}/summary/')).json()
 
         return summary
 
