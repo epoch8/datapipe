@@ -10,7 +10,6 @@ from datapipe.metastore import MetaStore
 
 @dataclass
 class Table:
-    meta_keys: List[str]
     store: TableStore
 
 
@@ -30,18 +29,15 @@ class Catalog:
 
     def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
         if name not in self.data_tables:
-            meta_keys = self.catalog[name].meta_keys
-
-            if 'id' in meta_keys:
-                raise ValueError('meta_keys cannot contain a item with a name `id`')
-
             store = self.catalog[name].store
-            meta_schema = store.get_meta_schema(meta_keys)
+            primary_schema = store.get_primary_schema()
+
+            if not primary_schema:
+                raise ValueError("DataFrame must have at least one primary key")
 
             self.data_tables[name] = DataTable(
                 name=name,
-                meta_keys=meta_keys,
-                meta_table=ms.create_meta_table(name, meta_schema),
+                meta_table=ms.create_meta_table(name, primary_schema),
                 table_store=store
 
             )

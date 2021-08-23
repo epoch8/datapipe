@@ -7,11 +7,11 @@ from pathlib import Path
 
 from sqlalchemy import Column
 
-from datapipe.store.types import Index
+from datapipe.store.types import Index, DataSchema
 
 
 class TableStore(ABC):
-    def get_meta_schema(self, meta_keys: List[str]) -> List[Column]:
+    def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
 
     def delete_rows(self, idx: Index) -> None:

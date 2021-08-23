@@ -3,7 +3,7 @@ from typing import Union, List
 import pandas as pd
 from sqlalchemy import Column
 
-Index = Union[List, pd.Index]
+Index = pd.DataFrame
 ChunkMeta = Index
 
 DataSchema = List[Column]

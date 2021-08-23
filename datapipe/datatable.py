@@ -22,14 +22,13 @@ class DataTable:
     def __init__(
         self,
         name: str,
-        meta_keys: List[str],
         meta_table: MetaTable,
         table_store: TableStore,  # Если None - создается по дефолту
     ):
         self.name = name
-        self.meta_keys = tuple(meta_keys)
         self.meta_table = meta_table
         self.table_store = table_store
+        self.primary_keys = meta_table.primary_keys
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
         res = old_meta_df.loc[deleted_idx]
@@ -45,14 +44,15 @@ class DataTable:
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
         logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
 
-        new_idx, changed_idx, new_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+        # TODO implement transaction meckanism
+        self.table_store.insert_rows(new_df)
+        self.table_store.update_rows(changed_df)
 
-        self.table_store.insert_rows(data_df.loc[new_idx])
-        self.table_store.update_rows(data_df.loc[changed_idx])
+        self.meta_table.insert_meta_for_store_chunk(new_meta_df)
+        self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        self.meta_table.update_meta_for_store_chunk(new_meta_df)
-
-        return list(data_df.index)
+        return data_df[self.primary_keys]
 
     def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
@@ -67,7 +67,7 @@ class DataTable:
         deleted_dfs = self.meta_table.get_stale_idx(process_ts)
 
         for deleted_df in deleted_dfs:
-            deleted_idx = deleted_df.index
+            deleted_idx = deleted_df[self.primary_keys]
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.update_meta_for_sync_meta(deleted_idx)
 

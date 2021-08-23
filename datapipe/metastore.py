@@ -9,7 +9,7 @@ from sqlalchemy import Table, Column, Numeric, Integer, Float, func, union, alia
 
 import pandas as pd
 
-from datapipe.store.types import Index, ChunkMeta
+from datapipe.store.types import Index, ChunkMeta, DataSchema
 from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.event_logger import EventLogger
 
@@ -32,13 +32,22 @@ class TableDebugInfo:
 
 
 class MetaTable:
-    def __init__(self, dbconn: DBConn, name: str, meta_schema: List[Column], event_logger: EventLogger):
+    def __init__(
+        self,
+        dbconn: DBConn,
+        name: str,
+        primary_schema: DataSchema,
+        event_logger: EventLogger
+    ):
         self.dbconn = dbconn
         self.name = name
         self.event_logger = event_logger
+        self.primary_keys = [column.name for column in primary_schema]
 
-        id_schema = [Column('id', Integer(), primary_key=True, autoincrement=False)]
-        sql_schema = id_schema + meta_schema + METADATA_SQL_SCHEMA
+        for item in primary_schema:
+            item.primary_key = True
+
+        sql_schema = primary_schema + METADATA_SQL_SCHEMA
 
         self.sql_schema = [i.copy() for i in sql_schema]
 
@@ -50,37 +59,67 @@ class MetaTable:
 
         self.sql_table.create(self.dbconn.con, checkfirst=True)
 
-    # Indec -> pd.DataFrame and schema
     def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
         sql = select(self.sql_schema)
 
         if idx is not None:
-            sql = sql.where(self.sql_table.c.id.in_(list(idx)))
+            row_queries = []
+
+            for _, row in idx.iterrows():
+                and_params = [self.sql_table.c[key] == row[key] for key in self.primary_keys]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            sql = sql.where(or_(*row_queries))
 
         return pd.read_sql_query(
             sql,
-            con=self.dbconn.con,
-            index_col='id',
+            con=self.dbconn.con
         )
 
-    # + INdex cols
     def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
-        # data
+        res_df = df[self.primary_keys]
 
-        return pd.DataFrame(
-            {
-                'hash': pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1)),
-                'create_ts': now,
-                'update_ts': now,
-                'process_ts': now,
-                'delete_ts': None,
-            },
-            index=df.index
-        )
+        res_df['hash'] = self._get_hash_for_df(df)
+        res_df['create_ts'] = now
+        res_df['update_ts'] = now
+        res_df['process_ts'] = now
+        res_df['delete_ts'] = None
+
+        return res_df
+
+    def _get_hash_for_df(self, df) -> pd.DataFrame:
+        return pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
+
+    # Fix numpy types in Index
+    def _get_sql_param(self, param):
+        return param.item() if hasattr(param, "item") else param
 
     def get_existing_idx(self, idx: Index = None) -> Index:
-        # FIXME more effective implementation
-        return self.get_metadata(idx).index
+        sql = select(self.sql_schema)
+
+        if idx is not None:
+            idx_cols = list(set(idx.columns) & set(self.primary_keys))
+
+            if not idx_cols:
+                raise ValueError("Index does not contain any primary key ")
+
+            row_queries = []
+
+            for _, row in idx.iterrows():
+                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in idx_cols]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            sql = sql.where(or_(*row_queries))
+
+        sql = sql.where(self.sql_table.c.delete_ts == None)
+        res_df = pd.read_sql_query(
+            sql,
+            con=self.dbconn.con,
+        )
+
+        return res_df[self.primary_keys]
 
     def get_table_debug_info(self, name: str) -> TableDebugInfo:
         return TableDebugInfo(
@@ -96,48 +135,59 @@ class MetaTable:
     ) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
         '''
         Returns:
-            new_idx, changed_idx, new_meta_df
+            new_df, changed_df, new_meta_df, changed_meta_df
         '''
 
         if now is None:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_df.index)
+        existing_meta_df = self.get_metadata(data_df)
 
-        # найти что изменилось
-        new_meta_df = self._make_new_metadata_df(now, data_df)
+        # Дополняем данные методанными
+        merged_df = pd.merge(data_df, existing_meta_df,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
+        merged_df['data_hash'] = self._get_hash_for_df(data_df)
 
-        common_idx = existing_meta_df.index.intersection(new_meta_df.index)
-        changed_idx = common_idx[new_meta_df.loc[common_idx, 'hash'] != existing_meta_df.loc[common_idx, 'hash']]
+        # Ищем новые записи
+        new_df = data_df[(merged_df['hash'].isna()) | (merged_df['delete_ts'].notnull())]
 
-        # найти что добавилось
-        new_idx = new_meta_df.index.difference(existing_meta_df.index)
+        # Создаем мета данные для новых записей
+        new_meta_data_df = data_df[(merged_df['hash'].isna())]
+        new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
-        # обновить метаданные (удалить и записать всю new_meta_df, потому что изменился processed_ts)
-        if len(new_meta_df) > 0:
-            not_changed_idx = existing_meta_df.index.difference(changed_idx)
+        # Ищем изменившиеся записи
+        changed_idx = (merged_df['hash'].notna()) & \
+            (merged_df['delete_ts'].isnull()) & \
+            (merged_df['hash'] != merged_df['data_hash'])
+        changed_df = data_df[changed_idx]
 
-            new_meta_df.loc[changed_idx, 'create_ts'] = existing_meta_df.loc[changed_idx, 'create_ts']
-            new_meta_df.loc[not_changed_idx, 'update_ts'] = existing_meta_df.loc[not_changed_idx, 'update_ts']
+        # Меняем мета данные для существующих записей
+        changed_meta_idx = (merged_df['hash'].notna()) & (merged_df['hash'] != merged_df['data_hash'])
+        changed_meta_df = merged_df[merged_df['hash'].notna()]
 
-        # TODO вынести в compute
-        if len(new_idx) > 0 or len(changed_idx) > 0:
+        changed_meta_df['process_ts'] = now
+        changed_meta_df['delete_ts'] = None
+        changed_meta_df['hash'] = changed_meta_df['data_hash']
+        changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
+
+        if len(new_df.index) > 0 or len(changed_idx) > 0:
             self.event_logger.log_state(
-                self.name, added_count=len(new_idx), updated_count=len(changed_idx), deleted_count=0
+                self.name, added_count=len(new_df.index), updated_count=len(changed_idx), deleted_count=0
             )
 
-        return new_idx, changed_idx, new_meta_df
+        return new_df, changed_df, new_meta_df, changed_meta_df
 
     def _delete_rows(self, idx: pd.Index) -> None:
         if len(idx) > 0:
-            logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
+            logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
-            sql = delete(self.sql_table).where(
-                self.sql_table.c.id.in_(list(idx))
-            )
+            now = time.time()
+            meta_df = self.get_metadata(idx)
 
-            self.dbconn.con.execute(sql)
+            meta_df["delete_ts"] = now
+            meta_df["process_ts"] = now
+
+            self._update_existing_rows(meta_df)
 
     def _insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
@@ -148,7 +198,7 @@ class MetaTable:
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
                 if_exists='append',
-                index_label='id',
+                index=False,
                 chunksize=1000,
                 method='multi',
                 dtype=sql_schema_to_dtype(self.sql_schema),
@@ -158,7 +208,6 @@ class MetaTable:
         if len(df) > 0:
             stmt = (
                 update(self.sql_table)
-                .where(self.sql_table.c.id == bindparam('b_id'))
                 .values({
                     'hash': bindparam('b_hash'),
                     'update_ts': bindparam('b_update_ts'),
@@ -167,16 +216,22 @@ class MetaTable:
                 })
             )
 
+            for key in self.primary_keys:
+                stmt = stmt.where(self.sql_table.c[key] == bindparam(f'b_{key}'))
+
+            columns = self.primary_keys + ['hash', 'update_ts', 'process_ts', 'delete_ts']
+
             self.dbconn.con.execute(
                 stmt,
                 [
                     {f'b_{k}': v for k, v in row.items()}
                     for row in
-                    df.reset_index()[['id', 'hash', 'update_ts', 'process_ts', 'delete_ts']]
+                    df.reset_index()[columns]
                     .to_dict(orient='records')
                 ]
             )
 
+    """
     def _update_rows(self, df: pd.DataFrame) -> None:
         existing_idx = self.get_existing_idx(df.index)
 
@@ -184,10 +239,14 @@ class MetaTable:
 
         self._update_existing_rows(df.loc[existing_idx])
         self._insert_rows(df.loc[missing_idx])
-
-    def update_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
+    """
+    def insert_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
         if len(new_meta_df) > 0:
-            self._update_rows(new_meta_df)
+            self._insert_rows(new_meta_df)
+
+    def update_meta_for_store_chunk(self, changed_meta_df: pd.DataFrame) -> None:
+        if len(changed_meta_df) > 0:
+            self._update_existing_rows(changed_meta_df)
 
     def update_meta_for_sync_meta(self, deleted_idx: pd.Index) -> None:
         if len(deleted_idx) > 0:
@@ -209,12 +268,14 @@ class MetaTable:
         return deleted_idx
 
     def get_stale_idx(self, process_ts: float) -> Iterator[pd.DataFrame]:
+        idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
+        sql = select(idx_cols).where(
+            self.sql_table.c.process_ts < process_ts
+        )
+
         return pd.read_sql_query(
-            select([self.sql_table.c.id]).where(
-                self.sql_table.c.process_ts < process_ts
-            ),
+            sql,
             con=self.dbconn.con,
-            index_col='id',
             chunksize=1000
         )
 
@@ -230,13 +291,13 @@ class MetaStore:
         self.meta_tables: Dict[str, MetaTable] = {}
 
     # + Index cols
-    def create_meta_table(self, name: str, meta_schema: List[Column]) -> MetaTable:
+    def create_meta_table(self, name: str, primary_schema: DataSchema) -> MetaTable:
         assert(name not in self.meta_tables)
 
         res = MetaTable(
             dbconn=self.dbconn,
             name=name,
-            meta_schema=meta_schema,
+            primary_schema=primary_schema,
             event_logger=self.event_logger,
         )
 

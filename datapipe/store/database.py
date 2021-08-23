@@ -5,16 +5,12 @@ import pandas as pd
 
 from dataclasses import dataclass
 from sqlalchemy import Column, Table, Integer, create_engine, MetaData
-from sqlalchemy.sql.expression import select, delete
-
-from datapipe.store.types import Index
+from sqlalchemy.sql.expression import select, delete, and_, or_
+from datapipe.store.types import Index, DataSchema
 from datapipe.store.table_store import TableStore
 
 
 logger = logging.getLogger('datapipe.store.database')
-
-
-PRIMARY_KEY = [Column('id', Integer(), primary_key=True)]
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
@@ -69,6 +65,8 @@ class TableStoreDB(TableStore):
         self.name = name
         self.filters = {}
 
+        # TODO remove when filters are implemented
+        """
         const_idx_schema = []
 
         if const_idx:
@@ -78,7 +76,11 @@ class TableStoreDB(TableStore):
 
                 const_idx_schema.append(item.column)
 
-        self.data_sql_schema = PRIMARY_KEY + const_idx_schema + data_sql_schema
+        self.data_sql_schema = const_idx_schema + data_sql_schema
+        """
+
+        self.data_sql_schema = data_sql_schema
+        self.primary_keys = [column.name for column in self.data_sql_schema if column.primary_key]
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
@@ -89,47 +91,49 @@ class TableStoreDB(TableStore):
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
-    def get_meta_schema(self, meta_keys: List[str]) -> List[Column]:
-        columns = [column for column in self.data_sql_schema if column.name in meta_keys]
-        find_keys = [column.name for column in columns]
-
-        if sorted(meta_keys) != sorted(find_keys):
-            raise ValueError('Finded columns in TableStoreDB doesn`t equal meta_keys')
-
-        return columns
+    def get_primary_schema(self) -> DataSchema:
+        return [column for column in self.data_sql_schema if column.primary_key]
 
     def delete_rows(self, idx: Index) -> None:
-        if len(idx) > 0:
-            logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
+        print('DELETE', idx)
+        if len(idx.index):
+            logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
-            sql = delete(self.data_table).where(
-                self.data_table.c.id.in_(list(idx))
-            )
+            row_queries = []
 
+            for _, row in idx.iterrows():
+                and_params = [self.data_table.c[key] == row[key] for key in self.primary_keys]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            sql = delete(self.data_table).where(or_(*row_queries))
+
+            """
             if self.filters:
                 for key in self.filters.keys():
                     column = getattr(self.data_table.c, key)
                     sql = sql.where(column == self.filters[key])
-
+            """
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
-
+            """
             if self.filters:
                 if set(self.filters.keys()) & set(df.columns):
                     raise ValueError("DataFrame has constant index columns")
 
                 for key in self.filters.keys():
                     df[key] = self.filters[key]
+            """
 
             df.to_sql(
                 name=self.name,
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
                 if_exists='append',
-                index_label='id',
+                index=False,
                 chunksize=1000,
                 method='multi',
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
@@ -140,25 +144,34 @@ class TableStoreDB(TableStore):
                     del df[key]
 
     def update_rows(self, df: pd.DataFrame) -> None:
-        self.delete_rows(df.index)
+        self.delete_rows(df)
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        exclude_cols = self.filters.keys() if self.filters else []
-        sql_fields = [col for col in self.data_table.columns
-                      if col.name not in exclude_cols]
-        sql = select(sql_fields)
+        sql = select(self.data_table.c)
 
         if idx is not None:
-            sql = sql.where(self.data_table.c.id.in_(list(idx)))
+            idx_cols = list(set(idx.columns) & set(self.primary_keys))
 
+            if not idx_cols:
+                raise ValueError("DataFrame does not contain any primary key ")
+
+            row_queries = []
+
+            for _, row in idx.iterrows():
+                and_params = [self.data_table.c[key] == row[key] for key in idx_cols]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            sql = sql.where(or_(*row_queries))
+
+        """
         if self.filters:
             for key in self.filters.keys():
                 column = getattr(self.data_table.c, key)
                 sql = sql.where(column == self.filters[key])
-
+        """
         return pd.read_sql_query(
             sql,
-            con=self.dbconn.con,
-            index_col='id',
+            con=self.dbconn.con
         )
