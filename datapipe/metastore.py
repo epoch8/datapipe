@@ -384,7 +384,7 @@ class MetaStore:
                     inp_tbls
                 )
             ).where(
-                and_(
+                or_(
                     or_(
                         (
                             out.c.process_ts
