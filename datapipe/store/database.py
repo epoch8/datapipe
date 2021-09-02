@@ -95,14 +95,13 @@ class TableStoreDB(TableStore):
         return [column for column in self.data_sql_schema if column.primary_key]
 
     def delete_rows(self, idx: Index) -> None:
-        print('DELETE', idx)
         if len(idx.index):
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
             row_queries = []
 
             for _, row in idx.iterrows():
-                and_params = [self.data_table.c[key] == row[key] for key in self.primary_keys]
+                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
 
@@ -138,30 +137,33 @@ class TableStoreDB(TableStore):
                 method='multi',
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
             )
-
+            """
             if self.filters:
                 for key in self.filters.keys():
                     del df[key]
+            """
 
     def update_rows(self, df: pd.DataFrame) -> None:
         self.delete_rows(df)
         self.insert_rows(df)
 
+    # Fix numpy types in Index
+    def _get_sql_param(self, param):
+        return param.item() if hasattr(param, "item") else param
+
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
         sql = select(self.data_table.c)
 
         if idx is not None:
-            idx_cols = list(set(idx.columns) & set(self.primary_keys))
-
-            if not idx_cols:
-                raise ValueError("DataFrame does not contain any primary key ")
-
             row_queries = []
 
             for _, row in idx.iterrows():
-                and_params = [self.data_table.c[key] == row[key] for key in idx_cols]
+                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
+
+            if not row_queries:
+                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
             sql = sql.where(or_(*row_queries))
 

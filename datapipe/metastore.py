@@ -66,7 +66,7 @@ class MetaTable:
             row_queries = []
 
             for _, row in idx.iterrows():
-                and_params = [self.sql_table.c[key] == row[key] for key in self.primary_keys]
+                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
 
@@ -162,13 +162,13 @@ class MetaTable:
         changed_df = data_df[changed_idx]
 
         # Меняем мета данные для существующих записей
-        changed_meta_idx = (merged_df['hash'].notna()) & (merged_df['hash'] != merged_df['data_hash'])
+        changed_meta_idx = (merged_df['hash'].notna()) & (merged_df['hash'] != merged_df['data_hash']) | (merged_df['delete_ts'].notnull())
         changed_meta_df = merged_df[merged_df['hash'].notna()]
 
+        changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
         changed_meta_df['process_ts'] = now
         changed_meta_df['delete_ts'] = None
         changed_meta_df['hash'] = changed_meta_df['data_hash']
-        changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
 
         if len(new_df.index) > 0 or len(changed_idx) > 0:
             self.event_logger.log_state(
@@ -253,24 +253,27 @@ class MetaTable:
             self._delete_rows(deleted_idx)
 
     def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
-        idx = pd.Index([])
-        for chunk in chunks:
-            idx = idx.union(chunk)
+        idx = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=self.primary_keys)
+        existing_idx = self.get_existing_idx(processed_idx)
 
-        existing_meta_df = self.get_metadata(idx=processed_idx)
+        idx['exist'] = True
 
-        deleted_idx = existing_meta_df.index.difference(idx)
+        merged_df = pd.merge(existing_idx, idx,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
+        deleted_df = merged_df[merged_df['exist'].isna()]
 
-        if len(deleted_idx) > 0:
+        if len(deleted_df.index) > 0:
             # TODO вынести в compute
-            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
-        return deleted_idx
+        return deleted_df[self.primary_keys]
 
     def get_stale_idx(self, process_ts: float) -> Iterator[pd.DataFrame]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
-            self.sql_table.c.process_ts < process_ts
+            and_(
+                self.sql_table.c.process_ts < process_ts,
+                self.sql_table.c.delete_ts.is_(None)
+            )
         )
 
         return pd.read_sql_query(
@@ -290,7 +293,6 @@ class MetaStore:
 
         self.meta_tables: Dict[str, MetaTable] = {}
 
-    # + Index cols
     def create_meta_table(self, name: str, primary_schema: DataSchema) -> MetaTable:
         assert(name not in self.meta_tables)
 
@@ -322,53 +324,77 @@ class MetaStore:
         if len(inputs) == 0:
             return (0, iter([]))
 
+        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
+        out_p_keys = [set(out.primary_keys) for out in outputs]
+        join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+
+        if not join_keys:
+            raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(
                 tbl_bbb[0],
-                tbl_a.c.id == tbl_bbb[0].c.id,
+                and_(tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys),
                 isouter=True
             )
             for tbl_b in tbl_bbb[1:]:
                 q = q.join(
                     tbl_b,
-                    tbl_a.c.id == tbl_b.c.id,
+                    and_(tbl_a.c[key] == tbl_b.c[key] for key in join_keys),
                     isouter=True
                 )
 
             return q
 
+        inp_tbls = [inp.sql_table.alias(f"inp_{inp.sql_table.name}") for inp in inputs]
+        out_tbls = [out.sql_table.alias(f"out_{out.sql_table.name}") for out in outputs]
         sql_requests = []
 
-        for inp in inputs:
-            sql = select([inp.sql_table.c.id]).select_from(
+        for inp in inp_tbls:
+            fields = [inp.c[key] for key in join_keys]
+            sql = select(fields).select_from(
                 left_join(
-                    inp.sql_table,
-                    [out.sql_table for out in outputs]
+                    inp,
+                    out_tbls
                 )
             ).where(
                 or_(
-                    or_(
-                        (
-                            out.sql_table.c.process_ts
-                            <
-                            inp.sql_table.c.update_ts
+                    and_(
+                        or_(
+                            (
+                                out.c.process_ts
+                                <
+                                inp.c.update_ts
+                            ),
+                            out.c.process_ts.is_(None)
                         ),
-                        out.sql_table.c.process_ts.is_(None)
+                        inp.c.delete_ts.is_(None)
                     )
-                    for out in outputs
+                    for out in out_tbls
                 )
             )
 
             sql_requests.append(sql)
 
-        for out in outputs:
-            sql = select([out.sql_table.c.id]).select_from(
+        for out in out_tbls:
+            fields = [out.c[key] for key in join_keys]
+            sql = select(fields).select_from(
                 left_join(
-                    out.sql_table,
-                    [inp.sql_table for inp in inputs]
+                    out,
+                    inp_tbls
                 )
             ).where(
-                and_(inp.sql_table.c.id.is_(None) for inp in inputs)
+                and_(
+                    or_(
+                        (
+                            out.c.process_ts
+                            <
+                            inp.c.delete_ts
+                        ),
+                        inp.c.create_ts.is_(None)
+                    )
+                    for inp in inp_tbls
+                )
             )
 
             sql_requests.append(sql)
@@ -385,6 +411,5 @@ class MetaStore:
         return idx_count, pd.read_sql_query(
             u1,
             con=self.dbconn.con,
-            index_col='id',
             chunksize=chunksize
         )

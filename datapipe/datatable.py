@@ -42,7 +42,7 @@ class DataTable:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
-        logger.debug(f'Inserting chunk {len(data_df)} rows into {self.name}')
+        logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
         # TODO implement transaction meckanism
@@ -54,7 +54,7 @@ class DataTable:
 
         return data_df[self.primary_keys]
 
-    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> None:
+    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: Index = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         deleted_idx = self.meta_table.get_changes_for_sync_meta(chunks, processed_idx)
 
@@ -109,7 +109,7 @@ def get_process_chunks(
     def gen():
         if idx_count > 0:
             for idx in idx_gen:
-                yield idx, [inp.get_data(idx.index) for inp in inputs]
+                yield idx, [inp.get_data(idx) for inp in inputs]
 
     return idx_count, gen()
 
@@ -196,6 +196,7 @@ def inc_process_many(
 
     if idx_count > 0:
         for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
+
             if sum(len(j) for j in input_dfs) > 0:
                 try:
                     chunks_df = proc_func(*input_dfs, **kwargs)
@@ -213,11 +214,11 @@ def inc_process_many(
 
                     # Добавляем результат в результирующие чанки
                     res_index = res_dt.store_chunk(chunk_df_k)
-                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx.index)
+                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx)
 
             else:
                 for k, res_dt in enumerate(res_dts):
-                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx.index)
+                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx)
 
 
 # TODO перенести в compute.BatchTransformStep
