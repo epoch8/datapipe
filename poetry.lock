@@ -62,16 +62,17 @@ python-versions = "*"
 
 [[package]]
 name = "attrs"
-version = "19.1.0"
+version = "21.2.0"
 description = "Classes Without Boilerplate"
 category = "main"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.extras]
-dev = ["coverage", "hypothesis", "pympler", "pytest", "six", "zope.interface", "sphinx", "pre-commit"]
-docs = ["sphinx", "zope.interface"]
-tests = ["coverage", "hypothesis", "pympler", "pytest", "six", "zope.interface"]
+dev = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins", "zope.interface", "furo", "sphinx", "sphinx-notfound-page", "pre-commit"]
+docs = ["furo", "sphinx", "zope.interface", "sphinx-notfound-page"]
+tests = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins", "zope.interface"]
+tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins"]
 
 [[package]]
 name = "azure-core"
@@ -294,27 +295,29 @@ test = ["pytest (>=6.0)", "pytest-cov", "pytest-subtests", "pytest-xdist", "pret
 
 [[package]]
 name = "dash"
-version = "2.0.0"
+version = "1.20.0"
 description = "A Python framework for building reactive web-apps. Developed by Plotly."
 category = "main"
 optional = true
-python-versions = ">=3.6"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [package.dependencies]
-dash-core-components = "2.0.0"
-dash-html-components = "2.0.0"
-dash-table = "5.0.0"
+dash-core-components = "1.16.0"
+dash-html-components = "1.1.3"
+dash_renderer = "1.9.1"
+dash-table = "4.11.3"
 Flask = ">=1.0.4"
 flask-compress = "*"
-plotly = ">=5.0.0"
+future = "*"
+plotly = "*"
 
 [package.extras]
-dev = ["dash-flow-example (==0.0.5)", "dash-dangerously-set-inner-html", "mock (==4.0.3)", "flake8 (==3.9.2)", "PyYAML (==5.4.1)", "pylint (==2.10.2)", "black (==21.6b0)", "fire (==0.4.0)", "coloredlogs (==15.0.1)", "flask-talisman (==0.8.1)", "isort (==4.3.21)", "orjson (==3.3.1)", "orjson (==3.6.1)"]
-testing = ["pytest (>=6.0.2)", "pytest-sugar (>=0.9.4)", "pytest-mock (>=3.2.0)", "lxml (>=4.6.2)", "selenium (>=3.141.0)", "percy (>=2.0.2)", "requests[security] (>=2.21.0)", "beautifulsoup4 (>=4.8.2)", "waitress (>=1.4.4)", "diskcache (>=5.2.1)", "multiprocess (>=0.70.12)", "redis (>=3.5.3)", "psutil (>=5.8.0)", "celery[redis] (>=5.1.2)", "flaky (>=3.7.0)", "cryptography (<3.4)"]
+dev = ["dash_flow_example (==0.0.5)", "dash-dangerously-set-inner-html", "flake8 (==3.8.4)", "PyYAML (==5.3.1)", "fire (==0.3.1)", "coloredlogs (==15.0)", "flask-talisman (==0.7.0)", "isort (==4.3.21)", "pylint (==1.9.5)", "mock (==3.0.5)", "virtualenv (==20.2.2)", "mock (==4.0.3)", "black (==19.10b0)", "pylint (==2.6.0)", "astroid (==2.4.2)"]
+testing = ["pytest-sugar (>=0.9.4)", "lxml (>=4.6.2)", "selenium (>=3.141.0)", "percy (>=2.0.2)", "requests[security] (>=2.21.0)", "waitress (>=1.4.4)", "cryptography (<3.4)", "pytest (>=4.6,<5)", "pytest-mock (>=2.0.0,<3)", "beautifulsoup4 (>=4.8.2,<=4.9.3)", "pytest (>=6.0.2)", "pytest-mock (>=3.2.0)", "beautifulsoup4 (>=4.8.2)"]
 
 [[package]]
 name = "dash-bootstrap-components"
-version = "0.13.0"
+version = "0.12.2"
 description = "Bootstrap themed components for use in Plotly Dash"
 category = "main"
 optional = true
@@ -328,7 +331,7 @@ pandas = ["numpy", "pandas"]
 
 [[package]]
 name = "dash-core-components"
-version = "2.0.0"
+version = "1.16.0"
 description = "Core component suite for Dash"
 category = "main"
 optional = true
@@ -336,7 +339,7 @@ python-versions = "*"
 
 [[package]]
 name = "dash-html-components"
-version = "2.0.0"
+version = "1.1.3"
 description = "Vanilla HTML components for Dash"
 category = "main"
 optional = true
@@ -351,8 +354,16 @@ optional = true
 python-versions = "*"
 
 [[package]]
+name = "dash-renderer"
+version = "1.9.1"
+description = "Front-end component renderer for Dash"
+category = "main"
+optional = true
+python-versions = "*"
+
+[[package]]
 name = "dash-table"
-version = "5.0.0"
+version = "4.11.3"
 description = "Dash table"
 category = "main"
 optional = true
@@ -447,17 +458,6 @@ python-versions = "*"
 
 [package.dependencies]
 Django = ">=2.0.1"
-
-[[package]]
-name = "django-ranged-fileresponse"
-version = "0.1.2"
-description = "Modified Django FileResponse that adds Content-Range headers."
-category = "main"
-optional = true
-python-versions = "*"
-
-[package.extras]
-test = ["pytest (>=3.0.5)", "pytest-cov (>=2.4.0)", "pytest-flake8 (>=0.8.1)", "django (>=1.8.0)"]
 
 [[package]]
 name = "django-redis-cache"
@@ -640,6 +640,14 @@ s3 = ["s3fs"]
 sftp = ["paramiko"]
 smb = ["smbprotocol"]
 ssh = ["paramiko"]
+
+[[package]]
+name = "future"
+version = "0.18.2"
+description = "Clean single-source support for Python 3 and 2"
+category = "main"
+optional = true
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "gcsfs"
@@ -882,7 +890,7 @@ format_nongpl = ["idna", "jsonpointer (>1.13)", "webcolors", "rfc3986-validator 
 
 [[package]]
 name = "label-studio"
-version = "1.0.2.post0"
+version = "1.0.0.post3"
 description = "Label Studio annotation tool"
 category = "main"
 optional = true
@@ -891,7 +899,7 @@ python-versions = ">=3.6"
 [package.dependencies]
 appdirs = ">=1.4.3"
 attr = "0.3.1"
-attrs = "19.1.0"
+attrs = ">=19.1.0"
 azure-storage-blob = ">=12.6.0"
 boto = "2.49.0"
 boto3 = "1.16.28"
@@ -905,7 +913,6 @@ django-debug-toolbar = "3.2"
 django-extensions = "3.1.0"
 django-filter = "2.4.0"
 django-model-utils = "4.1.1"
-django-ranged-fileresponse = "0.1.2"
 django-redis-cache = "3.0.0"
 django-rest-swagger = "2.2.0"
 django-rq = "2.3.2"
@@ -916,8 +923,8 @@ drf-yasg = "1.20.0"
 google-cloud-storage = "1.28.1"
 htmlmin = "0.1.12"
 jsonschema = "3.2.0"
-label-studio-converter = "0.0.28"
-lockfile = ">=0.12.0"
+label-studio-converter = "0.0.26"
+lockfile = "0.12.2"
 lxml = ">=4.2.5"
 moto = "1.3.16.dev122"
 numpy = ">=1.19.1"
@@ -938,7 +945,7 @@ xmljson = "0.2.0"
 
 [[package]]
 name = "label-studio-converter"
-version = "0.0.28"
+version = "0.0.26"
 description = "Format converter add-on for Label Studio"
 category = "main"
 optional = true
@@ -1254,14 +1261,15 @@ tenacity = ">=6.2.0"
 
 [[package]]
 name = "pluggy"
-version = "0.13.1"
+version = "1.0.0"
 description = "plugin and hook calling mechanisms for python"
 category = "dev"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+python-versions = ">=3.6"
 
 [package.extras]
 dev = ["pre-commit", "tox"]
+testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
 name = "protobuf"
@@ -1364,24 +1372,23 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "pytest"
-version = "6.1.2"
+version = "6.2.5"
 description = "pytest: simple powerful testing with Python"
 category = "dev"
 optional = false
-python-versions = ">=3.5"
+python-versions = ">=3.6"
 
 [package.dependencies]
 atomicwrites = {version = ">=1.0", markers = "sys_platform == \"win32\""}
-attrs = ">=17.4.0"
+attrs = ">=19.2.0"
 colorama = {version = "*", markers = "sys_platform == \"win32\""}
 iniconfig = "*"
 packaging = "*"
-pluggy = ">=0.12,<1.0"
+pluggy = ">=0.12,<2.0"
 py = ">=1.8.2"
 toml = "*"
 
 [package.extras]
-checkqa_mypy = ["mypy (==0.780)"]
 testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "requests", "xmlschema"]
 
 [[package]]
@@ -1759,7 +1766,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "9310d130fc881e11d87510404717778c8b243c511c487ac08290f9d5698d2d9b"
+content-hash = "1bc688da7c9a8e0fe5623616e65f656218d2cfc3bf95f48d636c86bf031e92b6"
 
 [metadata.files]
 aiohttp = [
@@ -1822,8 +1829,8 @@ attr = [
     {file = "attr-0.3.1.tar.gz", hash = "sha256:9091548058d17f132596e61fa7518e504f76b9a4c61ca7d86e1f96dbf7d4775d"},
 ]
 attrs = [
-    {file = "attrs-19.1.0-py2.py3-none-any.whl", hash = "sha256:69c0dbf2ed392de1cb5ec704444b08a5ef81680a61cb899dc08127123af36a79"},
-    {file = "attrs-19.1.0.tar.gz", hash = "sha256:f0b870f674851ecbfbbbd364d6b5cbdff9dcedbc7f3f5e18a6891057f21fe399"},
+    {file = "attrs-21.2.0-py2.py3-none-any.whl", hash = "sha256:149e90d6d8ac20db7a955ad60cf0e6881a3f20d37096140088356da6c716b0b1"},
+    {file = "attrs-21.2.0.tar.gz", hash = "sha256:ef6aaac3ca6cd92904cdd0d83f629a15f18053ec84e6432106f7a4d04ae4f5fb"},
 ]
 azure-core = [
     {file = "azure-core-1.18.0.zip", hash = "sha256:7f17db829c926ab3b922d63b6f0b86ef3c597487fbb264defa8eb4ccb761e8a0"},
@@ -1993,24 +2000,26 @@ cryptography = [
     {file = "cryptography-3.4.8.tar.gz", hash = "sha256:94cc5ed4ceaefcbe5bf38c8fba6a21fc1d365bb8fb826ea1688e3370b2e24a1c"},
 ]
 dash = [
-    {file = "dash-2.0.0-py3-none-any.whl", hash = "sha256:23f331533663641a5c70a15c46da26d29ef5335f9aeb8bc03d09de865fc7cd62"},
-    {file = "dash-2.0.0.tar.gz", hash = "sha256:29277c24e2f795b069cb102ce1ab0cd3ad5cf9d3b4fd16c03da9671a5eea28a4"},
+    {file = "dash-1.20.0.tar.gz", hash = "sha256:127c16f71d3c8345dd29ab2aed099330aafd6d558734bec5bbcccadd0a7e6b29"},
 ]
 dash-bootstrap-components = [
-    {file = "dash-bootstrap-components-0.13.0.tar.gz", hash = "sha256:6ebbf564e62221468b0233a1e53cbc5df0b2bd9aeb90e0d77517289ce396f28c"},
-    {file = "dash_bootstrap_components-0.13.0-py3-none-any.whl", hash = "sha256:351a590c09668baefcf86833653ab127b961ab7a1beed76ee4fd93d2506f3ece"},
+    {file = "dash-bootstrap-components-0.12.2.tar.gz", hash = "sha256:b3266967f16d542ce715fd8ea0ed082b56e64dfa623750bf8150b72fe7b303ff"},
+    {file = "dash_bootstrap_components-0.12.2-py3-none-any.whl", hash = "sha256:4f697a0996e458a17859614a429f093ab0e143ab359b825e7ac0c1625738c2c8"},
 ]
 dash-core-components = [
-    {file = "dash_core_components-2.0.0.tar.gz", hash = "sha256:c6733874af975e552f95a1398a16c2ee7df14ce43fa60bb3718a3c6e0b63ffee"},
+    {file = "dash_core_components-1.16.0.tar.gz", hash = "sha256:e8cdfaf3580577670bb2d1c3168efa06f5a7b439fbe5527cfaefa3e32394542f"},
 ]
 dash-html-components = [
-    {file = "dash_html_components-2.0.0.tar.gz", hash = "sha256:8703a601080f02619a6390998e0b3da4a5daabe97a1fd7a9cebc09d015f26e50"},
+    {file = "dash_html_components-1.1.3.tar.gz", hash = "sha256:88adb77a674d5d7d0835d71c469f6e7b4aa692f9673808a474d244b71863c58a"},
 ]
 dash-interactive-graphviz = [
     {file = "dash_interactive_graphviz-0.3.0.tar.gz", hash = "sha256:84bf319e4272bc08a23e47a643c3c69a847c7e10418099a7e21f4f2588fc37b8"},
 ]
+dash-renderer = [
+    {file = "dash_renderer-1.9.1.tar.gz", hash = "sha256:73a69e3d145880e68e42723ad10182251d92b44f3efe92b8763145cfd2158e7e"},
+]
 dash-table = [
-    {file = "dash_table-5.0.0.tar.gz", hash = "sha256:18624d693d4c8ef2ddec99a6f167593437a7ea0bf153aa20f318c170c5bc7308"},
+    {file = "dash_table-4.11.3.tar.gz", hash = "sha256:0a4f22a5cf5120882a252a3348fc15ef45a1b75bf900934783e338aceac52f56"},
 ]
 decorator = [
     {file = "decorator-5.1.0-py3-none-any.whl", hash = "sha256:7b12e7c3c6ab203a29e157335e9122cb03de9ab7264b137594103fd4a683b374"},
@@ -2043,9 +2052,6 @@ django-filter = [
 django-model-utils = [
     {file = "django-model-utils-4.1.1.tar.gz", hash = "sha256:eb5dd05ef7d7ce6bc79cae54ea7c4a221f6f81e2aad7722933aee66489e7264b"},
     {file = "django_model_utils-4.1.1-py3-none-any.whl", hash = "sha256:ef7c440024e797796a3811432abdd2be8b5225ae64ef346f8bfc6de7d8e5d73c"},
-]
-django-ranged-fileresponse = [
-    {file = "django-ranged-fileresponse-0.1.2.tar.gz", hash = "sha256:afafc1b0bbabfe8457e903e06139f1b18b9a1951a80a37453749b8afd5a63a73"},
 ]
 django-redis-cache = [
     {file = "django-redis-cache-3.0.0.tar.gz", hash = "sha256:9a2eebef421d996a82098a19d17ff6b321265cd73178fa398913019764e8394a"},
@@ -2096,6 +2102,9 @@ flask-compress = [
 fsspec = [
     {file = "fsspec-2021.5.0-py3-none-any.whl", hash = "sha256:a08daa28ecb98544350d62f8307a7678e410c4b5245e04d14fcf4a3f13e959a7"},
     {file = "fsspec-2021.5.0.tar.gz", hash = "sha256:30064d89b00c6acfe5d8e027b6c0ef3df25ca17fd1d5cad2e8208c9aa5300f8d"},
+]
+future = [
+    {file = "future-0.18.2.tar.gz", hash = "sha256:b1bead90b70cf6ec3f0710ae53a525360fa360d306a86583adc6bf83a4db537d"},
 ]
 gcsfs = [
     {file = "gcsfs-2021.5.0-py2.py3-none-any.whl", hash = "sha256:c8ed85f13d97efc8b055d2b5abc3528ced98fc288a7858c23bf6b197da55a6ba"},
@@ -2173,12 +2182,12 @@ jsonschema = [
     {file = "jsonschema-3.2.0.tar.gz", hash = "sha256:c8a85b28d377cc7737e46e2d9f2b4f44ee3c0e1deac6bf46ddefc7187d30797a"},
 ]
 label-studio = [
-    {file = "label-studio-1.0.2.post0.tar.gz", hash = "sha256:e9abae77020d824b42f294c86cc320a49d4a2bca21e7e10d5fc1748217f78be2"},
-    {file = "label_studio-1.0.2.post0-py3-none-any.whl", hash = "sha256:376659405db60cde29a9bc8b9290cd52da68283ef5d9bfd93d2c11fa5cb28181"},
+    {file = "label-studio-1.0.0.post3.tar.gz", hash = "sha256:65acfecc4b9795b9204ffdff484cdad6ac93521cf2d59cef19295af248800612"},
+    {file = "label_studio-1.0.0.post3-py3-none-any.whl", hash = "sha256:5ccee25c9b92c6a1b23602fcaa93dddc7b6842da7c9ffaf59fbe4979135a57b5"},
 ]
 label-studio-converter = [
-    {file = "label-studio-converter-0.0.28.tar.gz", hash = "sha256:cfc33087587e883419ba0a27ce01590cb2db1917e4532314c27d4a925d4bbd37"},
-    {file = "label_studio_converter-0.0.28-py3-none-any.whl", hash = "sha256:e238752dc7ba2164dd991da27920d63f09d8851d04f69a4f4a4ab4ad863ad923"},
+    {file = "label-studio-converter-0.0.26.tar.gz", hash = "sha256:52ecd517c2ef04dea696c4d3d5bde1ecd5c3e3eb4b0b4555e42d6e57d1f5491f"},
+    {file = "label_studio_converter-0.0.26-py3-none-any.whl", hash = "sha256:cd4e7170337f83613e6a2c136452185d81e8566fd4b70f1ddb18a3a367294572"},
 ]
 lockfile = [
     {file = "lockfile-0.12.2-py2.py3-none-any.whl", hash = "sha256:6c3cb24f344923d30b2785d5ad75182c8ea7ac1b6171b08657258ec7429d50fa"},
@@ -2483,8 +2492,8 @@ plotly = [
     {file = "plotly-5.3.1.tar.gz", hash = "sha256:6598393e898a9c5ae78397f76f07002ec41fd92e5f746d3b9806248d53885643"},
 ]
 pluggy = [
-    {file = "pluggy-0.13.1-py2.py3-none-any.whl", hash = "sha256:966c145cd83c96502c3c3868f50408687b38434af77734af1e9ca461a4081d2d"},
-    {file = "pluggy-0.13.1.tar.gz", hash = "sha256:15b2acde666561e1298d71b523007ed7364de07029219b604cf808bfa1c765b0"},
+    {file = "pluggy-1.0.0-py2.py3-none-any.whl", hash = "sha256:74134bbf457f031a36d68416e1509f34bd5ccc019f0bcc952c7b909d06b37bd3"},
+    {file = "pluggy-1.0.0.tar.gz", hash = "sha256:4224373bacce55f955a878bf9cfa763c1e360858e330072059e10bad68531159"},
 ]
 protobuf = [
     {file = "protobuf-3.17.3-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:ab6bb0e270c6c58e7ff4345b3a803cc59dbee19ddf77a4719c5b635f1d547aa8"},
@@ -2647,8 +2656,8 @@ pyrsistent = [
     {file = "pyrsistent-0.18.0.tar.gz", hash = "sha256:773c781216f8c2900b42a7b638d5b517bb134ae1acbebe4d1e8f1f41ea60eb4b"},
 ]
 pytest = [
-    {file = "pytest-6.1.2-py3-none-any.whl", hash = "sha256:4288fed0d9153d9646bfcdf0c0428197dba1ecb27a33bb6e031d002fa88653fe"},
-    {file = "pytest-6.1.2.tar.gz", hash = "sha256:c0a7e94a8cdbc5422a51ccdad8e6f1024795939cc89159a0ae7f0b316ad3823e"},
+    {file = "pytest-6.2.5-py3-none-any.whl", hash = "sha256:7310f8d27bc79ced999e760ca304d69f6ba6c6649c0b60fb0e04a4a77cacc134"},
+    {file = "pytest-6.2.5.tar.gz", hash = "sha256:131b36680866a76e6781d13f101efb86cf674ebb9762eb70d3082b6f29889e89"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.1.tar.gz", hash = "sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c"},
