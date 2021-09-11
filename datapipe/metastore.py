@@ -8,6 +8,7 @@ from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
 from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
 
 import pandas as pd
+from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.types import IndexDF, ChunkMeta, DataSchema, DataDF, MetadataDF
 from datapipe.store.database import DBConn, sql_schema_to_dtype
@@ -321,8 +322,13 @@ class MetaStore:
 
         self.meta_tables: Dict[str, MetaTable] = {}
 
-    def create_meta_table(self, name: str, primary_schema: DataSchema) -> MetaTable:
+    def create_meta_table(self, name: str, primary_schema: DataSchema = None) -> MetaTable:
         assert(name not in self.meta_tables)
+
+        if primary_schema is None:
+            primary_schema = [
+                Column('id', Integer, primary_key=True),
+            ]
 
         res = MetaTable(
             dbconn=self.dbconn,
