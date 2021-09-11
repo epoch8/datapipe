@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 
 import cloudpickle
@@ -8,19 +10,21 @@ from sqlalchemy.sql.sqltypes import Integer
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
 from datapipe.metastore import MetaStore
+from datapipe.types import DataDF
 
 from .util import assert_df_equal, assert_idx_equal
 
 
 TEST_SCHEMA = [
+    Column('id', Integer, primary_key=True),
     Column('a', Integer),
 ]
 
 TEST_DF = pd.DataFrame(
     {
-        'a': range(10)
+        'id': range(10),
+        'a': range(10),
     },
-    index=pd.Index([f'id_{i}' for i in range(10)], name='id'),
 )
 
 
@@ -57,7 +61,7 @@ def test_simple(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    tbl.store(TEST_DF)
+    tbl.store(cast(DataDF, TEST_DF))
 
 
 def test_store_less_values(dbconn) -> None:
