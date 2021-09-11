@@ -10,7 +10,7 @@ import pandas as pd
 import tqdm
 
 from datapipe.metastore import MetaTable, MetaStore
-from datapipe.types import Index, ChunkMeta
+from datapipe.types import IndexDF, ChunkMeta
 from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
@@ -36,10 +36,10 @@ class DataTable:
         res.loc[:, 'delete_ts'] = now
         return res
 
-    def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def get_metadata(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         return self.meta_table.get_metadata(idx)
 
-    def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def get_data(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def store_chunk(self, data_df: DataDF, now: float = None) -> MetadataDF:
@@ -89,7 +89,7 @@ class DataTable:
         for i in range(0, len(meta_df.index), chunksize):
             yield self.get_data(meta_df.index[i:i+chunksize])
 
-    def get_indexes(self, idx: Optional[Index] = None) -> Index:
+    def get_indexes(self, idx: Optional[IndexDF] = None) -> IndexDF:
         return self.meta_table.get_metadata(idx).index.tolist()
 
 

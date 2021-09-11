@@ -6,7 +6,7 @@ import pandas as pd
 from dataclasses import dataclass
 from sqlalchemy import Column, Table, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete, and_, or_
-from datapipe.store.types import Index, DataSchema
+from datapipe.types import IndexDF, DataSchema
 from datapipe.store.table_store import TableStore
 
 
@@ -94,7 +94,7 @@ class TableStoreDB(TableStore):
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
 
-    def delete_rows(self, idx: Index) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         if len(idx.index):
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
@@ -147,11 +147,11 @@ class TableStoreDB(TableStore):
         self.delete_rows(df)
         self.insert_rows(df)
 
-    # Fix numpy types in Index
+    # Fix numpy types in IndexDF
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         sql = select(self.data_table.c)
 
         if idx is not None:

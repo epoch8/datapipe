@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import IO, Optional, Any, Dict, List, Union
+from typing import IO, Optional, Any, Dict, List, Union, cast
 from pathlib import Path
 
 import re
@@ -9,7 +9,7 @@ import pandas as pd
 
 from PIL import Image
 
-from datapipe.store.types import Index
+from datapipe.types import IndexDF
 from datapipe.store.table_store import TableStore
 
 
@@ -107,7 +107,7 @@ class TableStoreFiledir(TableStore):
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
 
-    def delete_rows(self, idx: Index) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать
         # Do not delete old files for now
         # Consider self.readonly as well
@@ -119,13 +119,16 @@ class TableStoreFiledir(TableStore):
     def insert_rows(self, df: pd.DataFrame) -> None:
         assert(not self.readonly)
 
-        for i, data in zip(df.index, df.to_dict('records')):
+        for i, data in zip(df.index, cast(List[Dict[str, Any]], df.to_dict('records'))):
             filename = self._filename(i)
 
             with fsspec.open(filename, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: IndexDF = None) -> pd.DataFrame:
+        # FIXME reimplement
+        raise NotImplementedError
+
         if idx is None:
             idx = self.read_rows_meta_pseudo_df().index
 
@@ -142,7 +145,7 @@ class TableStoreFiledir(TableStore):
             index=idx
         )
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         # Not implemented yet
         assert(idx is None)
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict, Union, Iterator, cast
+from typing import List, Tuple, Dict, Union, Iterator, cast
 
 import logging
 import time
@@ -9,7 +9,7 @@ from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
 
 import pandas as pd
 
-from datapipe.types import Index, ChunkMeta, DataSchema, DataDF, MetadataDF
+from datapipe.types import IndexDF, ChunkMeta, DataSchema, DataDF, MetadataDF
 from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.event_logger import EventLogger
 
@@ -59,7 +59,13 @@ class MetaTable:
 
         self.sql_table.create(self.dbconn.con, checkfirst=True)
 
-    def get_metadata(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
+        '''
+        Получить датафрейм с метаданными.
+
+        idx - опциональный фильтр по целевым строкам
+        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
+        '''
         sql = select(self.sql_schema)
 
         if idx is not None:
@@ -72,12 +78,15 @@ class MetaTable:
 
             sql = sql.where(or_(*row_queries))
 
+        if not include_deleted:
+            sql = sql.where(self.sql_table.c.delete_ts.is_(None))
+
         return pd.read_sql_query(
             sql,
             con=self.dbconn.con
         )
 
-    def _make_new_metadata_df(self, now, df) -> pd.DataFrame:
+    def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         res_df = df[self.primary_keys]
 
         res_df['hash'] = self._get_hash_for_df(df)
@@ -86,7 +95,7 @@ class MetaTable:
         res_df['process_ts'] = now
         res_df['delete_ts'] = None
 
-        return res_df
+        return cast(MetadataDF, res_df)
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
         return pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
@@ -95,7 +104,7 @@ class MetaTable:
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def get_existing_idx(self, idx: Index = None) -> Index:
+    def get_existing_idx(self, idx: IndexDF = None) -> IndexDF:
         sql = select(self.sql_schema)
 
         if idx is not None:
@@ -159,7 +168,7 @@ class MetaTable:
 
         # Создаем мета данные для новых записей
         new_meta_data_df = data_df[(merged_df['hash'].isna())]
-        new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
+        new_meta_df = self._make_new_metadata_df(now, cast(DataDF, new_meta_data_df))
 
         # Ищем изменившиеся записи
         changed_idx = (
@@ -194,7 +203,7 @@ class MetaTable:
             cast(MetadataDF, changed_meta_df),
         )
 
-    def _delete_rows(self, idx: MetadataDF) -> None:
+    def _delete_rows(self, idx: IndexDF) -> None:
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
@@ -204,7 +213,7 @@ class MetaTable:
             meta_df["delete_ts"] = now
             meta_df["process_ts"] = now
 
-            self._update_existing_rows(meta_df)
+            self._update_existing_metadata_rows(meta_df)
 
     def _insert_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
@@ -221,7 +230,7 @@ class MetaTable:
                 dtype=sql_schema_to_dtype(self.sql_schema),
             )
 
-    def _update_existing_rows(self, df: pd.DataFrame) -> None:
+    def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
             stmt = (
                 update(self.sql_table)
@@ -263,9 +272,9 @@ class MetaTable:
         if len(new_meta_df) > 0:
             self._insert_rows(new_meta_df)
 
-    def update_meta_for_store_chunk(self, changed_meta_df: pd.DataFrame) -> None:
+    def update_meta_for_store_chunk(self, changed_meta_df: MetadataDF) -> None:
         if len(changed_meta_df) > 0:
-            self._update_existing_rows(changed_meta_df)
+            self._update_existing_metadata_rows(changed_meta_df)
 
     def update_meta_for_sync_meta(self, deleted_idx: MetadataDF) -> None:
         if len(deleted_idx) > 0:
@@ -286,7 +295,7 @@ class MetaTable:
 
         return cast(MetadataDF, deleted_df[self.primary_keys])
 
-    def get_stale_idx(self, process_ts: float) -> Iterator[MetadataDF]:
+    def get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(

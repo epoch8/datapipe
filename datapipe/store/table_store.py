@@ -5,14 +5,14 @@ from dataclasses import dataclass
 import pandas as pd
 from pathlib import Path
 
-from datapipe.types import Index, DataSchema
+from datapipe.types import IndexDF, DataSchema
 
 
 class TableStore(ABC):
     def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
 
-    def delete_rows(self, idx: Index) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         raise NotImplementedError
 
     def insert_rows(self, df: pd.DataFrame) -> None:
@@ -22,10 +22,10 @@ class TableStore(ABC):
         self.delete_rows(df.index)
         self.insert_rows(df)
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: IndexDF = None) -> pd.DataFrame:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         '''
         Подготовить датафрейм с "какбы данными" на основе которых посчитается хеш и обновятся метаданные
 
@@ -44,7 +44,7 @@ class TableDataSingleFileStore(TableStore):
     def save_file(self, df: pd.DataFrame) -> None:
         raise NotImplementedError
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         file_df = self.load_file()
 
         if file_df is not None:
@@ -66,7 +66,7 @@ class TableDataSingleFileStore(TableStore):
 
         self.save_file(new_df)
 
-    def delete_rows(self, idx: Index) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         file_df = self.load_file()
 
         if file_df is not None:
