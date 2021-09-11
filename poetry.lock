@@ -1639,6 +1639,14 @@ notebook = ["ipywidgets (>=6)"]
 telegram = ["requests"]
 
 [[package]]
+name = "types-requests"
+version = "2.25.6"
+description = "Typing stubs for requests"
+category = "dev"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "typing-extensions"
 version = "3.10.0.2"
 description = "Backported and Experimental Type Hints for Python 3.5+"
@@ -1766,7 +1774,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "1bc688da7c9a8e0fe5623616e65f656218d2cfc3bf95f48d636c86bf031e92b6"
+content-hash = "7d677574564565ec49085bead5e86673f982ee8a9344b873e85b546d7c4d6078"
 
 [metadata.files]
 aiohttp = [
@@ -2907,6 +2915,10 @@ tomli = [
 tqdm = [
     {file = "tqdm-4.62.2-py2.py3-none-any.whl", hash = "sha256:80aead664e6c1672c4ae20dc50e1cdc5e20eeff9b14aa23ecd426375b28be588"},
     {file = "tqdm-4.62.2.tar.gz", hash = "sha256:a4d6d112e507ef98513ac119ead1159d286deab17dffedd96921412c2d236ff5"},
+]
+types-requests = [
+    {file = "types-requests-2.25.6.tar.gz", hash = "sha256:e21541c0f55c066c491a639309159556dd8c5833e49fcde929c4c47bdb0002ee"},
+    {file = "types_requests-2.25.6-py3-none-any.whl", hash = "sha256:a5a305b43ea57bf64d6731f89816946a405b591eff6de28d4c0fd58422cee779"},
 ]
 typing-extensions = [
     {file = "typing_extensions-3.10.0.2-py2-none-any.whl", hash = "sha256:d8226d10bc02a29bcc81df19a26e56a9647f8b0a6d4a83924139f4a8b01f17b7"},
