@@ -43,7 +43,7 @@ jobs:
       uses: abatilo/actions-poetry@v2.0.0
     - name: Install dependencies
       run: |
-        poetry install --dev --extras=excel,ui
+        poetry install --extras=excel,ui
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -52,7 +52,7 @@ jobs:
         poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Lint with mypy
       run: |
-        mypy -p datapipe --ignore-missing-imports --follow-imports=silent
+        poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent
     - name: Test with pytest
       run: |
         poetry run pytest
