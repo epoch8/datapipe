@@ -1,13 +1,11 @@
 from abc import ABC
-from typing import Optional, Union, List
+from typing import Optional, Union
 from dataclasses import dataclass
 
 import pandas as pd
 from pathlib import Path
 
-from sqlalchemy import Column
-
-from datapipe.store.types import Index, DataSchema
+from datapipe.types import Index, DataSchema
 
 
 class TableStore(ABC):

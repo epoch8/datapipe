@@ -1,4 +1,5 @@
-from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union
+from datapipe.types import DataChunk, MetadataChunk
+from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union, cast
 
 import inspect
 import logging
@@ -9,7 +10,7 @@ import pandas as pd
 import tqdm
 
 from datapipe.metastore import MetaTable, MetaStore
-from datapipe.store.types import Index, ChunkMeta
+from datapipe.types import Index, ChunkMeta
 from datapipe.store.table_store import TableStore
 
 from datapipe.step import ComputeStep
@@ -41,7 +42,7 @@ class DataTable:
     def get_data(self, idx: Optional[Index] = None) -> pd.DataFrame:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
-    def store_chunk(self, data_df: pd.DataFrame, now: float = None) -> ChunkMeta:
+    def store_chunk(self, data_df: DataChunk, now: float = None) -> MetadataChunk:
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
@@ -52,9 +53,9 @@ class DataTable:
         self.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        return data_df[self.primary_keys]
+        return cast(MetadataChunk, data_df[self.primary_keys])
 
-    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: Index = None) -> None:
+    def sync_meta_by_idx_chunks(self, chunks: List[ChunkMeta], processed_idx: MetadataChunk = None) -> None:
         ''' Пометить удаленными объекты, которых больше нет '''
         deleted_idx = self.meta_table.get_changes_for_sync_meta(chunks, processed_idx)
 
@@ -69,9 +70,9 @@ class DataTable:
         for deleted_df in deleted_dfs:
             deleted_idx = deleted_df[self.primary_keys]
             self.table_store.delete_rows(deleted_idx)
-            self.meta_table.update_meta_for_sync_meta(deleted_idx)
+            self.meta_table.update_meta_for_sync_meta(cast(MetadataChunk, deleted_idx))
 
-    def store(self, df: pd.DataFrame) -> None:
+    def store(self, df: DataChunk) -> None:
         now = time.time()
 
         chunk = self.store_chunk(
@@ -97,7 +98,7 @@ def get_process_chunks(
     inputs: List[DataTable],
     outputs: List[DataTable],
     chunksize: int = 1000,
-) -> Tuple[pd.Index, Iterator[List[pd.DataFrame]]]:
+) -> Tuple[int, Iterator[List[pd.DataFrame]]]:
     idx_count, idx_gen = ms.get_process_ids(
         inputs=[i.meta_table for i in inputs],
         outputs=[i.meta_table for i in outputs],
@@ -151,7 +152,7 @@ def gen_process_many(
             return
 
         for k, dt_k in enumerate(dts):
-            chunk_df_kth = chunk_dfs[k] if len(dts) > 1 else chunk_dfs
+            chunk_df_kth = cast(DataChunk, chunk_dfs[k])
             dt_k.store_chunk(chunk_df_kth)
 
     for k, dt_k in enumerate(dts):
@@ -169,7 +170,7 @@ def gen_process(
 ) -> None:
     return gen_process_many(
         dts=[dt],
-        proc_func=proc_func,
+        proc_func=lambda: ((res,) for res in proc_func()),
         **kwargs
     )
 
@@ -248,10 +249,11 @@ class ExternalTableUpdater(ComputeStep):
         self.output_dts = [table]
 
     def run(self, ms: MetaStore) -> None:
-        ps_df = self.table.table_store.read_rows_meta_pseudo_df()
+        ps_df = cast(DataChunk, self.table.table_store.read_rows_meta_pseudo_df())
 
-        _, _, new_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
-        self.table.meta_table.update_meta_for_store_chunk(new_meta_df)
+        _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
+        self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
+        self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
         deleted_idx = self.table.meta_table.get_changes_for_sync_meta([ps_df.index])
         self.table.meta_table.update_meta_for_sync_meta(deleted_idx)

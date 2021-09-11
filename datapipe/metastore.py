@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict, Union, Iterator
+from typing import List, Tuple, Optional, Dict, Union, Iterator, cast
 
 import logging
 import time
@@ -9,7 +9,7 @@ from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
 
 import pandas as pd
 
-from datapipe.store.types import Index, ChunkMeta, DataSchema
+from datapipe.types import Index, ChunkMeta, DataSchema, DataChunk, MetadataChunk
 from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.event_logger import EventLogger
 
@@ -128,14 +128,20 @@ class MetaTable:
         )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
+    # FIXME поправить возвращаемые структуры данных, _meta_df должны содержать только _meta колонки
     def get_changes_for_store_chunk(
         self,
-        data_df: pd.DataFrame,
+        data_df: DataChunk,
         now: float = None
-    ) -> Tuple[pd.Index, pd.Index, pd.DataFrame]:
+    ) -> Tuple[DataChunk, DataChunk, MetadataChunk, MetadataChunk]:
         '''
-        Returns:
-            new_df, changed_df, new_meta_df, changed_meta_df
+        Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
+
+        Returns tuple:
+            new_data_df     - строки данных, которые нужно добавить
+            changed_data_df - строки данных, которые нужно изменить
+            new_meta_df     - строки метаданных, которые нужно добавить
+            changed_meta_df - строки метаданных, которые нужно изменить
         '''
 
         if now is None:
@@ -156,13 +162,19 @@ class MetaTable:
         new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
-        changed_idx = (merged_df['hash'].notna()) & \
-            (merged_df['delete_ts'].isnull()) & \
+        changed_idx = (
+            (merged_df['hash'].notna()) &
+            (merged_df['delete_ts'].isnull()) &
             (merged_df['hash'] != merged_df['data_hash'])
+        )
         changed_df = data_df[changed_idx]
 
         # Меняем мета данные для существующих записей
-        changed_meta_idx = (merged_df['hash'].notna()) & (merged_df['hash'] != merged_df['data_hash']) | (merged_df['delete_ts'].notnull())
+        changed_meta_idx = (
+            (merged_df['hash'].notna()) &
+            (merged_df['hash'] != merged_df['data_hash']) |
+            (merged_df['delete_ts'].notnull())
+        )
         changed_meta_df = merged_df[merged_df['hash'].notna()]
 
         changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
@@ -175,9 +187,14 @@ class MetaTable:
                 self.name, added_count=len(new_df.index), updated_count=len(changed_idx), deleted_count=0
             )
 
-        return new_df, changed_df, new_meta_df, changed_meta_df
+        return (
+            cast(DataChunk, new_df),
+            cast(DataChunk, changed_df),
+            cast(MetadataChunk, new_meta_df),
+            cast(MetadataChunk, changed_meta_df),
+        )
 
-    def _delete_rows(self, idx: pd.Index) -> None:
+    def _delete_rows(self, idx: MetadataChunk) -> None:
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
@@ -189,7 +206,7 @@ class MetaTable:
 
             self._update_existing_rows(meta_df)
 
-    def _insert_rows(self, df: pd.DataFrame) -> None:
+    def _insert_rows(self, df: MetadataChunk) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -226,8 +243,10 @@ class MetaTable:
                 [
                     {f'b_{k}': v for k, v in row.items()}
                     for row in
-                    df.reset_index()[columns]
-                    .to_dict(orient='records')
+                    cast(
+                        Dict,
+                        df.reset_index()[columns].to_dict(orient='records')
+                    )
                 ]
             )
 
@@ -240,7 +259,7 @@ class MetaTable:
         self._update_existing_rows(df.loc[existing_idx])
         self._insert_rows(df.loc[missing_idx])
     """
-    def insert_meta_for_store_chunk(self, new_meta_df: pd.DataFrame) -> None:
+    def insert_meta_for_store_chunk(self, new_meta_df: MetadataChunk) -> None:
         if len(new_meta_df) > 0:
             self._insert_rows(new_meta_df)
 
@@ -248,11 +267,11 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_rows(changed_meta_df)
 
-    def update_meta_for_sync_meta(self, deleted_idx: pd.Index) -> None:
+    def update_meta_for_sync_meta(self, deleted_idx: MetadataChunk) -> None:
         if len(deleted_idx) > 0:
             self._delete_rows(deleted_idx)
 
-    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: pd.Index = None) -> pd.Index:
+    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: MetadataChunk = None) -> MetadataChunk:
         idx = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=self.primary_keys)
         existing_idx = self.get_existing_idx(processed_idx)
 
@@ -265,9 +284,9 @@ class MetaTable:
             # TODO вынести в compute
             self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
-        return deleted_df[self.primary_keys]
+        return cast(MetadataChunk, deleted_df[self.primary_keys])
 
-    def get_stale_idx(self, process_ts: float) -> Iterator[pd.DataFrame]:
+    def get_stale_idx(self, process_ts: float) -> Iterator[MetadataChunk]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(
