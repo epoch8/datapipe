@@ -63,21 +63,6 @@ class TableStoreDB(TableStore):
         else:
             self.dbconn = dbconn
         self.name = name
-        self.filters = {}
-
-        # TODO remove when filters are implemented
-        """
-        const_idx_schema = []
-
-        if const_idx:
-            for item in const_idx:
-                item.column.primary_key = True
-                self.filters[item.column.name] = item.value
-
-                const_idx_schema.append(item.column)
-
-        self.data_sql_schema = const_idx_schema + data_sql_schema
-        """
 
         self.data_sql_schema = data_sql_schema
         self.primary_keys = [column.name for column in self.data_sql_schema if column.primary_key]
@@ -107,25 +92,11 @@ class TableStoreDB(TableStore):
 
             sql = delete(self.data_table).where(or_(*row_queries))
 
-            """
-            if self.filters:
-                for key in self.filters.keys():
-                    column = getattr(self.data_table.c, key)
-                    sql = sql.where(column == self.filters[key])
-            """
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
-            """
-            if self.filters:
-                if set(self.filters.keys()) & set(df.columns):
-                    raise ValueError("DataFrame has constant index columns")
-
-                for key in self.filters.keys():
-                    df[key] = self.filters[key]
-            """
 
             df.to_sql(
                 name=self.name,
@@ -137,11 +108,6 @@ class TableStoreDB(TableStore):
                 method='multi',
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
             )
-            """
-            if self.filters:
-                for key in self.filters.keys():
-                    del df[key]
-            """
 
     def update_rows(self, df: pd.DataFrame) -> None:
         self.delete_rows(df)
@@ -167,12 +133,6 @@ class TableStoreDB(TableStore):
 
             sql = sql.where(or_(*row_queries))
 
-        """
-        if self.filters:
-            for key in self.filters.keys():
-                column = getattr(self.data_table.c, key)
-                sql = sql.where(column == self.filters[key])
-        """
         return pd.read_sql_query(
             sql,
             con=self.dbconn.con
