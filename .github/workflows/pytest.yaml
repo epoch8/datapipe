@@ -43,7 +43,7 @@ jobs:
       uses: abatilo/actions-poetry@v2.0.0
     - name: Install dependencies
       run: |
-        poetry install --extras=excel,ui
+        poetry install -E excel -E ui
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
