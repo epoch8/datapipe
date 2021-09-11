@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 
 from dataclasses import dataclass
-from sqlalchemy import Column, Table, Integer, create_engine, MetaData
+from sqlalchemy import Column, Table, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete, and_, or_
 from datapipe.store.types import Index, DataSchema
 from datapipe.store.table_store import TableStore

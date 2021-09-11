@@ -5,7 +5,7 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, Numeric, Integer, Float, func, union, alias, delete
+from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
 
 import pandas as pd
 
@@ -113,7 +113,7 @@ class MetaTable:
 
             sql = sql.where(or_(*row_queries))
 
-        sql = sql.where(self.sql_table.c.delete_ts == None)
+        sql = sql.where(self.sql_table.c.delete_ts.is_(None))
         res_df = pd.read_sql_query(
             sql,
             con=self.dbconn.con,
