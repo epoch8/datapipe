@@ -9,7 +9,7 @@ from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
 
 import pandas as pd
 
-from datapipe.types import Index, ChunkMeta, DataSchema, DataChunk, MetadataChunk
+from datapipe.types import Index, ChunkMeta, DataSchema, DataDF, MetadataDF
 from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.event_logger import EventLogger
 
@@ -131,9 +131,9 @@ class MetaTable:
     # FIXME поправить возвращаемые структуры данных, _meta_df должны содержать только _meta колонки
     def get_changes_for_store_chunk(
         self,
-        data_df: DataChunk,
+        data_df: DataDF,
         now: float = None
-    ) -> Tuple[DataChunk, DataChunk, MetadataChunk, MetadataChunk]:
+    ) -> Tuple[DataDF, DataDF, MetadataDF, MetadataDF]:
         '''
         Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
 
@@ -188,13 +188,13 @@ class MetaTable:
             )
 
         return (
-            cast(DataChunk, new_df),
-            cast(DataChunk, changed_df),
-            cast(MetadataChunk, new_meta_df),
-            cast(MetadataChunk, changed_meta_df),
+            cast(DataDF, new_df),
+            cast(DataDF, changed_df),
+            cast(MetadataDF, new_meta_df),
+            cast(MetadataDF, changed_meta_df),
         )
 
-    def _delete_rows(self, idx: MetadataChunk) -> None:
+    def _delete_rows(self, idx: MetadataDF) -> None:
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
@@ -206,7 +206,7 @@ class MetaTable:
 
             self._update_existing_rows(meta_df)
 
-    def _insert_rows(self, df: MetadataChunk) -> None:
+    def _insert_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -259,7 +259,7 @@ class MetaTable:
         self._update_existing_rows(df.loc[existing_idx])
         self._insert_rows(df.loc[missing_idx])
     """
-    def insert_meta_for_store_chunk(self, new_meta_df: MetadataChunk) -> None:
+    def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
         if len(new_meta_df) > 0:
             self._insert_rows(new_meta_df)
 
@@ -267,11 +267,11 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_rows(changed_meta_df)
 
-    def update_meta_for_sync_meta(self, deleted_idx: MetadataChunk) -> None:
+    def update_meta_for_sync_meta(self, deleted_idx: MetadataDF) -> None:
         if len(deleted_idx) > 0:
             self._delete_rows(deleted_idx)
 
-    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: MetadataChunk = None) -> MetadataChunk:
+    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: MetadataDF = None) -> MetadataDF:
         idx = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=self.primary_keys)
         existing_idx = self.get_existing_idx(processed_idx)
 
@@ -284,9 +284,9 @@ class MetaTable:
             # TODO вынести в compute
             self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
-        return cast(MetadataChunk, deleted_df[self.primary_keys])
+        return cast(MetadataDF, deleted_df[self.primary_keys])
 
-    def get_stale_idx(self, process_ts: float) -> Iterator[MetadataChunk]:
+    def get_stale_idx(self, process_ts: float) -> Iterator[MetadataDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(

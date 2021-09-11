@@ -8,5 +8,8 @@ ChunkMeta = Index
 
 DataSchema = List[Column]
 
-DataChunk = NewType('DataChunk', pd.DataFrame)
-MetadataChunk = NewType('MetadataChunk', pd.DataFrame)
+# Dataframe with columns (<index_cols ...>, hash, create_ts, update_ts, process_ts, delete_ts)
+MetadataDF = NewType('MetadataDF', pd.DataFrame)
+
+# Dataframe with columns (<index_cols ...>, <data_cols ...>)
+DataDF = NewType('DataDF', pd.DataFrame)
