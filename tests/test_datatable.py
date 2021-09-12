@@ -12,7 +12,7 @@ from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_pro
 from datapipe.metastore import MetaStore
 from datapipe.types import DataDF
 
-from .util import assert_df_equal, assert_idx_equal
+from .util import assert_df_equal
 
 
 TEST_SCHEMA = [
@@ -73,10 +73,10 @@ def test_store_less_values(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
-    assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
+    assert_df_equal(tbl.get_data(), TEST_DF)
 
     tbl.store(TEST_DF[:5])
-    assert_idx_equal(tbl.get_metadata().index, TEST_DF[:5].index)
+    assert_df_equal(tbl.get_data(), TEST_DF[:5])
 
 
 def test_get_process_ids(dbconn) -> None:
@@ -107,7 +107,8 @@ def test_get_process_ids(dbconn) -> None:
 
     count, idx_dfs = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
     idx = pd.concat(list(idx_dfs))
-    assert(sorted(list(idx.index)) == list(upd_df.index))
+
+    assert_df_equal(idx, upd_df[['id']])
 
 
 def test_gen_process(dbconn) -> None:

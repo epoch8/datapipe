@@ -13,4 +13,5 @@ ChunkMeta = IndexDF
 MetadataDF = NewType('MetadataDF', pd.DataFrame)
 
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
-DataDF = NewType('DataDF', pd.DataFrame)
+# DataDF = NewType('DataDF', pd.DataFrame)
+DataDF = pd.DataFrame

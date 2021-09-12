@@ -1,5 +1,5 @@
 from datapipe.types import DataDF, MetadataDF
-from typing import Callable, Generator, Iterator, List, Optional, Tuple, Union, cast
+from typing import Callable, Iterator, List, Optional, Tuple, Union, cast
 
 import inspect
 import logging
@@ -31,15 +31,15 @@ class DataTable:
         self.table_store = table_store
         self.primary_keys = meta_table.primary_keys
 
-    def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> pd.DataFrame:
+    def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> MetadataDF:
         res = old_meta_df.loc[deleted_idx]
         res.loc[:, 'delete_ts'] = now
         return res
 
-    def get_metadata(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
+    def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
         return self.meta_table.get_metadata(idx)
 
-    def get_data(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
+    def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def store_chunk(self, data_df: DataDF, now: float = None) -> MetadataDF:
@@ -83,7 +83,7 @@ class DataTable:
             chunks=[chunk],
         )
 
-    def get_data_chunked(self, chunksize: int = 1000) -> Generator[pd.DataFrame, None, None]:
+    def get_data_chunked(self, chunksize: int = 1000) -> Iterator[DataDF]:
         meta_df = self.meta_table.get_metadata(idx=None)
 
         for i in range(0, len(meta_df.index), chunksize):
@@ -98,7 +98,7 @@ def get_process_chunks(
     inputs: List[DataTable],
     outputs: List[DataTable],
     chunksize: int = 1000,
-) -> Tuple[int, Iterator[List[pd.DataFrame]]]:
+) -> Tuple[int, Iterator[List[DataDF]]]:
     idx_count, idx_gen = ms.get_process_ids(
         inputs=[i.meta_table for i in inputs],
         outputs=[i.meta_table for i in outputs],
@@ -120,7 +120,7 @@ def gen_process_many(
     dts: List[DataTable],
     proc_func: Callable[
         ...,
-        Iterator[Tuple[pd.DataFrame, ...]]
+        Iterator[Tuple[DataDF, ...]]
     ],
     **kwargs
 ) -> None:
@@ -163,14 +163,18 @@ def gen_process_many(
 def gen_process(
     dt: DataTable,
     proc_func: Callable[[], Union[
-        pd.DataFrame,
-        Iterator[pd.DataFrame]]
+        DataDF,
+        Iterator[DataDF]]
     ],
     **kwargs
 ) -> None:
+    def proc_func_many():
+        for i in proc_func():
+            yield (i,)
+    
     return gen_process_many(
         dts=[dt],
-        proc_func=lambda: ((res,) for res in proc_func()),
+        proc_func=proc_func_many,
         **kwargs
     )
 

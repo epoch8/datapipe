@@ -346,7 +346,7 @@ class MetaStore:
         inputs: List[MetaTable],
         outputs: List[MetaTable],
         chunksize: int = 1000,
-    ) -> Tuple[int, Iterator[pd.DataFrame]]:
+    ) -> Tuple[int, Iterator[IndexDF]]:
         '''
         Метод для получения перечня индексов для обработки.
 
