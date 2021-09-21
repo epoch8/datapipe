@@ -141,6 +141,8 @@ def gen_process_many(
     while True:
         try:
             chunk_dfs = next(iterable)
+            if isinstance(chunk_dfs, pd.DataFrame):
+                chunk_dfs = [chunk_dfs]
         except StopIteration:
             break
         except Exception as e:
