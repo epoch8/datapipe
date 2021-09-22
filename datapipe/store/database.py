@@ -6,7 +6,7 @@ import pandas as pd
 from dataclasses import dataclass
 from sqlalchemy import Column, Table, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete, and_, or_
-from datapipe.types import IndexDF, DataSchema
+from datapipe.types import DataDF, IndexDF, DataSchema
 from datapipe.store.table_store import TableStore
 
 
@@ -94,7 +94,7 @@ class TableStoreDB(TableStore):
 
             self.dbconn.con.execute(sql)
 
-    def insert_rows(self, df: pd.DataFrame) -> None:
+    def insert_rows(self, df: DataDF) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -109,7 +109,7 @@ class TableStoreDB(TableStore):
                 dtype=sql_schema_to_dtype(self.data_sql_schema),
             )
 
-    def update_rows(self, df: pd.DataFrame) -> None:
+    def update_rows(self, df: DataDF) -> None:
         self.delete_rows(df)
         self.insert_rows(df)
 
