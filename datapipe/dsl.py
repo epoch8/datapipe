@@ -39,7 +39,6 @@ class Catalog:
                 name=name,
                 meta_table=ms.create_meta_table(name, primary_schema),
                 table_store=store
-
             )
 
         return self.data_tables[name]

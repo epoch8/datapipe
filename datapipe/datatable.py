@@ -83,13 +83,8 @@ class DataTable:
             chunks=[chunk],
         )
 
-    def get_data_chunked(self, chunksize: int = 1000) -> Iterator[DataDF]:
-        meta_df = self.meta_table.get_metadata(idx=None)
-
-        for i in range(0, len(meta_df.index), chunksize):
-            yield self.get_data(meta_df.index[i:i+chunksize])
-
     def get_indexes(self, idx: Optional[IndexDF] = None) -> IndexDF:
+        # FIXME неправильный тип
         return self.meta_table.get_metadata(idx).index.tolist()
 
 

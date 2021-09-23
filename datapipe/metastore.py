@@ -269,6 +269,8 @@ class MetaTable:
         self._update_existing_rows(df.loc[existing_idx])
         self._insert_rows(df.loc[missing_idx])
     """
+
+    # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
         if len(new_meta_df) > 0:
             self._insert_rows(new_meta_df)
