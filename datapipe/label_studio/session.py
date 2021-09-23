@@ -201,7 +201,7 @@ class LabelStudioModerationStep(ComputeStep):
         data = [
             {
                 'data': {
-                    'LabelStudioModerationStep__unique_id': idx,
+                    'LabelStudioModerationStep__unique_id': "-".join(input_df.iloc[idx][self.input_dts[0].primary_keys].apply(str)),
                     **{
                         column: input_df.loc[idx, column]
                         for column in self.data
@@ -217,7 +217,7 @@ class LabelStudioModerationStep(ComputeStep):
         input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
             [] for _ in input_df.index
         ]
-        input_df = input_df[['tasks_id', 'annotations']]
+        input_df = input_df[self.input_dts[0].primary_keys + ['tasks_id', 'annotations']]
         return input_df
 
     def get_current_tasks_as_df(self):
@@ -238,6 +238,14 @@ class LabelStudioModerationStep(ComputeStep):
                     del ann['created_ago']
             return annotations
 
+        df_input_keys = self.input_dts[0].get_data()[self.input_dts[0].primary_keys]
+        df_input_keys["LabelStudioModerationStep__unique_id"] = ""
+        splitter = ""
+        for key in self.input_dts[0].primary_keys:
+            df_input_keys["LabelStudioModerationStep__unique_id"] += splitter + df_input_keys[key].apply(str)
+            splitter = "-"
+        df_input_keys = df_input_keys.set_index("LabelStudioModerationStep__unique_id")
+
         for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
             tasks_page, status_code = self.label_studio_session.get_tasks(
                 project_id=self.project_id,
@@ -255,6 +263,8 @@ class LabelStudioModerationStep(ComputeStep):
                 },
                 index=[task['data']['LabelStudioModerationStep__unique_id'] for task in tasks_page]
             )
+            output_df = output_df.merge(df_input_keys, left_index=True, right_index=True)
+            output_df = output_df.reset_index(drop=True)
 
             yield output_df
 
