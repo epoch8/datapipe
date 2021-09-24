@@ -136,6 +136,7 @@ def gen_process_many(
     while True:
         try:
             chunk_dfs = next(iterable)
+
             if isinstance(chunk_dfs, pd.DataFrame):
                 chunk_dfs = [chunk_dfs]
         except StopIteration:
@@ -168,7 +169,7 @@ def gen_process(
     def proc_func_many():
         for i in proc_func():
             yield (i,)
-    
+
     return gen_process_many(
         dts=[dt],
         proc_func=proc_func_many,
@@ -256,5 +257,5 @@ class ExternalTableUpdater(ComputeStep):
         self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        deleted_idx = self.table.meta_table.get_changes_for_sync_meta([ps_df.index])
+        deleted_idx = self.table.meta_table.get_changes_for_sync_meta([ps_df])
         self.table.meta_table.update_meta_for_sync_meta(deleted_idx)
