@@ -164,11 +164,13 @@ class MetaTable:
         merged_df = pd.merge(data_df, existing_meta_df,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
         merged_df['data_hash'] = self._get_hash_for_df(data_df)
 
+        new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
+
         # Ищем новые записи
-        new_df = data_df[(merged_df['hash'].isna()) | (merged_df['delete_ts'].notnull())]
+        new_df = data_df.iloc[new_idx.values]
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = data_df[(merged_df['hash'].isna())]
+        new_meta_data_df = data_df.iloc[(merged_df['hash'].isna()).values]
         new_meta_df = self._make_new_metadata_df(now, cast(DataDF, new_meta_data_df))
 
         # Ищем изменившиеся записи
@@ -177,7 +179,7 @@ class MetaTable:
             (merged_df['delete_ts'].isnull()) &
             (merged_df['hash'] != merged_df['data_hash'])
         )
-        changed_df = data_df[changed_idx]
+        changed_df = data_df.iloc[changed_idx.values]
 
         # Меняем мета данные для существующих записей
         changed_meta_idx = (
