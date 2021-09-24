@@ -98,6 +98,9 @@ class MetaTable:
 
         return cast(MetadataDF, res_df)
 
+    def _get_meta_data_columns(self):
+        return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
+
     def _get_hash_for_df(self, df) -> pd.DataFrame:
         return pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
 
@@ -159,16 +162,19 @@ class MetaTable:
 
         # получить meta по чанку
         existing_meta_df = self.get_metadata(data_df)
+        data_cols = list(data_df.columns)
+        meta_cols = self._get_meta_data_columns()
 
         # Дополняем данные методанными
         merged_df = pd.merge(data_df, existing_meta_df,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
         merged_df['data_hash'] = self._get_hash_for_df(data_df)
 
         # Ищем новые записи
-        new_df = data_df[(merged_df['hash'].isna()) | (merged_df['delete_ts'].notnull())]
+        new_sel_df = (merged_df['hash'].isna()) | (merged_df['delete_ts'].notnull())
+        new_df = merged_df[new_sel_df][data_cols]
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = data_df[(merged_df['hash'].isna())]
+        new_meta_data_df = merged_df[merged_df['hash'].isna()][data_cols]
         new_meta_df = self._make_new_metadata_df(now, cast(DataDF, new_meta_data_df))
 
         # Ищем изменившиеся записи
@@ -177,7 +183,7 @@ class MetaTable:
             (merged_df['delete_ts'].isnull()) &
             (merged_df['hash'] != merged_df['data_hash'])
         )
-        changed_df = data_df[changed_idx]
+        changed_df = merged_df[changed_idx][data_cols]
 
         # Меняем мета данные для существующих записей
         changed_meta_idx = (
@@ -201,7 +207,7 @@ class MetaTable:
             cast(DataDF, new_df),
             cast(DataDF, changed_df),
             cast(MetadataDF, new_meta_df),
-            cast(MetadataDF, changed_meta_df),
+            cast(MetadataDF, changed_meta_df[meta_cols]),
         )
 
     def _delete_rows(self, idx: IndexDF) -> None:
