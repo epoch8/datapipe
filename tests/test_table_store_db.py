@@ -5,6 +5,8 @@ from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe.store.database import TableStoreDB, ConstIdx
 
+from .util import assert_df_equal
+
 FEED1 = [
     {"id": "1", "name": "Product 1"},
     {"id": "2", "name": "Product 2"},
@@ -26,6 +28,7 @@ FEED2 = [
 FEED3 = [{"id": "1", "name": "Product 3"}]
 
 SQL_SHEMA = [
+    Column("id", String(100), primary_key=True),
     Column("name", String(100))
 ]
 
@@ -34,127 +37,52 @@ def test_for_inserting(dbconn) -> None:
     store1 = TableStoreDB(
         dbconn,
         'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=1
-            )
-        ]
-
+        SQL_SHEMA
     )
 
-    store2 = TableStoreDB(
-        dbconn,
-        'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=2
-            )
-        ]
-    )
-
-    df1 = pd.DataFrame(data=FEED1).set_index('id')
-    df2 = pd.DataFrame(data=FEED2).set_index('id')
+    df1 = pd.DataFrame(data=FEED1)
 
     store1.insert_rows(df1)
-    stored_df1_index = sorted(store1.read_rows().index)
+    stored_df1 = store1.read_rows()
 
-    assert(list(df1.index) == list(stored_df1_index))
-
-    store2.insert_rows(df2)
-    stored_df1_index = sorted(store1.read_rows().index)
-    stored_df2_index = sorted(store2.read_rows().index)
-
-    assert(list(df1.index) == list(stored_df1_index))
-    assert(list(df2.index) == list(stored_df2_index))
+    assert_df_equal(df1, stored_df1)
 
 
 def test_for_updating(dbconn) -> None:
     store1 = TableStoreDB(
         dbconn,
         'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=1
-            )
-        ]
-
+        SQL_SHEMA
     )
 
-    store2 = TableStoreDB(
-        dbconn,
-        'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=2
-            )
-        ]
-    )
-
-    df1 = pd.DataFrame(data=FEED1).set_index('id')
-    df2 = pd.DataFrame(data=FEED2).set_index('id')
-    df3 = pd.DataFrame(data=FEED3).set_index('id')
+    df1 = pd.DataFrame(data=FEED1)
+    df3 = pd.DataFrame(data=FEED3)
 
     store1.insert_rows(df1)
-    store2.insert_rows(df2)
-
     store1.update_rows(df3)
 
-    stored_df1 = store1.read_rows().sort_index()
-    stored_df2_index = sorted(store2.read_rows().index)
+    stored_df1 = store1.read_rows()
 
     df1.update(df3)
 
-    assert(df1.equals(stored_df1))
-    assert(list(df2.index) == list(stored_df2_index))
+    assert_df_equal(df1, stored_df1)
 
 
 def test_for_deliting(dbconn) -> None:
     store1 = TableStoreDB(
         dbconn,
         'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=1
-            )
-        ]
-
+        SQL_SHEMA
     )
 
-    store2 = TableStoreDB(
-        dbconn,
-        'feed_data',
-        SQL_SHEMA,
-        const_idx=[
-            ConstIdx(
-                column=Column("pipe_id", Integer()),
-                value=2
-            )
-        ]
-    )
-
-    df1 = pd.DataFrame(data=FEED1).set_index('id')
-    df2 = pd.DataFrame(data=FEED2).set_index('id')
+    df1 = pd.DataFrame(data=FEED1)
 
     store1.insert_rows(df1)
-    store2.insert_rows(df2)
 
-    df1 = df1.drop('1')
-    del_index = pd.Index(["1"])
+    del_index = pd.DataFrame({"id": ["1"]})
 
     store1.delete_rows(del_index)
 
     stored_df1 = store1.read_rows()
-    stored_df2 = store2.read_rows()
 
-    assert(list(df1.index) == list(stored_df1.index))
-    assert(list(df2.index) == list(stored_df2.index))
+    assert_df_equal(df1.iloc[1:], stored_df1)

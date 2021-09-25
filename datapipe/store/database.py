@@ -56,7 +56,6 @@ class TableStoreDB(TableStore):
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = True,
-        const_idx: List[ConstIdx] = []
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
