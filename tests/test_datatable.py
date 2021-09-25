@@ -12,7 +12,7 @@ from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_pro
 from datapipe.metastore import MetaStore
 from datapipe.types import DataDF
 
-from .util import assert_df_equal
+from .util import assert_df_equal, assert_datatable_equal
 
 
 TEST_SCHEMA = [
@@ -63,6 +63,8 @@ def test_simple(dbconn) -> None:
 
     tbl.store(cast(DataDF, TEST_DF))
 
+    assert_datatable_equal(tbl, TEST_DF)
+
 
 def test_store_less_values(dbconn) -> None:
     ms = MetaStore(dbconn)
@@ -73,10 +75,10 @@ def test_store_less_values(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
 
     tbl.store(TEST_DF)
-    assert_df_equal(tbl.get_data(), TEST_DF)
+    assert_datatable_equal(tbl, TEST_DF)
 
     tbl.store(TEST_DF[:5])
-    assert_df_equal(tbl.get_data(), TEST_DF[:5])
+    assert_datatable_equal(tbl, TEST_DF[:5])
 
 
 def test_get_process_ids(dbconn) -> None:
@@ -140,7 +142,7 @@ def test_gen_process(dbconn) -> None:
             func
         )
 
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF))
+    assert_datatable_equal(tbl1_gen, TEST_DF)
 
     def gen2():
         yield TEST_DF[:5]
@@ -159,7 +161,7 @@ def test_gen_process(dbconn) -> None:
             func2
         )
 
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl1_gen, TEST_DF[:5])
 
 
 def test_inc_process_modify_values(dbconn) -> None:
@@ -181,14 +183,14 @@ def test_inc_process_modify_values(dbconn) -> None:
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
+    assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
     tbl1.store(TEST_DF_INC1)
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
+    assert_datatable_equal(tbl2, TEST_DF_INC1)
 
 
 def test_inc_process_delete_values_from_input(dbconn) -> None:
@@ -210,14 +212,14 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
+    assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
     tbl1.store(TEST_DF[:5])
 
     inc_process(ms, [tbl1], tbl2, id_func, chunksize=2)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl2, TEST_DF[:5])
 
 
 def test_inc_process_delete_values_from_proc(dbconn) -> None:
@@ -241,7 +243,7 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl2, TEST_DF[:5])
 
 
 def test_inc_process_proc_no_change(dbconn) -> None:
@@ -264,33 +266,33 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
     count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == len(TEST_DF))
+    assert(idx_len == len(TEST_DF))
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
     count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == 0)
+    assert(idx_len == 0)
 
     tbl1.store(TEST_DF_INC1)
 
     count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == len(TEST_DF))
+    assert(idx_len == len(TEST_DF))
 
     inc_process(ms, [tbl1], tbl2, id_func)
 
     count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == 0)
+    assert(idx_len == 0)
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
@@ -349,10 +351,10 @@ def test_gen_process_many(dbconn) -> None:
             func
         )
 
-    assert(assert_df_equal(tbl_gen.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2_gen.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3_gen.get_data(), TEST_DF_INC3))
+    assert_datatable_equal(tbl_gen, TEST_DF)
+    assert_datatable_equal(tbl1_gen, TEST_DF_INC1)
+    assert_datatable_equal(tbl2_gen, TEST_DF_INC2)
+    assert_datatable_equal(tbl3_gen, TEST_DF_INC3)
 
 
 def test_inc_process_many_modify_values(dbconn) -> None:
@@ -388,9 +390,9 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 
     inc_process_many(ms, [tbl], [tbl1, tbl2, tbl3], inc_func)
 
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert_datatable_equal(tbl1, TEST_DF_INC1)
+    assert_datatable_equal(tbl2, TEST_DF_INC2)
+    assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
     tbl.store(TEST_DF[:5])
@@ -406,18 +408,18 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 
     inc_process_many(ms, [tbl], [tbl3, tbl2, tbl1], inc_func_inv)
 
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1[:5]))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2[:5]))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3[:5]))
+    assert_datatable_equal(tbl1, TEST_DF_INC1[:5])
+    assert_datatable_equal(tbl2, TEST_DF_INC2[:5])
+    assert_datatable_equal(tbl3, TEST_DF_INC3[:5])
 
     ##########################
 
     tbl.store_chunk(TEST_DF[5:])
 
     inc_process_many(ms, [tbl], [tbl1, tbl2, tbl3], inc_func)
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert_datatable_equal(tbl1, TEST_DF_INC1)
+    assert_datatable_equal(tbl2, TEST_DF_INC2)
+    assert_datatable_equal(tbl3, TEST_DF_INC3)
 
 
 def test_inc_process_many_several_inputs(dbconn) -> None:
@@ -427,7 +429,14 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         'tbl',
         meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(
-            dbconn, 'tbl_data', [Column('a_first', Integer), Column('a_second', Integer)], True
+            dbconn,
+            'tbl_data',
+            [
+                Column('id', Integer, primary_key=True),
+                Column('a_first', Integer),
+                Column('a_second', Integer)
+            ],
+            True
         )
     )
     tbl1 = DataTable(
@@ -443,8 +452,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         df = pd.merge(
             left=df1,
             right=df2,
-            left_index=True,
-            right_index=True,
+            on=['id'],
             suffixes=('_first', '_second')
         )
         df['a_first'] += 1
@@ -455,91 +463,85 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     tbl2.store(TEST_DF)
 
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
-    assert(
-        assert_df_equal(
-            tbl.get_data(),
-            pd.DataFrame(
-                {
-                    'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                    'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-                },
-                index=[f'id_{i}' for i in range(10)]
-            )
+    assert_datatable_equal(
+        tbl,
+        pd.DataFrame(
+            {
+                'id': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            }
         )
     )
 
-    changed_indexes = [f'id_{i}' for i in [0, 4, 6]]
-    not_changed_indexes = [f'id_{i}' for i in [1, 2, 3, 5, 7, 8, 9]]
+    changed_ids = [0, 4, 6]
+    changed_ids_df = pd.DataFrame({'id': changed_ids})
+    not_changed_ids = [1, 2, 3, 5, 7, 8, 9]
+    not_changed_ids_df = pd.DataFrame({'id': not_changed_ids})
 
     tbl2.store_chunk(
         pd.DataFrame(
             {
+                'id': changed_ids,
                 'a': [10, 10, 10]
-            },
-            index=changed_indexes
+            }
         )
     )
 
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
 
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [1, 5, 7],
-                    'a_second': [12, 12, 12]
-                },
-                index=changed_indexes
-            )
+    assert_df_equal(
+        tbl.get_data(idx=changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': changed_ids,
+                'a_first': [1, 5, 7],
+                'a_second': [12, 12, 12]
+            }
         )
     )
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=not_changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [2, 3, 4, 6, 8, 9, 10],
-                    'a_second': [3, 4, 5, 7, 9, 10, 11]
-                },
-                index=not_changed_indexes
-            )
+
+    assert_df_equal(
+        tbl.get_data(idx=not_changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': not_changed_ids,
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            }
         )
     )
 
     tbl1.store_chunk(
         pd.DataFrame(
             {
+                'id': changed_ids,
                 'a': [20, 20, 20]
-            },
-            index=changed_indexes
+            }
         )
     )
 
     inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
 
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [21, 21, 21],
-                    'a_second': [12, 12, 12]
-                },
-                index=changed_indexes
-            )
+    assert_df_equal(
+        tbl.get_data(idx=changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': changed_ids,
+                'a_first': [21, 21, 21],
+                'a_second': [12, 12, 12]
+            }
         )
     )
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=not_changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [2, 3, 4, 6, 8, 9, 10],
-                    'a_second': [3, 4, 5, 7, 9, 10, 11]
-                },
-                index=not_changed_indexes
-            )
+
+    assert_df_equal(
+        tbl.get_data(idx=not_changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': not_changed_ids,
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            }
         )
     )
 
@@ -547,8 +549,8 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
 def test_inc_process_many_several_outputs(dbconn) -> None:
     ms = MetaStore(dbconn)
 
-    BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
-    GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
+    bad_ids = [0, 1, 5, 8]
+    good_ids = [2, 3, 4, 6, 7, 9]
 
     tbl = DataTable(
         'tbl',
@@ -566,26 +568,26 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     tbl.store(TEST_DF)
 
     def inc_func(df):
-        df_good = df.drop(index=BAD_IDXS)
-        df_bad = df.drop(index=GOOD_IDXS)
+        df_good = df[df['id'].isin(good_ids)]
+        df_bad = df[df['id'].isin(bad_ids)]
         return df_good, df_bad
 
     inc_process_many(ms, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(assert_df_equal(tbl.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    assert_datatable_equal(tbl, TEST_DF)
+    assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
+    assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
 
     # Check this not delete the tables
     inc_process_many(ms, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(assert_df_equal(tbl.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    assert_datatable_equal(tbl, TEST_DF)
+    assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
+    assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
 
 
 def test_error_handling(dbconn) -> None:
-    BAD_ID = 'id_3'
-    GOOD_IDXS1 = ['id_0', 'id_1', 'id_2', 'id_3', 'id_4', 'id_5']
-    GOOD_IDXS2 = ['id_0', 'id_1', 'id_4', 'id_5']
+    BAD_ID = 3
+    GOOD_IDXS1 = [0, 1, 2, 3, 4, 5]
+    GOOD_IDXS2 = [0, 1, 4, 5]
     CHUNKSIZE = 2
 
     ms = MetaStore(dbconn)
@@ -593,12 +595,14 @@ def test_error_handling(dbconn) -> None:
     tbl = DataTable(
         'tbl',
         meta_table=ms.create_meta_table('tbl'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
 
     tbl_good = DataTable(
         'tbl_good',
         meta_table=ms.create_meta_table('tbl_good'),
-        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True)
+    )
 
     def gen_bad1(chunksize: int = 1000):
         idx = TEST_DF.index
@@ -624,10 +628,10 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
     def inc_func_bad(df):
-        if BAD_ID in df.index:
+        if BAD_ID in df['id'].values:
             raise Exception('TEST')
         return df
 
@@ -642,7 +646,7 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS2]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS2])
 
     inc_process_many(
         ms,
@@ -652,7 +656,7 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
     # Checks that records are not being deleted
     gen_process_many(
         dts=[tbl],
@@ -660,7 +664,7 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
     inc_process_many(
         ms,
@@ -670,4 +674,4 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])

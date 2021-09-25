@@ -161,7 +161,7 @@ class MetaTable:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_df)
+        existing_meta_df = self.get_metadata(data_df, include_deleted=True)
         data_cols = list(data_df.columns)
         meta_cols = self._get_meta_data_columns()
 
