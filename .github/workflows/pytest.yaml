@@ -9,29 +9,30 @@ jobs:
     strategy:
       matrix:
         python-version: [3.8]
-        test-db-env: ['postgres', 'sqlite']
+        # test-db-env: ['postgres', 'sqlite']
+        test-db-env: ['sqlite']
 
-    services:
-      # Label used to access the service container
-      postgres:
-        # Docker Hub image
-        image: postgres:12
-        # Provide the password for postgres
-        env:
-          POSTGRES_PASSWORD: password
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+    # services:
+    #   # Label used to access the service container
+    #   postgres:
+    #     # Docker Hub image
+    #     image: postgres:12
+    #     # Provide the password for postgres
+    #     env:
+    #       POSTGRES_PASSWORD: password
+    #     # Set health checks to wait until postgres has started
+    #     options: >-
+    #       --health-cmd pg_isready
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    #     ports:
+    #       - 5432:5432
 
-      label-studio:
-        image: heartexlabs/label-studio:1.0.1
-        ports:
-            - 8080:8080
+    #   label-studio:
+    #     image: heartexlabs/label-studio:1.0.1
+    #     ports:
+    #         - 8080:8080
 
     steps:
     - uses: actions/checkout@v2
