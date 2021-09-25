@@ -127,22 +127,21 @@ class TableStoreFiledir(TableStore):
 
     def read_rows(self, idx: IndexDF = None) -> pd.DataFrame:
         # FIXME reimplement
-        raise NotImplementedError
 
         if idx is None:
-            idx = self.read_rows_meta_pseudo_df().index
+            idx = self.read_rows_meta_pseudo_df()
 
         def _gen():
-            for i in idx:
+            for i in idx['id']:
                 with (file_open := fsspec.open(self._filename(i), f'r{self.adapter.mode}')) as f:
                     data = self.adapter.load(f)
+                    data['id'] = i
                     if self.add_filepath_column:
                         data['filepath'] = f"{self.protocol_str}{file_open.path}"
                     yield data
 
         return pd.DataFrame.from_records(
-            _gen(),
-            index=idx
+            _gen()
         )
 
     def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
@@ -165,15 +164,15 @@ class TableStoreFiledir(TableStore):
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
                 {
+                    'id': ids,
                     'ukey': ukeys,
-                },
-                index=ids
+                }
             )
             return pseudo_data_df
         else:
             return pd.DataFrame(
                 {
+                    'id': [],
                     'ukey': []
-                },
-                index=pd.Series([], dtype=str)
+                }
             )

@@ -1,9 +1,9 @@
 import pandas as pd
 
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import Integer, String
+from sqlalchemy.sql.sqltypes import String
 
-from datapipe.store.database import TableStoreDB, ConstIdx
+from datapipe.store.database import TableStoreDB
 
 from .util import assert_df_equal
 

@@ -3,7 +3,6 @@ from typing import List, Any, Dict, Union, Optional
 import logging
 import pandas as pd
 
-from dataclasses import dataclass
 from sqlalchemy import Column, Table, create_engine, MetaData
 from sqlalchemy.sql.expression import select, delete, and_, or_
 from datapipe.types import DataDF, IndexDF, DataSchema
@@ -41,12 +40,6 @@ class DBConn:
 
     def __setstate__(self, state):
         self._init(state['connstr'], state['schema'])
-
-
-@dataclass
-class ConstIdx:
-    column: Column
-    value: Any
 
 
 class TableStoreDB(TableStore):
