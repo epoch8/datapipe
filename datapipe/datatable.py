@@ -254,6 +254,9 @@ class ExternalTableUpdater(ComputeStep):
         ps_df = cast(DataDF, self.table.table_store.read_rows_meta_pseudo_df())
 
         _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
+
+        # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
+
         self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 

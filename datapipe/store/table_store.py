@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Optional, Union
-from sqlalchemy import Column, String
 
+from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
 
@@ -28,9 +28,9 @@ class TableStore(ABC):
     def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
         '''
         Подготовить датафрейм с "какбы данными" на основе которых посчитается хеш и обновятся метаданные
-
-        По умолчанию используется read_rows
         '''
+
+        # FIXME переделать на чанкированную обработку
         return self.read_rows(idx)
 
 
@@ -47,10 +47,10 @@ class TableDataSingleFileStore(TableStore):
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
 
-    def load_file(self) -> Optional[pd.DataFrame]:
+    def load_file(self) -> Optional[DataDF]:
         raise NotImplementedError
 
-    def save_file(self, df: pd.DataFrame) -> None:
+    def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
@@ -58,19 +58,12 @@ class TableDataSingleFileStore(TableStore):
 
         if file_df is not None:
             if idx is not None:
-                merged_df = file_df.merge(
-                    idx,
-                    how='left',
-                    on=self.primary_keys,
-                    indicator=True
-                )
+                file_df = file_df.set_index(self.primary_keys)
+                idx = idx.set_index(self.primary_keys)
 
-                exist_df = merged_df[merged_df['_merge'] == 'both'][file_df.columns]
-
-                return exist_df.drop_duplicates()
+                return file_df.loc[idx.index].reset_index()
             else:
                 return file_df
-
         else:
             return pd.DataFrame()
 
@@ -96,16 +89,12 @@ class TableDataSingleFileStore(TableStore):
         file_df = self.load_file()
 
         if file_df is not None:
-            merged_df = file_df.merge(
-                idx,
-                how='left',
-                on=self.primary_keys,
-                indicator=True
-            )
+            file_df = file_df.set_index(self.primary_keys)
+            idx = idx.set_index(self.primary_keys)
 
-            new_df = merged_df[merged_df['_merge'] == 'left_only'][file_df.columns]
+            new_df = file_df.loc[file_df.index.difference(idx.index)]
 
-            self.save_file(new_df)
+            self.save_file(new_df.reset_index())
 
     def update_rows(self, df: DataDF) -> None:
         file_df = self.load_file()
@@ -116,20 +105,11 @@ class TableDataSingleFileStore(TableStore):
         if file_df is None or file_df.empty:
             file_df = df
         else:
-            data_cols = set(file_df.columns) - set(self.primary_keys)
-            merged_df = file_df.merge(df, how="outer", on=self.primary_keys, suffixes=('', '_merge'))
+            file_df = file_df.set_index(self.primary_keys)
+            df = df.set_index(self.primary_keys)
 
-            for column in data_cols:
-                try:
-                    merged_df[column] = merged_df[f'{column}_merge']
-                except KeyError:
-                    raise ValueError("DataDF does not contains all data columns for store")
+            file_df.loc[df.index] = df
 
-            file_df = merged_df[list(file_df.columns)]
-
-        check_df = file_df.drop_duplicates(subset=self.primary_keys)
-
-        if len(file_df) > len(check_df):
-            raise ValueError("DataDf contains duplicate rows by primary keys")
+            file_df = file_df.reset_index()
 
         self.save_file(file_df)
