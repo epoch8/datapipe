@@ -587,7 +587,6 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
 def test_error_handling(dbconn) -> None:
     BAD_ID = 3
     GOOD_IDXS1 = [0, 1, 2, 3, 4, 5]
-    # GOOD_IDXS2 = [0, 1, 4, 5]
     CHUNKSIZE = 2
 
     ms = MetaStore(dbconn)
