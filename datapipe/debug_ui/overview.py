@@ -1,5 +1,4 @@
 import dash_html_components as html
-import dash_core_components as dcc
 import dash_interactive_graphviz as gv
 from dash.dependencies import Input, Output
 
@@ -15,6 +14,7 @@ def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     )
     def graph_node_selected(node_name):
         return node_name
+
 
 def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     steps = build_compute(ms, catalog, pipeline)
@@ -51,7 +51,6 @@ digraph {{
 
         return html.Ul(res)
 
-
     def _build_dash_pipeline_list():
         res = []
 
@@ -59,14 +58,13 @@ digraph {{
             res.append(html.Li([
                 step.name,
                 html.Ul([
-                    html.Li(f'Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
-                    html.Li(f'Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
+                    html.Li('Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
+                    html.Li('Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
                     html.Li(f'To process: {len(ms.get_process_ids(step.input_dts, step.output_dts))}')
                 ])
             ]))
-        
-        return html.Ul(res)
 
+        return html.Ul(res)
 
     def _dash_index():
         return [
@@ -80,6 +78,5 @@ digraph {{
             ),
             html.Div(id='overview_text'),
         ]
-
 
     return _dash_index()

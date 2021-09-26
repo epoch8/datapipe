@@ -201,7 +201,7 @@ class LabelStudioModerationStep(ComputeStep):
         data = [
             {
                 'data': {
-                    'LabelStudioModerationStep__unique_id': "-".join(input_df.iloc[idx][self.input_dts[0].primary_keys].apply(str)),
+                    'LabelStudioModerationStep__unique_id': "-".join(input_df.iloc[idx][self.input_dts[0].primary_keys].apply(str)),  # noqa: E501
                     **{
                         column: input_df.loc[idx, column]
                         for column in self.data
