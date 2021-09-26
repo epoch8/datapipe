@@ -116,6 +116,8 @@ class TableStoreFiledir(TableStore):
         # FIXME: Реализовать
         # Do not delete old files for now
         # Consider self.readonly as well
+        assert(not self.readonly)
+
         pass
 
     def _filename(self, item_id: str) -> str:
@@ -125,7 +127,7 @@ class TableStoreFiledir(TableStore):
         assert(not self.readonly)
 
         for i, data in zip(df['id'], cast(List[Dict[str, Any]], df.to_dict('records'))):
-            filename = self._filename(i)
+            filename = self._filename(str(i))
 
             with fsspec.open(filename, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)

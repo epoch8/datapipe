@@ -3,7 +3,7 @@ from typing import List, Any, Dict, Union, Optional
 import logging
 import pandas as pd
 
-from sqlalchemy import Column, Table, create_engine, MetaData
+from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, and_, or_
 from datapipe.types import DataDF, IndexDF, DataSchema
 from datapipe.store.table_store import TableStore
@@ -12,7 +12,20 @@ from datapipe.store.table_store import TableStore
 logger = logging.getLogger('datapipe.store.database')
 
 
+SCHEMA_TO_DTYPE_LOOKUP = {
+    String: str,
+    Integer: int,
+}
+
+
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
+    return {
+        i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__]
+        for i in schema
+    }
+
+
+def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
     return {
         i.name: i.type for i in schema
     }
@@ -98,7 +111,7 @@ class TableStoreDB(TableStore):
                 index=False,
                 chunksize=1000,
                 method='multi',
-                dtype=sql_schema_to_dtype(self.data_sql_schema),
+                dtype=sql_schema_to_sqltype(self.data_sql_schema),
             )
 
     def update_rows(self, df: DataDF) -> None:

@@ -11,7 +11,7 @@ import pandas as pd
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.types import IndexDF, ChunkMeta, DataSchema, DataDF, MetadataDF
-from datapipe.store.database import DBConn, sql_schema_to_dtype
+from datapipe.store.database import DBConn, sql_schema_to_sqltype
 from datapipe.event_logger import EventLogger
 
 
@@ -236,7 +236,7 @@ class MetaTable:
                 index=False,
                 chunksize=1000,
                 method='multi',
-                dtype=sql_schema_to_dtype(self.sql_schema),
+                dtype=sql_schema_to_sqltype(self.sql_schema),
             )
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
