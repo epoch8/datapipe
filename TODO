@@ -3,7 +3,7 @@ One-to-many:
     ☐ Считать хеш-сумму в Store
     ☐ Сделать MetaTable декоратором над транзакцией (или DataTable?)
     ☐ Объединить DataTable и MetaTable
-    ☐ Реализовать общие тесты для всех table_store
+    ✔ Реализовать общие тесты для всех table_store @done(21-09-26 16:48)
     ☐ Причесать работу с primary_schema
 
 TODO:

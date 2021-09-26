@@ -3,7 +3,7 @@ name: Run tests
 on: [push]
 
 jobs:
-  lint:
+  setup:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,6 +31,15 @@ jobs:
       run: |
         poetry install -E excel -E ui
 
+  lint:
+    needs: setup
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+
+    steps:
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -42,8 +51,8 @@ jobs:
       run: |
         poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent
 
-
-  build_and_test:
+  test:
+    needs: lint
 
     runs-on: ubuntu-latest
     strategy:
@@ -74,27 +83,6 @@ jobs:
     #         - 8080:8080
 
     steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Setup poetry
-      run: |
-        pip install poetry==1.1.6
-
-    - name: Cache Python dependencies
-      uses: actions/cache@v2
-      with:
-        path: /home/runner/.cache/pypoetry/virtualenvs
-        key: ${{ runner.os }}-${{ matrix.python-version }}
-
-    - name: Install dependencies
-      run: |
-        poetry install -E excel -E ui
-
     - name: Test with pytest
       run: |
         poetry run pytest
