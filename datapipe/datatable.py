@@ -25,12 +25,17 @@ class DataTable:
     def __init__(
         self,
         name: str,
+        meta_dbconn: DBConn,
         meta_table: MetaTable,
-        table_store: TableStore,  # Если None - создается по дефолту
+        table_store: TableStore,
+        event_logger: EventLogger,
     ):
         self.name = name
+        self.meta_dbconn = meta_dbconn
         self.meta_table = meta_table
         self.table_store = table_store
+        self.event_logger = event_logger
+
         self.primary_keys = meta_table.primary_keys
 
     def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> MetadataDF:
@@ -66,8 +71,23 @@ class DataTable:
 
         self.meta_table.update_meta_for_sync_meta(deleted_idx)
 
+    def _meta_get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
+        idx_cols = [self.meta_table.sql_table.c[key] for key in self.primary_keys]
+        sql = select(idx_cols).where(
+            and_(
+                self.meta_table.sql_table.c.process_ts < process_ts,
+                self.meta_table.sql_table.c.delete_ts.is_(None)
+            )
+        )
+
+        return pd.read_sql_query(
+            sql,
+            con=self.meta_dbconn.con,
+            chunksize=1000
+        )
+
     def sync_meta_by_process_ts(self, process_ts: float) -> None:
-        deleted_dfs = self.meta_table.get_stale_idx(process_ts)
+        deleted_dfs = self._meta_get_stale_idx(process_ts)
 
         for deleted_df in deleted_dfs:
             deleted_idx = deleted_df[self.primary_keys]
@@ -106,13 +126,15 @@ class DataStore:
 
         res = DataTable(
             name=name,
+            meta_dbconn=self.meta_dbconn,
             meta_table=MetaTable(
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
                 event_logger=self.event_logger,
             ),
-            table_store=table_store
+            table_store=table_store,
+            event_logger=self.event_logger,
         )
 
         self.tables[name] = res
@@ -291,7 +313,7 @@ def gen_process_many(
 
             # TODO перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
             if dts:
-                dts[0].meta_table.event_logger.log_exception(e)
+                dts[0].event_logger.log_exception(e)
             return
 
         for k, dt_k in enumerate(dts):

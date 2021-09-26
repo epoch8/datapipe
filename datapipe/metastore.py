@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Iterator, cast
+from typing import List, Tuple, Dict, cast
 
 import logging
 import time
@@ -309,18 +309,3 @@ class MetaTable:
             self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
         return cast(MetadataDF, deleted_df[self.primary_keys])
-
-    def get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
-        idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
-        sql = select(idx_cols).where(
-            and_(
-                self.sql_table.c.process_ts < process_ts,
-                self.sql_table.c.delete_ts.is_(None)
-            )
-        )
-
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con,
-            chunksize=1000
-        )
