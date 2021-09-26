@@ -93,12 +93,15 @@ def test_insert_json_rows(tmp_dir_with_json_data):
     )
 
     ts.insert_rows(pd.DataFrame(
-        {'a': [3], 'b': [30]},
-        index=['ccc']
+        {
+            'id': ['ccc'],
+            'a': [3],
+            'b': [30]
+        }
     ))
 
     with open(f'{tmp_dir_with_json_data}/ccc.json') as f:
-        assert(json.load(f) == {'a': 3, 'b': 30})
+        assert(json.load(f) == {'id': 'ccc', 'a': 3, 'b': 30})
 
 
 @pytest.fixture
@@ -130,8 +133,10 @@ def test_insert_png_rows(tmp_dir_with_img_data):
     )
 
     ts.insert_rows(pd.DataFrame(
-        {'image': [Image.fromarray(np.zeros((100, 100, 3), 'u8'), 'RGB')]},
-        index=['bbb']
+        {
+            'id': ['bbb'],
+            'image': [Image.fromarray(np.zeros((100, 100, 3), 'u8'), 'RGB')]
+        }
     ))
 
     assert(fsspec.open(f'{tmp_dir_with_img_data}/bbb.png'))
