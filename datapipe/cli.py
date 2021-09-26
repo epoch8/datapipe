@@ -1,10 +1,10 @@
 import click
 
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Pipeline
 
 
-def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
+def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     import logging
     logging.basicConfig(level=logging.INFO)
 
@@ -15,12 +15,12 @@ def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     @cli.command()
     def run():
         from .compute import run_pipeline
-        run_pipeline(ms, catalog, pipeline)
+        run_pipeline(ds, catalog, pipeline)
 
     @cli.command()
     def ui():
         from .debug_ui import ui_main
-        app = ui_main(ms, catalog, pipeline)
+        app = ui_main(ds, catalog, pipeline)
         app.run_server(host='0.0.0.0')
 
     cli()

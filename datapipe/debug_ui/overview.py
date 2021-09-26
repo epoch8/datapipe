@@ -2,12 +2,12 @@ import dash_html_components as html
 import dash_interactive_graphviz as gv
 from dash.dependencies import Input, Output
 
-from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, Pipeline
 from datapipe.compute import build_compute
+from datapipe.datatable import DataStore
 
 
-def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
+def ui_overview_setup(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     @app.callback(
         Output('overview_text', 'children'),
         [Input('pipeline_graph', 'selected_node')]
@@ -16,8 +16,8 @@ def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
         return node_name
 
 
-def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
-    steps = build_compute(ms, catalog, pipeline)
+def ui_overview_index(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+    steps = build_compute(ds, catalog, pipeline)
 
     steps_dots = []
 
@@ -40,7 +40,7 @@ digraph {{
         res = []
 
         for name, tbl in catalog.catalog.items():
-            di = ms.get_table_debug_info(name)
+            di = ds.get_table_debug_info(name)
 
             res.append(html.Li([
                 di.name,
@@ -60,7 +60,7 @@ digraph {{
                 html.Ul([
                     html.Li('Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
                     html.Li('Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
-                    html.Li(f'To process: {len(ms.get_process_ids(step.input_dts, step.output_dts))}')
+                    html.Li(f'To process: {len(ds.get_process_ids(step.input_dts, step.output_dts))}')
                 ])
             ]))
 

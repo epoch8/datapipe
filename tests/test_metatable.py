@@ -4,7 +4,7 @@ import pandas as pd
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.metastore import MetaStore
+from datapipe.metastore import MetaTable
 from datapipe.store.database import DBConn
 from datapipe.types import DataDF
 
@@ -19,9 +19,9 @@ TEST_DF = cast(DataDF, pd.DataFrame(
 
 
 def test_insert_rows(dbconn: DBConn):
-    ms = MetaStore(dbconn)
-    mt = ms.create_meta_table(
-        'test',
+    mt = MetaTable(
+        name='test',
+        dbconn=dbconn,
         primary_schema=[
             Column('id', Integer, primary_key=True)
         ]
@@ -40,9 +40,9 @@ def test_insert_rows(dbconn: DBConn):
 
 
 def test_sync_meta(dbconn: DBConn):
-    ms = MetaStore(dbconn)
-    mt = ms.create_meta_table(
-        'test',
+    mt = MetaTable(
+        name='test',
+        dbconn=dbconn,
         primary_schema=[
             Column('id', Integer, primary_key=True)
         ]

@@ -1,14 +1,13 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Union, Iterator, cast
+from typing import List, Tuple, Dict, Iterator, cast
 
 import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, Numeric, Float, func, union, alias
+from sqlalchemy import Table, Column, Numeric, Float, func
 
 import pandas as pd
-from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.types import IndexDF, ChunkMeta, DataSchema, DataDF, MetadataDF
 from datapipe.store.database import DBConn, sql_schema_to_sqltype
@@ -38,11 +37,16 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
-        event_logger: EventLogger
+        event_logger: EventLogger = None
     ):
         self.dbconn = dbconn
         self.name = name
-        self.event_logger = event_logger
+
+        if event_logger is None:
+            self.event_logger = EventLogger(dbconn)
+        else:
+            self.event_logger = event_logger
+
         self.primary_keys = [column.name for column in primary_schema]
 
         for item in primary_schema:
@@ -319,141 +323,4 @@ class MetaTable:
             sql,
             con=self.dbconn.con,
             chunksize=1000
-        )
-
-
-class MetaStore:
-    def __init__(self, dbconn: Union[str, DBConn]) -> None:
-        if isinstance(dbconn, str):
-            self.dbconn = DBConn(dbconn)
-        else:
-            self.dbconn = dbconn
-        self.event_logger = EventLogger(self.dbconn)
-
-        self.meta_tables: Dict[str, MetaTable] = {}
-
-    def create_meta_table(self, name: str, primary_schema: DataSchema = None) -> MetaTable:
-        assert(name not in self.meta_tables)
-
-        if primary_schema is None:
-            primary_schema = [
-                Column('id', Integer, primary_key=True),
-            ]
-
-        res = MetaTable(
-            dbconn=self.dbconn,
-            name=name,
-            primary_schema=primary_schema,
-            event_logger=self.event_logger,
-        )
-
-        self.meta_tables[name] = res
-
-        return res
-
-    def get_process_ids(
-        self,
-        inputs: List[MetaTable],
-        outputs: List[MetaTable],
-        chunksize: int = 1000,
-    ) -> Tuple[int, Iterator[IndexDF]]:
-        '''
-        Метод для получения перечня индексов для обработки.
-
-        Returns: (idx_size, iterator<idx_df>)
-            idx_size - количество индексов требующих обработки
-            idx_df - датафрейм без колонок с данными, только индексная колонка
-        '''
-
-        if len(inputs) == 0:
-            return (0, iter([]))
-
-        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
-        out_p_keys = [set(out.primary_keys) for out in outputs]
-        join_keys = set.intersection(*inp_p_keys, *out_p_keys)
-
-        if not join_keys:
-            raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
-
-        def left_join(tbl_a, tbl_bbb):
-            q = tbl_a.join(
-                tbl_bbb[0],
-                and_(tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys),
-                isouter=True
-            )
-            for tbl_b in tbl_bbb[1:]:
-                q = q.join(
-                    tbl_b,
-                    and_(tbl_a.c[key] == tbl_b.c[key] for key in join_keys),
-                    isouter=True
-                )
-
-            return q
-
-        inp_tbls = [inp.sql_table.alias(f"inp_{inp.sql_table.name}") for inp in inputs]
-        out_tbls = [out.sql_table.alias(f"out_{out.sql_table.name}") for out in outputs]
-        sql_requests = []
-
-        for inp in inp_tbls:
-            fields = [inp.c[key] for key in join_keys]
-            sql = select(fields).select_from(
-                left_join(
-                    inp,
-                    out_tbls
-                )
-            ).where(
-                or_(
-                    and_(
-                        or_(
-                            (
-                                out.c.process_ts
-                                <
-                                inp.c.update_ts
-                            ),
-                            out.c.process_ts.is_(None)
-                        ),
-                        inp.c.delete_ts.is_(None)
-                    )
-                    for out in out_tbls
-                )
-            )
-
-            sql_requests.append(sql)
-
-        for out in out_tbls:
-            fields = [out.c[key] for key in join_keys]
-            sql = select(fields).select_from(
-                left_join(
-                    out,
-                    inp_tbls
-                )
-            ).where(
-                or_(
-                    or_(
-                        (
-                            out.c.process_ts
-                            <
-                            inp.c.delete_ts
-                        ),
-                        inp.c.create_ts.is_(None)
-                    )
-                    for inp in inp_tbls
-                )
-            )
-
-            sql_requests.append(sql)
-
-        u1 = union(*sql_requests)
-
-        idx_count = self.dbconn.con.execute(
-            select([func.count()])
-            .select_from(
-                alias(u1, name='union_select')
-            )
-        ).scalar()
-
-        return idx_count, pd.read_sql_query(
-            u1,
-            con=self.dbconn.con,
-            chunksize=chunksize
         )

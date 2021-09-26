@@ -7,8 +7,7 @@ from PIL import Image
 from sqlalchemy import Column, String
 
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchGenerate, BatchTransform
-from datapipe.metastore import MetaStore
-from datapipe.datatable import DataTable, gen_process, inc_process
+from datapipe.datatable import DataStore, DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_pipeline, run_steps
 
@@ -33,20 +32,18 @@ def resize_images(df):
 
 
 def test_image_datatables(dbconn, tmp_dir):
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1', primary_schema=[Column('id', String(100), primary_key=True)]),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl1' / '{id}.png',
             adapter=PILFile('png')
         )
     )
 
-    tbl2 = DataTable(
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2', primary_schema=[Column('id', String(100), primary_key=True)]),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl2' / '{id}.png',
             adapter=PILFile('png')
@@ -62,7 +59,7 @@ def test_image_datatables(dbconn, tmp_dir):
     )
 
     inc_process(
-        ms,
+        ds,
         [tbl1],
         tbl2,
         resize_images
@@ -103,8 +100,8 @@ def test_image_pipeline(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ms = MetaStore(dbconn)
-    run_pipeline(ms, catalog, pipeline)
+    ds = DataStore(dbconn)
+    run_pipeline(ds, catalog, pipeline)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
@@ -145,26 +142,26 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ms = MetaStore(dbconn)
-    steps = build_compute(ms, catalog, pipeline)
-    run_steps(ms, steps)
+    ds = DataStore(dbconn)
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
-    assert len(catalog.get_datatable(ms, 'tbl1').get_data()) == 10
-    assert len(catalog.get_datatable(ms, 'tbl2').get_data()) == 10
+    assert len(catalog.get_datatable(ds, 'tbl1').get_data()) == 10
+    assert len(catalog.get_datatable(ds, 'tbl2').get_data()) == 10
 
     # Delete some files from the folder
     for id in [0, 5, 7, 8, 9]:
         (tmp_dir / 'tbl1' / f'im_{id}.png').unlink()
 
-    run_steps(ms, steps)
+    run_steps(ds, steps)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 5
-    assert len(catalog.get_datatable(ms, 'tbl1').get_data()) == 5
-    assert len(catalog.get_datatable(ms, 'tbl1').get_metadata()) == 5
+    assert len(catalog.get_datatable(ds, 'tbl1').get_data()) == 5
+    assert len(catalog.get_datatable(ds, 'tbl1').get_metadata()) == 5
 
     # TODO: uncomment follow when we make files deletion
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 5
-    assert len(catalog.get_datatable(ms, 'tbl2').get_data()) == 5
-    assert len(catalog.get_datatable(ms, 'tbl2').get_metadata()) == 5
+    assert len(catalog.get_datatable(ds, 'tbl2').get_data()) == 5
+    assert len(catalog.get_datatable(ds, 'tbl2').get_metadata()) == 5

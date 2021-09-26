@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image
 
 from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
 from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudioSession
@@ -137,7 +137,7 @@ def convert_to_ls_input_data(
 @pytest.mark.skipif(SKIP_LS_TEST, reason="Skipping LS for now")
 @pytest.mark.parametrize("include_annotations,include_predictions", [(False, False), (False, True)])
 def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
     catalog = Catalog({
         '00_images': Table(
             store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
@@ -175,24 +175,24 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
         ),
     ])
 
-    steps = build_compute(ms, catalog, pipeline)
+    steps = build_compute(ds, catalog, pipeline)
     label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
     wait_until_label_studio_is_up(label_studio_session)
 
     # This should be ok (project will be created, but without data)
-    run_steps(ms, steps)
-    run_steps(ms, steps)
+    run_steps(ds, steps)
+    run_steps(ds, steps)
 
     # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
     gen_process(
-        dt=catalog.get_datatable(ms, '00_images'),
+        dt=catalog.get_datatable(ds, '00_images'),
         proc_func=gen_images
     )
-    run_steps(ms, steps)
+    run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
+    assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10
 
     # Person annotation imitation & incremental processing
     tasks, _ = label_studio_session.get_tasks(
@@ -223,9 +223,9 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
                     }
                 ]
         )
-        run_steps(ms, steps)
+        run_steps(ds, steps)
         idxs_df = [task['data']['LabelStudioModerationStep__unique_id'] for task in tasks[idxs]]
-        df_annotation = catalog.get_datatable(ms, '02_annotations').get_data(idx=idxs_df)
+        df_annotation = catalog.get_datatable(ds, '02_annotations').get_data(idx=idxs_df)
         for idx_df in idxs_df:
             assert len(df_annotation.loc[idx_df, 'annotations']) == 1
             assert df_annotation.loc[idx_df, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
@@ -233,7 +233,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
             )
 
     # Check if pipeline works after service is over
-    run_steps(ms, steps)
+    run_steps(ds, steps)
 
     # Delete the project after the test
     res = label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
@@ -242,7 +242,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
 @pytest.mark.skipif(SKIP_LS_TEST, reason="Skipping LS for now")
 @pytest.mark.parametrize("include_annotations,include_predictions", [(True, False), (True, True)])
 def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
     catalog = Catalog({
         '00_images': Table(
             store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
@@ -295,17 +295,17 @@ def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url, in
         ),
     ])
 
-    steps = build_compute(ms, catalog, pipeline)
+    steps = build_compute(ds, catalog, pipeline)
     label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
 
     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
     wait_until_label_studio_is_up(label_studio_session)
 
     # These steps should upload tasks with preannotations
-    run_steps(ms, steps)
+    run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ms, '02_annotations').get_data()) == 10
-    df_annotation = catalog.get_datatable(ms, '02_annotations').get_data()
+    assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10
+    df_annotation = catalog.get_datatable(ds, '02_annotations').get_data()
     for idx in df_annotation.index:
         assert len(df_annotation.loc[idx, 'annotations']) == 1
         assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (

@@ -1,5 +1,4 @@
-from datapipe.types import DataDF, MetadataDF
-from typing import Callable, Iterator, List, Optional, Tuple, Union, cast
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import inspect
 import logging
@@ -7,11 +6,14 @@ import time
 import math
 
 import pandas as pd
+from sqlalchemy import alias, func, select, union, and_, or_
 import tqdm
 
-from datapipe.metastore import MetaTable, MetaStore
-from datapipe.types import IndexDF, ChunkMeta
+from datapipe.types import DataDF, MetadataDF, IndexDF, ChunkMeta
+from datapipe.store.database import DBConn
+from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
+from datapipe.event_logger import EventLogger
 
 from datapipe.step import ComputeStep
 
@@ -88,15 +90,158 @@ class DataTable:
         return self.meta_table.get_metadata(idx).index.tolist()
 
 
+class DataStore:
+    def __init__(
+        self,
+        meta_dbconn: DBConn
+    ) -> None:
+        self.meta_dbconn = meta_dbconn
+        self.event_logger = EventLogger(self.meta_dbconn)
+        self.tables: Dict[str, DataTable] = {}
+
+    def create_table(self, name: str, table_store: TableStore) -> DataTable:
+        assert(name not in self.tables)
+
+        primary_schema = table_store.get_primary_schema()
+
+        res = DataTable(
+            name=name,
+            meta_table=MetaTable(
+                dbconn=self.meta_dbconn,
+                name=name,
+                primary_schema=primary_schema,
+                event_logger=self.event_logger,
+            ),
+            table_store=table_store
+        )
+
+        self.tables[name] = res
+
+        return res
+
+    def get_or_create_table(self, name: str, table_store: TableStore) -> DataTable:
+        if name in self.tables:
+            return self.tables[name]
+        else:
+            return self.create_table(name, table_store)
+
+    def get_process_ids(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        chunksize: int = 1000,
+    ) -> Tuple[int, Iterator[IndexDF]]:
+        '''
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+            idx_size - количество индексов требующих обработки
+            idx_df - датафрейм без колонок с данными, только индексная колонка
+        '''
+
+        if len(inputs) == 0:
+            return (0, iter([]))
+
+        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
+        out_p_keys = [set(out.primary_keys) for out in outputs]
+        join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+
+        if not join_keys:
+            raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+
+        def left_join(tbl_a, tbl_bbb):
+            q = tbl_a.join(
+                tbl_bbb[0],
+                and_(tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys),
+                isouter=True
+            )
+            for tbl_b in tbl_bbb[1:]:
+                q = q.join(
+                    tbl_b,
+                    and_(tbl_a.c[key] == tbl_b.c[key] for key in join_keys),
+                    isouter=True
+                )
+
+            return q
+
+        inp_tbls = [inp.meta_table.sql_table.alias(f"inp_{inp.meta_table.sql_table.name}") for inp in inputs]
+        out_tbls = [out.meta_table.sql_table.alias(f"out_{out.meta_table.sql_table.name}") for out in outputs]
+        sql_requests = []
+
+        for inp in inp_tbls:
+            fields = [inp.c[key] for key in join_keys]
+            sql = select(fields).select_from(
+                left_join(
+                    inp,
+                    out_tbls
+                )
+            ).where(
+                or_(
+                    and_(
+                        or_(
+                            (
+                                out.c.process_ts
+                                <
+                                inp.c.update_ts
+                            ),
+                            out.c.process_ts.is_(None)
+                        ),
+                        inp.c.delete_ts.is_(None)
+                    )
+                    for out in out_tbls
+                )
+            )
+
+            sql_requests.append(sql)
+
+        for out in out_tbls:
+            fields = [out.c[key] for key in join_keys]
+            sql = select(fields).select_from(
+                left_join(
+                    out,
+                    inp_tbls
+                )
+            ).where(
+                or_(
+                    or_(
+                        (
+                            out.c.process_ts
+                            <
+                            inp.c.delete_ts
+                        ),
+                        inp.c.create_ts.is_(None)
+                    )
+                    for inp in inp_tbls
+                )
+            )
+
+            sql_requests.append(sql)
+
+        u1 = union(*sql_requests)
+
+        idx_count = self.meta_dbconn.con.execute(
+            select([func.count()])
+            .select_from(
+                alias(u1, name='union_select')
+            )
+        ).scalar()
+
+        return idx_count, pd.read_sql_query(
+            u1,
+            con=self.meta_dbconn.con,
+            chunksize=chunksize
+        )
+
+
 def get_process_chunks(
-    ms: MetaStore,
+    ds: DataStore,
     inputs: List[DataTable],
     outputs: List[DataTable],
     chunksize: int = 1000,
 ) -> Tuple[int, Iterator[List[DataDF]]]:
-    idx_count, idx_gen = ms.get_process_ids(
-        inputs=[i.meta_table for i in inputs],
-        outputs=[i.meta_table for i in outputs],
+    idx_count, idx_gen = ds.get_process_ids(
+        inputs=inputs,
+        outputs=outputs,
         chunksize=chunksize
     )
 
@@ -177,9 +322,28 @@ def gen_process(
     )
 
 
+# TODO перенести в compute.BatchTransformStep
+def inc_process(
+    ds: DataStore,
+    input_dts: List[DataTable],
+    res_dt: DataTable,
+    proc_func: Callable,
+    chunksize: int = 1000,
+    **kwargs
+) -> None:
+    inc_process_many(
+        ds=ds,
+        input_dts=input_dts,
+        res_dts=[res_dt],
+        proc_func=proc_func,
+        chunksize=chunksize,
+        **kwargs
+    )
+
+
 # TODO перенести в compute.BatchGenerateStep
 def inc_process_many(
-    ms: MetaStore,
+    ds: DataStore,
     input_dts: List[DataTable],
     res_dts: List[DataTable],
     proc_func: Callable,
@@ -191,7 +355,7 @@ def inc_process_many(
     '''
 
     idx_count, input_dfs_gen = get_process_chunks(
-        ms,
+        ds,
         inputs=input_dts,
         outputs=res_dts,
         chunksize=chunksize
@@ -205,7 +369,7 @@ def inc_process_many(
                     chunks_df = proc_func(*input_dfs, **kwargs)
                 except Exception as e:
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
-                    ms.event_logger.log_exception(e)
+                    ds.event_logger.log_exception(e)
 
                     idx = pd.concat(input_dfs).index
 
@@ -224,25 +388,6 @@ def inc_process_many(
                     res_dt.sync_meta_by_idx_chunks([], processed_idx=idx)
 
 
-# TODO перенести в compute.BatchTransformStep
-def inc_process(
-    ds: MetaStore,
-    input_dts: List[DataTable],
-    res_dt: DataTable,
-    proc_func: Callable,
-    chunksize: int = 1000,
-    **kwargs
-) -> None:
-    inc_process_many(
-        ms=ds,
-        input_dts=input_dts,
-        res_dts=[res_dt],
-        proc_func=proc_func,
-        chunksize=chunksize,
-        **kwargs
-    )
-
-
 class ExternalTableUpdater(ComputeStep):
     def __init__(self, name: str, table: DataTable):
         self.name = name
@@ -250,7 +395,7 @@ class ExternalTableUpdater(ComputeStep):
         self.input_dts = []
         self.output_dts = [table]
 
-    def run(self, ms: MetaStore) -> None:
+    def run(self, ds: DataStore) -> None:
         ps_df = cast(DataDF, self.table.table_store.read_rows_meta_pseudo_df())
 
         _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)

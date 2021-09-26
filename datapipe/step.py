@@ -2,8 +2,7 @@ from typing import List, TYPE_CHECKING
 from dataclasses import dataclass
 
 if TYPE_CHECKING:
-    from datapipe.metastore import MetaStore
-    from datapipe.datatable import DataTable
+    from datapipe.datatable import DataStore, DataTable
 
 
 @dataclass
@@ -12,5 +11,5 @@ class ComputeStep:
     input_dts: List['DataTable']
     output_dts: List['DataTable']
 
-    def run(self, ms: 'MetaStore'):
+    def run(self, ds: 'DataStore'):
         raise NotImplementedError

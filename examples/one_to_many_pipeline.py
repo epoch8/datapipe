@@ -1,18 +1,18 @@
 import pandas as pd
 
-from datapipe.store.database import TableStoreDB
-from datapipe.metastore import MetaStore
-from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
-from datapipe.store.database import DBConn
-from datapipe.cli import main
-
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import Integer, String, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 
+from datapipe.store.database import TableStoreDB
+from datapipe.datatable import DataStore
+from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.store.database import DBConn
+from datapipe.cli import main
+
 
 dbconn = DBConn("", '')
-ms = MetaStore(dbconn)
+ds = DataStore(dbconn)
 
 
 PRODUCT_SCHEMA = [
@@ -252,4 +252,4 @@ pipeline = Pipeline([
 ])
 
 
-main(ms, catalog, pipeline)
+main(ds, catalog, pipeline)
