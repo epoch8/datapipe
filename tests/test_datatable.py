@@ -587,7 +587,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
 def test_error_handling(dbconn) -> None:
     BAD_ID = 3
     GOOD_IDXS1 = [0, 1, 2, 3, 4, 5]
-    GOOD_IDXS2 = [0, 1, 4, 5]
+    # GOOD_IDXS2 = [0, 1, 4, 5]
     CHUNKSIZE = 2
 
     ms = MetaStore(dbconn)
@@ -643,10 +643,10 @@ def test_error_handling(dbconn) -> None:
         [tbl],
         [tbl_good],
         inc_func_bad,
-        chunksize=CHUNKSIZE
+        chunksize=1
     )
 
-    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS2])
+    assert_datatable_equal(tbl_good, TEST_DF.loc[[0, 1, 2, 4, 5]])
 
     inc_process_many(
         ms,
