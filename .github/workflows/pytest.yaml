@@ -9,25 +9,24 @@ jobs:
     strategy:
       matrix:
         python-version: [3.8]
-        # test-db-env: ['postgres', 'sqlite']
-        test-db-env: ['sqlite']
+        test-db-env: ['postgres', 'sqlite']
 
-    # services:
-    #   # Label used to access the service container
-    #   postgres:
-    #     # Docker Hub image
-    #     image: postgres:12
-    #     # Provide the password for postgres
-    #     env:
-    #       POSTGRES_PASSWORD: password
-    #     # Set health checks to wait until postgres has started
-    #     options: >-
-    #       --health-cmd pg_isready
-    #       --health-interval 10s
-    #       --health-timeout 5s
-    #       --health-retries 5
-    #     ports:
-    #       - 5432:5432
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres:12
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: password
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     #   label-studio:
     #     image: heartexlabs/label-studio:1.0.1
@@ -36,10 +35,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    
     - name: Setup poetry
       run: |
         pip install poetry==1.1.6
