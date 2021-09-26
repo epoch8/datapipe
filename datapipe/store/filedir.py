@@ -131,8 +131,6 @@ class TableStoreFiledir(TableStore):
                 self.adapter.dump(data, f)
 
     def read_rows(self, idx: IndexDF = None) -> pd.DataFrame:
-        # FIXME reimplement
-
         if idx is None:
             idx = self.read_rows_meta_pseudo_df()
 

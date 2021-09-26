@@ -105,6 +105,7 @@ class MetaTable:
         return pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
 
     # Fix numpy types in Index
+    # FIXME разобраться, что это за грязный хак
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
