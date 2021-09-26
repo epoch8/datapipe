@@ -1,5 +1,8 @@
 import pandas as pd
 
+from datapipe.types import DataDF
+from datapipe.datatable import DataTable
+
 
 def assert_idx_equal(a, b):
     a = sorted(list(a))
@@ -8,7 +11,10 @@ def assert_idx_equal(a, b):
     assert(a == b)
 
 
-def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
+def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=['id']) -> bool:
+    a = a.set_index(index_cols)
+    b = b.set_index(index_cols)
+
     assert_idx_equal(a.index, b.index)
 
     eq_rows = (a.sort_index() == b.sort_index()).all(axis='columns')
@@ -24,3 +30,7 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
         print(b.loc[-eq_rows])
 
         raise AssertionError
+
+
+def assert_datatable_equal(a: DataTable, b: DataDF) -> bool:
+    return assert_df_equal(a.get_data(), b)

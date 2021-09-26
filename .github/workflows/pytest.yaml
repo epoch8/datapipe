@@ -9,29 +9,30 @@ jobs:
     strategy:
       matrix:
         python-version: [3.8]
-        test-db-env: ['postgres', 'sqlite']
+        # test-db-env: ['postgres', 'sqlite']
+        test-db-env: ['sqlite']
 
-    services:
-      # Label used to access the service container
-      postgres:
-        # Docker Hub image
-        image: postgres:12
-        # Provide the password for postgres
-        env:
-          POSTGRES_PASSWORD: password
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+    # services:
+    #   # Label used to access the service container
+    #   postgres:
+    #     # Docker Hub image
+    #     image: postgres:12
+    #     # Provide the password for postgres
+    #     env:
+    #       POSTGRES_PASSWORD: password
+    #     # Set health checks to wait until postgres has started
+    #     options: >-
+    #       --health-cmd pg_isready
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    #     ports:
+    #       - 5432:5432
 
-      label-studio:
-        image: heartexlabs/label-studio:1.0.1
-        ports:
-            - 8080:8080
+    #   label-studio:
+    #     image: heartexlabs/label-studio:1.0.1
+    #     ports:
+    #         - 8080:8080
 
     steps:
     - uses: actions/checkout@v2
@@ -40,16 +41,30 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Setup poetry
-      uses: abatilo/actions-poetry@v2.0.0
+      run: |
+        pip install poetry==1.1.6
+
+    - name: Cache Python dependencies
+      uses: actions/cache@v2
+      with:
+        path: /home/runner/.cache/pypoetry/virtualenvs
+        key: ${{ runner.os }}-${{ matrix.python-version }}
+
     - name: Install dependencies
       run: |
-        poetry install
+        poetry install -E excel -E ui
+
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
         poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Lint with mypy
+      run: |
+        poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent
+
     - name: Test with pytest
       run: |
         poetry run pytest

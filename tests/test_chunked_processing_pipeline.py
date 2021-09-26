@@ -7,7 +7,7 @@ from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
 
 
-CHUNK_SIZE = 1000
+CHUNK_SIZE = 100
 
 
 def test_table_store_json_line_reading(tmp_dir, dbconn):

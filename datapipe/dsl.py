@@ -25,15 +25,20 @@ class ExternalTable(Table):
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
-
         self.data_tables: Dict[str, DataTable] = {}
 
     def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
         if name not in self.data_tables:
+            store = self.catalog[name].store
+            primary_schema = store.get_primary_schema()
+
+            if not primary_schema:
+                raise ValueError("DataFrame must have at least one primary key")
+
             self.data_tables[name] = DataTable(
                 name=name,
-                meta_table=ms.create_meta_table(name),
-                table_store=self.catalog[name].store
+                meta_table=ms.create_meta_table(name, primary_schema),
+                table_store=store
             )
 
         return self.data_tables[name]

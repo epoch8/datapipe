@@ -4,12 +4,13 @@ import dash_table as dt
 
 from dash.dependencies import Input, Output
 
+
 def ui_tables_index(app, ms, catalog, pipeline):
     return [
         html.H1('Tables data'),
         dcc.Dropdown(
             id='table-name',
-            options=[{'label': k, 'value': k} for k,v in catalog.catalog.items()],
+            options=[{'label': k, 'value': k} for k, v in catalog.catalog.items()],
         ),
         html.Div(id='table-content')
     ]
