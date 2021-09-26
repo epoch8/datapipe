@@ -7,9 +7,10 @@ import json
 import fsspec
 import pandas as pd
 
+from sqlalchemy import Column, String
 from PIL import Image
 
-from datapipe.types import IndexDF
+from datapipe.types import DataSchema, IndexDF
 from datapipe.store.table_store import TableStore
 
 
@@ -101,11 +102,15 @@ class TableStoreFiledir(TableStore):
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
 
-        # Другие схемы идентификации еще не реализованы
+        # FIXME Другие схемы идентификации еще не реализованы
         assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
 
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
+
+    def get_primary_schema(self) -> DataSchema:
+        # FIXME реализовать поддержку других схем
+        return [Column('id', String(100), primary_key=True)]
 
     def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать
@@ -119,7 +124,7 @@ class TableStoreFiledir(TableStore):
     def insert_rows(self, df: pd.DataFrame) -> None:
         assert(not self.readonly)
 
-        for i, data in zip(df.index, cast(List[Dict[str, Any]], df.to_dict('records'))):
+        for i, data in zip(df['id'], cast(List[Dict[str, Any]], df.to_dict('records'))):
             filename = self._filename(i)
 
             with fsspec.open(filename, f'w{self.adapter.mode}+') as f:

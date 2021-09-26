@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
+from sqlalchemy import Column, String
+
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.metastore import MetaStore
 from datapipe.datatable import DataTable, gen_process, inc_process
@@ -15,9 +17,9 @@ def make_df():
     idx = [f'im_{i}' for i in range(10)]
     return pd.DataFrame(
         {
+            'id': idx,
             'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in idx]
-        },
-        index=idx
+        }
     )
 
 
@@ -35,7 +37,7 @@ def test_image_datatables(dbconn, tmp_dir):
 
     tbl1 = DataTable(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
+        meta_table=ms.create_meta_table('tbl1', primary_schema=[Column('id', String(100), primary_key=True)]),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl1' / '{id}.png',
             adapter=PILFile('png')
@@ -44,7 +46,7 @@ def test_image_datatables(dbconn, tmp_dir):
 
     tbl2 = DataTable(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
+        meta_table=ms.create_meta_table('tbl2', primary_schema=[Column('id', String(100), primary_key=True)]),
         table_store=TableStoreFiledir(
             tmp_dir / 'tbl2' / '{id}.png',
             adapter=PILFile('png')
@@ -113,8 +115,8 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     # Add images to tmp_dir
     df_images = make_df()
     (tmp_dir / 'tbl1').mkdir()
-    for id in df_images.index:
-        df_images.loc[id, 'image'].save(tmp_dir / 'tbl1' / f'{id}.png')
+    for _, row in df_images[['id', 'image']].iterrows():
+        row['image'].save(tmp_dir / 'tbl1' / f'{row["id"]}.png')
 
     catalog = Catalog({
         'tbl1': ExternalTable(
