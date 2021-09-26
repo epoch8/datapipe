@@ -16,16 +16,16 @@ from .util import assert_df_equal
 TEST_DF_INTID = pd.DataFrame(
     {
         'id': range(100),
-        'a': [f'a_{i}' for i in range(100)],
-        'b': [i for i in range(100)],
+        'name': [f'Product {i}' for i in range(100)],
+        'price': [1000 + i for i in range(100)],
     }
 )
 
 TEST_DF_STRID = pd.DataFrame(
     {
         'id': [f'id_{i}' for i in range(100)],
-        'a': [f'a_{i}' for i in range(100)],
-        'b': [i for i in range(100)],
+        'name': [f'Product {i}' for i in range(100)],
+        'price': [1000 + i for i in range(100)],
     }
 )
 
@@ -39,8 +39,8 @@ class CasesTableStore:
                 'tbl1',
                 [
                     Column('id', Integer, primary_key=True),
-                    Column('a', String(100)),
-                    Column('b', Integer),
+                    Column('name', String(100)),
+                    Column('price', Integer),
                 ]
             ),
             TEST_DF_INTID
@@ -54,8 +54,8 @@ class CasesTableStore:
                 'tbl1',
                 [
                     Column('id', String(100), primary_key=True),
-                    Column('a', String(100)),
-                    Column('b', Integer),
+                    Column('name', String(100)),
+                    Column('price', Integer),
                 ]
             ),
             TEST_DF_STRID
@@ -129,7 +129,7 @@ def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert_df_equal(store.read_rows(), test_df)
 
     test_df_mod = test_df.copy()
-    test_df_mod.loc[50:, 'b'] = test_df_mod.loc[50:, 'b'] + 1
+    test_df_mod.loc[50:, 'price'] = test_df_mod.loc[50:, 'price'] + 1
 
     store.update_rows(test_df_mod.loc[50:])
 
@@ -145,7 +145,7 @@ def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert_df_equal(store.read_rows(), test_df)
 
     test_df_mod = test_df.copy()
-    test_df_mod.loc[:, 'b'] = test_df_mod.loc[:, 'b'] + 1
+    test_df_mod.loc[:, 'price'] = test_df_mod.loc[:, 'price'] + 1
 
     store.update_rows(test_df_mod)
 
