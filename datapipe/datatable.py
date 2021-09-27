@@ -21,6 +21,11 @@ from datapipe.step import ComputeStep
 logger = logging.getLogger('datapipe.datatable')
 
 
+# DataTable:
+# - store -- полностью перезаписать таблицу
+# - store_chunk -> sync
+
+
 class DataTable:
     def __init__(
         self,
@@ -255,28 +260,6 @@ class DataStore:
         )
 
 
-def get_process_chunks(
-    ds: DataStore,
-    inputs: List[DataTable],
-    outputs: List[DataTable],
-    chunksize: int = 1000,
-) -> Tuple[int, Iterator[List[DataDF]]]:
-    idx_count, idx_gen = ds.get_process_ids(
-        inputs=inputs,
-        outputs=outputs,
-        chunksize=chunksize
-    )
-
-    logger.info(f'Items to update {idx_count}')
-
-    def gen():
-        if idx_count > 0:
-            for idx in idx_gen:
-                yield idx, [inp.get_data(idx) for inp in inputs]
-
-    return idx_count, gen()
-
-
 # TODO перенести в compute.BatchGenerateStep
 def gen_process_many(
     dts: List[DataTable],
@@ -376,15 +359,17 @@ def inc_process_many(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    idx_count, input_dfs_gen = get_process_chunks(
-        ds,
+    idx_count, idx_gen = ds.get_process_ids(
         inputs=input_dts,
         outputs=res_dts,
         chunksize=chunksize
     )
 
+    logger.info(f'Items to update {idx_count}')
+
     if idx_count > 0:
-        for idx, input_dfs in tqdm.tqdm(input_dfs_gen, total=math.ceil(idx_count / chunksize)):
+        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
+            input_dfs = [inp.get_data(idx) for inp in input_dts]
 
             if sum(len(j) for j in input_dfs) > 0:
                 try:
