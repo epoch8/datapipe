@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from sqlalchemy import Column, String
 import pandas as pd
@@ -11,6 +11,10 @@ from datapipe.types import IndexDF, DataDF, DataSchema
 class TableStore(ABC):
     def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
+
+    @property
+    def primary_keys(self) -> List[str]:
+        return [i.name for i in self.get_primary_schema()]
 
     def delete_rows(self, idx: IndexDF) -> None:
         raise NotImplementedError
@@ -41,7 +45,6 @@ class TableDataSingleFileStore(TableStore):
             primary_schema = [Column("id", String(), primary_key=True)]
 
         self.primary_schema = primary_schema
-        self.primary_keys = [column.name for column in primary_schema]
         self.filename = filename
 
     def get_primary_schema(self) -> DataSchema:
@@ -53,13 +56,13 @@ class TableDataSingleFileStore(TableStore):
     def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
         file_df = self.load_file()
 
         if file_df is not None:
-            if idx is not None:
+            if index_df is not None:
                 file_df = file_df.set_index(self.primary_keys)
-                idx = idx.set_index(self.primary_keys)
+                idx = index_df.set_index(self.primary_keys)
 
                 return file_df.loc[idx.index].reset_index()
             else:
@@ -85,12 +88,12 @@ class TableDataSingleFileStore(TableStore):
 
         self.save_file(new_df)
 
-    def delete_rows(self, idx: IndexDF) -> None:
+    def delete_rows(self, index_df: IndexDF) -> None:
         file_df = self.load_file()
 
         if file_df is not None:
             file_df = file_df.set_index(self.primary_keys)
-            idx = idx.set_index(self.primary_keys)
+            idx = index_df.set_index(self.primary_keys)
 
             new_df = file_df.loc[file_df.index.difference(idx.index)]
 

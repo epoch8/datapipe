@@ -9,7 +9,7 @@ from sqlalchemy import Table, Column, Numeric, Float, func
 
 import pandas as pd
 
-from datapipe.types import IndexDF, ChunkMeta, DataSchema, DataDF, MetadataDF
+from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_schema_to_sqltype
 from datapipe.event_logger import EventLogger
 
@@ -166,7 +166,7 @@ class MetaTable:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_df, include_deleted=True)
+        existing_meta_df = self.get_metadata(data_to_index(data_df, self.primary_keys), include_deleted=True)
         data_cols = list(data_df.columns)
         meta_cols = self._get_meta_data_columns()
 
@@ -181,7 +181,7 @@ class MetaTable:
 
         # Создаем мета данные для новых записей
         new_meta_data_df = merged_df.iloc[merged_df['hash'].isna().values][data_cols]
-        new_meta_df = self._make_new_metadata_df(now, cast(DataDF, new_meta_data_df))
+        new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
         changed_idx = (
@@ -291,11 +291,11 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_metadata_rows(changed_meta_df)
 
-    def update_meta_for_sync_meta(self, deleted_idx: MetadataDF) -> None:
+    def update_meta_for_sync_meta(self, deleted_idx: IndexDF) -> None:
         if len(deleted_idx) > 0:
             self._delete_rows(deleted_idx)
 
-    def get_changes_for_sync_meta(self, chunks: List[ChunkMeta], processed_idx: MetadataDF = None) -> MetadataDF:
+    def get_changes_for_sync_meta(self, chunks: List[IndexDF], processed_idx: IndexDF = None) -> IndexDF:
         idx = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=self.primary_keys)
         existing_idx = self.get_existing_idx(processed_idx)
 
@@ -308,4 +308,4 @@ class MetaTable:
             # TODO вынести в compute
             self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
-        return cast(MetadataDF, deleted_df[self.primary_keys])
+        return data_to_index(deleted_df, self.primary_keys)
