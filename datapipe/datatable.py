@@ -99,10 +99,6 @@ class DataTable:
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.update_meta_for_sync_meta(cast(MetadataDF, deleted_idx))
 
-    def get_indexes(self, idx: Optional[IndexDF] = None) -> IndexDF:
-        # FIXME неправильный тип
-        return self.meta_table.get_metadata(idx).index.tolist()
-
 
 class DataStore:
     def __init__(
