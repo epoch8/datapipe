@@ -1,5 +1,3 @@
-from typing import cast
-
 import pytest
 
 import cloudpickle
@@ -9,7 +7,6 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore, gen_process, gen_process_many, inc_process, inc_process_many
-from datapipe.types import DataDF
 
 from .util import assert_df_equal, assert_datatable_equal
 
@@ -58,7 +55,7 @@ def test_simple(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    tbl.store(cast(DataDF, TEST_DF))
+    tbl.store_chunk(TEST_DF)
 
     assert_datatable_equal(tbl, TEST_DF)
 
@@ -71,10 +68,11 @@ def test_store_less_values(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
     assert_datatable_equal(tbl, TEST_DF)
 
-    tbl.store(TEST_DF[:5])
+    chunk = tbl.store_chunk(TEST_DF[:5])
+    tbl.sync_meta_by_idx_chunks([chunk])
     assert_datatable_equal(tbl, TEST_DF[:5])
 
 
@@ -90,14 +88,14 @@ def test_get_process_ids(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
     )
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert(sorted(list(idx.index)) == list(TEST_DF.index))
 
-    tbl2.store(tbl1.get_data())
+    tbl2.store_chunk(tbl1.get_data())
 
     upd_df = TEST_DF[:5].copy()
     upd_df['a'] += 1
@@ -176,14 +174,14 @@ def test_inc_process_modify_values(dbconn) -> None:
     def id_func(df):
         return df
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    tbl1.store(TEST_DF_INC1)
+    tbl1.store_chunk(TEST_DF_INC1)
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
@@ -205,14 +203,15 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
     def id_func(df):
         return df
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    tbl1.store(TEST_DF[:5])
+    chunk = tbl1.store_chunk(TEST_DF[:5])
+    tbl1.sync_meta_by_idx_chunks([chunk])
 
     inc_process(ds, [tbl1], tbl2, id_func, chunksize=2)
 
@@ -234,9 +233,9 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
     def id_func(df):
         return df[:5]
 
-    tbl2.store(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     inc_process(ds, [tbl1], tbl2, id_func)
 
@@ -258,8 +257,8 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     def id_func(df):
         return TEST_DF
 
-    tbl2.store(TEST_DF)
-    tbl1.store(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
@@ -275,7 +274,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
     assert(idx_len == 0)
 
-    tbl1.store(TEST_DF_INC1)
+    tbl1.store_chunk(TEST_DF_INC1)
 
     count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
@@ -383,7 +382,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3['a'] += 3
         return df1, df2, df3
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
 
     inc_process_many(ds, [tbl], [tbl1, tbl2, tbl3], inc_func)
 
@@ -392,7 +391,8 @@ def test_inc_process_many_modify_values(dbconn) -> None:
     assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
-    tbl.store(TEST_DF[:5])
+    chunk = tbl.store_chunk(TEST_DF[:5])
+    tbl.sync_meta_by_idx_chunks([chunk])
 
     def inc_func_inv(df):
         df1 = df.copy()
@@ -455,8 +455,8 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         df['a_second'] += 2
         return df
 
-    tbl1.store(TEST_DF)
-    tbl2.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
 
     inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
     assert_datatable_equal(
@@ -561,7 +561,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True)
     )
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
 
     def inc_func(df):
         df_good = df[df['id'].isin(good_ids)]

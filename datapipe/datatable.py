@@ -99,17 +99,6 @@ class DataTable:
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.update_meta_for_sync_meta(cast(MetadataDF, deleted_idx))
 
-    def store(self, df: DataDF) -> None:
-        now = time.time()
-
-        chunk = self.store_chunk(
-            data_df=df,
-            now=now
-        )
-        self.sync_meta_by_idx_chunks(
-            chunks=[chunk],
-        )
-
     def get_indexes(self, idx: Optional[IndexDF] = None) -> IndexDF:
         # FIXME неправильный тип
         return self.meta_table.get_metadata(idx).index.tolist()
@@ -377,8 +366,6 @@ def inc_process_many(
                 except Exception as e:
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
                     ds.event_logger.log_exception(e)
-
-                    idx = pd.concat(input_dfs).index
 
                     continue
 
