@@ -1,8 +1,7 @@
 import pandas as pd
 
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import Integer, String, Boolean
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.sqltypes import Integer, String, Boolean, JSON
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
@@ -11,48 +10,8 @@ from datapipe.store.database import DBConn
 from datapipe.cli import main
 
 
-dbconn = DBConn("", '')
+dbconn = DBConn('sqlite:///db.sqlite')
 ds = DataStore(dbconn)
-
-
-PRODUCT_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('offer_id', Integer(), primary_key=True),
-    Column('attributes', JSONB)
-]
-
-PRODUCT_ATTR_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('offer_id', Integer(), primary_key=True),
-    Column('name', String(), primary_key=True),
-    Column('value', Integer()),
-]
-
-PRODUCT_OZON_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('offer_id', Integer(), primary_key=True),
-    Column('attributes', JSONB)
-]
-
-PRODUCT_OFFERS_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('name', String(), primary_key=True),
-    Column('offers', JSONB),
-]
-
-PRODUCT_ALL_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('offer_id', Integer(), primary_key=True),
-    Column('attributes_base', JSONB),
-    Column('attributes_new', JSONB)
-]
-
-PRODUCT_STORE_SCHEMA = [
-    Column('pipeline_id', Integer(), primary_key=True),
-    Column('offer_id', Integer(), primary_key=True),
-    Column('attributes', JSONB),
-    Column('is_deleted', Boolean())
-]
 
 
 def generate_products():
@@ -161,49 +120,80 @@ catalog = Catalog({
         store=TableStoreDB(
             dbconn,
             'test_products_data',
-            PRODUCT_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('attributes', JSON)
+            ]
         )
     ),
     'test_attr_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_attr_products_data',
-            PRODUCT_ATTR_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('name', String(), primary_key=True),
+                Column('value', Integer()),
+            ]
         )
     ),
     'test_ozon_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_ozon_products_data',
-            PRODUCT_OZON_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('attributes', JSON)
+            ]
         )
     ),
     'test_offers_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_offers_products_data',
-            PRODUCT_OFFERS_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('name', String(), primary_key=True),
+                Column('offers', JSON),
+            ]
         )
     ),
     'test_all_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_all_products_data',
-            PRODUCT_ALL_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('attributes_base', JSON),
+                Column('attributes_new', JSON)
+            ]
         )
     ),
     'test_store_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_store_products_data',
-            PRODUCT_STORE_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('attributes', JSON),
+                Column('is_deleted', Boolean())
+            ]
         )
     ),
     'test_filter_products': Table(
         store=TableStoreDB(
             dbconn,
             'test_filter_products_data',
-            PRODUCT_SCHEMA
+            [
+                Column('pipeline_id', Integer(), primary_key=True),
+                Column('offer_id', Integer(), primary_key=True),
+                Column('attributes', JSON)
+            ]
         )
     )
 })
