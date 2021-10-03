@@ -4,20 +4,20 @@ import dash_bootstrap_components as dbc
 from dash import Dash
 from dash.dependencies import Input, Output
 
-from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, Pipeline
+from datapipe.datatable import DataStore
 
 from .overview import ui_overview_setup, ui_overview_index
 from .tables import ui_tables_setup, ui_tables_index
 from .e2e import ui_e2e_setup, ui_e2e_index
 
 
-def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
+def ui_main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     app = Dash('Datapipe', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-    ui_overview_setup(app, ms, catalog, pipeline)
-    ui_tables_setup(app, ms, catalog, pipeline)
-    ui_e2e_setup(app, ms, catalog, pipeline)
+    ui_overview_setup(app, ds, catalog, pipeline)
+    ui_tables_setup(app, ds, catalog, pipeline)
+    ui_e2e_setup(app, ds, catalog, pipeline)
 
     sidebar = html.Div(
         [
@@ -57,11 +57,11 @@ def ui_main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     )
     def route(url):
         if url == '/':
-            return ui_overview_index(app, ms, catalog, pipeline)
+            return ui_overview_index(app, ds, catalog, pipeline)
         elif url == '/tables':
-            return ui_tables_index(app, ms, catalog, pipeline)
+            return ui_tables_index(app, ds, catalog, pipeline)
         elif url == '/e2e':
-            return ui_e2e_index(app, ms, catalog, pipeline)
+            return ui_e2e_index(app, ds, catalog, pipeline)
 
         else:
             return f'Unknown route {url}'

@@ -1,3 +1,8 @@
+# WIP 0.9.0
+
+* Класса `MetaStore` больше нет, его роль выполняет `DataStore`
+* `DataTable.store_chunk` теперь принимает `processed_idx`, отдельного метода `sync_meta_for_store_chunk` больше нет
+
 # 0.8.2
 
 * `inc_process_many` работает полностью инкрементально

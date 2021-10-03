@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy import Column, String
 from PIL import Image
 
-from datapipe.types import DataSchema, IndexDF
+from datapipe.types import DataDF, DataSchema, IndexDF, data_to_index
 from datapipe.store.table_store import TableStore
 
 
@@ -132,9 +132,9 @@ class TableStoreFiledir(TableStore):
             with fsspec.open(filename, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)
 
-    def read_rows(self, idx: IndexDF = None) -> pd.DataFrame:
+    def read_rows(self, idx: IndexDF = None) -> DataDF:
         if idx is None:
-            idx = self.read_rows_meta_pseudo_df()
+            idx = data_to_index(self.read_rows_meta_pseudo_df(), self.primary_keys)
 
         def _gen():
             for i in idx['id']:
@@ -149,7 +149,7 @@ class TableStoreFiledir(TableStore):
             _gen()
         )
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
+    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
         # Not implemented yet
         assert(idx is None)
 

@@ -3,6 +3,13 @@ One-to-many:
     ☐ Считать хеш-сумму в Store
     ☐ Сделать MetaTable декоратором над транзакцией (или DataTable?)
     ☐ Объединить DataTable и MetaTable
+        ✔ Перенести создание MetaTable в DataStore @done(21-09-26 21:03)
+        ✔ Перенести логику работы со списком таблиц из dsl.Catalog в DataStore @done(21-09-26 21:03)
+        ✔ Передвинуть глобальные функции inc_process, gen_process вниз datatable @done(21-09-26 21:05)
+        ☐ get_metadata
+        ☐ get_existing_idx
+        ☐ get_table_debug_info
+        ☐ store_chunk
     ✔ Реализовать общие тесты для всех table_store @done(21-09-26 16:48)
     ☐ Причесать работу с primary_schema
 

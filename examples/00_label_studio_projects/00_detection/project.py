@@ -1,3 +1,4 @@
+from datapipe.store.database import DBConn
 import time
 
 from subprocess import Popen
@@ -6,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 from datapipe.compute import build_compute, run_steps
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.dsl import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
 
@@ -81,7 +82,7 @@ def parse_annotations(
 
 (DATA_DIR / 'xx_datatables').mkdir(exist_ok=True)
 
-ms = MetaStore('sqlite:///' + str(DATA_DIR / 'xx_datatables/metadata.sqlite'))
+ds = DataStore(DBConn('sqlite:///' + str(DATA_DIR / 'xx_datatables/metadata.sqlite')))
 catalog = Catalog({
     '00_input_images': ExternalTable(
         store=TableStoreFiledir(DATA_DIR / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
@@ -123,7 +124,7 @@ pipeline = Pipeline([
     )
 ])
 
-steps = build_compute(ms, catalog, pipeline)
+steps = build_compute(ds, catalog, pipeline)
 
 
 if __name__ == '__main__':
@@ -144,7 +145,7 @@ if __name__ == '__main__':
 
     try:
         while True:
-            run_steps(ms, steps)
+            run_steps(ds, steps)
             time.sleep(5)
     finally:
         label_studio_service.terminate()

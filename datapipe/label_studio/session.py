@@ -5,8 +5,7 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 
-from datapipe.datatable import gen_process_many, inc_process_many
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore, gen_process_many, inc_process_many
 from datapipe.step import ComputeStep
 
 from tqdm import tqdm
@@ -268,14 +267,14 @@ class LabelStudioModerationStep(ComputeStep):
 
             yield output_df
 
-    def run(self, ms: MetaStore) -> None:
+    def run(self, ds: DataStore) -> None:
         if self.label_studio_session.is_service_up():
             if self.project_id is None:
                 self.__post_init__()
 
             # Upload Tasks from inputs to outputs
             inc_process_many(
-                ms,
+                ds,
                 self.input_dts,
                 self.output_dts,
                 self.upload_tasks_from_df,

@@ -5,7 +5,7 @@ import pandas as pd
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, and_, or_
-from datapipe.types import DataDF, IndexDF, DataSchema
+from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
 
@@ -70,7 +70,6 @@ class TableStoreDB(TableStore):
         self.name = name
 
         self.data_sql_schema = data_sql_schema
-        self.primary_keys = [column.name for column in self.data_sql_schema if column.primary_key]
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
@@ -115,7 +114,7 @@ class TableStoreDB(TableStore):
             )
 
     def update_rows(self, df: DataDF) -> None:
-        self.delete_rows(df)
+        self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
     # Fix numpy types in IndexDF
