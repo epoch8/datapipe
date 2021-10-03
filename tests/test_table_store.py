@@ -56,16 +56,16 @@ FILEDIR_DATA_PARAMS = [
         '{id}.json',
         id='str_id'
     ),
-    # pytest.param(
-    #     pd.DataFrame({
-    #         'id1': [f'id_{i}' for i in range(100)],
-    #         'id2': [f'id_{i}' for i in range(100)],
-    #         'name': [f'Product {i}' for i in range(100)],
-    #         'price': [1000 + i for i in range(100)],
-    #     }),
-    #     '{id1}_{id2}.json',
-    #     id='multi_id'
-    # )
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id1}_{id2}.json',
+        id='multi_id'
+    )
 ]
 
 
