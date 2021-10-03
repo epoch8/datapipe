@@ -21,11 +21,6 @@ from datapipe.step import ComputeStep
 logger = logging.getLogger('datapipe.datatable')
 
 
-# DataTable:
-# - store -- полностью перезаписать таблицу
-# - store_chunk -> sync
-
-
 class DataTable:
     def __init__(
         self,
@@ -42,11 +37,6 @@ class DataTable:
         self.event_logger = event_logger
 
         self.primary_keys = meta_table.primary_keys
-
-    def _make_deleted_meta_df(self, now, old_meta_df, deleted_idx) -> MetadataDF:
-        res = old_meta_df.loc[deleted_idx]
-        res.loc[:, 'delete_ts'] = now
-        return res
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
         return self.meta_table.get_metadata(idx)
@@ -80,11 +70,11 @@ class DataTable:
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.mark_rows_deleted(deleted_idx)
 
-    def delete_chunk(self, idx: IndexDF, now: float = None) -> None:
+    def delete_by_idx(self, idx: IndexDF, now: float = None) -> None:
         self.table_store.delete_rows(idx)
         self.meta_table.mark_rows_deleted(idx, now=now)
 
-    def sync_meta_by_process_ts(self, process_ts: float, now: float = None) -> None:
+    def delete_stale_by_process_ts(self, process_ts: float, now: float = None) -> None:
         for deleted_df in self.meta_table.get_stale_idx(process_ts):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
             self.table_store.delete_rows(deleted_idx)
@@ -279,7 +269,7 @@ def gen_process_many(
             dt_k.store_chunk(chunk_dfs[k])
 
     for k, dt_k in enumerate(dts):
-        dt_k.sync_meta_by_process_ts(now)
+        dt_k.delete_stale_by_process_ts(now)
 
 
 # TODO перенести в compute.BatchGenerateStep
@@ -366,7 +356,7 @@ def inc_process_many(
 
             else:
                 for k, res_dt in enumerate(res_dts):
-                    res_dt.delete_chunk(idx)
+                    res_dt.delete_by_idx(idx)
 
 
 class ExternalTableUpdater(ComputeStep):
