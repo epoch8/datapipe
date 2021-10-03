@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -54,7 +54,14 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
-    def store_chunk(self, data_df: DataDF, now: float = None) -> IndexDF:
+    def store_chunk(self, data_df: DataDF, processed_idx: IndexDF = None, now: float = None) -> None:
+        '''
+        Записать новые данные в таблицу.
+
+        При указанном `processed_idx` удалить те строки, которые находятся внутри `processed_idx`, но
+        отсутствуют в `data_df`.
+        '''
+
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
@@ -65,39 +72,23 @@ class DataTable:
         self.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        return cast(IndexDF, data_to_index(data_df, self.primary_keys))
+        data_idx = data_to_index(data_df, self.primary_keys)
 
-    def sync_meta_by_idx_chunks(self, chunks: List[IndexDF], processed_idx: IndexDF = None) -> None:
-        ''' Пометить удаленными объекты, которых больше нет '''
-        deleted_idx = self.meta_table.get_changes_for_sync_meta(chunks, processed_idx)
+        if processed_idx is not None:
+            deleted_idx = self.meta_table.get_changes_for_sync_meta(data_idx=data_idx, processed_idx=processed_idx)
 
-        if len(deleted_idx) > 0:
             self.table_store.delete_rows(deleted_idx)
+            self.meta_table.mark_rows_deleted(deleted_idx)
 
-        self.meta_table.update_meta_for_sync_meta(deleted_idx)
+    def delete_chunk(self, idx: IndexDF, now: float = None) -> None:
+        self.table_store.delete_rows(idx)
+        self.meta_table.mark_rows_deleted(idx, now=now)
 
-    def _meta_get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
-        idx_cols = [self.meta_table.sql_table.c[key] for key in self.primary_keys]
-        sql = select(idx_cols).where(
-            and_(
-                self.meta_table.sql_table.c.process_ts < process_ts,
-                self.meta_table.sql_table.c.delete_ts.is_(None)
-            )
-        )
-
-        return pd.read_sql_query(
-            sql,
-            con=self.meta_dbconn.con,
-            chunksize=1000
-        )
-
-    def sync_meta_by_process_ts(self, process_ts: float) -> None:
-        deleted_dfs = self._meta_get_stale_idx(process_ts)
-
-        for deleted_df in deleted_dfs:
+    def sync_meta_by_process_ts(self, process_ts: float, now: float = None) -> None:
+        for deleted_df in self.meta_table.get_stale_idx(process_ts):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
             self.table_store.delete_rows(deleted_idx)
-            self.meta_table.update_meta_for_sync_meta(deleted_idx)
+            self.meta_table.mark_rows_deleted(deleted_idx, now=now)
 
 
 class DataStore:
@@ -353,6 +344,8 @@ def inc_process_many(
 
     if idx_count > 0:
         for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
+            logger.debug(f'Idx to process: {idx.to_records()}')
+
             input_dfs = [inp.get_data(idx) for inp in input_dts]
 
             if sum(len(j) for j in input_dfs) > 0:
@@ -369,12 +362,11 @@ def inc_process_many(
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
                     # Добавляем результат в результирующие чанки
-                    res_index = res_dt.store_chunk(chunk_df_k)
-                    res_dt.sync_meta_by_idx_chunks([res_index], processed_idx=idx)
+                    res_dt.store_chunk(data_df=chunk_df_k, processed_idx=idx)
 
             else:
                 for k, res_dt in enumerate(res_dts):
-                    res_dt.sync_meta_by_idx_chunks([], processed_idx=idx)
+                    res_dt.delete_chunk(idx)
 
 
 class ExternalTableUpdater(ComputeStep):
@@ -394,5 +386,5 @@ class ExternalTableUpdater(ComputeStep):
         self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        deleted_idx = self.table.meta_table.get_changes_for_sync_meta([data_to_index(ps_df, self.table.primary_keys)])
-        self.table.meta_table.update_meta_for_sync_meta(deleted_idx)
+        deleted_idx = self.table.meta_table.get_changes_for_sync_meta(data_to_index(ps_df, self.table.primary_keys))
+        self.table.meta_table.mark_rows_deleted(deleted_idx)

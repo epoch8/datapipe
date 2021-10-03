@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, cast
+from typing import Iterator, Tuple, Dict, cast
 
 import logging
 import time
@@ -216,18 +216,6 @@ class MetaTable:
             cast(MetadataDF, changed_meta_df[meta_cols]),
         )
 
-    def _delete_rows(self, idx: IndexDF) -> None:
-        if len(idx) > 0:
-            logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
-
-            now = time.time()
-            meta_df = self.get_metadata(idx)
-
-            meta_df["delete_ts"] = now
-            meta_df["process_ts"] = now
-
-            self._update_existing_metadata_rows(meta_df)
-
     def _insert_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
@@ -291,17 +279,27 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_metadata_rows(changed_meta_df)
 
-    def update_meta_for_sync_meta(self, deleted_idx: IndexDF) -> None:
+    def mark_rows_deleted(self, deleted_idx: IndexDF, now: float = None) -> None:
         if len(deleted_idx) > 0:
-            self._delete_rows(deleted_idx)
+            logger.debug(f'Deleting {len(deleted_idx.index)} rows from {self.name} data')
 
-    def get_changes_for_sync_meta(self, chunks: List[IndexDF], processed_idx: IndexDF = None) -> IndexDF:
-        idx = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=self.primary_keys)
+            if now is None:
+                now = time.time()
+
+            meta_df = self.get_metadata(deleted_idx)
+
+            meta_df["delete_ts"] = now
+            meta_df["process_ts"] = now
+
+            self._update_existing_metadata_rows(meta_df)
+
+    def get_changes_for_sync_meta(self, data_idx: IndexDF, processed_idx: IndexDF = None) -> IndexDF:
+        # FIXME упростить
         existing_idx = self.get_existing_idx(processed_idx)
 
-        idx['exist'] = True
+        data_idx['exist'] = True
 
-        merged_df = pd.merge(existing_idx, idx,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
+        merged_df = pd.merge(existing_idx, data_idx,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
         deleted_df = merged_df[merged_df['exist'].isna()]
 
         if len(deleted_df.index) > 0:
@@ -309,3 +307,18 @@ class MetaTable:
             self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
 
         return data_to_index(deleted_df, self.primary_keys)
+
+    def get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
+        idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
+        sql = select(idx_cols).where(
+            and_(
+                self.sql_table.c.process_ts < process_ts,
+                self.sql_table.c.delete_ts.is_(None)
+            )
+        )
+
+        return pd.read_sql_query(
+            sql,
+            con=self.dbconn.con,
+            chunksize=1000
+        )

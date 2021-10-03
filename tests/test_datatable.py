@@ -1,3 +1,4 @@
+from typing import cast
 import pytest
 
 import cloudpickle
@@ -7,6 +8,7 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore, gen_process, gen_process_many, inc_process, inc_process_many
+from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_df_equal, assert_datatable_equal
 
@@ -71,8 +73,7 @@ def test_store_less_values(dbconn) -> None:
     tbl.store_chunk(TEST_DF)
     assert_datatable_equal(tbl, TEST_DF)
 
-    chunk = tbl.store_chunk(TEST_DF[:5])
-    tbl.sync_meta_by_idx_chunks([chunk])
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
     assert_datatable_equal(tbl, TEST_DF[:5])
 
 
@@ -210,8 +211,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    chunk = tbl1.store_chunk(TEST_DF[:5])
-    tbl1.sync_meta_by_idx_chunks([chunk])
+    tbl1.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys))
 
     inc_process(ds, [tbl1], tbl2, id_func, chunksize=2)
 
@@ -391,8 +391,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
     assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
-    chunk = tbl.store_chunk(TEST_DF[:5])
-    tbl.sync_meta_by_idx_chunks([chunk])
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
 
     def inc_func_inv(df):
         df1 = df.copy()
@@ -471,9 +470,9 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     )
 
     changed_ids = [0, 4, 6]
-    changed_ids_df = pd.DataFrame({'id': changed_ids})
+    changed_ids_df = cast(IndexDF, pd.DataFrame({'id': changed_ids}))
     not_changed_ids = [1, 2, 3, 5, 7, 8, 9]
-    not_changed_ids_df = pd.DataFrame({'id': not_changed_ids})
+    not_changed_ids_df = cast(IndexDF, pd.DataFrame({'id': not_changed_ids}))
 
     tbl2.store_chunk(
         pd.DataFrame(
