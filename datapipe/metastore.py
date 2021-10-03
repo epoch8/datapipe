@@ -260,16 +260,6 @@ class MetaTable:
                 ]
             )
 
-    """
-    def _update_rows(self, df: pd.DataFrame) -> None:
-        existing_idx = self.get_existing_idx(df.index)
-
-        missing_idx = df.index.difference(existing_idx)
-
-        self._update_existing_rows(df.loc[existing_idx])
-        self._insert_rows(df.loc[missing_idx])
-    """
-
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
         if len(new_meta_df) > 0:
