@@ -9,7 +9,7 @@ import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_
 import tqdm
 
-from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index
+from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
@@ -65,7 +65,8 @@ class DataTable:
         data_idx = data_to_index(data_df, self.primary_keys)
 
         if processed_idx is not None:
-            deleted_idx = self.meta_table.get_changes_for_sync_meta(data_idx=data_idx, processed_idx=processed_idx)
+            existing_idx = self.meta_table.get_existing_idx(processed_idx)
+            deleted_idx = index_difference(existing_idx, data_idx)
 
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.mark_rows_deleted(deleted_idx)
@@ -376,5 +377,9 @@ class ExternalTableUpdater(ComputeStep):
         self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
         self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        deleted_idx = self.table.meta_table.get_changes_for_sync_meta(data_to_index(ps_df, self.table.primary_keys))
+        deleted_idx = index_difference(
+            self.table.meta_table.get_existing_idx(),
+            data_to_index(ps_df, self.table.primary_keys)
+        )
+
         self.table.meta_table.mark_rows_deleted(deleted_idx)

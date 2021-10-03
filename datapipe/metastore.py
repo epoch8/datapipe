@@ -282,6 +282,7 @@ class MetaTable:
     def mark_rows_deleted(self, deleted_idx: IndexDF, now: float = None) -> None:
         if len(deleted_idx) > 0:
             logger.debug(f'Deleting {len(deleted_idx.index)} rows from {self.name} data')
+            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
 
             if now is None:
                 now = time.time()
@@ -292,21 +293,6 @@ class MetaTable:
             meta_df["process_ts"] = now
 
             self._update_existing_metadata_rows(meta_df)
-
-    def get_changes_for_sync_meta(self, data_idx: IndexDF, processed_idx: IndexDF = None) -> IndexDF:
-        # FIXME упростить
-        existing_idx = self.get_existing_idx(processed_idx)
-
-        data_idx['exist'] = True
-
-        merged_df = pd.merge(existing_idx, data_idx,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
-        deleted_df = merged_df[merged_df['exist'].isna()]
-
-        if len(deleted_df.index) > 0:
-            # TODO вынести в compute
-            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_df.index))
-
-        return data_to_index(deleted_df, self.primary_keys)
 
     def get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
