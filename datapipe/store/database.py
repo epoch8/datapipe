@@ -5,6 +5,8 @@ import pandas as pd
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, and_, or_
+from sqlalchemy.pool import SingletonThreadPool
+
 from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
@@ -41,6 +43,7 @@ class DBConn:
 
         self.con = create_engine(
             connstr,
+            poolclass=SingletonThreadPool,
         )
 
         self.sqla_metadata = MetaData(schema=schema)

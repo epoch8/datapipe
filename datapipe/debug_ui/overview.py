@@ -21,8 +21,11 @@ def ui_overview_index(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
 
     steps_dots = []
 
+    for table_name, table in ds.tables.items():
+        steps_dots.append(f'{table_name} [shape=box3d label=<<B>{table_name}</B><BR/>{"<BR/>".join(table.primary_keys)}>]')
+
     for step in steps:
-        steps_dots.append(f'{step.name} [shape=parallelogram]')
+        steps_dots.append(f'{step.name} [shape=box]')
         for inp in step.input_dts:
             steps_dots.append(f'{inp.name} -> {step.name}')
         for out in step.output_dts:
