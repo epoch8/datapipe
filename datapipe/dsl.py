@@ -3,9 +3,8 @@ from typing import Callable, Dict, List, Tuple, Union
 from abc import ABC
 from dataclasses import dataclass
 
-from datapipe.datatable import DataTable
+from datapipe.datatable import DataStore, DataTable
 from datapipe.store.table_store import TableStore
-from datapipe.metastore import MetaStore
 
 
 @dataclass
@@ -25,18 +24,13 @@ class ExternalTable(Table):
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
-
         self.data_tables: Dict[str, DataTable] = {}
 
-    def get_datatable(self, ms: MetaStore, name: str) -> DataTable:
-        if name not in self.data_tables:
-            self.data_tables[name] = DataTable(
-                name=name,
-                meta_table=ms.create_meta_table(name),
-                table_store=self.catalog[name].store
-            )
-
-        return self.data_tables[name]
+    def get_datatable(self, ds: DataStore, name: str) -> DataTable:
+        return ds.get_or_create_table(
+            name=name,
+            table_store=self.catalog[name].store
+        )
 
 
 class PipelineStep(ABC):
@@ -63,7 +57,7 @@ class BatchGenerate(PipelineStep):
 
 
 @dataclass
-class LabelStudioModeration:
+class LabelStudioModeration(PipelineStep):
     ls_url: str
     inputs: List[str]
     outputs: List[str]

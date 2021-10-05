@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe"
-version = "0.8.2+poetry1"
+version = "0.8.2+otm2.0"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 
@@ -11,7 +11,8 @@ python = "^3.8"
 fsspec = "==2021.5.0"
 gcsfs = "==2021.5.0"
 
-pandas = ">=1.1.4"
+pandas = "^1.2.0"
+numpy = "^1.21.0"
 SQLAlchemy = ">=1.3.20, <1.4"
 psycopg2_binary = ">=2.8.4"
 cloudpickle = ">=1.6.0"
@@ -25,11 +26,11 @@ requests = ">=2.24.0"
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
 
-dash = {version=">=1.20.0", optional=true}
-dash_bootstrap_components = {version=">= 0.12.0", optional=true}
-dash_interactive_graphviz = {version=">=0.3.0", optional=true}
+dash = {version="==1.20.*", optional=true}
+dash_bootstrap_components = {version="== 0.12.*", optional=true}
+dash_interactive_graphviz = {version="==0.3.*", optional=true}
 
-label-studio = {version=">=1.0.1,<1.1", optional=true}
+label-studio = {version="==1.0.*", optional=true}
 
 [tool.poetry.extras]
 
@@ -40,6 +41,11 @@ ls = ["label-studio"]
 [tool.poetry.dev-dependencies]
 pytest = "*"
 flake8 = "^3.9.2"
+mypy = "^0.910"
+black = "^21.7b0"
+pandas-stubs = "^1.2.0"
+types-requests = "^2.25.6"
+pytest-cases = "^3.6.4"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

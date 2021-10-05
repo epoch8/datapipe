@@ -18,5 +18,6 @@
     "python.linting.flake8Enabled": true,
     "python.linting.flake8Args": [
         "--max-line-length=127"
-    ]
+    ],
+    "python.formatting.provider": "black"
 }

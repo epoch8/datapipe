@@ -1,13 +1,14 @@
 import os
 import numpy as np
 import pandas as pd
+
+from datapipe.datatable import DataStore
 from datapipe.compute import build_compute, run_steps
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
 
 
-CHUNK_SIZE = 1000
+CHUNK_SIZE = 100
 
 
 def test_table_store_json_line_reading(tmp_dir, dbconn):
@@ -24,7 +25,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
     test_output_fname = os.path.join(tmp_dir, "table-output-pandas.json")
     test_df.to_json(test_input_fname, orient="records", lines=True)
 
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
     catalog = Catalog({
         "input_data": ExternalTable(
             store=TableStoreJsonLine(test_input_fname),
@@ -42,10 +43,10 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
         ),
     ])
 
-    steps = build_compute(ms, catalog, pipeline)
-    run_steps(ms, steps)
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
 
-    df_transformed = catalog.get_datatable(ms, 'output_data').get_data()
+    df_transformed = catalog.get_datatable(ds, 'output_data').get_data()
     assert len(df_transformed) == 2 * CHUNK_SIZE
     assert all(df_transformed["y"].values == (df_transformed["x"].values ** 2))
     assert len(set(df_transformed["x"].values).symmetric_difference(set(x))) == 0

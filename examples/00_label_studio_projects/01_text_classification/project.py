@@ -1,3 +1,4 @@
+from datapipe.store.database import DBConn
 import time
 from subprocess import Popen
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from datapipe.compute import build_compute, run_steps
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Table, ExternalTable, Pipeline, BatchTransform, LabelStudioModeration
 from datapipe.store.pandas import TableStoreJsonLine
 
@@ -62,7 +63,7 @@ def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
 
 
 (DATA_DIR / 'xx_datatables').mkdir(exist_ok=True, parents=True)
-ms = MetaStore('sqlite:///' + str(DATA_DIR / 'xx_datatables' / 'metadata.sqlite'))
+ds = DataStore(DBConn('sqlite:///' + str(DATA_DIR / 'xx_datatables' / 'metadata.sqlite')))
 catalogue = Catalog({
     "00_input_texts": ExternalTable(
         store=TableStoreJsonLine(DATA_DIR / '00_data.json'),
@@ -92,7 +93,7 @@ pipeline = Pipeline([
         outputs=["02_annotation_parsed"],
     ),
 ])
-steps = build_compute(ms, catalogue, pipeline)
+steps = build_compute(ds, catalogue, pipeline)
 
 
 if __name__ == "__main__":
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     ])
     try:
         while True:
-            run_steps(ms, steps)
+            run_steps(ds, steps)
             time.sleep(5)
     finally:
         label_studio_service.terminate()

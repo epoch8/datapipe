@@ -28,6 +28,7 @@ def ui_e2e_index(app, ms, catalog, pipeline):
         )
     ]
 
+
 def ui_e2e_setup(app, ms, catalog, pipeline):
     @app.callback(
         Output('e2e-content', 'children'),
@@ -36,7 +37,7 @@ def ui_e2e_setup(app, ms, catalog, pipeline):
     def update_e2e(id_value):
         if not id_value:
             raise PreventUpdate
-        
+
         res = []
 
         for name, tbl in catalog.catalog.items():
@@ -47,5 +48,5 @@ def ui_e2e_setup(app, ms, catalog, pipeline):
                 html.H1(name),
                 str(val.to_dict()),
             ])
-        
+
         return res
