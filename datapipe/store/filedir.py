@@ -1,6 +1,7 @@
 from abc import ABC
 from typing import IO, Optional, Any, Dict, List, Union, cast
 from pathlib import Path
+from iteration_utilities import duplicates
 
 import re
 import json
@@ -31,11 +32,14 @@ class JSONFile(ItemStoreFileAdapter):
 
     mode = 't'
 
+    def __init__(self, **dump_params) -> None:
+        self.dump_params = dump_params
+
     def load(self, f: IO) -> Dict[str, Any]:
         return json.load(f)
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        return json.dump(obj, f)
+        return json.dump(obj, f, **self.dump_params)
 
 
 class PILFile(ItemStoreFileAdapter):
@@ -45,8 +49,9 @@ class PILFile(ItemStoreFileAdapter):
 
     mode = 'b'
 
-    def __init__(self, format: str) -> None:
+    def __init__(self, format: str, **dump_params) -> None:
         self.format = format
+        self.dump_params = dump_params
 
     def load(self, f: IO) -> Dict[str, Any]:
         im = Image.open(f)
@@ -55,7 +60,7 @@ class PILFile(ItemStoreFileAdapter):
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         im: Image.Image = obj['image']
-        im.save(f, format=self.format)
+        im.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -64,6 +69,20 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
 
 def _pattern_to_glob(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', '*', pat)
+
+
+def _check_attrnames_correctness(attrnames: List[str], splitter: Union[str, None]) -> None:
+    assert len(attrnames) > 0, "The scheme is not valid."
+
+    if len(attrnames) == 1:
+        assert splitter is None, "When the scheme consists of a single key, argument 'splitter' must be set as None"
+    else:
+        assert isinstance(splitter, str), "When the scheme consists of several keys, argument 'splitter' must be str"
+
+        assert len(duplicates(attrnames)) == 0, f"Some keys are repeated: {duplicates(attrnames)}. Rename them."
+
+        for attrname in attrnames:
+            assert splitter not in attrname, f"Found key with splitter in it: {attrname}. Remove it from key."
 
 
 def _pattern_to_match(pat: str) -> str:
@@ -81,7 +100,8 @@ class TableStoreFiledir(TableStore):
         self,
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
-        add_filepath_column: bool = False
+        add_filepath_column: bool = False,
+        splitter: Union[str, None] = None
     ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
@@ -101,16 +121,15 @@ class TableStoreFiledir(TableStore):
 
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
+        self.splitter = splitter
 
-        # FIXME Другие схемы идентификации еще не реализованы
-        assert(_pattern_to_attrnames(self.filename_pattern) == ['id'])
-
+        self.attrnames = _pattern_to_attrnames(self.filename_pattern)
+        _check_attrnames_correctness(self.attrnames, self.splitter)
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
-        self.filename_match = _pattern_to_match(filename_pattern_for_match)
+        self.filename_match = _pattern_to_match(filename_pattern_for_match)                
 
     def get_primary_schema(self) -> DataSchema:
-        # FIXME реализовать поддержку других схем
-        return [Column('id', String(100), primary_key=True)]
+        return [Column(attrname, String(100), primary_key=True) for attrname in self.attrnames]
 
     def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать
@@ -121,13 +140,15 @@ class TableStoreFiledir(TableStore):
         pass
 
     def _filename(self, item_id: str) -> str:
-        return re.sub(r'\{id\}', item_id, self.filename_pattern)
+        pat = ('' if self.splitter is None else self.splitter).join(self.attrnames)
+        return re.sub(fr'\{{{pat}\}}', item_id, self.filename_pattern)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         assert(not self.readonly)
 
-        for i, data in zip(df['id'], cast(List[Dict[str, Any]], df.to_dict('records'))):
-            filename = self._filename(str(i))
+        for row_idx, data in zip(df.index, cast(List[Dict[str, Any]], df.to_dict('records'))):
+            item_id = ('' if self.splitter is None else self.splitter).join(df.loc[row_idx, self.attrnames])
+            filename = self._filename(item_id)
 
             with fsspec.open(filename, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)
@@ -137,12 +158,25 @@ class TableStoreFiledir(TableStore):
             idx = data_to_index(self.read_rows_meta_pseudo_df(), self.primary_keys)
 
         def _gen():
-            for i in idx['id']:
-                with (file_open := fsspec.open(self._filename(i), f'r{self.adapter.mode}')) as f:
+            for row_idx in idx.index:
+                item_id = ('' if self.splitter is None else self.splitter).join(idx.loc[row_idx, self.attrnames])
+                with (file_open := fsspec.open(self._filename(item_id), f'r{self.adapter.mode}')) as f:
                     data = self.adapter.load(f)
-                    data['id'] = i
+
+                    assert all([attrname not in data for attrname in self.attrnames + ['filepath']]), (
+                        f"Found duplicated keys: {[attrname for attrname in self.attrnames if attrname in data]} "
+                        "To fix it, rename these keys in the scheme."
+                    )
+
+                    for key in self.attrnames:
+                        data[key] = idx.loc[row_idx, key]
                     if self.add_filepath_column:
+                        assert 'filepath' not in data, (
+                            "The key 'filepath' is already exists in data. "
+                            "Switch argument add_filepath_column to False or rename keys in data."
+                        )
                         data['filepath'] = f"{self.protocol_str}{file_open.path}"
+
                     yield data
 
         return pd.DataFrame.from_records(
@@ -155,21 +189,24 @@ class TableStoreFiledir(TableStore):
 
         files = fsspec.open_files(self.filename_glob)
 
-        ids = []
+        ids = {
+            attrname: []
+            for attrname in self.attrnames
+        }
         ukeys = []
 
         for f in files:
             m = re.match(self.filename_match, f.path)
+
             assert(m is not None)
-
-            ids.append(m.group('id'))
-
+            for attrname in self.attrnames:
+                ids[attrname].append(m.group(attrname))
             ukeys.append(files.fs.ukey(f.path))
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
                 {
-                    'id': ids,
+                    **ids,
                     'ukey': ukeys,
                 }
             )
@@ -177,7 +214,7 @@ class TableStoreFiledir(TableStore):
         else:
             return pd.DataFrame(
                 {
-                    'id': [],
+                    **ids,
                     'ukey': []
                 }
             )
