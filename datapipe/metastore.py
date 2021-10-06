@@ -5,7 +5,7 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, Numeric, Float, func
+from sqlalchemy import Table, Column, BigInteger, Float, func
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
+    Column('hash', BigInteger),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
     Column('process_ts', Float),  # Время последней успешной обработки
