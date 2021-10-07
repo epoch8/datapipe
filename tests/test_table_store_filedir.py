@@ -8,14 +8,14 @@ from PIL import Image
 
 from datapipe.store.filedir import PILFile, JSONFile, TableStoreFiledir
 
-from .util import assert_df_equal, assert_idx_equal
+from .util import assert_df_equal
 
 TEST_DF = pd.DataFrame(
     {
+        "id": ['aaa', 'bbb'],
         "a": [1, 2],
         "b": [10, 20],
-    },
-    index=['aaa', 'bbb'],
+    }
 )
 
 TEST_JSONS = {
@@ -34,7 +34,7 @@ def tmp_dir_with_json_data(tmp_dir):
 
 def get_test_df_filepath(test_df, tmp_dir_):
     test_df_filepath = test_df.copy()
-    test_df_filepath['filepath'] = test_df_filepath.index.map(
+    test_df_filepath['filepath'] = test_df_filepath["id"].map(
         lambda idx: f'{tmp_dir_}/{idx}.json'
     )
     return test_df_filepath
@@ -50,7 +50,8 @@ def test_read_json_rows(tmp_dir_with_json_data):
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
-        adapter=JSONFile(), add_filepath_column=True
+        adapter=JSONFile(),
+        add_filepath_column=True
     )
     assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, tmp_dir_with_json_data))
 
@@ -92,8 +93,11 @@ def test_insert_json_rows(tmp_dir_with_json_data):
     )
 
     ts.insert_rows(pd.DataFrame(
-        {'a': [3], 'b': [30]},
-        index=['ccc']
+        {
+            'id': ['ccc'],
+            'a': [3],
+            'b': [30]
+        }
     ))
 
     with open(f'{tmp_dir_with_json_data}/ccc.json') as f:
@@ -117,7 +121,8 @@ def test_read_png_rows(tmp_dir_with_img_data):
 
     rows = ts.read_rows()
 
-    assert_idx_equal(rows.index, ['aaa'])
+    assert_df_equal(rows[["id"]], pd.DataFrame({"id": ["aaa"]}))
+
     assert('image' in rows.columns)
 
 
@@ -128,8 +133,10 @@ def test_insert_png_rows(tmp_dir_with_img_data):
     )
 
     ts.insert_rows(pd.DataFrame(
-        {'image': [Image.fromarray(np.zeros((100, 100, 3), 'u8'), 'RGB')]},
-        index=['bbb']
+        {
+            'id': ['bbb'],
+            'image': [Image.fromarray(np.zeros((100, 100, 3), 'u8'), 'RGB')]
+        }
     ))
 
     assert(fsspec.open(f'{tmp_dir_with_img_data}/bbb.png'))
@@ -148,10 +155,10 @@ def tmp_several_dirs_with_json_data(tmp_dir):
 
 TEST_DF_FOLDER0 = pd.DataFrame(
     {
+        "id": ['00', '01', '02'],
         "a": [0, 0, 0],
         "b": [0, 1, 2],
-    },
-    index=['00', '01', '02'],
+    }
 )
 
 
@@ -167,7 +174,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
         adapter=JSONFile(), add_filepath_column=True
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
-    TEST_DF_FOLDER0_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER0_WITH_FILEPATH.index.map(
+    TEST_DF_FOLDER0_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
         lambda idx: (
             f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
         )
@@ -177,10 +184,10 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
 
 TEST_DF_FOLDER_RECURSIVELY = pd.DataFrame(
     {
+        "id": ['0', '00', '01', '02', '1', '10', '11', '12', '2', '20', '21', '22'],
         "a": [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],
         "b": [-1, 0, 1, 2, -1, 0, 1, 2, -1, 0, 1, 2],
-    },
-    index=['0', '00', '01', '02', '1', '10', '11', '12', '2', '20', '21', '22'],
+    }
 )
 
 
@@ -196,7 +203,7 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         adapter=JSONFile(), add_filepath_column=True
     )
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH = TEST_DF_FOLDER_RECURSIVELY.copy()
-    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH.index.map(
+    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(
         lambda idx: (
             f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
             if idx in ['0', '1', '2']

@@ -1,7 +1,7 @@
 import pandas as pd
 
 from datapipe.compute import build_compute, run_steps
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
 from datapipe.store.pandas import TableStoreJsonLine
 
@@ -38,7 +38,7 @@ def make_file2(file):
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     input_file = tmp_dir / "data.json"
 
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
     catalog = Catalog({
         "input_data": ExternalTable(
             store=TableStoreJsonLine(tmp_dir / "data.json"),
@@ -58,17 +58,17 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     # Create data, pipeline it
     make_file1(input_file)
 
-    steps = build_compute(ms, catalog, pipeline)
-    run_steps(ms, steps)
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ms, 'input_data').get_data()) == 3
-    assert len(catalog.get_datatable(ms, 'transfomed_data').get_data()) == 3
+    assert len(catalog.get_datatable(ds, 'input_data').get_data()) == 3
+    assert len(catalog.get_datatable(ds, 'transfomed_data').get_data()) == 3
 
     # Remove {"id": "0"} from file, pipeline it
     make_file2(input_file)
-    run_steps(ms, steps)
+    run_steps(ds, steps)
 
     # TODO: uncomment follow when we make files deletion
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
-    assert len(catalog.get_datatable(ms, 'input_data').get_data()) == 2
-    assert len(catalog.get_datatable(ms, 'transfomed_data').get_data()) == 2
+    assert len(catalog.get_datatable(ds, 'input_data').get_data()) == 2
+    assert len(catalog.get_datatable(ds, 'transfomed_data').get_data()) == 2

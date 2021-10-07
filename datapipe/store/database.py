@@ -3,21 +3,31 @@ from typing import List, Any, Dict, Union, Optional
 import logging
 import pandas as pd
 
-from dataclasses import dataclass
-from sqlalchemy import Column, Table, String, create_engine, MetaData
-from sqlalchemy.sql.expression import select, delete
+from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
+from sqlalchemy.sql.expression import select, delete, and_, or_
+from sqlalchemy.pool import SingletonThreadPool
 
-from datapipe.store.types import Index
+from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
 
 logger = logging.getLogger('datapipe.store.database')
 
 
-PRIMARY_KEY = [Column('id', String(100), primary_key=True)]
+SCHEMA_TO_DTYPE_LOOKUP = {
+    String: str,
+    Integer: int,
+}
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
+    return {
+        i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__]
+        for i in schema
+    }
+
+
+def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
     return {
         i.name: i.type for i in schema
     }
@@ -33,6 +43,7 @@ class DBConn:
 
         self.con = create_engine(
             connstr,
+            poolclass=SingletonThreadPool,
         )
 
         self.sqla_metadata = MetaData(schema=schema)
@@ -47,12 +58,6 @@ class DBConn:
         self._init(state['connstr'], state['schema'])
 
 
-@dataclass
-class ConstIdx:
-    column: Column
-    value: Any
-
-
 class TableStoreDB(TableStore):
     def __init__(
         self,
@@ -60,25 +65,14 @@ class TableStoreDB(TableStore):
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = True,
-        const_idx: List[ConstIdx] = []
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
         else:
             self.dbconn = dbconn
         self.name = name
-        self.filters = {}
 
-        const_idx_schema = []
-
-        if const_idx:
-            for item in const_idx:
-                item.column.primary_key = True
-                self.filters[item.column.name] = item.value
-
-                const_idx_schema.append(item.column)
-
-        self.data_sql_schema = PRIMARY_KEY + const_idx_schema + data_sql_schema
+        self.data_sql_schema = data_sql_schema
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
@@ -89,67 +83,64 @@ class TableStoreDB(TableStore):
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
-    def delete_rows(self, idx: Index) -> None:
-        if len(idx) > 0:
-            logger.debug(f'Deleting {len(idx)} rows from {self.name} data')
+    def get_primary_schema(self) -> DataSchema:
+        return [column for column in self.data_sql_schema if column.primary_key]
 
-            sql = delete(self.data_table).where(
-                self.data_table.c.id.in_(list(idx))
-            )
+    def delete_rows(self, idx: IndexDF) -> None:
+        if len(idx.index):
+            logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
-            if self.filters:
-                for key in self.filters.keys():
-                    column = getattr(self.data_table.c, key)
-                    sql = sql.where(column == self.filters[key])
+            row_queries = []
+
+            for _, row in idx.iterrows():
+                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            sql = delete(self.data_table).where(or_(*row_queries))
 
             self.dbconn.con.execute(sql)
 
-    def insert_rows(self, df: pd.DataFrame) -> None:
+    def insert_rows(self, df: DataDF) -> None:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
-
-            if self.filters:
-                if set(self.filters.keys()) & set(df.columns):
-                    raise ValueError("DataFrame has constant index columns")
-
-                for key in self.filters.keys():
-                    df[key] = self.filters[key]
 
             df.to_sql(
                 name=self.name,
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
                 if_exists='append',
-                index_label='id',
+                index=False,
                 chunksize=1000,
                 method='multi',
-                dtype=sql_schema_to_dtype(self.data_sql_schema),
+                dtype=sql_schema_to_sqltype(self.data_sql_schema),
             )
 
-            if self.filters:
-                for key in self.filters.keys():
-                    del df[key]
-
-    def update_rows(self, df: pd.DataFrame) -> None:
-        self.delete_rows(df.index)
+    def update_rows(self, df: DataDF) -> None:
+        self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
-        exclude_cols = self.filters.keys() if self.filters else []
-        sql_fields = [col for col in self.data_table.columns
-                      if col.name not in exclude_cols]
-        sql = select(sql_fields)
+    # Fix numpy types in IndexDF
+    def _get_sql_param(self, param):
+        return param.item() if hasattr(param, "item") else param
+
+    def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
+        sql = select(self.data_table.c)
 
         if idx is not None:
-            sql = sql.where(self.data_table.c.id.in_(list(idx)))
+            row_queries = []
 
-        if self.filters:
-            for key in self.filters.keys():
-                column = getattr(self.data_table.c, key)
-                sql = sql.where(column == self.filters[key])
+            for _, row in idx.iterrows():
+                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
+                and_query = and_(*and_params)
+                row_queries.append(and_query)
+
+            if not row_queries:
+                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+
+            sql = sql.where(or_(*row_queries))
 
         return pd.read_sql_query(
             sql,
-            con=self.dbconn.con,
-            index_col='id',
+            con=self.dbconn.con
         )

@@ -1,3 +1,4 @@
+from typing import cast
 import pytest
 
 import cloudpickle
@@ -6,21 +7,22 @@ from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
-from datapipe.datatable import DataTable, gen_process, gen_process_many, inc_process, inc_process_many
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore, gen_process, gen_process_many, inc_process, inc_process_many
+from datapipe.types import IndexDF, data_to_index
 
-from .util import assert_df_equal, assert_idx_equal
+from .util import assert_df_equal, assert_datatable_equal
 
 
 TEST_SCHEMA = [
+    Column('id', Integer, primary_key=True),
     Column('a', Integer),
 ]
 
 TEST_DF = pd.DataFrame(
     {
-        'a': range(10)
+        'id': range(10),
+        'a': range(10),
     },
-    index=pd.Index([f'id_{i}' for i in range(10)], name='id'),
 )
 
 
@@ -37,86 +39,87 @@ def yield_df(data):
 
 
 def test_cloudpickle(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(meta_dbconn=dbconn)
 
-    tbl = DataTable(
-        'test',
-        meta_table=ms.create_meta_table('test'),
+    tbl = ds.create_table(
+        name='test',
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    cloudpickle.dumps([ms, tbl])
+    cloudpickle.dumps([ds, tbl])
 
 
 def test_simple(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'test',
-        meta_table=ms.create_meta_table('test'),
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
+
+    assert_datatable_equal(tbl, TEST_DF)
 
 
 def test_store_less_values(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'test',
-        meta_table=ms.create_meta_table('test'),
-        table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
+    )
 
-    tbl.store(TEST_DF)
-    assert_idx_equal(tbl.get_metadata().index, TEST_DF.index)
+    tbl.store_chunk(TEST_DF)
+    assert_datatable_equal(tbl, TEST_DF)
 
-    tbl.store(TEST_DF[:5])
-    assert_idx_equal(tbl.get_metadata().index, TEST_DF[:5].index)
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
+    assert_datatable_equal(tbl, TEST_DF[:5])
 
 
 def test_get_process_ids(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
-    count, idx_dfs = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert(sorted(list(idx.index)) == list(TEST_DF.index))
 
-    tbl2.store(tbl1.get_data())
+    tbl2.store_chunk(tbl1.get_data())
 
     upd_df = TEST_DF[:5].copy()
     upd_df['a'] += 1
 
     tbl1.store_chunk(upd_df)
 
-    count, idx_dfs = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
-    assert(sorted(list(idx.index)) == list(upd_df.index))
+
+    assert_df_equal(idx, upd_df[['id']])
 
 
 def test_gen_process(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1_gen = DataTable(
+    tbl1_gen = ds.create_table(
         'tbl1_gen',
-        meta_table=ms.create_meta_table('tbl1_gen'),
-        table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
-    tbl1 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True)
+    )
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
 
     def gen():
         yield TEST_DF
@@ -135,7 +138,7 @@ def test_gen_process(dbconn) -> None:
             func
         )
 
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF))
+    assert_datatable_equal(tbl1_gen, TEST_DF)
 
     def gen2():
         yield TEST_DF[:5]
@@ -154,178 +157,178 @@ def test_gen_process(dbconn) -> None:
             func2
         )
 
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl1_gen, TEST_DF[:5])
 
 
 def test_inc_process_modify_values(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
     def id_func(df):
         return df
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
+    assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    tbl1.store(TEST_DF_INC1)
+    tbl1.store_chunk(TEST_DF_INC1)
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC1))
+    assert_datatable_equal(tbl2, TEST_DF_INC1)
 
 
 def test_inc_process_delete_values_from_input(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
     def id_func(df):
         return df
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF))
+    assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    tbl1.store(TEST_DF[:5])
+    tbl1.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys))
 
-    inc_process(ms, [tbl1], tbl2, id_func, chunksize=2)
+    inc_process(ds, [tbl1], tbl2, id_func, chunksize=2)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl2, TEST_DF[:5])
 
 
 def test_inc_process_delete_values_from_proc(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
     def id_func(df):
         return df[:5]
 
-    tbl2.store(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
 
-    tbl1.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF[:5]))
+    assert_datatable_equal(tbl2, TEST_DF[:5])
 
 
 def test_inc_process_proc_no_change(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
     def id_func(df):
         return TEST_DF
 
-    tbl2.store(TEST_DF)
-    tbl1.store(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
-    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == len(TEST_DF))
+    assert(idx_len == len(TEST_DF))
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == 0)
+    assert(idx_len == 0)
 
-    tbl1.store(TEST_DF_INC1)
+    tbl1.store_chunk(TEST_DF_INC1)
 
-    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == len(TEST_DF))
+    assert(idx_len == len(TEST_DF))
 
-    inc_process(ms, [tbl1], tbl2, id_func)
+    inc_process(ds, [tbl1], tbl2, id_func)
 
-    count, idx_gen = ms.get_process_ids([tbl1.meta_table], [tbl2.meta_table])
+    count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
-    idx = pd.concat(idx_dfs) if len(idx_dfs) > 0 else []
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(len(idx) == 0)
+    assert(idx_len == 0)
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
 
 
 def test_gen_process_many(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl_gen = DataTable(
+    tbl_gen = ds.create_table(
         'tbl_gen',
-        meta_table=ms.create_meta_table('tbl_gen'),
-        table_store=TableStoreDB(dbconn, 'tbl_gen_data', TEST_SCHEMA, True))
-    tbl1_gen = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl_gen_data', TEST_SCHEMA, True)
+    )
+    tbl1_gen = ds.create_table(
         'tbl1_gen',
-        meta_table=ms.create_meta_table('tbl1_gen'),
-        table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True))
-    tbl2_gen = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_gen_data', TEST_SCHEMA, True)
+    )
+    tbl2_gen = ds.create_table(
         'tbl2_gen',
-        meta_table=ms.create_meta_table('tbl2_gen'),
-        table_store=TableStoreDB(dbconn, 'tbl2_gen_data', TEST_SCHEMA, True))
-    tbl3_gen = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl2_gen_data', TEST_SCHEMA, True)
+    )
+    tbl3_gen = ds.create_table(
         'tbl3_gen',
-        meta_table=ms.create_meta_table('tbl3_gen'),
-        table_store=TableStoreDB(dbconn, 'tbl3_gen_data', TEST_SCHEMA, True))
-    tbl = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl3_gen_data', TEST_SCHEMA, True)
+    )
+    tbl = ds.create_table(
         'tbl',
-        meta_table=ms.create_meta_table('tbl'),
-        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl1 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True)
+    )
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
-    tbl3 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
+    tbl3 = ds.create_table(
         'tbl3',
-        meta_table=ms.create_meta_table('tbl3'),
-        table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True)
+    )
 
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)
@@ -344,31 +347,31 @@ def test_gen_process_many(dbconn) -> None:
             func
         )
 
-    assert(assert_df_equal(tbl_gen.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl1_gen.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2_gen.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3_gen.get_data(), TEST_DF_INC3))
+    assert_datatable_equal(tbl_gen, TEST_DF)
+    assert_datatable_equal(tbl1_gen, TEST_DF_INC1)
+    assert_datatable_equal(tbl2_gen, TEST_DF_INC2)
+    assert_datatable_equal(tbl3_gen, TEST_DF_INC3)
 
 
 def test_inc_process_many_modify_values(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'tbl',
-        meta_table=ms.create_meta_table('tbl'),
-        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl1 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True)
+    )
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
-    tbl3 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
+    tbl3 = ds.create_table(
         'tbl3',
-        meta_table=ms.create_meta_table('tbl3'),
-        table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl3_data', TEST_SCHEMA, True)
+    )
 
     def inc_func(df):
         df1 = df.copy()
@@ -379,16 +382,16 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3['a'] += 3
         return df1, df2, df3
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
 
-    inc_process_many(ms, [tbl], [tbl1, tbl2, tbl3], inc_func)
+    inc_process_many(ds, [tbl], [tbl1, tbl2, tbl3], inc_func)
 
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    assert_datatable_equal(tbl1, TEST_DF_INC1)
+    assert_datatable_equal(tbl2, TEST_DF_INC2)
+    assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
-    tbl.store(TEST_DF[:5])
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
 
     def inc_func_inv(df):
         df1 = df.copy()
@@ -399,201 +402,199 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3['a'] += 3
         return df3, df2, df1
 
-    inc_process_many(ms, [tbl], [tbl3, tbl2, tbl1], inc_func_inv)
+    inc_process_many(ds, [tbl], [tbl3, tbl2, tbl1], inc_func_inv)
 
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1[:5]))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2[:5]))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3[:5]))
+    assert_datatable_equal(tbl1, TEST_DF_INC1[:5])
+    assert_datatable_equal(tbl2, TEST_DF_INC2[:5])
+    assert_datatable_equal(tbl3, TEST_DF_INC3[:5])
 
     ##########################
 
     tbl.store_chunk(TEST_DF[5:])
 
-    inc_process_many(ms, [tbl], [tbl1, tbl2, tbl3], inc_func)
-    assert(assert_df_equal(tbl1.get_data(), TEST_DF_INC1))
-    assert(assert_df_equal(tbl2.get_data(), TEST_DF_INC2))
-    assert(assert_df_equal(tbl3.get_data(), TEST_DF_INC3))
+    inc_process_many(ds, [tbl], [tbl1, tbl2, tbl3], inc_func)
+    assert_datatable_equal(tbl1, TEST_DF_INC1)
+    assert_datatable_equal(tbl2, TEST_DF_INC2)
+    assert_datatable_equal(tbl3, TEST_DF_INC3)
 
 
 def test_inc_process_many_several_inputs(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'tbl',
-        meta_table=ms.create_meta_table('tbl'),
         table_store=TableStoreDB(
-            dbconn, 'tbl_data', [Column('a_first', Integer), Column('a_second', Integer)], True
+            dbconn,
+            'tbl_data',
+            [
+                Column('id', Integer, primary_key=True),
+                Column('a_first', Integer),
+                Column('a_second', Integer)
+            ],
+            True
         )
     )
-    tbl1 = DataTable(
+    tbl1 = ds.create_table(
         'tbl1',
-        meta_table=ms.create_meta_table('tbl1'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
-    tbl2 = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+    tbl2 = ds.create_table(
         'tbl2',
-        meta_table=ms.create_meta_table('tbl2'),
-        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
 
     def inc_func(df1, df2):
         df = pd.merge(
             left=df1,
             right=df2,
-            left_index=True,
-            right_index=True,
+            on=['id'],
             suffixes=('_first', '_second')
         )
         df['a_first'] += 1
         df['a_second'] += 2
         return df
 
-    tbl1.store(TEST_DF)
-    tbl2.store(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
 
-    inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
-    assert(
-        assert_df_equal(
-            tbl.get_data(),
-            pd.DataFrame(
-                {
-                    'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                    'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-                },
-                index=[f'id_{i}' for i in range(10)]
-            )
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
+    assert_datatable_equal(
+        tbl,
+        pd.DataFrame(
+            {
+                'id': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                'a_first': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                'a_second': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            }
         )
     )
 
-    changed_indexes = [f'id_{i}' for i in [0, 4, 6]]
-    not_changed_indexes = [f'id_{i}' for i in [1, 2, 3, 5, 7, 8, 9]]
+    changed_ids = [0, 4, 6]
+    changed_ids_df = cast(IndexDF, pd.DataFrame({'id': changed_ids}))
+    not_changed_ids = [1, 2, 3, 5, 7, 8, 9]
+    not_changed_ids_df = cast(IndexDF, pd.DataFrame({'id': not_changed_ids}))
 
     tbl2.store_chunk(
         pd.DataFrame(
             {
+                'id': changed_ids,
                 'a': [10, 10, 10]
-            },
-            index=changed_indexes
+            }
         )
     )
 
-    inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
 
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [1, 5, 7],
-                    'a_second': [12, 12, 12]
-                },
-                index=changed_indexes
-            )
+    assert_df_equal(
+        tbl.get_data(idx=changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': changed_ids,
+                'a_first': [1, 5, 7],
+                'a_second': [12, 12, 12]
+            }
         )
     )
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=not_changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [2, 3, 4, 6, 8, 9, 10],
-                    'a_second': [3, 4, 5, 7, 9, 10, 11]
-                },
-                index=not_changed_indexes
-            )
+
+    assert_df_equal(
+        tbl.get_data(idx=not_changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': not_changed_ids,
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            }
         )
     )
 
     tbl1.store_chunk(
         pd.DataFrame(
             {
+                'id': changed_ids,
                 'a': [20, 20, 20]
-            },
-            index=changed_indexes
+            }
         )
     )
 
-    inc_process_many(ms, [tbl1, tbl2], [tbl], inc_func)
+    inc_process_many(ds, [tbl1, tbl2], [tbl], inc_func)
 
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [21, 21, 21],
-                    'a_second': [12, 12, 12]
-                },
-                index=changed_indexes
-            )
+    assert_df_equal(
+        tbl.get_data(idx=changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': changed_ids,
+                'a_first': [21, 21, 21],
+                'a_second': [12, 12, 12]
+            }
         )
     )
-    assert(
-        assert_df_equal(
-            tbl.get_data(idx=not_changed_indexes),
-            pd.DataFrame(
-                {
-                    'a_first': [2, 3, 4, 6, 8, 9, 10],
-                    'a_second': [3, 4, 5, 7, 9, 10, 11]
-                },
-                index=not_changed_indexes
-            )
+
+    assert_df_equal(
+        tbl.get_data(idx=not_changed_ids_df),
+        pd.DataFrame(
+            {
+                'id': not_changed_ids,
+                'a_first': [2, 3, 4, 6, 8, 9, 10],
+                'a_second': [3, 4, 5, 7, 9, 10, 11]
+            }
         )
     )
 
 
 def test_inc_process_many_several_outputs(dbconn) -> None:
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    BAD_IDXS = ['id_0', 'id_1', 'id_5', 'id_8']
-    GOOD_IDXS = ['id_2', 'id_3', 'id_4', 'id_6', 'id_7', 'id_9']
+    bad_ids = [0, 1, 5, 8]
+    good_ids = [2, 3, 4, 6, 7, 9]
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'tbl',
-        meta_table=ms.create_meta_table('tbl'),
-        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
-    tbl_good = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True)
+    )
+    tbl_good = ds.create_table(
         'tbl_good',
-        meta_table=ms.create_meta_table('tbl_good'),
-        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
-    tbl_bad = DataTable(
+        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True)
+    )
+    tbl_bad = ds.create_table(
         'tbl_bad',
-        meta_table=ms.create_meta_table('tbl_bad'),
-        table_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl_bad_data', TEST_SCHEMA, True)
+    )
 
-    tbl.store(TEST_DF)
+    tbl.store_chunk(TEST_DF)
 
     def inc_func(df):
-        df_good = df.drop(index=BAD_IDXS)
-        df_bad = df.drop(index=GOOD_IDXS)
+        df_good = df[df['id'].isin(good_ids)]
+        df_bad = df[df['id'].isin(bad_ids)]
         return df_good, df_bad
 
-    inc_process_many(ms, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(assert_df_equal(tbl.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
+    assert_datatable_equal(tbl, TEST_DF)
+    assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
+    assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
 
     # Check this not delete the tables
-    inc_process_many(ms, [tbl], [tbl_good, tbl_bad], inc_func)
-    assert(assert_df_equal(tbl.get_data(), TEST_DF))
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS]))
-    assert(assert_df_equal(tbl_bad.get_data(), TEST_DF.loc[BAD_IDXS]))
+    inc_process_many(ds, [tbl], [tbl_good, tbl_bad], inc_func)
+    assert_datatable_equal(tbl, TEST_DF)
+    assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
+    assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
 
 
 def test_error_handling(dbconn) -> None:
-    BAD_ID = 'id_3'
-    GOOD_IDXS1 = ['id_0', 'id_1', 'id_2', 'id_3', 'id_4', 'id_5']
-    GOOD_IDXS2 = ['id_0', 'id_1', 'id_4', 'id_5']
+    BAD_ID = 3
+    GOOD_IDXS1 = [0, 1, 2, 3, 4, 5]
     CHUNKSIZE = 2
 
-    ms = MetaStore(dbconn)
+    ds = DataStore(dbconn)
 
-    tbl = DataTable(
+    tbl = ds.create_table(
         'tbl',
-        meta_table=ms.create_meta_table('tbl'),
-        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
 
-    tbl_good = DataTable(
+    tbl_good = ds.create_table(
         'tbl_good',
-        meta_table=ms.create_meta_table('tbl_good'),
-        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True))
+        table_store=TableStoreDB(dbconn, 'tbl_good_data', TEST_SCHEMA, True)
+    )
 
     def gen_bad1(chunksize: int = 1000):
         idx = TEST_DF.index
@@ -619,10 +620,10 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl.get_data(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
     def inc_func_bad(df):
-        if BAD_ID in df.index:
+        if BAD_ID in df['id'].values:
             raise Exception('TEST')
         return df
 
@@ -630,24 +631,24 @@ def test_error_handling(dbconn) -> None:
         return df
 
     inc_process_many(
-        ms,
+        ds,
         [tbl],
         [tbl_good],
         inc_func_bad,
-        chunksize=CHUNKSIZE
+        chunksize=1
     )
 
-    assert(assert_df_equal(tbl_good.get_data(), TEST_DF.loc[GOOD_IDXS2]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[[0, 1, 2, 4, 5]])
 
     inc_process_many(
-        ms,
+        ds,
         [tbl],
         [tbl_good],
         inc_func_good,
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
     # Checks that records are not being deleted
     gen_process_many(
         dts=[tbl],
@@ -655,14 +656,14 @@ def test_error_handling(dbconn) -> None:
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
     inc_process_many(
-        ms,
+        ds,
         [tbl],
         [tbl_good],
         inc_func_bad,
         chunksize=CHUNKSIZE
     )
 
-    assert(assert_df_equal(tbl_good.get_data().sort_index(), TEST_DF.loc[GOOD_IDXS1]))
+    assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])

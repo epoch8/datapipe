@@ -1,86 +1,118 @@
 from abc import ABC
-from typing import Optional, Union
-from dataclasses import dataclass
+from typing import List, Optional, Union
 
+from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
 
-from datapipe.store.types import Index
+from datapipe.types import IndexDF, DataDF, DataSchema
 
 
 class TableStore(ABC):
-    def delete_rows(self, idx: Index) -> None:
+    def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
 
-    def insert_rows(self, df: pd.DataFrame) -> None:
+    @property
+    def primary_keys(self) -> List[str]:
+        return [i.name for i in self.get_primary_schema()]
+
+    def delete_rows(self, idx: IndexDF) -> None:
         raise NotImplementedError
 
-    def update_rows(self, df: pd.DataFrame) -> None:
+    def insert_rows(self, df: DataDF) -> None:
+        raise NotImplementedError
+
+    def update_rows(self, df: DataDF) -> None:
         self.delete_rows(df.index)
         self.insert_rows(df)
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, idx: IndexDF = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
         '''
         Подготовить датафрейм с "какбы данными" на основе которых посчитается хеш и обновятся метаданные
-
-        По умолчанию используется read_rows
         '''
+
+        # TODO переделать на чанкированную обработку
         return self.read_rows(idx)
 
 
-@dataclass
 class TableDataSingleFileStore(TableStore):
-    filename: Union[Path, str]
 
-    def load_file(self) -> Optional[pd.DataFrame]:
+    def __init__(self, filename: Union[Path, str] = None, primary_schema: DataSchema = None):
+        if not primary_schema:
+            primary_schema = [Column("id", String(), primary_key=True)]
+
+        self.primary_schema = primary_schema
+        self.filename = filename
+
+    def get_primary_schema(self) -> DataSchema:
+        return self.primary_schema
+
+    def load_file(self) -> Optional[DataDF]:
         raise NotImplementedError
 
-    def save_file(self, df: pd.DataFrame) -> None:
+    def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
-    def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
+    def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
         file_df = self.load_file()
 
         if file_df is not None:
-            if idx is not None:
-                return file_df.loc[idx]
+            if index_df is not None:
+                file_df = file_df.set_index(self.primary_keys)
+                idx = index_df.set_index(self.primary_keys)
+
+                return file_df.loc[idx.index].reset_index()
             else:
                 return file_df
-
         else:
             return pd.DataFrame()
 
-    def insert_rows(self, df: pd.DataFrame) -> None:
+    def insert_rows(self, df: DataDF) -> None:
         file_df = self.load_file()
+
+        if set(self.primary_keys) - set(df.columns):
+            raise ValueError("DataDf does not contains all primary keys")
 
         if file_df is None:
             new_df = df
         else:
             new_df = file_df.append(df)
 
+        check_df = new_df.drop_duplicates(subset=self.primary_keys)
+
+        if len(new_df) > len(check_df):
+            raise ValueError("DataDf contains duplicate rows by primary keys")
+
         self.save_file(new_df)
 
-    def delete_rows(self, idx: Index) -> None:
+    def delete_rows(self, index_df: IndexDF) -> None:
         file_df = self.load_file()
 
         if file_df is not None:
-            new_df = file_df.loc[file_df.index.difference(idx)]
+            file_df = file_df.set_index(self.primary_keys)
+            idx = index_df.set_index(self.primary_keys)
 
-            self.save_file(new_df)
+            new_df = file_df.loc[file_df.index.difference(idx.index)]
 
-    def update_rows(self, df: pd.DataFrame) -> None:
+            self.save_file(new_df.reset_index())
+
+    def update_rows(self, df: DataDF) -> None:
         file_df = self.load_file()
 
-        if file_df is None:
+        if set(self.primary_keys) - set(df.columns):
+            raise ValueError("DataDf does not contains all primary keys")
+
+        if file_df is None or file_df.empty:
             file_df = df
         else:
-            updated_idx = df.index.intersection(file_df.index)
-            new_idx = df.index.difference(file_df.index)
+            file_df = file_df.set_index(self.primary_keys)
+            df = df.set_index(self.primary_keys)
 
-            file_df.loc[updated_idx] = df.loc[updated_idx]
-            file_df = file_df.append(df.loc[new_idx])
+            file_df.loc[df.index] = df
+
+            file_df = file_df.reset_index()
 
         self.save_file(file_df)

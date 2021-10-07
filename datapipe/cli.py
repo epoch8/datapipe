@@ -1,26 +1,30 @@
 import click
 
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Pipeline
 
 
-def main(ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
-    import logging
-    logging.basicConfig(level=logging.INFO)
-
+def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     @click.group()
-    def cli():
-        pass
+    @click.option('--debug', is_flag=True, help='Log debug output')
+    def cli(debug):
+        import logging
+        if debug:
+            logging.basicConfig(level=logging.DEBUG)
+        else:
+            logging.basicConfig(level=logging.INFO)
 
     @cli.command()
     def run():
         from .compute import run_pipeline
-        run_pipeline(ms, catalog, pipeline)
+        run_pipeline(ds, catalog, pipeline)
 
     @cli.command()
     def ui():
+        from .compute import build_compute
         from .debug_ui import ui_main
-        app = ui_main(ms, catalog, pipeline)
+        build_compute(ds, catalog, pipeline)
+        app = ui_main(ds, catalog, pipeline)
         app.run_server(host='0.0.0.0')
 
     cli()

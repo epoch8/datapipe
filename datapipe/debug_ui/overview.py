@@ -1,14 +1,13 @@
 import dash_html_components as html
-import dash_core_components as dcc
 import dash_interactive_graphviz as gv
 from dash.dependencies import Input, Output
 
-from datapipe.metastore import MetaStore
 from datapipe.dsl import Catalog, Pipeline
 from datapipe.compute import build_compute
+from datapipe.datatable import DataStore
 
 
-def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
+def ui_overview_setup(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     @app.callback(
         Output('overview_text', 'children'),
         [Input('pipeline_graph', 'selected_node')]
@@ -16,13 +15,17 @@ def ui_overview_setup(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
     def graph_node_selected(node_name):
         return node_name
 
-def ui_overview_index(app, ms: MetaStore, catalog: Catalog, pipeline: Pipeline):
-    steps = build_compute(ms, catalog, pipeline)
+
+def ui_overview_index(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+    steps = build_compute(ds, catalog, pipeline)
 
     steps_dots = []
 
+    for table_name, table in ds.tables.items():
+        steps_dots.append(f'{table_name} [shape=box3d label=<<B>{table_name}</B><BR/>{"<BR/>".join(table.primary_keys)}>]')
+
     for step in steps:
-        steps_dots.append(f'{step.name} [shape=parallelogram]')
+        steps_dots.append(f'{step.name} [shape=box]')
         for inp in step.input_dts:
             steps_dots.append(f'{inp.name} -> {step.name}')
         for out in step.output_dts:
@@ -40,7 +43,7 @@ digraph {{
         res = []
 
         for name, tbl in catalog.catalog.items():
-            di = ms.get_table_debug_info(name)
+            di = ds.get_table_debug_info(name)
 
             res.append(html.Li([
                 di.name,
@@ -51,7 +54,6 @@ digraph {{
 
         return html.Ul(res)
 
-
     def _build_dash_pipeline_list():
         res = []
 
@@ -59,14 +61,13 @@ digraph {{
             res.append(html.Li([
                 step.name,
                 html.Ul([
-                    html.Li(f'Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
-                    html.Li(f'Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
-                    html.Li(f'To process: {len(ms.get_process_ids(step.input_dts, step.output_dts))}')
+                    html.Li('Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
+                    html.Li('Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
+                    html.Li(f'To process: {len(ds.get_process_ids(step.input_dts, step.output_dts))}')
                 ])
             ]))
-        
-        return html.Ul(res)
 
+        return html.Ul(res)
 
     def _dash_index():
         return [
@@ -80,6 +81,5 @@ digraph {{
             ),
             html.Div(id='overview_text'),
         ]
-
 
     return _dash_index()

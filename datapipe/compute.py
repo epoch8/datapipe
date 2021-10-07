@@ -4,8 +4,7 @@ from dataclasses import dataclass
 import logging
 from datapipe.label_studio.session import LabelStudioModerationStep
 
-from datapipe.metastore import MetaStore
-from datapipe.datatable import gen_process_many, inc_process_many, ExternalTableUpdater
+from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
 
 from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
 from .step import ComputeStep
@@ -17,7 +16,7 @@ logger = logging.getLogger('datapipe.compute')
 class BatchGenerateStep(ComputeStep):
     func: Callable
 
-    def run(self, ms: MetaStore):
+    def run(self, ds: DataStore):
         gen_process_many(
             self.output_dts,
             self.func
@@ -29,9 +28,9 @@ class BatchTransformIncStep(ComputeStep):
     func: Callable
     chunk_size: int
 
-    def run(self, ms: MetaStore):
+    def run(self, ds: DataStore):
         inc_process_many(
-            ms,
+            ds,
             self.input_dts,
             self.output_dts,
             self.func,
@@ -39,19 +38,19 @@ class BatchTransformIncStep(ComputeStep):
         )
 
 
-def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     res: List[ComputeStep] = []
 
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
             res.append(ExternalTableUpdater(
                 name=f'update_{name}',
-                table=catalog.get_datatable(ms, name)
+                table=catalog.get_datatable(ds, name)
             ))
 
     for step in pipeline.steps:
         if isinstance(step, BatchGenerate):
-            output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
+            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
 
             res.append(BatchGenerateStep(
                 f'{step.func.__name__}',
@@ -61,8 +60,8 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
             ))
 
         if isinstance(step, BatchTransform):
-            input_dts = [catalog.get_datatable(ms, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
+            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
+            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
 
             res.append(BatchTransformIncStep(
                 f'{step.func.__name__}',
@@ -73,8 +72,8 @@ def build_compute(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> List[C
             ))
 
         if isinstance(step, LabelStudioModeration):
-            input_dts = [catalog.get_datatable(ms, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ms, name) for name in step.outputs]
+            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
+            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
 
             res.append(LabelStudioModerationStep(
                 name=f"LabelStudioModeration (Project {step.project_title})",
@@ -101,13 +100,13 @@ def print_compute(steps: List[ComputeStep]) -> None:
     )
 
 
-def run_steps(ms: MetaStore, steps: List[ComputeStep]) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep]) -> None:
     for step in steps:
         logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
 
-        step.run(ms)
+        step.run(ds)
 
 
-def run_pipeline(ms: MetaStore, catalog: Catalog, pipeline: Pipeline) -> None:
-    steps = build_compute(ms, catalog, pipeline)
-    run_steps(ms, steps)
+def run_pipeline(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> None:
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)

@@ -1,8 +1,9 @@
+from datapipe.store.database import DBConn
 from pathlib import Path
 
 import pandas as pd
 
-from datapipe.metastore import MetaStore
+from datapipe.datatable import DataStore
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform
 from datapipe.cli import main
@@ -39,8 +40,8 @@ pipeline = Pipeline([
 ])
 
 
-ms = MetaStore('sqlite:///./test_data/metadata.sqlite')
+ds = DataStore(DBConn('sqlite:///./test_data/metadata.sqlite'))
 
 
 if __name__ == '__main__':
-    main(ms, catalog, pipeline)
+    main(ds, catalog, pipeline)
