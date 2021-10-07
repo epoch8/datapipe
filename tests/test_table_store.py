@@ -82,8 +82,8 @@ FILEDIR_DATA_PARAMS = [
     pytest.param(
         pd.DataFrame({
             'id1': [f'id_{i}' for i in range(100)],
-            'id2': [f'id_{i}' for i in range(100)],
-            'id3': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100, 200)],
+            'id3': [f'id_{i}' for i in range(150, 250)],
             'name': [f'Product {i}' for i in range(100)],
             'price': [1000 + i for i in range(100)],
         }),

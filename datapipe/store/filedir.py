@@ -141,16 +141,23 @@ class TableStoreFiledir(TableStore):
 
         pass
 
-    def _filename_from_idxs_values(self, idxs_values: str) -> str:
+    def _filename_from_idxs_values(self, idxs_values: List[str]) -> str:
         return re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), self.filename_pattern)
 
     def _assert_key_values(self, filepath: str, idxs_values: List[str]):
         m = re.match(self.filename_match, filepath)
 
-        idxs_values = np.array(idxs_values)
-        idxs_values_parsed_from_filepath = np.array([m.group(attrname) for attrname in self.attrnames])
+        idxs_values_np = np.array(idxs_values)
+        idxs_values_parsed_from_filepath = np.array([
+            m.group(attrname) for attrname in self.attrnames
+            if m is not None
+        ])
 
-        assert np.all(idxs_values == idxs_values_parsed_from_filepath), (
+        assert (
+            len(idxs_values_np) == len(idxs_values_parsed_from_filepath) and
+
+            np.all(idxs_values_np == idxs_values_parsed_from_filepath)
+        ), (
             "Multiply indexes have complex contradictory values, so that it couldn't unambiguously name the files. "
             "This is most likely due to imperfect separators between {id} keys in the scheme."
         )
@@ -158,15 +165,15 @@ class TableStoreFiledir(TableStore):
     def insert_rows(self, df: pd.DataFrame) -> None:
         assert(not self.readonly)
 
-        # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк все будет сохраняться изнутри
+        # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени
         for row_idx, data in zip(
             df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
         ):
-            idxs_values = df.loc[row_idx, self.attrnames]
+            idxs_values = df.loc[row_idx, self.attrnames].tolist()
             filepath = self._filename_from_idxs_values(idxs_values)
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
-            self._assert_key_values(filepath, idxs_values.tolist())
+            self._assert_key_values(filepath, idxs_values)
 
             with fsspec.open(filepath, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)
@@ -181,8 +188,10 @@ class TableStoreFiledir(TableStore):
                                                f'r{self.adapter.mode}')) as f:
                     data = self.adapter.load(f)
 
-                    assert all([attrname not in data for attrname in self.attrnames]), (
-                        f"Found duplicated keys inside data: {[attrname for attrname in self.attrnames if attrname in data]}"
+                    attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
+                    assert len(attrnames_in_data) == 0, (
+                        f"Found repeated keys inside data that are already used (from scheme): {attrnames_in_data}. "
+                        f"Remove these keys from data."
                     )
 
                     for attrname in self.attrnames:
@@ -191,7 +200,7 @@ class TableStoreFiledir(TableStore):
                     if self.add_filepath_column:
                         assert 'filepath' not in data, (
                             "The key 'filepath' is already exists in data. "
-                            "Switch argument add_filepath_column to False or rename keys in data."
+                            "Switch argument add_filepath_column to False or rename this key in input data."
                         )
                         data['filepath'] = f"{self.protocol_str}{file_open.path}"
 
@@ -207,7 +216,7 @@ class TableStoreFiledir(TableStore):
 
         files = fsspec.open_files(self.filename_glob)
 
-        ids = {
+        ids: Dict[str, List[str]] = {
             attrname: []
             for attrname in self.attrnames
         }
