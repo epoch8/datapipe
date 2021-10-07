@@ -36,4 +36,8 @@ def test_insert_rows(dbconn: DBConn):
     mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
     mt.update_meta_for_store_chunk(changed_meta_df=changed_meta_df)
 
-    assert_df_equal(mt.get_metadata()[['id']], TEST_DF[['id']])
+    meta_df = mt.get_metadata()
+
+    assert_df_equal(meta_df[['id']], TEST_DF[['id']])
+
+    assert(not meta_df['hash'].isna().any())
