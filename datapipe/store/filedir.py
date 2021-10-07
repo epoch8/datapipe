@@ -1,6 +1,8 @@
 from abc import ABC
 from typing import IO, Optional, Any, Dict, List, Union, cast
 from pathlib import Path
+
+import numpy as np
 from iteration_utilities import duplicates
 
 import re
@@ -64,25 +66,18 @@ class PILFile(ItemStoreFileAdapter):
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
-    return re.findall(r'\{([^/]+?)\}', pat)
+    attrnames = re.findall(r'\{([^/]+?)\}', pat)
+
+    assert len(attrnames) > 0, "The scheme is not valid."
+    if len(attrnames) >= 2:
+        duplicates_attrnames = list(duplicates(attrnames))
+        assert len(duplicates_attrnames) == 0, f"Some keys are repeated: {duplicates_attrnames}. Rename them."
+
+    return attrnames
 
 
 def _pattern_to_glob(pat: str) -> str:
     return re.sub(r'\{([^/]+?)\}', '*', pat)
-
-
-def _check_attrnames_correctness(attrnames: List[str], splitter: Union[str, None]) -> None:
-    assert len(attrnames) > 0, "The scheme is not valid."
-
-    if len(attrnames) == 1:
-        assert splitter is None, "When the scheme consists of a single key, argument 'splitter' must be set as None"
-    else:
-        assert isinstance(splitter, str), "When the scheme consists of several keys, argument 'splitter' must be str"
-
-        assert len(duplicates(attrnames)) == 0, f"Some keys are repeated: {duplicates(attrnames)}. Rename them."
-
-        for attrname in attrnames:
-            assert splitter not in attrname, f"Found key with splitter in it: {attrname}. Remove it from key."
 
 
 def _pattern_to_match(pat: str) -> str:
@@ -95,13 +90,22 @@ def _pattern_to_match(pat: str) -> str:
     return pat
 
 
+class Replacer:
+    def __init__(self, values: List[str]):
+        self.counter = -1
+        self.values = values
+
+    def __call__(self, matchobj):
+        self.counter += 1
+        return str(self.values[self.counter])
+
+
 class TableStoreFiledir(TableStore):
     def __init__(
         self,
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
-        splitter: Union[str, None] = None
     ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
@@ -121,12 +125,10 @@ class TableStoreFiledir(TableStore):
 
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
-        self.splitter = splitter
 
         self.attrnames = _pattern_to_attrnames(self.filename_pattern)
-        _check_attrnames_correctness(self.attrnames, self.splitter)
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
-        self.filename_match = _pattern_to_match(filename_pattern_for_match)                
+        self.filename_match = _pattern_to_match(filename_pattern_for_match)
 
     def get_primary_schema(self) -> DataSchema:
         return [Column(attrname, String(100), primary_key=True) for attrname in self.attrnames]
@@ -139,18 +141,34 @@ class TableStoreFiledir(TableStore):
 
         pass
 
-    def _filename(self, item_id: str) -> str:
-        pat = ('' if self.splitter is None else self.splitter).join(self.attrnames)
-        return re.sub(fr'\{{{pat}\}}', item_id, self.filename_pattern)
+    def _filename_from_idxs_values(self, idxs_values: str) -> str:
+        return re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), self.filename_pattern)
+
+    def _assert_key_values(self, filepath: str, idxs_values: List[str]):
+        m = re.match(self.filename_match, filepath)
+
+        idxs_values = np.array(idxs_values)
+        idxs_values_parsed_from_filepath = np.array([m.group(attrname) for attrname in self.attrnames])
+
+        assert np.all(idxs_values == idxs_values_parsed_from_filepath), (
+            "Multiply indexes have complex contradictory values, so that it couldn't unambiguously name the files. "
+            "This is most likely due to imperfect separators between {id} keys in the scheme."
+        )
 
     def insert_rows(self, df: pd.DataFrame) -> None:
         assert(not self.readonly)
 
-        for row_idx, data in zip(df.index, cast(List[Dict[str, Any]], df.to_dict('records'))):
-            item_id = ('' if self.splitter is None else self.splitter).join(df.loc[row_idx, self.attrnames])
-            filename = self._filename(item_id)
+        # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк все будет сохраняться изнутри
+        for row_idx, data in zip(
+            df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
+        ):
+            idxs_values = df.loc[row_idx, self.attrnames]
+            filepath = self._filename_from_idxs_values(idxs_values)
 
-            with fsspec.open(filename, f'w{self.adapter.mode}+') as f:
+            # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
+            self._assert_key_values(filepath, idxs_values.tolist())
+
+            with fsspec.open(filepath, f'w{self.adapter.mode}+') as f:
                 self.adapter.dump(data, f)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
@@ -159,17 +177,17 @@ class TableStoreFiledir(TableStore):
 
         def _gen():
             for row_idx in idx.index:
-                item_id = ('' if self.splitter is None else self.splitter).join(idx.loc[row_idx, self.attrnames])
-                with (file_open := fsspec.open(self._filename(item_id), f'r{self.adapter.mode}')) as f:
+                with (file_open := fsspec.open(self._filename_from_idxs_values(idx.loc[row_idx, self.attrnames]),
+                                               f'r{self.adapter.mode}')) as f:
                     data = self.adapter.load(f)
 
-                    assert all([attrname not in data for attrname in self.attrnames + ['filepath']]), (
-                        f"Found duplicated keys: {[attrname for attrname in self.attrnames if attrname in data]} "
-                        "To fix it, rename these keys in the scheme."
+                    assert all([attrname not in data for attrname in self.attrnames]), (
+                        f"Found duplicated keys inside data: {[attrname for attrname in self.attrnames if attrname in data]}"
                     )
 
-                    for key in self.attrnames:
-                        data[key] = idx.loc[row_idx, key]
+                    for attrname in self.attrnames:
+                        data[attrname] = idx.loc[row_idx, attrname]
+
                     if self.add_filepath_column:
                         assert 'filepath' not in data, (
                             "The key 'filepath' is already exists in data. "
@@ -201,6 +219,7 @@ class TableStoreFiledir(TableStore):
             assert(m is not None)
             for attrname in self.attrnames:
                 ids[attrname].append(m.group(attrname))
+
             ukeys.append(files.fs.ukey(f.path))
 
         if len(ids) > 0:

@@ -63,7 +63,31 @@ FILEDIR_DATA_PARAMS = [
             'name': [f'Product {i}' for i in range(100)],
             'price': [1000 + i for i in range(100)],
         }),
-        '{id1}_{id2}.json',
+        '{id1}__{id2}.json',
+        id='multi_id'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100)],
+            'id3': [f'id__{i}' for i in range(100)],
+            'id4': [f'id___{i}' for i in range(100)],
+            'id5': [f'id_{i}_' for i in range(100)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id1}______{id2}______{id3}______{id4}______{id5}.json',
+        id='multi_id'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100)],
+            'id3': [f'id_{i}' for i in range(100)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id2}__{id1}__{id3}.json',
         id='multi_id'
     )
 ]
@@ -112,7 +136,7 @@ class CasesTableStore:
         return (
             TableStoreFiledir(
                 tmp_dir / fn_template,
-                adapter=JSONFile()
+                adapter=JSONFile(),
             ),
             df
         )
