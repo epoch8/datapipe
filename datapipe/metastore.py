@@ -107,7 +107,11 @@ class MetaTable:
         return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
-        return df.apply(lambda x: str(list(x)), axis=1).apply(CityHash32)
+        return (
+            df
+            .apply(lambda x: str(list(x)), axis=1)
+            .apply(lambda x: int.from_bytes(CityHash32(x).to_bytes(4, 'little'), 'little', signed=False))
+        )
 
     # Fix numpy types in Index
     # FIXME разобраться, что это за грязный хак
