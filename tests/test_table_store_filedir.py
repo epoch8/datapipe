@@ -101,7 +101,7 @@ def test_insert_json_rows(tmp_dir_with_json_data):
     ))
 
     with open(f'{tmp_dir_with_json_data}/ccc.json') as f:
-        assert(json.load(f) == {'id': 'ccc', 'a': 3, 'b': 30})
+        assert(json.load(f) == {'a': 3, 'b': 30})
 
 
 @pytest.fixture
