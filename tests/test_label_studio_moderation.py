@@ -2,7 +2,9 @@
 from functools import partial, update_wrapper
 import os
 import distutils.util
+from pathlib import Path
 from subprocess import Popen
+import tempfile
 
 import time
 from datapipe.datatable import gen_process
@@ -34,9 +36,15 @@ PROJECT_NAME_TEST3 = 'Detection Project Test 3'
 PROJECT_DESCRIPTION_TEST = 'Detection project'
 PROJECT_LABEL_CONFIG_TEST = LABEL_CONFIG_TEST
 
-
-SKIP_LS_TEST = True
-
+tmp_dir = tempfile.TemporaryDirectory()
+if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
+    label_studio_service = Popen([
+        'label-studio',
+        '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(Path(tmp_dir.name) / 'ls.db')),
+        '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
+        '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
+        '--no-browser'
+    ])
 
 @pytest.fixture
 def ls_url(tmp_dir):
@@ -45,15 +53,15 @@ def ls_url(tmp_dir):
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
     if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
-        label_studio_service = Popen([
-            'label-studio',
-            '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
-            '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
-            '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
-            '--no-browser'
-        ])
+        # label_studio_service = Popen([
+        #     'label-studio',
+        #     '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
+        #     '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
+        #     '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
+        #     '--no-browser'
+        # ])
         yield ls_url
-        label_studio_service.terminate()
+        # label_studio_service.terminate()
     else:
         yield ls_url
 
@@ -67,7 +75,6 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
         if counter >= 60:
             raise_exception = True
 
-@pytest.mark.skipif(SKIP_LS_TEST, reason="Skipping LS for now")
 def test_sign_up(ls_url):
     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
     wait_until_label_studio_is_up(label_studio_session)
@@ -77,12 +84,11 @@ def test_sign_up(ls_url):
 
 
 def make_df():
-    idx = [f'im_{i}' for i in range(10)]
     return pd.DataFrame(
         {
-            'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in idx]
-        },
-        index=idx
+            'id': [f'im_{i}' for i in range(10)],
+            'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in range(10)]
+        }
     )
 
 def gen_images():
@@ -100,11 +106,11 @@ def convert_to_ls_input_data(
     include_annotations: bool,
     include_predictions: bool
 ):
-    images_df['image'] = images_df.index.map(
+    images_df['image'] = images_df['id'].apply(
         lambda id: f"00_dataset/{id}.jpg"  # For tests we do not see images, so it's like that
     )
 
-    columns = ['image']
+    columns = ['id', 'image']
 
     for column, bool_ in [
         ('annotations', include_annotations),
@@ -133,8 +139,6 @@ def convert_to_ls_input_data(
 
     return images_df[columns]
 
-
-@pytest.mark.skipif(SKIP_LS_TEST, reason="Skipping LS for now")
 @pytest.mark.parametrize("include_annotations,include_predictions", [(False, False), (False, True)])
 def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
     ds = DataStore(dbconn)
@@ -196,7 +200,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
 
     # Person annotation imitation & incremental processing
     label_studio_session.login()
-    tasks, _ = label_studio_session.get_tasks(
+    tasks = label_studio_session.get_tasks(
         project_id=label_studio_moderation_step.project_id,
         page_size=-1
     )
@@ -240,7 +244,6 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
 
 
-@pytest.mark.skipif(SKIP_LS_TEST, reason="Skipping LS for now")
 @pytest.mark.parametrize("include_annotations,include_predictions", [(True, False), (True, True)])
 def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
     ds = DataStore(dbconn)

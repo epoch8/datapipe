@@ -136,7 +136,8 @@ class LabelStudioSession:
         self,
         project_id: str,
         page: int = 1,  # current page
-        page_size: int = -1  # tasks per page, use -1 to obtain all tasks
+        page_size: int = -1,  # tasks per page, use -1 to obtain all tasks,
+        return_status_code: bool = False
     ) -> Tuple[Dict, int]:
         response = self.session.get(
             url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/'),
@@ -146,7 +147,10 @@ class LabelStudioSession:
             }
         )
 
-        return response.json(), response.status_code
+        if return_status_code:
+            return response.json(), response.status_code
+        else:
+            return response.json()
 
     def get_project_summary(
         self,
@@ -170,6 +174,13 @@ class LabelStudioModerationStep(ComputeStep):
     predictions: Union[str, None]
 
     def __post_init__(self):
+        super().__post_init__()
+
+        for column in ["tasks_id", "annotations"]:
+            assert column not in self.input_dts_primary_keys, (
+                f"The column {column} from primary keys is reserved for LabelStudioModerationStep."
+            )
+
         self.label_studio_session = LabelStudioSession(
             ls_url=self.ls_url,
             auth=self.auth
@@ -221,7 +232,10 @@ class LabelStudioModerationStep(ComputeStep):
         data = [
             {
                 'data': {
-                    'LabelStudioModerationStep__unique_id': "-".join(input_df.iloc[idx][self.input_dts[0].primary_keys].apply(str)),  # noqa: E501
+                    **{
+                        primary_key: input_df.loc[idx, primary_key]
+                        for primary_key in self.input_dts_primary_keys
+                    },
                     **{
                         column: input_df.loc[idx, column]
                         for column in self.data
@@ -258,19 +272,12 @@ class LabelStudioModerationStep(ComputeStep):
                     del ann['created_ago']
             return annotations
 
-        df_input_keys = self.input_dts[0].get_data()[self.input_dts[0].primary_keys]
-        df_input_keys["LabelStudioModerationStep__unique_id"] = ""
-        splitter = ""
-        for key in self.input_dts[0].primary_keys:
-            df_input_keys["LabelStudioModerationStep__unique_id"] += splitter + df_input_keys[key].apply(str)
-            splitter = "-"
-        df_input_keys = df_input_keys.set_index("LabelStudioModerationStep__unique_id")
-
         for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
             tasks_page, status_code = self.label_studio_session.get_tasks(
                 project_id=self.project_id,
                 page=page,
-                page_size=self.chunk_size
+                page_size=self.chunk_size,
+                return_status_code=True
             )
             assert status_code in [200, 500]
             if status_code == 500:
@@ -278,14 +285,15 @@ class LabelStudioModerationStep(ComputeStep):
 
             output_df = pd.DataFrame(
                 data={
+                    **{
+                        primary_key: task['data'][primary_key]
+                        for task in tasks_page
+                        for primary_key in task['data'] if primary_key in self.input_dts_primary_keys
+                    },
                     'tasks_id': [str(task['id']) for task in tasks_page],
                     'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
-                },
-                index=[task['data']['LabelStudioModerationStep__unique_id'] for task in tasks_page]
+                }
             )
-            output_df = output_df.merge(df_input_keys, left_index=True, right_index=True)
-            output_df = output_df.reset_index(drop=True)
-
             yield output_df
 
     def run(self, ds: DataStore) -> None:
