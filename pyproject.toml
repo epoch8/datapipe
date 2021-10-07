@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe"
-version = "0.9.4"
+version = "0.9.5"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 
@@ -30,6 +30,7 @@ openpyxl = {version=">=3.0.7", optional=true}
 dash = {version="==1.20.*", optional=true}
 dash_bootstrap_components = {version="== 0.12.*", optional=true}
 dash_interactive_graphviz = {version="==0.3.*", optional=true}
+cityhash = "^0.2.3"
 
 [tool.poetry.extras]
 

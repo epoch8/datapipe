@@ -118,6 +118,14 @@ python-versions = ">=3.5.0"
 unicode_backport = ["unicodedata2"]
 
 [[package]]
+name = "cityhash"
+version = "0.2.3.post9"
+description = "Python-bindings for CityHash, a fast non-cryptographic hash algorithm"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "click"
 version = "8.0.1"
 description = "Composable command line interface toolkit"
@@ -940,7 +948,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "970b954a2b70ed63d107e71f3999774effb4c94ad0afec891fd3cee943dff6e9"
+content-hash = "32a02dc068ccda5eb49d547c6fee9f12ee5d494ee117c1f4a1a4950cfe162eb6"
 
 [metadata.files]
 aiohttp = [
@@ -1047,6 +1055,9 @@ chardet = [
 charset-normalizer = [
     {file = "charset-normalizer-2.0.6.tar.gz", hash = "sha256:5ec46d183433dcbd0ab716f2d7f29d8dee50505b3fdb40c6b985c7c4f5a3591f"},
     {file = "charset_normalizer-2.0.6-py3-none-any.whl", hash = "sha256:5d209c0a931f215cee683b6445e2d77677e7e75e159f78def0db09d68fafcaa6"},
+]
+cityhash = [
+    {file = "cityhash-0.2.3.post9.tar.gz", hash = "sha256:aa8919c00e8d8699df42dd788eda4f24ad13086ea9d83407fd7da4a0206d9d18"},
 ]
 click = [
     {file = "click-8.0.1-py3-none-any.whl", hash = "sha256:fba402a4a47334742d782209a7c79bc448911afe1149d07bdabdf480b3e2f4b6"},
