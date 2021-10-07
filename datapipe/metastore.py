@@ -5,8 +5,9 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, BigInteger, Float, func
+from sqlalchemy import Table, Column, Integer, Float, func
 
+from cityhash import CityHash32
 import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
@@ -17,7 +18,7 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 METADATA_SQL_SCHEMA = [
-    Column('hash', BigInteger),
+    Column('hash', Integer),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
     Column('process_ts', Float),  # Время последней успешной обработки
@@ -106,7 +107,7 @@ class MetaTable:
         return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
-        return df.apply(lambda x: str(list(x)), axis=1).apply(hash)
+        return df.apply(lambda x: str(list(x)), axis=1).apply(CityHash32)
 
     # Fix numpy types in Index
     # FIXME разобраться, что это за грязный хак
