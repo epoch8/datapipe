@@ -77,7 +77,7 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id1}______{id2}______{id3}______{id4}______{id5}.json',
-        id='multi_id'
+        id='multi_ids2'
     ),
     pytest.param(
         pd.DataFrame({
@@ -88,7 +88,7 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id2}__{id1}__{id3}.json',
-        id='multi_id'
+        id='multi_ids_check_commutativity'
     )
 ]
 
