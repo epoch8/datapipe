@@ -5,8 +5,9 @@ import logging
 import time
 
 from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
-from sqlalchemy import Table, Column, Numeric, Float, func
+from sqlalchemy import Table, Column, Integer, Float, func
 
+from cityhash import CityHash32
 import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
@@ -17,7 +18,7 @@ from datapipe.event_logger import EventLogger
 logger = logging.getLogger('datapipe.metastore')
 
 METADATA_SQL_SCHEMA = [
-    Column('hash', Numeric),
+    Column('hash', Integer),
     Column('create_ts', Float),   # Время создания строки
     Column('update_ts', Float),   # Время последнего изменения
     Column('process_ts', Float),  # Время последней успешной обработки
@@ -106,7 +107,11 @@ class MetaTable:
         return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
-        return pd.util.hash_pandas_object(df.apply(lambda x: str(list(x)), axis=1))
+        return (
+            df
+            .apply(lambda x: str(list(x)), axis=1)
+            .apply(lambda x: int.from_bytes(CityHash32(x).to_bytes(4, 'little'), 'little', signed=True))
+        )
 
     # Fix numpy types in Index
     # FIXME разобраться, что это за грязный хак
@@ -171,8 +176,13 @@ class MetaTable:
         meta_cols = self._get_meta_data_columns()
 
         # Дополняем данные методанными
-        merged_df = pd.merge(data_df, existing_meta_df,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
-        merged_df['data_hash'] = self._get_hash_for_df(data_df)
+        merged_df = pd.merge(
+            data_df.assign(data_hash=self._get_hash_for_df(data_df)),
+            existing_meta_df,
+            how='left',
+            left_on=self.primary_keys,
+            right_on=self.primary_keys
+        )
 
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
 
@@ -279,8 +289,9 @@ class MetaTable:
 
             meta_df = self.get_metadata(deleted_idx)
 
-            meta_df["delete_ts"] = now
-            meta_df["process_ts"] = now
+            meta_df.loc[:, "hash"] = 0
+            meta_df.loc[:, "delete_ts"] = now
+            meta_df.loc[:, "process_ts"] = now
 
             self._update_existing_metadata_rows(meta_df)
 
