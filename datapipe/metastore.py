@@ -110,7 +110,7 @@ class MetaTable:
         return (
             df
             .apply(lambda x: str(list(x)), axis=1)
-            .apply(lambda x: int.from_bytes(CityHash32(x).to_bytes(4, 'little'), 'little', signed=False))
+            .apply(lambda x: int.from_bytes(CityHash32(x).to_bytes(4, 'little'), 'little', signed=True))
         )
 
     # Fix numpy types in Index
