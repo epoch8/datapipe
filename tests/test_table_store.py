@@ -1,3 +1,5 @@
+from datapipe.datatable import DataStore, gen_process, gen_process_many
+from datapipe.dsl import Catalog, Table
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
@@ -198,3 +200,20 @@ def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
         pd.concat([test_df.loc[0:19], test_df.loc[51:]]),
         index_cols=store.primary_keys
     )
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_gen_from_empty_rows(store: TableStore, test_df: pd.DataFrame, dbconn) -> None:
+    ds = DataStore(dbconn)
+    tbl = ds.create_table('test', table_store=store)
+
+    def proc_func():
+        yield pd.DataFrame.from_records(
+            {
+                key: []
+                for key in store.primary_keys
+            },
+        )
+
+    # This should be ok
+    gen_process_many([tbl], proc_func)

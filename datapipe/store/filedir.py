@@ -206,9 +206,17 @@ class TableStoreFiledir(TableStore):
 
                     yield data
 
-        return pd.DataFrame.from_records(
-            _gen()
-        )
+        if len(idx) == 0:
+            return pd.DataFrame.from_records(
+                {
+                    attrname: []
+                    for attrname in self.attrnames
+                }
+            )
+        else:
+            return pd.DataFrame.from_records(
+                _gen()
+            )
 
     def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
         # Not implemented yet

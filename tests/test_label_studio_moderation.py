@@ -36,15 +36,6 @@ PROJECT_NAME_TEST3 = 'Detection Project Test 3'
 PROJECT_DESCRIPTION_TEST = 'Detection project'
 PROJECT_LABEL_CONFIG_TEST = LABEL_CONFIG_TEST
 
-tmp_dir = tempfile.TemporaryDirectory()
-if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
-    label_studio_service = Popen([
-        'label-studio',
-        '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(Path(tmp_dir.name) / 'ls.db')),
-        '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
-        '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
-        '--no-browser'
-    ])
 
 @pytest.fixture
 def ls_url(tmp_dir):
@@ -53,15 +44,15 @@ def ls_url(tmp_dir):
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
     if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
-        # label_studio_service = Popen([
-        #     'label-studio',
-        #     '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
-        #     '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
-        #     '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
-        #     '--no-browser'
-        # ])
+        label_studio_service = Popen([
+            'label-studio',
+            '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
+            '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
+            '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
+            '--no-browser'
+        ])
         yield ls_url
-        # label_studio_service.terminate()
+        label_studio_service.terminate()
     else:
         yield ls_url
 
@@ -139,7 +130,7 @@ def convert_to_ls_input_data(
 
     return images_df[columns]
 
-@pytest.mark.parametrize("include_annotations,include_predictions", [(False, False), (False, True)])
+@pytest.mark.parametrize("include_annotations,include_predictions", [(False, False)])
 def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
     ds = DataStore(dbconn)
     catalog = Catalog({
@@ -149,7 +140,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
         '01_data': Table(
             store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
         ),
-        '02_annotations': Table(  # Updates when someone is annotating
+        '02_annotations': Table(
             store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
         ),
     })

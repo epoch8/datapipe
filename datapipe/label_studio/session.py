@@ -247,11 +247,13 @@ class LabelStudioModerationStep(ComputeStep):
             for idx in input_df.index
         ]
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
+
         input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
         input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
             [] for _ in input_df.index
         ]
-        input_df = input_df[self.input_dts[0].primary_keys + ['tasks_id', 'annotations']]
+        input_df = input_df[self.input_dts_primary_keys + ['tasks_id', 'annotations']]
+
         return input_df
 
     def get_current_tasks_as_df(self):
@@ -283,18 +285,16 @@ class LabelStudioModerationStep(ComputeStep):
             if status_code == 500:
                 break
 
-            output_df = pd.DataFrame(
-                data={
+            yield pd.DataFrame.from_records(
+                {
                     **{
-                        primary_key: task['data'][primary_key]
-                        for task in tasks_page
-                        for primary_key in task['data'] if primary_key in self.input_dts_primary_keys
+                        primary_key: [task['data'][primary_key] for task in task['data']]
+                        for primary_key in self.input_dts_primary_keys
                     },
                     'tasks_id': [str(task['id']) for task in tasks_page],
                     'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
                 }
             )
-            yield output_df
 
     def run(self, ds: DataStore) -> None:
         if self.label_studio_session.is_service_up():
