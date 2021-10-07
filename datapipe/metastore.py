@@ -176,8 +176,13 @@ class MetaTable:
         meta_cols = self._get_meta_data_columns()
 
         # Дополняем данные методанными
-        merged_df = pd.merge(data_df, existing_meta_df,  how='left', left_on=self.primary_keys, right_on=self.primary_keys)
-        merged_df['data_hash'] = self._get_hash_for_df(data_df)
+        merged_df = pd.merge(
+            data_df.assign(data_hash=self._get_hash_for_df(data_df)),
+            existing_meta_df,
+            how='left',
+            left_on=self.primary_keys,
+            right_on=self.primary_keys
+        )
 
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
 
@@ -284,8 +289,9 @@ class MetaTable:
 
             meta_df = self.get_metadata(deleted_idx)
 
-            meta_df["delete_ts"] = now
-            meta_df["process_ts"] = now
+            meta_df.loc[:, "hash"] = 0
+            meta_df.loc[:, "delete_ts"] = now
+            meta_df.loc[:, "process_ts"] = now
 
             self._update_existing_metadata_rows(meta_df)
 
