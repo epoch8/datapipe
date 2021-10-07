@@ -1,3 +1,7 @@
+# 0.9.4
+
+* update SQLAlchemy to 1.4 version
+
 # 0.9.3
 
 * FileDir DataStore поддерживает множественную идентификацию. 
