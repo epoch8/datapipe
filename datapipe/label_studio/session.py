@@ -18,11 +18,12 @@ class LabelStudioSession:
         auth: Tuple[str, str]
     ):
         self.ls_url = ls_url
+        self.auth = auth
         self.session = requests.Session()
-        self.session.auth = auth
+        self.session.auth = self.auth
 
     def login(self) -> int:
-        username, password = self.session.auth
+        username, password = self.auth
         response = self.session.get(
             url=urljoin(self.ls_url, 'user/login/')
         )

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import inspect
 import logging
@@ -54,10 +54,9 @@ class DataTable:
 
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-        # В случае, если таблица пустая, её primary индексы могут быть проинициализированы как int64:
-        # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
+        # В случае, если таблица пустая, её primary индексы могут быть проинициализированы как float64
         if data_df.empty:
-            data_df = data_df.astype({primary_key: object for primary_key in self.primary_keys})
+            data_df = cast(DataDF, data_df.astype({primary_key: object for primary_key in self.primary_keys}))
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
         # TODO implement transaction meckanism
