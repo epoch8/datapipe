@@ -1,5 +1,3 @@
-from datapipe.datatable import DataStore, gen_process, gen_process_many
-from datapipe.dsl import Catalog, Table
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
@@ -10,6 +8,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
+from datapipe.datatable import DataStore, gen_process_many
 
 from .util import assert_df_equal
 
@@ -212,7 +211,7 @@ def test_gen_from_empty_rows(store: TableStore, test_df: pd.DataFrame, dbconn) -
             {
                 key: []
                 for key in store.primary_keys
-            },
+            }
         )
 
     # This should be ok
