@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -12,7 +12,7 @@ import tqdm
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.metastore import MetaTable
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, append_missing_keys_to_empty_df
 from datapipe.event_logger import EventLogger
 
 from datapipe.step import ComputeStep
@@ -56,10 +56,9 @@ class DataTable:
 
         # В случае, если таблица пустая, её primary индексы могут быть пустыми или проинициализированы как float64
         if data_df.empty:
-            for key in self.primary_keys:
-                if key not in data_df.columns:
-                    data_df[key] = []
-            data_df = cast(DataDF, data_df.astype(sql_schema_to_dtype(self.table_store.get_primary_schema())))
+            data_df = append_missing_keys_to_empty_df(
+                data_df, self.primary_keys, sql_schema_to_dtype(self.table_store.get_primary_schema())
+            )
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
         # TODO implement transaction meckanism

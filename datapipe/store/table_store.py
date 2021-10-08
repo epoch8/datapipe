@@ -1,11 +1,21 @@
 from abc import ABC
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
 
 from datapipe.types import IndexDF, DataDF, DataSchema
+
+
+def append_missing_keys_to_empty_df(data_df: DataDF, primary_keys: List[str], dtypes: Dict[str, Any]) -> DataDF:
+    assert data_df.empty
+
+    for key in [key for key in primary_keys if key not in data_df.columns]:
+        data_df[key] = pd.Series([], dtype=dtypes[key])
+    data_df = cast(DataDF, data_df.astype(dtypes))
+
+    return data_df
 
 
 class TableStore(ABC):
@@ -61,12 +71,10 @@ class TableDataSingleFileStore(TableStore):
 
         # Заполняем пустую табличку ключами, если они не оказалось записанными:
         from datapipe.store.database import sql_schema_to_dtype
-        dtypes = sql_schema_to_dtype(self.primary_schema)
         if file_df is not None and file_df.empty:
-            for key in self.primary_keys:
-                if key not in file_df.columns:
-                    file_df[key] = pd.Series([], dtype=dtypes[key])
-
+            file_df = append_missing_keys_to_empty_df(
+                file_df, self.primary_keys, sql_schema_to_dtype(self.get_primary_schema())
+            )
         return file_df
 
     def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
