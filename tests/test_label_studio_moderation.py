@@ -220,7 +220,7 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
                 ]
         )
         run_steps(ds, steps)
-        idxs_df = [task['data']['LabelStudioModerationStep__unique_id'] for task in tasks[idxs]]
+        idxs_df = [task['data']['id'] for task in tasks[idxs]]
         df_annotation = catalog.get_datatable(ds, '02_annotations').get_data(idx=idxs_df)
         for idx_df in idxs_df:
             assert len(df_annotation.loc[idx_df, 'annotations']) == 1
