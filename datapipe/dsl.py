@@ -63,9 +63,9 @@ class LabelStudioModeration(PipelineStep):
     outputs: List[str]
     auth: Tuple[str, str]
     project_title: str
-    project_description: str
     project_label_config: str
     data: List[str]
+    project_description: str = ""
     annotations: Union[str, None] = None
     predictions: Union[str, None] = None
     chunk_size: int = 100
