@@ -258,12 +258,11 @@ class LabelStudioModerationStep(ComputeStep):
 
     def get_current_tasks_as_df(self):
         project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        if 'all_data_columns' not in project_summary or (
-            'LabelStudioModerationStep__unique_id' not in project_summary['all_data_columns']
-        ):
+        if 'all_data_columns' not in project_summary:
             total_tasks_count = 0
         else:
-            total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
+            keys = [key for key in self.input_dts_primary_keys if key in project_summary['all_data_columns']]
+            total_tasks_count = project_summary['all_data_columns'][keys[0]] if len(keys) > 0 else 0
 
         total_pages = total_tasks_count // self.chunk_size + 1
 
@@ -288,7 +287,7 @@ class LabelStudioModerationStep(ComputeStep):
             yield pd.DataFrame.from_records(
                 {
                     **{
-                        primary_key: [task['data'][primary_key] for task in task['data']]
+                        primary_key: [task['data'][primary_key] for task in tasks_page]
                         for primary_key in self.input_dts_primary_keys
                     },
                     'tasks_id': [str(task['id']) for task in tasks_page],
