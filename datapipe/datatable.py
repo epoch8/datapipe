@@ -10,7 +10,7 @@ from sqlalchemy import alias, func, select, union, and_, or_
 import tqdm
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
-from datapipe.store.database import DBConn
+from datapipe.store.database import DBConn, sql_schema_to_dtype
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
@@ -56,11 +56,10 @@ class DataTable:
 
         # В случае, если таблица пустая, её primary индексы могут быть пустыми или проинициализированы как float64
         if data_df.empty:
-            missing_keys = [key for key in self.primary_keys if key not in data_df.columns]
-            if len(missing_keys) > 0:
-                for key in missing_keys:
+            for key in self.primary_keys:
+                if key not in data_df.columns:
                     data_df[key] = []
-            data_df = cast(DataDF, data_df.astype({primary_key: object for primary_key in self.primary_keys}))
+            data_df = cast(DataDF, data_df.astype(sql_schema_to_dtype(self.table_store.get_primary_schema())))
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
         # TODO implement transaction meckanism
