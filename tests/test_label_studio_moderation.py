@@ -2,9 +2,7 @@
 from functools import partial, update_wrapper
 import os
 import distutils.util
-from pathlib import Path
 from subprocess import Popen
-import tempfile
 
 import time
 from datapipe.datatable import gen_process
@@ -13,7 +11,7 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchTransform
 from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
@@ -107,6 +105,7 @@ def convert_to_ls_input_data(
         ('annotations', include_annotations),
         ('predictions', include_predictions),
     ]:
+        classes = ["Class1", "Class2"] if not include_annotations else ["Class1_annotation", "Class2_annotation"]
         if bool_:
             images_df[column] = [[{
                 'result': [{
@@ -119,7 +118,7 @@ def convert_to_ls_input_data(
                         "width": 10 * np.random.random_sample(),
                         "height": 10 * np.random.random_sample(), 
                         "rotation": 0, 
-                        "rectanglelabels": [np.random.choice(["Class1", "Class2"])]
+                        "rectanglelabels": [np.random.choice(classes)]
                     },
                     "from_name": "label",
                     "to_name": "image",
@@ -130,52 +129,95 @@ def convert_to_ls_input_data(
 
     return images_df[columns]
 
-@pytest.mark.parametrize("include_annotations,include_predictions", [(False, False)])
-def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
-    ds = DataStore(dbconn)
-    catalog = Catalog({
-        '00_images': Table(
-            store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
-        ),
-        '01_data': Table(
-            store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
-        ),
-        '02_annotations': Table(
-            store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
-        ),
-    })
+from pytest_cases import parametrize_with_cases, case, parametrize
 
-    pipeline = Pipeline([
-        BatchTransform(
-            wrapped_partial(
-                convert_to_ls_input_data,
-                include_annotations=include_annotations,
-                include_predictions=include_predictions
+
+INCLUDE_PARAMS = [
+    pytest.param(
+        {
+            'include_annotations': False,
+            'include_predictions': False
+        },
+        id='default'
+    ),
+    pytest.param(
+        {
+            'include_annotations': True,
+            'include_predictions': False
+        },
+        id='with_annotations'
+    ),
+    pytest.param(
+        {
+            'include_annotations': False,
+            'include_predictions': True
+        },
+        id='with_predictions'
+    ),
+    pytest.param(
+        {
+            'include_annotations': True,
+            'include_predictions': True
+        },
+        id='with_annotations_and_predictions'
+    ),
+]
+
+class CasesLabelStudio:
+    @parametrize('include_params', INCLUDE_PARAMS)
+    def case_ls(self, include_params, dbconn, tmp_dir, ls_url, request):
+        include_annotations, include_predictions = include_params['include_annotations'], include_params['include_predictions']
+        ds = DataStore(dbconn)
+        catalog = Catalog({
+            '00_images': Table(
+                store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
             ),
-            inputs=['00_images'],
-            outputs=['01_data']
-        ),
-        LabelStudioModeration(
-            ls_url=ls_url,
-            inputs=['01_data'],
-            outputs=['02_annotations'],
-            auth=LABEL_STUDIO_AUTH,
-            project_title=PROJECT_NAME_TEST1,
-            project_description=PROJECT_DESCRIPTION_TEST,
-            project_label_config=PROJECT_LABEL_CONFIG_TEST,
-            data=['image'],
-            chunk_size=2,
-            annotations='annotations' if include_annotations else None,
-            predictions='predictions' if include_predictions else None,
-        ),
-    ])
+            '01_data': Table(
+                store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
+            ),
+            '02_annotations': Table(
+                store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
+            ),
+        })
+        project_title = f"Project [{request.node.callspec.id}]"
+        pipeline = Pipeline([
+            BatchTransform(
+                wrapped_partial(
+                    convert_to_ls_input_data,
+                    include_annotations=include_annotations,
+                    include_predictions=include_predictions
+                ),
+                inputs=['00_images'],
+                outputs=['01_data']
+            ),
+            LabelStudioModeration(
+                ls_url=ls_url,
+                inputs=['01_data'],
+                outputs=['02_annotations'],
+                auth=LABEL_STUDIO_AUTH,
+                project_title=project_title,
+                project_description=PROJECT_DESCRIPTION_TEST,
+                project_label_config=PROJECT_LABEL_CONFIG_TEST,
+                data=['image'],
+                chunk_size=2,
+                annotations='annotations' if include_annotations else None,
+                predictions='predictions' if include_predictions else None,
+            ),
+        ])
+        steps = build_compute(ds, catalog, pipeline)
+        label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
+        project_id = label_studio_moderation_step.project_id
+        label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
+        wait_until_label_studio_is_up(label_studio_session)
+        label_studio_session.login()
+    
+        yield ds, catalog, steps, project_id, include_annotations, label_studio_session
 
-    steps = build_compute(ds, catalog, pipeline)
-    label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
+        label_studio_session.delete_project(project_id=project_id)
 
-    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
-    wait_until_label_studio_is_up(label_studio_session)
 
+@parametrize_with_cases('ds, catalog, steps, project_id, include_annotations, label_studio_session', cases=CasesLabelStudio)
+def test_label_studio_moderation(ds, catalog, steps, project_id, include_annotations, label_studio_session):
     # This should be ok (project will be created, but without data)
     run_steps(ds, steps)
     run_steps(ds, steps)
@@ -188,13 +230,19 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ds, steps)
 
     assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10
+    
+    # Проверяем проверку на заливку уже размеченных данных
+    if include_annotations:
+        assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10
+        df_annotation = catalog.get_datatable(ds, '02_annotations').get_data()
+        for idx in df_annotation.index:
+            assert len(df_annotation.loc[idx, 'annotations']) == 1
+            assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
+                ["Class1_annotation", "Class2_annotation"]
+            )
 
     # Person annotation imitation & incremental processing
-    label_studio_session.login()
-    tasks = label_studio_session.get_tasks(
-        project_id=label_studio_moderation_step.project_id,
-        page_size=-1
-    )
+    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     tasks = np.array(tasks)
     for idxs in [[0, 3, 6, 7, 9], [1, 2, 4, 5, 8]]:
         for task in tasks[idxs]:
@@ -227,90 +275,28 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
         )
         df_annotation = catalog.get_datatable(ds, '02_annotations').get_data(idx=idxs_df)
         for idx in df_annotation.index:
-            assert len(df_annotation.loc[idx, 'annotations']) == 1
+            assert len(df_annotation.loc[idx, 'annotations']) == (1 + include_annotations)
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
                 ["Class1", "Class2"]
             )
 
-    # Check if pipeline works after service is over
+
+@parametrize_with_cases('ds, catalog, steps, project_id, include_annotations, label_studio_session', cases=CasesLabelStudio)
+def test_label_studio_update_tasks_when_data_is_changed(ds, catalog, steps, project_id, include_annotations, label_studio_session):
+    # These steps should upload tasks
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_images'),
+        proc_func=gen_images
+    )
+    run_steps(ds, steps)
+    
+    # Generate new data with same id
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_images'),
+        proc_func=gen_images
+    )
+    # These steps should update tasks with same id accordingly, as data input has changed
     run_steps(ds, steps)
 
-    # Delete the project after the test
-    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
-
-
-@pytest.mark.parametrize("include_annotations,include_predictions", [(True, False), (True, True)])
-def test_label_studio_moderation_with_preannotations(dbconn, tmp_dir, ls_url, include_annotations, include_predictions):
-    ds = DataStore(dbconn)
-    catalog = Catalog({
-        '00_images': Table(
-            store=TableStoreFiledir(tmp_dir / '00_images' / '{id}.jpg', PILFile('JPEG')),
-        ),
-        '01_data': Table(
-            store=TableStoreFiledir(tmp_dir / '01_data' / '{id}.json', JSONFile()),
-        ),
-        '02_annotations': Table(
-            store=TableStoreFiledir(tmp_dir / '02_annotations' / '{id}.json', JSONFile()),
-        ),
-    })
-    pipeline = Pipeline([
-        BatchGenerate(
-            gen_images,
-            outputs=['00_images'],
-        ),
-        BatchTransform(
-            wrapped_partial(
-                convert_to_ls_input_data,
-                include_annotations=include_annotations,
-                include_predictions=include_predictions
-            ),
-            inputs=['00_images'],
-            outputs=['01_data']
-        ),
-        LabelStudioModeration(
-            ls_url=ls_url,
-            inputs=['01_data'],
-            outputs=['02_annotations'],
-            auth=LABEL_STUDIO_AUTH,
-            project_title=PROJECT_NAME_TEST2,
-            project_description=PROJECT_DESCRIPTION_TEST,
-            project_label_config=PROJECT_LABEL_CONFIG_TEST,
-            data=['image'],
-            chunk_size=2,
-            annotations='annotations' if include_annotations else None,
-            predictions='predictions' if include_predictions else None,
-        ),
-        LabelStudioModeration(
-            ls_url=ls_url,
-            inputs=['01_data'],
-            outputs=['02_annotations'],
-            auth=LABEL_STUDIO_AUTH,
-            project_title=PROJECT_NAME_TEST2,
-            project_description=PROJECT_DESCRIPTION_TEST,
-            project_label_config=PROJECT_LABEL_CONFIG_TEST,
-            data=['image'],
-            chunk_size=2,
-            annotations='annotations'
-        ),
-    ])
-
-    steps = build_compute(ds, catalog, pipeline)
-    label_studio_moderation_step : LabelStudioModerationStep = steps[-1]
-
-    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
-    wait_until_label_studio_is_up(label_studio_session)
-
-    # These steps should upload tasks with preannotations
-    run_steps(ds, steps)
-
-    assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10
-    df_annotation = catalog.get_datatable(ds, '02_annotations').get_data()
-    for idx in df_annotation.index:
-        assert len(df_annotation.loc[idx, 'annotations']) == 1
-        assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['rectanglelabels'][0] in (
-            ["Class1", "Class2"]
-        )
-
-    # Delete the project after the test
-    label_studio_session.login()
-    label_studio_session.delete_project(project_id=label_studio_moderation_step.project_id)
+    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+    assert len(tasks) == 10
