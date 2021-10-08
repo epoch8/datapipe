@@ -211,7 +211,7 @@ def test_gen_from_empty_rows(store: TableStore, test_df: pd.DataFrame, dbconn) -
             {
                 key: []
                 for key in store.primary_keys
-            },
+            }
         )
 
     # This should be ok

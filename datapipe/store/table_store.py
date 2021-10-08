@@ -56,8 +56,21 @@ class TableDataSingleFileStore(TableStore):
     def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
-    def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
+    def _load_file(self) -> Optional[DataDF]:
         file_df = self.load_file()
+
+        # Заполняем пустую табличку ключами, если они не оказалось записанными:
+        from datapipe.store.database import sql_schema_to_dtype
+        dtypes = sql_schema_to_dtype(self.primary_schema)
+        if file_df is not None and file_df.empty:
+            for key in self.primary_keys:
+                if key not in file_df.columns:
+                    file_df[key] = pd.Series([], dtype=dtypes[key])
+
+        return file_df
+
+    def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
+        file_df = self._load_file()
 
         if file_df is not None:
             if index_df is not None:
@@ -71,7 +84,7 @@ class TableDataSingleFileStore(TableStore):
             return pd.DataFrame()
 
     def insert_rows(self, df: DataDF) -> None:
-        file_df = self.load_file()
+        file_df = self._load_file()
 
         if set(self.primary_keys) - set(df.columns):
             raise ValueError("DataDf does not contains all primary keys")
@@ -89,7 +102,7 @@ class TableDataSingleFileStore(TableStore):
         self.save_file(new_df)
 
     def delete_rows(self, index_df: IndexDF) -> None:
-        file_df = self.load_file()
+        file_df = self._load_file()
 
         if file_df is not None:
             file_df = file_df.set_index(self.primary_keys)
@@ -100,7 +113,7 @@ class TableDataSingleFileStore(TableStore):
             self.save_file(new_df.reset_index())
 
     def update_rows(self, df: DataDF) -> None:
-        file_df = self.load_file()
+        file_df = self._load_file()
 
         if set(self.primary_keys) - set(df.columns):
             raise ValueError("DataDf does not contains all primary keys")
