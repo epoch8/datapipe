@@ -56,9 +56,10 @@ class DataTable:
 
         # В случае, если таблица пустая, её primary индексы могут быть пустыми или проинициализированы как float64
         if data_df.empty:
-            data_df = append_missing_keys_to_empty_df(
-                data_df, self.primary_keys, sql_schema_to_dtype(self.table_store.get_primary_schema())
-            )
+            return
+            # data_df = append_missing_keys_to_empty_df(
+            #     data_df, self.primary_keys, sql_schema_to_dtype(self.table_store.get_primary_schema())
+            # )
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
         # TODO implement transaction meckanism

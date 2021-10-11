@@ -78,7 +78,7 @@ class TableDataSingleFileStore(TableStore):
         return file_df
 
     def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
-        file_df = self._load_file()
+        file_df = self.load_file()
 
         if file_df is not None:
             if index_df is not None:
@@ -92,7 +92,7 @@ class TableDataSingleFileStore(TableStore):
             return pd.DataFrame()
 
     def insert_rows(self, df: DataDF) -> None:
-        file_df = self._load_file()
+        file_df = self.load_file()
 
         if set(self.primary_keys) - set(df.columns):
             raise ValueError("DataDf does not contains all primary keys")
@@ -110,7 +110,7 @@ class TableDataSingleFileStore(TableStore):
         self.save_file(new_df)
 
     def delete_rows(self, index_df: IndexDF) -> None:
-        file_df = self._load_file()
+        file_df = self.load_file()
 
         if file_df is not None:
             file_df = file_df.set_index(self.primary_keys)
@@ -121,7 +121,7 @@ class TableDataSingleFileStore(TableStore):
             self.save_file(new_df.reset_index())
 
     def update_rows(self, df: DataDF) -> None:
-        file_df = self._load_file()
+        file_df = self.load_file()
 
         if set(self.primary_keys) - set(df.columns):
             raise ValueError("DataDf does not contains all primary keys")

@@ -5,7 +5,7 @@ import distutils.util
 from subprocess import Popen
 
 import time
-from datapipe.datatable import gen_process
+from datapipe.datatable import DataTable, gen_process
 import pytest
 import pandas as pd
 import numpy as np
@@ -16,6 +16,8 @@ from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
 from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudioSession
+
+from pytest_cases import parametrize_with_cases, parametrize
 
 
 LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
@@ -72,16 +74,14 @@ def test_sign_up(ls_url):
     assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
-def make_df():
-    return pd.DataFrame(
+def gen_images():
+    yield pd.DataFrame(
         {
             'id': [f'im_{i}' for i in range(10)],
             'image': [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), 'RGB') for i in range(10)]
         }
     )
 
-def gen_images():
-    yield make_df()
 
 
 def wrapped_partial(func, *args, **kwargs):
@@ -128,9 +128,6 @@ def convert_to_ls_input_data(
             columns.append(column)
 
     return images_df[columns]
-
-from pytest_cases import parametrize_with_cases, case, parametrize
-
 
 INCLUDE_PARAMS = [
     pytest.param(
@@ -222,7 +219,7 @@ def test_label_studio_moderation(ds, catalog, steps, project_id, include_annotat
     run_steps(ds, steps)
     run_steps(ds, steps)
 
-    # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
+    # These steps should upload tasks
     gen_process(
         dt=catalog.get_datatable(ds, '00_images'),
         proc_func=gen_images
@@ -281,22 +278,44 @@ def test_label_studio_moderation(ds, catalog, steps, project_id, include_annotat
             )
 
 
-@parametrize_with_cases('ds, catalog, steps, project_id, include_annotations, label_studio_session', cases=CasesLabelStudio)
-def test_label_studio_update_tasks_when_data_is_changed(ds, catalog, steps, project_id, include_annotations, label_studio_session):
-    # These steps should upload tasks
-    gen_process(
-        dt=catalog.get_datatable(ds, '00_images'),
-        proc_func=gen_images
-    )
-    run_steps(ds, steps)
+# @parametrize_with_cases('ds, catalog, steps, project_id, include_annotations, label_studio_session', cases=CasesLabelStudio)
+# def test_label_studio_update_tasks_when_data_is_changed(ds, catalog, steps, project_id, include_annotations, label_studio_session):
+#     # These steps should upload tasks
+#     gen_process(
+#         dt=catalog.get_datatable(ds, '00_images'),
+#         proc_func=gen_images
+#     )
+#     run_steps(ds, steps)
     
-    # Generate new data with same id
-    gen_process(
-        dt=catalog.get_datatable(ds, '00_images'),
-        proc_func=gen_images
-    )
-    # These steps should update tasks with same id accordingly, as data input has changed
-    run_steps(ds, steps)
+#     # Generate new data with same id
+#     images_df = catalog.get_datatable(ds, '00_images').get_data()
+#     for idx in images_df.index:
+#         images_df.loc[idx]
+#     gen_process(
+#         dt=catalog.get_datatable(ds, '00_images'),
+#         proc_func=gen_images
+#     )
+#     # These steps should update tasks with same id accordingly, as data input has changed
+#     run_steps(ds, steps)
 
-    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    assert len(tasks) == 10
+#     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+#     assert len(tasks) == 10
+
+
+# @parametrize_with_cases('ds, catalog, steps, project_id, include_annotations, label_studio_session', cases=CasesLabelStudio)
+# def test_label_studio_update_tasks_when_data_is_deleted(ds, catalog, steps, project_id, include_annotations, label_studio_session):
+#     # These steps should upload tasks
+#     gen_process(
+#         dt=catalog.get_datatable(ds, '00_images'),
+#         proc_func=gen_images(10)
+#     )
+#     run_steps(ds, steps)
+    
+#     # Remove 5 elements from df
+#     datatable: DataTable = catalog.get_datatable(ds, '00_images')
+#     datatable.table_store.delete_rows([0, 3, 5, 7, 9], datatable.table_store.primary_keys)
+#     # These steps should delete tasks with same id accordingly, as data input has changed
+#     run_steps(ds, steps)
+
+#     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+#     assert len(tasks) == 5
