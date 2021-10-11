@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import math
 from typing import Any, Dict, List, Tuple, Union, Optional
 from urllib.parse import urljoin
+from datapipe.types import data_to_index, index_difference
 
 import pandas as pd
 import requests
@@ -176,6 +178,9 @@ class LabelStudioModerationStep(ComputeStep):
     def __post_init__(self):
         super().__post_init__()
 
+        assert len(self.input_dts) == 1, "LabelStudioModerationStep currently supports only one DataTable as input"
+        assert len(self.output_dts) == 1, "LabelStudioModerationStep currently supports only one DataTable as output"
+
         for column in ["tasks_id", "annotations"]:
             assert column not in self.input_dts_primary_keys, (
                 f"The column {column} from primary keys is reserved for LabelStudioModerationStep."
@@ -185,8 +190,10 @@ class LabelStudioModerationStep(ComputeStep):
             ls_url=self.ls_url,
             auth=self.auth
         )
-        if self.label_studio_session.is_service_up():
+        self.project_id = self.get_or_create_project()
 
+    def get_or_create_project(self) -> int:
+        if self.label_studio_session.is_service_up():
             # Authorize or sign up
             if not self.label_studio_session.login():
                 self.label_studio_session.sign_up()
@@ -221,9 +228,10 @@ class LabelStudioModerationStep(ComputeStep):
                         "control_weights": {}
                     }
                 )
-                self.project_id = project['id']
+                project_id = project['id']
         else:
-            self.project_id = None
+            project_id = None
+        return project_id
 
     def upload_tasks_from_df(
         self,
@@ -294,18 +302,31 @@ class LabelStudioModerationStep(ComputeStep):
     def run(self, ds: DataStore) -> None:
         if self.label_studio_session.is_service_up():
             if self.project_id is None:
-                self.__post_init__()
+                self.project_id = self.get_or_create_project()
 
-            # Upload Tasks from inputs to outputs
-            inc_process_many(
-                ds,
-                self.input_dts,
-                self.output_dts,
-                self.upload_tasks_from_df,
-                self.chunk_size
+            idx_count, idx_gen = ds.get_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                chunksize=self.chunk_size
             )
-            # Update current annotations in outputs
-            gen_process_many(
-                self.output_dts,
-                self.get_current_tasks_as_df
-            )
+            output_dt = self.output_dts[0]
+            if idx_count > 0:
+                for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / self.chunk_size), desc='Checking current tasks in Label Studio...'):
+                    metadata_idx = output_dt.get_metadata(idx=idx)
+                    new_idx = index_difference(idx, metadata_idx)  # To be added
+                    deleted_idx = index_difference(metadata_idx, idx)  # To be deleted
+                    duplicated_idx = index_intersection(idx, metadata_idx)  # To be modified
+
+                    # Add new tasks from inputs to outputs
+                    inc_process_many(
+                        ds,
+                        self.input_dts,
+                        self.output_dts,
+                        self.upload_tasks_from_df,
+                        self.chunk_size
+                    )
+                    # Update current annotations in outputs
+                    gen_process_many(
+                        self.output_dts,
+                        self.get_current_tasks_as_df
+                    )
