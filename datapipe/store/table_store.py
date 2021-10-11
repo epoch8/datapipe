@@ -8,16 +8,6 @@ from pathlib import Path
 from datapipe.types import IndexDF, DataDF, DataSchema
 
 
-def append_missing_keys_to_empty_df(data_df: DataDF, primary_keys: List[str], dtypes: Dict[str, Any]) -> DataDF:
-    assert data_df.empty
-
-    for key in [key for key in primary_keys if key not in data_df.columns]:
-        data_df[key] = pd.Series([], dtype=dtypes[key])
-    data_df = cast(DataDF, data_df.astype(dtypes))
-
-    return data_df
-
-
 class TableStore(ABC):
     def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
@@ -65,17 +55,6 @@ class TableDataSingleFileStore(TableStore):
 
     def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
-
-    def _load_file(self) -> Optional[DataDF]:
-        file_df = self.load_file()
-
-        # Заполняем пустую табличку ключами, если они не оказалось записанными:
-        from datapipe.store.database import sql_schema_to_dtype
-        if file_df is not None and file_df.empty:
-            file_df = append_missing_keys_to_empty_df(
-                file_df, self.primary_keys, sql_schema_to_dtype(self.get_primary_schema())
-            )
-        return file_df
 
     def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
         file_df = self.load_file()
