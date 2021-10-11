@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Any, Dict, List, Tuple, Union, Optional
 from urllib.parse import urljoin
 
 import pandas as pd
@@ -20,7 +20,6 @@ class LabelStudioSession:
         self.ls_url = ls_url
         self.auth = auth
         self.session = requests.Session()
-        self.session.auth = self.auth
 
     def login(self) -> int:
         username, password = self.auth
@@ -52,7 +51,7 @@ class LabelStudioSession:
         return token['token']
 
     def sign_up(self):
-        username, password = self.session.auth
+        username, password = self.auth
         response = self.session.get(
             url=urljoin(self.ls_url, 'user/signup/')
         )
@@ -137,9 +136,8 @@ class LabelStudioSession:
         self,
         project_id: str,
         page: int = 1,  # current page
-        page_size: int = -1,  # tasks per page, use -1 to obtain all tasks,
-        return_status_code: bool = False
-    ) -> Tuple[Dict, int]:
+        page_size: int = -1,  # tasks per page, use -1 to obtain all tasks
+    ) -> List[Dict[str, Any]]:
         response = self.session.get(
             url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/'),
             params={
@@ -148,10 +146,11 @@ class LabelStudioSession:
             }
         )
 
-        if return_status_code:
-            return response.json(), response.status_code
-        else:
-            return response.json()
+        assert response.status_code in [200, 500], f"Something wrong with GET: {response.content=}"
+        if response.status_code == 500:
+            return []
+
+        return response.json()
 
     def get_project_summary(
         self,
@@ -275,15 +274,11 @@ class LabelStudioModerationStep(ComputeStep):
             return annotations
 
         for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
-            tasks_page, status_code = self.label_studio_session.get_tasks(
+            tasks_page = self.label_studio_session.get_tasks(
                 project_id=self.project_id,
                 page=page,
-                page_size=self.chunk_size,
-                return_status_code=True
+                page_size=self.chunk_size
             )
-            assert status_code in [200, 500]
-            if status_code == 500:
-                break
 
             yield pd.DataFrame.from_records(
                 {
