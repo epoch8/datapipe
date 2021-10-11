@@ -51,7 +51,7 @@ class DataTable:
         При указанном `processed_idx` удалить те строки, которые находятся внутри `processed_idx`, но
         отсутствуют в `data_df`.
         '''
-        
+
         if data_df.empty:
             return None
 
