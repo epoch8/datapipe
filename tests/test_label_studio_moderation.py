@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image
 
 from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchTransform
-from datapipe.datatable import DataStore
+from datapipe.datatable import DataStore, DataTable
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_steps
 from datapipe.label_studio.session import LabelStudioSession
@@ -264,9 +264,40 @@ class CasesLabelStudio:
 #             )
 
 
+# @parametrize_with_cases('ds, catalog, steps, project_title, include_annotations, label_studio_session',
+#                         cases=CasesLabelStudio)
+# def test_label_studio_update_tasks_when_data_is_changed(
+#     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
+#     project_title: str, include_annotations: bool,
+#     label_studio_session: LabelStudioSession
+# ):
+#     # These steps should upload tasks
+#     gen_process(
+#         dt=catalog.get_datatable(ds, '00_input_data'),
+#         proc_func=gen_data_df
+#     )
+#     run_steps(ds, steps)
+
+#     # Generate new data with same id
+#     # images_df = catalog.get_datatable(ds, '00_input_data').get_data()
+#     # for idx in images_df.index:
+#     #     images_df.loc[idx]
+#     gen_process(
+#         dt=catalog.get_datatable(ds, '00_input_data'),
+#         proc_func=gen_data_df
+#     )
+#     # These steps should update tasks with same id accordingly, as data input has changed
+#     run_steps(ds, steps)
+
+#     label_studio_session.login()
+#     project_id = label_studio_session.get_project_id_by_title(project_title)
+#     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+#     assert len(tasks) == 10
+
+
 @parametrize_with_cases('ds, catalog, steps, project_title, include_annotations, label_studio_session',
                         cases=CasesLabelStudio)
-def test_label_studio_update_tasks_when_data_is_changed(
+def test_label_studio_update_tasks_when_data_is_deleted(
     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
     project_title: str, include_annotations: bool,
     label_studio_session: LabelStudioSession
@@ -278,45 +309,14 @@ def test_label_studio_update_tasks_when_data_is_changed(
     )
     run_steps(ds, steps)
 
-    # Generate new data with same id
-    # images_df = catalog.get_datatable(ds, '00_input_data').get_data()
-    # for idx in images_df.index:
-    #     images_df.loc[idx]
-    gen_process(
-        dt=catalog.get_datatable(ds, '00_input_data'),
-        proc_func=gen_data_df
-    )
-    # These steps should update tasks with same id accordingly, as data input has changed
+    # Remove 5 elements from df
+    deleted_tasks = [f'task_{i}' for i in [0, 3, 5, 7, 9]]
+    datatable: DataTable = catalog.get_datatable(ds, '00_input_data')
+    datatable.table_store.delete_rows(pd.DataFrame({'id': deleted_tasks}))
+    # These steps should delete tasks with same id accordingly, as data input has changed
     run_steps(ds, steps)
 
     label_studio_session.login()
     project_id = label_studio_session.get_project_id_by_title(project_title)
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    assert len(tasks) == 10
-
-    time.sleep(6000)
-
-
-# @parametrize_with_cases('ds, catalog, steps, project_title, include_annotations, label_studio_session',
-#                        cases=CasesLabelStudio)
-# def test_label_studio_update_tasks_when_data_is_deleted(
-#     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
-#     project_title: str, include_annotations: bool,
-#     label_studio_session: LabelStudioSession
-# ):
-# def test_label_studio_update_tasks_when_data_is_deleted(ds, catalog, steps, project_id, include_annotations, label_studio_session):
-#     # These steps should upload tasks
-#     gen_process(
-#         dt=catalog.get_datatable(ds, '00_input_data'),
-#         proc_func=gen_images(10)
-#     )
-#     run_steps(ds, steps)
-    
-#     # Remove 5 elements from df
-#     datatable: DataTable = catalog.get_datatable(ds, '00_input_data')
-#     datatable.table_store.delete_rows([0, 3, 5, 7, 9], datatable.table_store.primary_keys)
-#     # These steps should delete tasks with same id accordingly, as data input has changed
-#     run_steps(ds, steps)
-
-#     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-#     assert len(tasks) == 5
+    assert len(tasks) == 5
