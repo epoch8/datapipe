@@ -1,9 +1,11 @@
+from typing import Iterable
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
 
+from datapipe.types import DataDF
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
@@ -198,3 +200,17 @@ def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
         pd.concat([test_df.loc[0:19], test_df.loc[51:]]),
         index_cols=store.primary_keys
     )
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_delete')
+def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    assert(store.read_rows().empty)
+
+    store.insert_rows(test_df)
+
+    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
+
+    pseudo_df_iter = store.read_rows_meta_pseudo_df()
+
+    assert(isinstance(pseudo_df_iter, Iterable))
+    assert(isinstance(next(pseudo_df_iter), DataDF))
