@@ -52,6 +52,9 @@ class DataTable:
         отсутствуют в `data_df`.
         '''
 
+        if data_df.empty:
+            return None
+
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
