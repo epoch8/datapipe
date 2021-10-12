@@ -25,7 +25,7 @@ def meta_to_index(meta_df: MetadataDF, primary_keys: List[str]) -> IndexDF:
 
 
 def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert(list(idx1_df.columns) == list(idx2_df.columns))
+    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index
@@ -35,10 +35,22 @@ def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
 
 
 def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert(list(idx1_df.columns) == list(idx2_df.columns))
+    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index
     idx2_idx = idx2_df.set_index(cols).index
 
     return cast(IndexDF, idx1_idx.intersection(idx2_idx).to_frame(index=False))
+
+
+def index_to_data(data_df: DataDF, idx_df: IndexDF) -> DataDF:
+    idx_columns = list(idx_df.columns)
+    data_df = data_df.set_index(idx_columns)
+    if len(idx_columns) > 1:
+        indexes = list(idx_df.itertuples(index=False))
+    elif len(idx_columns) == 1:
+        indexes = list(idx_df[idx_columns[0]])
+    else:
+        indexes = []
+    return cast(DataDF, data_df.loc[indexes].reset_index())

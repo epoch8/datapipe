@@ -1,42 +1,42 @@
-from dataclasses import dataclass
-import math
 from typing import Any, Dict, List, Tuple, Union, Optional
 from urllib.parse import urljoin
-from datapipe.types import data_to_index, index_difference
 
-import pandas as pd
 import requests
-
-from datapipe.datatable import DataStore, gen_process_many, inc_process_many
-from datapipe.step import ComputeStep
-
-from tqdm import tqdm
 
 
 class LabelStudioSession:
     def __init__(
         self,
         ls_url: str,
-        auth: Tuple[str, str]
+        auth: Union[Tuple[str, str], str]  # (username, password) or 'Token <token>'
     ):
         self.ls_url = ls_url
+        assert isinstance(auth, tuple) or isinstance(auth, str)
         self.auth = auth
         self.session = requests.Session()
+        if isinstance(auth, str):
+            self.session.headers['Authorization'] = auth
 
     def login(self) -> int:
-        username, password = self.auth
-        response = self.session.get(
-            url=urljoin(self.ls_url, 'user/login/')
-        )
-        self.session.post(
-            url=urljoin(self.ls_url, 'user/login/'),
-            data={
-                'csrfmiddlewaretoken': response.cookies['csrftoken'],
-                'email': username,
-                'password': password
-            }
-        )
-        return self.is_auth_ok()
+        is_auth_ok = self.is_auth_ok()
+        if not is_auth_ok and isinstance(self.auth, tuple):
+            username, password = self.auth
+            response = self.session.get(
+                url=urljoin(self.ls_url, 'user/login/')
+            )
+            self.session.post(
+                url=urljoin(self.ls_url, 'user/login/'),
+                data={
+                    'csrfmiddlewaretoken': response.cookies['csrftoken'],
+                    'email': username,
+                    'password': password
+                }
+            )
+            is_auth_ok = self.is_auth_ok()
+            if is_auth_ok:
+                self.get_current_token()
+
+        return is_auth_ok
 
     def is_auth_ok(self, raise_exception: bool = False) -> bool:
         response = self.session.get(
@@ -47,10 +47,12 @@ class LabelStudioSession:
         return response.ok
 
     def get_current_token(self) -> str:
-        token = self.session.get(
-            url=urljoin(self.ls_url, 'api/current-user/token')
-        ).json()
-        return token['token']
+        if 'Authorization' not in self.session.headers:
+            token = self.session.get(
+                url=urljoin(self.ls_url, 'api/current-user/token')
+            ).json()
+            self.session.headers['Authorization'] = token['token']
+        return self.session.headers['Authorization']
 
     def sign_up(self):
         username, password = self.auth
@@ -68,7 +70,7 @@ class LabelStudioSession:
         if not response_signup.ok or not self.is_auth_ok(raise_exception=False):
             raise ValueError('Signup failed.')
 
-    def get_project(self, project_id: str) -> Dict[str, str]:
+    def get_project(self, project_id: Union[int, str]) -> Dict[str, str]:
         return self.session.get(
             urljoin(self.ls_url, f'api/projects/{project_id}/')
         ).json()
@@ -100,13 +102,53 @@ class LabelStudioSession:
     def upload_tasks(
         self,
         data: Dict,
-        project_id: str
+        project_id: Union[int, str]
     ) -> Dict:
         results = self.session.post(
             url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/bulk/'),
             json=data
         ).json()
         return results
+
+    def modify_task(
+        self,
+        task_id: Union[int, str],
+        data: Dict
+    ) -> Dict:
+        results = self.session.patch(
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/'),
+            json=data
+        ).json()
+        return results
+
+    def delete_task(
+        self,
+        task_id: Union[int, str]
+    ) -> bool:
+        result = self.session.delete(
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/')
+        )
+        return result.ok
+
+    def delete_tasks(
+        self,
+        project_id: Union[int, str],
+        tasks_ids: List[Union[int, str]]
+    ) -> bool:
+        # If empty, API will delete all tasks
+        if len(tasks_ids) == 0:
+            tasks_ids = [-1]
+
+        result = self.session.post(
+            url=urljoin(self.ls_url, f'api/dm/actions?id=delete_tasks&project={project_id}'),
+            json={
+                "selectedItems": {
+                    "all": False,
+                    "included": tasks_ids
+                }
+            }
+        )
+        return result.json()
 
     def is_service_up(self, raise_exception: bool = False) -> bool:
         try:
@@ -120,7 +162,7 @@ class LabelStudioSession:
 
     def add_annotation_to_task(
         self,
-        task_id: str,
+        task_id: Union[int, str],
         result: Dict
     ) -> Dict:
         result = self.session.post(
@@ -136,7 +178,7 @@ class LabelStudioSession:
 
     def get_tasks(
         self,
-        project_id: str,
+        project_id: Union[int, str],
         page: int = 1,  # current page
         page_size: int = -1,  # tasks per page, use -1 to obtain all tasks
     ) -> List[Dict[str, Any]]:
@@ -156,177 +198,8 @@ class LabelStudioSession:
 
     def get_project_summary(
         self,
-        project_id: str
+        project_id: Union[int, str]
     ) -> Dict[str, str]:
         summary = self.session.get(urljoin(self.ls_url, f'api/projects/{project_id}/summary/')).json()
 
         return summary
-
-
-@dataclass
-class LabelStudioModerationStep(ComputeStep):
-    ls_url: str
-    chunk_size: int
-    auth: Tuple[str, str]
-    project_title: str
-    project_description: str
-    project_label_config: str
-    data: List[str]
-    annotations: Union[str, None]
-    predictions: Union[str, None]
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        assert len(self.input_dts) == 1, "LabelStudioModerationStep currently supports only one DataTable as input"
-        assert len(self.output_dts) == 1, "LabelStudioModerationStep currently supports only one DataTable as output"
-
-        for column in ["tasks_id", "annotations"]:
-            assert column not in self.input_dts_primary_keys, (
-                f"The column {column} from primary keys is reserved for LabelStudioModerationStep."
-            )
-
-        self.label_studio_session = LabelStudioSession(
-            ls_url=self.ls_url,
-            auth=self.auth
-        )
-        self.project_id = self.get_or_create_project()
-
-    def get_or_create_project(self) -> int:
-        if self.label_studio_session.is_service_up():
-            # Authorize or sign up
-            if not self.label_studio_session.login():
-                self.label_studio_session.sign_up()
-                self.label_studio_session.is_auth_ok(raise_exception=True)
-
-            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
-            if self.project_id is None:
-                project = self.label_studio_session.create_project(
-                    project_setting={
-                        "title": self.project_title,
-                        "description": self.project_description,
-                        "label_config": self.project_label_config,
-                        "expert_instruction": "",
-                        "show_instruction": False,
-                        "show_skip_button": False,
-                        "enable_empty_annotation": True,
-                        "show_annotation_history": False,
-                        "organization": 1,
-                        "color": "#FFFFFF",
-                        "maximum_annotations": 1,
-                        "is_published": False,
-                        "model_version": "",
-                        "is_draft": False,
-                        "min_annotations_to_start_training": 10,
-                        "show_collab_predictions": True,
-                        "sampling": "Sequential sampling",
-                        "show_ground_truth_first": True,
-                        "show_overlap_first": True,
-                        "overlap_cohort_percentage": 100,
-                        "task_data_login": None,
-                        "task_data_password": None,
-                        "control_weights": {}
-                    }
-                )
-                project_id = project['id']
-        else:
-            project_id = None
-        return project_id
-
-    def upload_tasks_from_df(
-        self,
-        input_df: pd.DataFrame
-    ):
-        data = [
-            {
-                'data': {
-                    **{
-                        primary_key: input_df.loc[idx, primary_key]
-                        for primary_key in self.input_dts_primary_keys
-                    },
-                    **{
-                        column: input_df.loc[idx, column]
-                        for column in self.data
-                    }
-                },
-                'annotations': input_df.loc[idx, self.annotations] if self.annotations is not None else [],
-                'predictions': input_df.loc[idx, self.predictions] if self.predictions is not None else [],
-            }
-            for idx in input_df.index
-        ]
-        self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
-
-        input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
-        input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
-            [] for _ in input_df.index
-        ]
-        input_df = input_df[self.input_dts_primary_keys + ['tasks_id', 'annotations']]
-
-        return input_df
-
-    def get_current_tasks_as_df(self):
-        project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        if 'all_data_columns' not in project_summary:
-            total_tasks_count = 0
-        else:
-            keys = [key for key in self.input_dts_primary_keys if key in project_summary['all_data_columns']]
-            total_tasks_count = project_summary['all_data_columns'][keys[0]] if len(keys) > 0 else 0
-
-        total_pages = total_tasks_count // self.chunk_size + 1
-
-        # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
-        def _cleanup_annotations(annotations):
-            for ann in annotations:
-                if 'created_ago' in ann:
-                    del ann['created_ago']
-            return annotations
-
-        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
-            tasks_page = self.label_studio_session.get_tasks(
-                project_id=self.project_id,
-                page=page,
-                page_size=self.chunk_size
-            )
-
-            yield pd.DataFrame.from_records(
-                {
-                    **{
-                        primary_key: [task['data'][primary_key] for task in tasks_page]
-                        for primary_key in self.input_dts_primary_keys
-                    },
-                    'tasks_id': [str(task['id']) for task in tasks_page],
-                    'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
-                }
-            )
-
-    def run(self, ds: DataStore) -> None:
-        if self.label_studio_session.is_service_up():
-            if self.project_id is None:
-                self.project_id = self.get_or_create_project()
-
-            idx_count, idx_gen = ds.get_process_ids(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                chunksize=self.chunk_size
-            )
-            output_dt = self.output_dts[0]
-            if idx_count > 0:
-                for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / self.chunk_size), desc='Checking current tasks in Label Studio...'):
-                    metadata_idx = output_dt.get_metadata(idx=idx)
-                    new_idx = index_difference(idx, metadata_idx)  # To be added
-                    deleted_idx = index_difference(metadata_idx, idx)  # To be deleted
-                    duplicated_idx = index_intersection(idx, metadata_idx)  # To be modified
-
-                    # Add new tasks from inputs to outputs
-                    inc_process_many(
-                        ds,
-                        self.input_dts,
-                        self.output_dts,
-                        self.upload_tasks_from_df,
-                        self.chunk_size
-                    )
-                    # Update current annotations in outputs
-                    gen_process_many(
-                        self.output_dts,
-                        self.get_current_tasks_as_df
-                    )
