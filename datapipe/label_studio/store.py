@@ -54,9 +54,9 @@ class TableStoreLabelStudio(TableStore):
     def data_columns(self) -> DataSchema:
         return [column.name for column in self.data_sql_schema if not column.primary_key and column.name not in ["tasks_id", "annotations"]]
 
-    def get_or_create_project(self, raise_exception: bool = True) -> int:
+    def get_or_create_project(self, raise_exception: bool = True) -> str:
         if not self.label_studio_session.is_service_up(raise_exception=raise_exception):
-            return None
+            return '-1'
 
         # Authorize or sign up
         if not self.label_studio_session.login():
@@ -93,6 +93,7 @@ class TableStoreLabelStudio(TableStore):
                 }
             )
             project_id = project['id']
+
         return project_id
 
     def get_current_tasks_from_LS(self, include_annotations: bool) -> Iterator[DataDF]:
@@ -144,22 +145,25 @@ class TableStoreLabelStudio(TableStore):
         self.label_studio_session.is_service_up(raise_exception=True)
         self.get_or_create_project()
 
-        ls_indexes_df: List[DataDF] = []
+        ls_indexes_df: List[pd.DataFrame] = []
         for current_tasks_as_df in self.get_current_tasks_from_LS(include_annotations=False):
             ls_indexes_df.append(current_tasks_as_df[self.primary_keys + ['tasks_id']])
-        ls_indexes_df = cast(DataDF, pd.concat(ls_indexes_df, ignore_index=True))
-        return ls_indexes_df
+        current_indexes_df = cast(DataDF, pd.concat(ls_indexes_df, ignore_index=True))
+        return current_indexes_df
 
     def delete_rows(self, idx: IndexDF, tasks_ids: Optional[List[str]] = None) -> None:
+        """
+            Удаляет из LS задачи с заданными строками.
+            tasks_ids -- кидаем сюда список номеров задач, если они известны (в целях ускорения) 
+        """
         self.label_studio_session.is_service_up(raise_exception=True)
         if tasks_ids is not None:
             assert len(idx) == len(tasks_ids)
         else:
-            idx = idx[self.primary_keys]
             ls_indexes_df = self.get_current_indexes_from_LS()
             ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
             ls_indexes_intersection = index_intersection(idx, ls_indexes)
-            tasks_ids = index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'].tolist()
+            tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
         self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
 
     def insert_rows(self, df: DataDF) -> None:
@@ -197,16 +201,15 @@ class TableStoreLabelStudio(TableStore):
         tasks_ids_to_be_updated: List[str] = index_to_data(ls_indexes_df, to_be_updated_idx)['tasks_id'].tolist()
 
         self.delete_rows(
-            pd.concat([to_be_updated_idx, deleted_idx], ignore_index=True),
+            cast(IndexDF, pd.concat([to_be_updated_idx, deleted_idx], ignore_index=True)),
             tasks_ids=tasks_ids_to_be_updated + tasks_ids_to_be_deleted
         )
-        self.insert_rows(index_to_data(df, pd.concat([new_idx, to_be_updated_idx], ignore_index=True)))
+        self.insert_rows(index_to_data(df, cast(IndexDF, pd.concat([new_idx, to_be_updated_idx], ignore_index=True))))
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
         output_df = []
         for output_df_chunk in self.get_current_tasks_from_LS(include_annotations=True):
             if idx is not None:
-                idx = idx[self.primary_keys]
                 data_idx = data_to_index(output_df_chunk, self.primary_keys)
                 intersection_idx = index_intersection(data_idx, idx)
                 output_df_chunk = index_to_data(output_df_chunk, intersection_idx)

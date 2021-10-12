@@ -70,12 +70,12 @@ class LabelStudioSession:
         if not response_signup.ok or not self.is_auth_ok(raise_exception=False):
             raise ValueError('Signup failed.')
 
-    def get_project(self, project_id: Union[int, str]) -> Dict[str, str]:
+    def get_project(self, project_id: Union[int, str]) -> Dict[str, Any]:
         return self.session.get(
             urljoin(self.ls_url, f'api/projects/{project_id}/')
         ).json()
 
-    def create_project(self, project_setting: Dict[str, str]) -> Dict[str, str]:
+    def create_project(self, project_setting: Dict[str, Any]) -> Dict[str, Any]:
         return self.session.post(
             urljoin(self.ls_url, 'api/projects/'),
             json=project_setting
@@ -89,7 +89,7 @@ class LabelStudioSession:
     def get_project_id_by_title(
         self,
         title: str
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[str]:
         projects = self.session.get(urljoin(self.ls_url, 'api/projects/')).json()
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
@@ -101,7 +101,7 @@ class LabelStudioSession:
 
     def upload_tasks(
         self,
-        data: Dict,
+        data: List[Dict[str, Any]],
         project_id: Union[int, str]
     ) -> Dict:
         results = self.session.post(
@@ -133,11 +133,11 @@ class LabelStudioSession:
     def delete_tasks(
         self,
         project_id: Union[int, str],
-        tasks_ids: List[Union[int, str]]
+        tasks_ids: List[str]
     ) -> bool:
         # If empty, API will delete all tasks
         if len(tasks_ids) == 0:
-            tasks_ids = [-1]
+            tasks_ids = ['-1']
 
         result = self.session.post(
             url=urljoin(self.ls_url, f'api/dm/actions?id=delete_tasks&project={project_id}'),
@@ -199,7 +199,7 @@ class LabelStudioSession:
     def get_project_summary(
         self,
         project_id: Union[int, str]
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         summary = self.session.get(urljoin(self.ls_url, f'api/projects/{project_id}/summary/')).json()
 
         return summary

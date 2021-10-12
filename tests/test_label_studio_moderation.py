@@ -73,12 +73,12 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
         if counter >= 60:
             raise_exception = True
 
-# def test_sign_up(ls_url):
-#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-#     wait_until_label_studio_is_up(label_studio_session)
-#     assert not label_studio_session.is_auth_ok(raise_exception=False)
-#     label_studio_session.sign_up()
-#     assert label_studio_session.is_auth_ok(raise_exception=False)
+def test_sign_up(ls_url):
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+    wait_until_label_studio_is_up(label_studio_session)
+    assert not label_studio_session.is_auth_ok(raise_exception=False)
+    label_studio_session.sign_up()
+    assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
 def gen_data_df():
