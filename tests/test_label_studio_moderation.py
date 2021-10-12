@@ -1,6 +1,5 @@
 import os
 import distutils.util
-import pickle
 import time
 import string
 from functools import partial, update_wrapper
@@ -45,7 +44,7 @@ def ls_url(tmp_dir):
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'False'))):
+    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
         label_studio_service = Popen([
             'label-studio',
             '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
@@ -69,12 +68,12 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
             raise_exception = True
 
 
-def test_sign_up(ls_url):
-    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-    wait_until_label_studio_is_up(label_studio_session)
-    assert not label_studio_session.is_auth_ok(raise_exception=False)
-    label_studio_session.sign_up()
-    assert label_studio_session.is_auth_ok(raise_exception=False)
+# def test_sign_up(ls_url):
+#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+#     wait_until_label_studio_is_up(label_studio_session)
+#     assert not label_studio_session.is_auth_ok(raise_exception=False)
+#     label_studio_session.sign_up()
+#     assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
 def gen_data_df():
@@ -188,7 +187,7 @@ class CasesLabelStudio:
                     ],
                     preannotations='preannotations' if include_preannotations else None,
                     predictions='predictions' if include_predictions else None,
-                    page_chunk_size=2
+                    page_chunk_size=100
                 )
             )
         })
@@ -271,7 +270,6 @@ def test_label_studio_moderation(
             }
         )
         df_annotation = catalog.get_datatable(ds, '01_annotations').get_data(idx=idxs_df)
-        pickle.dump(df_annotation, open('/notebooks/df_annotation.pkl', 'wb'))
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == (1 + include_preannotations)
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
