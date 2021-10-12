@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generator, Iterator, List, Tuple, Union, Optional, cast
+from typing import Iterator, List, Tuple, Union, Optional, cast
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -52,7 +52,10 @@ class TableStoreLabelStudio(TableStore):
 
     @property
     def data_columns(self) -> DataSchema:
-        return [column.name for column in self.data_sql_schema if not column.primary_key and column.name not in ["tasks_id", "annotations"]]
+        return [
+            column.name for column in self.data_sql_schema
+            if not column.primary_key and column.name not in ["tasks_id", "annotations"]
+        ]
 
     def get_or_create_project(self, raise_exception: bool = True) -> str:
         if not self.label_studio_session.is_service_up(raise_exception=raise_exception):
@@ -154,7 +157,7 @@ class TableStoreLabelStudio(TableStore):
     def delete_rows(self, idx: IndexDF, tasks_ids: Optional[List[str]] = None) -> None:
         """
             Удаляет из LS задачи с заданными строками.
-            tasks_ids -- кидаем сюда список номеров задач, если они известны (в целях ускорения) 
+            tasks_ids -- кидаем сюда список номеров задач, если они известны (в целях ускорения)
         """
         self.label_studio_session.is_service_up(raise_exception=True)
         if tasks_ids is not None:

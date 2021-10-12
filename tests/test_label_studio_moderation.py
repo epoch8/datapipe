@@ -9,25 +9,20 @@ from typing import List
 from datapipe.label_studio.store import TableStoreLabelStudio
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import String
-from traceback_with_variables import printing_exc
 
 import pytest
 import pandas as pd
 import numpy as np
 
 from datapipe.dsl import Catalog, Pipeline, Table, BatchTransform
-from datapipe.datatable import DataStore, DataTable
+from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
-from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.compute import build_compute, run_steps
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process
 
 from pytest_cases import parametrize_with_cases, parametrize
-
-from datapipe.store.database import TableStoreDB
-
 from tests.conftest import assert_df_equal
 
 
@@ -72,6 +67,7 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
         counter += 1
         if counter >= 60:
             raise_exception = True
+
 
 def test_sign_up(ls_url):
     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
@@ -219,7 +215,8 @@ class CasesLabelStudio:
             label_studio_session.delete_project(project_id=project_id)
 
 
-@parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session', cases=CasesLabelStudio)
+@parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
+                        cases=CasesLabelStudio)
 def test_label_studio_moderation(
     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
     project_title: str, include_preannotations: bool,
