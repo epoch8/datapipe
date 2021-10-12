@@ -667,3 +667,19 @@ def test_error_handling(dbconn) -> None:
     )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
+
+
+def test_gen_from_empty_rows(dbconn) -> None:
+    ds = DataStore(dbconn)
+    tbl = ds.create_table('test', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+
+    def proc_func():
+        yield pd.DataFrame.from_records(
+            {
+                key: []
+                for key in tbl.primary_keys
+            }
+        )
+
+    # This should be ok
+    gen_process_many([tbl], proc_func)
