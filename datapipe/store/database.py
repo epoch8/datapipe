@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Union, Optional
+from typing import List, Any, Dict, Union, Optional, Iterator
 
 import logging
 import pandas as pd
@@ -143,4 +143,13 @@ class TableStoreDB(TableStore):
         return pd.read_sql_query(
             sql,
             con=self.dbconn.con
+        )
+
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+        sql = select(self.data_table.c)
+
+        return pd.read_sql_query(
+            sql,
+            con=self.dbconn.con.execution_options(stream_results=True),
+            chunksize=chunksize
         )

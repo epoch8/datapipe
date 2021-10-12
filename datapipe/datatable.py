@@ -371,18 +371,15 @@ class ExternalTableUpdater(ComputeStep):
         self.output_dts = [table]
 
     def run(self, ds: DataStore) -> None:
-        ps_df = self.table.table_store.read_rows_meta_pseudo_df()
+        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
+            now = time.time()
 
-        _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
+            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
-        # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
+            # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
 
-        self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-        self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
+            self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
+            self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        deleted_idx = index_difference(
-            self.table.meta_table.get_existing_idx(),
-            data_to_index(ps_df, self.table.primary_keys)
-        )
-
-        self.table.meta_table.mark_rows_deleted(deleted_idx)
+        for stale_idx in self.table.meta_table.get_stale_idx(now):
+            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)
