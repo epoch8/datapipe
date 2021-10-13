@@ -19,7 +19,7 @@ from datapipe.label_studio.session import LabelStudioSession
 from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process
 
-from pytest_cases import parametrize_with_cases, parametrize
+from pytest_cases import parametrize_with_cases, parametrize, case
 from tests.conftest import assert_df_equal, ls_url_and_auth
 
 
@@ -42,14 +42,6 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
         counter += 1
         if counter >= 60:
             raise_exception = True
-
-
-def test_sign_up(ls_url):
-    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-    wait_until_label_studio_is_up(label_studio_session)
-    assert not label_studio_session.is_auth_ok(raise_exception=False)
-    label_studio_session.sign_up()
-    assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
 TASKS_COUNT = 10
@@ -258,7 +250,7 @@ def test_label_studio_moderation(
 
 @parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
                         cases=CasesLabelStudio)
-def test_label_studio_update_tasks_when_data_is_changed(
+def test_label_studio_when_data_is_changed(
     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
     project_title: str, include_preannotations: bool,
     label_studio_session: LabelStudioSession
@@ -301,7 +293,7 @@ def test_label_studio_update_tasks_when_data_is_changed(
 
 @parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
                         cases=CasesLabelStudio)
-def test_label_studio_update_tasks_when_data_is_deleted(
+def test_label_studio_when_some_data_is_deleted(
     ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
     project_title: str, include_preannotations: bool,
     label_studio_session: LabelStudioSession
@@ -341,3 +333,30 @@ def test_label_studio_update_tasks_when_data_is_deleted(
         drop=True
     )
     assert_df_equal(df, data_df2)
+
+
+@pytest.mark.skipif(True, reason="Full synchronization is not yet supported")
+@parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
+                        cases=CasesLabelStudio)
+def test_label_studio_when_project_somewhat_deleted(
+    ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
+    project_title: str, include_preannotations: bool,
+    label_studio_session: LabelStudioSession
+):
+    # These steps should upload tasks
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_input_data'),
+        proc_func=gen_data_df
+    )
+    run_steps(ds, steps)
+
+    # Delete the project
+    project_id = label_studio_session.get_project_id_by_title(project_title)
+    label_studio_session.delete_project(project_id)
+
+    # These steps should upload tasks from beginning
+    run_steps(ds, steps)
+
+    new_project_id = label_studio_session.get_project_id_by_title(project_title)
+    tasks = label_studio_session.get_tasks(project_id=new_project_id, page_size=-1)
+    assert len(tasks) == TASKS_COUNT
