@@ -25,10 +25,10 @@ class TableStoreLabelStudio(TableStore):
         project_title: str,
         project_label_config: str,
         data_sql_schema: List[Column],
-        tasks_id_column: Optional[Column] = Column('tasks_id', String()),
-        annotations_column: Optional[Column] = Column('annotations', String()),
-        preannotations: Optional[str] = None,
-        predictions: Optional[str] = None,
+        tasks_id_column: Optional[str] = 'tasks_id',
+        annotations_column: Optional[str] = 'annotations',
+        predictions_column: Optional[str] = None,
+        preannotations_column: Optional[str] = None,
         project_description: str = "",
         page_chunk_size: int = 100,
         tqdm_disable: bool = True
@@ -44,12 +44,12 @@ class TableStoreLabelStudio(TableStore):
 
         self.tasks_id_column = tasks_id_column
         if self.tasks_id_column is not None:
-            self.data_sql_schema += [self.tasks_id_column]
+            self.data_sql_schema += [Column(self.tasks_id_column, String())]
         self.annotations_column = annotations_column
         if self.annotations_column is not None:
-            self.data_sql_schema += [self.annotations_column]
-        self.preannotations = preannotations
-        self.predictions = predictions
+            self.data_sql_schema += [Column(self.annotations_column, String())]
+        self.predictions_column = predictions_column
+        self.preannotations_column = preannotations_column
         self.label_studio_session = LabelStudioSession(
             ls_url=ls_url,
             auth=auth
@@ -201,38 +201,18 @@ class TableStoreLabelStudio(TableStore):
                 }
             )
             if self.tasks_id_column is not None:
-                output_df.loc[:, self.tasks_id_column.name] = [str(task['id']) for task in tasks_page]
+                output_df.loc[:, self.tasks_id_column] = [str(task['id']) for task in tasks_page]
             if self.annotations_column is not None:
-                output_df.loc[:, self.annotations_column.name] = [
+                output_df.loc[:, self.annotations_column] = [
                     _cleanup_annotations(task['annotations']) for task in tasks_page
                 ]
             yield output_df
-
-    def get_current_tasks_from_LS_without_annotations(self, chunksize: int = 10000) -> Iterator[DataDF]:
-        """
-            Возвращает все задачи из сервера LS без разметки, с primary ключами плюс tasks_id
-        """
-        total_tasks_count = self.get_total_tasks_count()
-        total_pages = total_tasks_count // self.page_chunk_size + 1
-
-        for page in range(1, total_pages + 1):
-            tasks = self.label_studio_session.get_all_tasks_from_view(
-                self.get_or_create_view(), page=page, page_size=chunksize
-            )
-            ls_indexes_df = pd.DataFrame({
-                **{
-                    primary_key: [task['data'][primary_key] for task in tasks]
-                    for primary_key in self.primary_keys + self.data_columns
-                },
-                'tasks_id': [str(task['id']) for task in tasks]
-            })
-            yield ls_indexes_df
 
     def delete_rows(self, idx: IndexDF) -> None:
         """
             Удаляет из LS задачи с заданными индексами
         """
-        for ls_indexes_df in self.get_current_tasks_from_LS_without_annotations():
+        for ls_indexes_df in self.read_rows_meta_pseudo_df():
             ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
             ls_indexes_intersection = index_intersection(idx, ls_indexes)
             tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
@@ -255,8 +235,8 @@ class TableStoreLabelStudio(TableStore):
                         for primary_key in self.primary_keys + self.data_columns
                     }
                 },
-                'annotations': df.loc[idx, self.preannotations] if self.preannotations is not None else [],
-                'predictions': df.loc[idx, self.predictions] if self.predictions is not None else [],
+                'predictions': df.loc[idx, self.predictions_column] if self.predictions_column is not None else [],
+                'annotations': df.loc[idx, self.preannotations_column] if self.preannotations_column is not None else []
             }
             for idx in df.index
         ]
@@ -278,6 +258,9 @@ class TableStoreLabelStudio(TableStore):
         return pd.concat(output_df, ignore_index=True)
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 10000) -> Iterator[DataDF]:
+        """
+            Получить все задачи без разметки и data_columns
+        """
         total_tasks_count = self.get_total_tasks_count()
         total_pages = total_tasks_count // self.page_chunk_size + 1
 
@@ -288,8 +271,9 @@ class TableStoreLabelStudio(TableStore):
             meta_pseudo_df = pd.DataFrame({
                 **{
                     primary_key: [task['data'][primary_key] for task in tasks]
-                    for primary_key in self.primary_keys + self.data_columns
+                    for primary_key in self.primary_keys
                 },
+                'tasks_id': [str(task['id']) for task in tasks],
                 'completed_at': [str(task['completed_at']) for task in tasks]
             })
 
