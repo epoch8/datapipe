@@ -1,9 +1,7 @@
-import os
-import distutils.util
+
 import time
 import string
 from functools import partial, update_wrapper
-from subprocess import Popen
 from typing import List
 from datapipe.label_studio.store import TableStoreLabelStudio
 from sqlalchemy.sql.schema import Column
@@ -22,10 +20,8 @@ from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process
 
 from pytest_cases import parametrize_with_cases, parametrize
-from tests.conftest import assert_df_equal
+from tests.conftest import assert_df_equal, ls_url_and_auth
 
-
-LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
 
 PROJECT_LABEL_CONFIG_TEST = '''<View>
   <Text name="text" value="$text"/>
@@ -38,26 +34,6 @@ PROJECT_LABEL_CONFIG_TEST = '''<View>
 </View>'''
 
 
-@pytest.fixture
-def ls_url(tmp_dir):
-    ls_host = os.environ.get('LABEL_STUDIO_HOST', 'localhost')
-    ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
-    ls_url = f"http://{ls_host}:{ls_port}/"
-    # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'False'))):
-        label_studio_service = Popen([
-            'label-studio',
-            '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
-            '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
-            '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
-            '--no-browser'
-        ])
-        yield ls_url
-        label_studio_service.terminate()
-    else:
-        yield ls_url
-
-
 def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
     raise_exception = False
     counter = 0
@@ -68,16 +44,16 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
             raise_exception = True
 
 
-# def test_sign_up(ls_url):
-#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-#     wait_until_label_studio_is_up(label_studio_session)
-#     assert not label_studio_session.is_auth_ok(raise_exception=False)
-#     label_studio_session.sign_up()
-#     assert label_studio_session.is_auth_ok(raise_exception=False)
+def test_sign_up(ls_url):
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+    wait_until_label_studio_is_up(label_studio_session)
+    assert not label_studio_session.is_auth_ok(raise_exception=False)
+    label_studio_session.sign_up()
+    assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
-TASKS_COUNT = 1000
-PAGE_CHUNK_SIZE = 100
+TASKS_COUNT = 10
+PAGE_CHUNK_SIZE = 2
 
 
 def gen_data_df():
@@ -135,33 +111,34 @@ INCLUDE_PARAMS = [
         },
         id='default'
     ),
-    # pytest.param(
-    #     {
-    #         'include_preannotations': True,
-    #         'include_predictions': False
-    #     },
-    #     id='with_annotations'
-    # ),
-    # pytest.param(
-    #     {
-    #         'include_preannotations': False,
-    #         'include_predictions': True
-    #     },
-    #     id='with_predictions'
-    # ),
-    # pytest.param(
-    #     {
-    #         'include_preannotations': True,
-    #         'include_predictions': True
-    #     },
-    #     id='with_annotations_and_predictions'
-    # ),
+    pytest.param(
+        {
+            'include_preannotations': True,
+            'include_predictions': False
+        },
+        id='with_annotations'
+    ),
+    pytest.param(
+        {
+            'include_preannotations': False,
+            'include_predictions': True
+        },
+        id='with_predictions'
+    ),
+    pytest.param(
+        {
+            'include_preannotations': True,
+            'include_predictions': True
+        },
+        id='with_annotations_and_predictions'
+    ),
 ]
 
 
 class CasesLabelStudio:
     @parametrize('include_params', INCLUDE_PARAMS)
-    def case_ls(self, include_params, dbconn, ls_url, request):
+    def case_ls(self, include_params, dbconn, ls_url_and_auth, request):
+        ls_url, auth = ls_url_and_auth
         include_preannotations, include_predictions = (
             include_params['include_preannotations'], include_params['include_predictions']
         )
@@ -180,18 +157,16 @@ class CasesLabelStudio:
             '01_annotations': Table(
                 TableStoreLabelStudio(
                     ls_url=ls_url,
-                    auth=LABEL_STUDIO_AUTH,
+                    auth=auth,
                     project_title=project_title,
                     project_label_config=PROJECT_LABEL_CONFIG_TEST,
                     data_sql_schema=[
                         Column('id', String(), primary_key=True),
-                        Column('text', String()),
-                        # Column('tasks_id', String(), tasks_id_key=True),
-                        # Column('annotations', String(), annotations_key=True)
+                        Column('text', String())
                     ],
                     preannotations='preannotations' if include_preannotations else None,
                     predictions='predictions' if include_predictions else None,
-                    page_chunk_size=100
+                    page_chunk_size=PAGE_CHUNK_SIZE
                 )
             )
         })
@@ -207,7 +182,7 @@ class CasesLabelStudio:
             ),
         ])
         steps = build_compute(ds, catalog, pipeline)
-        label_studio_session = LabelStudioSession(ls_url=ls_url, auth=LABEL_STUDIO_AUTH)
+        label_studio_session = LabelStudioSession(ls_url=ls_url, auth=auth)
         wait_until_label_studio_is_up(label_studio_session)
         label_studio_session.login()
 

@@ -1,3 +1,6 @@
+import time
+from datapipe.label_studio.session import LabelStudioSession
+from datapipe.label_studio.store import TableStoreLabelStudio
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
@@ -10,7 +13,7 @@ from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 
 from .util import assert_df_equal
-
+from .conftest import ls_url_and_auth
 
 DATA_PARAMS = [
     pytest.param(
@@ -131,6 +134,39 @@ class CasesTableStore:
             df
         )
 
+    @case(tags='supports_delete')
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_label_studio(self, ls_url_and_auth, df, schema, request):
+        ls_url, auth = ls_url_and_auth
+        schema = schema + [
+            Column('name', String(100)),
+            Column('price', Integer),
+        ]
+        label_config = '\n'.join(
+            [f'<Text name="{column.name}" value="${column.name}"/>' for column in schema]
+        )
+        project_label_config = "<View>\n"f"{label_config}""\n</View>\n"
+        auth = ('test@epoch8.co', 'qwerty123')
+        project_title = f'Project Test {request.node.callspec.id}'
+        yield (
+            TableStoreLabelStudio(
+                ls_url=ls_url,
+                auth=auth,
+                project_title=project_title,
+                project_label_config=project_label_config,
+                data_sql_schema=schema,
+                tasks_id_column=None,
+                annotations_column=None,
+                tqdm_disable=True
+            ),
+            df
+        )
+        label_studio_session = LabelStudioSession(ls_url=ls_url, auth=auth)
+        label_studio_session.login()
+        project_id = label_studio_session.get_project_id_by_title(project_title)
+        if project_id is not None:
+            label_studio_session.delete_project(project_id=project_id)
+
     @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
     def case_filedir_json(self, tmp_dir, df, fn_template):
         return (
@@ -140,6 +176,7 @@ class CasesTableStore:
             ),
             df
         )
+
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
@@ -165,7 +202,6 @@ def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.update_rows(test_df_mod.loc[50:])
 
     assert_df_equal(store.read_rows(), test_df_mod, index_cols=store.primary_keys)
-
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
