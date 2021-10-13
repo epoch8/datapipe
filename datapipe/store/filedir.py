@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import IO, Optional, Any, Dict, List, Union, cast
+from typing import IO, Any, Dict, List, Union, cast, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +13,7 @@ import pandas as pd
 from sqlalchemy import Column, String
 from PIL import Image
 
-from datapipe.types import DataDF, DataSchema, IndexDF, data_to_index
+from datapipe.types import DataDF, DataSchema, IndexDF
 from datapipe.store.table_store import TableStore
 
 
@@ -179,8 +179,7 @@ class TableStoreFiledir(TableStore):
                 self.adapter.dump(data, f)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
-        if idx is None:
-            idx = data_to_index(self.read_rows_meta_pseudo_df(), self.primary_keys)
+        assert(idx is not None)
 
         def _gen():
             for row_idx in idx.index:
@@ -210,9 +209,8 @@ class TableStoreFiledir(TableStore):
             _gen()
         )
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
-        # Not implemented yet
-        assert(idx is None)
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+        # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob)
 
@@ -238,9 +236,9 @@ class TableStoreFiledir(TableStore):
                     'ukey': ukeys,
                 }
             )
-            return pseudo_data_df
+            yield pseudo_data_df
         else:
-            return pd.DataFrame(
+            yield pd.DataFrame(
                 {
                     **ids,
                     'ukey': []

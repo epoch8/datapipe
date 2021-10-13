@@ -36,7 +36,10 @@ def test_insert_rows(dbconn: DBConn, test_df: DataDF):
 
     new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
     assert_df_equal(new_df, test_df)
+    assert(len(new_df) == len(test_df))
+    assert(len(new_meta_df) == len(test_df))
     assert(len(changed_df) == 0)
+    assert(len(changed_meta_df) == 0)
 
     assert_df_equal(new_meta_df[['id']], new_df[['id']])
 

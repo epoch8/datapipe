@@ -1,15 +1,17 @@
+from typing import Iterable
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
 
+from datapipe.types import DataDF
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 
-from .util import assert_df_equal
+from .util import assert_df_equal, assert_ts_contains
 
 
 DATA_PARAMS = [
@@ -144,49 +146,41 @@ class CasesTableStore:
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
-    assert(store.read_rows().empty)
-
     store.insert_rows(test_df)
 
-    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
+    assert_ts_contains(store, test_df)
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
-    assert(store.read_rows().empty)
-
     store.insert_rows(test_df)
 
-    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
+    assert_ts_contains(store, test_df)
 
     test_df_mod = test_df.copy()
     test_df_mod.loc[50:, 'price'] = test_df_mod.loc[50:, 'price'] + 1
 
     store.update_rows(test_df_mod.loc[50:])
 
-    assert_df_equal(store.read_rows(), test_df_mod, index_cols=store.primary_keys)
+    assert_ts_contains(store, test_df_mod)
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
-    assert(store.read_rows().empty)
-
     store.insert_rows(test_df)
 
-    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
+    assert_ts_contains(store, test_df)
 
     test_df_mod = test_df.copy()
     test_df_mod.loc[:, 'price'] = test_df_mod.loc[:, 'price'] + 1
 
     store.update_rows(test_df_mod)
 
-    assert_df_equal(store.read_rows(), test_df_mod, index_cols=store.primary_keys)
+    assert_ts_contains(store, test_df_mod)
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_delete')
 def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
-    assert(store.read_rows().empty)
-
     store.insert_rows(test_df)
 
     assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
@@ -198,3 +192,15 @@ def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
         pd.concat([test_df.loc[0:19], test_df.loc[51:]]),
         index_cols=store.primary_keys
     )
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
+    assert_ts_contains(store, test_df)
+
+    pseudo_df_iter = store.read_rows_meta_pseudo_df()
+
+    assert(isinstance(pseudo_df_iter, Iterable))
+    assert(isinstance(next(pseudo_df_iter), DataDF))

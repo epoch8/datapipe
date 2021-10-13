@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterator, Tuple, Dict, cast
 
+import copy
 import logging
 import time
 
@@ -55,7 +56,7 @@ class MetaTable:
 
         sql_schema = primary_schema + METADATA_SQL_SCHEMA
 
-        self.sql_schema = [i.copy() for i in sql_schema]
+        self.sql_schema = [copy.copy(i) for i in sql_schema]
 
         self.sql_table = Table(
             f'{self.name}_meta',
@@ -213,11 +214,6 @@ class MetaTable:
         changed_meta_df['process_ts'] = now
         changed_meta_df['delete_ts'] = None
         changed_meta_df['hash'] = changed_meta_df['data_hash']
-
-        if len(new_df.index) > 0 or len(changed_idx) > 0:
-            self.event_logger.log_state(
-                self.name, added_count=len(new_df.index), updated_count=len(changed_idx), deleted_count=0
-            )
 
         return (
             cast(DataDF, new_df),

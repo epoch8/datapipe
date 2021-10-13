@@ -8,7 +8,7 @@ from PIL import Image
 
 from datapipe.store.filedir import PILFile, JSONFile, TableStoreFiledir
 
-from .util import assert_df_equal
+from .util import assert_df_equal, assert_ts_contains
 
 TEST_DF = pd.DataFrame(
     {
@@ -46,14 +46,14 @@ def test_read_json_rows(tmp_dir_with_json_data):
         adapter=JSONFile()
     )
 
-    assert_df_equal(ts.read_rows(), TEST_DF)
+    assert_ts_contains(ts, TEST_DF)
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_dir_with_json_data}/{{id}}.json',
         adapter=JSONFile(),
         add_filepath_column=True
     )
-    assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, tmp_dir_with_json_data))
+    assert_ts_contains(ts_with_filepath, get_test_df_filepath(TEST_DF, tmp_dir_with_json_data))
 
 
 def test_read_json_rows_file_fs(tmp_dir_with_json_data):
@@ -62,13 +62,13 @@ def test_read_json_rows_file_fs(tmp_dir_with_json_data):
         adapter=JSONFile()
     )
 
-    assert_df_equal(ts.read_rows(), TEST_DF)
+    assert_ts_contains(ts, TEST_DF)
 
     ts_with_filepath = TableStoreFiledir(
         f'file://{tmp_dir_with_json_data}/{{id}}.json',
         adapter=JSONFile(), add_filepath_column=True
     )
-    assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, f'file://{tmp_dir_with_json_data}'))
+    assert_ts_contains(ts_with_filepath, get_test_df_filepath(TEST_DF, f'file://{tmp_dir_with_json_data}'))
 
 
 def test_read_json_rows_gcs_fs():
@@ -77,13 +77,13 @@ def test_read_json_rows_gcs_fs():
         adapter=JSONFile()
     )
 
-    assert_df_equal(ts.read_rows(), TEST_DF)
+    assert_ts_contains(ts, TEST_DF)
 
     ts_with_filepath = TableStoreFiledir(
         'gs://datapipe-test/{id}.json',
         adapter=JSONFile(), add_filepath_column=True
     )
-    assert_df_equal(ts_with_filepath.read_rows(), get_test_df_filepath(TEST_DF, 'gs://datapipe-test'))
+    assert_ts_contains(ts_with_filepath, get_test_df_filepath(TEST_DF, 'gs://datapipe-test'))
 
 
 def test_insert_json_rows(tmp_dir_with_json_data):
@@ -119,7 +119,7 @@ def test_read_png_rows(tmp_dir_with_img_data):
         adapter=PILFile('png')
     )
 
-    rows = ts.read_rows()
+    rows = ts.read_rows(pd.DataFrame({"id": ["aaa"]}))
 
     assert_df_equal(rows[["id"]], pd.DataFrame({"id": ["aaa"]}))
 
@@ -167,7 +167,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
         f'{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json',
         adapter=JSONFile()
     )
-    assert_df_equal(ts.read_rows(), TEST_DF_FOLDER0)
+    assert_ts_contains(ts, TEST_DF_FOLDER0)
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json',
@@ -179,7 +179,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
             f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
         )
     )
-    assert_df_equal(ts_with_filepath.read_rows(), TEST_DF_FOLDER0_WITH_FILEPATH)
+    assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER0_WITH_FILEPATH)
 
 
 TEST_DF_FOLDER_RECURSIVELY = pd.DataFrame(
@@ -196,7 +196,7 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         f'{tmp_several_dirs_with_json_data}/**/{{id}}.json',
         adapter=JSONFile()
     )
-    assert_df_equal(ts.read_rows(), TEST_DF_FOLDER_RECURSIVELY)
+    assert_ts_contains(ts, TEST_DF_FOLDER_RECURSIVELY)
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/**/{{id}}.json',
@@ -210,4 +210,4 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
             else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
         )
     )
-    assert_df_equal(ts_with_filepath.read_rows(), TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)
+    assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)

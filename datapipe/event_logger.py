@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 from enum import Enum
+import copy
 
 import logging
 import traceback
@@ -35,7 +36,7 @@ class EventLogger:
         self.events_table = Table(
             'datapipe_events',
             dbconn.sqla_metadata,
-            *[i.copy() for i in EVENT_TABLE_SHCEMA]
+            *[copy.copy(i) for i in EVENT_TABLE_SHCEMA]
         )
 
         self.events_table.create(self.dbconn.con, checkfirst=True)
