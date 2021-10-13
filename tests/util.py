@@ -1,7 +1,8 @@
 import pandas as pd
 
-from datapipe.types import DataDF
+from datapipe.types import DataDF, data_to_index
 from datapipe.datatable import DataTable
+from datapipe.store.table_store import TableStore
 
 
 def assert_idx_equal(a, b):
@@ -34,3 +35,11 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=['id']) -> bool
 
 def assert_datatable_equal(a: DataTable, b: DataDF) -> bool:
     return assert_df_equal(a.get_data(), b)
+
+
+def assert_ts_contains(ts: TableStore, df: DataDF):
+    assert_df_equal(
+        ts.read_rows(data_to_index(df, ts.primary_keys)),
+        df,
+        index_cols=ts.primary_keys,
+    )
