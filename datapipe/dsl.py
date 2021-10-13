@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List
 
 from abc import ABC
 from dataclasses import dataclass
@@ -54,18 +54,3 @@ class BatchTransform(PipelineStep):
 class BatchGenerate(PipelineStep):
     func: Callable
     outputs: List[str]
-
-
-@dataclass
-class LabelStudioModeration(PipelineStep):
-    ls_url: str
-    inputs: List[str]
-    outputs: List[str]
-    auth: Tuple[str, str]
-    project_title: str
-    project_label_config: str
-    data: List[str]
-    project_description: str = ""
-    annotations: Union[str, None] = None
-    predictions: Union[str, None] = None
-    chunk_size: int = 100

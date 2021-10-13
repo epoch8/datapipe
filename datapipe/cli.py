@@ -1,3 +1,4 @@
+import time
 import click
 
 from datapipe.datatable import DataStore
@@ -30,5 +31,13 @@ def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
         build_compute(ds, catalog, pipeline)
         app = ui_main(ds, catalog, pipeline)
         app.run_server(host='0.0.0.0')
+
+    @cli.command()
+    @click.argument("period", nargs=1, type=click.INT)
+    def run_periodic(period: int):
+        while True:
+            from .compute import run_pipeline
+            run_pipeline(ds, catalog, pipeline)
+            time.sleep(period)
 
     cli()

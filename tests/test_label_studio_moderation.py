@@ -1,4 +1,3 @@
-
 import time
 import string
 from functools import partial, update_wrapper
@@ -11,7 +10,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from datapipe.dsl import Catalog, Pipeline, Table, BatchTransform
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchTransform
 from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
 from datapipe.compute import build_compute, run_steps
@@ -146,7 +145,7 @@ class CasesLabelStudio:
                     ],
                 )
             ),
-            '01_annotations': Table(
+            '01_annotations': ExternalTable(
                 TableStoreLabelStudio(
                     ls_url=ls_url,
                     auth=auth,
@@ -156,8 +155,8 @@ class CasesLabelStudio:
                         Column('id', String(), primary_key=True),
                         Column('text', String())
                     ],
-                    preannotations='preannotations' if include_preannotations else None,
-                    predictions='predictions' if include_predictions else None,
+                    preannotations_column='preannotations' if include_preannotations else None,
+                    predictions_column='predictions' if include_predictions else None,
                     page_chunk_size=PAGE_CHUNK_SIZE
                 )
             )

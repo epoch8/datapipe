@@ -380,6 +380,8 @@ class ExternalTableUpdater(ComputeStep):
         now = time.time()
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
+            if ps_df.empty:
+                return
 
             _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 

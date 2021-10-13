@@ -135,6 +135,40 @@ class TableStoreLabelStudio(TableStore):
                 }
             )
             self._project_id = project['id']
+            self.label_studio_session.create_view(
+                self._project_id, 
+                data={
+                    "title": "Default Tab",
+                    "ordering": [],
+                    "type": "list",
+                    "target": "tasks",
+                    "hiddenColumns": {
+                        "explore": [
+                            "tasks:annotations_results",
+                            "tasks:annotations_ids",
+                            "tasks:predictions_score",
+                            "tasks:predictions_results",
+                            "tasks:file_upload",
+                            "tasks:created_at"
+                        ],
+                        "labeling": [
+                            "tasks:id",
+                            "tasks:completed_at",
+                            "tasks:cancelled_annotations",
+                            "tasks:total_predictions",
+                            "tasks:annotators",
+                            "tasks:annotations_results",
+                            "tasks:annotations_ids",
+                            "tasks:predictions_score",
+                            "tasks:predictions_results",
+                            "tasks:file_upload",
+                            "tasks:created_at"
+                        ]
+                    },
+                    "columnsWidth": {},
+                    "columnsDisplayType": {},
+                    "gridWidth": 4
+                })
 
         return self._project_id
 

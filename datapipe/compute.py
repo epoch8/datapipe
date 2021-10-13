@@ -5,7 +5,7 @@ import logging
 
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
 
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
+from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform
 from .step import ComputeStep
 
 logger = logging.getLogger('datapipe.compute')
