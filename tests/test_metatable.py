@@ -8,17 +8,24 @@ from datapipe.metastore import MetaTable
 from datapipe.store.database import DBConn
 from datapipe.types import DataDF
 
+import pytest
+from pytest_cases import parametrize_with_cases, parametrize
 from .util import assert_df_equal
 
-TEST_DF = cast(DataDF, pd.DataFrame(
-    {
-        'id': range(10),
-        'a': range(10)
-    },
-))
+
+class CasesTestDF:
+    @parametrize('N', [pytest.param(N) for N in [10, 100, 1000, 10000]])
+    def case_test_df(self, N):
+        return cast(DataDF, pd.DataFrame(
+            {
+                'id': range(N),
+                'a': range(N)
+            },
+        ))
 
 
-def test_insert_rows(dbconn: DBConn):
+@parametrize_with_cases('test_df', cases=CasesTestDF, import_fixtures=True)
+def test_insert_rows(dbconn: DBConn, test_df: DataDF):
     mt = MetaTable(
         name='test',
         dbconn=dbconn,
@@ -27,8 +34,8 @@ def test_insert_rows(dbconn: DBConn):
         ]
     )
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(TEST_DF)
-    assert_df_equal(new_df, TEST_DF)
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
+    assert_df_equal(new_df, test_df)
     assert(len(changed_df) == 0)
 
     assert_df_equal(new_meta_df[['id']], new_df[['id']])
@@ -38,6 +45,6 @@ def test_insert_rows(dbconn: DBConn):
 
     meta_df = mt.get_metadata()
 
-    assert_df_equal(meta_df[['id']], TEST_DF[['id']])
+    assert_df_equal(meta_df[['id']], test_df[['id']])
 
     assert(not meta_df['hash'].isna().any())
