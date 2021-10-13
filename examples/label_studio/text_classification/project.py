@@ -1,7 +1,6 @@
 import shutil
 from datapipe.label_studio.store import TableStoreLabelStudio
 from datapipe.store.database import DBConn
-import time
 from subprocess import Popen
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Table, ExternalTable, Pipeline, BatchTransform
 from datapipe.store.pandas import TableStoreJsonLine
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
+from sqlalchemy.sql.sqltypes import String
 from datapipe.cli import main
 
 
@@ -122,12 +121,13 @@ pipeline = Pipeline([
         func=lambda df: df[['id', 'text', 'prediction', 'category']],
         inputs=['00_input_texts'],
         outputs=['01_label_studio'],
-        chunk_size=100
+        chunk_size=1000
     ),
     BatchTransform(
         func=lambda df: df[['id', 'annotations']],
         inputs=["01_label_studio"],
         outputs=["02_annotation_raw"],
+        chunk_size=5000
     ),
     BatchTransform(
         parse_annotation,
@@ -136,18 +136,16 @@ pipeline = Pipeline([
     ),
 ])
 
-# from traceback_with_variables import activate_by_import
-
+# Run "python project.py run-periodic 5"
 if __name__ == "__main__":
-    # label_studio_service = Popen([
-    #     'label-studio',
-    #     '--database', str(DATA_DIR / 'xx_datatables' / 'ls.db'),
-    #     '--internal-host', '0.0.0.0',
-    #     '--port', LS_PORT,
-    #     '--no-browser'
-    # ])
+    label_studio_service = Popen([
+        'label-studio',
+        '--database', str(DATA_DIR / 'xx_datatables' / 'ls.db'),
+        '--internal-host', '0.0.0.0',
+        '--port', LS_PORT,
+        '--no-browser'
+    ])
     try:
         main(ds, catalog, pipeline)
     finally:
-        # label_studio_service.terminate()
-        pass
+        label_studio_service.terminate()

@@ -144,6 +144,7 @@ pipeline = Pipeline([
 steps = build_compute(ds, catalog, pipeline)
 
 
+# Run "python project.py run-periodic 5"
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 

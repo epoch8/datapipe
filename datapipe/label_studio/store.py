@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Tuple, Union, Optional, cast
+from typing import Any, Dict, Iterator, List, Tuple, Union, Optional
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -136,7 +136,7 @@ class TableStoreLabelStudio(TableStore):
             )
             self._project_id = project['id']
             self.label_studio_session.create_view(
-                self._project_id, 
+                self._project_id,
                 data={
                     "title": "Default Tab",
                     "ordering": [],
@@ -250,7 +250,8 @@ class TableStoreLabelStudio(TableStore):
             ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
             ls_indexes_intersection = index_intersection(idx, ls_indexes)
             tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
-            self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
+            if len(tasks_ids) > 0:
+                self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
 
     def insert_rows(self, df: DataDF) -> None:
         """
@@ -296,7 +297,7 @@ class TableStoreLabelStudio(TableStore):
             Получить все задачи без разметки и data_columns
         """
         total_tasks_count = self.get_total_tasks_count()
-        total_pages = total_tasks_count // self.page_chunk_size + 1
+        total_pages = total_tasks_count // chunksize + 1
 
         for page in range(1, total_pages + 1):
             tasks = self.label_studio_session.get_all_tasks_from_view(
