@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, Union, Optional, cast
+from typing import Any, Dict, Iterator, List, Tuple, Union, Optional, cast
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -45,7 +45,7 @@ class TableStoreLabelStudio(TableStore):
             auth=auth
         )
         self.page_chunk_size = page_chunk_size
-        self._project_id = None
+        self._project_id: Optional[str] = None
         self.view_data = {
             "title": "datapipe_view [DO NOT CHANGE OR DELETE IT]",
             "type": "list",
@@ -135,10 +135,14 @@ class TableStoreLabelStudio(TableStore):
 
     def get_or_create_view(
         self,
-    ) -> Optional[str]:
+    ) -> str:
         views = self.label_studio_session.get_all_views()
         project_id = self.get_or_create_project()
-        views_found = [view for view in views if view['project'] == project_id and view['data'] == self.view_data]
+        views_found: List[Dict[str, Any]] = [
+            view
+            for view in views
+            if view['project'] == project_id and view['data'] == self.view_data
+        ]
         if len(views_found) == 0:
             view = self.label_studio_session.create_view(self.get_or_create_project(), data=self.view_data)
             views_found = [view]

@@ -206,7 +206,7 @@ class LabelStudioSession:
 
     def get_all_views(
         self
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         views = self.session.get(
             url=urljoin(self.ls_url, 'api/dm/views/')
         )
