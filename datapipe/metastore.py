@@ -5,7 +5,7 @@ import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, bindparam, or_, select, update
+from sqlalchemy.sql.expression import and_, bindparam, column, or_, select, tuple_, update, values
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
@@ -76,21 +76,54 @@ class MetaTable:
         sql = select(self.sql_schema)
 
         if idx is not None:
-            row_queries = []
+            if len(self.primary_keys) == 1:
+                # Подход с values не работает, когда индекс один
+                key = self.primary_keys[0]
+                sql = sql.where(
+                    self.sql_table.c[key].in_(idx[key].to_list())
+                )
 
-            for _, row in idx.iterrows():
-                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
-                and_query = and_(*and_params)
-                row_queries.append(and_query)
+            else:
+                # Когда индексных полей много приходится мудрить
+                #
+                # Раньше здесь был where (id1=? AND id2=?) OR (id1=? AND id2=?)
+                # но SQLite не дает делать "сложность" дерева запросов больше 1000
+                # то есть больше 1000 OR подряд нельзя, а мы хотим уметь чанки большего размера
+                #
+                # Другой способ сделать то же самое - через VALUES:
+                # https://sqlite.org/forum/info/6cb4fbeb3fc1e527
 
-            sql = sql.where(or_(*row_queries))
+                keys = tuple_(*[
+                    self.sql_table.c[key]
+                    for key in self.primary_keys
+                ])
+
+                if self.dbconn.con.name == 'sqlite':
+                    # SQLite не любит алиас у VALUES
+                    alias_kw = {}
+                else:
+                    # А Postgres-у наооброт алиас у VALUES нужен
+                    alias_kw = {
+                        'name': 'values'
+                    }
+
+                sql = sql.where(keys.in_(
+                    values(
+                        *[column(key) for key in self.primary_keys],
+                        **alias_kw,
+                    )
+                    .data([
+                        tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
+                        for r in idx.to_dict(orient='records')
+                    ])
+                ))
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
         return pd.read_sql_query(
             sql,
-            con=self.dbconn.con
+            con=self.dbconn.con,
         )
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
