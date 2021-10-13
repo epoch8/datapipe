@@ -287,20 +287,20 @@ class TableStoreLabelStudio(TableStore):
 
         return pd.concat(output_df, ignore_index=True)
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
-        tasks = self.label_studio_session.get_all_tasks_from_view(
-            self.get_or_create_view(), page=1, page_size=100000000
-        )
-        meta_pseudo_df = pd.DataFrame({
-            **{
-                primary_key: [task['data'][primary_key] for task in tasks]
-                for primary_key in self.primary_keys + self.data_columns
-            },
-            'completed_at': [str(task['completed_at']) for task in tasks]
-        })
-        if idx is not None:
-            data_idx = data_to_index(meta_pseudo_df, self.primary_keys)
-            intersection_idx = index_intersection(data_idx, idx)
-            meta_pseudo_df = index_to_data(meta_pseudo_df, intersection_idx)
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+        total_tasks_count = self.get_total_tasks_count()
+        total_pages = total_tasks_count // self.page_chunk_size + 1
 
-        yield meta_pseudo_df
+        for page in range(1, total_pages + 1):
+            tasks = self.label_studio_session.get_all_tasks_from_view(
+                self.get_or_create_view(), page=page, page_size=chunksize
+            )
+            meta_pseudo_df = pd.DataFrame({
+                **{
+                    primary_key: [task['data'][primary_key] for task in tasks]
+                    for primary_key in self.primary_keys + self.data_columns
+                },
+                'completed_at': [str(task['completed_at']) for task in tasks]
+            })
+
+            yield meta_pseudo_df

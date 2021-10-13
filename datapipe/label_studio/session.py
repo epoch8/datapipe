@@ -240,8 +240,11 @@ class LabelStudioSession:
                 'page_size': page_size,
                 **params
             }
-        )
-        return result.json()['tasks']
+        ).json()
+        if 'tasks' in result:
+            return result['tasks']
+        else:
+            return []
 
     def delete_view(
         self,

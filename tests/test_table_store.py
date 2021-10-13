@@ -238,4 +238,10 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
 
     assert(isinstance(pseudo_df_iter, Iterable))
-    assert(isinstance(next(pseudo_df_iter), DataDF))
+    idxs_dfs = []
+    for pseudo_df_iter in pseudo_df_iter:
+        assert(isinstance(pseudo_df_iter, DataDF))
+        idxs_dfs.append(pseudo_df_iter[store.primary_keys])
+    idxs_df = pd.concat(idxs_dfs)
+    assert len(idxs_df) == len(test_df)
+    assert(sorted(list(idxs_df.columns)) == sorted(store.primary_keys))
