@@ -99,7 +99,10 @@ class MetaTable:
                 ])
 
                 sql = sql.where(keys.in_(
-                    values(*[column(key) for key in self.primary_keys])
+                    values(
+                        *[column(key) for key in self.primary_keys],
+                        alias_name="values",
+                    )
                     .data([
                         tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
                         for r in idx.to_dict(orient='records')
