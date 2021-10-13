@@ -7,12 +7,16 @@ from datapipe.dsl import Catalog, Pipeline
 def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     @click.group()
     @click.option('--debug', is_flag=True, help='Log debug output')
-    def cli(debug):
+    @click.option('--debug-sql', is_flag=True, help='Log SQL queries VERY VERBOSE')
+    def cli(debug: bool, debug_sql: bool) -> None:
         import logging
         if debug:
             logging.basicConfig(level=logging.DEBUG)
         else:
             logging.basicConfig(level=logging.INFO)
+
+        if debug_sql:
+            logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
     @cli.command()
     def run():

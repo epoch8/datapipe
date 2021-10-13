@@ -303,4 +303,4 @@ class TableStoreLabelStudio(TableStore):
             intersection_idx = index_intersection(data_idx, idx)
             meta_pseudo_df = index_to_data(meta_pseudo_df, intersection_idx)
 
-        return meta_pseudo_df
+        yield meta_pseudo_df
