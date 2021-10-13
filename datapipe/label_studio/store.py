@@ -3,7 +3,7 @@ from typing import Any, Dict, Iterator, List, Tuple, Union, Optional, cast
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
-    DataDF, DataSchema, IndexDF, data_to_index, index_difference, index_intersection, index_to_data
+    DataDF, DataSchema, IndexDF, data_to_index, index_intersection, index_to_data
 )
 import numpy as np
 
@@ -31,7 +31,7 @@ class TableStoreLabelStudio(TableStore):
         predictions: Optional[str] = None,
         project_description: str = "",
         page_chunk_size: int = 100,
-        tqdm_disable: bool = False
+        tqdm_disable: bool = True
     ) -> None:
         self.ls_url = ls_url
         self.auth = auth
@@ -208,31 +208,35 @@ class TableStoreLabelStudio(TableStore):
                 ]
             yield output_df
 
-    def get_current_tasks_from_LS_without_annotations(self) -> DataDF:
+    def get_current_tasks_from_LS_without_annotations(self, chunksize: int = 10000) -> Iterator[DataDF]:
         """
             Возвращает все задачи из сервера LS без разметки, с primary ключами плюс tasks_id
         """
-        tasks = self.label_studio_session.get_all_tasks_from_view(
-            self.get_or_create_view(), page=1, page_size=100000000
-        )
-        ls_indexes_df = pd.DataFrame({
-            **{
-                primary_key: [task['data'][primary_key] for task in tasks]
-                for primary_key in self.primary_keys + self.data_columns
-            },
-            'tasks_id': [str(task['id']) for task in tasks]
-        })
-        return ls_indexes_df
+        total_tasks_count = self.get_total_tasks_count()
+        total_pages = total_tasks_count // self.page_chunk_size + 1
+
+        for page in range(1, total_pages + 1):
+            tasks = self.label_studio_session.get_all_tasks_from_view(
+                self.get_or_create_view(), page=page, page_size=chunksize
+            )
+            ls_indexes_df = pd.DataFrame({
+                **{
+                    primary_key: [task['data'][primary_key] for task in tasks]
+                    for primary_key in self.primary_keys + self.data_columns
+                },
+                'tasks_id': [str(task['id']) for task in tasks]
+            })
+            yield ls_indexes_df
 
     def delete_rows(self, idx: IndexDF) -> None:
         """
             Удаляет из LS задачи с заданными индексами
         """
-        ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
-        ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
-        ls_indexes_intersection = index_intersection(idx, ls_indexes)
-        tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
-        self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
+        for ls_indexes_df in self.get_current_tasks_from_LS_without_annotations():
+            ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
+            ls_indexes_intersection = index_intersection(idx, ls_indexes)
+            tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
+            self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
 
     def insert_rows(self, df: DataDF) -> None:
         """
@@ -259,22 +263,8 @@ class TableStoreLabelStudio(TableStore):
         self.label_studio_session.upload_tasks(data=data, project_id=self.get_or_create_project())
 
     def update_rows(self, df: DataDF) -> None:
-        """
-            Изменяет в LS задачи следующим образом:
-            1) добавляет новые задачи с новыми ключами;
-            2) удаляет и пересоздает те же задачи с измененными ключами;
-            3) удаляет задачи на удаленных ключах
-        """
-        ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
-        ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
-        df_idxs = data_to_index(df, self.primary_keys)
-
-        new_idx = index_difference(df_idxs, ls_indexes)  # To be added to LS
-        to_be_updated_idx = index_intersection(df_idxs, ls_indexes)  # To be deleted from LS and uploadedd as new to LS
-        deleted_idx = index_difference(df_idxs, ls_indexes)  # To be deleted from LS
-
-        self.delete_rows(cast(IndexDF, pd.concat([to_be_updated_idx, deleted_idx], ignore_index=True)))
-        self.insert_rows(index_to_data(df, cast(IndexDF, pd.concat([new_idx, to_be_updated_idx], ignore_index=True))))
+        self.delete_rows(data_to_index(df, self.primary_keys))
+        self.insert_rows(df)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
         output_df = []
@@ -287,7 +277,7 @@ class TableStoreLabelStudio(TableStore):
 
         return pd.concat(output_df, ignore_index=True)
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 10000) -> Iterator[DataDF]:
         total_tasks_count = self.get_total_tasks_count()
         total_pages = total_tasks_count // self.page_chunk_size + 1
 
