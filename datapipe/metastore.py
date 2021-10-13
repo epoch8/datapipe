@@ -98,10 +98,19 @@ class MetaTable:
                     for key in self.primary_keys
                 ])
 
+                if self.dbconn.con.name == 'sqlite':
+                    # SQLite не любит алиас у VALUES
+                    alias_kw = {}
+                else:
+                    # А Postgres-у наооброт алиас у VALUES нужен
+                    alias_kw = {
+                        'name': 'values'
+                    }
+
                 sql = sql.where(keys.in_(
                     values(
                         *[column(key) for key in self.primary_keys],
-                        name="values",
+                        **alias_kw,
                     )
                     .data([
                         tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
