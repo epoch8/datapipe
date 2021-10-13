@@ -219,7 +219,7 @@ class DataStore:
         idx_count = self.meta_dbconn.con.execute(
             select([func.count()])
             .select_from(
-                alias(u1, name='union_select')
+                alias(u1.subquery(), name='union_select')
             )
         ).scalar()
 
@@ -371,8 +371,9 @@ class ExternalTableUpdater(ComputeStep):
         self.output_dts = [table]
 
     def run(self, ds: DataStore) -> None:
+        now = time.time()
+
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
-            now = time.time()
 
             _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 

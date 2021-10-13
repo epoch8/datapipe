@@ -1,5 +1,6 @@
 from typing import List, Any, Dict, Union, Optional, Iterator
 
+import copy
 import logging
 import pandas as pd
 
@@ -76,7 +77,7 @@ class TableStoreDB(TableStore):
 
         self.data_table = Table(
             self.name, self.dbconn.sqla_metadata,
-            *[i.copy() for i in self.data_sql_schema],
+            *[copy.copy(i) for i in self.data_sql_schema],
             extend_existing=True
         )
 

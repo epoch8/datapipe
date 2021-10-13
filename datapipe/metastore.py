@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterator, Tuple, Dict, cast
 
+import copy
 import logging
 import time
 
@@ -55,7 +56,7 @@ class MetaTable:
 
         sql_schema = primary_schema + METADATA_SQL_SCHEMA
 
-        self.sql_schema = [i.copy() for i in sql_schema]
+        self.sql_schema = [copy.copy(i) for i in sql_schema]
 
         self.sql_table = Table(
             f'{self.name}_meta',
