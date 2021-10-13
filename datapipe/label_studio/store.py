@@ -45,6 +45,37 @@ class TableStoreLabelStudio(TableStore):
             auth=auth
         )
         self.page_chunk_size = page_chunk_size
+        self._project_id = None
+        self.view_data = {
+            "title": "datapipe_view [DO NOT CHANGE OR DELETE IT]",
+            "type": "list",
+            "target": "tasks",
+            "hiddenColumns": {
+                "explore": [
+                    "tasks:completed_at",
+                    "tasks:cancelled_annotations",
+                    "tasks:total_predictions",
+                    "tasks:annotators",
+                    "tasks:total_annotations",
+                    "tasks:annotations_results",
+                    "tasks:annotations_ids",
+                    "tasks:predictions_score",
+                    "tasks:predictions_results",
+                    "tasks:file_upload",
+                    "tasks:created_at"
+                ],
+                "labeling": [
+                    "tasks:id"
+                ]
+            },
+            "columnsWidth": {},
+            "columnsDisplayType": {},
+            "gridWidth": 4,
+            "filters": {
+                "conjunction": "and",
+                "items": []
+            }
+        }
         self.get_or_create_project(raise_exception=False)
 
     def get_primary_schema(self) -> DataSchema:
@@ -58,6 +89,9 @@ class TableStoreLabelStudio(TableStore):
         ]
 
     def get_or_create_project(self, raise_exception: bool = True) -> str:
+        if self._project_id is not None:
+            return self._project_id
+
         if not self.label_studio_session.is_service_up(raise_exception=raise_exception):
             return '-1'
 
@@ -66,8 +100,8 @@ class TableStoreLabelStudio(TableStore):
             self.label_studio_session.sign_up()
             self.label_studio_session.is_auth_ok(raise_exception=True)
 
-        project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
-        if project_id is None:
+        self._project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
+        if self._project_id is None:
             project = self.label_studio_session.create_project(
                 project_setting={
                     "title": self.project_title,
@@ -95,22 +129,44 @@ class TableStoreLabelStudio(TableStore):
                     "control_weights": {}
                 }
             )
-            project_id = project['id']
+            self._project_id = project['id']
 
-        return project_id
+        return self._project_id
 
-    def get_current_tasks_from_LS(self, include_annotations: bool) -> Iterator[DataDF]:
-        """
-            Возвращает все задачи из сервера LS
-        """
-        self.label_studio_session.is_service_up(raise_exception=True)
-        project_summary = self.label_studio_session.get_project_summary(self.get_or_create_project())
+    def get_or_create_view(
+        self,
+    ) -> Optional[str]:
+        views = self.label_studio_session.get_all_views()
+        project_id = self.get_or_create_project()
+        views_found = [view for view in views if view['project'] == project_id and view['data'] == self.view_data]
+        if len(views_found) == 0:
+            view = self.label_studio_session.create_view(self.get_or_create_project(), data=self.view_data)
+            views_found = [view]
+        elif len(views_found) >= 2:
+            # Удаляем какие-то лишние странные views
+            for view in views_found[1:]:
+                self.label_studio_session.delete_view(view_id=view['id'])
+            views_found = [views_found[0]]
+
+        view_id = views_found[0]['id']
+        return view_id
+
+    def get_total_tasks_count(self) -> int:
+        project_id = self.get_or_create_project()
+        project_summary = self.label_studio_session.get_project_summary(project_id)
         if 'all_data_columns' not in project_summary:
             total_tasks_count = 0
         else:
             keys = [key for key in self.data_columns if key in project_summary['all_data_columns']]
             total_tasks_count = project_summary['all_data_columns'][keys[0]] if len(keys) > 0 else 0
+        return total_tasks_count
 
+    def get_current_tasks_from_LS_with_annotations(self) -> Iterator[DataDF]:
+        """
+            Возвращает все задачи из сервера LS вместе с разметкой
+        """
+        self.label_studio_session.is_service_up(raise_exception=True)
+        total_tasks_count = self.get_total_tasks_count()
         total_pages = total_tasks_count // self.page_chunk_size + 1
 
         # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
@@ -133,26 +189,27 @@ class TableStoreLabelStudio(TableStore):
                         primary_key: [task['data'][primary_key] for task in tasks_page]
                         for primary_key in self.primary_keys + self.data_columns
                     },
-                    'tasks_id': [str(task['id']) for task in tasks_page]
+                    'tasks_id': [str(task['id']) for task in tasks_page],
+                    'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
                 }
             )
-            if include_annotations:
-                output_df['annotations'] = [_cleanup_annotations(task['annotations']) for task in tasks_page]
-
             yield output_df
 
-    def get_current_indexes_from_LS(self) -> DataDF:
+    def get_current_tasks_from_LS_without_annotations(self) -> DataDF:
         """
-            Возвращает все текущие в LS колонки .primary_keys плюс айдишники задач в LS tasks_id
+            Возвращает все задачи из сервера LS без разметки, с primary ключами плюс tasks_id
         """
-        self.label_studio_session.is_service_up(raise_exception=True)
-        self.get_or_create_project()
-
-        ls_indexes_df: List[pd.DataFrame] = []
-        for current_tasks_as_df in self.get_current_tasks_from_LS(include_annotations=False):
-            ls_indexes_df.append(current_tasks_as_df[self.primary_keys + ['tasks_id']])
-        current_indexes_df = cast(DataDF, pd.concat(ls_indexes_df, ignore_index=True))
-        return current_indexes_df
+        tasks = self.label_studio_session.get_all_tasks_from_view(
+            self.get_or_create_view(), page=1, page_size=100000000
+        )
+        ls_indexes_df = pd.DataFrame({
+            **{
+                primary_key: [task['data'][primary_key] for task in tasks]
+                for primary_key in self.primary_keys + self.data_columns
+            },
+            'tasks_id': [str(task['id']) for task in tasks]
+        })
+        return ls_indexes_df
 
     def delete_rows(self, idx: IndexDF, tasks_ids: Optional[List[str]] = None) -> None:
         """
@@ -163,7 +220,7 @@ class TableStoreLabelStudio(TableStore):
         if tasks_ids is not None:
             assert len(idx) == len(tasks_ids)
         else:
-            ls_indexes_df = self.get_current_indexes_from_LS()
+            ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
             ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
             ls_indexes_intersection = index_intersection(idx, ls_indexes)
             tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
@@ -192,7 +249,7 @@ class TableStoreLabelStudio(TableStore):
 
     def update_rows(self, df: DataDF) -> None:
         self.label_studio_session.is_service_up(raise_exception=True)
-        ls_indexes_df = self.get_current_indexes_from_LS()
+        ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
         ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
         df_idxs = data_to_index(df, self.primary_keys)
 
@@ -211,7 +268,7 @@ class TableStoreLabelStudio(TableStore):
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
         output_df = []
-        for output_df_chunk in self.get_current_tasks_from_LS(include_annotations=True):
+        for output_df_chunk in self.get_current_tasks_from_LS_with_annotations():
             if idx is not None:
                 data_idx = data_to_index(output_df_chunk, self.primary_keys)
                 intersection_idx = index_intersection(data_idx, idx)
@@ -221,4 +278,19 @@ class TableStoreLabelStudio(TableStore):
         return pd.concat(output_df, ignore_index=True)
 
     def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
-        raise NotImplementedError
+        tasks = self.label_studio_session.get_all_tasks_from_view(
+            self.get_or_create_view(), page=1, page_size=100000000
+        )
+        meta_pseudo_df = pd.DataFrame({
+            **{
+                primary_key: [task['data'][primary_key] for task in tasks]
+                for primary_key in self.primary_keys + self.data_columns
+            },
+            'completed_at': [str(task['completed_at']) for task in tasks]
+        })
+        if idx is not None:
+            data_idx = data_to_index(meta_pseudo_df, self.primary_keys)
+            intersection_idx = index_intersection(data_idx, idx)
+            meta_pseudo_df = index_to_data(meta_pseudo_df, intersection_idx)
+
+        return meta_pseudo_df

@@ -44,7 +44,7 @@ def ls_url(tmp_dir):
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'True'))):
+    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'False'))):
         label_studio_service = Popen([
             'label-studio',
             '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
@@ -68,12 +68,12 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
             raise_exception = True
 
 
-# def test_sign_up(ls_url):
-#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-#     wait_until_label_studio_is_up(label_studio_session)
-#     assert not label_studio_session.is_auth_ok(raise_exception=False)
-#     label_studio_session.sign_up()
-#     assert label_studio_session.is_auth_ok(raise_exception=False)
+def test_sign_up(ls_url):
+    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+    wait_until_label_studio_is_up(label_studio_session)
+    assert not label_studio_session.is_auth_ok(raise_exception=False)
+    label_studio_session.sign_up()
+    assert label_studio_session.is_auth_ok(raise_exception=False)
 
 
 def gen_data_df():

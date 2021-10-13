@@ -203,3 +203,51 @@ class LabelStudioSession:
         summary = self.session.get(urljoin(self.ls_url, f'api/projects/{project_id}/summary/')).json()
 
         return summary
+
+    def get_all_views(
+        self
+    ) -> Dict[str, Any]:
+        views = self.session.get(
+            url=urljoin(self.ls_url, 'api/dm/views/')
+        )
+        return views.json()
+
+    def create_view(
+        self,
+        project_id: Union[int, str],
+        data: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        result = self.session.post(
+            url=urljoin(self.ls_url, 'api/dm/views/'),
+            json={
+                'project': project_id,
+                'data': data
+            }
+        )
+        return result.json()
+
+    def get_all_tasks_from_view(
+        self,
+        view_id: Union[int, str],
+        page: int,
+        page_size: int,
+        **params
+    ) -> List[Dict[str, Any]]:
+        result = self.session.get(
+            url=urljoin(self.ls_url, f'api/dm/views/{view_id}/tasks'),
+            params={
+                'page': page,
+                'page_size': page_size,
+                **params
+            }
+        )
+        return result.json()['tasks']
+
+    def delete_view(
+        self,
+        view_id: Union[int, str]
+    ) -> Dict[str, Any]:
+        result = self.session.delete(
+            url=urljoin(self.ls_url, f'api/dm/views/{view_id}/')
+        )
+        return result.json()
