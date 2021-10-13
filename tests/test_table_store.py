@@ -1,4 +1,3 @@
-import time
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.label_studio.store import TableStoreLabelStudio
 import pytest
@@ -178,7 +177,6 @@ class CasesTableStore:
         )
 
 
-
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert(store.read_rows().empty)
@@ -202,6 +200,7 @@ def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.update_rows(test_df_mod.loc[50:])
 
     assert_df_equal(store.read_rows(), test_df_mod, index_cols=store.primary_keys)
+
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
