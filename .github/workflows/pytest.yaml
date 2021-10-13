@@ -45,7 +45,7 @@ jobs:
         poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent
 
   test:
-    needs: lint
+    # needs: lint
 
     runs-on: ubuntu-latest
     strategy:

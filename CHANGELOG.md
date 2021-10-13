@@ -1,4 +1,8 @@
-# WIP 0.9.7
+# 0.9.8
+
+* Фикс работы с SQLite для чанков больше 1000 (https://github.com/epoch8/datapipe/issues/63)
+
+# 0.9.7
 
 * Новый CLI параметр `--debug-sql`
 * Стриминг реализация чтения данных из БД в `ExternalTable` сценарии
