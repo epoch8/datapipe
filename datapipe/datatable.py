@@ -58,6 +58,12 @@ class DataTable:
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+
+        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+            self.event_logger.log_state(
+                self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+            )
+
         # TODO implement transaction meckanism
         self.table_store.insert_rows(new_df)
         self.table_store.update_rows(changed_df)
@@ -376,6 +382,11 @@ class ExternalTableUpdater(ComputeStep):
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
 
             _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+
+            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+                ds.event_logger.log_state(
+                    self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+                )
 
             # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
 

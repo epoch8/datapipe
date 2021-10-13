@@ -215,11 +215,6 @@ class MetaTable:
         changed_meta_df['delete_ts'] = None
         changed_meta_df['hash'] = changed_meta_df['data_hash']
 
-        if len(new_df.index) > 0 or len(changed_idx) > 0:
-            self.event_logger.log_state(
-                self.name, added_count=len(new_df.index), updated_count=len(changed_idx), deleted_count=0
-            )
-
         return (
             cast(DataDF, new_df),
             cast(DataDF, changed_df),

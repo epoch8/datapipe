@@ -29,7 +29,11 @@ def test_insert_rows(dbconn: DBConn):
 
     new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(TEST_DF)
     assert_df_equal(new_df, TEST_DF)
+
+    assert(len(new_df) == len(TEST_DF))
+    assert(len(new_meta_df) == len(TEST_DF))
     assert(len(changed_df) == 0)
+    assert(len(changed_meta_df) == 0)
 
     assert_df_equal(new_meta_df[['id']], new_df[['id']])
 
