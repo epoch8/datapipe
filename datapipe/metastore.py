@@ -101,7 +101,7 @@ class MetaTable:
                 sql = sql.where(keys.in_(
                     values(
                         *[column(key) for key in self.primary_keys],
-                        alias_name="values",
+                        name="values",
                     )
                     .data([
                         tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
