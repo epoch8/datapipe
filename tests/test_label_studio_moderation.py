@@ -68,19 +68,23 @@ def wait_until_label_studio_is_up(label_studio_session: LabelStudioSession):
             raise_exception = True
 
 
-def test_sign_up(ls_url):
-    label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
-    wait_until_label_studio_is_up(label_studio_session)
-    assert not label_studio_session.is_auth_ok(raise_exception=False)
-    label_studio_session.sign_up()
-    assert label_studio_session.is_auth_ok(raise_exception=False)
+# def test_sign_up(ls_url):
+#     label_studio_session = LabelStudioSession(ls_url=ls_url, auth=('test_auth@epoch8.co', 'qwerty123'))
+#     wait_until_label_studio_is_up(label_studio_session)
+#     assert not label_studio_session.is_auth_ok(raise_exception=False)
+#     label_studio_session.sign_up()
+#     assert label_studio_session.is_auth_ok(raise_exception=False)
+
+
+TASKS_COUNT = 1000
+PAGE_CHUNK_SIZE = 100
 
 
 def gen_data_df():
     yield pd.DataFrame(
         {
-            'id': [f'task_{i}' for i in range(10)],
-            'text': [np.random.choice([x for x in string.ascii_letters]) for i in range(10)]
+            'id': [f'task_{i}' for i in range(TASKS_COUNT)],
+            'text': [np.random.choice([x for x in string.ascii_letters]) for i in range(TASKS_COUNT)]
         }
     )
 
@@ -117,7 +121,7 @@ def convert_to_ls_input_data(
                     "to_name": "text",
                     "type": "choices"
                 }]
-            }] for i in range(10)]
+            }] for i in range(TASKS_COUNT)]
             columns.append(column)
 
     return data_df[columns]
@@ -131,33 +135,33 @@ INCLUDE_PARAMS = [
         },
         id='default'
     ),
-    pytest.param(
-        {
-            'include_preannotations': True,
-            'include_predictions': False
-        },
-        id='with_annotations'
-    ),
-    pytest.param(
-        {
-            'include_preannotations': False,
-            'include_predictions': True
-        },
-        id='with_predictions'
-    ),
-    pytest.param(
-        {
-            'include_preannotations': True,
-            'include_predictions': True
-        },
-        id='with_annotations_and_predictions'
-    ),
+    # pytest.param(
+    #     {
+    #         'include_preannotations': True,
+    #         'include_predictions': False
+    #     },
+    #     id='with_annotations'
+    # ),
+    # pytest.param(
+    #     {
+    #         'include_preannotations': False,
+    #         'include_predictions': True
+    #     },
+    #     id='with_predictions'
+    # ),
+    # pytest.param(
+    #     {
+    #         'include_preannotations': True,
+    #         'include_predictions': True
+    #     },
+    #     id='with_annotations_and_predictions'
+    # ),
 ]
 
 
 class CasesLabelStudio:
     @parametrize('include_params', INCLUDE_PARAMS)
-    def case_ls(self, include_params, dbconn, tmp_dir, ls_url, request):
+    def case_ls(self, include_params, dbconn, ls_url, request):
         include_preannotations, include_predictions = (
             include_params['include_preannotations'], include_params['include_predictions']
         )
@@ -232,11 +236,11 @@ def test_label_studio_moderation(
     )
     run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == 10
+    assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == TASKS_COUNT
 
     # Проверяем проверку на заливку уже размеченных данных
     if include_preannotations:
-        assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == 10
+        assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == TASKS_COUNT
         df_annotation = catalog.get_datatable(ds, '01_annotations').get_data()
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == 1
@@ -288,16 +292,16 @@ def test_label_studio_update_tasks_when_data_is_changed(
     def _gen():
         yield pd.DataFrame(
             {
-                'id': [f'task_{i}' for i in range(10)],
-                'text': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+                'id': [f'task_{i}' for i in range(TASKS_COUNT)],
+                'text': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] * (TASKS_COUNT // 10)
             }
         )
 
     def _gen2():
         yield pd.DataFrame(
             {
-                'id': [f'task_{i}' for i in range(10)],
-                'text': ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j']
+                'id': [f'task_{i}' for i in range(TASKS_COUNT)],
+                'text': ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j'] * (TASKS_COUNT // 10)
             }
         )
 
@@ -310,9 +314,11 @@ def test_label_studio_update_tasks_when_data_is_changed(
 
     project_id = label_studio_session.get_project_id_by_title(project_title)
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    assert len(tasks) == 10
+    assert len(tasks) == TASKS_COUNT
 
-    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(by='id').reset_index(
+    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(
+        by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
+    ).reset_index(
         drop=True
     )
     assert_df_equal(df, next(_gen2()))
@@ -352,9 +358,11 @@ def test_label_studio_update_tasks_when_data_is_deleted(
 
     project_id = label_studio_session.get_project_id_by_title(project_title)
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    assert len(tasks) == 5
+    assert len(tasks) == TASKS_COUNT - 5
 
-    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(by='id').reset_index(
+    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(
+        by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
+    ).reset_index(
         drop=True
     )
     assert_df_equal(df, data_df2)

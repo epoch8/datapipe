@@ -180,7 +180,7 @@ class TableStoreLabelStudio(TableStore):
                     del ann['created_ago']
             return annotations
 
-        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...', disable=True):
+        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
             tasks_page = self.label_studio_session.get_tasks(
                 project_id=self.get_or_create_project(),
                 page=page,
@@ -215,33 +215,28 @@ class TableStoreLabelStudio(TableStore):
         })
         return ls_indexes_df
 
-    def delete_rows(self, idx: IndexDF, tasks_ids: Optional[List[str]] = None) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         """
-            Удаляет из LS задачи с заданными строками.
-            tasks_ids -- кидаем сюда список номеров задач, если они известны (в целях ускорения)
+            Удаляет из LS задачи с заданными индексами
         """
         self.label_studio_session.is_service_up(raise_exception=True)
-        if tasks_ids is not None:
-            assert len(idx) == len(tasks_ids)
-        else:
-            ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
-            ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
-            ls_indexes_intersection = index_intersection(idx, ls_indexes)
-            tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
+        ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
+        ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
+        ls_indexes_intersection = index_intersection(idx, ls_indexes)
+        tasks_ids = list(index_to_data(ls_indexes_df, ls_indexes_intersection)['tasks_id'])
         self.label_studio_session.delete_tasks(project_id=self.get_or_create_project(), tasks_ids=tasks_ids)
 
     def insert_rows(self, df: DataDF) -> None:
+        """
+            Добавляет в LS новые задачи с заданными ключами
+        """
         self.label_studio_session.is_service_up(raise_exception=True)
         data = [
             {
                 'data': {
                     **{
                         primary_key: df.loc[idx, primary_key]
-                        for primary_key in self.primary_keys
-                    },
-                    **{
-                        column: df.loc[idx, column]
-                        for column in self.data_columns
+                        for primary_key in self.primary_keys + self.data_columns
                     }
                 },
                 'annotations': df.loc[idx, self.preannotations] if self.preannotations is not None else [],
@@ -252,22 +247,22 @@ class TableStoreLabelStudio(TableStore):
         self.label_studio_session.upload_tasks(data=data, project_id=self.get_or_create_project())
 
     def update_rows(self, df: DataDF) -> None:
+        """
+            Изменяет в LS задачи следующим образом:
+            1) добавляет новые задачи с новыми ключами;
+            2) удаляет и пересоздает те же задачи с измененными ключами;
+            3) удаляет задачи на удаленных ключах
+        """
         self.label_studio_session.is_service_up(raise_exception=True)
         ls_indexes_df = self.get_current_tasks_from_LS_without_annotations()
         ls_indexes = data_to_index(ls_indexes_df, self.primary_keys)
         df_idxs = data_to_index(df, self.primary_keys)
 
         new_idx = index_difference(df_idxs, ls_indexes)  # To be added to LS
-        to_be_updated_idx = index_intersection(df_idxs, ls_indexes)  # To be deleted from LS and updated as new to LS
+        to_be_updated_idx = index_intersection(df_idxs, ls_indexes)  # To be deleted from LS and uploadedd as new to LS
         deleted_idx = index_difference(df_idxs, ls_indexes)  # To be deleted from LS
 
-        tasks_ids_to_be_deleted: List[str] = index_to_data(ls_indexes_df, deleted_idx)['tasks_id'].tolist()
-        tasks_ids_to_be_updated: List[str] = index_to_data(ls_indexes_df, to_be_updated_idx)['tasks_id'].tolist()
-
-        self.delete_rows(
-            cast(IndexDF, pd.concat([to_be_updated_idx, deleted_idx], ignore_index=True)),
-            tasks_ids=tasks_ids_to_be_updated + tasks_ids_to_be_deleted
-        )
+        self.delete_rows(cast(IndexDF, pd.concat([to_be_updated_idx, deleted_idx], ignore_index=True)))
         self.insert_rows(index_to_data(df, cast(IndexDF, pd.concat([new_idx, to_be_updated_idx], ignore_index=True))))
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
