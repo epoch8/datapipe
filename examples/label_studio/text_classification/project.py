@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Table, ExternalTable, Pipeline, BatchTransform
+from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform, UpdateMetaTable
 from datapipe.store.pandas import TableStoreJsonLine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import String
@@ -82,7 +82,7 @@ catalog = Catalog({
             ],
         )
     ),
-    '01_label_studio': ExternalTable(
+    '01_label_studio': Table(
         TableStoreLabelStudio(
             ls_url=f'http://{HOST}:{LS_PORT}/',
             auth=('moderation@epoch8.co', 'qwerty123'),
@@ -122,6 +122,9 @@ pipeline = Pipeline([
         inputs=['00_input_texts'],
         outputs=['01_label_studio'],
         chunk_size=1000
+    ),
+    UpdateMetaTable(
+        outputs=['01_label_studio']
     ),
     BatchTransform(
         func=lambda df: df[['id', 'annotations']],

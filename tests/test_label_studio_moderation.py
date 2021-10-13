@@ -10,7 +10,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchTransform
+from datapipe.dsl import BatchGenerate, Catalog, Pipeline, Table, BatchTransform, UpdateMetaTable
 from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
 from datapipe.compute import build_compute, run_steps
@@ -145,7 +145,7 @@ class CasesLabelStudio:
                     ],
                 )
             ),
-            '01_annotations': ExternalTable(
+            '01_label_studio': Table(
                 TableStoreLabelStudio(
                     ls_url=ls_url,
                     auth=auth,
@@ -169,8 +169,11 @@ class CasesLabelStudio:
                     include_predictions=include_predictions
                 ),
                 inputs=['00_input_data'],
-                outputs=['01_annotations']
+                outputs=['01_label_studio']
             ),
+            UpdateMetaTable(
+                outputs=['01_label_studio']
+            )
         ])
         steps = build_compute(ds, catalog, pipeline)
         label_studio_session = LabelStudioSession(ls_url=ls_url, auth=auth)
@@ -202,12 +205,12 @@ def test_label_studio_moderation(
     )
     run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == TASKS_COUNT
+    assert len(catalog.get_datatable(ds, '01_label_studio').get_data()) == TASKS_COUNT
 
     # Проверяем проверку на заливку уже размеченных данных
     if include_preannotations:
-        assert len(catalog.get_datatable(ds, '01_annotations').get_data()) == TASKS_COUNT
-        df_annotation = catalog.get_datatable(ds, '01_annotations').get_data()
+        assert len(catalog.get_datatable(ds, '01_label_studio').get_data()) == TASKS_COUNT
+        df_annotation = catalog.get_datatable(ds, '01_label_studio').get_data()
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == 1
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
@@ -239,7 +242,7 @@ def test_label_studio_moderation(
                 'id': [task['data']['id'] for task in tasks[idxs]]
             }
         )
-        df_annotation = catalog.get_datatable(ds, '01_annotations').get_data(idx=idxs_df)
+        df_annotation = catalog.get_datatable(ds, '01_label_studio').get_data(idx=idxs_df)
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == (1 + include_preannotations)
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
@@ -282,7 +285,7 @@ def test_label_studio_when_data_is_changed(
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT
 
-    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(
+    df = catalog.get_datatable(ds, '01_label_studio').get_data()[['id', 'text']].sort_values(
         by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
     ).reset_index(
         drop=True
@@ -313,7 +316,7 @@ def test_label_studio_when_some_data_is_deleted(
     )
     run_steps(ds, steps)
 
-    # Remove 5 elements from df
+    # Change 5 input elements
     gen_process(
         dt=catalog.get_datatable(ds, '00_input_data'),
         proc_func=_gen2
@@ -326,7 +329,7 @@ def test_label_studio_when_some_data_is_deleted(
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT - 5
 
-    df = catalog.get_datatable(ds, '01_annotations').get_data()[['id', 'text']].sort_values(
+    df = catalog.get_datatable(ds, '01_label_studio').get_data()[['id', 'text']].sort_values(
         by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
     ).reset_index(
         drop=True

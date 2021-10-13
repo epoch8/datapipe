@@ -54,3 +54,11 @@ class BatchTransform(PipelineStep):
 class BatchGenerate(PipelineStep):
     func: Callable
     outputs: List[str]
+
+
+@dataclass
+class UpdateMetaTable(PipelineStep):
+    '''
+    Явная операция для обновления метаданных таблиц
+    '''
+    outputs: List[str]
