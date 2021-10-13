@@ -58,6 +58,12 @@ class DataTable:
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+
+        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+            self.event_logger.log_state(
+                self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+            )
+
         # TODO implement transaction meckanism
         self.table_store.insert_rows(new_df)
         self.table_store.update_rows(changed_df)
@@ -219,7 +225,7 @@ class DataStore:
         idx_count = self.meta_dbconn.con.execute(
             select([func.count()])
             .select_from(
-                alias(u1, name='union_select')
+                alias(u1.subquery(), name='union_select')
             )
         ).scalar()
 
@@ -371,18 +377,21 @@ class ExternalTableUpdater(ComputeStep):
         self.output_dts = [table]
 
     def run(self, ds: DataStore) -> None:
-        ps_df = self.table.table_store.read_rows_meta_pseudo_df()
+        now = time.time()
 
-        _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df)
+        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
 
-        # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
+            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
-        self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-        self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
+            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+                ds.event_logger.log_state(
+                    self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+                )
 
-        deleted_idx = index_difference(
-            self.table.meta_table.get_existing_idx(),
-            data_to_index(ps_df, self.table.primary_keys)
-        )
+            # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
 
-        self.table.meta_table.mark_rows_deleted(deleted_idx)
+            self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
+            self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
+
+        for stale_idx in self.table.meta_table.get_stale_idx(now):
+            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)

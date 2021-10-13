@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Iterator
 
 from sqlalchemy import Column, String
 import pandas as pd
@@ -29,17 +29,12 @@ class TableStore(ABC):
     def read_rows(self, idx: IndexDF = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(self, idx: Optional[IndexDF] = None) -> DataDF:
-        '''
-        Подготовить датафрейм с "какбы данными" на основе которых посчитается хеш и обновятся метаданные
-        '''
-
-        # TODO переделать на чанкированную обработку
-        return self.read_rows(idx)
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+        # FIXME сделать честную чанкированную реализацию во всех сторах
+        yield self.read_rows()
 
 
 class TableDataSingleFileStore(TableStore):
-
     def __init__(self, filename: Union[Path, str] = None, primary_schema: DataSchema = None):
         if not primary_schema:
             primary_schema = [Column("id", String(), primary_key=True)]
