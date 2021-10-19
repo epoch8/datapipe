@@ -42,11 +42,18 @@ class TableStoreLabelStudio(TableStore):
         self.data_sql_schema: List[Column] = data_sql_schema
         self.data_columns: List[str] = [column.name for column in data_sql_schema if not column.primary_key]
 
+        used_columns = [column.name for column in data_sql_schema]
         self.tasks_id_column = tasks_id_column
         if self.tasks_id_column is not None:
+            assert self.tasks_id_column not in used_columns, (
+                f"The column {self.tasks_id_column=} is already used in data_sql_schema."
+            )
             self.data_sql_schema += [Column(self.tasks_id_column, String())]
         self.annotations_column = annotations_column
         if self.annotations_column is not None:
+            assert self.annotations_column not in used_columns, (
+                f"The column {self.annotations_column=} is already used in data_sql_schema."
+            )
             self.data_sql_schema += [Column(self.annotations_column, String())]
         self.predictions_column = predictions_column
         self.preannotations_column = preannotations_column
