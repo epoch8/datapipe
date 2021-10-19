@@ -178,9 +178,9 @@ class MetaTable:
 
         return res_df[self.primary_keys]
 
-    def get_table_debug_info(self, name: str) -> TableDebugInfo:
+    def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(
-            name=name,
+            name=self.name,
             size=self.dbconn.con.execute(select([func.count()]).select_from(self.sql_table)).fetchone()[0]
         )
 
