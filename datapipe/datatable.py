@@ -14,6 +14,7 @@ from datapipe.store.database import DBConn
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
+from datapipe.step import RunConfig
 
 from datapipe.step import ComputeStep
 
@@ -133,6 +134,7 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         chunksize: int = 1000,
+        run_config: RunConfig = None,
     ) -> Tuple[int, Iterator[IndexDF]]:
         '''
         Метод для получения перечня индексов для обработки.
@@ -167,11 +169,11 @@ class DataStore:
 
             return q
 
-        inp_tbls = [inp.meta_table.sql_table.alias(f"inp_{inp.meta_table.sql_table.name}") for inp in inputs]
+        inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.meta_table.sql_table.name}")) for inp in inputs]
         out_tbls = [out.meta_table.sql_table.alias(f"out_{out.meta_table.sql_table.name}") for out in outputs]
         sql_requests = []
 
-        for inp in inp_tbls:
+        for inp_dt, inp in inp_tbls:
             fields = [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
@@ -195,6 +197,13 @@ class DataStore:
                 )
             )
 
+            if run_config is not None:
+                for k, v in run_config.filters.items():
+                    if k in inp_dt.primary_keys:
+                        sql = sql.where(
+                            inp.c[k] == v
+                        )
+
             sql_requests.append(sql)
 
         for out in out_tbls:
@@ -202,7 +211,7 @@ class DataStore:
             sql = select(fields).select_from(
                 left_join(
                     out,
-                    inp_tbls
+                    [inp for _, inp in inp_tbls]
                 )
             ).where(
                 or_(
@@ -214,7 +223,7 @@ class DataStore:
                         ),
                         inp.c.create_ts.is_(None)
                     )
-                    for inp in inp_tbls
+                    for _, inp in inp_tbls
                 )
             )
 
@@ -328,6 +337,7 @@ def inc_process_many(
     res_dts: List[DataTable],
     proc_func: Callable,
     chunksize: int = 1000,
+    run_config: RunConfig = None,
     **kwargs
 ) -> None:
     '''
@@ -337,7 +347,8 @@ def inc_process_many(
     idx_count, idx_gen = ds.get_process_ids(
         inputs=input_dts,
         outputs=res_dts,
-        chunksize=chunksize
+        chunksize=chunksize,
+        run_config=run_config
     )
 
     logger.info(f'Items to update {idx_count}')
@@ -376,7 +387,7 @@ class ExternalTableUpdater(ComputeStep):
         self.input_dts = []
         self.output_dts = [table]
 
-    def run(self, ds: DataStore) -> None:
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         now = time.time()
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
