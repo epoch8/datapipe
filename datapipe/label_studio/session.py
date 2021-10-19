@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many
-from datapipe.step import ComputeStep
+from datapipe.step import ComputeStep, RunConfig
 
 from tqdm import tqdm
 
@@ -267,7 +267,10 @@ class LabelStudioModerationStep(ComputeStep):
 
             yield output_df
 
-    def run(self, ds: DataStore) -> None:
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
+        # FIXME implement
+        assert(run_config is None)
+
         if self.label_studio_session.is_service_up():
             if self.project_id is None:
                 self.__post_init__()
