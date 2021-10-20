@@ -23,6 +23,7 @@ toml = ">=0.10.2"
 click = ">=7.1.2"
 requests = ">=2.24.0"
 iteration-utilities = ">=0.11.0"
+toloka-kit = "^0.1.19"
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
