@@ -1,3 +1,4 @@
+import datetime
 from typing import Iterable
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
@@ -5,11 +6,12 @@ from pytest_cases import parametrize_with_cases, case, parametrize
 import pandas as pd
 from sqlalchemy import Column, Integer, String
 
-from datapipe.types import DataDF
+from datapipe.types import DataDF, data_to_index
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
+from datapipe.yandex_toloka.store import TableStoreYandexToloka
 
 from .util import assert_df_equal, assert_ts_contains
 
@@ -143,6 +145,40 @@ class CasesTableStore:
             df
         )
 
+    @case(tags='supports_delete')
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_yandex_toloka(self, dbconn, df, schema, request):
+        project_identifier = f'Project Test {request.node.callspec.id} {[str(datetime.datetime.now())]}'
+        table_store_yandex_toloka = TableStoreYandexToloka(
+            dbconn=dbconn,
+            token='HIDDEN_FROM_IT',
+            environment='SANDBOX',
+            input_data_sql_schema=schema + [
+                Column('name', String(100)),
+                Column('price', Integer),
+            ],
+            output_data_sql_schema=[
+                Column('annotations', String())
+            ],
+            project_identifier=project_identifier,
+            tasks_per_page_at_create_project=1,
+            kwargs_at_create_project={
+                'public_name': project_identifier
+            },
+            kwargs_at_create_pool={
+                'may_contain_adult_content': False,
+                'reward_per_assignment': 0.01,
+                'assignment_max_duration_seconds': 60*5,
+                'will_expire': datetime.datetime.utcnow() + datetime.timedelta(days=365)
+            }
+        )
+
+        df['annotations'] = None
+        yield table_store_yandex_toloka, df
+
+        table_store_yandex_toloka.toloka_client.archive_pool(table_store_yandex_toloka.pool.id)
+        table_store_yandex_toloka.toloka_client.archive_project(table_store_yandex_toloka.project.id)
+
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
@@ -203,4 +239,12 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
 
     assert(isinstance(pseudo_df_iter, Iterable))
-    assert(isinstance(next(pseudo_df_iter), DataDF))
+    idxs_dfs = []
+    for pseudo_df_iter in pseudo_df_iter:
+        assert(isinstance(pseudo_df_iter, DataDF))
+        idxs_dfs.append(pseudo_df_iter[store.primary_keys])
+    idxs_df = pd.concat(idxs_dfs)
+    assert len(idxs_df) == len(test_df)
+    assert(sorted(list(idxs_df.columns)) == sorted(store.primary_keys))
+
+    data_to_index(test_df, idxs_df)
