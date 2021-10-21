@@ -148,9 +148,7 @@ class CasesTableStore:
     @case(tags='supports_delete')
     @parametrize('df,schema', DATA_PARAMS)
     def case_yandex_toloka(self, dbconn, df, schema, request, yandex_toloka_token):
-        project_identifier = (
-            f"test_{request.node.callspec.id} {[datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')]}"
-        )
+        project_identifier = f'test_{request.node.callspec.id} {[str(datetime.datetime.now())]}'
         table_store_yandex_toloka = TableStoreYandexToloka(
             dbconn=dbconn,
             token=yandex_toloka_token,
