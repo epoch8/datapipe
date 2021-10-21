@@ -133,7 +133,7 @@ class TableStoreYandexToloka(TableStore):
             self.project, self.pool = result
         self.inner_table_store = TableStoreDB(
             dbconn=dbconn,
-            name=f'yandex_toloka_tasks_info_on_{project_identifier}',
+            name=project_identifier,
             data_sql_schema=[
                 Column(column.name, column.type) for column in self.input_data_sql_schema
             ] + [
