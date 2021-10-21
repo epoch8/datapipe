@@ -103,6 +103,8 @@ class TableStoreDB(TableStore):
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
+        self.delete_rows(data_to_index(df, self.primary_keys))
+
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -118,7 +120,6 @@ class TableStoreDB(TableStore):
             )
 
     def update_rows(self, df: DataDF) -> None:
-        self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
     # Fix numpy types in IndexDF
