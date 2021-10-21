@@ -54,6 +54,8 @@ class TableDataSingleFileStore(TableStore):
             return pd.DataFrame()
 
     def insert_rows(self, df: pd.DataFrame) -> None:
+        self.delete_rows(df.index)
+
         file_df = self.load_file()
 
         if file_df is None:
@@ -72,15 +74,4 @@ class TableDataSingleFileStore(TableStore):
             self.save_file(new_df)
 
     def update_rows(self, df: pd.DataFrame) -> None:
-        file_df = self.load_file()
-
-        if file_df is None:
-            file_df = df
-        else:
-            updated_idx = df.index.intersection(file_df.index)
-            new_idx = df.index.difference(file_df.index)
-
-            file_df.loc[updated_idx] = df.loc[updated_idx]
-            file_df = file_df.append(df.loc[new_idx])
-
-        self.save_file(file_df)
+        self.insert_rows(df)
