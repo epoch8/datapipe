@@ -381,6 +381,9 @@ class ExternalTableUpdater(ComputeStep):
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
 
+            if ps_df.empty:
+                continue
+
             _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
             if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
