@@ -68,3 +68,8 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+
+
+@pytest.fixture
+def yandex_toloka_token():
+    yield os.getenv("YANDEX_TOLOKA_TOKEN", "MISSING_TOKEN")

@@ -112,3 +112,4 @@ jobs:
         LABEL_STUDIO_HOST: localhost
         LABEL_STUDIO_PORT: 8080
         TEST_START_LABEL_STUDIO: False
+        YANDEX_TOLOKA_TOKEN: ${{ secrets.YANDEX_TOLOKA_TOKEN }}

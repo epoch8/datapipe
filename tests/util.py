@@ -13,8 +13,8 @@ def assert_idx_equal(a, b):
 
 
 def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=['id']) -> bool:
-    a = a.set_index(index_cols)
-    b = b.set_index(index_cols)
+    a = a.set_index(index_cols).fillna('None')
+    b = b.set_index(index_cols).fillna('None')
 
     assert_idx_equal(a.index, b.index)
 

@@ -147,11 +147,11 @@ class CasesTableStore:
 
     @case(tags='supports_delete')
     @parametrize('df,schema', DATA_PARAMS)
-    def case_yandex_toloka(self, dbconn, df, schema, request):
+    def case_yandex_toloka(self, dbconn, df, schema, request, yandex_toloka_token):
         project_identifier = f'Project Test {request.node.callspec.id} {[str(datetime.datetime.now())]}'
         table_store_yandex_toloka = TableStoreYandexToloka(
             dbconn=dbconn,
-            token='HIDDEN_FROM_IT',
+            token=yandex_toloka_token,
             environment='SANDBOX',
             input_data_sql_schema=schema + [
                 Column('name', String(100)),
@@ -246,5 +246,3 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     idxs_df = pd.concat(idxs_dfs)
     assert len(idxs_df) == len(test_df)
     assert(sorted(list(idxs_df.columns)) == sorted(store.primary_keys))
-
-    data_to_index(test_df, idxs_df)
