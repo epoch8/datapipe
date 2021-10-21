@@ -105,6 +105,8 @@ class TableStoreDB(TableStore):
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: pd.DataFrame) -> None:
+        self.delete_rows(df.index)
+
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
@@ -131,7 +133,6 @@ class TableStoreDB(TableStore):
                     del df[key]
 
     def update_rows(self, df: pd.DataFrame) -> None:
-        self.delete_rows(df.index)
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[Index] = None) -> pd.DataFrame:
