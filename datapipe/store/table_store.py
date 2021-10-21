@@ -5,7 +5,7 @@ from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
 
-from datapipe.types import IndexDF, DataDF, DataSchema
+from datapipe.types import IndexDF, DataDF, DataSchema, data_to_index
 
 
 class TableStore(ABC):
@@ -66,6 +66,8 @@ class TableDataSingleFileStore(TableStore):
             return pd.DataFrame()
 
     def insert_rows(self, df: DataDF) -> None:
+        self.delete_rows(data_to_index(df, self.primary_keys))
+
         file_df = self.load_file()
 
         if set(self.primary_keys) - set(df.columns):
@@ -95,19 +97,4 @@ class TableDataSingleFileStore(TableStore):
             self.save_file(new_df.reset_index())
 
     def update_rows(self, df: DataDF) -> None:
-        file_df = self.load_file()
-
-        if set(self.primary_keys) - set(df.columns):
-            raise ValueError("DataDf does not contains all primary keys")
-
-        if file_df is None or file_df.empty:
-            file_df = df
-        else:
-            file_df = file_df.set_index(self.primary_keys)
-            df = df.set_index(self.primary_keys)
-
-            file_df.loc[df.index] = df
-
-            file_df = file_df.reset_index()
-
-        self.save_file(file_df)
+        self.insert_rows(df)
