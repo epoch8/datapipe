@@ -278,7 +278,6 @@ class TableStoreYandexToloka(TableStore):
         """
             Помечаем в толоке задачи "удаленными" через выставление нулевого пересечения и колонки deleted
         """
-        self._synchronize_inner_table()
         for tasks_chunk in self._get_all_tasks():
             tasks_chunk_df = pd.DataFrame.from_records([
                 {
@@ -318,7 +317,7 @@ class TableStoreYandexToloka(TableStore):
         """
             Добавляет в Толоку новые задачи с заданными ключами
         """
-        self._synchronize_inner_table()
+        self.delete_rows(data_to_index(df, self.primary_keys))
 
         def _convert_if_need(value: Any) -> Any:
             if isinstance(value, np.int64):
@@ -362,12 +361,9 @@ class TableStoreYandexToloka(TableStore):
             )
 
     def update_rows(self, df: DataDF) -> None:
-        self._synchronize_inner_table()
-        self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
-        self._synchronize_inner_table()
         # Читаем все задачи и ищем удаленные задачи
         inner_table_df = self.inner_table_store.read_rows()
         deleted_tasks_df = inner_table_df.query('is_deleted')
@@ -427,7 +423,6 @@ class TableStoreYandexToloka(TableStore):
         """
             Получить все задачи без разметки и data_columns
         """
-        self._synchronize_inner_table()
         # Читаем все задачи и ищем удаленные задачи
         inner_table_df = self.inner_table_store.read_rows()
         deleted_tasks_df = inner_table_df.query('is_deleted')
