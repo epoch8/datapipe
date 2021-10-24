@@ -14,7 +14,6 @@ from datapipe.label_studio.session import LabelStudioSession
 from datapipe.label_studio.store import TableStoreLabelStudio
 
 from .util import assert_df_equal, assert_ts_contains
-from .conftest import ls_url_and_auth
 
 DATA_PARAMS = [
     pytest.param(
@@ -135,6 +134,16 @@ class CasesTableStore:
             df
         )
 
+    @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
+    def case_filedir_json(self, tmp_dir, df, fn_template):
+        return (
+            TableStoreFiledir(
+                tmp_dir / fn_template,
+                adapter=JSONFile(),
+            ),
+            df
+        )
+
     @case(tags='supports_delete')
     @parametrize('df,schema', DATA_PARAMS)
     def case_label_studio(self, ls_url_and_auth, df, schema, request):
@@ -167,16 +176,6 @@ class CasesTableStore:
         project_id = label_studio_session.get_project_id_by_title(project_title)
         if project_id is not None:
             label_studio_session.delete_project(project_id=project_id)
-
-    @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
-    def case_filedir_json(self, tmp_dir, df, fn_template):
-        return (
-            TableStoreFiledir(
-                tmp_dir / fn_template,
-                adapter=JSONFile(),
-            ),
-            df
-        )
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)

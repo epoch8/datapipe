@@ -264,6 +264,7 @@ class TableStoreLabelStudio(TableStore):
         """
             Добавляет в LS новые задачи с заданными ключами
         """
+        self.delete_rows(data_to_index(df, self.primary_keys))
 
         def _convert_if_need(value: Any):
             if isinstance(value, np.int64):
@@ -285,7 +286,6 @@ class TableStoreLabelStudio(TableStore):
         self.label_studio_session.upload_tasks(data=data, project_id=self.get_or_create_project())
 
     def update_rows(self, df: DataDF) -> None:
-        self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
