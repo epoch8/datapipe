@@ -173,6 +173,7 @@ class CasesTableStore:
             }
         )
 
+        df = df.copy()
         df['annotations'] = None
         yield table_store_yandex_toloka, df
 
