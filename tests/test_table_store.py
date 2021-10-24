@@ -6,7 +6,7 @@ from pytest_cases import parametrize_with_cases, case, parametrize
 import pandas as pd
 from sqlalchemy import Column, Integer, String
 
-from datapipe.types import DataDF, data_to_index
+from datapipe.types import DataDF
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
@@ -60,90 +60,90 @@ FILEDIR_DATA_PARAMS = [
         '{id}.json',
         id='str_id'
     ),
-    # pytest.param(
-    #     pd.DataFrame({
-    #         'id1': [f'id_{i}' for i in range(100)],
-    #         'id2': [f'id_{i}' for i in range(100)],
-    #         'name': [f'Product {i}' for i in range(100)],
-    #         'price': [1000 + i for i in range(100)],
-    #     }),
-    #     '{id1}__{id2}.json',
-    #     id='multi_id'
-    # ),
-    # pytest.param(
-    #     pd.DataFrame({
-    #         'id1': [f'id_{i}' for i in range(100)],
-    #         'id2': [f'id_{i}' for i in range(100)],
-    #         'id3': [f'id__{i}' for i in range(100)],
-    #         'id4': [f'id___{i}' for i in range(100)],
-    #         'id5': [f'id_{i}_' for i in range(100)],
-    #         'name': [f'Product {i}' for i in range(100)],
-    #         'price': [1000 + i for i in range(100)],
-    #     }),
-    #     '{id1}______{id2}______{id3}______{id4}______{id5}.json',
-    #     id='multi_ids2'
-    # ),
-    # pytest.param(
-    #     pd.DataFrame({
-    #         'id1': [f'id_{i}' for i in range(100)],
-    #         'id2': [f'id_{i}' for i in range(100, 200)],
-    #         'id3': [f'id_{i}' for i in range(150, 250)],
-    #         'name': [f'Product {i}' for i in range(100)],
-    #         'price': [1000 + i for i in range(100)],
-    #     }),
-    #     '{id2}__{id1}__{id3}.json',
-    #     id='multi_ids_check_commutativity'
-    # )
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id1}__{id2}.json',
+        id='multi_id'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100)],
+            'id3': [f'id__{i}' for i in range(100)],
+            'id4': [f'id___{i}' for i in range(100)],
+            'id5': [f'id_{i}_' for i in range(100)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id1}______{id2}______{id3}______{id4}______{id5}.json',
+        id='multi_ids2'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(100)],
+            'id2': [f'id_{i}' for i in range(100, 200)],
+            'id3': [f'id_{i}' for i in range(150, 250)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id2}__{id1}__{id3}.json',
+        id='multi_ids_check_commutativity'
+    )
 ]
 
 
 class CasesTableStore:
-    # @case(tags='supports_delete')
-    # @parametrize('df,schema', DATA_PARAMS)
-    # def case_db(self, dbconn, df, schema):
-    #     return (
-    #         TableStoreDB(
-    #             dbconn,
-    #             'tbl1',
-    #             schema + [
-    #                 Column('name', String(100)),
-    #                 Column('price', Integer),
-    #             ]
-    #         ),
-    #         df
-    #     )
+    @case(tags='supports_delete')
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_db(self, dbconn, df, schema):
+        return (
+            TableStoreDB(
+                dbconn,
+                'tbl1',
+                schema + [
+                    Column('name', String(100)),
+                    Column('price', Integer),
+                ]
+            ),
+            df
+        )
 
-    # @case(tags='supports_delete')
-    # @parametrize('df,schema', DATA_PARAMS)
-    # def case_jsonline(self, tmp_dir, df, schema):
-    #     return (
-    #         TableStoreJsonLine(
-    #             tmp_dir / "data.json",
-    #             primary_schema=schema
-    #         ),
-    #         df
-    #     )
+    @case(tags='supports_delete')
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_jsonline(self, tmp_dir, df, schema):
+        return (
+            TableStoreJsonLine(
+                tmp_dir / "data.json",
+                primary_schema=schema
+            ),
+            df
+        )
 
-    # @case(tags='supports_delete')
-    # @parametrize('df,schema', DATA_PARAMS)
-    # def case_excel(self, tmp_dir, df, schema):
-    #     return (
-    #         TableStoreExcel(
-    #             tmp_dir / "data.xlsx",
-    #             primary_schema=schema
-    #         ),
-    #         df
-    #     )
+    @case(tags='supports_delete')
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_excel(self, tmp_dir, df, schema):
+        return (
+            TableStoreExcel(
+                tmp_dir / "data.xlsx",
+                primary_schema=schema
+            ),
+            df
+        )
 
-    # @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
-    # def case_filedir_json(self, tmp_dir, df, fn_template):
-    #     return (
-    #         TableStoreFiledir(
-    #             tmp_dir / fn_template,
-    #             adapter=JSONFile(),
-    #         ),
-    #         df
-    #     )
+    @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
+    def case_filedir_json(self, tmp_dir, df, fn_template):
+        return (
+            TableStoreFiledir(
+                tmp_dir / fn_template,
+                adapter=JSONFile(),
+            ),
+            df
+        )
 
     @case(tags='supports_delete')
     @parametrize('df,schema', DATA_PARAMS)

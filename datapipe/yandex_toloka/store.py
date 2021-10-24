@@ -57,6 +57,7 @@ class TaskFromSuite(toloka.Task):
     """Отдельный класс задач, взятых от TaskSuite"""
     pass
 
+
 Task = Union[toloka.Task, TaskFromSuite]
 
 
