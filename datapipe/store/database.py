@@ -4,7 +4,7 @@ import copy
 import logging
 import pandas as pd
 
-from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
+from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer, func
 from sqlalchemy.sql.expression import select, delete, and_, or_
 from sqlalchemy.pool import SingletonThreadPool
 
@@ -153,4 +153,11 @@ class TableStoreDB(TableStore):
             sql,
             con=self.dbconn.con.execution_options(stream_results=True),
             chunksize=chunksize
+        )
+
+    def __len__(self):
+        sql = select([func.count()])
+        return pd.read_sql_query(
+            sql,
+            con=self.dbconn.con
         )

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from typing import Any, Dict, Iterator, List, Literal, Tuple, Type, Union, Optional, cast
 
 import numpy as np
@@ -27,6 +28,10 @@ SQL_TYPE_TO_FIELD_SPEC: Dict[Type[Column], Type[toloka.project.field_spec.FieldS
     Float: toloka.project.field_spec.FloatSpec,
     JSON: toloka.project.field_spec.JsonSpec,
 }
+FIELD_SPEC_TO_SQL_TYPE: Dict[Type[toloka.project.field_spec.FieldSpec], Type[Column]] = {
+    value: key
+    for key, value in SQL_TYPE_TO_FIELD_SPEC.items()
+}
 # # Недостающие спеки:
 #     toloka.project.field_spec.UrlSpec
 #     toloka.project.field_spec.ArrayBooleanSpec
@@ -40,6 +45,9 @@ SQL_TYPE_TO_FIELD_SPEC: Dict[Type[Column], Type[toloka.project.field_spec.FieldS
 #     toloka.project.field_spec.CoordinatesSpec
 #     toloka.project.field_spec.ArrayFileSpec
 #     toloka.project.field_spec.ArrayCoordinatesSpec
+
+
+logger = logging.getLogger('datapipe.yandex_toloka.store')
 
 
 @dataclass
@@ -58,8 +66,8 @@ class TableStoreYandexToloka(TableStore):
         environment: Literal['PRODUCTION', 'SANDBOX'],
         input_data_sql_schema: List[Column],
         output_data_sql_schema: List[Column],
-        project_identifier: str,
-        tasks_per_page_at_create_project: int,
+        project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],  # str or (project_id, pool_id)
+        tasks_per_page_at_create_project: int = 1,
         view_spec_at_create_project: ViewSpec = ClassicViewSpec(markup='', script='', styles=''),
         # Arguments appended to toloka.Project() except 'private_comment' and 'task_spec'
         kwargs_at_create_project: Dict[str, Any] = {},
@@ -100,6 +108,16 @@ class TableStoreYandexToloka(TableStore):
             for column in self.output_data_sql_schema
         }
 
+        self.inner_table_store = TableStoreDB(
+            dbconn=dbconn,
+            name=str(project_identifier),
+            data_sql_schema=[
+                Column(column.name, column.type) for column in self.input_data_sql_schema
+            ] + [
+                Column('__task_id', String(), primary_key=True),
+                Column('is_deleted', Boolean)
+            ]
+        )
         result = self._get_project_and_pool_by_identifier(project_identifier)
         if result is None:
             self.project = self.toloka_client.create_project(
@@ -131,39 +149,61 @@ class TableStoreYandexToloka(TableStore):
             )
         else:
             self.project, self.pool = result
-        self.inner_table_store = TableStoreDB(
-            dbconn=dbconn,
-            name=project_identifier,
-            data_sql_schema=[
-                Column(column.name, column.type) for column in self.input_data_sql_schema
-            ] + [
-                Column('__task_id', String(), primary_key=True),
-                Column('is_deleted', Boolean)
-            ]
-        )
 
     def _get_project_and_pool_by_identifier(
         self,
-        project_identifier: str,
+        project_identifier: Union[str, Tuple[int, int]],
     ) -> Optional[Tuple[toloka.Project, toloka.Pool]]:
-        project_search_result = self.toloka_client.find_projects(status=toloka.Project.ProjectStatus.ACTIVE)
-        if project_search_result.items is None:
-            return None
-        project_identifiers = [project.private_comment for project in project_search_result.items]
-        if project_identifier not in project_identifiers:
-            return None
-        assert project_identifiers.count(project_identifier) == 1, (
-            f'There are 2 or more active projects with project_identifier="{project_identifier}"'
-        )
-        project = project_search_result.items[project_identifiers.index(project_identifier)]
-        pool_search_result = self.toloka_client.find_pools(project_id=project.id)
-        assert pool_search_result.items is not None
-        pools_identifiers = [pool.private_name for pool in pool_search_result.items]
-        assert pools_identifiers.count(project_identifier) == 1, (
-            f'There are 0 or [2 or more] active pools with project_identifier="{project_identifier}"'
-        )
-        pool = pool_search_result.items[pools_identifiers.index(project_identifier)]
+        if isinstance(project_identifier, str):
+            project_search_result = self.toloka_client.find_projects(status=toloka.Project.ProjectStatus.ACTIVE)
+            if project_search_result.items is None:
+                return None
+            project_identifiers = [project.private_comment for project in project_search_result.items]
+            if project_identifier not in project_identifiers:
+                return None
+            assert project_identifiers.count(project_identifier) == 1, (
+                f'There are 2 or more active projects with project_identifier="{project_identifier}"'
+            )
+            project = project_search_result.items[project_identifiers.index(project_identifier)]
+            pool_search_result = self.toloka_client.find_pools(project_id=project.id)
+            assert pool_search_result.items is not None
+            pools_identifiers = [pool.private_name for pool in pool_search_result.items]
+            assert pools_identifiers.count(project_identifier) == 1, (
+                f'There are 0 or [2 or more] active pools with project_identifier="{project_identifier}"'
+            )
+            pool = pool_search_result.items[pools_identifiers.index(project_identifier)]
+        else:
+            assert isinstance(project_identifier, tuple) and len(project_identifier) == 2
+            project_id, pool_id = project_identifier
+            project = self.toloka_client.get_project(project_id=str(project_id))
+            pool = self.toloka_client.get_pool(pool_id=str(pool_id))
+            self._synchronize_inner_table()
+
         return project, pool
+
+    def _synchronize_inner_table(self):
+        """
+        Синхронизировать внутреннюю таблчку с задачами, если проект был уже создан внешним образом
+        Все задачи при такой инициализации считаются неудаленными, а ключи в проекте -- неповторяющимися
+        """
+        if len(self.inner_table_store) == 0:
+            logger.info("Non-empty created project detected. Synchronizing the inner tasks table.")
+            for tasks_chunk in self._get_all_tasks():
+                self.inner_table_store.insert_rows(
+                    pd.DataFrame.from_records([
+                        {
+                            **(
+                                {
+                                    key: task.input_values[key]
+                                    for key in task.input_values
+                                } if task.input_values is not None else {}
+                            ),
+                            '__task_id': task.id,
+                            'is_deleted': False
+                        }
+                        for task in tasks_chunk
+                    ])
+                )
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self._data_sql_schema if column.primary_key]
@@ -216,7 +256,8 @@ class TableStoreYandexToloka(TableStore):
         """
             Добавляет в Толоку новые задачи с заданными ключами
         """
-        def _convert_if_need(value: Any):
+
+        def _convert_if_need(value: Any) -> Any:
             if isinstance(value, np.int64):
                 return int(value)
             return value
