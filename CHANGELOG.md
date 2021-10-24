@@ -1,3 +1,7 @@
+# 0.9.9
+
+* Фикс для кейса повторного добавления строк в `TableStoreDB`
+
 # 0.9.8
 
 * Фикс работы с SQLite для чанков больше 1000 (https://github.com/epoch8/datapipe/issues/63)

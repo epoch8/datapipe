@@ -187,6 +187,18 @@ def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
+    test_df_mod = test_df.copy()
+    test_df_mod.loc[50:, 'price'] = test_df_mod.loc[50:, 'price'] + 1
+
+    store.insert_rows(test_df_mod.loc[50:])
+
+    assert_ts_contains(store, test_df_mod)
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.insert_rows(test_df)
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe"
-version = "0.9.8"
+version = "0.9.9"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 
