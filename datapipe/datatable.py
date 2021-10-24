@@ -369,7 +369,7 @@ def inc_process_many(
                     res_dt.delete_by_idx(idx)
 
 
-class ExternalTableUpdater(ComputeStep):
+class MetaTableUpdater(ComputeStep):
     def __init__(self, name: str, table: DataTable):
         self.name = name
         self.table = table

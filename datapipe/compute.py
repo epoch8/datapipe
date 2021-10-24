@@ -4,9 +4,9 @@ from dataclasses import dataclass
 import logging
 from datapipe.label_studio.session import LabelStudioModerationStep
 
-from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
+from datapipe.datatable import DataStore, gen_process_many, inc_process_many, MetaTableUpdater
 
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
+from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration, UpdateMetaTable
 from .step import ComputeStep
 
 logger = logging.getLogger('datapipe.compute')
@@ -43,7 +43,7 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
 
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
-            res.append(ExternalTableUpdater(
+            res.append(MetaTableUpdater(
                 name=f'update_{name}',
                 table=catalog.get_datatable(ds, name)
             ))
@@ -89,6 +89,15 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 predictions=step.predictions,
                 chunk_size=step.chunk_size,
             ))
+
+        if isinstance(step, UpdateMetaTable):
+            res.extend([
+                MetaTableUpdater(
+                    name=f'update_{name}',
+                    table=catalog.get_datatable(ds, name)
+                )
+                for name in step.outputs
+            ])
 
     return res
 
