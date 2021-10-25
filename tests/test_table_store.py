@@ -1,4 +1,6 @@
 import datetime
+import os
+import time
 from typing import Iterable
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
@@ -145,10 +147,13 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete')
+    @pytest.mark.skipif('YANDEX_TOLOKA_TOKEN' not in os.environ, reason="env variable 'YANDEX_TOLOKA_TOKEN' is not set")
+    @case(tags='supports_delete,supports_all_read_rows')
     @parametrize('df,schema', DATA_PARAMS)
-    def case_yandex_toloka(self, dbconn, df, schema, request, yandex_toloka_token):
-        project_identifier = f'test_{request.node.callspec.id} {[str(datetime.datetime.now())]}'
+    def case_yandex_toloka(self, dbconn, df, schema, request):
+        yandex_toloka_token = os.environ['YANDEX_TOLOKA_TOKEN']
+        dbconn_backend = "postgresql" if "postgresql" in dbconn.connstr else "sqlite"
+        project_identifier = f'test_{request.node.callspec.id} [{dbconn_backend}]'
         table_store_yandex_toloka = TableStoreYandexToloka(
             dbconn=dbconn,
             token=yandex_toloka_token,
@@ -173,13 +178,22 @@ class CasesTableStore:
                 'will_expire': datetime.datetime.utcnow() + datetime.timedelta(days=365)
             }
         )
+        # Wait until project is empty
+        while True:
+            if len(list(table_store_yandex_toloka._get_all_tasks())) == 0:
+                break
+            time.sleep(10)
 
         df = df.copy()
         df['annotations'] = None
         yield table_store_yandex_toloka, df
 
-        table_store_yandex_toloka.toloka_client.archive_pool(table_store_yandex_toloka.pool.id)
-        table_store_yandex_toloka.toloka_client.archive_project(table_store_yandex_toloka.project.id)
+        try:
+            table_store_yandex_toloka.toloka_client._request(
+                'post', f'/new/requester/pools/{table_store_yandex_toloka.pool.id}/tasks/delete-all'
+            )
+        except Exception:
+            pass
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)

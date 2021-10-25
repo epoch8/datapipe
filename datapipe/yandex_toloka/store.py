@@ -450,7 +450,10 @@ class TableStoreYandexToloka(TableStore):
         output_df = cast(DataDF, output_df.loc[:, [column.name for column in self.data_sql_schema]])
 
         if idx is not None:
-            output_df = index_to_data(output_df, idx)
+            if idx.empty:
+                output_df = pd.DataFrame(columns=output_df.columns)
+            else:
+                output_df = index_to_data(output_df, idx)
 
         return output_df
 

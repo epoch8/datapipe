@@ -7,6 +7,8 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from datapipe.store.database import DBConn
+from traceback_with_variables import activate_by_import
+
 
 
 @pytest.fixture
@@ -68,8 +70,3 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
-
-
-@pytest.fixture
-def yandex_toloka_token():
-    yield os.getenv("YANDEX_TOLOKA_TOKEN", "MISSING_TOKEN")
