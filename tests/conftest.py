@@ -7,7 +7,6 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 from datapipe.store.database import DBConn
-from traceback_with_variables import activate_by_import
 
 
 
