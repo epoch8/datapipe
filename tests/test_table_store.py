@@ -98,7 +98,7 @@ FILEDIR_DATA_PARAMS = [
 
 
 class CasesTableStore:
-    @case(tags='supports_delete')
+    @case(tags='supports_delete,supports_all_read_rows')
     @parametrize('df,schema', DATA_PARAMS)
     def case_db(self, dbconn, df, schema):
         return (
@@ -113,7 +113,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete')
+    @case(tags='supports_delete,supports_all_read_rows')
     @parametrize('df,schema', DATA_PARAMS)
     def case_jsonline(self, tmp_dir, df, schema):
         return (
@@ -124,7 +124,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete')
+    @case(tags='supports_delete,supports_all_read_rows')
     @parametrize('df,schema', DATA_PARAMS)
     def case_excel(self, tmp_dir, df, schema):
         return (
@@ -199,6 +199,28 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
     store.insert_rows(test_df_mod.loc[50:])
 
     assert_ts_contains(store, test_df_mod)
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    df_empty = pd.DataFrame()
+    assert store.read_rows(df_empty).empty
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
+def test_insert_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    df_empty = pd.DataFrame()
+    store.insert_rows(df_empty)
+
+    assert store.read_rows().empty
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
+def test_update_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    df_empty = pd.DataFrame()
+    store.update_rows(df_empty)
+
+    assert store.read_rows().empty
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
