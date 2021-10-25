@@ -164,6 +164,22 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_insert_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    df_empty = pd.DataFrame()
+    store.insert_rows(df_empty)
+
+    assert store.read_rows().empty
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_update_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    df_empty = pd.DataFrame()
+    store.update_rows(df_empty)
+
+    assert store.read_rows().empty
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.insert_rows(test_df)
 
