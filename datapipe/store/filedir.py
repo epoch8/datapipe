@@ -163,6 +163,9 @@ class TableStoreFiledir(TableStore):
         )
 
     def insert_rows(self, df: pd.DataFrame) -> None:
+        if df.empty:
+            return
+
         assert(not self.readonly)
 
         # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени

@@ -66,6 +66,9 @@ class TableDataSingleFileStore(TableStore):
             return pd.DataFrame()
 
     def insert_rows(self, df: DataDF) -> None:
+        if df.empty:
+            return
+
         self.delete_rows(data_to_index(df, self.primary_keys))
 
         file_df = self.load_file()
