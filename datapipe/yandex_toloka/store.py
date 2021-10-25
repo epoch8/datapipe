@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import logging
 from typing import Any, Dict, Iterator, List, Literal, Sequence, Tuple, Type, Union, Optional, cast
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -59,6 +60,19 @@ class TaskFromSuite(toloka.Task):
 
 
 Task = Union[toloka.Task, TaskFromSuite]
+
+
+def _convert_if_need(value: Any) -> Any:
+    if isinstance(value, np.int64):
+        return int(value)
+    if isinstance(value, Decimal):
+        return float(round(value, 9))
+    if isinstance(value, list):
+        return [_convert_if_need(v) for v in value]
+    if isinstance(value, dict):
+        for k in value:
+            value[k] = _convert_if_need(value[k])
+    return value
 
 
 @dataclass
@@ -264,7 +278,7 @@ class TableStoreYandexToloka(TableStore):
                     tasks.append(
                         TaskFromSuite(
                             input_values=base_task.input_values,
-                            id=task_suite.id
+                            id=base_task.id
                         )
                     )
                     if len(tasks) == chunksize:
@@ -318,11 +332,6 @@ class TableStoreYandexToloka(TableStore):
             Добавляет в Толоку новые задачи с заданными ключами
         """
         self.delete_rows(data_to_index(df, self.primary_keys))
-
-        def _convert_if_need(value: Any) -> Any:
-            if isinstance(value, np.int64):
-                return int(value)
-            return value
 
         tasks = [
             toloka.Task(
@@ -386,7 +395,10 @@ class TableStoreYandexToloka(TableStore):
                             for key in task.input_values
                         } if task.input_values is not None else {}
                     ),
-                    **solution.output_values,
+                    **{
+                        key: _convert_if_need(solution.output_values[key])
+                        for key in solution.output_values
+                    },
                     '__task_id': task.id,
                     '__user_id': assignment.user_id
                 }
