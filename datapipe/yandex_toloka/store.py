@@ -92,7 +92,8 @@ class TableStoreYandexToloka(TableStore):
         input_data_sql_schema: List[Column],
         output_data_sql_schema: List[Column],
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],  # str or (project_id, pool_id)
-
+        user_id_column: Optional[str] = 'user_id',
+        assignment_id_column: Optional[str] = 'assignement_id',
         view_spec_at_create_project: ViewSpec = ClassicViewSpec(markup='', script='', styles=''),
         # Arguments appended to toloka.Project()
         # Except 'private_comment' and 'task_spec'
@@ -117,14 +118,27 @@ class TableStoreYandexToloka(TableStore):
             assert column.name not in input_used_columns, (
                 f"The column '{column.name}' is already used in data_sql_schema."
             )
-        for column in ['is_deleted']:
+        for column in ['__task_id', 'is_deleted']:
             assert column not in input_used_columns + output_data_sql_schema, (
                 f"The column '{column}' is reserved for this table store."
             )
 
         self.input_data_sql_schema = input_data_sql_schema
         self.output_data_sql_schema = output_data_sql_schema
-        self._data_sql_schema = input_data_sql_schema + output_data_sql_schema
+        self.data_sql_schema = input_data_sql_schema + output_data_sql_schema
+
+        self.assignment_id_column = assignment_id_column
+        self.user_id_column = user_id_column
+        if user_id_column is not None:
+            assert user_id_column not in input_used_columns + output_data_sql_schema, (
+                f"The column '{user_id_column}' is already used in data_sql_schema."
+            )
+            self.data_sql_schema += [Column(user_id_column, String())]
+        if assignment_id_column is not None:
+            assert assignment_id_column not in input_used_columns + output_data_sql_schema, (
+                f"The column '{assignment_id_column}' is already used in data_sql_schema."
+            )
+            self.data_sql_schema += [Column(assignment_id_column, String())]
 
         self.input_spec: Dict[str, toloka.project.field_spec.FieldSpec] = {
             column.name: SQL_TYPE_TO_FIELD_SPEC[type(column.type)]()
@@ -258,7 +272,7 @@ class TableStoreYandexToloka(TableStore):
             )
 
     def get_primary_schema(self) -> DataSchema:
-        return [column for column in self._data_sql_schema if column.primary_key]
+        return [column for column in self.data_sql_schema if column.primary_key]
 
     def _get_all_tasks(self, chunksize: int = 1000) -> Iterator[Sequence[Task]]:
         """
@@ -400,7 +414,16 @@ class TableStoreYandexToloka(TableStore):
                         for key in solution.output_values
                     },
                     '__task_id': task.id,
-                    '__user_id': assignment.user_id
+                    **(
+                        {
+                            self.user_id_column: assignment.user_id
+                        } if self.user_id_column is not None else {}
+                    ),
+                    **(
+                        {
+                            self.assignment_id_column: assignment.id
+                        } if self.assignment_id_column is not None else {}
+                    ),
                 }
                 for task, solution in zip(assignment.tasks, assignment.solutions)
                 if task.id not in deleted_tasks
@@ -410,7 +433,7 @@ class TableStoreYandexToloka(TableStore):
         else:
             assignments_df = pd.DataFrame(
                 {},
-                columns=[column.name for column in self.output_data_sql_schema] + ['__task_id', '__user_id']
+                columns=[column.name for column in self.data_sql_schema] + ['__task_id']
             )
         completed_task_ids = set(assignments_df['__task_id'])  # noqa: F841
 
@@ -424,7 +447,7 @@ class TableStoreYandexToloka(TableStore):
             .convert_dtypes()
         )
 
-        output_df = cast(DataDF, output_df.loc[:, [column.name for column in self._data_sql_schema]])
+        output_df = cast(DataDF, output_df.loc[:, [column.name for column in self.data_sql_schema]])
 
         if idx is not None:
             output_df = index_to_data(output_df, idx)

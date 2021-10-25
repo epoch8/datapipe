@@ -161,6 +161,8 @@ class CasesTableStore:
                 Column('annotations', String())
             ],
             project_identifier=project_identifier,
+            user_id_column=None,
+            assignment_id_column=None,
             kwargs_at_create_project={
                 'public_name': project_identifier
             },
