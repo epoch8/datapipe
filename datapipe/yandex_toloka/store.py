@@ -34,7 +34,8 @@ FIELD_SPEC_TO_SQL_TYPE: Dict[Type[toloka.project.field_spec.FieldSpec], Type[Col
         value: key
         for key, value in SQL_TYPE_TO_FIELD_SPEC.items()
     },
-    toloka.project.field_spec.UrlSpec: String
+    toloka.project.field_spec.UrlSpec: String,
+    toloka.project.field_spec.ArrayJsonSpec: JSON
 }
 # # Недостающие спеки:
 #     toloka.project.field_spec.UrlSpec
@@ -49,6 +50,7 @@ FIELD_SPEC_TO_SQL_TYPE: Dict[Type[toloka.project.field_spec.FieldSpec], Type[Col
 #     toloka.project.field_spec.CoordinatesSpec
 #     toloka.project.field_spec.ArrayFileSpec
 #     toloka.project.field_spec.ArrayCoordinatesSpec
+
 
 
 logger = logging.getLogger('datapipe.yandex_toloka.store')
