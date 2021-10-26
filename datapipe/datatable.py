@@ -85,8 +85,8 @@ class DataTable:
         self.table_store.delete_rows(idx)
         self.meta_table.mark_rows_deleted(idx, now=now)
 
-    def delete_stale_by_process_ts(self, process_ts: float, now: float = None) -> None:
-        for deleted_df in self.meta_table.get_stale_idx(process_ts):
+    def delete_stale_by_process_ts(self, process_ts: float, now: float = None, run_config: RunConfig = None) -> None:
+        for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.mark_rows_deleted(deleted_idx, now=now)
@@ -169,7 +169,7 @@ class DataStore:
 
             return q
 
-        inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.meta_table.sql_table.name}")) for inp in inputs]
+        inp_tbls = [(inp, inp.meta_table.sql_table) for inp in inputs]
         out_tbls = [out.meta_table.sql_table.alias(f"out_{out.meta_table.sql_table.name}") for out in outputs]
         sql_requests = []
 
@@ -197,12 +197,7 @@ class DataStore:
                 )
             )
 
-            if run_config is not None:
-                for k, v in run_config.filters.items():
-                    if k in inp_dt.primary_keys:
-                        sql = sql.where(
-                            inp.c[k] == v
-                        )
+            sql = inp_dt.meta_table.sql_apply_filters(sql, run_config)
 
             sql_requests.append(sql)
 
@@ -252,6 +247,7 @@ def gen_process_many(
         ...,
         Iterator[Tuple[DataDF, ...]]
     ],
+    run_config: RunConfig = None,
     **kwargs
 ) -> None:
     '''
@@ -288,7 +284,7 @@ def gen_process_many(
             dt_k.store_chunk(chunk_dfs[k])
 
     for k, dt_k in enumerate(dts):
-        dt_k.delete_stale_by_process_ts(now)
+        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
 # TODO перенести в compute.BatchGenerateStep

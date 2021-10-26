@@ -17,11 +17,10 @@ class BatchGenerateStep(ComputeStep):
     func: Callable
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        # игнорируем run_config для gen_ шага
-
         gen_process_many(
             self.output_dts,
-            self.func
+            self.func,
+            run_config=run_config,
         )
 
 
