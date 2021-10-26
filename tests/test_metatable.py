@@ -14,7 +14,7 @@ from .util import assert_df_equal
 
 
 class CasesTestDF:
-    @parametrize('N', [pytest.param(N) for N in [10, 100, 1000, 10000]])
+    @parametrize('N', [pytest.param(N) for N in [10, 100, 1000]])
     def case_single_idx(self, N):
         return (
             ['id'],
@@ -29,7 +29,7 @@ class CasesTestDF:
             ))
         )
 
-    @parametrize('N', [pytest.param(N) for N in [10, 100, 1000, 10000]])
+    @parametrize('N', [pytest.param(N) for N in [10, 100, 1000]])
     def case_multi_idx(self, N):
         return (
             ['id1', 'id2'],
