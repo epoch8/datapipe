@@ -103,21 +103,22 @@ class TableStoreDB(TableStore):
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
+        if df.empty:
+            return
+
         self.delete_rows(data_to_index(df, self.primary_keys))
+        logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
-        if len(df) > 0:
-            logger.debug(f'Inserting {len(df)} rows into {self.name} data')
-
-            df.to_sql(
-                name=self.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
-                if_exists='append',
-                index=False,
-                chunksize=1000,
-                method='multi',
-                dtype=sql_schema_to_sqltype(self.data_sql_schema),
-            )
+        df.to_sql(
+            name=self.name,
+            con=self.dbconn.con,
+            schema=self.dbconn.schema,
+            if_exists='append',
+            index=False,
+            chunksize=1000,
+            method='multi',
+            dtype=sql_schema_to_sqltype(self.data_sql_schema),
+        )
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
