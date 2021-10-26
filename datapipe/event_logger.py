@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 from enum import Enum
-import copy
 
 import logging
 import traceback
@@ -8,20 +7,13 @@ import traceback
 from sqlalchemy.sql import func
 from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 logger = logging.getLogger('datapipe.event_logger')
 
 if TYPE_CHECKING:
     from datapipe.metastore import DBConn
-
-
-EVENT_TABLE_SHCEMA = [
-    Column('id', Integer, primary_key=True, autoincrement=True),
-    Column('event_ts', DateTime, server_default=func.now()),
-    Column('type', String(100)),
-    Column('event', JSON)
-]
 
 
 class EventTypes(Enum):
@@ -36,10 +28,18 @@ class EventLogger:
         self.events_table = Table(
             'datapipe_events',
             dbconn.sqla_metadata,
-            *[copy.copy(i) for i in EVENT_TABLE_SHCEMA]
+            *self._make_table_schema(dbconn),
         )
 
         self.events_table.create(self.dbconn.con, checkfirst=True)
+
+    def _make_table_schema(self, dbconn: 'DBConn'):
+        return [
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('event_ts', DateTime, server_default=func.now()),
+            Column('type', String(100)),
+            Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
+        ]
 
     def log_state(self, table_name, added_count, updated_count, deleted_count):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
