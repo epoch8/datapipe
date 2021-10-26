@@ -22,7 +22,13 @@ def ui_overview_index(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     steps_dots = []
 
     for table_name, table in ds.tables.items():
-        steps_dots.append(f'{table_name} [shape=box3d label=<<B>{table_name}</B><BR/>{"<BR/>".join(table.primary_keys)}>]')
+        di = table.meta_table.get_table_debug_info()
+
+        steps_dots.append(
+            f'{table_name} [shape=box3d label=<<B>{table_name}</B><BR/>'
+            f'size={di.size}<BR/>'
+            f'{"<BR/>".join(table.primary_keys)}>]'
+        )
 
     for step in steps:
         steps_dots.append(f'{step.name} [shape=box]')

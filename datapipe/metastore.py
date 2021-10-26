@@ -5,7 +5,7 @@ import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, bindparam, column, or_, select, tuple_, update, values
+from sqlalchemy.sql.expression import and_, bindparam, or_, select, tuple_, update
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
@@ -14,6 +14,7 @@ import pandas as pd
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_schema_to_sqltype
 from datapipe.event_logger import EventLogger
+from datapipe.step import RunConfig
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -66,6 +67,16 @@ class MetaTable:
 
         self.sql_table.create(self.dbconn.con, checkfirst=True)
 
+    def sql_apply_filters(self, sql: select, run_config: RunConfig = None) -> select:
+        if run_config is not None:
+            for k, v in run_config.filters.items():
+                if k in self.primary_keys:
+                    sql = sql.where(
+                        self.sql_table.c[k] == v
+                    )
+
+        return sql
+
     def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
         '''
         Получить датафрейм с метаданными.
@@ -77,46 +88,23 @@ class MetaTable:
 
         if idx is not None:
             if len(self.primary_keys) == 1:
-                # Подход с values не работает, когда индекс один
+                # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
                 sql = sql.where(
                     self.sql_table.c[key].in_(idx[key].to_list())
                 )
 
             else:
-                # Когда индексных полей много приходится мудрить
-                #
-                # Раньше здесь был where (id1=? AND id2=?) OR (id1=? AND id2=?)
-                # но SQLite не дает делать "сложность" дерева запросов больше 1000
-                # то есть больше 1000 OR подряд нельзя, а мы хотим уметь чанки большего размера
-                #
-                # Другой способ сделать то же самое - через VALUES:
-                # https://sqlite.org/forum/info/6cb4fbeb3fc1e527
-
+                # Когда ключей много - сравниваем через tuple
                 keys = tuple_(*[
                     self.sql_table.c[key]
                     for key in self.primary_keys
                 ])
 
-                if self.dbconn.con.name == 'sqlite':
-                    # SQLite не любит алиас у VALUES
-                    alias_kw = {}
-                else:
-                    # А Postgres-у наооброт алиас у VALUES нужен
-                    alias_kw = {
-                        'name': 'values'
-                    }
-
-                sql = sql.where(keys.in_(
-                    values(
-                        *[column(key) for key in self.primary_keys],
-                        **alias_kw,
-                    )
-                    .data([
-                        tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
-                        for r in idx.to_dict(orient='records')
-                    ])
-                ))
+                sql = sql.where(keys.in_([
+                    tuple([r[key] for key in self.primary_keys])  # type: ignore
+                    for r in idx.to_dict(orient='records')
+                ]))
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
@@ -129,11 +117,13 @@ class MetaTable:
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         res_df = df[self.primary_keys]
 
-        res_df['hash'] = self._get_hash_for_df(df)
-        res_df['create_ts'] = now
-        res_df['update_ts'] = now
-        res_df['process_ts'] = now
-        res_df['delete_ts'] = None
+        res_df = res_df.assign(
+            hash=self._get_hash_for_df(df),
+            create_ts=now,
+            update_ts=now,
+            process_ts=now,
+            delete_ts=None
+        )
 
         return cast(MetadataDF, res_df)
 
@@ -178,9 +168,9 @@ class MetaTable:
 
         return res_df[self.primary_keys]
 
-    def get_table_debug_info(self, name: str) -> TableDebugInfo:
+    def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(
-            name=name,
+            name=self.name,
             size=self.dbconn.con.execute(select([func.count()]).select_from(self.sql_table)).fetchone()[0]
         )
 
@@ -324,7 +314,7 @@ class MetaTable:
 
             self._update_existing_metadata_rows(meta_df)
 
-    def get_stale_idx(self, process_ts: float) -> Iterator[IndexDF]:
+    def get_stale_idx(self, process_ts: float, run_config: RunConfig = None) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(
@@ -332,6 +322,8 @@ class MetaTable:
                 self.sql_table.c.delete_ts.is_(None)
             )
         )
+
+        sql = self.sql_apply_filters(sql, run_config=run_config)
 
         return pd.read_sql_query(
             sql,
