@@ -96,6 +96,7 @@ class TableStoreYandexToloka(TableStore):
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],  # str or (project_id, pool_id)
         user_id_column: Optional[str] = 'user_id',
         assignment_id_column: Optional[str] = 'assignement_id',
+        tasks_per_page: int = 1,
         view_spec_at_create_project: ViewSpec = ClassicViewSpec(markup='', script='', styles=''),
         # Arguments appended to toloka.Project()
         # Except 'private_comment' and 'task_spec'
@@ -151,6 +152,12 @@ class TableStoreYandexToloka(TableStore):
             for column in self.output_data_sql_schema
         }
 
+        self.mixed_config = MixerConfig(
+            real_tasks_count=tasks_per_page,
+            golden_tasks_count=0,
+            training_tasks_count=0
+        )
+
         self.inner_table_store = TableStoreDB(
             dbconn=dbconn,
             name=str(project_identifier),
@@ -183,14 +190,7 @@ class TableStoreYandexToloka(TableStore):
                         default_overlap_for_new_tasks=1,
                         default_overlap_for_new_task_suites=1
                     ),
-                    mixer_config=kwargs_at_create_pool.pop(
-                        'mixer_config',
-                        MixerConfig(
-                            real_tasks_count=kwargs_at_create_pool.pop('mixer_config', 1),
-                            golden_tasks_count=0,
-                            training_tasks_count=0
-                        )
-                    ),
+                    mixer_config=self.mixed_config,
                     **kwargs_at_create_pool
                 )
             )
@@ -198,8 +198,8 @@ class TableStoreYandexToloka(TableStore):
             self.project, self.pool = result
 
         if self.pool.defaults is not None:
-            assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1]
-            assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1]
+            assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1, None]
+            assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1, None]
 
         # Синхронизируем внутреннюю табличку
         self._synchronize_inner_table()
@@ -244,6 +244,11 @@ class TableStoreYandexToloka(TableStore):
             output_difference = set(our_output_spec.items()) ^ set(their_output_spec.items())
             assert len(input_difference) == 0, f"{input_difference=}"
             assert len(output_difference) == 0, f"{output_difference=}"
+
+            # Делаем консинтетность на mixer_config
+            if pool.mixer_config != self.mixed_config:
+                pool.set_mixer_config(self.mixed_config)
+                self.toloka_client.update_pool(pool_id=pool.id, pool=pool)
 
         return project, pool
 
