@@ -34,7 +34,7 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=['id']) -> bool
 
 
 def assert_datatable_equal(a: DataTable, b: DataDF) -> bool:
-    return assert_df_equal(a.get_data(), b)
+    return assert_df_equal(a.get_data(), b, index_cols=a.primary_keys)
 
 
 def assert_ts_contains(ts: TableStore, df: DataDF):

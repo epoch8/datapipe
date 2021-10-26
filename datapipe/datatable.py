@@ -14,6 +14,7 @@ from datapipe.store.database import DBConn
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
+from datapipe.step import RunConfig
 
 from datapipe.step import ComputeStep
 
@@ -84,8 +85,8 @@ class DataTable:
         self.table_store.delete_rows(idx)
         self.meta_table.mark_rows_deleted(idx, now=now)
 
-    def delete_stale_by_process_ts(self, process_ts: float, now: float = None) -> None:
-        for deleted_df in self.meta_table.get_stale_idx(process_ts):
+    def delete_stale_by_process_ts(self, process_ts: float, now: float = None, run_config: RunConfig = None) -> None:
+        for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
             self.table_store.delete_rows(deleted_idx)
             self.meta_table.mark_rows_deleted(deleted_idx, now=now)
@@ -133,6 +134,7 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         chunksize: int = 1000,
+        run_config: RunConfig = None,
     ) -> Tuple[int, Iterator[IndexDF]]:
         '''
         Метод для получения перечня индексов для обработки.
@@ -167,11 +169,11 @@ class DataStore:
 
             return q
 
-        inp_tbls = [inp.meta_table.sql_table.alias(f"inp_{inp.meta_table.sql_table.name}") for inp in inputs]
+        inp_tbls = [(inp, inp.meta_table.sql_table) for inp in inputs]
         out_tbls = [out.meta_table.sql_table.alias(f"out_{out.meta_table.sql_table.name}") for out in outputs]
         sql_requests = []
 
-        for inp in inp_tbls:
+        for inp_dt, inp in inp_tbls:
             fields = [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
@@ -195,6 +197,8 @@ class DataStore:
                 )
             )
 
+            sql = inp_dt.meta_table.sql_apply_filters(sql, run_config)
+
             sql_requests.append(sql)
 
         for out in out_tbls:
@@ -202,7 +206,7 @@ class DataStore:
             sql = select(fields).select_from(
                 left_join(
                     out,
-                    inp_tbls
+                    [inp for _, inp in inp_tbls]
                 )
             ).where(
                 or_(
@@ -214,7 +218,7 @@ class DataStore:
                         ),
                         inp.c.create_ts.is_(None)
                     )
-                    for inp in inp_tbls
+                    for _, inp in inp_tbls
                 )
             )
 
@@ -243,6 +247,7 @@ def gen_process_many(
         ...,
         Iterator[Tuple[DataDF, ...]]
     ],
+    run_config: RunConfig = None,
     **kwargs
 ) -> None:
     '''
@@ -279,7 +284,7 @@ def gen_process_many(
             dt_k.store_chunk(chunk_dfs[k])
 
     for k, dt_k in enumerate(dts):
-        dt_k.delete_stale_by_process_ts(now)
+        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
 # TODO перенести в compute.BatchGenerateStep
@@ -328,6 +333,7 @@ def inc_process_many(
     res_dts: List[DataTable],
     proc_func: Callable,
     chunksize: int = 1000,
+    run_config: RunConfig = None,
     **kwargs
 ) -> None:
     '''
@@ -337,7 +343,8 @@ def inc_process_many(
     idx_count, idx_gen = ds.get_process_ids(
         inputs=input_dts,
         outputs=res_dts,
-        chunksize=chunksize
+        chunksize=chunksize,
+        run_config=run_config
     )
 
     logger.info(f'Items to update {idx_count}')
@@ -376,7 +383,7 @@ class ExternalTableUpdater(ComputeStep):
         self.input_dts = []
         self.output_dts = [table]
 
-    def run(self, ds: DataStore) -> None:
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         now = time.time()
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
