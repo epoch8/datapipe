@@ -22,22 +22,22 @@ class TableStoreLabelStudio(TableStore):
         self,
         ls_url: str,
         auth: Union[Tuple[str, str], str],
-        project_title: str,
-        project_label_config: str,
+        project_identifier: Union[str, int],  # project_title or id
         data_sql_schema: List[Column],
         tasks_id_column: Optional[str] = 'tasks_id',
         annotations_column: Optional[str] = 'annotations',
         predictions_column: Optional[str] = None,
         preannotations_column: Optional[str] = None,
-        project_description: str = "",
+        project_label_config_at_create: str = '',
+        project_description_at_create: str = "",
         page_chunk_size: int = 100,
         tqdm_disable: bool = True
     ) -> None:
         self.ls_url = ls_url
         self.auth = auth
-        self.project_title = project_title
-        self.project_description = project_description
-        self.project_label_config = project_label_config
+        self.project_identifier = project_identifier
+        self.project_description_at_create = project_description_at_create
+        self.project_label_config_at_create = project_label_config_at_create
 
         self.data_sql_schema: List[Column] = data_sql_schema
         self.data_columns: List[str] = [column.name for column in data_sql_schema if not column.primary_key]
@@ -64,7 +64,10 @@ class TableStoreLabelStudio(TableStore):
         self.page_chunk_size = page_chunk_size
         self.tqdm_disable = tqdm_disable
 
-        self._project_id: Optional[str] = None
+        self._project_id: Optional[str] = (
+            str(project_identifier) if str(project_identifier).isnumeric() else None
+        )
+
         self.view_data = {
             "title": "datapipe_view [DO NOT CHANGE OR DELETE IT]",
             "type": "list",
@@ -112,13 +115,13 @@ class TableStoreLabelStudio(TableStore):
             self.label_studio_session.sign_up()
             self.label_studio_session.is_auth_ok(raise_exception=True)
 
-        self._project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
+        self._project_id = self.label_studio_session.get_project_id_by_title(str(self.project_identifier))
         if self._project_id is None:
             project = self.label_studio_session.create_project(
                 project_setting={
-                    "title": self.project_title,
-                    "description": self.project_description,
-                    "label_config": self.project_label_config,
+                    "title": self.project_identifier,
+                    "description": self.project_description_at_create,
+                    "label_config": self.project_label_config_at_create,
                     "expert_instruction": "",
                     "show_instruction": False,
                     "show_skip_button": False,

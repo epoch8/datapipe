@@ -149,8 +149,8 @@ class CasesLabelStudio:
                 TableStoreLabelStudio(
                     ls_url=ls_url,
                     auth=auth,
-                    project_title=project_title,
-                    project_label_config=PROJECT_LABEL_CONFIG_TEST,
+                    project_identifier=project_title,
+                    project_label_config_at_create=PROJECT_LABEL_CONFIG_TEST,
                     data_sql_schema=[
                         Column('id', String(), primary_key=True),
                         Column('text', String())

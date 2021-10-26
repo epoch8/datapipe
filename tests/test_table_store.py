@@ -162,8 +162,8 @@ class CasesTableStore:
             TableStoreLabelStudio(
                 ls_url=ls_url,
                 auth=auth,
-                project_title=project_title,
-                project_label_config=project_label_config,
+                project_identifier=project_title,
+                project_label_config_at_create=project_label_config,
                 data_sql_schema=schema,
                 tasks_id_column=None,
                 annotations_column=None,

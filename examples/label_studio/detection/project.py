@@ -103,8 +103,8 @@ catalog = Catalog({
         TableStoreLabelStudio(
             ls_url=f'http://{HOST}:{LS_PORT}/',
             auth=('moderation@epoch8.co', 'qwerty123'),
-            project_title='Detection Project',
-            project_label_config=PROJECT_LABEL_CONFIG,
+            project_identifier='Detection Project',
+            project_label_config_at_create=PROJECT_LABEL_CONFIG,
             annotations_column='annotations',
             data_sql_schema=[
                 Column('id', String(), primary_key=True),
