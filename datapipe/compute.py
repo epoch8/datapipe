@@ -1,4 +1,4 @@
-from typing import List, Callable, Optional, Set
+from typing import Any, List, Callable, Optional, Set, cast
 from dataclasses import dataclass
 
 import logging
@@ -73,14 +73,14 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 chunk_size=step.chunk_size
             ))
 
-        outputs: Optional[str] = step.outputs if hasattr(step, 'outputs') else None
+        outputs: Optional[str] = cast(Any, step).outputs if hasattr(step, 'outputs') else None
         if outputs is not None:
             res.extend([
                 MetaTableUpdater(
                     name=f'update_{name}',
                     table=catalog.get_datatable(ds, name)
                 )
-                for name in step.outputs
+                for name in outputs
                 if name in internal_tables
             ])
 
