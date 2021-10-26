@@ -145,6 +145,7 @@ class TableStoreFiledir(TableStore):
         return re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), self.filename_pattern)
 
     def _assert_key_values(self, filepath: str, idxs_values: List[str]):
+        _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
 
         idxs_values_np = np.array(idxs_values)
@@ -178,7 +179,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f'w{self.adapter.mode}+') as f:
+            with fsspec.open(filepath, f'w{self.adapter.mode}') as f:
                 self.adapter.dump(data, f)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
