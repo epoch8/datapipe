@@ -7,7 +7,7 @@ from datapipe.label_studio.session import LabelStudioModerationStep
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
 
 from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
-from .step import ComputeStep
+from .step import ComputeStep, RunConfig
 
 logger = logging.getLogger('datapipe.compute')
 
@@ -16,10 +16,11 @@ logger = logging.getLogger('datapipe.compute')
 class BatchGenerateStep(ComputeStep):
     func: Callable
 
-    def run(self, ds: DataStore):
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         gen_process_many(
             self.output_dts,
-            self.func
+            self.func,
+            run_config=run_config,
         )
 
 
@@ -28,13 +29,14 @@ class BatchTransformIncStep(ComputeStep):
     func: Callable
     chunk_size: int
 
-    def run(self, ds: DataStore):
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         inc_process_many(
             ds,
             self.input_dts,
             self.output_dts,
             self.func,
-            self.chunk_size
+            self.chunk_size,
+            run_config=run_config
         )
 
 
@@ -100,13 +102,13 @@ def print_compute(steps: List[ComputeStep]) -> None:
     )
 
 
-def run_steps(ds: DataStore, steps: List[ComputeStep]) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
     for step in steps:
         logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
 
-        step.run(ds)
+        step.run(ds, run_config)
 
 
-def run_pipeline(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> None:
+def run_pipeline(ds: DataStore, catalog: Catalog, pipeline: Pipeline, run_config: RunConfig = None) -> None:
     steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    run_steps(ds, steps, run_config)
