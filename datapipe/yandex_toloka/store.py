@@ -449,19 +449,20 @@ class TableStoreYandexToloka(TableStore):
         completed_task_ids = set(assignments_df['__task_id'])  # noqa: F841
 
         # Задачи, чья разметка была отказана, нужно удалять, а затем перезалить их (с новыми __task_id)
-        assignments_rejected_df = pd.DataFrame.from_records(assignments_rejected)
-        rejected_task_ids = set(assignments_rejected_df['__task_id'])  # noqa: F841
-        rejected_inner_table_df = inner_table_df.query(
-            'not is_deleted and not (__task_id in @rejected_task_ids)'
-        )
-        if len(rejected_inner_table_df) > 0:
-            self.delete_rows(
-                idx=cast(IndexDF, rejected_inner_table_df[
-                    [column.name for column in self.input_data_sql_schema if column.primary_key]
-                ])
+        if len(assignments_rejected) > 0:
+            assignments_rejected_df = pd.DataFrame.from_records(assignments_rejected)
+            rejected_task_ids = set(assignments_rejected_df['__task_id'])  # noqa: F841
+            rejected_inner_table_df = inner_table_df.query(
+                'not is_deleted and not (__task_id in @rejected_task_ids)'
             )
-            self.insert_rows(rejected_inner_table_df[[column.name for column in self.input_data_sql_schema]])
-            return self.read_rows(idx=idx)
+            if len(rejected_inner_table_df) > 0:
+                self.delete_rows(
+                    idx=cast(IndexDF, rejected_inner_table_df[
+                        [column.name for column in self.input_data_sql_schema if column.primary_key]
+                    ])
+                )
+                self.insert_rows(rejected_inner_table_df[[column.name for column in self.input_data_sql_schema]])
+                return self.read_rows(idx=idx)
 
         # Читаем оставшиеся задачи, для которых еще нет разметки и не удалены
         completed_inner_table_df = inner_table_df.query(
