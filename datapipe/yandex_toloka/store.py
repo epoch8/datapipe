@@ -35,7 +35,7 @@ FIELD_SPEC_TO_SQL_TYPE: Dict[Type[toloka.project.field_spec.FieldSpec], Type[Col
         for key, value in SQL_TYPE_TO_FIELD_SPEC.items()
     },
     toloka.project.field_spec.UrlSpec: String,
-    toloka.project.field_spec.ArrayJsonSpec: JSON
+    toloka.project.field_spec.ArrayJsonSpec: JSON  # type: ignore
 }
 # # Недостающие спеки:
 #     toloka.project.field_spec.UrlSpec
@@ -50,7 +50,6 @@ FIELD_SPEC_TO_SQL_TYPE: Dict[Type[toloka.project.field_spec.FieldSpec], Type[Col
 #     toloka.project.field_spec.CoordinatesSpec
 #     toloka.project.field_spec.ArrayFileSpec
 #     toloka.project.field_spec.ArrayCoordinatesSpec
-
 
 
 logger = logging.getLogger('datapipe.yandex_toloka.store')
@@ -204,7 +203,9 @@ class TableStoreYandexToloka(TableStore):
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],
     ) -> Optional[Tuple[toloka.Project, toloka.Pool]]:
         if isinstance(project_identifier, str):
-            project_search_result = self.toloka_client.find_projects(status=toloka.Project.ProjectStatus.ACTIVE)
+            project_search_result = self.toloka_client.find_projects(
+                status=toloka.Project.ProjectStatus.ACTIVE, limit=100
+            )
             if project_search_result.items is None:
                 return None
             project_identifiers = [project.private_comment for project in project_search_result.items]
@@ -214,7 +215,7 @@ class TableStoreYandexToloka(TableStore):
                 f'There are 2 or more active projects with project_identifier="{project_identifier}"'
             )
             project = project_search_result.items[project_identifiers.index(project_identifier)]
-            pool_search_result = self.toloka_client.find_pools(project_id=project.id)
+            pool_search_result = self.toloka_client.find_pools(project_id=project.id, limit=100)
             assert pool_search_result.items is not None
             pools_identifiers = [pool.private_name for pool in pool_search_result.items]
             assert pools_identifiers.count(project_identifier) == 1, (
