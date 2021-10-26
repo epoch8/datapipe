@@ -197,8 +197,9 @@ class TableStoreYandexToloka(TableStore):
         else:
             self.project, self.pool = result
 
-        assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1]
-        assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1]
+        if self.pool.defaults is not None:
+            assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1]
+            assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1]
 
         # Синхронизируем внутреннюю табличку
         self._synchronize_inner_table()
@@ -433,7 +434,7 @@ class TableStoreYandexToloka(TableStore):
                 if task.id not in deleted_tasks
             ]
             assignments.extend(assignment_data)
-            if assignment.status != toloka.assignment.Assignment.REJECTED:
+            if assignment.status != toloka.assignment.Assignment().Status.REJECTED:
                 assignments.extend(assignment_data)
             else:
                 assignments_rejected.extend(assignment_data)
@@ -455,9 +456,9 @@ class TableStoreYandexToloka(TableStore):
         )
         if len(rejected_inner_table_df) > 0:
             self.delete_rows(
-                idx=rejected_inner_table_df[
+                idx=cast(IndexDF, rejected_inner_table_df[
                     [column.name for column in self.input_data_sql_schema if column.primary_key]
-                ]
+                ])
             )
             self.insert_rows(rejected_inner_table_df[[column.name for column in self.input_data_sql_schema]])
             return self.read_rows(idx=idx)
