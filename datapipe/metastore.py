@@ -117,11 +117,13 @@ class MetaTable:
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         res_df = df[self.primary_keys]
 
-        res_df['hash'] = self._get_hash_for_df(df)
-        res_df['create_ts'] = now
-        res_df['update_ts'] = now
-        res_df['process_ts'] = now
-        res_df['delete_ts'] = None
+        res_df = res_df.assign(
+            hash=self._get_hash_for_df(df),
+            create_ts=now,
+            update_ts=now,
+            process_ts=now,
+            delete_ts=None
+        )
 
         return cast(MetadataDF, res_df)
 
