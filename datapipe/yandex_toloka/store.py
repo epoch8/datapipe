@@ -433,7 +433,6 @@ class TableStoreYandexToloka(TableStore):
                 for task, solution in zip(assignment.tasks, assignment.solutions)
                 if task.id not in deleted_tasks
             ]
-            assignments.extend(assignment_data)
             if assignment.status != toloka.assignment.Assignment().Status.REJECTED:
                 assignments.extend(assignment_data)
             else:
@@ -469,7 +468,7 @@ class TableStoreYandexToloka(TableStore):
             'not is_deleted and not (__task_id in @completed_task_ids)'
         )
         output_df = (
-            pd.concat([assignments_df, inner_table_df], ignore_index=True)
+            pd.concat([assignments_df, completed_inner_table_df], ignore_index=True)
             .replace({np.nan: None})
             .convert_dtypes()
         )
