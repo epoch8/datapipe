@@ -97,26 +97,26 @@ def test_batch_transform_with_filter(dbconn):
     assert_datatable_equal(tbl2, TEST_DF.query('pipeline_id == 0'))
 
 
-def test_gen_with_filter(dbconn):
-    ds = DataStore(dbconn)
+# def test_gen_with_filter(dbconn):
+#     ds = DataStore(dbconn)
 
-    tbl = ds.create_table(
-        'tbl',
-        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True)
-    )
+#     tbl = ds.create_table(
+#         'tbl',
+#         table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True)
+#     )
 
-    tbl.store_chunk(TEST_DF, now=0)
+#     tbl.store_chunk(TEST_DF, now=0)
 
-    def gen_func():
-        yield TEST_DF.query('pipeline_id == 0 and item_id == 0')
+#     def gen_func():
+#         yield TEST_DF.query('pipeline_id == 0 and item_id == 0')
 
-    gen_step = BatchGenerateStep(
-        name='gen_tbl',
-        func=gen_func,
-        input_dts=[],
-        output_dts=[tbl],
-    )
+#     gen_step = BatchGenerateStep(
+#         name='gen_tbl',
+#         func=gen_func,
+#         input_dts=[],
+#         output_dts=[tbl],
+#     )
 
-    gen_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
+#     gen_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
-    assert_datatable_equal(tbl, TEST_DF.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
+#     assert_datatable_equal(tbl, TEST_DF.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
