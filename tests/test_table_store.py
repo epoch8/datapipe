@@ -96,7 +96,7 @@ FILEDIR_DATA_PARAMS = [
 
 
 class CasesTableStore:
-    @case(tags='supports_delete,supports_all_read_rows')
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_db(self, dbconn, df, schema):
         return (
@@ -111,7 +111,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete,supports_all_read_rows')
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_jsonline(self, tmp_dir, df, schema):
         return (
@@ -122,7 +122,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete,supports_all_read_rows')
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_excel(self, tmp_dir, df, schema):
         return (
