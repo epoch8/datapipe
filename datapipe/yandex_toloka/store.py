@@ -10,6 +10,7 @@ from sqlalchemy.sql.sqltypes import JSON, Boolean, Float, Integer, String
 from sqlalchemy import Column
 
 import toloka.client as toloka
+from toloka.client.assignment import Assignment
 from toloka.client.project.view_spec import ClassicViewSpec, ViewSpec
 from toloka.client.project.task_spec import TaskSpec
 from toloka.client.pool.mixer_config import MixerConfig
@@ -180,7 +181,7 @@ class TableStoreYandexToloka(TableStore):
                     private_name=str(project_identifier),
                     defaults=toloka.Pool.Defaults(
                         default_overlap_for_new_tasks=1,
-                        default_overlap_for_new_task_suites=0
+                        default_overlap_for_new_task_suites=1
                     ),
                     mixer_config=kwargs_at_create_pool.pop(
                         'mixer_config',
@@ -195,6 +196,10 @@ class TableStoreYandexToloka(TableStore):
             )
         else:
             self.project, self.pool = result
+
+        assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1]
+        assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1]
+
         # Синхронизируем внутреннюю табличку
         self._synchronize_inner_table()
 
@@ -203,25 +208,20 @@ class TableStoreYandexToloka(TableStore):
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],
     ) -> Optional[Tuple[toloka.Project, toloka.Pool]]:
         if isinstance(project_identifier, str):
-            project_search_result = self.toloka_client.find_projects(
-                status=toloka.Project.ProjectStatus.ACTIVE, limit=100
-            )
-            if project_search_result.items is None:
-                return None
-            project_identifiers = [project.private_comment for project in project_search_result.items]
+            projects = list(self.toloka_client.get_projects(status=toloka.Project.ProjectStatus.ACTIVE))
+            project_identifiers = [project.private_comment for project in projects]
             if project_identifier not in project_identifiers:
                 return None
             assert project_identifiers.count(project_identifier) == 1, (
                 f'There are 2 or more active projects with project_identifier="{project_identifier}"'
             )
-            project = project_search_result.items[project_identifiers.index(project_identifier)]
-            pool_search_result = self.toloka_client.find_pools(project_id=project.id, limit=100)
-            assert pool_search_result.items is not None
-            pools_identifiers = [pool.private_name for pool in pool_search_result.items]
+            project = projects[project_identifiers.index(project_identifier)]
+            pools = list(self.toloka_client.get_pools(project_id=project.id))
+            pools_identifiers = [pool.private_name for pool in pools]
             assert pools_identifiers.count(project_identifier) == 1, (
                 f'There are 0 or [2 or more] active pools with project_identifier="{project_identifier}"'
             )
-            pool = pool_search_result.items[pools_identifiers.index(project_identifier)]
+            pool = pools[pools_identifiers.index(project_identifier)]
         else:
             assert isinstance(project_identifier, tuple) and len(project_identifier) == 2
             project_id, pool_id = project_identifier
@@ -397,6 +397,7 @@ class TableStoreYandexToloka(TableStore):
 
         # Читаем разметку от людей, убирая удаленные задачи
         assignments = []
+        assignments_rejected = []
         for assignment in self.toloka_client.get_assignments(
             status=['SUBMITTED', 'ACCEPTED', 'REJECTED'],
             pool_id=self.pool.id
@@ -404,7 +405,7 @@ class TableStoreYandexToloka(TableStore):
             assert assignment.tasks is not None
             assert assignment.solutions is not None
 
-            assignments.extend([
+            assignment_data = [
                 {
                     **(
                         {
@@ -430,7 +431,13 @@ class TableStoreYandexToloka(TableStore):
                 }
                 for task, solution in zip(assignment.tasks, assignment.solutions)
                 if task.id not in deleted_tasks
-            ])
+            ]
+            assignments.extend(assignment_data)
+            if assignment.status != toloka.assignment.Assignment.REJECTED:
+                assignments.extend(assignment_data)
+            else:
+                assignments_rejected.extend(assignment_data)
+
         if len(assignments) > 0:
             assignments_df = pd.DataFrame.from_records(assignments)
         else:
@@ -440,8 +447,23 @@ class TableStoreYandexToloka(TableStore):
             )
         completed_task_ids = set(assignments_df['__task_id'])  # noqa: F841
 
+        # Задачи, чья разметка была отказана, нужно удалять, а затем перезалить их (с новыми __task_id)
+        assignments_rejected_df = pd.DataFrame.from_records(assignments_rejected)
+        rejected_task_ids = set(assignments_rejected_df['__task_id'])  # noqa: F841
+        rejected_inner_table_df = inner_table_df.query(
+            'not is_deleted and not (__task_id in @rejected_task_ids)'
+        )
+        if len(rejected_inner_table_df) > 0:
+            self.delete_rows(
+                idx=rejected_inner_table_df[
+                    [column.name for column in self.input_data_sql_schema if column.primary_key]
+                ]
+            )
+            self.insert_rows(rejected_inner_table_df[[column.name for column in self.input_data_sql_schema]])
+            return self.read_rows(idx=idx)
+
         # Читаем оставшиеся задачи, для которых еще нет разметки и не удалены
-        inner_table_df = inner_table_df.query(
+        completed_inner_table_df = inner_table_df.query(
             'not is_deleted and not (__task_id in @completed_task_ids)'
         )
         output_df = (
