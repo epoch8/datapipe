@@ -88,22 +88,14 @@ class MetaTable:
 
         if idx is not None:
             if len(self.primary_keys) == 1:
-                # Подход с values не работает, когда индекс один
+                # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
                 sql = sql.where(
                     self.sql_table.c[key].in_(idx[key].to_list())
                 )
 
             else:
-                # Когда индексных полей много приходится мудрить
-                #
-                # Раньше здесь был where (id1=? AND id2=?) OR (id1=? AND id2=?)
-                # но SQLite не дает делать "сложность" дерева запросов больше 1000
-                # то есть больше 1000 OR подряд нельзя, а мы хотим уметь чанки большего размера
-                #
-                # Другой способ сделать то же самое - через VALUES:
-                # https://sqlite.org/forum/info/6cb4fbeb3fc1e527
-
+                # Когда ключей много - сравниваем через tuple
                 keys = tuple_(*[
                     self.sql_table.c[key]
                     for key in self.primary_keys
@@ -113,23 +105,6 @@ class MetaTable:
                     tuple([r[key] for key in self.primary_keys])  # type: ignore
                     for r in idx.to_dict(orient='records')
                 ]))
-
-                # if self.dbconn.con.name == 'sqlite':
-                #     sql = sql.where(keys.in_([
-                #         tuple([r[key] for key in self.primary_keys])  # type: ignore
-                #         for r in idx.to_dict(orient='records')
-                #     ]))
-                # else:
-                #     sql = sql.where(keys.in_(
-                #         values(
-                #             *[column(key) for key in self.primary_keys],
-                #             name='values',
-                #         )
-                #         .data([
-                #             tuple_(*[r[key] for key in self.primary_keys])  # type: ignore
-                #             for r in idx.to_dict(orient='records')
-                #         ])
-                #     ))
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
