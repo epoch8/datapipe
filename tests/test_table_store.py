@@ -1,11 +1,11 @@
-from typing import Iterable
+from typing import Iterable, cast
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
 
-from datapipe.types import DataDF
+from datapipe.types import DataDF, IndexDF
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
@@ -166,7 +166,7 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
     df_empty = pd.DataFrame()
-    assert store.read_rows(df_empty).empty
+    assert store.read_rows(cast(IndexDF, df_empty)).empty
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
