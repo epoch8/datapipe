@@ -72,3 +72,23 @@ def test_insert_rows(dbconn: DBConn, index_cols: List[str], primary_schema: Data
     assert_df_equal(meta_df[index_cols], test_df[index_cols], index_cols=index_cols)
 
     assert(not meta_df['hash'].isna().any())
+
+
+@parametrize_with_cases('index_cols,primary_schema,test_df', cases=CasesTestDF, import_fixtures=True)
+def test_get_metadata(dbconn: DBConn, index_cols: List[str], primary_schema: DataSchema, test_df: DataDF):
+    mt = MetaTable(
+        name='test',
+        dbconn=dbconn,
+        primary_schema=primary_schema
+    )
+
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
+    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
+
+    part_idx = test_df.iloc[0:2][index_cols]
+
+    assert_df_equal(
+        mt.get_metadata(part_idx)[index_cols],
+        part_idx,
+        index_cols=index_cols
+    )
