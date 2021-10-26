@@ -74,23 +74,13 @@ def dbconn():
 
 
 # Label Studio
+TEST_LABEL_STUDIO = bool(distutils.util.strtobool(os.environ.get('TEST_LABEL_STUDIO', 'False')))
+
+
 @pytest.fixture
 def ls_url_and_auth(tmp_dir):
     ls_host = os.environ.get('LABEL_STUDIO_HOST', 'localhost')
     ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
     ls_url = f"http://{ls_host}:{ls_port}/"
     auth = ('test@epoch8.co', 'qwerty123')
-
-    # Run the process manually
-    if bool(distutils.util.strtobool(os.environ.get('TEST_START_LABEL_STUDIO', 'False'))):
-        label_studio_service = Popen([
-            'label-studio',
-            '--database', os.environ.get('LABEL_STUDIO_BASE_DATA_DIR', str(tmp_dir / 'ls.db')),
-            '--internal-host', os.environ.get('LABEL_STUDIO_HOST', 'localhost'),
-            '--port', os.environ.get('LABEL_STUDIO_PORT', '8080'),
-            '--no-browser'
-        ])
-        yield ls_url, auth
-        label_studio_service.terminate()
-    else:
-        yield ls_url, auth
+    yield ls_url, auth

@@ -21,6 +21,15 @@ class ExternalTable(Table):
     pass
 
 
+@dataclass
+class InternalTable(Table):
+    '''
+    Таблица, метаданных которых нужно обновить после действий на ней в outputs
+    (Например таблица с лейбел студией)
+    '''
+    pass
+
+
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog

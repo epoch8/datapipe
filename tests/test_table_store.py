@@ -12,6 +12,7 @@ from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.label_studio.store import TableStoreLabelStudio
+from tests.conftest import TEST_LABEL_STUDIO
 
 from .util import assert_df_equal, assert_ts_contains
 
@@ -144,6 +145,7 @@ class CasesTableStore:
             df
         )
 
+    @pytest.mark.skipif(not TEST_LABEL_STUDIO, reason="env variable 'TEST_LABEL_STUDIO' is not set")
     @case(tags='supports_delete')
     @parametrize('df,schema', DATA_PARAMS)
     def case_label_studio(self, ls_url_and_auth, df, schema, request):

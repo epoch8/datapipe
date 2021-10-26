@@ -10,7 +10,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from datapipe.dsl import BatchGenerate, Catalog, Pipeline, Table, BatchTransform, UpdateMetaTable
+from datapipe.dsl import Catalog, InternalTable, Pipeline, Table, BatchTransform
 from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
 from datapipe.compute import build_compute, run_steps
@@ -18,8 +18,8 @@ from datapipe.label_studio.session import LabelStudioSession
 from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process
 
-from pytest_cases import parametrize_with_cases, parametrize, case
-from tests.conftest import assert_df_equal, ls_url_and_auth
+from pytest_cases import parametrize_with_cases, parametrize
+from tests.conftest import TEST_LABEL_STUDIO, assert_df_equal
 
 
 PROJECT_LABEL_CONFIG_TEST = '''<View>
@@ -127,6 +127,7 @@ INCLUDE_PARAMS = [
 
 
 class CasesLabelStudio:
+    @pytest.mark.skipif(not TEST_LABEL_STUDIO, reason="env variable 'TEST_LABEL_STUDIO' is not set")
     @parametrize('include_params', INCLUDE_PARAMS)
     def case_ls(self, include_params, dbconn, ls_url_and_auth, request):
         ls_url, auth = ls_url_and_auth
@@ -145,7 +146,7 @@ class CasesLabelStudio:
                     ],
                 )
             ),
-            '01_label_studio': Table(
+            '01_label_studio': InternalTable(
                 TableStoreLabelStudio(
                     ls_url=ls_url,
                     auth=auth,
@@ -169,9 +170,6 @@ class CasesLabelStudio:
                     include_predictions=include_predictions
                 ),
                 inputs=['00_input_data'],
-                outputs=['01_label_studio']
-            ),
-            UpdateMetaTable(
                 outputs=['01_label_studio']
             )
         ])

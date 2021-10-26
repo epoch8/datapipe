@@ -1,11 +1,11 @@
-from typing import List, Callable
+from typing import List, Callable, Optional, Set
 from dataclasses import dataclass
 
 import logging
 
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many, MetaTableUpdater
 
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, UpdateMetaTable
+from .dsl import BatchGenerate, ExternalTable, Catalog, InternalTable, Pipeline, BatchTransform, UpdateMetaTable
 from .step import ComputeStep
 
 logger = logging.getLogger('datapipe.compute')
@@ -40,12 +40,15 @@ class BatchTransformIncStep(ComputeStep):
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     res: List[ComputeStep] = []
 
+    internal_tables: Set[str] = set()
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
             res.append(MetaTableUpdater(
                 name=f'update_{name}',
                 table=catalog.get_datatable(ds, name)
             ))
+        if isinstance(tbl, InternalTable):
+            internal_tables.add(name)
 
     for step in pipeline.steps:
         if isinstance(step, BatchGenerate):
@@ -69,6 +72,17 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
                 func=step.func,
                 chunk_size=step.chunk_size
             ))
+
+        outputs: Optional[str] = step.outputs if hasattr(step, 'outputs') else None
+        if outputs is not None:
+            res.extend([
+                MetaTableUpdater(
+                    name=f'update_{name}',
+                    table=catalog.get_datatable(ds, name)
+                )
+                for name in step.outputs
+                if name in internal_tables
+            ])
 
         if isinstance(step, UpdateMetaTable):
             res.extend([

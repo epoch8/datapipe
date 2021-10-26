@@ -15,7 +15,7 @@ from sqlalchemy.sql.sqltypes import String
 from datapipe.compute import build_compute
 from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
-from datapipe.dsl import BatchTransform, Catalog, ExternalTable, Table, Pipeline, UpdateMetaTable
+from datapipe.dsl import BatchTransform, Catalog, ExternalTable, InternalTable, Table, Pipeline
 from datapipe.cli import main
 from datapipe.label_studio.store import TableStoreLabelStudio
 from datapipe.store.database import DBConn
@@ -99,7 +99,7 @@ catalog = Catalog({
     '00_input_images': ExternalTable(
         store=TableStoreFiledir(DATA_DIR / '00_dataset' / '{id}.jpeg', PILFile('jpg')),
     ),
-    '01_label_studio': Table(
+    '01_label_studio': InternalTable(
         TableStoreLabelStudio(
             ls_url=f'http://{HOST}:{LS_PORT}/',
             auth=('moderation@epoch8.co', 'qwerty123'),
@@ -127,9 +127,6 @@ pipeline = Pipeline([
             files_url=f'http://{HOST}:{HTML_FILES_PORT}/',
         ),
         inputs=['00_input_images'],
-        outputs=['01_label_studio']
-    ),
-    UpdateMetaTable(
         outputs=['01_label_studio']
     ),
     BatchTransform(
