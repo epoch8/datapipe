@@ -12,6 +12,8 @@ class RunConfig:
     # которые строго соответствуют фильтру
     # (в случае, если у таблицы есть идентификатор с совпадающим именем).
     filters: Dict[str, Any]
+     
+    labels: Dict[str, Any]
 
 
 @dataclass
