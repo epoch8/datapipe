@@ -35,7 +35,7 @@ class TableStoreLabelStudio(TableStore):
     ) -> None:
         self.ls_url = ls_url
         self.auth = auth
-        self.project_identifier = project_identifier
+        self.project_identifier = str(project_identifier)
         self.project_description_at_create = project_description_at_create
         self.project_label_config_at_create = project_label_config_at_create
 
@@ -63,10 +63,6 @@ class TableStoreLabelStudio(TableStore):
         )
         self.page_chunk_size = page_chunk_size
         self.tqdm_disable = tqdm_disable
-
-        self._project_id: Optional[str] = (
-            str(project_identifier) if str(project_identifier).isnumeric() else None
-        )
 
         self.view_data = {
             "title": "datapipe_view [DO NOT CHANGE OR DELETE IT]",
@@ -115,7 +111,11 @@ class TableStoreLabelStudio(TableStore):
             self.label_studio_session.sign_up()
             self.label_studio_session.is_auth_ok(raise_exception=True)
 
-        self._project_id = self.label_studio_session.get_project_id_by_title(str(self.project_identifier))
+        self._project_id: Optional[str] = (
+            self.project_identifier if self.project_identifier.isnumeric()
+            else self.label_studio_session.get_project_id_by_title(self.project_identifier)
+        )
+
         if self._project_id is None:
             project = self.label_studio_session.create_project(
                 project_setting={
