@@ -94,6 +94,7 @@ class TableStoreLabelStudio(TableStore):
                 "items": []
             }
         }
+        self._project_id: Optional[str] = None
         self.get_or_create_project(raise_exception=False)
 
     def get_primary_schema(self) -> DataSchema:
@@ -111,7 +112,7 @@ class TableStoreLabelStudio(TableStore):
             self.label_studio_session.sign_up()
             self.label_studio_session.is_auth_ok(raise_exception=True)
 
-        self._project_id: Optional[str] = (
+        self._project_id = (
             self.project_identifier if self.project_identifier.isnumeric()
             else self.label_studio_session.get_project_id_by_title(self.project_identifier)
         )
