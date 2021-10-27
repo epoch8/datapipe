@@ -146,7 +146,7 @@ class CasesTableStore:
         )
 
     @pytest.mark.skipif(not TEST_LABEL_STUDIO, reason="env variable 'TEST_LABEL_STUDIO' is not set")
-    @case(tags='supports_delete')
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_label_studio(self, ls_url_and_auth, df, schema, request):
         ls_url, auth = ls_url_and_auth
