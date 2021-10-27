@@ -47,5 +47,5 @@ def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
 def index_to_data(data_df: DataDF, idx_df: IndexDF) -> DataDF:
     idx_columns = list(idx_df.columns)
     data_df = data_df.set_index(idx_columns)
-    idx_df = idx_df.set_index(idx_columns)
-    return cast(DataDF, data_df.loc[idx_df.index].reset_index())
+    indexes = idx_df.set_index(idx_columns)
+    return cast(DataDF, data_df.loc[indexes.index].reset_index())
