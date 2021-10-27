@@ -287,23 +287,30 @@ class TableStoreYandexToloka(TableStore):
         """
             Получить все задачи без разметки от людей с некоторой метаинформацией
         """
+        looked_tasks = set()
+
         tasks: List[Task] = []
         for task in self.toloka_client.get_tasks(pool_id=self.pool.id):
             tasks.append(task)
+            looked_tasks.add(task.id)
             if len(tasks) == chunksize:
                 yield tasks
                 tasks = []
 
-        # Задачи, которые были залиты внешним образом
+        # Вытащим также задачи, которые были могли быть залиты внешним образом
+        # В task_suite могут попасть задачи из предыдущего get_tasks, поэтому их надо пропустить
         for task_suite in self.toloka_client.get_task_suites(pool_id=self.pool.id):
             if task_suite.tasks is not None:
                 for base_task in task_suite.tasks:
+                    if base_task.id in looked_tasks:
+                        continue
                     tasks.append(
                         TaskFromSuite(
                             input_values=base_task.input_values,
                             id=base_task.id
                         )
                     )
+                    looked_tasks.add(base_task.id)
                     if len(tasks) == chunksize:
                         yield tasks
                         tasks = []
