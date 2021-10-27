@@ -45,7 +45,9 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
-    def store_chunk(self, data_df: DataDF, processed_idx: IndexDF = None, now: float = None) -> None:
+    def store_chunk(self, data_df: DataDF, step_name: str = None,
+                    processed_idx: IndexDF = None, now: float = None,
+                    run_config: RunConfig = None) -> None:
         '''
         Записать новые данные в таблицу.
 
@@ -58,11 +60,14 @@ class DataTable:
 
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table\
+            .get_changes_for_store_chunk(data_df, now)
 
         if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
             self.event_logger.log_state(
-                self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+                self.name, added_count=len(new_meta_df),
+                updated_count=len(changed_meta_df), deleted_count=0,
+                run_config=run_config, step_name=step_name
             )
 
         # TODO implement transaction meckanism
@@ -79,17 +84,23 @@ class DataTable:
             deleted_idx = index_difference(existing_idx, data_idx)
 
             self.table_store.delete_rows(deleted_idx)
-            self.meta_table.mark_rows_deleted(deleted_idx)
+            self.meta_table.mark_rows_deleted(deleted_idx, step_name=step_name,
+                                              run_config=run_config)
 
-    def delete_by_idx(self, idx: IndexDF, now: float = None) -> None:
+    def delete_by_idx(self, idx: IndexDF, step_name: str, now: float = None,
+                      run_config: RunConfig = None) -> None:
         self.table_store.delete_rows(idx)
-        self.meta_table.mark_rows_deleted(idx, now=now)
+        self.meta_table.mark_rows_deleted(idx, step_name, now=now,
+                                          run_config=run_config)
 
-    def delete_stale_by_process_ts(self, process_ts: float, now: float = None, run_config: RunConfig = None) -> None:
+    def delete_stale_by_process_ts(self, process_ts: float, step_name: str,
+                                   now: float = None,
+                                   run_config: RunConfig = None) -> None:
         for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
             self.table_store.delete_rows(deleted_idx)
-            self.meta_table.mark_rows_deleted(deleted_idx, now=now)
+            self.meta_table.mark_rows_deleted(deleted_idx, step_name, now=now,
+                                              run_config=run_config)
 
 
 class DataStore:
@@ -277,14 +288,17 @@ def gen_process_many(
 
             # TODO перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
             if dts:
-                dts[0].event_logger.log_exception(e)
+                dts[0].event_logger.log_exception(e, run_config=run_config,
+                                                  step_name=proc_func.__name__)
             return
 
         for k, dt_k in enumerate(dts):
-            dt_k.store_chunk(chunk_dfs[k])
+            dt_k.store_chunk(chunk_dfs[k], step_name=proc_func.__name__,
+                             run_config=run_config)
 
     for k, dt_k in enumerate(dts):
-        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
+        dt_k.delete_stale_by_process_ts(now, step_name=proc_func.__name__,
+                                        run_config=run_config)
 
 
 # TODO перенести в compute.BatchGenerateStep
@@ -360,7 +374,8 @@ def inc_process_many(
                     chunks_df = proc_func(*input_dfs, **kwargs)
                 except Exception as e:
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
-                    ds.event_logger.log_exception(e)
+                    ds.event_logger.log_exception(e, run_config=run_config,
+                                                  step_name=proc_func.__name__)
 
                     continue
 
@@ -369,11 +384,15 @@ def inc_process_many(
                     chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
 
                     # Добавляем результат в результирующие чанки
-                    res_dt.store_chunk(data_df=chunk_df_k, processed_idx=idx)
+                    res_dt.store_chunk(data_df=chunk_df_k,
+                                       step_name=proc_func.__name__,
+                                       run_config=run_config,
+                                       processed_idx=idx)
 
             else:
                 for k, res_dt in enumerate(res_dts):
-                    res_dt.delete_by_idx(idx)
+                    res_dt.delete_by_idx(idx, step_name=proc_func.__name__,
+                                         run_config=run_config,)
 
 
 class ExternalTableUpdater(ComputeStep):
@@ -392,7 +411,12 @@ class ExternalTableUpdater(ComputeStep):
 
             if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
                 ds.event_logger.log_state(
-                    self.name, added_count=len(new_meta_df), updated_count=len(changed_meta_df), deleted_count=0
+                    self.name,
+                    added_count=len(new_meta_df),
+                    updated_count=len(changed_meta_df),
+                    deleted_count=0,
+                    step_name="ExternalTableUpdater.run",
+                    run_config=run_config
                 )
 
             # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
@@ -401,4 +425,9 @@ class ExternalTableUpdater(ComputeStep):
             self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
         for stale_idx in self.table.meta_table.get_stale_idx(now):
-            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)
+            self.table.meta_table.mark_rows_deleted(
+                stale_idx,
+                now=now,
+                step_name="ExternalTableUpdater.run",
+                run_config=run_config
+            )

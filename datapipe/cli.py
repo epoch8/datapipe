@@ -2,9 +2,11 @@ import click
 
 from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Pipeline
+from datapipe.step import RunConfig
 
 
-def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline,
+         run_config: RunConfig = None):
     @click.group()
     @click.option('--debug', is_flag=True, help='Log debug output')
     @click.option('--debug-sql', is_flag=True, help='Log SQL queries VERY VERBOSE')
@@ -21,7 +23,7 @@ def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline):
     @cli.command()
     def run():
         from .compute import run_pipeline
-        run_pipeline(ds, catalog, pipeline)
+        run_pipeline(ds, catalog, pipeline, run_config)
 
     @cli.command()
     def ui():

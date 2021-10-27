@@ -44,16 +44,21 @@ class EventLogger:
         ]
 
     def log_state(self, table_name, added_count, updated_count, deleted_count,
-                  run_config: RunConfig = None):
+                  step_name: str, run_config: RunConfig = None):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+
+        meta = {"step_name": step_name}
+
+        if run_config is not None:
+            meta.update({
+                **run_config.labels,
+                "filters": run_config.filters
+            })
 
         ins = self.events_table.insert().values(
             type=EventTypes.STATE.value,
             event={
-                "meta": {
-                    **run_config.labels,
-                    "filters": run_config.filters
-                } if run_config is not None else {},
+                "meta": meta,
                 "data": {
                     "table_name": table_name,
                     "added_count": added_count,
@@ -66,15 +71,21 @@ class EventLogger:
         self.dbconn.con.execute(ins)
 
     def log_error(self, type, message, description, params,
-                  run_config: RunConfig = None):
-        logger.debug(f'Error {type} {message}')
+                  step_name: str, run_config: RunConfig = None):
+        logger.debug(f'Error in step {step_name}: {type} {message}')
+
+        meta = {"step_name": step_name}
+
+        if run_config is not None:
+            meta.update({
+                **run_config.labels,
+                "filters": run_config.filters
+            })
+
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,
             event={
-                "meta": {
-                    **run_config.labels,
-                    "filters": run_config.filters
-                } if run_config is not None else {},
+                "meta": meta,
                 "data": {
                     "type": type,
                     "message": message,
@@ -86,11 +97,13 @@ class EventLogger:
 
         self.dbconn.con.execute(ins)
 
-    def log_exception(self, exc: Exception, run_config: RunConfig = None):
+    def log_exception(self, exc: Exception, step_name: str,
+                      run_config: RunConfig = None):
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
             description=traceback.format_exc(),
             params=exc.args,
+            step_name=step_name,
             run_config=run_config
         )

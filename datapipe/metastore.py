@@ -298,10 +298,19 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_metadata_rows(changed_meta_df)
 
-    def mark_rows_deleted(self, deleted_idx: IndexDF, now: float = None) -> None:
+    def mark_rows_deleted(self, deleted_idx: IndexDF, step_name: str,
+                          run_config: RunConfig = None, now: float = None
+                          ) -> None:
         if len(deleted_idx) > 0:
             logger.debug(f'Deleting {len(deleted_idx.index)} rows from {self.name} data')
-            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
+            self.event_logger.log_state(
+                self.name,
+                step_name=step_name,
+                added_count=0,
+                updated_count=0,
+                deleted_count=len(deleted_idx),
+                run_config=run_config
+            )
 
             if now is None:
                 now = time.time()
