@@ -121,7 +121,7 @@ class TableStoreYandexToloka(TableStore):
         self.data_sql_schema = input_data_sql_schema
         self.assignments_column = assignments_column
         if assignments_column is not None:
-            self.data_sql_schema += [Column(assignments_column, JSON)]
+            self.data_sql_schema = self.data_sql_schema + [Column(assignments_column, JSON)]
 
         self.input_spec: Dict[str, toloka.project.field_spec.FieldSpec] = {
             column.name: SQL_TYPE_TO_FIELD_SPEC[type(column.type)]()
