@@ -450,7 +450,6 @@ class TableStoreYandexToloka(TableStore):
                 columns=[column.name for column in self.data_sql_schema] + ['_task_id']
             )
 
-        assignments_df.to_pickle('/notebooks/epoch8/datapipe/test_data/assignments_df.pkl')
         # Контактенируем результаты из assignment_column в список:
         if self.assignment_column is not None:
             assignments_df = assignments_df.groupby(
@@ -462,7 +461,6 @@ class TableStoreYandexToloka(TableStore):
         completed_inner_table_df = inner_table_df.query(
             'not is_deleted and not (_task_id in @completed_task_ids)'
         )
-        completed_inner_table_df.to_pickle('/notebooks/epoch8/datapipe/test_data/completed_inner_table_df.pkl')
         # Соединяем с предыдущей табличкой, заполняя несделанные задачи пустым списком
         completed_inner_table_df = completed_inner_table_df.reindex(columns=assignments_df.columns, fill_value=[])
         output_df = pd.concat([assignments_df, completed_inner_table_df], ignore_index=True).convert_dtypes()
