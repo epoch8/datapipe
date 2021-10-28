@@ -450,12 +450,18 @@ class TableStoreYandexToloka(TableStore):
 
         # Контактенируем результаты из assignments_column в список:
         if self.assignments_column is not None:
-            input_primary_keys = [column.name for column in self.input_data_sql_schema if column.primary_key]
-            assignments_df = (
-                assignments_df.groupby(by=input_primary_keys + ['_task_id'])[self.assignments_column]
+            keys = [column.name for column in self.input_data_sql_schema if column.primary_key] + ['_task_id']
+            assignments_df_concatenated = (
+                assignments_df.groupby(by=keys)[self.assignments_column]
                 .apply(list)
                 .reset_index()
-                .drop_duplicates(subset=input_primary_keys + ['_task_id'])
+            )
+            assignments_df = pd.merge(
+                assignments_df_concatenated, (
+                    assignments_df
+                    .drop(columns=[self.assignments_column])
+                    .drop_duplicates(subset=keys)
+                )
             )
 
         completed_task_ids = set(assignments_df['_task_id'])  # noqa: F841
