@@ -12,7 +12,7 @@ from cityhash import CityHash32
 import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
-from datapipe.store.database import DBConn, sql_schema_to_sqltype
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.event_logger import EventLogger
 from datapipe.step import RunConfig
 
@@ -66,16 +66,6 @@ class MetaTable:
         )
 
         self.sql_table.create(self.dbconn.con, checkfirst=True)
-
-    def sql_apply_filters(self, sql: select, run_config: RunConfig = None) -> select:
-        if run_config is not None:
-            for k, v in run_config.filters.items():
-                if k in self.primary_keys:
-                    sql = sql.where(
-                        self.sql_table.c[k] == v
-                    )
-
-        return sql
 
     def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
         '''
@@ -332,7 +322,7 @@ class MetaTable:
             )
         )
 
-        sql = self.sql_apply_filters(sql, run_config=run_config)
+        sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
 
         return pd.read_sql_query(
             sql,
