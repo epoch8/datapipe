@@ -452,9 +452,13 @@ class TableStoreYandexToloka(TableStore):
 
         # Контактенируем результаты из assignment_column в список:
         if self.assignment_column is not None:
-            assignments_df = assignments_df.groupby(
-                by=[column.name for column in self.input_data_sql_schema if column.primary_key] + ['_task_id']
-            )[self.assignment_column].apply(list).reset_index()
+            input_primary_keys = [column.name for column in self.input_data_sql_schema if column.primary_key]
+            assignments_df = (
+                assignments_df.groupby(by=input_primary_keys + ['_task_id'])[self.assignment_column]
+                .apply(list)
+                .reset_index()
+                .drop_duplicates(subset=input_primary_keys + ['_task_id'])
+            )
 
         completed_task_ids = set(assignments_df['_task_id'])  # noqa: F841
         # Читаем оставшиеся задачи, для которых еще нет разметки и не удалены
