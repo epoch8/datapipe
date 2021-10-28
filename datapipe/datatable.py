@@ -10,7 +10,7 @@ from sqlalchemy import alias, func, select, union, and_, or_
 import tqdm
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
-from datapipe.store.database import DBConn
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
@@ -197,7 +197,7 @@ class DataStore:
                 )
             )
 
-            sql = inp_dt.meta_table.sql_apply_filters(sql, run_config)
+            sql = sql_apply_runconfig_filter(sql, inp_dt.meta_table.sql_table, inp_dt.primary_keys, run_config)
 
             sql_requests.append(sql)
 
@@ -386,7 +386,7 @@ class MetaTableUpdater(ComputeStep):
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         now = time.time()
 
-        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df()):
+        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
             if ps_df.empty:
                 return
 

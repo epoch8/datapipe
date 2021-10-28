@@ -7,6 +7,7 @@ import pandas as pd
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, and_, or_
 from sqlalchemy.pool import SingletonThreadPool
+from datapipe.step import RunConfig
 
 from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
@@ -57,6 +58,17 @@ class DBConn:
 
     def __setstate__(self, state):
         self._init(state['connstr'], state['schema'])
+
+
+def sql_apply_runconfig_filter(sql: select, table: Table, primary_keys: List[str], run_config: RunConfig = None) -> select:
+    if run_config is not None:
+        for k, v in run_config.filters.items():
+            if k in primary_keys:
+                sql = sql.where(
+                    table.c[k] == v
+                )
+
+    return sql
 
 
 class TableStoreDB(TableStore):
@@ -148,8 +160,10 @@ class TableStoreDB(TableStore):
             con=self.dbconn.con
         )
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         sql = select(self.data_table.c)
+
+        sql = sql_apply_runconfig_filter(sql, self.data_table, self.primary_keys, run_config)
 
         return pd.read_sql_query(
             sql,
