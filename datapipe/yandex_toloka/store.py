@@ -94,9 +94,9 @@ class TableStoreYandexToloka(TableStore):
         input_data_sql_schema: List[Column],
         output_data_sql_schema: List[Column],
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],  # str or (project_id, pool_id)
-        user_id_column: Optional[str] = 'user_id',
-        assignment_id_column: Optional[str] = 'assignement_id',
+        assignment_column: Optional[str] = 'assignement',
         tasks_per_page: int = 1,
+        default_overlap: int = 1,
         view_spec_at_create_project: ViewSpec = ClassicViewSpec(markup='', script='', styles=''),
         # Arguments appended to toloka.Project()
         # Except 'private_comment' and 'task_spec'
@@ -111,37 +111,20 @@ class TableStoreYandexToloka(TableStore):
             environment=environment
         )
         input_used_columns = [column.name for column in input_data_sql_schema]
-        output_used_columns = [column.name for column in output_data_sql_schema]
-
-        for column in input_data_sql_schema:
-            assert column.name not in output_used_columns, (
-                f"The column '{column.name}' is already used in data_sql_schema."
-            )
         for column in output_data_sql_schema:
-            assert column.name not in input_used_columns, (
-                f"The column '{column.name}' is already used in data_sql_schema."
-            )
-        for column in ['__task_id', 'is_deleted']:
-            assert column not in input_used_columns + output_data_sql_schema, (
+            assert not column.primary_key
+        for column in ['_task_id', 'is_deleted', '_task', assignment_column]:
+            if column is None:
+                continue
+            assert column not in input_used_columns, (
                 f"The column '{column}' is reserved for this table store."
             )
 
         self.input_data_sql_schema = input_data_sql_schema
-        self.output_data_sql_schema = output_data_sql_schema
-        self.data_sql_schema = input_data_sql_schema + output_data_sql_schema
-
-        self.assignment_id_column = assignment_id_column
-        self.user_id_column = user_id_column
-        if user_id_column is not None:
-            assert user_id_column not in input_used_columns + output_data_sql_schema, (
-                f"The column '{user_id_column}' is already used in data_sql_schema."
-            )
-            self.data_sql_schema += [Column(user_id_column, String())]
-        if assignment_id_column is not None:
-            assert assignment_id_column not in input_used_columns + output_data_sql_schema, (
-                f"The column '{assignment_id_column}' is already used in data_sql_schema."
-            )
-            self.data_sql_schema += [Column(assignment_id_column, String())]
+        self.data_sql_schema = input_data_sql_schema
+        self.assignment_column = assignment_column
+        if assignment_column is not None:
+            self.data_sql_schema += [Column(assignment_column, JSON)]
 
         self.input_spec: Dict[str, toloka.project.field_spec.FieldSpec] = {
             column.name: SQL_TYPE_TO_FIELD_SPEC[type(column.type)]()
@@ -149,13 +132,17 @@ class TableStoreYandexToloka(TableStore):
         }
         self.output_spec: Dict[str, toloka.project.field_spec.FieldSpec] = {
             column.name: SQL_TYPE_TO_FIELD_SPEC[type(column.type)]()
-            for column in self.output_data_sql_schema
+            for column in output_data_sql_schema
         }
 
         self.mixed_config = MixerConfig(
             real_tasks_count=tasks_per_page,
             golden_tasks_count=0,
             training_tasks_count=0
+        )
+        self.defaults = toloka.Pool.Defaults(
+            default_overlap_for_new_tasks=default_overlap,
+            default_overlap_for_new_task_suites=default_overlap
         )
 
         self.inner_table_store = TableStoreDB(
@@ -165,7 +152,7 @@ class TableStoreYandexToloka(TableStore):
                 Column(column.name, column.type, primary_key=column.primary_key)
                 for column in self.input_data_sql_schema
             ] + [
-                Column('__task_id', String(), primary_key=True),
+                Column('_task_id', String(), primary_key=True),
                 Column('is_deleted', Boolean)
             ]
         )
@@ -186,20 +173,13 @@ class TableStoreYandexToloka(TableStore):
                 toloka.Pool(
                     project_id=self.project.id,
                     private_name=str(project_identifier),
-                    defaults=toloka.Pool.Defaults(
-                        default_overlap_for_new_tasks=1,
-                        default_overlap_for_new_task_suites=1
-                    ),
+                    defaults=self.defaults,
                     mixer_config=self.mixed_config,
                     **kwargs_at_create_pool
                 )
             )
         else:
             self.project, self.pool = result
-
-        if self.pool.defaults is not None:
-            assert self.pool.defaults.default_overlap_for_new_tasks in [0, 1, None]
-            assert self.pool.defaults.default_overlap_for_new_task_suites in [0, 1, None]
 
         # Синхронизируем внутреннюю табличку
         self._synchronize_inner_table()
@@ -228,6 +208,7 @@ class TableStoreYandexToloka(TableStore):
             project_id, pool_id = project_identifier
             project = self.toloka_client.get_project(project_id=str(project_id))
             pool = self.toloka_client.get_pool(pool_id=str(pool_id))
+            assert project.id is not None and pool.id is not None
 
             # Проверяем консинтетность на input_spec и output_spec
             our_input_spec = {key: FIELD_SPEC_TO_SQL_TYPE[type(self.input_spec[key])] for key in self.input_spec}
@@ -245,7 +226,15 @@ class TableStoreYandexToloka(TableStore):
             assert len(input_difference) == 0, f"{input_difference=}"
             assert len(output_difference) == 0, f"{output_difference=}"
 
-            # Делаем консинтетность на mixer_config
+            # Проверяем консинтетность:
+            # На defaults (число перекрытия на задачу)
+            if pool.defaults != self.defaults:
+                try:
+                    pool.set_defaults(self.defaults)
+                    self.toloka_client.update_pool(pool_id=pool.id, pool=pool)
+                except toloka.exceptions.IncorrectActionsApiError as e:
+                    logger.warning(f"Couldn't set defaults. Reason: {e=}")
+            # На mixer_config (число задач на страницу)
             if pool.mixer_config != self.mixed_config:
                 try:
                     pool.set_mixer_config(self.mixed_config)
@@ -264,7 +253,7 @@ class TableStoreYandexToloka(TableStore):
         """
         # Читаем задачи во внутренней табличке
         inner_table_df = self.inner_table_store.read_rows()
-        synchronized_tasks = set(inner_table_df['__task_id'])
+        synchronized_tasks = set(inner_table_df['_task_id'])
 
         for tasks_chunk in self._get_all_tasks():
             self.inner_table_store.insert_rows(
@@ -276,7 +265,7 @@ class TableStoreYandexToloka(TableStore):
                                 for key in task.input_values
                             } if task.input_values is not None else {}
                         ),
-                        '__task_id': task.id,
+                        '_task_id': task.id,
                         'is_deleted': False
                     }
                     for task in tasks_chunk if task.id not in synchronized_tasks
@@ -300,7 +289,7 @@ class TableStoreYandexToloka(TableStore):
                 yield tasks
                 tasks = []
 
-        # Вытащим также задачи, которые были могли быть залиты внешним образом
+        # Вытащим также задачи, которые были залиты как "больше 1 задачи на страницу" или внешним образом
         # В task_suite могут попасть задачи из предыдущего get_tasks, поэтому их надо пропустить
         for task_suite in self.toloka_client.get_task_suites(pool_id=self.pool.id):
             if task_suite.tasks is not None:
@@ -311,7 +300,7 @@ class TableStoreYandexToloka(TableStore):
                         TaskFromSuite(
                             input_values=base_task.input_values,
                             id=base_task.id,
-                            overlap=task_suite.overlap,
+                            overlap=cast(Any, task_suite).overlap,
                             remaining_overlap=task_suite.remaining_overlap
                         )
                     )
@@ -336,8 +325,8 @@ class TableStoreYandexToloka(TableStore):
                             for key in task.input_values
                         } if task.input_values is not None else {}
                     ),
-                    '__task_id': task.id,
-                    'task': task
+                    '_task_id': task.id,
+                    '_task': task
                 }
                 for task in tasks_chunk
             ])
@@ -350,9 +339,10 @@ class TableStoreYandexToloka(TableStore):
             inner_table_df_to_be_deleted_merge_tasks = pd.merge(
                 tasks_chunk_df, inner_table_df,
                 on=self.inner_table_store.primary_keys
-            ).drop_duplicates(['__task_id'])  # Дубликаты могут появиться из-за TaskSuite
+            )
+
             for task_id, task in zip(
-                inner_table_df_to_be_deleted_merge_tasks['__task_id'], inner_table_df_to_be_deleted_merge_tasks['task']
+                inner_table_df_to_be_deleted_merge_tasks['_task_id'], inner_table_df_to_be_deleted_merge_tasks['_task']
             ):
                 if isinstance(task, toloka.Task):
                     self.toloka_client.patch_task_overlap_or_min(task_id=task_id, overlap=0)
@@ -366,6 +356,9 @@ class TableStoreYandexToloka(TableStore):
         """
             Добавляет в Толоку новые задачи с заданными ключами
         """
+        if df.empty:
+            return
+
         self.delete_rows(data_to_index(df, self.primary_keys))
 
         tasks = [
@@ -378,13 +371,11 @@ class TableStoreYandexToloka(TableStore):
             )
             for idx in df.index
         ]
-        # There is maximum 10000 tasks per request
 
         def chunks(lst: List[Any], n: int):
-            """Yield successive n-sized chunks from lst."""
             for i in range(0, len(lst), n):
                 yield lst[i:i + n]
-
+        # Рекомендуемое число -- 10000 задач на реквест
         for tasks_chunk in chunks(tasks, 10000):
             tasks_chunks_res = self.toloka_client.create_tasks(tasks_chunk, allow_defaults=True)
             assert tasks_chunks_res.items is not None, f"Something goes wrong: {tasks_chunks_res=}"
@@ -397,7 +388,7 @@ class TableStoreYandexToloka(TableStore):
                                 for key in task.input_values
                             } if task.input_values is not None else {}
                         ),
-                        '__task_id': tasks_chunks_res.items[str(i)].id,
+                        '_task_id': tasks_chunks_res.items[str(i)].id,
                         'is_deleted': False
                     }
                     for i, task in enumerate(tasks_chunk)
@@ -408,14 +399,16 @@ class TableStoreYandexToloka(TableStore):
         self.insert_rows(df)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
+        if idx is not None and idx.empty:
+            return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+
         # Читаем все задачи и ищем удаленные задачи
         inner_table_df = self.inner_table_store.read_rows()
         deleted_tasks_df = inner_table_df.query('is_deleted')
-        deleted_tasks = set(deleted_tasks_df['__task_id'])
+        deleted_tasks = set(deleted_tasks_df['_task_id'])
 
         # Читаем разметку от людей, убирая удаленные задачи
-        assignments = []
-        assignments_rejected = []
+        assignments: List[Dict[str, Any]] = []
         for assignment in self.toloka_client.get_assignments(
             status=['SUBMITTED', 'ACCEPTED', 'REJECTED'],
             pool_id=self.pool.id
@@ -423,7 +416,7 @@ class TableStoreYandexToloka(TableStore):
             assert assignment.tasks is not None
             assert assignment.solutions is not None
 
-            assignment_data = [
+            assignments.extend([
                 {
                     **(
                         {
@@ -431,72 +424,53 @@ class TableStoreYandexToloka(TableStore):
                             for key in task.input_values
                         } if task.input_values is not None else {}
                     ),
-                    **{
-                        key: _convert_if_need(solution.output_values[key])
-                        for key in solution.output_values
-                    },
-                    '__task_id': task.id,
                     **(
                         {
-                            self.user_id_column: assignment.user_id
-                        } if self.user_id_column is not None else {}
+                            self.assignment_column: {
+                                'assignment_id': assignment.id,
+                                'task_id': task.id,
+                                'user_id': assignment.user_id,
+                                'result': {
+                                    key: _convert_if_need(solution.output_values[key])
+                                    for key in solution.output_values
+                                }
+                            }
+                        } if self.assignment_column is not None else {}
                     ),
-                    **(
-                        {
-                            self.assignment_id_column: assignment.id
-                        } if self.assignment_id_column is not None else {}
-                    ),
+                    '_task_id': task.id
                 }
                 for task, solution in zip(assignment.tasks, assignment.solutions)
                 if task.id not in deleted_tasks
-            ]
-            if assignment.status != toloka.assignment.Assignment().Status.REJECTED:
-                assignments.extend(assignment_data)
-            else:
-                assignments_rejected.extend(assignment_data)
+            ])
 
         if len(assignments) > 0:
             assignments_df = pd.DataFrame.from_records(assignments)
         else:
             assignments_df = pd.DataFrame(
                 {},
-                columns=[column.name for column in self.data_sql_schema] + ['__task_id']
+                columns=[column.name for column in self.data_sql_schema] + ['_task_id']
             )
-        completed_task_ids = set(assignments_df['__task_id'])  # noqa: F841
 
-        # Задачи, чья разметка была отказана, нужно удалять, а затем перезалить их (с новыми __task_id)
-        if len(assignments_rejected) > 0:
-            assignments_rejected_df = pd.DataFrame.from_records(assignments_rejected)
-            rejected_task_ids = set(assignments_rejected_df['__task_id'])  # noqa: F841
-            rejected_inner_table_df = inner_table_df.query(
-                'not is_deleted and not (__task_id in @rejected_task_ids)'
-            )
-            if len(rejected_inner_table_df) > 0:
-                self.delete_rows(
-                    idx=cast(IndexDF, rejected_inner_table_df[
-                        [column.name for column in self.input_data_sql_schema if column.primary_key]
-                    ])
-                )
-                self.insert_rows(rejected_inner_table_df[[column.name for column in self.input_data_sql_schema]])
-                return self.read_rows(idx=idx)
+        assignments_df.to_pickle('/notebooks/epoch8/datapipe/test_data/assignments_df.pkl')
+        # Контактенируем результаты из assignment_column в список:
+        if self.assignment_column is not None:
+            assignments_df = assignments_df.groupby(
+                by=[column.name for column in self.input_data_sql_schema if column.primary_key] + ['_task_id']
+            )[self.assignment_column].apply(list).reset_index()
 
+        completed_task_ids = set(assignments_df['_task_id'])  # noqa: F841
         # Читаем оставшиеся задачи, для которых еще нет разметки и не удалены
         completed_inner_table_df = inner_table_df.query(
-            'not is_deleted and not (__task_id in @completed_task_ids)'
+            'not is_deleted and not (_task_id in @completed_task_ids)'
         )
-        output_df = (
-            pd.concat([assignments_df, completed_inner_table_df], ignore_index=True)
-            .replace({np.nan: None})
-            .convert_dtypes()
-        )
-
+        completed_inner_table_df.to_pickle('/notebooks/epoch8/datapipe/test_data/completed_inner_table_df.pkl')
+        # Соединяем с предыдущей табличкой, заполняя несделанные задачи пустым списком
+        completed_inner_table_df = completed_inner_table_df.reindex(columns=assignments_df.columns, fill_value=[])
+        output_df = pd.concat([assignments_df, completed_inner_table_df], ignore_index=True).convert_dtypes()
         output_df = cast(DataDF, output_df.loc[:, [column.name for column in self.data_sql_schema]])
 
         if idx is not None:
-            if idx.empty:
-                output_df = pd.DataFrame(columns=output_df.columns)
-            else:
-                output_df = index_to_data(output_df, idx)
+            output_df = index_to_data(output_df, idx)
 
         return output_df
 
@@ -507,7 +481,7 @@ class TableStoreYandexToloka(TableStore):
         # Читаем все задачи и ищем удаленные задачи
         inner_table_df = self.inner_table_store.read_rows()
         deleted_tasks_df = inner_table_df.query('is_deleted')
-        deleted_tasks = set(deleted_tasks_df['__task_id'])
+        deleted_tasks = set(deleted_tasks_df['_task_id'])
 
         for tasks_chunk in self._get_all_tasks(chunksize):
             yield pd.DataFrame.from_records([
@@ -518,7 +492,8 @@ class TableStoreYandexToloka(TableStore):
                             for key in task.input_values
                         } if task.input_values is not None else {}
                     ),
-                    '__task_id': task.id,
+                    '_task_id': task.id,
+                    'overlap': cast(Any, task).overlap,
                     'remaining_overlap': task.remaining_overlap
                 }
                 for task in tasks_chunk
