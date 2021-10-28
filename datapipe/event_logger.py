@@ -55,7 +55,7 @@ class EventLogger:
 
         if run_config is not None:
             meta = {
-                **run_config.labels,
+                "labels": run_config.labels,
                 "filters": run_config.filters,
             }
         else:
@@ -87,7 +87,7 @@ class EventLogger:
         if run_config is not None:
             logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
             meta = {
-                **run_config.labels,
+                "labels": run_config.labels,
                 "filters": run_config.filters,
             }
         else:

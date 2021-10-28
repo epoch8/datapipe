@@ -67,7 +67,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
     pipeline = Pipeline([
         BatchGenerate(
             generate_data,
-            outputs=["test_generate"]
+            outputs=["test_generate"],
         ),
         BatchTransform(
             update_data,
@@ -82,11 +82,13 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
 
     assert df_events.loc[0]["event"] == {
         "meta": {
-            "step_name": "generate_data",
-            "pipeline_name": "test_name",
-            "pipeline_id": 1,
+            "labels": {
+                "step_name": "generate_data",
+                "pipeline_name": "test_name",
+                "pipeline_id": 1,
+            },
             "filters": {
-                "pipeline_id": 1
+                "pipeline_id": 1,
             }
         },
         "data": {
@@ -99,17 +101,19 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
 
     assert df_events.loc[1]["event"] == {
         "meta": {
-            "step_name": "update_data",
-            "pipeline_name": "test_name",
-            "pipeline_id": 1,
+            "labels": {
+                "step_name": "update_data",
+                "pipeline_name": "test_name",
+                "pipeline_id": 1,
+            },
             "filters": {
-                "pipeline_id": 1
+                "pipeline_id": 1,
             }
         },
         "data": {
             "table_name": "test_transform",
             "added_count": 1,
             "updated_count": 0,
-            "deleted_count": 0
+            "deleted_count": 0,
         }
     }
