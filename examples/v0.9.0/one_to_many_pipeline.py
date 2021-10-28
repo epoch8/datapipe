@@ -8,10 +8,19 @@ from datapipe.datatable import DataStore
 from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.cli import main
+from datapipe.step import RunConfig
 
 
 dbconn = DBConn('sqlite:///db.sqlite')
 ds = DataStore(dbconn)
+
+run_config = RunConfig(
+    filters={},
+    labels={
+        "pipeline_name": 'test_name',
+        "pipeline_id": 1
+    }
+)
 
 
 def generate_products():
@@ -242,4 +251,4 @@ pipeline = Pipeline([
 ])
 
 
-main(ds, catalog, pipeline)
+main(ds, catalog, pipeline, run_config)
