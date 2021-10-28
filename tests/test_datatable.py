@@ -127,14 +127,14 @@ def test_gen_process(dbconn) -> None:
     def func():
         return TEST_DF
 
-    gen_process(
-        tbl1_gen,
+    gen_process_many(
+        [tbl1_gen],
         gen
     )
 
     with pytest.raises(Exception):
-        gen_process(
-            tbl1,
+        gen_process_many(
+            [tbl1],
             func
         )
 
@@ -152,8 +152,8 @@ def test_gen_process(dbconn) -> None:
     )
 
     with pytest.raises(Exception):
-        gen_process(
-            tbl1,
+        gen_process_many(
+            [tbl1],
             func2
         )
 
