@@ -425,6 +425,8 @@ class TableStoreYandexToloka(TableStore):
                         {
                             self.assignments_column: {
                                 'assignment_id': assignment.id,
+                                'status': str(assignment.status),
+                                'created': assignment.created,
                                 'task_id': task.id,
                                 'user_id': assignment.user_id,
                                 'result': {
