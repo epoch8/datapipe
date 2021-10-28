@@ -1,8 +1,11 @@
-from typing import List, TYPE_CHECKING, Dict, Any
-from dataclasses import dataclass
+from typing import List, TYPE_CHECKING, Dict, Any, Optional
+from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
     from datapipe.datatable import DataStore, DataTable
+
+
+LabelDict = Dict[str, Any]
 
 
 @dataclass
@@ -11,7 +14,18 @@ class RunConfig:
     # если не пуст, то во время запуска обрабатываются только те строки,
     # которые строго соответствуют фильтру
     # (в случае, если у таблицы есть идентификатор с совпадающим именем).
-    filters: Dict[str, Any]
+    filters: LabelDict = field(default_factory=dict)
+    labels: LabelDict = field(default_factory=dict)
+
+    @classmethod
+    def add_labels(cls, rc: Optional['RunConfig'], labels: LabelDict) -> 'RunConfig':
+        if rc is not None:
+            return RunConfig(
+                filters=rc.filters,
+                labels={**rc.labels, **labels},
+            )
+        else:
+            return RunConfig(labels=labels)
 
 
 @dataclass

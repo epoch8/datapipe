@@ -20,7 +20,7 @@ class BatchGenerateStep(ComputeStep):
         gen_process_many(
             self.output_dts,
             self.func,
-            run_config=run_config,
+            run_config=RunConfig.add_labels(run_config, {'step_name': self.name}),
         )
 
 
@@ -36,7 +36,7 @@ class BatchTransformIncStep(ComputeStep):
             self.output_dts,
             self.func,
             self.chunk_size,
-            run_config=run_config
+            run_config=RunConfig.add_labels(run_config, {'step_name': self.name})
         )
 
 
@@ -109,6 +109,11 @@ def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = N
         step.run(ds, run_config)
 
 
-def run_pipeline(ds: DataStore, catalog: Catalog, pipeline: Pipeline, run_config: RunConfig = None) -> None:
+def run_pipeline(
+    ds: DataStore,
+    catalog: Catalog,
+    pipeline: Pipeline,
+    run_config: RunConfig = None,
+) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)
