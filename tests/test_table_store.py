@@ -274,7 +274,6 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
 
     assert(isinstance(pseudo_df_iter, Iterable))
-    assert(isinstance(next(pseudo_df_iter), DataDF))
 
     idxs_dfs = []
     for pseudo_df_iter in pseudo_df_iter:
