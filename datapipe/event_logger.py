@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING
 from enum import Enum
 
 import logging
@@ -43,22 +43,23 @@ class EventLogger:
             Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
         ]
 
-    def log_state(self, table_name, added_count, updated_count, deleted_count,
-                  step_name: str = None, run_config: RunConfig = None):
+    def log_state(
+        self,
+        table_name,
+        added_count,
+        updated_count,
+        deleted_count,
+        run_config: RunConfig,
+    ):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
-
-        meta: Dict[str, Any] = {
-            "step_name": step_name if step_name is not None else ''
-        }
-
-        if run_config is not None:
-            meta["filters"] = run_config.filters
-            meta.update(run_config.labels)
 
         ins = self.events_table.insert().values(
             type=EventTypes.STATE.value,
             event={
-                "meta": meta,
+                "meta": {
+                    **run_config.labels,
+                    "filters": run_config.filters,
+                },
                 "data": {
                     "table_name": table_name,
                     "added_count": added_count,
@@ -70,22 +71,23 @@ class EventLogger:
 
         self.dbconn.con.execute(ins)
 
-    def log_error(self, type, message, description, params,
-                  step_name: str = None, run_config: RunConfig = None):
-        logger.debug(f'Error in step {step_name}: {type} {message}')
-
-        meta: Dict[str, Any] = {
-            "step_name": step_name if step_name is not None else ''
-        }
-
-        if run_config is not None:
-            meta["filters"] = run_config.filters
-            meta.update(run_config.labels)
+    def log_error(
+        self,
+        type,
+        message,
+        description,
+        params,
+        run_config: RunConfig,
+    ) -> None:
+        logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
 
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,
             event={
-                "meta": meta,
+                "meta": {
+                    **run_config.labels,
+                    "filters": run_config.filters,
+                },
                 "data": {
                     "type": type,
                     "message": message,
@@ -97,13 +99,15 @@ class EventLogger:
 
         self.dbconn.con.execute(ins)
 
-    def log_exception(self, exc: Exception, step_name: str = None,
-                      run_config: RunConfig = None):
+    def log_exception(
+        self,
+        exc: Exception,
+        run_config: RunConfig,
+    ) -> None:
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
             description=traceback.format_exc(),
             params=exc.args,
-            step_name=step_name,
-            run_config=run_config
+            run_config=run_config,
         )

@@ -20,7 +20,7 @@ class BatchGenerateStep(ComputeStep):
         gen_process_many(
             self.output_dts,
             self.func,
-            run_config=run_config,
+            run_config=RunConfig.add_labels(run_config, {'step_name': self.name}),
         )
 
 
@@ -36,7 +36,7 @@ class BatchTransformIncStep(ComputeStep):
             self.output_dts,
             self.func,
             self.chunk_size,
-            run_config=run_config
+            run_config=RunConfig.add_labels(run_config, {'step_name': self.name})
         )
 
 
