@@ -304,10 +304,7 @@ def gen_process_many(
 
             # TODO перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
             if dts:
-                dts[0].event_logger.log_exception(
-                    e,
-                    run_config=run_config,
-                )
+                dts[0].event_logger.log_exception(e, run_config=run_config)
             return
 
         for k, dt_k in enumerate(dts):
@@ -390,10 +387,7 @@ def inc_process_many(
                     chunks_df = proc_func(*input_dfs, **kwargs)
                 except Exception as e:
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
-                    ds.event_logger.log_exception(
-                        e,
-                        run_config=run_config,
-                    )
+                    ds.event_logger.log_exception(e, run_config=run_config)
 
                     continue
 
