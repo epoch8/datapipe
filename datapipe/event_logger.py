@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any
 from enum import Enum
 
 import logging
@@ -47,13 +47,13 @@ class EventLogger:
                   step_name: str = None, run_config: RunConfig = None):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
 
-        meta = {"step_name": step_name if step_name is not None else ''}
+        meta: Dict[str, Any] = {
+            "step_name": step_name if step_name is not None else ''
+        }
 
         if run_config is not None:
-            meta.update({
-                **run_config.labels,
-                "filters": run_config.filters
-            })
+            meta["filters"] = run_config.filters
+            meta.update(run_config.labels)
 
         ins = self.events_table.insert().values(
             type=EventTypes.STATE.value,
@@ -74,13 +74,13 @@ class EventLogger:
                   step_name: str = None, run_config: RunConfig = None):
         logger.debug(f'Error in step {step_name}: {type} {message}')
 
-        meta = {"step_name": step_name if step_name is not None else ''}
+        meta: Dict[str, Any] = {
+            "step_name": step_name if step_name is not None else ''
+        }
 
         if run_config is not None:
-            meta.update({
-                **run_config.labels,
-                "filters": run_config.filters
-            })
+            meta["filters"] = run_config.filters
+            meta.update(run_config.labels)
 
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,

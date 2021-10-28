@@ -298,7 +298,7 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_metadata_rows(changed_meta_df)
 
-    def mark_rows_deleted(self, deleted_idx: IndexDF, step_name: str,
+    def mark_rows_deleted(self, deleted_idx: IndexDF, step_name: str = None,
                           run_config: RunConfig = None, now: float = None
                           ) -> None:
         if len(deleted_idx) > 0:
