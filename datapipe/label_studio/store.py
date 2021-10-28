@@ -290,7 +290,8 @@ class TableStoreLabelStudio(TableStore):
             }
             for idx in df.index
         ]
-        self.label_studio_session.upload_tasks(data=data, project_id=self.get_or_create_project())
+        result = self.label_studio_session.upload_tasks(data=data, project_id=self.get_or_create_project())
+        assert 'task_count' in result and result['task_count'] == len(data), f"Upload tasks failed: {result=}"
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
