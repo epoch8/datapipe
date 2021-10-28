@@ -69,10 +69,3 @@ class LabelStudioModeration(PipelineStep):
     annotations: Union[str, None] = None
     predictions: Union[str, None] = None
     chunk_size: int = 100
-
-@dataclass
-class UpdateMetaTable(PipelineStep):
-    '''
-    Явная операция для обновления метаданных таблиц
-    '''
-    outputs: List[str]
