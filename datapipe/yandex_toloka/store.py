@@ -16,6 +16,7 @@ from toloka.client.pool.mixer_config import MixerConfig
 
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.store.table_store import TableStore
+from datapipe.step import RunConfig
 from datapipe.types import (
     DataDF, DataSchema, IndexDF, data_to_index, index_to_data
 )
@@ -144,7 +145,7 @@ class TableStoreYandexToloka(TableStore):
 
         self.inner_table_store = TableStoreDB(
             dbconn=dbconn,
-            name=str(project_identifier),
+            name=str(f'toloka_{project_identifier}'),
             data_sql_schema=[
                 Column(column.name, column.type, primary_key=column.primary_key)
                 for column in self.input_data_sql_schema
@@ -455,7 +456,7 @@ class TableStoreYandexToloka(TableStore):
             keys = [column.name for column in self.input_data_sql_schema if column.primary_key] + ['_task_id']
             assignments_df_concatenated = (
                 assignments_df.groupby(by=keys)[self.assignments_column]
-                .apply(list)
+                .apply(lambda lst: sorted(list(lst), key=lambda assignment: assignment['assignment_id']))
                 .reset_index()
             )
             assignments_df = pd.merge(
@@ -481,7 +482,7 @@ class TableStoreYandexToloka(TableStore):
 
         return output_df
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         """
             Получить все задачи без разметки и data_columns
         """

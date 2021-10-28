@@ -7,6 +7,7 @@ from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
+from datapipe.step import RunConfig
 
 from datapipe.types import DataDF, IndexDF
 from datapipe.store.table_store import TableStore
@@ -325,3 +326,16 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     idxs_df = pd.concat(idxs_dfs)
     assert len(idxs_df) == len(test_df)
     assert(sorted(list(idxs_df.columns)) == sorted(store.primary_keys))
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
+    assert_ts_contains(store, test_df)
+
+    # TODO проверять, что runconfig реально влияет на результирующие данные
+    pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters={'a': 1}))
+
+    assert(isinstance(pseudo_df_iter, Iterable))
+    assert(isinstance(next(pseudo_df_iter), DataDF))
