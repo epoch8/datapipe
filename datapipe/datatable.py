@@ -71,7 +71,7 @@ class DataTable:
                 self.name, added_count=len(new_meta_df),
                 updated_count=len(changed_meta_df),
                 deleted_count=0,
-                run_config=run_config if run_config else RunConfig(),
+                run_config=run_config,
             )
 
         # TODO implement transaction meckanism
@@ -102,7 +102,7 @@ class DataTable:
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(idx),
-                run_config=run_config if run_config else RunConfig(),
+                run_config=run_config,
             )
 
             self.table_store.delete_rows(idx)
@@ -306,7 +306,7 @@ def gen_process_many(
             if dts:
                 dts[0].event_logger.log_exception(
                     e,
-                    run_config=run_config if run_config else RunConfig(),
+                    run_config=run_config,
                 )
             return
 
@@ -392,7 +392,7 @@ def inc_process_many(
                     logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
                     ds.event_logger.log_exception(
                         e,
-                        run_config=run_config if run_config else RunConfig(),
+                        run_config=run_config,
                     )
 
                     continue
@@ -405,7 +405,7 @@ def inc_process_many(
                     res_dt.store_chunk(
                         data_df=chunk_df_k,
                         processed_idx=idx,
-                        run_config=run_config if run_config else RunConfig(),
+                        run_config=run_config,
                     )
 
             else:
@@ -433,7 +433,7 @@ class ExternalTableUpdater(ComputeStep):
                     added_count=len(new_meta_df),
                     updated_count=len(changed_meta_df),
                     deleted_count=0,
-                    run_config=run_config if run_config else RunConfig(),
+                    run_config=run_config,
                 )
 
             # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
@@ -448,7 +448,7 @@ class ExternalTableUpdater(ComputeStep):
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(stale_idx),
-                run_config=run_config if run_config else RunConfig(),
+                run_config=run_config,
             )
 
             self.table.meta_table.mark_rows_deleted(stale_idx, now=now)

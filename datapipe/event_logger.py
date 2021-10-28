@@ -49,17 +49,22 @@ class EventLogger:
         added_count,
         updated_count,
         deleted_count,
-        run_config: RunConfig,
+        run_config: RunConfig = None,
     ):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+
+        if run_config is not None:
+            meta = {
+                **run_config.labels,
+                "filters": run_config.filters,
+            }
+        else:
+            meta = {}
 
         ins = self.events_table.insert().values(
             type=EventTypes.STATE.value,
             event={
-                "meta": {
-                    **run_config.labels,
-                    "filters": run_config.filters,
-                },
+                "meta": meta,
                 "data": {
                     "table_name": table_name,
                     "added_count": added_count,
@@ -77,17 +82,22 @@ class EventLogger:
         message,
         description,
         params,
-        run_config: RunConfig,
+        run_config: RunConfig = None,
     ) -> None:
-        logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
+        if run_config is not None:
+            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
+            meta = {
+                **run_config.labels,
+                "filters": run_config.filters,
+            }
+        else:
+            logger.debug(f'Error: {type} {message}')
+            meta = {}
 
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,
             event={
-                "meta": {
-                    **run_config.labels,
-                    "filters": run_config.filters,
-                },
+                "meta": meta,
                 "data": {
                     "type": type,
                     "message": message,
@@ -102,7 +112,7 @@ class EventLogger:
     def log_exception(
         self,
         exc: Exception,
-        run_config: RunConfig,
+        run_config: RunConfig = None,
     ) -> None:
         self.log_error(
             type=type(exc).__name__,
