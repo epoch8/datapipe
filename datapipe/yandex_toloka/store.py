@@ -247,8 +247,11 @@ class TableStoreYandexToloka(TableStore):
 
             # Делаем консинтетность на mixer_config
             if pool.mixer_config != self.mixed_config:
-                pool.set_mixer_config(self.mixed_config)
-                self.toloka_client.update_pool(pool_id=pool.id, pool=pool)
+                try:
+                    pool.set_mixer_config(self.mixed_config)
+                    self.toloka_client.update_pool(pool_id=pool.id, pool=pool)
+                except toloka.exceptions.IncorrectActionsApiError as e:
+                    logger.warning(f"Couldn't set mixer_config. Reason: {e=}")
 
         return project, pool
 
@@ -307,7 +310,9 @@ class TableStoreYandexToloka(TableStore):
                     tasks.append(
                         TaskFromSuite(
                             input_values=base_task.input_values,
-                            id=base_task.id
+                            id=base_task.id,
+                            overlap=task_suite.overlap,
+                            remaining_overlap=task_suite.remaining_overlap
                         )
                     )
                     looked_tasks.add(base_task.id)
