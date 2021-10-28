@@ -4,6 +4,7 @@ from typing import List, Optional, Union, Iterator
 from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
+from datapipe.step import RunConfig
 
 from datapipe.types import IndexDF, DataDF, DataSchema, data_to_index
 
@@ -29,7 +30,7 @@ class TableStore(ABC):
     def read_rows(self, idx: IndexDF = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME сделать честную чанкированную реализацию во всех сторах
         yield self.read_rows()
 
