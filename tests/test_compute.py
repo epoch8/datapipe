@@ -92,8 +92,7 @@ def test_batch_transform_with_filter(dbconn):
         chunk_size=1000,
     )
 
-    bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0},
-                                         labels={}))
+    bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl2, TEST_DF.query('pipeline_id == 0'))
 
@@ -118,7 +117,6 @@ def test_gen_with_filter(dbconn):
         output_dts=[tbl],
     )
 
-    gen_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0},
-                                          labels={}))
+    gen_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl, TEST_DF.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))

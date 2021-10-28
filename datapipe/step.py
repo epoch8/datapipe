@@ -29,9 +29,7 @@ class RunConfig:
                 labels={**rc.labels, **labels},
             )
         else:
-            return RunConfig(
-                labels=labels,
-            )
+            return RunConfig(labels=labels)
 
 
 @dataclass

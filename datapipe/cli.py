@@ -5,8 +5,12 @@ from datapipe.dsl import Catalog, Pipeline
 from datapipe.step import RunConfig
 
 
-def main(ds: DataStore, catalog: Catalog, pipeline: Pipeline,
-         run_config: RunConfig = None):
+def main(
+    ds: DataStore,
+    catalog: Catalog,
+    pipeline: Pipeline,
+    run_config: RunConfig = None,
+) -> None:
     @click.group()
     @click.option('--debug', is_flag=True, help='Log debug output')
     @click.option('--debug-sql', is_flag=True, help='Log SQL queries VERY VERBOSE')

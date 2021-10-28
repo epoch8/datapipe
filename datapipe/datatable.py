@@ -64,8 +64,7 @@ class DataTable:
 
         logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table\
-            .get_changes_for_store_chunk(data_df, now)
+        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
         if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
             self.event_logger.log_state(
@@ -94,7 +93,7 @@ class DataTable:
         self,
         idx: IndexDF,
         now: float = None,
-        run_config: RunConfig = None
+        run_config: RunConfig = None,
     ) -> None:
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
@@ -113,7 +112,7 @@ class DataTable:
         self,
         process_ts: float,
         now: float = None,
-        run_config: RunConfig = None
+        run_config: RunConfig = None,
     ) -> None:
         for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)

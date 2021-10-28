@@ -64,7 +64,7 @@ class EventLogger:
                     "table_name": table_name,
                     "added_count": added_count,
                     "updated_count": updated_count,
-                    "deleted_count": deleted_count
+                    "deleted_count": deleted_count,
                 }
             }
         )
@@ -92,7 +92,7 @@ class EventLogger:
                     "type": type,
                     "message": message,
                     "description": description,
-                    "params": params
+                    "params": params,
                 }
             }
         )
