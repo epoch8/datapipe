@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Tuple, Union, Optional
 from datapipe.label_studio.session import LabelStudioSession
+from datapipe.step import RunConfig
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
     DataDF, DataSchema, IndexDF, data_to_index, index_intersection, index_to_data
@@ -310,7 +311,7 @@ class TableStoreLabelStudio(TableStore):
 
         return pd.concat(output_df, ignore_index=True)
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 10000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 10000, run_config: RunConfig = None) -> Iterator[DataDF]:
         """
             Получить все задачи без разметки и data_columns
         """

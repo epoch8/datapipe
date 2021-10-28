@@ -260,7 +260,9 @@ def test_label_studio_when_data_is_changed(
         yield pd.DataFrame(
             {
                 'id': [f'task_{i}' for i in range(TASKS_COUNT)],
-                'text': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] * (TASKS_COUNT // 10)
+                'text': (
+                    ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] + ['a'] * (TASKS_COUNT % 10)
+                ) * (TASKS_COUNT // 10)
             }
         )
 
@@ -268,7 +270,9 @@ def test_label_studio_when_data_is_changed(
         yield pd.DataFrame(
             {
                 'id': [f'task_{i}' for i in range(TASKS_COUNT)],
-                'text': ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j'] * (TASKS_COUNT // 10)
+                'text': (
+                    ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j'] + ['a'] * (TASKS_COUNT % 10)
+                ) * (TASKS_COUNT // 10)
             }
         )
 
