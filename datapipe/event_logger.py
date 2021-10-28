@@ -44,10 +44,10 @@ class EventLogger:
         ]
 
     def log_state(self, table_name, added_count, updated_count, deleted_count,
-                  step_name: str, run_config: RunConfig = None):
+                  step_name: str = None, run_config: RunConfig = None):
         logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
 
-        meta = {"step_name": step_name}
+        meta = {"step_name": step_name if step_name is not None else ''}
 
         if run_config is not None:
             meta.update({
@@ -71,10 +71,10 @@ class EventLogger:
         self.dbconn.con.execute(ins)
 
     def log_error(self, type, message, description, params,
-                  step_name: str, run_config: RunConfig = None):
+                  step_name: str = None, run_config: RunConfig = None):
         logger.debug(f'Error in step {step_name}: {type} {message}')
 
-        meta = {"step_name": step_name}
+        meta = {"step_name": step_name if step_name is not None else ''}
 
         if run_config is not None:
             meta.update({
@@ -97,7 +97,7 @@ class EventLogger:
 
         self.dbconn.con.execute(ins)
 
-    def log_exception(self, exc: Exception, step_name: str,
+    def log_exception(self, exc: Exception, step_name: str = None,
                       run_config: RunConfig = None):
         self.log_error(
             type=type(exc).__name__,
