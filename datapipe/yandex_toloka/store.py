@@ -10,7 +10,6 @@ from sqlalchemy.sql.sqltypes import JSON, Boolean, Float, Integer, String
 from sqlalchemy import Column
 
 import toloka.client as toloka
-from toloka.client.assignment import Assignment
 from toloka.client.project.view_spec import ClassicViewSpec, ViewSpec
 from toloka.client.project.task_spec import TaskSpec
 from toloka.client.pool.mixer_config import MixerConfig
