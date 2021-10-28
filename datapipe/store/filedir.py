@@ -15,6 +15,7 @@ from PIL import Image
 
 from datapipe.types import DataDF, DataSchema, IndexDF
 from datapipe.store.table_store import TableStore
+from datapipe.step import RunConfig
 
 
 class ItemStoreFileAdapter(ABC):
@@ -213,7 +214,7 @@ class TableStoreFiledir(TableStore):
             _gen()
         )
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob)
