@@ -81,8 +81,6 @@ class TableStoreYandexToloka(TableStore):
     """
         Для подробных примеров параметров в toloka.Project и toloka.Pool для создания проектов можно посмотреть
         https://github.com/Toloka/toloka-kit/tree/main/examples
-
-        Пока работает только для одного перекрытия.
     """
 
     def __init__(
