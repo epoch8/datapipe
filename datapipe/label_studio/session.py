@@ -163,7 +163,7 @@ class LabelStudioSession:
     def add_annotation_to_task(
         self,
         task_id: Union[int, str],
-        result: Dict
+        result: Any,
     ) -> Dict:
         result = self.session.post(
             url=urljoin(self.ls_url, f'api/tasks/{task_id}/annotations/'),

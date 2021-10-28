@@ -1,6 +1,5 @@
 import tempfile
 import distutils.util
-from subprocess import Popen
 
 from pathlib import Path
 import pytest

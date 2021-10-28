@@ -19,6 +19,7 @@ from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process
 
 from pytest_cases import parametrize_with_cases, parametrize
+from datapipe.types import data_to_index
 from tests.conftest import TEST_LABEL_STUDIO, assert_df_equal
 
 
@@ -217,8 +218,10 @@ def test_label_studio_moderation(
 
     # Person annotation imitation & incremental processing
     project_id = label_studio_session.get_project_id_by_title(project_title)
-    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    tasks = np.array(tasks)
+    assert project_id is not None
+
+    tasks_res = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+    tasks = np.array(tasks_res)
     for idxs in [[0, 3, 6, 7, 9], [1, 2, 4, 5, 8]]:
         for task in tasks[idxs]:
             label_studio_session.add_annotation_to_task(
@@ -240,7 +243,7 @@ def test_label_studio_moderation(
                 'id': [task['data']['id'] for task in tasks[idxs]]
             }
         )
-        df_annotation = catalog.get_datatable(ds, '01_label_studio').get_data(idx=idxs_df)
+        df_annotation = catalog.get_datatable(ds, '01_label_studio').get_data(idx=data_to_index(idxs_df, ['id']))
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == (1 + include_preannotations)
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
@@ -284,6 +287,8 @@ def test_label_studio_when_data_is_changed(
     run_steps(ds, steps)
 
     project_id = label_studio_session.get_project_id_by_title(project_title)
+    assert project_id is not None
+
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT
 
@@ -328,6 +333,8 @@ def test_label_studio_when_some_data_is_deleted(
     run_steps(ds, steps)
 
     project_id = label_studio_session.get_project_id_by_title(project_title)
+    assert project_id is not None
+
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT - 5
 
@@ -356,11 +363,15 @@ def test_label_studio_when_project_somewhat_deleted(
 
     # Delete the project
     project_id = label_studio_session.get_project_id_by_title(project_title)
+    assert project_id is not None
+
     label_studio_session.delete_project(project_id)
 
     # These steps should upload tasks from beginning
     run_steps(ds, steps)
 
     new_project_id = label_studio_session.get_project_id_by_title(project_title)
+    assert new_project_id is not None
+
     tasks = label_studio_session.get_tasks(project_id=new_project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT
