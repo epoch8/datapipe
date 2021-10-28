@@ -79,7 +79,7 @@ def test_full_run_config(dbconn) -> None:
 
     run_pipeline(ds, catalog, pipeline, run_config)
 
-    df_events = pd.read_sql_query("select * from public.datapipe_events", dbconn.con)
+    df_events = pd.read_sql_query("select * from datapipe_events", dbconn.con)
 
     assert json.loads(df_events.loc[0]["event"]) == {
         "meta": {
