@@ -35,7 +35,7 @@ def update_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def test_full_run_config(dbconn) -> None:
+def test_meta_info_in_datapipe_events(dbconn) -> None:
     ds = DataStore(dbconn)
 
     run_config = RunConfig(
