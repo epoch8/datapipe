@@ -1,7 +1,7 @@
 import datetime
 import os
 import time
-from typing import Iterable, cast
+from typing import Iterable, List, cast
 import pytest
 from pytest_cases import parametrize_with_cases, case, parametrize
 
@@ -20,30 +20,36 @@ from .util import assert_df_equal, assert_ts_contains
 
 DATA_PARAMS = [
     pytest.param(
-        pd.DataFrame({
-            'id': range(100),
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id': range(N),
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         [Column('id', Integer, primary_key=True)],
         id='int_id'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id': [f'id_{i}' for i in range(100)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         [Column('id', String(100), primary_key=True)],
         id='str_id'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id_int': range(100),
-            'id_str': [f'id_{i}' for i in range(100)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id_int': range(N),
+                'id_str': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         [
             Column('id_int', Integer, primary_key=True),
             Column('id_str', String(100), primary_key=True),
@@ -54,54 +60,66 @@ DATA_PARAMS = [
 
 FILEDIR_DATA_PARAMS = [
     pytest.param(
-        pd.DataFrame({
-            'id': [f'id_{i}' for i in range(100)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         '{id}.json',
         id='str_id'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id1': [f'id_{i}' for i in range(100)],
-            'id2': [f'id_{i}' for i in range(100)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id1': [f'id_{i}' for i in range(N)],
+                'id2': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         '{id1}__{id2}.json',
         id='multi_id'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id1': [f'id_{i}' for i in range(100)],
-            'id2': [f'id_{i}' for i in range(100)],
-            'id3': [f'id__{i}' for i in range(100)],
-            'id4': [f'id___{i}' for i in range(100)],
-            'id5': [f'id_{i}_' for i in range(100)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id1': [f'id_{i}' for i in range(N)],
+                'id2': [f'id_{i}' for i in range(N)],
+                'id3': [f'id__{i}' for i in range(N)],
+                'id4': [f'id___{i}' for i in range(N)],
+                'id5': [f'id_{i}_' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         '{id1}______{id2}______{id3}______{id4}______{id5}.json',
         id='multi_ids2'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id1': [f'id_{i}' for i in range(100)],
-            'id2': [f'id_{i}' for i in range(100, 200)],
-            'id3': [f'id_{i}' for i in range(150, 250)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id1': [f'id_{i}' for i in range(N)],
+                'id2': [f'id_{i+1}' for i in range(N)],
+                'id3': [f'id_{i+2}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         '{id2}__{id1}__{id3}.json',
         id='multi_ids_check_commutativity'
     )
 ]
 
 
+def GEN_DATA_PARAMS_N(data_parms: List[pytest.param], N: int) -> List[pytest.param]:
+    return [pytest.param(param.values[0](N), param.values[1], id=param.id) for param in data_parms]
+
+
 class CasesTableStore:
-    @case(tags='supports_delete,supports_all_read_rows')
-    @parametrize('df,schema', DATA_PARAMS)
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', GEN_DATA_PARAMS_N(DATA_PARAMS, 100))
     def case_db(self, dbconn, df, schema):
         return (
             TableStoreDB(
@@ -115,8 +133,8 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete,supports_all_read_rows')
-    @parametrize('df,schema', DATA_PARAMS)
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', GEN_DATA_PARAMS_N(DATA_PARAMS, 100))
     def case_jsonline(self, tmp_dir, df, schema):
         return (
             TableStoreJsonLine(
@@ -126,8 +144,8 @@ class CasesTableStore:
             df
         )
 
-    @case(tags='supports_delete,supports_all_read_rows')
-    @parametrize('df,schema', DATA_PARAMS)
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', GEN_DATA_PARAMS_N(DATA_PARAMS, 100))
     def case_excel(self, tmp_dir, df, schema):
         return (
             TableStoreExcel(
@@ -137,7 +155,7 @@ class CasesTableStore:
             df
         )
 
-    @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
+    @parametrize('df,fn_template', GEN_DATA_PARAMS_N(FILEDIR_DATA_PARAMS, 100))
     def case_filedir_json(self, tmp_dir, df, fn_template):
         return (
             TableStoreFiledir(
@@ -148,8 +166,8 @@ class CasesTableStore:
         )
 
     @pytest.mark.skipif('YANDEX_TOLOKA_TOKEN' not in os.environ, reason="env variable 'YANDEX_TOLOKA_TOKEN' is not set")
-    @case(tags='supports_delete,supports_all_read_rows')
-    @parametrize('df,schema', DATA_PARAMS)
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', GEN_DATA_PARAMS_N(DATA_PARAMS, 10))
     def case_yandex_toloka(self, dbconn, df, schema, request):
         yandex_toloka_token = os.environ['YANDEX_TOLOKA_TOKEN']
         dbconn_backend = "postgresql" if "postgresql" in dbconn.connstr else "sqlite"
@@ -166,8 +184,7 @@ class CasesTableStore:
                 Column('annotations', String())
             ],
             project_identifier=project_identifier,
-            user_id_column=None,
-            assignment_id_column=None,
+            assignment_column=None,
             kwargs_at_create_project={
                 'public_name': project_identifier
             },
@@ -178,14 +195,23 @@ class CasesTableStore:
                 'will_expire': datetime.datetime.utcnow() + datetime.timedelta(days=365)
             }
         )
-        # Wait until project is empty
+
+        # Ждем, пока не почистится проект для теста
+        count = 0
         while True:
             if len(list(table_store_yandex_toloka._get_all_tasks())) == 0:
                 break
             time.sleep(10)
+            count += 1
+            # Удаляем задачи сами, если есть простой в 3 минуты
+            if count >= 18:
+                try:
+                    table_store_yandex_toloka.toloka_client._request(
+                        'post', f'/new/requester/pools/{table_store_yandex_toloka.pool.id}/tasks/delete-all'
+                    )
+                except Exception:
+                    pass
 
-        df = df.copy()
-        df['annotations'] = None
         yield table_store_yandex_toloka, df
 
         try:
@@ -208,9 +234,10 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
     store.insert_rows(test_df)
 
     test_df_mod = test_df.copy()
-    test_df_mod.loc[50:, 'price'] = test_df_mod.loc[50:, 'price'] + 1
+    N = len(test_df)
+    test_df_mod.loc[N//2:, 'price'] = test_df_mod.loc[N//2:, 'price'] + 1
 
-    store.insert_rows(test_df_mod.loc[50:])
+    store.insert_rows(test_df_mod.loc[N//2:])
 
     assert_ts_contains(store, test_df_mod)
 
@@ -244,9 +271,10 @@ def test_partial_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert_ts_contains(store, test_df)
 
     test_df_mod = test_df.copy()
-    test_df_mod.loc[50:, 'price'] = test_df_mod.loc[50:, 'price'] + 1
+    N = len(test_df)
+    test_df_mod.loc[N//2:, 'price'] = test_df_mod.loc[N//2:, 'price'] + 1
 
-    store.update_rows(test_df_mod.loc[50:])
+    store.update_rows(test_df_mod.loc[N//2:])
 
     assert_ts_contains(store, test_df_mod)
 
@@ -271,11 +299,12 @@ def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
 
     assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
 
-    store.delete_rows(test_df.loc[20:50, store.primary_keys])
+    N = len(test_df)
+    store.delete_rows(test_df.loc[N//3:N//2, store.primary_keys])
 
     assert_df_equal(
         store.read_rows(),
-        pd.concat([test_df.loc[0:19], test_df.loc[51:]]),
+        pd.concat([test_df.loc[0:N//3-1], test_df.loc[N//2+1:]]),
         index_cols=store.primary_keys
     )
 
