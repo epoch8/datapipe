@@ -1,6 +1,5 @@
-import json
-
 import pandas as pd
+from sqlalchemy.sql.expression import select
 
 from datapipe.step import RunConfig
 from datapipe.store.database import TableStoreDB
@@ -79,9 +78,9 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
 
     run_pipeline(ds, catalog, pipeline, run_config)
 
-    df_events = pd.read_sql_query("select * from datapipe_events", dbconn.con)
+    df_events = pd.read_sql_query(select(catalog.get_datatable(ds, 'test_generate').event_logger.events_table), dbconn.con)
 
-    assert json.loads(df_events.loc[0]["event"]) == {
+    assert df_events.loc[0]["event"] == {
         "meta": {
             "step_name": "generate_data",
             "pipeline_name": "test_name",
@@ -98,7 +97,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
         }
     }
 
-    assert json.loads(df_events.loc[1]["event"]) == {
+    assert df_events.loc[1]["event"] == {
         "meta": {
             "step_name": "update_data",
             "pipeline_name": "test_name",
