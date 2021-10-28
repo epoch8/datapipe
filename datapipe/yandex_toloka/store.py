@@ -91,7 +91,7 @@ class TableStoreYandexToloka(TableStore):
         input_data_sql_schema: List[Column],
         output_data_sql_schema: List[Column],
         project_identifier: Union[str, Tuple[Union[str, int], Union[str, int]]],  # str or (project_id, pool_id)
-        assignment_column: Optional[str] = 'assignement',
+        assignments_column: Optional[str] = 'assignments',
         tasks_per_page: int = 1,
         default_overlap: int = 1,
         view_spec_at_create_project: ViewSpec = ClassicViewSpec(markup='', script='', styles=''),
@@ -110,7 +110,7 @@ class TableStoreYandexToloka(TableStore):
         input_used_columns = [column.name for column in input_data_sql_schema]
         for column in output_data_sql_schema:
             assert not column.primary_key
-        for column in ['_task_id', 'is_deleted', '_task', assignment_column]:
+        for column in ['_task_id', 'is_deleted', '_task', assignments_column]:
             if column is None:
                 continue
             assert column not in input_used_columns, (
@@ -119,9 +119,9 @@ class TableStoreYandexToloka(TableStore):
 
         self.input_data_sql_schema = input_data_sql_schema
         self.data_sql_schema = input_data_sql_schema
-        self.assignment_column = assignment_column
-        if assignment_column is not None:
-            self.data_sql_schema += [Column(assignment_column, JSON)]
+        self.assignments_column = assignments_column
+        if assignments_column is not None:
+            self.data_sql_schema += [Column(assignments_column, JSON)]
 
         self.input_spec: Dict[str, toloka.project.field_spec.FieldSpec] = {
             column.name: SQL_TYPE_TO_FIELD_SPEC[type(column.type)]()
@@ -423,7 +423,7 @@ class TableStoreYandexToloka(TableStore):
                     ),
                     **(
                         {
-                            self.assignment_column: {
+                            self.assignments_column: {
                                 'assignment_id': assignment.id,
                                 'task_id': task.id,
                                 'user_id': assignment.user_id,
@@ -432,7 +432,7 @@ class TableStoreYandexToloka(TableStore):
                                     for key in solution.output_values
                                 }
                             }
-                        } if self.assignment_column is not None else {}
+                        } if self.assignments_column is not None else {}
                     ),
                     '_task_id': task.id
                 }
@@ -448,11 +448,11 @@ class TableStoreYandexToloka(TableStore):
                 columns=[column.name for column in self.data_sql_schema] + ['_task_id']
             )
 
-        # Контактенируем результаты из assignment_column в список:
-        if self.assignment_column is not None:
+        # Контактенируем результаты из assignments_column в список:
+        if self.assignments_column is not None:
             input_primary_keys = [column.name for column in self.input_data_sql_schema if column.primary_key]
             assignments_df = (
-                assignments_df.groupby(by=input_primary_keys + ['_task_id'])[self.assignment_column]
+                assignments_df.groupby(by=input_primary_keys + ['_task_id'])[self.assignments_column]
                 .apply(list)
                 .reset_index()
                 .drop_duplicates(subset=input_primary_keys + ['_task_id'])
