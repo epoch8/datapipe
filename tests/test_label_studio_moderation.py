@@ -346,6 +346,75 @@ def test_label_studio_when_some_data_is_deleted(
     assert_df_equal(df, data_df2)
 
 
+@parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
+                        cases=CasesLabelStudio)
+def test_label_studio_specific_updating_scenary(
+    ds: DataStore, catalog: Catalog, steps: List[ComputeStep],
+    project_title: str, include_preannotations: bool,
+    label_studio_session: LabelStudioSession
+):
+    df1 = pd.DataFrame(
+        {
+            'id': [f'task_{i}' for i in range(5)],
+            'text': ['a', 'b', 'c', 'd', 'e']
+        }
+    )
+    df2 = pd.DataFrame(
+        {
+            'id': [f'task_{i}' for i in range(5)],
+            'text': ['A', 'B', 'C', 'd', 'e']
+        }
+    )
+
+    def _gen():
+        yield df1
+
+    def _gen2():
+        yield df2
+
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_input_data'),
+        proc_func=_gen
+    )
+    run_steps(ds, steps)
+
+    # Change 5 input elements
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_input_data'),
+        proc_func=_gen2
+    )
+
+    # Add 5 annotations
+    project_id = label_studio_session.get_project_id_by_title(project_title)
+    tasks_res = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+    tasks = np.array(tasks_res)
+    for task in tasks:
+        label_studio_session.add_annotation_to_task(
+            task_id=task['id'],
+            result=[
+                {
+                    "value": {
+                        "choices": [np.random.choice(["Class1", "Class2"])]
+                    },
+                    "from_name": "label",
+                    "to_name": "text",
+                    "type": "choices"
+                }
+            ]
+        )
+
+    # Табличка с лейбел студией должна обновиться
+    run_steps(ds, steps)
+
+    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+    assert len(tasks) == 5
+
+    df_ls = catalog.get_datatable(ds, '01_label_studio').get_data().drop(
+        columns=['tasks_id', 'annotations']
+    ).sort_values(by='id').reset_index(drop=True)
+    assert_df_equal(df2, df_ls)
+
+
 @pytest.mark.skipif(True, reason="Full synchronization is not yet supported")
 @parametrize_with_cases('ds, catalog, steps, project_title, include_preannotations, label_studio_session',
                         cases=CasesLabelStudio)
