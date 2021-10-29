@@ -89,7 +89,7 @@ def convert_to_ls_input_data(
                     "to_name": "text",
                     "type": "choices"
                 }]
-            }] for i in range(TASKS_COUNT)]
+            }] for i in range(len(data_df))]
             columns.append(column)
 
     return data_df[columns]
@@ -258,26 +258,36 @@ def test_label_studio_when_data_is_changed(
     project_title: str, include_preannotations: bool,
     label_studio_session: LabelStudioSession
 ):
+    df1 = pd.DataFrame(
+        {
+            'id': [f'task_{i}' for i in range(TASKS_COUNT)],
+            'text': (
+                ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] + ['a'] * (TASKS_COUNT % 10)
+            ) * (TASKS_COUNT // 10)
+        }
+    )
+
+    df2 = pd.DataFrame(
+        {
+            'id': [f'task_{i}' for i in range(TASKS_COUNT)],
+            'text': (
+                ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j'] + ['a'] * (TASKS_COUNT % 10)
+            ) * (TASKS_COUNT // 10)
+        }
+    )
 
     def _gen():
-        yield pd.DataFrame(
-            {
-                'id': [f'task_{i}' for i in range(TASKS_COUNT)],
-                'text': (
-                    ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] + ['a'] * (TASKS_COUNT % 10)
-                ) * (TASKS_COUNT // 10)
-            }
-        )
+        yield df1
 
     def _gen2():
-        yield pd.DataFrame(
-            {
-                'id': [f'task_{i}' for i in range(TASKS_COUNT)],
-                'text': (
-                    ['A', 'B', 'C', 'd', 'E', 'f', 'G', 'h', 'I', 'j'] + ['a'] * (TASKS_COUNT % 10)
-                ) * (TASKS_COUNT // 10)
-            }
-        )
+        yield df2
+
+    # Upload tasks
+    gen_process(
+        dt=catalog.get_datatable(ds, '00_input_data'),
+        proc_func=_gen
+    )
+    run_steps(ds, steps)
 
     # These steps should delete old tasks and create new tasks with same ids
     gen_process(
@@ -359,6 +369,7 @@ def test_label_studio_specific_updating_scenary(
             'text': ['a', 'b', 'c', 'd', 'e']
         }
     )
+
     df2 = pd.DataFrame(
         {
             'id': [f'task_{i}' for i in range(5)],
@@ -378,7 +389,7 @@ def test_label_studio_specific_updating_scenary(
     )
     run_steps(ds, steps)
 
-    # Change 5 input elements
+    # Change 3 input elements
     gen_process(
         dt=catalog.get_datatable(ds, '00_input_data'),
         proc_func=_gen2
@@ -409,10 +420,19 @@ def test_label_studio_specific_updating_scenary(
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == 5
 
-    df_ls = catalog.get_datatable(ds, '01_label_studio').get_data().drop(
-        columns=['tasks_id', 'annotations']
-    ).sort_values(by='id').reset_index(drop=True)
-    assert_df_equal(df2, df_ls)
+    df_ls = catalog.get_datatable(ds, '01_label_studio').get_data()
+
+    assert_df_equal(
+        df2,
+        df_ls.drop(columns=['tasks_id', 'annotations']).sort_values(by='id').reset_index(drop=True)
+    )
+    if not include_preannotations:
+        df_ls = df_ls.set_index('id')
+        for idx in df_ls.index:
+            if idx in ['task_0', 'task_1', 'task_2']:
+                assert df_ls.loc[idx, 'annotations'] == []
+            else:
+                assert df_ls.loc[idx, 'annotations'] != []
 
 
 @pytest.mark.skipif(True, reason="Full synchronization is not yet supported")
