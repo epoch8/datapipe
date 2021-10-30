@@ -1,16 +1,17 @@
 import shutil
-from datapipe.label_studio.store import TableStoreLabelStudio
-from datapipe.store.database import DBConn
 from subprocess import Popen
 from pathlib import Path
 
 import pandas as pd
-
-from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, ExternalTable, InternalTable, Table, Pipeline, BatchTransform
-from datapipe.store.pandas import TableStoreJsonLine
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import String
+
+from datapipe.store.database import DBConn
+from datapipe.datatable import DataStore
+from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline
+from datapipe.compute import BatchTransform
+from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.label_studio.step import LSModeration
 from datapipe.cli import main
 
 
@@ -82,21 +83,6 @@ catalog = Catalog({
             ],
         )
     ),
-    '01_label_studio': InternalTable(
-        TableStoreLabelStudio(
-            ls_url=f'http://{HOST}:{LS_PORT}/',
-            auth=('moderation@epoch8.co', 'qwerty123'),
-            project_identifier='Text Classification Project',
-            project_label_config_at_create=PROJECT_LABEL_CONFIG,
-            data_sql_schema=[
-                Column('id', String(), primary_key=True),
-                Column('text', String()),
-                Column('prediction', String()),
-            ],
-            annotations_column='annotations',
-            page_chunk_size=1000
-        )
-    ),
     "02_annotation_raw": Table(
         store=TableStoreJsonLine(
             DATA_DIR / "02_annotation_raw" / "02_annotation_raw.json",
@@ -117,17 +103,15 @@ catalog = Catalog({
 
 
 pipeline = Pipeline([
-    BatchTransform(
-        func=lambda df: df[['id', 'text', 'prediction', 'category']],
+    LSModeration(
+        ls_url=f'http://{HOST}:{LS_PORT}/',
+        auth=('moderation@epoch8.co', 'qwerty123'),
+        project_identifier='Text Classification Project',
+        project_label_config_at_create=PROJECT_LABEL_CONFIG,
+        annotations_column='annotations',
         inputs=['00_input_texts'],
-        outputs=['01_label_studio'],
-        chunk_size=1000
-    ),
-    BatchTransform(
-        func=lambda df: df[['id', 'annotations']],
-        inputs=["01_label_studio"],
-        outputs=["02_annotation_raw"],
-        chunk_size=5000
+        outputs=['02_annotation_raw'],
+        chunk_size=1000,
     ),
     BatchTransform(
         parse_annotation,

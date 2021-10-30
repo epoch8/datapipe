@@ -8,7 +8,7 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.compute import BatchGenerateStep, BatchTransformIncStep
+from datapipe.compute import BatchGenerateStep, BatchTransformStep
 from datapipe.step import RunConfig
 
 from .util import assert_datatable_equal
@@ -44,7 +44,7 @@ def test_batch_transform(dbconn):
 
     tbl1.store_chunk(TEST_DF, now=0)
 
-    bt_step = BatchTransformIncStep(
+    bt_step = BatchTransformStep(
         name='tbl1_to_tbl2',
         func=lambda df: df,
         input_dts=[tbl1],
@@ -84,7 +84,7 @@ def test_batch_transform_with_filter(dbconn):
 
     tbl1.store_chunk(TEST_DF, now=0)
 
-    bt_step = BatchTransformIncStep(
+    bt_step = BatchTransformStep(
         name='tbl1_to_tbl2',
         func=lambda df: df,
         input_dts=[tbl1],

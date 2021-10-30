@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 
 from datapipe.datatable import DataStore
-from datapipe.compute import build_compute, run_steps
+from datapipe.compute import build_compute, run_steps, BatchTransform
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table
 
 
 CHUNK_SIZE = 100

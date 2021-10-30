@@ -10,10 +10,10 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from datapipe.dsl import Catalog, InternalTable, Pipeline, Table, BatchTransform
+from datapipe.dsl import Catalog, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
-from datapipe.compute import build_compute, run_steps
+from datapipe.compute import build_compute, run_steps, BatchTransform
 from datapipe.label_studio.session import LabelStudioSession
 from datapipe.step import ComputeStep
 from datapipe.datatable import gen_process

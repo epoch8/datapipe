@@ -1,8 +1,8 @@
 import pandas as pd
 
-from datapipe.compute import build_compute, run_steps
+from datapipe.compute import build_compute, run_steps, BatchTransform
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table
 from datapipe.store.pandas import TableStoreJsonLine
 
 

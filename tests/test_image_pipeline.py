@@ -6,10 +6,10 @@ from PIL import Image
 
 from sqlalchemy import Column, String
 
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table
 from datapipe.datatable import DataStore, DataTable, gen_process, inc_process
 from datapipe.store.filedir import TableStoreFiledir, PILFile
-from datapipe.compute import build_compute, run_pipeline, run_steps
+from datapipe.compute import build_compute, run_pipeline, run_steps, BatchGenerate, BatchTransform
 
 
 def make_df():

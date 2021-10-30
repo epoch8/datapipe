@@ -1,15 +1,33 @@
-from typing import Any, List, Callable, Optional, Set, cast
+from typing import List, Callable
 from dataclasses import dataclass
 
 import logging
 
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many, MetaTableUpdater
 
-from .dsl import BatchGenerate, ExternalTable, Catalog, InternalTable, Pipeline, BatchTransform, UpdateMetaTable
+from datapipe.dsl import PipelineStep, ExternalTable, Catalog, Pipeline
 from .step import ComputeStep, RunConfig
 
 
 logger = logging.getLogger('datapipe.compute')
+
+
+@dataclass
+class BatchGenerate(PipelineStep):
+    func: Callable
+    outputs: List[str]
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+
+        return [
+            BatchGenerateStep(
+                f'{self.func.__name__}',
+                input_dts=[],
+                output_dts=output_dts,
+                func=self.func,
+            )
+        ]
 
 
 @dataclass
@@ -25,7 +43,29 @@ class BatchGenerateStep(ComputeStep):
 
 
 @dataclass
-class BatchTransformIncStep(ComputeStep):
+class BatchTransform(PipelineStep):
+    func: Callable
+    inputs: List[str]
+    outputs: List[str]
+    chunk_size: int = 1000
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
+        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+
+        return [
+            BatchTransformStep(
+                f'{self.func.__name__}',
+                input_dts=input_dts,
+                output_dts=output_dts,
+                func=self.func,
+                chunk_size=self.chunk_size
+            )
+        ]
+
+
+@dataclass
+class BatchTransformStep(ComputeStep):
     func: Callable
     chunk_size: int
 
@@ -43,58 +83,15 @@ class BatchTransformIncStep(ComputeStep):
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     res: List[ComputeStep] = []
 
-    internal_tables: Set[str] = set()
     for name, tbl in catalog.catalog.items():
         if isinstance(tbl, ExternalTable):
             res.append(MetaTableUpdater(
                 name=f'update_{name}',
                 table=catalog.get_datatable(ds, name)
             ))
-        if isinstance(tbl, InternalTable):
-            internal_tables.add(name)
 
     for step in pipeline.steps:
-        if isinstance(step, BatchGenerate):
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchGenerateStep(
-                f'{step.func.__name__}',
-                input_dts=[],
-                output_dts=output_dts,
-                func=step.func,
-            ))
-
-        if isinstance(step, BatchTransform):
-            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchTransformIncStep(
-                f'{step.func.__name__}',
-                input_dts=input_dts,
-                output_dts=output_dts,
-                func=step.func,
-                chunk_size=step.chunk_size
-            ))
-
-        outputs: Optional[str] = cast(Any, step).outputs if hasattr(step, 'outputs') else None
-        if outputs is not None:
-            res.extend([
-                MetaTableUpdater(
-                    name=f'update_{name}',
-                    table=catalog.get_datatable(ds, name)
-                )
-                for name in outputs
-                if name in internal_tables
-            ])
-
-        if isinstance(step, UpdateMetaTable):
-            res.extend([
-                MetaTableUpdater(
-                    name=f'update_{name}',
-                    table=catalog.get_datatable(ds, name)
-                )
-                for name in step.outputs
-            ])
+        res.extend(step.build_compute(ds, catalog))
 
     return res
 

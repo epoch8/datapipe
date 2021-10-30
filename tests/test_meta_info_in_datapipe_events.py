@@ -4,9 +4,8 @@ from sqlalchemy.sql.expression import select
 from datapipe.step import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Pipeline, BatchTransform, BatchGenerate,\
-    Table
-from datapipe.compute import run_pipeline
+from datapipe.dsl import Catalog, Pipeline, Table
+from datapipe.compute import run_pipeline, BatchTransform, BatchGenerate
 
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import Integer, JSON

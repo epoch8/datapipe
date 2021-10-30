@@ -1,9 +1,10 @@
-from typing import Callable, Dict, List
+from typing import Dict, List
 
 from abc import ABC
 from dataclasses import dataclass
 
 from datapipe.datatable import DataStore, DataTable
+from datapipe.step import ComputeStep
 from datapipe.store.table_store import TableStore
 
 
@@ -21,15 +22,6 @@ class ExternalTable(Table):
     pass
 
 
-@dataclass
-class InternalTable(Table):
-    '''
-    Таблица, метаданных которых нужно обновить после действий на ней в outputs
-    (Например таблица с лейбел студией)
-    '''
-    pass
-
-
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
@@ -43,31 +35,10 @@ class Catalog:
 
 
 class PipelineStep(ABC):
-    pass
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        raise NotImplementedError
 
 
 @dataclass
 class Pipeline:
     steps: List[PipelineStep]
-
-
-@dataclass
-class BatchTransform(PipelineStep):
-    func: Callable
-    inputs: List[str]
-    outputs: List[str]
-    chunk_size: int = 1000
-
-
-@dataclass
-class BatchGenerate(PipelineStep):
-    func: Callable
-    outputs: List[str]
-
-
-@dataclass
-class UpdateMetaTable(PipelineStep):
-    '''
-    Явная операция для обновления метаданных таблиц
-    '''
-    outputs: List[str]
