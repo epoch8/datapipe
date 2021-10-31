@@ -4,7 +4,7 @@ from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
 from datapipe.dsl import Catalog, PipelineStep, Table
-from datapipe.compute import ComputeStep
+from datapipe.compute import BatchTransformStep, ComputeStep
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 
@@ -25,7 +25,7 @@ class LSModeration(PipelineStep):
         chunk_size,
     ):
         # TODO дописать
-        
+
         assert len(inputs) == 1
         assert len(outputs) == 1
 
@@ -40,19 +40,36 @@ class LSModeration(PipelineStep):
         input_tbl = catalog.get_datatable(ds, self.input)
         output_tbl = catalog.get_datatable(ds, self.output)
 
+        assert input_tbl.table_store.get_primary_schema() == output_tbl.table_store.get_primary_schema()
+
         publish_result_tbl = catalog.add_table(
             ds,
             # FIXME сделать автоименование
             'ls_publish_result',
-            Table(TableStoreDB(
-                self.temp_data_dbconn,
-                data_sql_schema=input_tbl.table_store.get_primary_schema()+
-                [
-                    Column('task_id', Integer),
-                ]
-            ))
+            Table(
+                TableStoreDB(
+                    self.temp_data_dbconn,
+                    data_sql_schema=input_tbl.table_store.get_primary_schema() +
+                    [
+                        Column('task_id', Integer),
+                    ]
+                )
+            )
         )
 
         return [
-
+            BatchTransformStep(
+                # FIXME сделать автоименование
+                'publish_to_ls',
+                input_dts=[input_tbl],
+                output_dts=[publish_result_tbl],
+                func=...
+            ),
+            BatchTransformStep(
+                # FIXME сделать автоименование
+                'update_ls_results',
+                input_dts=[publish_result_tbl],
+                output_dts=[output_tbl],
+                func=...
+            )
         ]
