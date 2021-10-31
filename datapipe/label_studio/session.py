@@ -110,6 +110,23 @@ class LabelStudioSession:
         ).json()
         return results
 
+    # массовая заливка задач не дает нам идентификаторов, поэтому придется пользоваться
+    # заливкой по одному.
+    def upload_task(
+        self,
+        data: Dict[str, Any],
+        project_id: Union[int, str]
+    ) -> Dict:
+        results = self.session.post(
+            url=urljoin(self.ls_url, 'api/tasks/'),
+            json={
+                'data': data,
+                'project': project_id,
+            }
+        ).json()
+
+        return results
+
     def modify_task(
         self,
         task_id: Union[int, str],

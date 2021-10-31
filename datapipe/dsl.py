@@ -27,6 +27,10 @@ class Catalog:
         self.catalog = catalog
         self.data_tables: Dict[str, DataTable] = {}
 
+    def add_table(self, ds: DataStore, name: str, tbl: Table) -> DataTable:
+        self.catalog[name] = tbl
+        return self.get_datatable(ds, name)
+
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
             name=name,
