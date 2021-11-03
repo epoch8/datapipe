@@ -1,3 +1,7 @@
+# 0.9.13
+
+* Фикс фильтрации get_process_ids из RunConfig
+
 # 0.9.12
 
 * Логгирование меты из `run_config` в `datapipe_events`.
