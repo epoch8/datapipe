@@ -1,6 +1,6 @@
 # 0.9.13
 
-* Фикс фильтрации get_process_ids из RunConfig
+* Фикс фильтрации `get_process_ids` из `RunConfig`
 
 # 0.9.12
 
