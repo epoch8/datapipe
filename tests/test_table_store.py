@@ -46,6 +46,34 @@ DATA_PARAMS = [
             Column('id_str', String(100), primary_key=True),
         ],
         id='multi_id'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(1000)],
+            'id2': [f'id_{i}' for i in range(1000)],
+            'name': [f'Product {i}' for i in range(1000)],
+            'price': [1000 + i for i in range(1000)],
+        }),
+        [
+            Column('id1', String(100), primary_key=True),
+            Column('id2', String(100), primary_key=True),
+        ],
+        id='double_id_1000_records'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(1000)],
+            'id2': [f'id_{i}' for i in range(1000)],
+            'id3': [f'id_{i}' for i in range(1000)],
+            'name': [f'Product {i}' for i in range(1000)],
+            'price': [1000 + i for i in range(1000)],
+        }),
+        [
+            Column('id1', String(100), primary_key=True),
+            Column('id2', String(100), primary_key=True),
+            Column('id3', String(100), primary_key=True),
+        ],
+        id='triple_id_1000_records'
     )
 ]
 
