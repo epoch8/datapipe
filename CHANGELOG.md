@@ -1,3 +1,7 @@
+# 0.9.14
+
+* Ускорение работы `TableStoreDB`
+
 # 0.9.13
 
 * Фикс фильтрации `get_process_ids` из `RunConfig`
