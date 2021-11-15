@@ -97,6 +97,50 @@ def test_batch_transform_with_filter(dbconn):
     assert_datatable_equal(tbl2, TEST_DF.query('pipeline_id == 0'))
 
 
+def test_batch_transform_with_dt_on_input_and_output(dbconn):
+    ds = DataStore(dbconn)
+
+    tbl1 = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA, True)
+    )
+
+    df2 = TEST_DF.loc[range(3, 8)]
+    df2['a'] = df2['a'].apply(lambda x: x + 10)
+
+    tbl1.store_chunk(TEST_DF, now=0)
+    tbl2.store_chunk(df2, now=0)
+
+    def update_df(df1: pd.DataFrame, df2: pd.DataFrame):
+        df1 = df1.set_index("item_id")
+        df2 = df2.set_index("item_id")
+
+        df1.update(df2)
+
+        return df1.reset_index()
+
+    bt_step = BatchTransformIncStep(
+        name='tbl1_to_tbl1',
+        func=update_df,
+        input_dts=[tbl1, tbl2],
+        output_dts=[tbl2],
+        chunk_size=1000,
+    )
+
+    bt_step.run(ds, run_config=RunConfig())
+
+    df_res = TEST_DF.copy()
+
+    df_res.update(df2)
+
+    assert_datatable_equal(tbl2, df_res)
+
+
 def test_gen_with_filter(dbconn):
     ds = DataStore(dbconn)
 

@@ -196,8 +196,8 @@ class DataStore:
 
             return q
 
-        inp_tbls = [(inp, inp.meta_table.sql_table) for inp in inputs]
-        out_tbls = [(out, out.meta_table.sql_table) for out in outputs]
+        inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.name}")) for inp in inputs]
+        out_tbls = [(out, out.meta_table.sql_table.alias(f"out_{out.name}")) for out in outputs]
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
@@ -224,12 +224,11 @@ class DataStore:
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, inp_dt.meta_table.sql_table, inp_dt.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, inp, inp_dt.primary_keys, run_config)
 
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            out = out.alias(f"out_{out.name}")
             fields = [out.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
