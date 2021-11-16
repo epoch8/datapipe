@@ -57,10 +57,13 @@ class TableDataSingleFileStore(TableStore):
 
         if file_df is not None:
             if index_df is not None:
-                file_df = file_df.set_index(self.primary_keys)
-                idx = index_df.set_index(self.primary_keys)
+                if len(index_df):
+                    file_df = file_df.set_index(self.primary_keys)
+                    idx = index_df.set_index(self.primary_keys)
 
-                return file_df.loc[idx.index].reset_index()
+                    return file_df.loc[idx.index].reset_index()
+                else:
+                    return pd.DataFrame()
             else:
                 return file_df
         else:
