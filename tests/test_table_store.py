@@ -194,7 +194,10 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
     df_empty = pd.DataFrame()
+
     assert store.read_rows(cast(IndexDF, df_empty)).empty
 
 

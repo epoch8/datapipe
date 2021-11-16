@@ -155,7 +155,10 @@ class TableStoreDB(TableStore):
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         sql = select(self.data_table.c)
 
-        if idx is not None and len(idx.index):
+        if idx is not None:
+            if not len(idx.index):
+                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+
             sql = self._apply_where_expression(sql, idx)
 
         return pd.read_sql_query(
