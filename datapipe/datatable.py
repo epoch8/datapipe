@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, Any
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import inspect
 import logging
@@ -14,7 +14,9 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig, ComputeStep
+from datapipe.step import RunConfig, LabelDict
+
+from datapipe.step import ComputeStep
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -41,9 +43,7 @@ class DataTable:
         return self.meta_table.get_metadata(idx)
 
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
-        exists_idx = self.meta_table.get_existing_idx(idx)
-
-        return self.table_store.read_rows(exists_idx)
+        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def store_chunk(
         self,
@@ -179,7 +179,7 @@ class DataStore:
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
 
         # Список ключей из фильтров, которые нужно добавить в результат
-        extra_filters: Dict[str, Any]
+        extra_filters: LabelDict
         if run_config is not None:
             extra_filters = {
                 k: v

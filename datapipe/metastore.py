@@ -136,6 +136,7 @@ class MetaTable:
 
             row_queries = []
 
+            # FIXME поправить на сравнение кортежей
             for _, row in idx.iterrows():
                 and_params = [
                     self.sql_table.c[key] == self._get_sql_param(row[key])
@@ -149,7 +150,7 @@ class MetaTable:
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
-        res_df: pd.DataFrame = pd.read_sql_query(
+        res_df: DataDF = pd.read_sql_query(
             sql,
             con=self.dbconn.con,
         )
