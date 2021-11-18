@@ -13,7 +13,7 @@ import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
-from datapipe.step import RunConfig
+from datapipe.step import RunConfig, LabelDict
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -125,7 +125,7 @@ class MetaTable:
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def get_existing_idx(self, idx: IndexDF = None) -> IndexDF:
+    def get_existing_idx(self, idx: IndexDF = None, filters: LabelDict = None) -> IndexDF:
         sql = select(self.sql_schema)
 
         if idx is not None:
@@ -144,6 +144,14 @@ class MetaTable:
             sql = sql.where(or_(*row_queries))
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
+
+        if filters is not None:
+            for k, v in filters.items():
+                if k in self.primary_keys:
+                    sql = sql.where(
+                        self.sql_table.c[k] == v
+                    )
+
         res_df = pd.read_sql_query(
             sql,
             con=self.dbconn.con,

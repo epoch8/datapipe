@@ -14,9 +14,7 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig
-
-from datapipe.step import ComputeStep
+from datapipe.step import RunConfig, LabelDict, ComputeStep
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -42,8 +40,10 @@ class DataTable:
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
         return self.meta_table.get_metadata(idx)
 
-    def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
-        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
+    def get_data(self, idx: Optional[IndexDF] = None, filters: LabelDict = None) -> DataDF:
+        exists_idx = self.meta_table.get_existing_idx(idx, filters=filters)
+
+        return self.table_store.read_rows(exists_idx)
 
     def store_chunk(
         self,
@@ -382,7 +382,8 @@ def inc_process_many(
         for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
             logger.debug(f'Idx to process: {idx.to_records()}')
 
-            input_dfs = [inp.get_data(idx) for inp in input_dts]
+            filters = run_config.filters if run_config else None
+            input_dfs = [inp.get_data(idx, filters=filters) for inp in input_dts]
 
             if sum(len(j) for j in input_dfs) > 0:
                 try:

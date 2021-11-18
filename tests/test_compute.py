@@ -20,9 +20,22 @@ TEST_SCHEMA = [
     Column('a', Integer),
 ]
 
+TEST_SCHEMA2 = [
+    Column('item_id', Integer, primary_key=True),
+    Column('a', Integer),
+]
+
 TEST_DF = pd.DataFrame(
     {
         'item_id': range(10),
+        'pipeline_id': [i // 5 for i in range(10)],
+        'a': range(10),
+    },
+)
+
+TEST_DF2 = pd.DataFrame(
+    {
+        'item_id': list(range(5)) * 2,
         'pipeline_id': [i // 5 for i in range(10)],
         'a': range(10),
     },
@@ -95,6 +108,34 @@ def test_batch_transform_with_filter(dbconn):
     bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl2, TEST_DF.query('pipeline_id == 0'))
+
+
+def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+    ds = DataStore(dbconn)
+
+    tbl1 = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA2, True)
+    )
+
+    tbl1.store_chunk(TEST_DF2, now=0)
+
+    bt_step = BatchTransformIncStep(
+        name='tbl1_to_tbl2',
+        func=lambda df: df[['item_id', 'a']],
+        input_dts=[tbl1],
+        output_dts=[tbl2],
+        chunk_size=1000,
+    )
+
+    bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
+
+    assert_datatable_equal(tbl2, TEST_DF2.query('pipeline_id == 0')[['item_id', 'a']])
 
 
 def test_batch_transform_with_dt_on_input_and_output(dbconn):
