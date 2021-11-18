@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union, Any
 
 import inspect
 import logging
@@ -14,7 +14,7 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig, LabelDict, ComputeStep
+from datapipe.step import RunConfig, ComputeStep
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -40,8 +40,8 @@ class DataTable:
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
         return self.meta_table.get_metadata(idx)
 
-    def get_data(self, idx: Optional[IndexDF] = None, filters: LabelDict = None) -> DataDF:
-        exists_idx = self.meta_table.get_existing_idx(idx, filters=filters)
+    def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
+        exists_idx = self.meta_table.get_existing_idx(idx)
 
         return self.table_store.read_rows(exists_idx)
 
@@ -178,6 +178,17 @@ class DataStore:
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
 
+        # Список ключей из фильтров, которые нужно добавить в результат
+        extra_filters: Dict[str, Any]
+        if run_config is not None:
+            extra_filters = {
+                k: v
+                for k, v in run_config.filters.items()
+                if k not in join_keys
+            }
+        else:
+            extra_filters = {}
+
         if not join_keys:
             raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
@@ -262,11 +273,17 @@ class DataStore:
             )
         ).scalar()
 
-        return idx_count, pd.read_sql_query(
-            u1,
-            con=self.meta_dbconn.con,
-            chunksize=chunksize
-        )
+        def alter_res_df():
+            for df in pd.read_sql_query(
+                u1,
+                con=self.meta_dbconn.con,
+                chunksize=chunksize
+            ):
+                for k, v in extra_filters.items():
+                    df[k] = v
+                yield df
+
+        return idx_count, alter_res_df()
 
 
 # TODO перенести в compute.BatchGenerateStep
@@ -382,8 +399,7 @@ def inc_process_many(
         for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
             logger.debug(f'Idx to process: {idx.to_records()}')
 
-            filters = run_config.filters if run_config else None
-            input_dfs = [inp.get_data(idx, filters=filters) for inp in input_dts]
+            input_dfs = [inp.get_data(idx) for inp in input_dts]
 
             if sum(len(j) for j in input_dfs) > 0:
                 try:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, Tuple, Dict, cast
+from typing import Iterator, Tuple, Dict, cast, List
 
 import copy
 import logging
@@ -13,7 +13,7 @@ import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
-from datapipe.step import RunConfig, LabelDict
+from datapipe.step import RunConfig
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -43,7 +43,7 @@ class MetaTable:
         self.dbconn = dbconn
         self.name = name
 
-        self.primary_keys = [column.name for column in primary_schema]
+        self.primary_keys: List[str] = [column.name for column in primary_schema]
 
         for item in primary_schema:
             item.primary_key = True
@@ -125,7 +125,7 @@ class MetaTable:
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def get_existing_idx(self, idx: IndexDF = None, filters: LabelDict = None) -> IndexDF:
+    def get_existing_idx(self, idx: IndexDF = None) -> IndexDF:
         sql = select(self.sql_schema)
 
         if idx is not None:
@@ -137,7 +137,11 @@ class MetaTable:
             row_queries = []
 
             for _, row in idx.iterrows():
-                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in idx_cols]
+                and_params = [
+                    self.sql_table.c[key] == self._get_sql_param(row[key])
+                    for key in idx_cols
+                    if key in self.primary_keys
+                ]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
 
@@ -145,19 +149,12 @@ class MetaTable:
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
-        if filters is not None:
-            for k, v in filters.items():
-                if k in self.primary_keys:
-                    sql = sql.where(
-                        self.sql_table.c[k] == v
-                    )
-
-        res_df = pd.read_sql_query(
+        res_df: pd.DataFrame = pd.read_sql_query(
             sql,
             con=self.dbconn.con,
         )
 
-        return res_df[self.primary_keys]
+        return data_to_index(res_df, self.primary_keys)
 
     def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(
