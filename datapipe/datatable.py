@@ -14,7 +14,7 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig
+from datapipe.step import RunConfig, LabelDict
 
 from datapipe.step import ComputeStep
 
@@ -178,6 +178,17 @@ class DataStore:
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
 
+        # Список ключей из фильтров, которые нужно добавить в результат
+        extra_filters: LabelDict
+        if run_config is not None:
+            extra_filters = {
+                k: v
+                for k, v in run_config.filters.items()
+                if k not in join_keys
+            }
+        else:
+            extra_filters = {}
+
         if not join_keys:
             raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
@@ -262,11 +273,17 @@ class DataStore:
             )
         ).scalar()
 
-        return idx_count, pd.read_sql_query(
-            u1,
-            con=self.meta_dbconn.con,
-            chunksize=chunksize
-        )
+        def alter_res_df():
+            for df in pd.read_sql_query(
+                u1,
+                con=self.meta_dbconn.con,
+                chunksize=chunksize
+            ):
+                for k, v in extra_filters.items():
+                    df[k] = v
+                yield df
+
+        return idx_count, alter_res_df()
 
 
 # TODO перенести в compute.BatchGenerateStep
