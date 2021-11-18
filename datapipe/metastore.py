@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, Tuple, Dict, cast
+from typing import Iterator, Tuple, Dict, cast, List
 
 import copy
 import logging
@@ -43,7 +43,7 @@ class MetaTable:
         self.dbconn = dbconn
         self.name = name
 
-        self.primary_keys = [column.name for column in primary_schema]
+        self.primary_keys: List[str] = [column.name for column in primary_schema]
 
         for item in primary_schema:
             item.primary_key = True
@@ -136,20 +136,26 @@ class MetaTable:
 
             row_queries = []
 
+            # FIXME поправить на сравнение кортежей
             for _, row in idx.iterrows():
-                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in idx_cols]
+                and_params = [
+                    self.sql_table.c[key] == self._get_sql_param(row[key])
+                    for key in idx_cols
+                    if key in self.primary_keys
+                ]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
 
             sql = sql.where(or_(*row_queries))
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
-        res_df = pd.read_sql_query(
+
+        res_df: DataDF = pd.read_sql_query(
             sql,
             con=self.dbconn.con,
         )
 
-        return res_df[self.primary_keys]
+        return data_to_index(res_df, self.primary_keys)
 
     def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(

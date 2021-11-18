@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
-from sqlalchemy.sql.expression import select, delete, and_, or_
+from sqlalchemy.sql.expression import select, delete, tuple_
 from sqlalchemy.pool import SingletonThreadPool
 from datapipe.step import RunConfig
 
@@ -99,19 +99,32 @@ class TableStoreDB(TableStore):
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
 
+    def _apply_where_expression(self, sql, idx: IndexDF):
+        if len(self.primary_keys) == 1:
+            # Когда ключ один - сравниваем напрямую
+            key = self.primary_keys[0]
+            sql = sql.where(
+                self.data_table.c[key].in_(idx[key].to_list())
+            )
+
+        else:
+            # Когда ключей много - сравниваем через tuple
+            keys = tuple_(*[
+                self.data_table.c[key]
+                for key in self.primary_keys
+            ])
+
+            sql = sql.where(keys.in_([
+                tuple([r[key] for key in self.primary_keys])  # type: ignore
+                for r in idx.to_dict(orient='records')
+            ]))
+
+        return sql
+
     def delete_rows(self, idx: IndexDF) -> None:
-        if len(idx.index):
+        if idx is not None and len(idx.index):
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
-
-            row_queries = []
-
-            for _, row in idx.iterrows():
-                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
-                and_query = and_(*and_params)
-                row_queries.append(and_query)
-
-            sql = delete(self.data_table).where(or_(*row_queries))
-
+            sql = self._apply_where_expression(delete(self.data_table), idx)
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
@@ -143,17 +156,10 @@ class TableStoreDB(TableStore):
         sql = select(self.data_table.c)
 
         if idx is not None:
-            row_queries = []
-
-            for _, row in idx.iterrows():
-                and_params = [self.data_table.c[key] == self._get_sql_param(row[key]) for key in self.primary_keys]
-                and_query = and_(*and_params)
-                row_queries.append(and_query)
-
-            if not row_queries:
+            if not len(idx.index):
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
-            sql = sql.where(or_(*row_queries))
+            sql = self._apply_where_expression(sql, idx)
 
         return pd.read_sql_query(
             sql,
