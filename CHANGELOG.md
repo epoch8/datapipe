@@ -1,4 +1,4 @@
-# WIP 0.10.0alpha
+# WIP 0.10.0-alpha
 
 * Удален класс `ExternalTable`, теперь это явный шаг пайплайна `UpdateExternalTable`
 * Удален модуль `dsl`, классы переехали в `compute`
