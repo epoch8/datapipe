@@ -14,9 +14,7 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig, LabelDict
-
-from datapipe.step import ComputeStep
+from datapipe.run_config import RunConfig, LabelDict
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -424,44 +422,3 @@ def inc_process_many(
             else:
                 for k, res_dt in enumerate(res_dts):
                     res_dt.delete_by_idx(idx, run_config=run_config)
-
-
-class ExternalTableUpdater(ComputeStep):
-    def __init__(self, name: str, table: DataTable):
-        self.name = name
-        self.table = table
-        self.input_dts = []
-        self.output_dts = [table]
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        now = time.time()
-
-        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
-
-            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-                ds.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_meta_df),
-                    updated_count=len(changed_meta_df),
-                    deleted_count=0,
-                    run_config=run_config,
-                )
-
-            # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
-
-            self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-            self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
-
-        for stale_idx in self.table.meta_table.get_stale_idx(now):
-            logger.debug(f'Deleting {len(stale_idx.index)} rows from {self.name} data')
-            self.output_dts[0].event_logger.log_state(
-                self.name,
-                added_count=0,
-                updated_count=0,
-                deleted_count=len(stale_idx),
-                run_config=run_config,
-            )
-
-            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)

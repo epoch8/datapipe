@@ -1,6 +1,11 @@
+build-compute:
+    ✔ Перенести логику создания подшагов пайплайна в PipelineStep @done(21-11-20 16:22)
+    ✔ Слить dsl, step, compute @done(21-11-20 16:21)
+    ✔ Перенести RunConfig в run_config @done(21-11-20 16:22)
+    ☐ Убрать обязательные inputs, outputs у PipelineStep
+
 Filter:
     ☐ Добавить список фильтров как тип
-    ✔ Добавить фильтрацию для gen_process_many @done(21-10-26 23:27)
 
 One-to-many:
     ☐ Добавить схему данных как класс
@@ -26,6 +31,7 @@ TODO:
     ☐ Идемпотентная запись задач в LS, если задача уже есть, то она должна обновляться, а не дублироваться
 
 Archive:
+  ✔ Добавить фильтрацию для gen_process_many @done(21-10-26 23:27) @project(Filter)
   ✔ Объединить DataTable и MetaTable @done(21-10-03 19:07) @project(One-to-many)
   ✔ Перенести создание MetaTable в DataStore @done(21-09-26 21:03) @project(One-to-many)
   ✔ Перенести логику работы со списком таблиц из dsl.Catalog в DataStore @done(21-09-26 21:03) @project(One-to-many)

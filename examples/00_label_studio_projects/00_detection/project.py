@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 from datapipe.compute import build_compute, run_steps
 from datapipe.datatable import DataStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
-from datapipe.dsl import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
+from datapipe.compute import BatchTransform, LabelStudioModeration, Catalog, ExternalTable, Table, Pipeline
 
 
 def wrapped_partial(func, *args, **kwargs):

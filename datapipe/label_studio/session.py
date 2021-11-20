@@ -6,7 +6,8 @@ import pandas as pd
 import requests
 
 from datapipe.datatable import DataStore, gen_process_many, inc_process_many
-from datapipe.step import ComputeStep, RunConfig
+from datapipe.run_config import RunConfig
+from datapipe.compute import ComputeStep, Catalog, PipelineStep
 
 from tqdm import tqdm
 
@@ -134,6 +135,42 @@ class LabelStudioSession:
         summary = self.session.get(urljoin(self.ls_url, f'/api/projects/{project_id}/summary/')).json()
 
         return summary
+
+
+@dataclass
+class LabelStudioModeration(PipelineStep):
+    ls_url: str
+    inputs: List[str]
+    outputs: List[str]
+    auth: Tuple[str, str]
+    project_title: str
+    project_description: str
+    project_label_config: str
+    data: List[str]
+    annotations: Union[str, None] = None
+    predictions: Union[str, None] = None
+    chunk_size: int = 100
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
+        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+
+        return [
+            LabelStudioModerationStep(
+                name=f"LabelStudioModeration (Project {self.project_title})",
+                input_dts=input_dts,
+                output_dts=output_dts,
+                ls_url=self.ls_url,
+                auth=self.auth,
+                project_title=self.project_title,
+                project_description=self.project_description,
+                project_label_config=self.project_label_config,
+                data=self.data,
+                annotations=self.annotations,
+                predictions=self.predictions,
+                chunk_size=self.chunk_size,
+            )
+        ]
 
 
 @dataclass

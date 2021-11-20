@@ -7,7 +7,7 @@ import pandas as pd
 
 from datapipe.compute import build_compute, run_steps
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Table, ExternalTable, Pipeline, BatchTransform, LabelStudioModeration
+from datapipe.compute import Catalog, Table, ExternalTable, Pipeline, BatchTransform, LabelStudioModeration
 from datapipe.store.pandas import TableStoreJsonLine
 
 

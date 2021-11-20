@@ -8,8 +8,8 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.compute import BatchGenerateStep, BatchTransformIncStep
-from datapipe.step import RunConfig
+from datapipe.core_steps import BatchGenerateStep, BatchTransformIncStep
+from datapipe.run_config import RunConfig
 
 from .util import assert_datatable_equal
 

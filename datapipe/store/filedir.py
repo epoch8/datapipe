@@ -15,7 +15,7 @@ from PIL import Image
 
 from datapipe.types import DataDF, DataSchema, IndexDF
 from datapipe.store.table_store import TableStore
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 class ItemStoreFileAdapter(ABC):

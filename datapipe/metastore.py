@@ -13,7 +13,7 @@ import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 logger = logging.getLogger('datapipe.metastore')
