@@ -1,7 +1,7 @@
+from typing import Dict, List, Tuple, Union, Optional, Any
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Union, Optional
-from urllib.parse import urljoin
 
+from urllib.parse import urljoin
 import pandas as pd
 import requests
 
@@ -65,7 +65,7 @@ class LabelStudioSession:
     def get_project_id_by_title(
         self,
         title: str
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[str]:
         projects = self.session.get(urljoin(self.ls_url, '/api/projects/')).json()
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
@@ -77,7 +77,7 @@ class LabelStudioSession:
 
     def upload_tasks(
         self,
-        data: Dict,
+        data: List[Dict[str, Any]],
         project_id: str
     ) -> Dict:
         results = self.session.post(
@@ -173,22 +173,35 @@ class LabelStudioModeration(PipelineStep):
         ]
 
 
-@dataclass
 class LabelStudioModerationStep(ComputeStep):
-    name: str
-    input_dts: List[DataTable]
-    output_dts: List[DataTable]
-    ls_url: str
-    chunk_size: int
-    auth: Tuple[str, str]
-    project_title: str
-    project_description: str
-    project_label_config: str
-    data: List[str]
-    annotations: Union[str, None]
-    predictions: Union[str, None]
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        ls_url: str,
+        chunk_size: int,
+        auth: Tuple[str, str],
+        project_title: str,
+        project_description: str,
+        project_label_config: str,
+        data: List[str],
+        annotations: Union[str, None],
+        predictions: Union[str, None],
+    ) -> None:
+        self._name = name
+        self._input_dts = input_dts
+        self._output_dts = output_dts
+        self.ls_url = ls_url
+        self.chunk_size = chunk_size
+        self.auth = auth
+        self.project_title = project_title
+        self.project_description = project_description
+        self.project_label_config = project_label_config
+        self.data = data
+        self.annotations = annotations
+        self.predictions = predictions
 
-    def __post_init__(self):
         self.label_studio_session = LabelStudioSession(
             ls_url=self.ls_url,
             auth=self.auth
@@ -202,33 +215,33 @@ class LabelStudioModerationStep(ComputeStep):
 
             self.project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
             if self.project_id is None:
-                project = self.label_studio_session.create_project(
-                    project_setting={
-                        "title": self.project_title,
-                        "description": self.project_description,
-                        "label_config": self.project_label_config,
-                        "expert_instruction": "",
-                        "show_instruction": False,
-                        "show_skip_button": False,
-                        "enable_empty_annotation": True,
-                        "show_annotation_history": False,
-                        "organization": 1,
-                        "color": "#FFFFFF",
-                        "maximum_annotations": 1,
-                        "is_published": False,
-                        "model_version": "",
-                        "is_draft": False,
-                        "min_annotations_to_start_training": 10,
-                        "show_collab_predictions": True,
-                        "sampling": "Sequential sampling",
-                        "show_ground_truth_first": True,
-                        "show_overlap_first": True,
-                        "overlap_cohort_percentage": 100,
-                        "task_data_login": None,
-                        "task_data_password": None,
-                        "control_weights": {}
-                    }
-                )
+                project_setting: Dict[str, Any] = {
+                    "title": self.project_title,
+                    "description": self.project_description,
+                    "label_config": self.project_label_config,
+                    "expert_instruction": "",
+                    "show_instruction": False,
+                    "show_skip_button": False,
+                    "enable_empty_annotation": True,
+                    "show_annotation_history": False,
+                    "organization": 1,
+                    "color": "#FFFFFF",
+                    "maximum_annotations": 1,
+                    "is_published": False,
+                    "model_version": "",
+                    "is_draft": False,
+                    "min_annotations_to_start_training": 10,
+                    "show_collab_predictions": True,
+                    "sampling": "Sequential sampling",
+                    "show_ground_truth_first": True,
+                    "show_overlap_first": True,
+                    "overlap_cohort_percentage": 100,
+                    "task_data_login": None,
+                    "task_data_password": None,
+                    "control_weights": {}
+                }
+                project = self.label_studio_session.create_project(project_setting=project_setting)
+
                 self.project_id = project['id']
         else:
             self.project_id = None
@@ -251,7 +264,10 @@ class LabelStudioModerationStep(ComputeStep):
             }
             for idx in input_df.index
         ]
+
+        assert self.project_id is not None
         self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
+
         input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
         input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
             [] for _ in input_df.index
@@ -312,8 +328,9 @@ class LabelStudioModerationStep(ComputeStep):
         assert(run_config is None)
 
         if self.label_studio_session.is_service_up():
-            if self.project_id is None:
-                self.__post_init__()
+            pass
+            # if self.project_id is None:
+            #     self.__post_init__()
 
             # FIXME переделать на два независимых шага
             # Upload Tasks from inputs to outputs
