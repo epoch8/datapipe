@@ -9,7 +9,7 @@ from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 logger = logging.getLogger('datapipe.event_logger')

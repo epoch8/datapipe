@@ -4,7 +4,7 @@ import dash_bootstrap_components as dbc
 from dash import Dash
 from dash.dependencies import Input, Output
 
-from datapipe.dsl import Catalog, Pipeline
+from datapipe.compute import Catalog, Pipeline
 from datapipe.datatable import DataStore
 
 from .overview import ui_overview_setup, ui_overview_index

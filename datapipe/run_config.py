@@ -1,9 +1,5 @@
-from typing import List, TYPE_CHECKING, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
-
-if TYPE_CHECKING:
-    from datapipe.datatable import DataStore, DataTable
-
 
 LabelDict = Dict[str, Any]
 
@@ -26,13 +22,3 @@ class RunConfig:
             )
         else:
             return RunConfig(labels=labels)
-
-
-@dataclass
-class ComputeStep:
-    name: str
-    input_dts: List['DataTable']
-    output_dts: List['DataTable']
-
-    def run(self, ds: 'DataStore', run_config: RunConfig = None) -> None:
-        raise NotImplementedError

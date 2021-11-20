@@ -1,96 +1,60 @@
-from typing import List, Callable
+from typing import List, Dict
 from dataclasses import dataclass
+from abc import ABC
 
 import logging
-from datapipe.label_studio.session import LabelStudioModerationStep
 
-from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
-
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
-from .step import ComputeStep, RunConfig
+from datapipe.datatable import DataTable, DataStore
+from datapipe.run_config import RunConfig
+from datapipe.store.table_store import TableStore
 
 logger = logging.getLogger('datapipe.compute')
 
 
 @dataclass
-class BatchGenerateStep(ComputeStep):
-    func: Callable
+class Table:
+    store: TableStore
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        gen_process_many(
-            self.output_dts,
-            self.func,
-            run_config=RunConfig.add_labels(run_config, {'step_name': self.name}),
+
+class Catalog:
+    def __init__(self, catalog: Dict[str, Table]):
+        self.catalog = catalog
+        self.data_tables: Dict[str, DataTable] = {}
+
+    def get_datatable(self, ds: DataStore, name: str) -> DataTable:
+        return ds.get_or_create_table(
+            name=name,
+            table_store=self.catalog[name].store
         )
 
 
 @dataclass
-class BatchTransformIncStep(ComputeStep):
-    func: Callable
-    chunk_size: int
+class Pipeline:
+    steps: List['PipelineStep']
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        inc_process_many(
-            ds,
-            self.input_dts,
-            self.output_dts,
-            self.func,
-            self.chunk_size,
-            run_config=RunConfig.add_labels(run_config, {'step_name': self.name})
-        )
+
+# Пайплайн описывается через PipelineStep
+# Для выполнения у каждого pipeline_step выполняется build_compute на основании которых создается граф вычислений
+class PipelineStep(ABC):
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
+        raise NotImplementedError
+
+
+@dataclass
+class ComputeStep:
+    name: str
+    input_dts: List['DataTable']
+    output_dts: List['DataTable']
+
+    def run(self, ds: 'DataStore', run_config: RunConfig = None) -> None:
+        raise NotImplementedError
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     res: List[ComputeStep] = []
 
-    for name, tbl in catalog.catalog.items():
-        if isinstance(tbl, ExternalTable):
-            res.append(ExternalTableUpdater(
-                name=f'update_{name}',
-                table=catalog.get_datatable(ds, name)
-            ))
-
     for step in pipeline.steps:
-        if isinstance(step, BatchGenerate):
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchGenerateStep(
-                f'{step.func.__name__}',
-                input_dts=[],
-                output_dts=output_dts,
-                func=step.func,
-            ))
-
-        if isinstance(step, BatchTransform):
-            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchTransformIncStep(
-                f'{step.func.__name__}',
-                input_dts=input_dts,
-                output_dts=output_dts,
-                func=step.func,
-                chunk_size=step.chunk_size
-            ))
-
-        if isinstance(step, LabelStudioModeration):
-            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(LabelStudioModerationStep(
-                name=f"LabelStudioModeration (Project {step.project_title})",
-                input_dts=input_dts,
-                output_dts=output_dts,
-                ls_url=step.ls_url,
-                auth=step.auth,
-                project_title=step.project_title,
-                project_description=step.project_description,
-                project_label_config=step.project_label_config,
-                data=step.data,
-                annotations=step.annotations,
-                predictions=step.predictions,
-                chunk_size=step.chunk_size,
-            ))
+        res.extend(step.build_compute(ds, catalog))
 
     return res
 

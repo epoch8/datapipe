@@ -5,7 +5,7 @@ import pandas as pd
 
 from datapipe.datatable import DataStore
 from datapipe.store.filedir import TableStoreFiledir, PILFile
-from datapipe.dsl import Catalog, ExternalTable, Table, Pipeline, BatchTransform
+from datapipe.compute import Catalog, ExternalTable, Table, Pipeline, BatchTransform
 from datapipe.cli import main
 
 

@@ -1,8 +1,8 @@
 import click
 
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Pipeline
-from datapipe.step import RunConfig
+from datapipe.compute import Catalog, Pipeline
+from datapipe.run_config import RunConfig
 
 
 def main(
