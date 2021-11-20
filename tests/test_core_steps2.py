@@ -200,7 +200,6 @@ def test_gen_with_filter(dbconn):
     gen_step = BatchGenerateStep(
         name='gen_tbl',
         func=gen_func,
-        input_dts=[],
         output_dts=[tbl],
     )
 

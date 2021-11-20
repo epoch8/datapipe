@@ -58,7 +58,6 @@ def test_image_datatables(dbconn, tmp_dir):
 
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[tbl1],
         func=gen_images
     ).run(ds)

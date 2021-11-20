@@ -188,7 +188,6 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[catalog.get_datatable(ds, '00_images')],
         func=gen_images
     ).run(ds)

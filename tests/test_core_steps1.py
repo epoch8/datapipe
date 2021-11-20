@@ -54,7 +54,6 @@ def test_gen_process(dbconn) -> None:
     BatchGenerateStep(
         name='tbl1_gen',
         func=gen,
-        input_dts=[],
         output_dts=[tbl1]
     ).run(ds)
 
@@ -67,7 +66,6 @@ def test_gen_process(dbconn) -> None:
         BatchGenerateStep(
             name='tbl1',
             func=func,
-            input_dts=[],
             output_dts=[tbl1]
         ).run(ds)
 
@@ -261,7 +259,6 @@ def test_gen_process_many(dbconn) -> None:
 
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[tbl_gen, tbl1_gen, tbl2_gen, tbl3_gen],
         func=gen
     ).run(ds)
@@ -575,7 +572,6 @@ def test_error_handling(dbconn) -> None:
     # with pytest.raises(Exception):
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[tbl],
         func=gen_bad1,
         kwargs=dict(
@@ -617,7 +613,6 @@ def test_error_handling(dbconn) -> None:
     # with pytest.raises(Exception):
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[tbl],
         func=gen_bad2,
         kwargs=dict(
@@ -655,7 +650,6 @@ def test_gen_from_empty_rows(dbconn) -> None:
     # This should be ok
     BatchGenerateStep(
         name='gen',
-        input_dts=[],
         output_dts=[tbl],
         func=proc_func
     ).run(ds)

@@ -1,6 +1,9 @@
 v0.10:
-    ☐ Убрать обязательные inputs, outputs у PipelineStep
-    ☐ Убрать input_dts у BatchGenerateStep
+    ☐ Решить что делать с подавлением исключений в BatchGenerateStep
+    ☐ Внести интеграцию с Prefect в основную библиотеку
+    ☐ Вынести интеграцию с Labelstudio в отдельную библиотеку datapipe-moderation
+    ✔ Убрать обязательные inputs, outputs у PipelineStep @done(21-11-20 19:06)
+    ✔ Убрать input_dts у BatchGenerateStep @done(21-11-20 19:06)
     ☐ Реализовать автоименование у шагов
     ☐ Добавить схему данных как класс
     ☐ Добавить шаг, который работает на уровне всей DataTable, а не батчей изменений

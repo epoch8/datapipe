@@ -1,5 +1,5 @@
 from typing import Callable, List, Dict, Iterator, Tuple, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import time
 import tqdm
@@ -36,11 +36,34 @@ class BatchTransform(PipelineStep):
         ]
 
 
-@dataclass
 class BatchTransformIncStep(ComputeStep):
-    func: Callable
-    kwargs: Dict[str, Any] = field(default_factory=dict)
-    chunk_size: int = 1000
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        func: Callable,
+        kwargs: Dict[str, Any] = None,
+        chunk_size: int = 1000,
+    ) -> None:
+        self._name = name
+        self._input_dts = input_dts
+        self._output_dts = output_dts
+        self.func = func
+        self.kwargs = kwargs or {}
+        self.chunk_size = chunk_size
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dts(self) -> List['DataTable']:
+        return self._input_dts
+
+    @property
+    def output_dts(self) -> List['DataTable']:
+        return self._output_dts
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         import math
@@ -110,20 +133,40 @@ class BatchGenerate(PipelineStep):
         return [
             BatchGenerateStep(
                 f'{self.func.__name__}',
-                input_dts=[],
                 output_dts=output_dts,
                 func=self.func,
             )
         ]
 
 
+GenerateFunc = Callable[..., Iterator[Tuple[DataDF, ...]]]
+
+
 @dataclass
 class BatchGenerateStep(ComputeStep):
-    func: Callable[
-        ...,
-        Iterator[Tuple[DataDF, ...]]
-    ]
-    kwargs: Dict[str, Any] = field(default_factory=dict)
+    def __init__(
+        self,
+        name: str,
+        output_dts: List[DataTable],
+        func: GenerateFunc,
+        kwargs: Dict[str, Any] = None,
+    ) -> None:
+        self._name = name
+        self._output_dts = output_dts
+        self.func = func
+        self.kwargs = kwargs or {}
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dts(self) -> List['DataTable']:
+        return []
+
+    @property
+    def output_dts(self) -> List['DataTable']:
+        return self._output_dts
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         import inspect
@@ -189,10 +232,20 @@ class UpdateExternalTable(PipelineStep):
 
 class UpdateExternalTableStep(ComputeStep):
     def __init__(self, name: str, table: DataTable):
-        self.name = name
+        self._name = name
         self.table = table
-        self.input_dts = []
-        self.output_dts = [table]
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dts(self) -> List['DataTable']:
+        return []
+
+    @property
+    def output_dts(self) -> List['DataTable']:
+        return [self.table]
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         now = time.time()

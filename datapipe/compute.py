@@ -40,11 +40,18 @@ class PipelineStep(ABC):
         raise NotImplementedError
 
 
-@dataclass
 class ComputeStep:
-    name: str
-    input_dts: List['DataTable']
-    output_dts: List['DataTable']
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def input_dts(self) -> List['DataTable']:
+        raise NotImplementedError
+
+    @property
+    def output_dts(self) -> List['DataTable']:
+        raise NotImplementedError
 
     def run(self, ds: 'DataStore', run_config: RunConfig = None) -> None:
         raise NotImplementedError
