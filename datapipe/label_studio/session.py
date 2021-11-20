@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 
-from datapipe.datatable import DataStore
+from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.compute import ComputeStep, Catalog, PipelineStep
 
@@ -175,6 +175,9 @@ class LabelStudioModeration(PipelineStep):
 
 @dataclass
 class LabelStudioModerationStep(ComputeStep):
+    name: str
+    input_dts: List[DataTable]
+    output_dts: List[DataTable]
     ls_url: str
     chunk_size: int
     auth: Tuple[str, str]
