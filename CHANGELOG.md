@@ -1,7 +1,7 @@
 # WIP 0.10.0-alpha
 
 * Удален класс `ExternalTable`, теперь это явный шаг пайплайна `UpdateExternalTable`
-* Удален модуль `dsl`, классы переехали в `compute`
+* Удален модуль `dsl`, классы переехали в `compute` и `core_steps`
 * Удален модуль `step`, классы переехали в `run_config` и `compute`
 
 # 0.9.17
