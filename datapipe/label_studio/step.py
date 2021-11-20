@@ -49,6 +49,7 @@ class LSModeration(PipelineStep):
             Table(
                 TableStoreDB(
                     self.temp_data_dbconn,
+                    name='ls_publish_result',
                     data_sql_schema=input_tbl.table_store.get_primary_schema() +
                     [
                         Column('task_id', Integer),

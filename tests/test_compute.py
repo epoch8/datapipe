@@ -125,7 +125,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
     tbl1.store_chunk(TEST_DF1_2, now=0)
 
-    bt_step = BatchTransformIncStep(
+    bt_step = BatchTransformStep(
         name='tbl1_to_tbl2',
         func=lambda df: df[['item_id', 'a']],
         input_dts=[tbl1],
@@ -165,7 +165,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
         return df1.reset_index()
 
-    bt_step = BatchTransformIncStep(
+    bt_step = BatchTransformStep(
         name='tbl1_to_tbl1',
         func=update_df,
         input_dts=[tbl1, tbl2],

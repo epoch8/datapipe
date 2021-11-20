@@ -147,7 +147,7 @@ class CasesLabelStudio:
                     ],
                 )
             ),
-            '01_label_studio': InternalTable(
+            '01_label_studio': Table(
                 TableStoreLabelStudio(
                     ls_url=ls_url,
                     auth=auth,
@@ -397,6 +397,7 @@ def test_label_studio_specific_updating_scenary(
 
     # Add 5 annotations
     project_id = label_studio_session.get_project_id_by_title(project_title)
+    assert project_id is not None
     tasks_res = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     tasks = np.array(tasks_res)
     for task in tasks:
@@ -417,8 +418,8 @@ def test_label_studio_specific_updating_scenary(
     # Табличка с лейбел студией должна обновиться
     run_steps(ds, steps)
 
-    tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
-    assert len(tasks) == 5
+    tasks_list = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
+    assert len(tasks_list) == 5
 
     df_ls = catalog.get_datatable(ds, '01_label_studio').get_data()
 
