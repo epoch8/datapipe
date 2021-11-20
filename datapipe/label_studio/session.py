@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 
-from datapipe.datatable import DataStore, gen_process_many, inc_process_many
+from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.compute import ComputeStep, Catalog, PipelineStep
 
@@ -312,16 +312,17 @@ class LabelStudioModerationStep(ComputeStep):
             if self.project_id is None:
                 self.__post_init__()
 
+            # FIXME переделать на два независимых шага
             # Upload Tasks from inputs to outputs
-            inc_process_many(
-                ds,
-                self.input_dts,
-                self.output_dts,
-                self.upload_tasks_from_df,
-                self.chunk_size
-            )
+            # inc_process_many(
+            #     ds,
+            #     self.input_dts,
+            #     self.output_dts,
+            #     self.upload_tasks_from_df,
+            #     self.chunk_size
+            # )
             # Update current annotations in outputs
-            gen_process_many(
-                self.output_dts,
-                self.get_current_tasks_as_df
-            )
+            # gen_process_many(
+            #     self.output_dts,
+            #     self.get_current_tasks_as_df
+            # )
