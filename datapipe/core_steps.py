@@ -178,68 +178,56 @@ class BatchGenerate(PipelineStep):
         ]
 
 
+def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig = None) -> None:
+    now = time.time()
+
+    for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
+
+        _, _, new_meta_df, changed_meta_df = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+
+        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+            ds.event_logger.log_state(
+                table.name,
+                added_count=len(new_meta_df),
+                updated_count=len(changed_meta_df),
+                deleted_count=0,
+                run_config=run_config,
+            )
+
+        # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
+
+        table.meta_table.insert_meta_for_store_chunk(new_meta_df)
+        table.meta_table.update_meta_for_store_chunk(changed_meta_df)
+
+    for stale_idx in table.meta_table.get_stale_idx(now):
+        logger.debug(f'Deleting {len(stale_idx.index)} rows from {table.name} data')
+        ds.event_logger.log_state(
+            table.name,
+            added_count=0,
+            updated_count=0,
+            deleted_count=len(stale_idx),
+            run_config=run_config,
+        )
+
+        table.meta_table.mark_rows_deleted(stale_idx, now=now)
+
+
 class UpdateExternalTable(PipelineStep):
     def __init__(self, output: str) -> None:
         self.output_table_name = output
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        def transform_func(ds, input_dts, output_dts, run_config):
+            return update_external_table(ds, output_dts[0], run_config)
+
         return [
-            UpdateExternalTableStep(
+            DatatableTransformStep(
                 name=f'update_{self.output_table_name}',
-                table=catalog.get_datatable(ds, self.output_table_name)
+                func=transform_func,
+                input_dts=[],
+                output_dts=[catalog.get_datatable(ds, self.output_table_name)],
             )
         ]
-
-
-class UpdateExternalTableStep(ComputeStep):
-    def __init__(self, name: str, table: DataTable):
-        self._name = name
-        self.table = table
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dts(self) -> List['DataTable']:
-        return []
-
-    @property
-    def output_dts(self) -> List['DataTable']:
-        return [self.table]
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        now = time.time()
-
-        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
-
-            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-                ds.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_meta_df),
-                    updated_count=len(changed_meta_df),
-                    deleted_count=0,
-                    run_config=run_config,
-                )
-
-            # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
-
-            self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-            self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
-
-        for stale_idx in self.table.meta_table.get_stale_idx(now):
-            logger.debug(f'Deleting {len(stale_idx.index)} rows from {self.name} data')
-            self.output_dts[0].event_logger.log_state(
-                self.name,
-                added_count=0,
-                updated_count=0,
-                deleted_count=len(stale_idx),
-                run_config=run_config,
-            )
-
-            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)
 
 
 DTTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
