@@ -84,9 +84,9 @@ class LevelDBStore(TableStore):
         else:
             with self.db.iterator() as it:
                 for k, v in it:
-                    idx = pickle.loads(k)
-                    values = pickle.loads(v)
-                    rows.append({**idx, **values})
+                    row_idx = pickle.loads(k)
+                    row_values = pickle.loads(v)
+                    rows.append({**row_idx, **row_values})
 
         return pd.DataFrame.from_records(rows)
     
@@ -94,14 +94,14 @@ class LevelDBStore(TableStore):
         rows = []
         with self.db.iterator() as it:
             for k, v in it:
-                idx = pickle.loads(k)
-                values = pickle.loads(v)
+                row_idx = pickle.loads(k)
+                row_values = pickle.loads(v)
                 if run_config is None:
-                    rows.append({**idx, **values})
+                    rows.append({**row_idx, **row_values})
                 else:
                     for filter_k, filter_v in run_config.filters.items():
                         if filter_k in self.primary_keys and idx[filter_k] == filter_v:
-                            rows.append({**idx, **values})
+                            rows.append({**row_idx, **row_values})
                 if len(rows) % chunksize == 0 and len(rows) > 0:
                     yield pd.DataFrame.from_records(rows)
                     rows = []
