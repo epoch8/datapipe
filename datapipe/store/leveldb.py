@@ -4,9 +4,10 @@ import copy
 import logging
 import pandas as pd
 import numpy as np
-import json
+import pickle
 import plyvel
 
+from collections import OrderedDict
 from sqlalchemy.schema import Column
 
 from datapipe.step import RunConfig
@@ -31,15 +32,18 @@ class LevelDBStore(TableStore):
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
+    
+    def _get_sorted_dict(self, d):
+        return OrderedDict([(k, d[k]) for k in sorted(d.keys())])
 
     def delete_rows(self, idx: IndexDF) -> None:
         if idx is not None and len(idx.index):
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
 
             for row_i, row in idx.iterrows():
-                row_idx_sorted = {k: v for k, v in sorted(row.items(), key=lambda item: item[0])}
-                k = json.dumps(row_idx_sorted)
-                self.db.delete(k.encode())
+                row_idx_sorted = self._get_sorted_dict(row)
+                k = pickle.dumps(row_idx_sorted)
+                self.db.delete(k)
     
     def insert_rows(self, df: DataDF, chunk_size: int = 1000) -> None:
         if df.empty:
@@ -54,10 +58,10 @@ class LevelDBStore(TableStore):
                 for row_i, row in df.iloc[batch_i * chunk_size: (batch_i + 1) * chunk_size].iterrows():
                     row_idx = {col: row[col] for col in row.keys() if col in self.primary_keys}
                     # multi-index is not supported in levelDB
-                    row_idx_sorted = {k: v for k, v in sorted(row_idx.items(), key=lambda item: item[0])}
-                    k = json.dumps(row_idx_sorted)
-                    v = json.dumps({col: row[col] for col in row.keys() if col not in self.primary_keys})
-                    self.db.put(k.encode(), v.encode())
+                    row_idx_sorted = self._get_sorted_dict(row_idx)
+                    k = pickle.dumps(row_idx_sorted)
+                    v = pickle.dumps({col: row[col] for col in row.keys() if col not in self.primary_keys})
+                    self.db.put(k, v)
     
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
@@ -70,19 +74,18 @@ class LevelDBStore(TableStore):
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
             for row_i, row in idx.iterrows():
-                row_idx_sorted = {k: v for k, v in sorted(row.items(), key=lambda item: item[0])}
-                k = json.dumps(row_idx_sorted)
-                encoded_row = self.db.get(k.encode())
+                row_idx_sorted = self._get_sorted_dict(row)
+                k = pickle.dumps(row_idx_sorted)
+                encoded_row = self.db.get(k)
                 
                 if encoded_row is not None:
-                    row = json.loads(encoded_row)
-                    row_idx_sorted.update(row)
-                    rows.append(row_idx_sorted)
+                    row = pickle.loads(encoded_row)
+                    rows.append({**row_idx_sorted, **row})
         else:
             with self.db.iterator() as it:
                 for k, v in it:
-                    idx = json.loads(k.decode())
-                    values = json.loads(v.decode())
+                    idx = pickle.loads(k)
+                    values = pickle.loads(v)
                     rows.append({**idx, **values})
 
         return pd.DataFrame.from_records(rows)
@@ -91,8 +94,8 @@ class LevelDBStore(TableStore):
         rows = []
         with self.db.iterator() as it:
             for k, v in it:
-                idx = json.loads(k.decode())
-                values = json.loads(v.decode())
+                idx = pickle.loads(k)
+                values = pickle.loads(v)
                 if run_config is None:
                     rows.append({**idx, **values})
                 else:
