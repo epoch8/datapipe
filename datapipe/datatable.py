@@ -3,7 +3,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Set
 import logging
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_
+from sqlalchemy import alias, func, select, union, and_, or_, literal
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
@@ -189,7 +189,7 @@ class DataStore:
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
-            fields = [1] + [inp.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     inp,
@@ -217,7 +217,7 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            fields = [1] + [out.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     out,
@@ -315,6 +315,8 @@ class DataStore:
             ):
                 for k, v in extra_filters.items():
                     df[k] = v
-                yield df
+
+                # drop pseudo column
+                yield df.drop(columns='_1')
 
         return idx_count, alter_res_df()
