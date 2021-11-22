@@ -51,7 +51,7 @@ class EventLogger:
         deleted_count,
         run_config: RunConfig = None,
     ):
-        logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+        logger.info(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
 
         if run_config is not None:
             meta = {

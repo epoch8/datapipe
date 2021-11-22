@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Set
 
 import logging
 
@@ -56,14 +56,14 @@ class DataTable:
         if data_df.empty:
             return None
 
-        logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
+        logger.debug(f'Storing chunk {len(data_df.index)} rows into {self.name}')
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
+        if len(new_df) > 0 or len(changed_df) > 0:
             self.event_logger.log_state(
-                self.name, added_count=len(new_meta_df),
-                updated_count=len(changed_meta_df),
+                self.name, added_count=len(new_df),
+                updated_count=len(changed_df),
                 deleted_count=0,
                 run_config=run_config,
             )
@@ -150,52 +150,35 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
-    def get_process_ids(
+    def _build_changed_idx_sql(
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        chunksize: int = 1000,
         run_config: RunConfig = None,
-    ) -> Tuple[int, Iterator[IndexDF]]:
-        '''
-        Метод для получения перечня индексов для обработки.
+    ) -> Tuple[Set[str], select]:
+        """
+        Построить SQL запрос на получение измененных идентификаторов.
 
-        Returns: (idx_size, iterator<idx_df>)
-            idx_size - количество индексов требующих обработки
-            idx_df - датафрейм без колонок с данными, только индексная колонка
-        '''
-
-        if len(inputs) == 0:
-            return (0, iter([]))
+        Returns: [join_keys, select]
+        """
 
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
 
-        # Список ключей из фильтров, которые нужно добавить в результат
-        extra_filters: LabelDict
-        if run_config is not None:
-            extra_filters = {
-                k: v
-                for k, v in run_config.filters.items()
-                if k not in join_keys
-            }
-        else:
-            extra_filters = {}
-
-        if not join_keys:
-            raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+        # if not join_keys:
+        #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(
                 tbl_bbb[0],
-                and_(tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys),
+                and_(True, *[tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys]),
                 isouter=True
             )
             for tbl_b in tbl_bbb[1:]:
                 q = q.join(
                     tbl_b,
-                    and_(tbl_a.c[key] == tbl_b.c[key] for key in join_keys),
+                    and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
                     isouter=True
                 )
 
@@ -206,7 +189,7 @@ class DataStore:
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
-            fields = [inp.c[key] for key in join_keys]
+            fields = [1] + [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     inp,
@@ -234,7 +217,7 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            fields = [out.c[key] for key in join_keys]
+            fields = [1] + [out.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     out,
@@ -260,12 +243,69 @@ class DataStore:
 
         u1 = union(*sql_requests)
 
+        return (join_keys, u1)
+
+    def get_changed_idx_count(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        run_config: RunConfig = None,
+    ) -> int:
+        _, sql = self._build_changed_idx_sql(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config
+        )
+
         idx_count = self.meta_dbconn.con.execute(
             select([func.count()])
             .select_from(
-                alias(u1.subquery(), name='union_select')
+                alias(sql.subquery(), name='union_select')
             )
         ).scalar()
+
+        return idx_count
+
+    def get_process_ids(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        chunksize: int = 1000,
+        run_config: RunConfig = None,
+    ) -> Tuple[int, Iterator[IndexDF]]:
+        '''
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+            idx_size - количество индексов требующих обработки
+            idx_df - датафрейм без колонок с данными, только индексная колонка
+        '''
+
+        if len(inputs) == 0:
+            return (0, iter([]))
+
+        idx_count = self.get_changed_idx_count(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config,
+        )
+
+        join_keys, u1 = self._build_changed_idx_sql(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config,
+        )
+
+        # Список ключей из фильтров, которые нужно добавить в результат
+        extra_filters: LabelDict
+        if run_config is not None:
+            extra_filters = {
+                k: v
+                for k, v in run_config.filters.items()
+                if k not in join_keys
+            }
+        else:
+            extra_filters = {}
 
         def alter_res_df():
             for df in pd.read_sql_query(

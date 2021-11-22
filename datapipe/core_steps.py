@@ -279,3 +279,73 @@ class UpdateExternalTableStep(ComputeStep):
             )
 
             self.table.meta_table.mark_rows_deleted(stale_idx, now=now)
+
+
+DTTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable]], None]
+
+
+class DatatableTransform(PipelineStep):
+    def __init__(
+        self,
+        func: DTTransformFunc,
+        inputs: List[str],
+        outputs: List[str],
+    ) -> None:
+        self.func = func
+        self.inputs = inputs
+        self.outputs = outputs
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        return [
+            DatatableTransformStep(
+                name=self.func.__name__,
+                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
+                output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
+                func=self.func,
+            )
+        ]
+
+
+class DatatableTransformStep(ComputeStep):
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        func: DTTransformFunc,
+        kwargs: Dict[str, Any] = None,
+        check_for_changes: bool = True,
+    ) -> None:
+        self._name = name
+        self._input_dts = input_dts
+        self._output_dts = output_dts
+        self.func = func
+        self.kwargs = kwargs or {}
+        self.check_for_changes = check_for_changes
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dts(self) -> List[DataTable]:
+        return self._input_dts
+
+    @property
+    def output_dts(self) -> List[DataTable]:
+        return self._output_dts
+
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
+        if self.check_for_changes:
+            changed_idx_count = ds.get_changed_idx_count(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                run_config=run_config
+            )
+
+            if changed_idx_count == 0:
+                logger.debug(f'Skipping {self.name} execution - nothing to compute')
+
+                return
+
+        self.func(ds, self._input_dts, self._output_dts)

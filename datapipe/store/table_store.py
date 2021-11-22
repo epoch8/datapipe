@@ -37,7 +37,7 @@ class TableStore(ABC):
 
 class TableDataSingleFileStore(TableStore):
     def __init__(self, filename: Union[Path, str] = None, primary_schema: DataSchema = None):
-        if not primary_schema:
+        if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 
         self.primary_schema = primary_schema
