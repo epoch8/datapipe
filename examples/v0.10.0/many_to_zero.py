@@ -6,8 +6,9 @@ from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
 from datapipe.datatable import DataStore, DataTable
-from datapipe.compute import Pipeline, Catalog, Table
-from datapipe.core_steps import BatchGenerate, DatatableTransform
+from datapipe.compute import Pipeline, Catalog, Table, DatatableTransform
+from datapipe.core_steps import BatchGenerate
+from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.cli import main
@@ -40,7 +41,7 @@ def generate_data():
     })
 
 
-def count(ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable]) -> None:
+def count(ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable], run_config: RunConfig = None) -> None:
     assert len(input_dts) == 1
     assert len(output_dts) == 1
 
