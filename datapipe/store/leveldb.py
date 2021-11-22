@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 import plyvel
 
+from pathlib import PosixPath
 from collections import OrderedDict
 from sqlalchemy.schema import Column
 
@@ -22,11 +23,11 @@ class LevelDBStore(TableStore):
     def __init__(
         self,
         name: str,
-        db_path: str,
+        db_path: Union[str, PosixPath],
         data_sql_schema: List[Column],
     ) -> None:
         self.name = name
-        self.db_path = db_path
+        self.db_path = str(db_path)
         self.data_sql_schema = data_sql_schema
         self.db = plyvel.DB(self.db_path, create_if_missing=True)
 
@@ -88,7 +89,7 @@ class LevelDBStore(TableStore):
                     row_values = pickle.loads(v)
                     rows.append({**row_idx, **row_values})
 
-        return pd.DataFrame.from_records(rows)
+        return pd.DataFrame.from_records(rows, columns=[column.name for column in self.data_sql_schema])
     
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         rows = []
@@ -106,6 +107,6 @@ class LevelDBStore(TableStore):
                     yield pd.DataFrame.from_records(rows)
                     rows = []
                     
-        if len(rows) > 0:
-            yield pd.DataFrame.from_records(rows)
+        if len(rows) >= 0:
+            yield pd.DataFrame.from_records(rows, columns=[column.name for column in self.data_sql_schema])
             
