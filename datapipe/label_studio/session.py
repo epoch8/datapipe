@@ -7,7 +7,7 @@ import requests
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.compute import ComputeStep, Catalog, PipelineStep
+from datapipe.compute import DatatableTransformStep, Catalog, PipelineStep
 
 from tqdm import tqdm
 
@@ -151,7 +151,7 @@ class LabelStudioModeration(PipelineStep):
     predictions: Union[str, None] = None
     chunk_size: int = 100
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
@@ -173,7 +173,7 @@ class LabelStudioModeration(PipelineStep):
         ]
 
 
-class LabelStudioModerationStep(ComputeStep):
+class LabelStudioModerationStep(DatatableTransformStep):
     def __init__(
         self,
         name: str,

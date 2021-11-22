@@ -1,4 +1,4 @@
-from typing import Callable, List, Dict, Iterator, Tuple, Any, Optional, Union
+from typing import Callable, List, Iterator, Tuple, Union
 from dataclasses import dataclass
 
 import time
@@ -6,7 +6,7 @@ import tqdm
 import logging
 
 from datapipe.types import DataDF
-from datapipe.compute import PipelineStep, Catalog, ComputeStep
+from datapipe.compute import PipelineStep, Catalog, DatatableTransformStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 
@@ -82,7 +82,7 @@ class BatchTransform(PipelineStep):
     outputs: List[str]
     chunk_size: int = 1000
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
@@ -163,7 +163,7 @@ class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
     outputs: List[str]
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         def transform_func(ds, input_dts, output_dts, run_config):
             return batch_generate_wrapper(self.func, ds, output_dts, run_config)
 
@@ -216,7 +216,7 @@ class UpdateExternalTable(PipelineStep):
     def __init__(self, output: str) -> None:
         self.output_table_name = output
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         def transform_func(ds, input_dts, output_dts, run_config):
             return update_external_table(ds, output_dts[0], run_config)
 
@@ -228,75 +228,3 @@ class UpdateExternalTable(PipelineStep):
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
             )
         ]
-
-
-DTTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
-
-
-class DatatableTransform(PipelineStep):
-    def __init__(
-        self,
-        func: DTTransformFunc,
-        inputs: List[str],
-        outputs: List[str],
-    ) -> None:
-        self.func = func
-        self.inputs = inputs
-        self.outputs = outputs
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        return [
-            DatatableTransformStep(
-                name=self.func.__name__,
-                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
-                output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
-                func=self.func,
-            )
-        ]
-
-
-class DatatableTransformStep(ComputeStep):
-    def __init__(
-        self,
-        name: str,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        func: DTTransformFunc,
-        kwargs: Dict[str, Any] = None,
-        check_for_changes: bool = True,
-    ) -> None:
-        self._name = name
-        self._input_dts = input_dts
-        self._output_dts = output_dts
-        self.func = func
-        self.kwargs = kwargs or {}
-        self.check_for_changes = check_for_changes
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dts(self) -> List[DataTable]:
-        return self._input_dts
-
-    @property
-    def output_dts(self) -> List[DataTable]:
-        return self._output_dts
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        if len(self.input_dts) > 0 and self.check_for_changes:
-            changed_idx_count = ds.get_changed_idx_count(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                run_config=run_config
-            )
-
-            if changed_idx_count == 0:
-                logger.debug(f'Skipping {self.name} execution - nothing to compute')
-
-                return
-
-        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
-
-        self.func(ds, self._input_dts, self._output_dts, run_config)
