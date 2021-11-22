@@ -2,6 +2,7 @@
 
 from typing import cast
 import pytest
+from functools import partial
 
 import pandas as pd
 from sqlalchemy import Column
@@ -9,7 +10,7 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.core_steps import BatchGenerateStep, BatchTransformIncStep
+from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper
 from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_df_equal, assert_datatable_equal
@@ -51,11 +52,11 @@ def test_gen_process(dbconn) -> None:
     def gen():
         yield TEST_DF
 
-    BatchGenerateStep(
-        name='tbl1_gen',
+    batch_generate_wrapper(
         func=gen,
+        ds=ds,
         output_dts=[tbl1]
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl1, TEST_DF)
 
@@ -63,11 +64,11 @@ def test_gen_process(dbconn) -> None:
         return TEST_DF
 
     with pytest.raises(Exception):
-        BatchGenerateStep(
-            name='tbl1',
+        batch_generate_wrapper(
             func=func,
+            ds=ds,
             output_dts=[tbl1]
-        ).run(ds)
+        )
 
 
 def test_inc_process_modify_values(dbconn) -> None:
@@ -87,21 +88,24 @@ def test_inc_process_modify_values(dbconn) -> None:
 
     tbl1.store_chunk(TEST_DF)
 
-    step = BatchTransformIncStep(
-        name='inc_step',
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=id_func
     )
-
-    step.run(ds)
 
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
     tbl1.store_chunk(TEST_DF_INC1)
 
-    step.run(ds)
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
+        input_dts=[tbl1],
+        output_dts=[tbl2],
+    )
 
     assert_datatable_equal(tbl2, TEST_DF_INC1)
 
@@ -123,25 +127,25 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
 
     tbl1.store_chunk(TEST_DF)
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=id_func
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
     tbl1.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys))
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=id_func,
-        chunk_size=2
-    ).run(ds)
+        chunksize=2,
+    )
 
     assert_datatable_equal(tbl2, TEST_DF[:5])
 
@@ -165,12 +169,12 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
 
     tbl1.store_chunk(TEST_DF)
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=id_func
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl2, TEST_DF[:5])
 
@@ -199,14 +203,12 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
     assert(idx_len == len(TEST_DF))
 
-    step = BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=id_func
     )
-
-    step.run(ds)
 
     count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
@@ -222,7 +224,12 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
     assert(idx_len == len(TEST_DF))
 
-    step.run(ds)
+    batch_transform_wrapper(
+        func=id_func,
+        ds=ds,
+        input_dts=[tbl1],
+        output_dts=[tbl2],
+    )
 
     count, idx_gen = ds.get_process_ids([tbl1], [tbl2])
     idx_dfs = list(idx_gen)
@@ -257,11 +264,11 @@ def test_gen_process_many(dbconn) -> None:
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)
 
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=gen,
+        ds=ds,
         output_dts=[tbl_gen, tbl1_gen, tbl2_gen, tbl3_gen],
-        func=gen
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl_gen, TEST_DF)
     assert_datatable_equal(tbl1_gen, TEST_DF_INC1)
@@ -300,12 +307,12 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 
     tbl.store_chunk(TEST_DF)
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=inc_func,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl1, tbl2, tbl3],
-        func=inc_func
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl1, TEST_DF_INC1)
     assert_datatable_equal(tbl2, TEST_DF_INC2)
@@ -323,12 +330,12 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3['a'] += 3
         return df3, df2, df1
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=inc_func_inv,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl3, tbl2, tbl1],
-        func=inc_func_inv
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl1, TEST_DF_INC1[:5])
     assert_datatable_equal(tbl2, TEST_DF_INC2[:5])
@@ -338,12 +345,12 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 
     tbl.store_chunk(TEST_DF[5:])
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=inc_func,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl1, tbl2, tbl3],
-        func=inc_func
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl1, TEST_DF_INC1)
     assert_datatable_equal(tbl2, TEST_DF_INC2)
@@ -389,12 +396,12 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
     tbl1.store_chunk(TEST_DF)
     tbl2.store_chunk(TEST_DF)
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        ds=ds,
         input_dts=[tbl1, tbl2],
         output_dts=[tbl],
-        func=inc_func
-    ).run(ds)
+        func=inc_func,
+    )
 
     assert_datatable_equal(
         tbl,
@@ -421,12 +428,12 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         )
     )
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        ds=ds,
         input_dts=[tbl1, tbl2],
         output_dts=[tbl],
         func=inc_func
-    ).run(ds)
+    )
 
     assert_df_equal(
         tbl.get_data(idx=changed_ids_df),
@@ -459,12 +466,12 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         )
     )
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=inc_func,
+        ds=ds,
         input_dts=[tbl1, tbl2],
         output_dts=[tbl],
-        func=inc_func
-    ).run(ds)
+    )
 
     assert_df_equal(
         tbl.get_data(idx=changed_ids_df),
@@ -515,20 +522,25 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
         df_bad = df[df['id'].isin(bad_ids)]
         return df_good, df_bad
 
-    step = BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=inc_func,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl_good, tbl_bad],
-        func=inc_func
     )
 
-    step.run(ds)
     assert_datatable_equal(tbl, TEST_DF)
     assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
     assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
 
     # Check this not delete the tables
-    step.run(ds)
+    batch_transform_wrapper(
+        func=inc_func,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_good, tbl_bad],
+    )
+
     assert_datatable_equal(tbl, TEST_DF)
     assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
     assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
@@ -570,14 +582,11 @@ def test_error_handling(dbconn) -> None:
             yield TEST_DF.loc[idx[i:i+chunksize]]
 
     # with pytest.raises(Exception):
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=partial(gen_bad1, chunksize=CHUNKSIZE),
+        ds=ds,
         output_dts=[tbl],
-        func=gen_bad1,
-        kwargs=dict(
-            chunksize=CHUNKSIZE
-        )
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
@@ -589,48 +598,42 @@ def test_error_handling(dbconn) -> None:
     def inc_func_good(df):
         return df
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=inc_func_bad,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl_good],
-        func=inc_func_bad,
-        chunk_size=1,
-    ).run(ds)
+        chunksize=1,
+    )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[[0, 1, 2, 4, 5]])
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=inc_func_good,
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl_good],
-        func=inc_func_good,
-        chunk_size=CHUNKSIZE,
-    ).run(ds)
+        chunksize=CHUNKSIZE,
+    )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
 
     # Checks that records are not being deleted
     # with pytest.raises(Exception):
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=partial(gen_bad2, chunksize=CHUNKSIZE),
+        ds=ds,
         output_dts=[tbl],
-        func=gen_bad2,
-        kwargs=dict(
-            chunksize=CHUNKSIZE
-        )
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
-    BatchTransformIncStep(
-        name='inc',
+    batch_transform_wrapper(
+        func=partial(inc_func_bad, chunksize=CHUNKSIZE),
+        ds=ds,
         input_dts=[tbl],
         output_dts=[tbl_good],
-        func=inc_func_bad,
-        kwargs=dict(
-            chunksize=CHUNKSIZE
-        )
-    ).run(ds)
+    )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
 
@@ -648,8 +651,8 @@ def test_gen_from_empty_rows(dbconn) -> None:
         )
 
     # This should be ok
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=proc_func,
+        ds=ds,
         output_dts=[tbl],
-        func=proc_func
-    ).run(ds)
+    )

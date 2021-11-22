@@ -13,7 +13,7 @@ from PIL import Image
 from datapipe.datatable import DataStore
 from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.compute import build_compute, run_steps
-from datapipe.core_steps import BatchGenerate, BatchGenerateStep, BatchTransform
+from datapipe.core_steps import BatchGenerate, BatchTransform, batch_generate_wrapper
 from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
 from datapipe.label_studio.session import LabelStudioModeration, LabelStudioModerationStep, LabelStudioSession
 
@@ -186,11 +186,11 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ds, steps)
 
     # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=gen_images,
+        ds=ds,
         output_dts=[catalog.get_datatable(ds, '00_images')],
-        func=gen_images
-    ).run(ds)
+    )
 
     run_steps(ds, steps)
 

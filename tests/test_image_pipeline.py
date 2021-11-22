@@ -6,8 +6,8 @@ from PIL import Image
 
 from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import (
-    BatchGenerate, BatchGenerateStep,
-    BatchTransform, BatchTransformIncStep,
+    BatchGenerate, batch_generate_wrapper,
+    BatchTransform, batch_transform_wrapper,
     UpdateExternalTable,
 )
 from datapipe.datatable import DataStore
@@ -56,18 +56,18 @@ def test_image_datatables(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    BatchGenerateStep(
-        name='gen',
+    batch_generate_wrapper(
+        func=gen_images,
+        ds=ds,
         output_dts=[tbl1],
-        func=gen_images
-    ).run(ds)
+    )
 
-    BatchTransformIncStep(
-        name='transform',
+    batch_transform_wrapper(
+        func=resize_images,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        func=resize_images
-    ).run(ds)
+    )
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10

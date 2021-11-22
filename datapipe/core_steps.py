@@ -1,4 +1,4 @@
-from typing import Callable, List, Dict, Iterator, Tuple, Any
+from typing import Callable, List, Dict, Iterator, Tuple, Any, Optional, Union
 from dataclasses import dataclass
 
 import time
@@ -14,6 +14,67 @@ from datapipe.run_config import RunConfig
 logger = logging.getLogger('datapipe.core_steps')
 
 
+BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF], Tuple[DataDF, ...]]]
+
+
+def batch_transform_wrapper(
+    func: BatchTransformFunc,
+    ds: DataStore,
+    input_dts: List[DataTable],
+    output_dts: List[DataTable],
+    chunksize: int = 1000,
+    run_config: RunConfig = None
+) -> None:
+    import math
+
+    '''
+    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
+    '''
+
+    idx_count, idx_gen = ds.get_process_ids(
+        inputs=input_dts,
+        outputs=output_dts,
+        chunksize=chunksize,
+        run_config=run_config
+    )
+
+    logger.info(f'Items to update {idx_count}')
+
+    if idx_count > 0:
+        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
+            logger.debug(f'Idx to process: {idx.to_records()}')
+
+            input_dfs = [inp.get_data(idx) for inp in input_dts]
+
+            if sum(len(j) for j in input_dfs) > 0:
+                try:
+                    chunks_df = func(*input_dfs)
+                except Exception as e:
+                    logger.error(f"Transform failed ({func.__name__}): {str(e)}")
+                    ds.event_logger.log_exception(e, run_config=run_config)
+
+                    continue
+
+                if isinstance(chunks_df, (list, tuple)):
+                    assert len(chunks_df) == len(output_dts)
+                else:
+                    assert len(output_dts) == 1
+                    chunks_df = [chunks_df]
+
+                for k, res_dt in enumerate(output_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    # Добавляем результат в результирующие чанки
+                    res_dt.store_chunk(
+                        data_df=chunks_df[k],
+                        processed_idx=idx,
+                        run_config=run_config,
+                    )
+
+            else:
+                for k, res_dt in enumerate(output_dts):
+                    res_dt.delete_by_idx(idx, run_config=run_config)
+
+
 @dataclass
 class BatchTransform(PipelineStep):
     func: Callable
@@ -25,196 +86,96 @@ class BatchTransform(PipelineStep):
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
+        def transform_func(ds, input_dts, output_dts, run_config):
+            return batch_transform_wrapper(
+                self.func,
+                chunksize=self.chunk_size,
+                ds=ds,
+                input_dts=input_dts,
+                output_dts=output_dts,
+                run_config=run_config,
+            )
+
         return [
-            BatchTransformIncStep(
+            DatatableTransformStep(
                 f'{self.func.__name__}',
                 input_dts=input_dts,
                 output_dts=output_dts,
-                func=self.func,
-                chunk_size=self.chunk_size
+                func=transform_func,
             )
         ]
 
 
-class BatchTransformIncStep(ComputeStep):
-    def __init__(
-        self,
-        name: str,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        func: Callable,
-        kwargs: Dict[str, Any] = None,
-        chunk_size: int = 1000,
-    ) -> None:
-        self._name = name
-        self._input_dts = input_dts
-        self._output_dts = output_dts
-        self.func = func
-        self.kwargs = kwargs or {}
-        self.chunk_size = chunk_size
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dts(self) -> List['DataTable']:
-        return self._input_dts
-
-    @property
-    def output_dts(self) -> List['DataTable']:
-        return self._output_dts
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        import math
-
-        input_dts = self.input_dts
-        res_dts = self.output_dts
-        proc_func = self.func
-        kwargs = self.kwargs
-        chunksize = self.chunk_size
-        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
-
-        '''
-        Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
-        '''
-
-        idx_count, idx_gen = ds.get_process_ids(
-            inputs=input_dts,
-            outputs=res_dts,
-            chunksize=chunksize,
-            run_config=run_config
-        )
-
-        logger.info(f'Items to update {idx_count}')
-
-        if idx_count > 0:
-            for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
-                logger.debug(f'Idx to process: {idx.to_records()}')
-
-                input_dfs = [inp.get_data(idx) for inp in input_dts]
-
-                if sum(len(j) for j in input_dfs) > 0:
-                    try:
-                        chunks_df = proc_func(*input_dfs, **kwargs)
-                    except Exception as e:
-                        logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
-                        ds.event_logger.log_exception(e, run_config=run_config)
-
-                        continue
-
-                    for k, res_dt in enumerate(res_dts):
-                        # Берем k-ое значение функции для k-ой таблички
-                        chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
-
-                        # Добавляем результат в результирующие чанки
-                        res_dt.store_chunk(
-                            data_df=chunk_df_k,
-                            processed_idx=idx,
-                            run_config=run_config,
-                        )
-
-                else:
-                    for k, res_dt in enumerate(res_dts):
-                        res_dt.delete_by_idx(idx, run_config=run_config)
+BatchGenerateFunc = Callable[[], Iterator[Tuple[DataDF, ...]]]
 
 
-@dataclass
-class BatchGenerate(PipelineStep):
-    func: Callable[
-        ...,
-        Iterator[Tuple[DataDF, ...]]
-    ]
-    outputs: List[str]
+def batch_generate_wrapper(
+    func: BatchGenerateFunc,
+    ds: DataStore,
+    output_dts: List[DataTable],
+    run_config: RunConfig = None
+) -> None:
+    import inspect
+    import pandas as pd
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+    '''
+    Создание новой таблицы из результатов запуска `proc_func`.
+    Функция может быть как обычной, так и генерирующейся
+    '''
 
-        return [
-            BatchGenerateStep(
-                f'{self.func.__name__}',
-                output_dts=output_dts,
-                func=self.func,
-            )
-        ]
+    now = time.time()
 
+    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
-GenerateFunc = Callable[..., Iterator[Tuple[DataDF, ...]]]
+    try:
+        iterable = func()
+    except Exception as e:
+        logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
+        ds.event_logger.log_exception(e, run_config=run_config)
 
+        # raise e
+        return
 
-@dataclass
-class BatchGenerateStep(ComputeStep):
-    def __init__(
-        self,
-        name: str,
-        output_dts: List[DataTable],
-        func: GenerateFunc,
-        kwargs: Dict[str, Any] = None,
-    ) -> None:
-        self._name = name
-        self._output_dts = output_dts
-        self.func = func
-        self.kwargs = kwargs or {}
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dts(self) -> List['DataTable']:
-        return []
-
-    @property
-    def output_dts(self) -> List['DataTable']:
-        return self._output_dts
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        import inspect
-        import pandas as pd
-
-        dts = self.output_dts
-        proc_func = self.func
-        kwargs = self.kwargs
-        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
-
-        '''
-        Создание новой таблицы из результатов запуска `proc_func`.
-        Функция может быть как обычной, так и генерирующейся
-        '''
-
-        now = time.time()
-
-        assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
-
+    while True:
         try:
-            iterable = proc_func(**kwargs)
+            chunk_dfs = next(iterable)
+
+            if isinstance(chunk_dfs, pd.DataFrame):
+                chunk_dfs = [chunk_dfs]
+        except StopIteration:
+            break
         except Exception as e:
-            logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
+            logger.exception(f"Generating failed ({func}): {str(e)}")
             ds.event_logger.log_exception(e, run_config=run_config)
 
             # raise e
             return
 
-        while True:
-            try:
-                chunk_dfs = next(iterable)
+        for k, dt_k in enumerate(output_dts):
+            dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
 
-                if isinstance(chunk_dfs, pd.DataFrame):
-                    chunk_dfs = [chunk_dfs]
-            except StopIteration:
-                break
-            except Exception as e:
-                logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
-                ds.event_logger.log_exception(e, run_config=run_config)
+    for k, dt_k in enumerate(output_dts):
+        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
-                # raise e
-                return
 
-            for k, dt_k in enumerate(dts):
-                dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
+@dataclass
+class BatchGenerate(PipelineStep):
+    func: BatchGenerateFunc
+    outputs: List[str]
 
-        for k, dt_k in enumerate(dts):
-            dt_k.delete_stale_by_process_ts(now, run_config=run_config)
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        def transform_func(ds, input_dts, output_dts, run_config):
+            return batch_generate_wrapper(self.func, ds, output_dts, run_config)
+
+        return [
+            DatatableTransformStep(
+                name=self.func.__name__,
+                func=transform_func,
+                input_dts=[],
+                output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
+                check_for_changes=False
+            )
+        ]
 
 
 class UpdateExternalTable(PipelineStep):
@@ -281,7 +242,7 @@ class UpdateExternalTableStep(ComputeStep):
             self.table.meta_table.mark_rows_deleted(stale_idx, now=now)
 
 
-DTTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable]], None]
+DTTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
 
 
 class DatatableTransform(PipelineStep):
@@ -336,7 +297,7 @@ class DatatableTransformStep(ComputeStep):
         return self._output_dts
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        if self.check_for_changes:
+        if len(self.input_dts) > 0 and self.check_for_changes:
             changed_idx_count = ds.get_changed_idx_count(
                 inputs=self.input_dts,
                 outputs=self.output_dts,
@@ -348,4 +309,6 @@ class DatatableTransformStep(ComputeStep):
 
                 return
 
-        self.func(ds, self._input_dts, self._output_dts)
+        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
+
+        self.func(ds, self._input_dts, self._output_dts, run_config)

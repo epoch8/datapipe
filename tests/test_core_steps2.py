@@ -10,7 +10,7 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.core_steps import BatchGenerateStep, BatchTransformIncStep
+from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper
 from datapipe.run_config import RunConfig
 
 from .util import assert_datatable_equal
@@ -59,15 +59,12 @@ def test_batch_transform(dbconn):
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
-    bt_step = BatchTransformIncStep(
-        name='tbl1_to_tbl2',
+    batch_transform_wrapper(
         func=lambda df: df,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        chunk_size=1000,
     )
-
-    bt_step.run(ds)
 
     meta_df = tbl2.get_metadata()
 
@@ -76,7 +73,12 @@ def test_batch_transform(dbconn):
 
     time.sleep(0.1)
 
-    bt_step.run(ds)
+    batch_transform_wrapper(
+        func=lambda df: df,
+        ds=ds,
+        input_dts=[tbl1],
+        output_dts=[tbl2],
+    )
 
     meta_df = tbl2.get_metadata()
 
@@ -99,15 +101,13 @@ def test_batch_transform_with_filter(dbconn):
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
-    bt_step = BatchTransformIncStep(
-        name='tbl1_to_tbl2',
+    batch_transform_wrapper(
         func=lambda df: df,
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        chunk_size=1000,
+        run_config=RunConfig(filters={'pipeline_id': 0})
     )
-
-    bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl2, TEST_DF1_1.query('pipeline_id == 0'))
 
@@ -127,15 +127,13 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
     tbl1.store_chunk(TEST_DF1_2, now=0)
 
-    bt_step = BatchTransformIncStep(
-        name='tbl1_to_tbl2',
+    batch_transform_wrapper(
         func=lambda df: df[['item_id', 'a']],
+        ds=ds,
         input_dts=[tbl1],
         output_dts=[tbl2],
-        chunk_size=1000,
+        run_config=RunConfig(filters={'pipeline_id': 0}),
     )
-
-    bt_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl2, TEST_DF1_2.query('pipeline_id == 0')[['item_id', 'a']])
 
@@ -167,15 +165,12 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
         return df1.reset_index()
 
-    bt_step = BatchTransformIncStep(
-        name='tbl1_to_tbl1',
+    batch_transform_wrapper(
         func=update_df,
+        ds=ds,
         input_dts=[tbl1, tbl2],
         output_dts=[tbl2],
-        chunk_size=1000,
     )
-
-    bt_step.run(ds, run_config=RunConfig())
 
     df_res = TEST_DF1_1.copy()
 
@@ -197,12 +192,11 @@ def test_gen_with_filter(dbconn):
     def gen_func():
         yield TEST_DF1_1.query('pipeline_id == 0 and item_id == 0')
 
-    gen_step = BatchGenerateStep(
-        name='gen_tbl',
+    batch_generate_wrapper(
         func=gen_func,
+        ds=ds,
         output_dts=[tbl],
+        run_config=RunConfig(filters={'pipeline_id': 0})
     )
-
-    gen_step.run(ds, run_config=RunConfig(filters={'pipeline_id': 0}))
 
     assert_datatable_equal(tbl, TEST_DF1_1.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
