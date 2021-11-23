@@ -11,6 +11,7 @@ from .util import assert_df_equal
 
 
 def test_external_table_updater_filter(dbconn: DBConn):
+    meta_dbconn = DBConn(dbconn.connstr, dbconn.schema)
     test_store = TableStoreDB(
         dbconn=dbconn,
         name="test_data",
@@ -34,7 +35,7 @@ def test_external_table_updater_filter(dbconn: DBConn):
             output="test"
         )
     ])
-    ds = DataStore(dbconn)
+    ds = DataStore(meta_dbconn)
 
     test_store.insert_rows(df_test)
 
