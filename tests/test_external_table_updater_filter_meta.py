@@ -1,4 +1,3 @@
-from re import I
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
