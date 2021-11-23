@@ -1,6 +1,5 @@
-from typing import List, Any, Dict, Union, Optional, Iterator
+from typing import List, Union, Optional, Iterator
 
-import copy
 import logging
 import json
 import pandas as pd
@@ -45,14 +44,14 @@ class LevelDBStore(TableStore):
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
-    
+
     def _get_sorted_dict(self, d):
         return OrderedDict([(k, d[k]) for k in sorted(d.keys())])
 
     def _dump_key(self, key):
         key_sorted = self._get_sorted_dict(key)
         return json.dumps(key_sorted, ensure_ascii=True, cls=NpEncoder).encode('ascii')
-    
+
     def _load_key(self, key):
         return json.loads(key.decode('ascii'))
 
@@ -69,14 +68,14 @@ class LevelDBStore(TableStore):
             for row_i, row in idx.iterrows():
                 k = self._dump_key(row)
                 self.db.delete(k)
-    
+
     def insert_rows(self, df: DataDF, chunk_size: int = 1000) -> None:
         if df.empty:
             return
 
         self.delete_rows(data_to_index(df, self.primary_keys))
         logger.debug(f'Inserting {len(df)} rows into {self.name} data')
-        
+
         batch_count = int(np.ceil(len(df) / chunk_size))
         for batch_i in range(batch_count):
             with self.db.write_batch():
@@ -86,13 +85,13 @@ class LevelDBStore(TableStore):
                     k = self._dump_key(row_idx)
                     v = self._dump_value({col: row[col] for col in row.keys() if col not in self.primary_keys})
                     self.db.put(k, v)
-    
+
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         rows = []
-        
+
         if idx is not None:
             if not len(idx.index):
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
@@ -100,7 +99,7 @@ class LevelDBStore(TableStore):
             for row_i, row in idx.iterrows():
                 k = self._dump_key(row)
                 encoded_row = self.db.get(k)
-                
+
                 if encoded_row is not None:
                     row_idx_sorted = self._get_sorted_dict(row)
                     row = self._load_value(encoded_row)
@@ -113,7 +112,7 @@ class LevelDBStore(TableStore):
                     rows.append({**row_idx, **row_values})
 
         return pd.DataFrame.from_records(rows, columns=[column.name for column in self.data_sql_schema])
-    
+
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         rows = []
         with self.db.iterator() as it:
@@ -129,7 +128,6 @@ class LevelDBStore(TableStore):
                 if len(rows) % chunksize == 0 and len(rows) > 0:
                     yield pd.DataFrame.from_records(rows)
                     rows = []
-                    
+
         if len(rows) >= 0:
             yield pd.DataFrame.from_records(rows, columns=[column.name for column in self.data_sql_schema])
-            

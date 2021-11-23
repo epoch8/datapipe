@@ -162,7 +162,7 @@ class CasesTableStore:
             ),
             df
         )
-    
+
     @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_leveldb(self, tmp_dir, df, schema):
