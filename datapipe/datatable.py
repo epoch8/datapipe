@@ -454,7 +454,12 @@ class ExternalTableUpdater(ComputeStep):
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
 
-            new_df, changed_df, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+            (
+                new_df,
+                changed_df,
+                new_meta_df,
+                changed_meta_df
+             ) = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
             ds.event_logger.log_state(
                 self.name,
