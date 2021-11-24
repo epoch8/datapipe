@@ -64,13 +64,14 @@ class DataTable:
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-            self.event_logger.log_state(
-                self.name, added_count=len(new_meta_df),
-                updated_count=len(changed_meta_df),
-                deleted_count=0,
-                run_config=run_config,
-            )
+        self.event_logger.log_state(
+            self.name,
+            added_count=len(new_df),
+            updated_count=len(changed_df),
+            deleted_count=0,
+            processed_count=len(data_df),
+            run_config=run_config,
+        )
 
         # TODO implement transaction meckanism
         self.table_store.insert_rows(new_df)
@@ -100,6 +101,7 @@ class DataTable:
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(idx),
+                processed_count=len(idx),
                 run_config=run_config,
             )
 
@@ -300,6 +302,7 @@ def gen_process_many(
     '''
 
     now = time.time()
+    empty_generator = True
 
     assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
@@ -315,6 +318,17 @@ def gen_process_many(
             if isinstance(chunk_dfs, pd.DataFrame):
                 chunk_dfs = [chunk_dfs]
         except StopIteration:
+            if empty_generator:
+                for k, dt_k in enumerate(dts):
+                    dt_k.event_logger.log_state(
+                        dt_k.name,
+                        added_count=0,
+                        updated_count=0,
+                        deleted_count=0,
+                        processed_count=0,
+                        run_config=run_config,
+                    )
+
             break
         except Exception as e:
             logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
@@ -323,6 +337,8 @@ def gen_process_many(
             if dts:
                 dts[0].event_logger.log_exception(e, run_config=run_config)
             return
+
+        empty_generator = False
 
         for k, dt_k in enumerate(dts):
             dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
