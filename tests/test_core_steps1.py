@@ -6,7 +6,7 @@ from functools import partial
 
 import pandas as pd
 from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import Integer
+from sqlalchemy.sql.sqltypes import Integer, JSON
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
@@ -21,10 +21,33 @@ TEST_SCHEMA = [
     Column('a', Integer),
 ]
 
+TEST_SCHEMA_OTM = [
+    Column('id', Integer, primary_key=True),
+    Column('a', JSON),
+]
+
+TEST_SCHEMA_OTM2 = [
+    Column('id', Integer, primary_key=True),
+    Column('a', Integer, primary_key=True)
+]
+
+TEST_SCHEMA_OTM3 = [
+    Column('a', Integer, primary_key=True),
+    Column('b', Integer, primary_key=True),
+    Column('ids', JSON)
+]
+
 TEST_DF = pd.DataFrame(
     {
         'id': range(10),
         'a': range(10),
+    },
+)
+
+TEST_OTM_DF = pd.DataFrame(
+    {
+        'id': range(10),
+        'a': [[j for j in range(i)] for i in range(10)],
     },
 )
 
@@ -544,6 +567,193 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     assert_datatable_equal(tbl, TEST_DF)
     assert_datatable_equal(tbl_good, TEST_DF.loc[good_ids])
     assert_datatable_equal(tbl_bad, TEST_DF.loc[bad_ids])
+
+
+def test_inc_process_many_one_to_many(dbconn) -> None:
+    ds = DataStore(dbconn)
+
+    tbl = ds.create_table(
+        'tbl',
+        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA_OTM, True)
+    )
+    tbl_rel = ds.create_table(
+        'tbl_rel',
+        table_store=TableStoreDB(dbconn, 'tbl_rel_data', TEST_SCHEMA_OTM2, True)
+    )
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA_OTM, True)
+    )
+
+    tbl.store_chunk(TEST_OTM_DF)
+
+    def inc_func_unpack(df):
+        res_df = df.explode('a')
+
+        return res_df[res_df['a'].notna()]
+
+    def inc_func_pack(df):
+        res_df = pd.DataFrame()
+        res_df['a'] = df.groupby('id').apply(lambda x: x['a'].dropna().to_list())
+
+        return res_df.reset_index()
+
+    rel_df = TEST_OTM_DF.explode('a')
+    rel_df = rel_df[rel_df['a'].notna()]
+
+    batch_transform_wrapper(
+        inc_func_unpack,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_rel],
+    )
+    batch_transform_wrapper(
+        inc_func_pack,
+        ds=ds,
+        input_dts=[tbl_rel],
+        output_dts=[tbl2],
+    )
+
+    assert_datatable_equal(tbl, TEST_OTM_DF)
+    assert_datatable_equal(tbl_rel, rel_df)
+    assert_datatable_equal(tbl2, TEST_OTM_DF.loc[1:])
+
+    # Delete rows test
+    tbl.delete_by_idx(TEST_OTM_DF.loc[[9], ['id']])
+
+    rel_df = TEST_OTM_DF.loc[:8].explode('a')
+    rel_df = rel_df[rel_df['a'].notna()]
+
+    batch_transform_wrapper(
+        inc_func_unpack,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_rel],
+    )
+    batch_transform_wrapper(
+        inc_func_pack,
+        ds=ds,
+        input_dts=[tbl_rel],
+        output_dts=[tbl2],
+    )
+
+    assert_datatable_equal(tbl, TEST_OTM_DF.loc[:8])
+    assert_datatable_equal(tbl_rel, rel_df)
+    assert_datatable_equal(tbl2, TEST_OTM_DF.loc[1:8])
+
+
+def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
+    ds = DataStore(dbconn)
+
+    tbl = ds.create_table(
+        'tbl',
+        table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA_OTM, True)
+    )
+    tbl_rel = ds.create_table(
+        'tbl_rel',
+        table_store=TableStoreDB(dbconn, 'tbl_rel_data', TEST_SCHEMA_OTM2, True)
+    )
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA_OTM3, True)
+    )
+
+    tbl.store_chunk(TEST_OTM_DF)
+
+    def inc_func_unpack(df):
+        res_df = df.explode('a')
+        return res_df[res_df['a'].notna()]
+
+    def inc_func_pack(df):
+        res_df = pd.DataFrame()
+        res_df['ids'] = df.groupby('a').apply(lambda x: x['id'].dropna().to_list())
+        res_df['b'] = 1
+
+        return res_df.reset_index()
+
+    rel_df = TEST_OTM_DF.explode('a')
+    rel_df = rel_df[rel_df['a'].notna()]
+
+    a_df = pd.DataFrame()
+    a_df['ids'] = rel_df.groupby('a').apply(lambda x: x['id'].dropna().to_list())
+    a_df['b'] = 1
+
+    a_df.reset_index(inplace=True)
+
+    batch_transform_wrapper(
+        inc_func_unpack,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_rel],
+    )
+    batch_transform_wrapper(
+        inc_func_pack,
+        ds=ds,
+        input_dts=[tbl_rel],
+        output_dts=[tbl2],
+    )
+
+    assert_datatable_equal(tbl, TEST_OTM_DF)
+    assert_datatable_equal(tbl_rel, rel_df)
+    assert_datatable_equal(tbl2, a_df)
+
+    # Delete row with empty relations
+    tbl.delete_by_idx(TEST_OTM_DF.loc[[0], ['id']])
+
+    rel_df = TEST_OTM_DF.loc[1:].explode('a')
+    rel_df = rel_df[rel_df['a'].notna()]
+
+    a_df = pd.DataFrame()
+    a_df['ids'] = rel_df.groupby('a').apply(lambda x: x['id'].dropna().to_list())
+    a_df['b'] = 1
+
+    a_df.reset_index(inplace=True)
+
+    batch_transform_wrapper(
+        inc_func_unpack,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_rel],
+    )
+    batch_transform_wrapper(
+        inc_func_pack,
+        ds=ds,
+        input_dts=[tbl_rel],
+        output_dts=[tbl2],
+    )
+
+    assert_datatable_equal(tbl, TEST_OTM_DF.loc[1:])
+    assert_datatable_equal(tbl_rel, rel_df)
+    assert_datatable_equal(tbl2, a_df)
+
+    # Delete rows test
+    tbl.delete_by_idx(TEST_OTM_DF.loc[[1], ['id']])
+
+    rel_df = TEST_OTM_DF.loc[2:].explode('a')
+    rel_df = rel_df[rel_df['a'].notna()]
+
+    a_df = pd.DataFrame()
+    a_df['ids'] = rel_df.groupby('a').apply(lambda x: x['id'].dropna().to_list())
+    a_df['b'] = 1
+
+    a_df.reset_index(inplace=True)
+
+    batch_transform_wrapper(
+        inc_func_unpack,
+        ds=ds,
+        input_dts=[tbl],
+        output_dts=[tbl_rel],
+    )
+    batch_transform_wrapper(
+        inc_func_pack,
+        ds=ds,
+        input_dts=[tbl_rel],
+        output_dts=[tbl2],
+    )
+
+    assert_datatable_equal(tbl, TEST_OTM_DF.loc[2:])
+    assert_datatable_equal(tbl_rel, rel_df)
+    assert_datatable_equal(tbl2, a_df)
 
 
 def test_error_handling(dbconn) -> None:

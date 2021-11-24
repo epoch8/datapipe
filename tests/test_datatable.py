@@ -1,7 +1,7 @@
 import cloudpickle
 import pandas as pd
 from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import Integer
+from sqlalchemy.sql.sqltypes import Integer, JSON
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
@@ -15,10 +15,33 @@ TEST_SCHEMA = [
     Column('a', Integer),
 ]
 
+TEST_SCHEMA_OTM = [
+    Column('id', Integer, primary_key=True),
+    Column('a', JSON),
+]
+
+TEST_SCHEMA_OTM2 = [
+    Column('id', Integer, primary_key=True),
+    Column('a', Integer, primary_key=True)
+]
+
+TEST_SCHEMA_OTM3 = [
+    Column('a', Integer, primary_key=True),
+    Column('b', Integer, primary_key=True),
+    Column('ids', JSON)
+]
+
 TEST_DF = pd.DataFrame(
     {
         'id': range(10),
         'a': range(10),
+    },
+)
+
+TEST_OTM_DF = pd.DataFrame(
+    {
+        'id': range(10),
+        'a': [[j for j in range(i)] for i in range(10)],
     },
 )
 

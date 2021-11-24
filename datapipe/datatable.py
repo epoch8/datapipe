@@ -53,28 +53,31 @@ class DataTable:
         отсутствуют в `data_df`.
         '''
 
-        if data_df.empty:
-            return None
+        if not data_df.empty:
+            logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-        logger.debug(f'Storing chunk {len(data_df.index)} rows into {self.name}')
+            (
+                new_df,
+                changed_df,
+                new_meta_df,
+                changed_meta_df
+            ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-        new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
+            self.event_logger.log_state(
+                self.name,
+                added_count=len(new_df),
+                updated_count=len(changed_df),
+                deleted_count=0,
+                processed_count=len(data_df),
+                run_config=run_config,
+            )
 
-        self.event_logger.log_state(
-            self.name,
-            added_count=len(new_df),
-            updated_count=len(changed_df),
-            deleted_count=0,
-            processed_count=len(data_df),
-            run_config=run_config,
-        )
+            # TODO implement transaction meckanism
+            self.table_store.insert_rows(new_df)
+            self.table_store.update_rows(changed_df)
 
-        # TODO implement transaction meckanism
-        self.table_store.insert_rows(new_df)
-        self.table_store.update_rows(changed_df)
-
-        self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-        self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+            self.meta_table.insert_meta_for_store_chunk(new_meta_df)
+            self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
         data_idx = data_to_index(data_df, self.primary_keys)
 

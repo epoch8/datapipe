@@ -72,7 +72,9 @@ def batch_transform_wrapper(
 
             else:
                 for k, res_dt in enumerate(output_dts):
-                    res_dt.delete_by_idx(idx, run_config=run_config)
+                    del_idx = res_dt.meta_table.get_existing_idx(idx)
+
+                    res_dt.delete_by_idx(del_idx, run_config=run_config)
 
 
 @dataclass
