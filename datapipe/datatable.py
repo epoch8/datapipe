@@ -84,6 +84,8 @@ class DataTable:
 
             self.meta_table.insert_meta_for_store_chunk(new_meta_df)
             self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+        else:
+            data_df = pd.DataFrame(columns=self.primary_keys)
 
         data_idx = data_to_index(data_df, self.primary_keys)
 
