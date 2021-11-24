@@ -1,11 +1,12 @@
 import pandas as pd
 from sqlalchemy.sql.expression import select
 
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Pipeline, BatchTransform, BatchGenerate,\
+from datapipe.compute import Catalog, Pipeline,\
     Table
+from datapipe.core_steps import BatchTransform, BatchGenerate
 from datapipe.compute import run_pipeline
 
 from sqlalchemy.sql.schema import Column
@@ -95,7 +96,8 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             "table_name": "test_generate",
             "added_count": 1,
             "updated_count": 0,
-            "deleted_count": 0
+            "deleted_count": 0,
+            "processed_count": 1
         }
     }
 
@@ -115,5 +117,6 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             "added_count": 1,
             "updated_count": 0,
             "deleted_count": 0,
+            "processed_count": 1
         }
     }

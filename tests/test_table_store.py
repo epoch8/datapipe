@@ -4,7 +4,7 @@ from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 from datapipe.types import DataDF, IndexDF
 from datapipe.store.table_store import TableStore

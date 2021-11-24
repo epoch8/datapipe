@@ -5,10 +5,10 @@ from sqlalchemy.sql.sqltypes import Integer, String, Boolean, JSON
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
+from datapipe.compute import Catalog, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.cli import main
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 dbconn = DBConn('sqlite:///db.sqlite')

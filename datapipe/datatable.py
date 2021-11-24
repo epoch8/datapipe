@@ -14,9 +14,7 @@ from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig
-
-from datapipe.step import ComputeStep
+from datapipe.run_config import RunConfig, LabelDict
 
 
 logger = logging.getLogger('datapipe.datatable')
@@ -66,13 +64,14 @@ class DataTable:
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-            self.event_logger.log_state(
-                self.name, added_count=len(new_meta_df),
-                updated_count=len(changed_meta_df),
-                deleted_count=0,
-                run_config=run_config,
-            )
+        self.event_logger.log_state(
+            self.name,
+            added_count=len(new_df),
+            updated_count=len(changed_df),
+            deleted_count=0,
+            processed_count=len(data_df),
+            run_config=run_config,
+        )
 
         # TODO implement transaction meckanism
         self.table_store.insert_rows(new_df)
@@ -102,6 +101,7 @@ class DataTable:
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(idx),
+                processed_count=len(idx),
                 run_config=run_config,
             )
 
@@ -177,6 +177,17 @@ class DataStore:
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+
+        # Список ключей из фильтров, которые нужно добавить в результат
+        extra_filters: LabelDict
+        if run_config is not None:
+            extra_filters = {
+                k: v
+                for k, v in run_config.filters.items()
+                if k not in join_keys
+            }
+        else:
+            extra_filters = {}
 
         if not join_keys:
             raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
@@ -262,11 +273,17 @@ class DataStore:
             )
         ).scalar()
 
-        return idx_count, pd.read_sql_query(
-            u1,
-            con=self.meta_dbconn.con,
-            chunksize=chunksize
-        )
+        def alter_res_df():
+            for df in pd.read_sql_query(
+                u1,
+                con=self.meta_dbconn.con,
+                chunksize=chunksize
+            ):
+                for k, v in extra_filters.items():
+                    df[k] = v
+                yield df
+
+        return idx_count, alter_res_df()
 
 
 # TODO перенести в compute.BatchGenerateStep
@@ -285,6 +302,7 @@ def gen_process_many(
     '''
 
     now = time.time()
+    empty_generator = True
 
     assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
 
@@ -300,6 +318,17 @@ def gen_process_many(
             if isinstance(chunk_dfs, pd.DataFrame):
                 chunk_dfs = [chunk_dfs]
         except StopIteration:
+            if empty_generator:
+                for k, dt_k in enumerate(dts):
+                    dt_k.event_logger.log_state(
+                        dt_k.name,
+                        added_count=0,
+                        updated_count=0,
+                        deleted_count=0,
+                        processed_count=0,
+                        run_config=run_config,
+                    )
+
             break
         except Exception as e:
             logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
@@ -308,6 +337,8 @@ def gen_process_many(
             if dts:
                 dts[0].event_logger.log_exception(e, run_config=run_config)
             return
+
+        empty_generator = False
 
         for k, dt_k in enumerate(dts):
             dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
@@ -407,44 +438,3 @@ def inc_process_many(
             else:
                 for k, res_dt in enumerate(res_dts):
                     res_dt.delete_by_idx(idx, run_config=run_config)
-
-
-class ExternalTableUpdater(ComputeStep):
-    def __init__(self, name: str, table: DataTable):
-        self.name = name
-        self.table = table
-        self.input_dts = []
-        self.output_dts = [table]
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        now = time.time()
-
-        for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
-
-            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-                ds.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_meta_df),
-                    updated_count=len(changed_meta_df),
-                    deleted_count=0,
-                    run_config=run_config,
-                )
-
-            # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
-
-            self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-            self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
-
-        for stale_idx in self.table.meta_table.get_stale_idx(now):
-            logger.debug(f'Deleting {len(stale_idx.index)} rows from {self.name} data')
-            self.output_dts[0].event_logger.log_state(
-                self.name,
-                added_count=0,
-                updated_count=0,
-                deleted_count=len(stale_idx),
-                run_config=run_config,
-            )
-
-            self.table.meta_table.mark_rows_deleted(stale_idx, now=now)

@@ -9,7 +9,7 @@ from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 logger = logging.getLogger('datapipe.event_logger')
@@ -49,9 +49,13 @@ class EventLogger:
         added_count,
         updated_count,
         deleted_count,
+        processed_count,
         run_config: RunConfig = None,
     ):
-        logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+        logger.debug(
+            f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
+            f'deleted = {deleted_count}, processed_count = {deleted_count}'
+        )
 
         if run_config is not None:
             meta = {
@@ -70,6 +74,7 @@ class EventLogger:
                     "added_count": added_count,
                     "updated_count": updated_count,
                     "deleted_count": deleted_count,
+                    "processed_count": processed_count,
                 }
             }
         )

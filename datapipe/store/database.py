@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, tuple_
 from sqlalchemy.pool import SingletonThreadPool
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore

@@ -11,11 +11,12 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.datatable import DataStore
-from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
+from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.compute import build_compute, run_steps
-from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudioSession
+from datapipe.core_steps import BatchGenerate, BatchTransform
+from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
+from datapipe.label_studio.session import LabelStudioModeration, LabelStudioModerationStep, LabelStudioSession
 
 
 LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')

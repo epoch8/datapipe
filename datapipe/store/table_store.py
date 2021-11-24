@@ -4,7 +4,7 @@ from typing import List, Optional, Union, Iterator
 from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 from datapipe.types import IndexDF, DataDF, DataSchema, data_to_index
 
