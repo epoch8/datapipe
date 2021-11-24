@@ -127,7 +127,7 @@ class UpdateExternalTableStep(ComputeStep):
             self.table.meta_table.insert_meta_for_store_chunk(new_meta_df)
             self.table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-        for stale_idx in self.table.meta_table.get_stale_idx(now):
+        for stale_idx in self.table.meta_table.get_stale_idx(now, run_config=run_config):
             logger.debug(f'Deleting {len(stale_idx.index)} rows from {self.name} data')
             self.output_dts[0].event_logger.log_state(
                 self.name,
