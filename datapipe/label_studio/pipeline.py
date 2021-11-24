@@ -36,10 +36,9 @@ class LabelStudioStep(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         input_dt = catalog.get_datatable(ds, self.input)
-        output_dt = catalog.get_datatable(ds, self.output)
 
-        ls_dt = ds.get_or_create_table(
-            'ls_tbl',
+        output_dt = ds.get_or_create_table(
+            self.output,
             TableStoreLabelStudio(
                 ls_url=self.ls_url,
                 auth=self.auth,
@@ -73,32 +72,17 @@ class LabelStudioStep(PipelineStep):
                 run_config=run_config,
             )
 
-        def export_data_from_ls_func(ds, input_dts, output_dts, run_config):
-            return batch_transform_wrapper(
-                func=self.output_convert_func,
-                ds=ds,
-                input_dts=input_dts,
-                output_dts=output_dts,
-                run_config=run_config,
-            )
-
         return [
             DatatableTransformStep(
                 name='load_data_to_ls',
                 input_dts=[input_dt],
-                output_dts=[ls_dt],
+                output_dts=[output_dt],
                 func=load_data_to_ls_func,
             ),
             DatatableTransformStep(
                 name='update_ls_dt_meta',
                 input_dts=[],
-                output_dts=[ls_dt],
+                output_dts=[output_dt],
                 func=update_ls_dt_meta_func,
             ),
-            DatatableTransformStep(
-                name='export_data_from_ls',
-                input_dts=[ls_dt],
-                output_dts=[output_dt],
-                func=export_data_from_ls_func,
-            )
         ]

@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
+from sqlalchemy.sql.sqltypes import String
 
 from datapipe.compute import Catalog, Pipeline, Table, DatatableTransformStep
 from datapipe.core_steps import batch_generate_wrapper
@@ -148,16 +148,6 @@ class CasesLabelStudio:
                     ],
                 )
             ),
-            '01_labeled_data': Table(
-                TableStoreDB(
-                    dbconn=dbconn, name='01_labeled_data',
-                    data_sql_schema=[
-                        Column('id', String(), primary_key=True),
-                        Column('text', String()),
-                        Column('annotations', JSON()),
-                    ]
-                )
-            )
         })
         pipeline = Pipeline([
             LabelStudioStep(
@@ -211,16 +201,16 @@ def test_label_studio_moderation(
     batch_generate_wrapper(
         func=gen_data_df,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
-    assert len(catalog.get_datatable(ds, '01_labeled_data').get_data()) == TASKS_COUNT
+    assert len(ds.get_table('01_labeled_data').get_data()) == TASKS_COUNT
 
     # Проверяем проверку на заливку уже размеченных данных
     if include_preannotations:
-        assert len(catalog.get_datatable(ds, '01_labeled_data').get_data()) == TASKS_COUNT
-        df_annotation = catalog.get_datatable(ds, '01_labeled_data').get_data()
+        assert len(ds.get_table('01_labeled_data').get_data()) == TASKS_COUNT
+        df_annotation = ds.get_table('01_labeled_data').get_data()
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == 1
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
@@ -254,7 +244,7 @@ def test_label_studio_moderation(
                 'id': [task['data']['id'] for task in tasks[idxs]]
             }
         )
-        df_annotation = catalog.get_datatable(ds, '01_labeled_data').get_data(idx=data_to_index(idxs_df, ['id']))
+        df_annotation = ds.get_table('01_labeled_data').get_data(idx=data_to_index(idxs_df, ['id']))
         for idx in df_annotation.index:
             assert len(df_annotation.loc[idx, 'annotations']) == (1 + include_preannotations)
             assert df_annotation.loc[idx, 'annotations'][0]['result'][0]['value']['choices'][0] in (
@@ -297,7 +287,7 @@ def test_label_studio_when_data_is_changed(
     batch_generate_wrapper(
         func=_gen,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
@@ -305,7 +295,7 @@ def test_label_studio_when_data_is_changed(
     batch_generate_wrapper(
         func=_gen2,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
@@ -315,7 +305,7 @@ def test_label_studio_when_data_is_changed(
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT
 
-    df = catalog.get_datatable(ds, '01_labeled_data').get_data()[['id', 'text']].sort_values(
+    df = ds.get_table('01_labeled_data').get_data()[['id', 'text']].sort_values(
         by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
     ).reset_index(
         drop=True
@@ -343,7 +333,7 @@ def test_label_studio_when_some_data_is_deleted(
     batch_generate_wrapper(
         func=_gen,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
@@ -351,7 +341,7 @@ def test_label_studio_when_some_data_is_deleted(
     batch_generate_wrapper(
         func=_gen2,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
 
     # These steps should delete tasks with same id accordingly, as data input has changed
@@ -363,7 +353,7 @@ def test_label_studio_when_some_data_is_deleted(
     tasks = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks) == TASKS_COUNT - 5
 
-    df = catalog.get_datatable(ds, '01_labeled_data').get_data()[['id', 'text']].sort_values(
+    df = ds.get_table('01_labeled_data').get_data()[['id', 'text']].sort_values(
         by='id', key=lambda x: pd.Series([int(y) for y in x.str.split('_').str[-1]])
     ).reset_index(
         drop=True
@@ -401,7 +391,7 @@ def test_label_studio_specific_updating_scenary(
     batch_generate_wrapper(
         func=_gen,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
@@ -409,7 +399,7 @@ def test_label_studio_specific_updating_scenary(
     batch_generate_wrapper(
         func=_gen2,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
 
     # Add 5 annotations
@@ -438,11 +428,11 @@ def test_label_studio_specific_updating_scenary(
     tasks_ls = label_studio_session.get_tasks(project_id=project_id, page_size=-1)
     assert len(tasks_ls) == 5
 
-    df_ls = catalog.get_datatable(ds, '01_labeled_data').get_data()
+    df_ls = ds.get_table('01_labeled_data').get_data()
 
     assert_df_equal(
         df2,
-        df_ls.drop(columns=['annotations']).sort_values(by='id').reset_index(drop=True)
+        df_ls.drop(columns=['tasks_id', 'annotations']).sort_values(by='id').reset_index(drop=True)
     )
     if not include_preannotations:
         df_ls = df_ls.set_index('id')
@@ -465,7 +455,7 @@ def test_label_studio_when_project_somewhat_deleted(
     batch_generate_wrapper(
         func=gen_data_df,
         ds=ds,
-        output_dts=[catalog.get_datatable(ds, '00_input_data')],
+        output_dts=[ds.get_table('00_input_data')],
     )
     run_steps(ds, steps)
 
