@@ -866,3 +866,18 @@ def test_gen_from_empty_rows(dbconn) -> None:
         ds=ds,
         output_dts=[tbl],
     )
+
+
+def test_gen_from_empty_df(dbconn) -> None:
+    ds = DataStore(dbconn)
+    tbl = ds.create_table('test', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
+
+    def proc_func():
+        yield pd.DataFrame()
+
+    # This should be ok
+    batch_generate_wrapper(
+        func=proc_func,
+        ds=ds,
+        output_dts=[tbl],
+    )
