@@ -1,3 +1,7 @@
+# 0.10.0-alpha.2
+
+* Добавлен `LevelDBStore`
+
 # 0.10.0-alpha.1
 
 * Удален класс `ExternalTable`, теперь это явный шаг пайплайна `UpdateExternalTable`

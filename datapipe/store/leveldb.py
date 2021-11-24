@@ -11,7 +11,7 @@ from pathlib import PosixPath
 from collections import OrderedDict
 from sqlalchemy.schema import Column
 
-from datapipe.step import RunConfig
+from datapipe.compute import RunConfig
 from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
