@@ -106,16 +106,21 @@ class UpdateExternalTableStep(ComputeStep):
 
         for ps_df in tqdm.tqdm(self.table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
 
-            _, _, new_meta_df, changed_meta_df = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+            (
+                new_df,
+                changed_df,
+                new_meta_df,
+                changed_meta_df
+             ) = self.table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
-            if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-                ds.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_meta_df),
-                    updated_count=len(changed_meta_df),
-                    deleted_count=0,
-                    run_config=run_config,
-                )
+            ds.event_logger.log_state(
+                self.name,
+                added_count=len(new_df),
+                updated_count=len(changed_df),
+                deleted_count=0,
+                processed_count=len(ps_df),
+                run_config=run_config,
+            )
 
             # TODO switch to iterative store_chunk and self.table.sync_meta_by_process_ts
 
@@ -129,6 +134,7 @@ class UpdateExternalTableStep(ComputeStep):
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(stale_idx),
+                processed_count=len(stale_idx),
                 run_config=run_config,
             )
 
