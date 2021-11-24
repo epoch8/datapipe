@@ -11,6 +11,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
+from datapipe.store.leveldb import LevelDBStore
 
 from .util import assert_df_equal, assert_ts_contains
 
@@ -158,6 +159,21 @@ class CasesTableStore:
             TableStoreExcel(
                 tmp_dir / "data.xlsx",
                 primary_schema=schema
+            ),
+            df
+        )
+
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_leveldb(self, tmp_dir, df, schema):
+        return (
+            LevelDBStore(
+                'tbl1',
+                tmp_dir / 'levelDB-tbl1',
+                schema + [
+                    Column('name', String(100)),
+                    Column('price', Integer),
+                ]
             ),
             df
         )
