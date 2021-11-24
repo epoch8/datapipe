@@ -95,7 +95,8 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             "table_name": "test_generate",
             "added_count": 1,
             "updated_count": 0,
-            "deleted_count": 0
+            "deleted_count": 0,
+            "processed_count": 1
         }
     }
 
@@ -115,5 +116,6 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             "added_count": 1,
             "updated_count": 0,
             "deleted_count": 0,
+            "processed_count": 1
         }
     }
