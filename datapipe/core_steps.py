@@ -204,7 +204,7 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig
             changed_df,
             new_meta_df,
             changed_meta_df
-            ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+        ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
         ds.event_logger.log_state(
             table.name,

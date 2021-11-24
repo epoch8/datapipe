@@ -70,10 +70,10 @@ jobs:
         ports:
           - 5432:5432
 
-    #   label-studio:
-    #     image: heartexlabs/label-studio:1.0.1
-    #     ports:
-    #         - 8080:8080
+      label-studio:
+        image: heartexlabs/label-studio:1.0.1
+        ports:
+            - 8080:8080
 
     steps:
     - uses: actions/checkout@v2
@@ -111,4 +111,4 @@ jobs:
 
         LABEL_STUDIO_HOST: localhost
         LABEL_STUDIO_PORT: 8080
-        TEST_START_LABEL_STUDIO: False
+        TEST_LABEL_STUDIO: True

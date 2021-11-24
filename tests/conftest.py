@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 import pytest
 import os
+from distutils.util import strtobool
 
 import pandas as pd
 from sqlalchemy import create_engine
@@ -68,3 +69,17 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+
+
+# Label Studio
+TEST_LABEL_STUDIO = bool(strtobool(os.environ.get('TEST_LABEL_STUDIO', 'False')))
+# TEST_LABEL_STUDIO = True
+
+
+@pytest.fixture
+def ls_url_and_auth(tmp_dir):
+    ls_host = os.environ.get('LABEL_STUDIO_HOST', 'localhost')
+    ls_port = os.environ.get('LABEL_STUDIO_PORT', '8080')
+    ls_url = f"http://{ls_host}:{ls_port}/"
+    auth = ('test@epoch8.co', 'qwerty123')
+    yield ls_url, auth

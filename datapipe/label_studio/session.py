@@ -1,42 +1,66 @@
-from typing import Dict, List, Tuple, Union, Optional, Any
-from dataclasses import dataclass
-
+from typing import Any, Dict, List, Tuple, Union, Optional
 from urllib.parse import urljoin
-import pandas as pd
+
 import requests
-
-from datapipe.datatable import DataStore, DataTable
-from datapipe.run_config import RunConfig
-from datapipe.compute import DatatableTransformStep, Catalog, PipelineStep
-
-from tqdm import tqdm
 
 
 class LabelStudioSession:
     def __init__(
         self,
         ls_url: str,
-        auth: Tuple[str, str]
+        auth: Union[Tuple[str, str], str]  # (username, password) or 'Token <token>'
     ):
         self.ls_url = ls_url
+        assert isinstance(auth, tuple) or isinstance(auth, str)
+        self.auth = auth
         self.session = requests.Session()
-        self.session.auth = auth
+        if isinstance(auth, str):
+            self.session.headers['Authorization'] = auth
 
-    def is_auth_ok(self, raise_exception: bool) -> bool:
+    def login(self) -> int:
+        is_auth_ok = self.is_auth_ok()
+        if not is_auth_ok and isinstance(self.auth, tuple):
+            username, password = self.auth
+            response = self.session.get(
+                url=urljoin(self.ls_url, 'user/login/')
+            )
+            self.session.post(
+                url=urljoin(self.ls_url, 'user/login/'),
+                data={
+                    'csrfmiddlewaretoken': response.cookies['csrftoken'],
+                    'email': username,
+                    'password': password
+                }
+            )
+            is_auth_ok = self.is_auth_ok()
+            if is_auth_ok:
+                self.get_current_token()
+
+        return is_auth_ok
+
+    def is_auth_ok(self, raise_exception: bool = False) -> bool:
         response = self.session.get(
-            url=urljoin(self.ls_url, '/api/current-user/whoami')
+            url=urljoin(self.ls_url, 'api/current-user/whoami')
         )
         if not response.ok and raise_exception:
             raise ValueError(f'Authorization failed: {response.json()}')
         return response.ok
 
+    def get_current_token(self) -> str:
+        if 'Authorization' not in self.session.headers:
+            token = self.session.get(
+                url=urljoin(self.ls_url, 'api/current-user/token')
+            ).json()
+            self.session.headers['Authorization'] = token['token']
+        return self.session.headers['Authorization']
+
     def sign_up(self):
-        username, password = self.session.auth
+        username, password = self.auth
         response = self.session.get(
-            url=urljoin(self.ls_url, '/user/signup/')
+            url=urljoin(self.ls_url, 'user/signup/')
         )
         response_signup = self.session.post(
-            url=urljoin(self.ls_url, '/user/signup/'),
+            url=urljoin(self.ls_url, 'user/signup/'),
             data={
                 'csrfmiddlewaretoken': response.cookies['csrftoken'],
                 'email': username,
@@ -46,27 +70,27 @@ class LabelStudioSession:
         if not response_signup.ok or not self.is_auth_ok(raise_exception=False):
             raise ValueError('Signup failed.')
 
-    def get_project(self, project_id: str) -> Dict[str, str]:
+    def get_project(self, project_id: Union[int, str]) -> Dict[str, Any]:
         return self.session.get(
-            urljoin(self.ls_url, f'/api/projects/{project_id}/')
+            urljoin(self.ls_url, f'api/projects/{project_id}/')
         ).json()
 
-    def create_project(self, project_setting: Dict[str, str]) -> Dict[str, str]:
+    def create_project(self, project_setting: Dict[str, Any]) -> Dict[str, Any]:
         return self.session.post(
-            urljoin(self.ls_url, '/api/projects/'),
+            urljoin(self.ls_url, 'api/projects/'),
             json=project_setting
         ).json()
 
     def delete_project(self, project_id: str):
         return self.session.delete(
-            urljoin(self.ls_url, f'/api/projects/{project_id}/')
+            urljoin(self.ls_url, f'api/projects/{project_id}/')
         )
 
     def get_project_id_by_title(
         self,
         title: str
     ) -> Optional[str]:
-        projects = self.session.get(urljoin(self.ls_url, '/api/projects/')).json()
+        projects = self.session.get(urljoin(self.ls_url, 'api/projects/')).json()
         project_ids = [project['id'] for project in projects]
         titles = [project['title'] for project in projects]
         if title in titles:
@@ -78,13 +102,53 @@ class LabelStudioSession:
     def upload_tasks(
         self,
         data: List[Dict[str, Any]],
-        project_id: str
+        project_id: Union[int, str]
     ) -> Dict:
         results = self.session.post(
-            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/bulk/'),
+            url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/bulk/'),
             json=data
         ).json()
         return results
+
+    def modify_task(
+        self,
+        task_id: Union[int, str],
+        data: Dict
+    ) -> Dict:
+        results = self.session.patch(
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/'),
+            json=data
+        ).json()
+        return results
+
+    def delete_task(
+        self,
+        task_id: Union[int, str]
+    ) -> bool:
+        result = self.session.delete(
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/')
+        )
+        return result.ok
+
+    def delete_tasks(
+        self,
+        project_id: Union[int, str],
+        tasks_ids: List[str]
+    ) -> bool:
+        # If empty, API will delete all tasks
+        if len(tasks_ids) == 0:
+            tasks_ids = ['-1']
+
+        result = self.session.post(
+            url=urljoin(self.ls_url, f'api/dm/actions?id=delete_tasks&project={project_id}'),
+            json={
+                "selectedItems": {
+                    "all": False,
+                    "included": tasks_ids
+                }
+            }
+        )
+        return result.json()
 
     def is_service_up(self, raise_exception: bool = False) -> bool:
         try:
@@ -98,11 +162,11 @@ class LabelStudioSession:
 
     def add_annotation_to_task(
         self,
-        task_id: str,
-        result: Dict
+        task_id: Union[int, str],
+        result: Any,
     ) -> Dict:
         result = self.session.post(
-            url=urljoin(self.ls_url, f'/api/tasks/{task_id}/annotations/'),
+            url=urljoin(self.ls_url, f'api/tasks/{task_id}/annotations/'),
             json={
                 'result': result,
                 'was_cancelled': False,
@@ -114,235 +178,79 @@ class LabelStudioSession:
 
     def get_tasks(
         self,
-        project_id: str,
+        project_id: Union[int, str],
         page: int = 1,  # current page
-        page_size: int = -1  # tasks per page, use -1 to obtain all tasks
-    ) -> Tuple[Dict, int]:
+        page_size: int = -1,  # tasks per page, use -1 to obtain all tasks
+    ) -> List[Dict[str, Any]]:
         response = self.session.get(
-            url=urljoin(self.ls_url, f'/api/projects/{project_id}/tasks/'),
+            url=urljoin(self.ls_url, f'api/projects/{project_id}/tasks/'),
             params={
                 'page': page,
                 'page_size': page_size
             }
         )
 
-        return response.json(), response.status_code
+        assert response.status_code in [200, 500], f"Something wrong with GET: {response.content=}"
+        if response.status_code == 500:
+            return []
+
+        return response.json()
 
     def get_project_summary(
         self,
-        project_id: str
-    ) -> Dict[str, str]:
-        summary = self.session.get(urljoin(self.ls_url, f'/api/projects/{project_id}/summary/')).json()
+        project_id: Union[int, str]
+    ) -> Dict[str, Any]:
+        summary = self.session.get(urljoin(self.ls_url, f'api/projects/{project_id}/summary/')).json()
 
         return summary
 
-
-@dataclass
-class LabelStudioModeration(PipelineStep):
-    ls_url: str
-    inputs: List[str]
-    outputs: List[str]
-    auth: Tuple[str, str]
-    project_title: str
-    project_description: str
-    project_label_config: str
-    data: List[str]
-    annotations: Union[str, None] = None
-    predictions: Union[str, None] = None
-    chunk_size: int = 100
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
-        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
-
-        return [
-            LabelStudioModerationStep(
-                name=f"LabelStudioModeration (Project {self.project_title})",
-                input_dts=input_dts,
-                output_dts=output_dts,
-                ls_url=self.ls_url,
-                auth=self.auth,
-                project_title=self.project_title,
-                project_description=self.project_description,
-                project_label_config=self.project_label_config,
-                data=self.data,
-                annotations=self.annotations,
-                predictions=self.predictions,
-                chunk_size=self.chunk_size,
-            )
-        ]
-
-
-class LabelStudioModerationStep(DatatableTransformStep):
-    def __init__(
-        self,
-        name: str,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        ls_url: str,
-        chunk_size: int,
-        auth: Tuple[str, str],
-        project_title: str,
-        project_description: str,
-        project_label_config: str,
-        data: List[str],
-        annotations: Union[str, None],
-        predictions: Union[str, None],
-    ) -> None:
-        self._name = name
-        self._input_dts = input_dts
-        self._output_dts = output_dts
-        self.ls_url = ls_url
-        self.chunk_size = chunk_size
-        self.auth = auth
-        self.project_title = project_title
-        self.project_description = project_description
-        self.project_label_config = project_label_config
-        self.data = data
-        self.annotations = annotations
-        self.predictions = predictions
-
-        self.label_studio_session = LabelStudioSession(
-            ls_url=self.ls_url,
-            auth=self.auth
+    def get_all_views(
+        self
+    ) -> List[Dict[str, Any]]:
+        views = self.session.get(
+            url=urljoin(self.ls_url, 'api/dm/views/')
         )
-        if self.label_studio_session.is_service_up():
+        return views.json()
 
-            # Authorize or sign up
-            if not self.label_studio_session.is_auth_ok(raise_exception=False):
-                self.label_studio_session.sign_up()
-                self.label_studio_session.is_auth_ok(raise_exception=True)
-
-            self.project_id = self.label_studio_session.get_project_id_by_title(self.project_title)
-            if self.project_id is None:
-                project_setting: Dict[str, Any] = {
-                    "title": self.project_title,
-                    "description": self.project_description,
-                    "label_config": self.project_label_config,
-                    "expert_instruction": "",
-                    "show_instruction": False,
-                    "show_skip_button": False,
-                    "enable_empty_annotation": True,
-                    "show_annotation_history": False,
-                    "organization": 1,
-                    "color": "#FFFFFF",
-                    "maximum_annotations": 1,
-                    "is_published": False,
-                    "model_version": "",
-                    "is_draft": False,
-                    "min_annotations_to_start_training": 10,
-                    "show_collab_predictions": True,
-                    "sampling": "Sequential sampling",
-                    "show_ground_truth_first": True,
-                    "show_overlap_first": True,
-                    "overlap_cohort_percentage": 100,
-                    "task_data_login": None,
-                    "task_data_password": None,
-                    "control_weights": {}
-                }
-                project = self.label_studio_session.create_project(project_setting=project_setting)
-
-                self.project_id = project['id']
-        else:
-            self.project_id = None
-
-    def upload_tasks_from_df(
+    def create_view(
         self,
-        input_df: pd.DataFrame
-    ):
-        data = [
-            {
-                'data': {
-                    'LabelStudioModerationStep__unique_id': "-".join(input_df.iloc[idx][self.input_dts[0].primary_keys].apply(str)),  # noqa: E501
-                    **{
-                        column: input_df.loc[idx, column]
-                        for column in self.data
-                    }
-                },
-                'annotations': input_df.loc[idx, self.annotations] if self.annotations is not None else [],
-                'predictions': input_df.loc[idx, self.predictions] if self.predictions is not None else [],
+        project_id: Union[int, str],
+        data: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        result = self.session.post(
+            url=urljoin(self.ls_url, 'api/dm/views/'),
+            json={
+                'project': project_id,
+                'data': data
             }
-            for idx in input_df.index
-        ]
+        )
+        return result.json()
 
-        assert self.project_id is not None
-        self.label_studio_session.upload_tasks(data=data, project_id=self.project_id)
-
-        input_df['tasks_id'] = ["Unknown" for _ in input_df.index]
-        input_df['annotations'] = input_df[self.annotations] if self.annotations is not None else [
-            [] for _ in input_df.index
-        ]
-        input_df = input_df[self.input_dts[0].primary_keys + ['tasks_id', 'annotations']]
-        return input_df
-
-    def get_current_tasks_as_df(self):
-        project_summary = self.label_studio_session.get_project_summary(self.project_id)
-        if 'all_data_columns' not in project_summary or (
-            'LabelStudioModerationStep__unique_id' not in project_summary['all_data_columns']
-        ):
-            total_tasks_count = 0
+    def get_all_tasks_from_view(
+        self,
+        view_id: Union[int, str],
+        page: int,
+        page_size: int,
+        **params
+    ) -> List[Dict[str, Any]]:
+        result = self.session.get(
+            url=urljoin(self.ls_url, f'api/dm/views/{view_id}/tasks'),
+            params={
+                'page': page,
+                'page_size': page_size,
+                **params
+            }
+        ).json()
+        if 'tasks' in result:
+            return result['tasks']
         else:
-            total_tasks_count = project_summary['all_data_columns']['LabelStudioModerationStep__unique_id']
+            return []
 
-        total_pages = total_tasks_count // self.chunk_size + 1
-
-        # created_ago - очень плохой параметр, он меняется каждый раз, когда происходит запрос
-        def _cleanup_annotations(annotations):
-            for ann in annotations:
-                if 'created_ago' in ann:
-                    del ann['created_ago']
-            return annotations
-
-        df_input_keys = self.input_dts[0].get_data()[self.input_dts[0].primary_keys]
-        df_input_keys["LabelStudioModerationStep__unique_id"] = ""
-        splitter = ""
-        for key in self.input_dts[0].primary_keys:
-            df_input_keys["LabelStudioModerationStep__unique_id"] += splitter + df_input_keys[key].apply(str)
-            splitter = "-"
-        df_input_keys = df_input_keys.set_index("LabelStudioModerationStep__unique_id")
-
-        for page in tqdm(range(1, total_pages + 1), desc='Getting tasks from Label Studio Projects...'):
-            tasks_page, status_code = self.label_studio_session.get_tasks(
-                project_id=self.project_id,
-                page=page,
-                page_size=self.chunk_size
-            )
-            assert status_code in [200, 500]
-            if status_code == 500:
-                break
-
-            output_df = pd.DataFrame(
-                data={
-                    'tasks_id': [str(task['id']) for task in tasks_page],
-                    'annotations': [_cleanup_annotations(task['annotations']) for task in tasks_page]
-                },
-                index=[task['data']['LabelStudioModerationStep__unique_id'] for task in tasks_page]
-            )
-            output_df = output_df.merge(df_input_keys, left_index=True, right_index=True)
-            output_df = output_df.reset_index(drop=True)
-
-            yield output_df
-
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        # FIXME implement
-        assert(run_config is None)
-
-        if self.label_studio_session.is_service_up():
-            pass
-            # if self.project_id is None:
-            #     self.__post_init__()
-
-            # FIXME переделать на два независимых шага
-            # Upload Tasks from inputs to outputs
-            # inc_process_many(
-            #     ds,
-            #     self.input_dts,
-            #     self.output_dts,
-            #     self.upload_tasks_from_df,
-            #     self.chunk_size
-            # )
-            # Update current annotations in outputs
-            # gen_process_many(
-            #     self.output_dts,
-            #     self.get_current_tasks_as_df
-            # )
+    def delete_view(
+        self,
+        view_id: Union[int, str]
+    ) -> Dict[str, Any]:
+        result = self.session.delete(
+            url=urljoin(self.ls_url, f'api/dm/views/{view_id}/')
+        )
+        return result.json()

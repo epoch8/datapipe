@@ -187,6 +187,14 @@ class MetaTable:
         if now is None:
             now = time.time()
 
+        if len(data_df) == 0:
+            return (
+                cast(DataDF, pd.DataFrame()),
+                cast(DataDF, pd.DataFrame()),
+                cast(MetadataDF, pd.DataFrame()),
+                cast(MetadataDF, pd.DataFrame()),
+            )
+
         # получить meta по чанку
         existing_meta_df = self.get_metadata(data_to_index(data_df, self.primary_keys), include_deleted=True)
         data_cols = list(data_df.columns)
