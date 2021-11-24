@@ -843,3 +843,9 @@ def test_gen_from_empty_rows(dbconn) -> None:
 
     # This should be ok
     gen_process_many([tbl], proc_func)
+
+    def proc_func():
+        yield pd.DataFrame()
+
+    # This should be ok
+    gen_process_many([tbl], proc_func)
