@@ -1,13 +1,9 @@
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Set
 
-import inspect
 import logging
-import time
-import math
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_
-import tqdm
+from sqlalchemy import alias, func, select, union, and_, or_, literal
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
@@ -161,52 +157,35 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
-    def get_process_ids(
+    def _build_changed_idx_sql(
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        chunksize: int = 1000,
         run_config: RunConfig = None,
-    ) -> Tuple[int, Iterator[IndexDF]]:
-        '''
-        Метод для получения перечня индексов для обработки.
+    ) -> Tuple[Set[str], select]:
+        """
+        Построить SQL запрос на получение измененных идентификаторов.
 
-        Returns: (idx_size, iterator<idx_df>)
-            idx_size - количество индексов требующих обработки
-            idx_df - датафрейм без колонок с данными, только индексная колонка
-        '''
-
-        if len(inputs) == 0:
-            return (0, iter([]))
+        Returns: [join_keys, select]
+        """
 
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
 
-        # Список ключей из фильтров, которые нужно добавить в результат
-        extra_filters: LabelDict
-        if run_config is not None:
-            extra_filters = {
-                k: v
-                for k, v in run_config.filters.items()
-                if k not in join_keys
-            }
-        else:
-            extra_filters = {}
-
-        if not join_keys:
-            raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+        # if not join_keys:
+        #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
         def left_join(tbl_a, tbl_bbb):
             q = tbl_a.join(
                 tbl_bbb[0],
-                and_(tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys),
+                and_(True, *[tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys]),
                 isouter=True
             )
             for tbl_b in tbl_bbb[1:]:
                 q = q.join(
                     tbl_b,
-                    and_(tbl_a.c[key] == tbl_b.c[key] for key in join_keys),
+                    and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
                     isouter=True
                 )
 
@@ -217,7 +196,7 @@ class DataStore:
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
-            fields = [inp.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     inp,
@@ -245,7 +224,7 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            fields = [out.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
                     out,
@@ -271,12 +250,69 @@ class DataStore:
 
         u1 = union(*sql_requests)
 
+        return (join_keys, u1)
+
+    def get_changed_idx_count(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        run_config: RunConfig = None,
+    ) -> int:
+        _, sql = self._build_changed_idx_sql(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config
+        )
+
         idx_count = self.meta_dbconn.con.execute(
             select([func.count()])
             .select_from(
-                alias(u1.subquery(), name='union_select')
+                alias(sql.subquery(), name='union_select')
             )
         ).scalar()
+
+        return idx_count
+
+    def get_process_ids(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        chunksize: int = 1000,
+        run_config: RunConfig = None,
+    ) -> Tuple[int, Iterator[IndexDF]]:
+        '''
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+            idx_size - количество индексов требующих обработки
+            idx_df - датафрейм без колонок с данными, только индексная колонка
+        '''
+
+        if len(inputs) == 0:
+            return (0, iter([]))
+
+        idx_count = self.get_changed_idx_count(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config,
+        )
+
+        join_keys, u1 = self._build_changed_idx_sql(
+            inputs=inputs,
+            outputs=outputs,
+            run_config=run_config,
+        )
+
+        # Список ключей из фильтров, которые нужно добавить в результат
+        extra_filters: LabelDict
+        if run_config is not None:
+            extra_filters = {
+                k: v
+                for k, v in run_config.filters.items()
+                if k not in join_keys
+            }
+        else:
+            extra_filters = {}
 
         def alter_res_df():
             for df in pd.read_sql_query(
@@ -286,162 +322,8 @@ class DataStore:
             ):
                 for k, v in extra_filters.items():
                     df[k] = v
-                yield df
+
+                # drop pseudo column
+                yield df.drop(columns='_1')
 
         return idx_count, alter_res_df()
-
-
-# TODO перенести в compute.BatchGenerateStep
-def gen_process_many(
-    dts: List[DataTable],
-    proc_func: Callable[
-        ...,
-        Iterator[Tuple[DataDF, ...]]
-    ],
-    run_config: RunConfig = None,
-    **kwargs
-) -> None:
-    '''
-    Создание новой таблицы из результатов запуска `proc_func`.
-    Функция может быть как обычной, так и генерирующейся
-    '''
-
-    now = time.time()
-    empty_generator = True
-
-    assert inspect.isgeneratorfunction(proc_func), "Starting v0.8.0 proc_func should be a generator"
-
-    try:
-        iterable = proc_func(**kwargs)
-    except Exception as e:
-        logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
-
-    while True:
-        try:
-            chunk_dfs = next(iterable)
-
-            if isinstance(chunk_dfs, pd.DataFrame):
-                chunk_dfs = [chunk_dfs]
-        except StopIteration:
-            if empty_generator:
-                for k, dt_k in enumerate(dts):
-                    dt_k.event_logger.log_state(
-                        dt_k.name,
-                        added_count=0,
-                        updated_count=0,
-                        deleted_count=0,
-                        processed_count=0,
-                        run_config=run_config,
-                    )
-
-            break
-        except Exception as e:
-            logger.exception(f"Generating failed ({proc_func.__name__}): {str(e)}")
-
-            # TODO перенести get_process* в compute.BatchGenerateStep и пользоваться event_logger из metastore
-            if dts:
-                dts[0].event_logger.log_exception(e, run_config=run_config)
-            return
-
-        empty_generator = False
-
-        for k, dt_k in enumerate(dts):
-            dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
-
-    for k, dt_k in enumerate(dts):
-        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
-
-
-# TODO перенести в compute.BatchGenerateStep
-def gen_process(
-    dt: DataTable,
-    proc_func: Callable[[], Union[
-        DataDF,
-        Iterator[DataDF]]
-    ],
-    **kwargs
-) -> None:
-    def proc_func_many():
-        for i in proc_func():
-            yield (i,)
-
-    return gen_process_many(
-        dts=[dt],
-        proc_func=proc_func_many,
-        **kwargs
-    )
-
-
-# TODO перенести в compute.BatchTransformStep
-def inc_process(
-    ds: DataStore,
-    input_dts: List[DataTable],
-    res_dt: DataTable,
-    proc_func: Callable,
-    chunksize: int = 1000,
-    **kwargs
-) -> None:
-    inc_process_many(
-        ds=ds,
-        input_dts=input_dts,
-        res_dts=[res_dt],
-        proc_func=proc_func,
-        chunksize=chunksize,
-        **kwargs
-    )
-
-
-# TODO перенести в compute.BatchGenerateStep
-def inc_process_many(
-    ds: DataStore,
-    input_dts: List[DataTable],
-    res_dts: List[DataTable],
-    proc_func: Callable,
-    chunksize: int = 1000,
-    run_config: RunConfig = None,
-    **kwargs
-) -> None:
-    '''
-    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
-    '''
-
-    idx_count, idx_gen = ds.get_process_ids(
-        inputs=input_dts,
-        outputs=res_dts,
-        chunksize=chunksize,
-        run_config=run_config
-    )
-
-    logger.info(f'Items to update {idx_count}')
-
-    if idx_count > 0:
-        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
-            logger.debug(f'Idx to process: {idx.to_records()}')
-
-            input_dfs = [inp.get_data(idx) for inp in input_dts]
-
-            if sum(len(j) for j in input_dfs) > 0:
-                try:
-                    chunks_df = proc_func(*input_dfs, **kwargs)
-                except Exception as e:
-                    logger.error(f"Transform failed ({proc_func.__name__}): {str(e)}")
-                    ds.event_logger.log_exception(e, run_config=run_config)
-
-                    continue
-
-                for k, res_dt in enumerate(res_dts):
-                    # Берем k-ое значение функции для k-ой таблички
-                    chunk_df_k = chunks_df[k] if len(res_dts) > 1 else chunks_df
-
-                    # Добавляем результат в результирующие чанки
-                    res_dt.store_chunk(
-                        data_df=chunk_df_k,
-                        processed_idx=idx,
-                        run_config=run_config,
-                    )
-
-            else:
-                for k, res_dt in enumerate(res_dts):
-                    del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                    res_dt.delete_by_idx(del_idx, run_config=run_config)

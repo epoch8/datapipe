@@ -70,7 +70,11 @@ class MetaTable:
         sql = select(self.sql_schema)
 
         if idx is not None:
-            if len(self.primary_keys) == 1:
+            if len(self.primary_keys) == 0:
+                # Когда ключей нет - не делаем ничего
+                pass
+
+            elif len(self.primary_keys) == 1:
                 # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
                 sql = sql.where(
