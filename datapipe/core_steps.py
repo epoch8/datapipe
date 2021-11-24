@@ -124,6 +124,7 @@ def batch_generate_wrapper(
     '''
 
     now = time.time()
+    empty_generator = True
 
     assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
@@ -143,6 +144,17 @@ def batch_generate_wrapper(
             if isinstance(chunk_dfs, pd.DataFrame):
                 chunk_dfs = [chunk_dfs]
         except StopIteration:
+            if empty_generator:
+                for k, dt_k in enumerate(output_dts):
+                    dt_k.event_logger.log_state(
+                        dt_k.name,
+                        added_count=0,
+                        updated_count=0,
+                        deleted_count=0,
+                        processed_count=0,
+                        run_config=run_config,
+                    )
+
             break
         except Exception as e:
             logger.exception(f"Generating failed ({func}): {str(e)}")
@@ -150,6 +162,8 @@ def batch_generate_wrapper(
 
             # raise e
             return
+
+        empty_generator = False
 
         for k, dt_k in enumerate(output_dts):
             dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
