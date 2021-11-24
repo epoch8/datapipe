@@ -60,13 +60,14 @@ class DataTable:
 
         new_df, changed_df, new_meta_df, changed_meta_df = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-        if len(new_df) > 0 or len(changed_df) > 0:
-            self.event_logger.log_state(
-                self.name, added_count=len(new_df),
-                updated_count=len(changed_df),
-                deleted_count=0,
-                run_config=run_config,
-            )
+        self.event_logger.log_state(
+            self.name,
+            added_count=len(new_df),
+            updated_count=len(changed_df),
+            deleted_count=0,
+            processed_count=len(data_df),
+            run_config=run_config,
+        )
 
         # TODO implement transaction meckanism
         self.table_store.insert_rows(new_df)
@@ -96,6 +97,7 @@ class DataTable:
                 added_count=0,
                 updated_count=0,
                 deleted_count=len(idx),
+                processed_count=len(idx),
                 run_config=run_config,
             )
 

@@ -183,29 +183,35 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig
 
     for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
 
-        _, _, new_meta_df, changed_meta_df = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+        (
+            new_df,
+            changed_df,
+            new_meta_df,
+            changed_meta_df
+            ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
 
-        if len(new_meta_df) > 0 or len(changed_meta_df) > 0:
-            ds.event_logger.log_state(
-                table.name,
-                added_count=len(new_meta_df),
-                updated_count=len(changed_meta_df),
-                deleted_count=0,
-                run_config=run_config,
-            )
+        ds.event_logger.log_state(
+            table.name,
+            added_count=len(new_df),
+            updated_count=len(changed_df),
+            deleted_count=0,
+            processed_count=len(ps_df),
+            run_config=run_config,
+        )
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 
         table.meta_table.insert_meta_for_store_chunk(new_meta_df)
         table.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-    for stale_idx in table.meta_table.get_stale_idx(now):
+    for stale_idx in table.meta_table.get_stale_idx(now, run_config=run_config):
         logger.debug(f'Deleting {len(stale_idx.index)} rows from {table.name} data')
-        ds.event_logger.log_state(
+        table.event_logger.log_state(
             table.name,
             added_count=0,
             updated_count=0,
             deleted_count=len(stale_idx),
+            processed_count=len(stale_idx),
             run_config=run_config,
         )
 
