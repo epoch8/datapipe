@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy import Column
 
 from datapipe.types import DataDF
-from datapipe.compute import PipelineStep, DataStore, Catalog, DatatableTransformStep
+from datapipe.compute import PipelineStep, DataStore, Catalog, DatatableTransformStep, Table
 from datapipe.core_steps import update_external_table, batch_transform_wrapper
 from datapipe.label_studio.store import TableStoreLabelStudio
 
@@ -54,6 +54,7 @@ class LabelStudioStep(PipelineStep):
                 tqdm_disable=self.tqdm_disable,
             )
         )
+        catalog.add_datatable(self.output, Table(output_dt.table_store))
 
         def load_data_to_ls_func(ds, input_dts, output_dts, run_config):
             return batch_transform_wrapper(

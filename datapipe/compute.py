@@ -19,7 +19,12 @@ class Table:
 class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
-        self.data_tables: Dict[str, DataTable] = {}
+
+    def add_datatable(self, name: str, dt: Table):
+        self.catalog[name] = dt
+
+    def remove_datatable(self, name: str):
+        del self.catalog[name]
 
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
