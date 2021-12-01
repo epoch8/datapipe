@@ -176,9 +176,10 @@ class DataStore:
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
-        def left_join(tbl_a, tbl_bbb):
+        def left_join(tbl_a_dt, tbl_a, tbl_bbb):
             q = tbl_a
-            for tbl_b in tbl_bbb:
+            for tbl_b_dt, tbl_b in tbl_bbb:
+                join_keys = set(tbl_a_dt.primary_keys) & set(tbl_b_dt.primary_keys)
                 q = q.join(
                     tbl_b,
                     and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
@@ -195,8 +196,9 @@ class DataStore:
             fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
+                    inp_dt,
                     inp,
-                    [out for _, out in out_tbls]
+                    out_tbls
                 )
             ).where(
                 or_(
@@ -223,8 +225,9 @@ class DataStore:
             fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
             sql = select(fields).select_from(
                 left_join(
+                    out_dt,
                     out,
-                    [inp for _, inp in inp_tbls]
+                    inp_tbls
                 )
             ).where(
                 or_(
