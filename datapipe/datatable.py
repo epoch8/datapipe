@@ -4,6 +4,7 @@ import logging
 
 import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_, literal
+from tomlkit import table
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
@@ -172,6 +173,10 @@ class DataStore:
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+        union_keys = set.union(*[
+            set(dt.primary_keys)
+            for dt in inputs + outputs
+        ])
 
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
@@ -193,7 +198,15 @@ class DataStore:
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
-            fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
+            #fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')]
+            pairwise_keys = set.union(*[
+                set(dt.primary_keys)
+                for dt in [inp_dt] + outputs
+            ])
+            nullable_keys = union_keys - pairwise_keys
+            fields += [literal(None).label(key) for key in nullable_keys]
+            fields += [inp.c[key] for key in pairwise_keys]
             sql = select(fields).select_from(
                 left_join(
                     inp_dt,
@@ -222,7 +235,15 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
+            #fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
+            fields = [literal(1).label('_1')]
+            pairwise_keys = set.union(*[
+                set(dt.primary_keys)
+                for dt in [out_dt] + inputs
+            ])
+            nullable_keys = union_keys - pairwise_keys
+            fields += [literal(None).label(key) for key in nullable_keys]
+            fields += [inp.c[key] for key in pairwise_keys]
             sql = select(fields).select_from(
                 left_join(
                     out_dt,
