@@ -177,12 +177,8 @@ class DataStore:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
         def left_join(tbl_a, tbl_bbb):
-            q = tbl_a.join(
-                tbl_bbb[0],
-                and_(True, *[tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys]),
-                isouter=True
-            )
-            for tbl_b in tbl_bbb[1:]:
+            q = tbl_a
+            for tbl_b in tbl_bbb:
                 q = q.join(
                     tbl_b,
                     and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
