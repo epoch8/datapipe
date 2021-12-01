@@ -3,9 +3,8 @@ from typing import Dict, Iterator, List, Optional, Tuple, Set
 import logging
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_, literal
-from tomlkit import table
-
+from sqlalchemy import Column, alias, func, select, union, union_all, and_, or_, literal, \
+    Table as SQLTable
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
@@ -174,45 +173,46 @@ class DataStore:
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
         union_keys = set.union(*[
-            set(dt.primary_keys)
-            for dt in inputs + outputs
+            set(table.primary_keys)
+            for table in inputs + outputs
         ])
 
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
 
-        def left_join(tbl_a_dt, tbl_a, tbl_bbb):
-            q = tbl_a
-            for tbl_b_dt, tbl_b in tbl_bbb:
-                join_keys = set(tbl_a_dt.primary_keys) & set(tbl_b_dt.primary_keys)
+        def left_join(tbl_left: Tuple[DataTable, SQLTable], tbls_right: List[Tuple[DataTable, SQLTable]]):
+            dt_left, sql_left = tbl_left
+            q = sql_left
+            for dt_right, sql_right in tbls_right:
+                join_keys = set(dt_left.primary_keys) & set(dt_right.primary_keys)
                 q = q.join(
-                    tbl_b,
-                    and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
+                    sql_right,
+                    and_(True, *[sql_left.c[key] == sql_right.c[key] for key in join_keys]),
                     isouter=True
                 )
-
             return q
+
+        def get_inner_sql_fields(tables: List[Tuple[DataTable, SQLTable]]) -> List[Column]:
+            fields = [literal(1).label('_1')]
+            # fields += [tables[0][1].c[key] for key in join_keys]
+            used_fields = set()
+            for dt, sql in tables:
+                tbl_keys = join_keys & set(dt.primary_keys)
+                for key in tbl_keys - used_fields:
+                    fields.append(sql.c[key])
+                used_fields |= tbl_keys
+            for key in join_keys - used_fields:
+                fields.append(literal(None).label(key))
+            return fields
 
         inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.name}")) for inp in inputs]
         out_tbls = [(out, out.meta_table.sql_table.alias(f"out_{out.name}")) for out in outputs]
         sql_requests = []
 
         for inp_dt, inp in inp_tbls:
-            #fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
-            fields = [literal(1).label('_1')]
-            pairwise_keys = set.union(*[
-                set(dt.primary_keys)
-                for dt in [inp_dt] + outputs
-            ])
-            nullable_keys = union_keys - pairwise_keys
-            fields += [literal(None).label(key) for key in nullable_keys]
-            fields += [inp.c[key] for key in pairwise_keys]
+            fields = get_inner_sql_fields([(inp_dt, inp)] + out_tbls)
             sql = select(fields).select_from(
-                left_join(
-                    inp_dt,
-                    inp,
-                    out_tbls
-                )
+                left_join((inp_dt, inp), out_tbls)
             ).where(
                 or_(
                     and_(
@@ -235,21 +235,9 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            #fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
-            fields = [literal(1).label('_1')]
-            pairwise_keys = set.union(*[
-                set(dt.primary_keys)
-                for dt in [out_dt] + inputs
-            ])
-            nullable_keys = union_keys - pairwise_keys
-            fields += [literal(None).label(key) for key in nullable_keys]
-            fields += [inp.c[key] for key in pairwise_keys]
+            fields = get_inner_sql_fields(inp_tbls + [(out_dt, out)])
             sql = select(fields).select_from(
-                left_join(
-                    out_dt,
-                    out,
-                    inp_tbls
-                )
+                left_join((out_dt, out), inp_tbls)
             ).where(
                 or_(
                     or_(
@@ -268,7 +256,7 @@ class DataStore:
 
             sql_requests.append(sql)
 
-        u1 = union(*sql_requests)
+        u1 = union_all(*sql_requests)
 
         return (join_keys, u1)
 

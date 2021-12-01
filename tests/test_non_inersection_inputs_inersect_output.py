@@ -1,6 +1,7 @@
 import pandas as pd
 from datapipe.datatable import DataTable, DBConn
-from datapipe.compute import Catalog, DataStore, Table
+from datapipe.compute import Pipeline, Catalog, DataStore, Table, run_pipeline
+from datapipe.core_steps import BatchTransform
 from datapipe.store.database import TableStoreDB
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
@@ -75,5 +76,3 @@ def test_non_inersection_inputs_inersect_output(dbconn: DBConn):
         run_config=None
     )
     assert idx_count == 2
-    for df_chunk in idx_gen:
-        assert len(df_chunk) == 2
