@@ -47,7 +47,7 @@ class LabelStudioStep(PipelineStep):
                 tasks_id_column=self.tasks_id_column,
                 annotations_column=self.annotations_column,
                 preannotations_column=self.preannotations_column,
-                predictions_column=self.preannotations_column,
+                predictions_column=self.predictions_column,
                 project_label_config_at_create=self.project_label_config_at_create,
                 project_description_at_create=self.project_description_at_create,
                 page_chunk_size=self.page_chunk_size,
