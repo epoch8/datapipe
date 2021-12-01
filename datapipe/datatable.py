@@ -3,7 +3,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Set
 import logging
 
 import pandas as pd
-from sqlalchemy import Column, alias, func, select, union, union_all, and_, or_, literal, \
+from sqlalchemy import Column, alias, func, select, union_all, and_, or_, literal, \
     Table as SQLTable
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
@@ -172,10 +172,6 @@ class DataStore:
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
-        union_keys = set.union(*[
-            set(table.primary_keys)
-            for table in inputs + outputs
-        ])
 
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
@@ -195,7 +191,7 @@ class DataStore:
         def get_inner_sql_fields(tables: List[Tuple[DataTable, SQLTable]]) -> List[Column]:
             fields = [literal(1).label('_1')]
             # fields += [tables[0][1].c[key] for key in join_keys]
-            used_fields = set()
+            used_fields: Set[str] = set()
             for dt, sql in tables:
                 tbl_keys = join_keys & set(dt.primary_keys)
                 for key in tbl_keys - used_fields:
