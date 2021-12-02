@@ -1,14 +1,16 @@
 from datapipe.store.database import DBConn
 import time
-from subprocess import Popen
 from pathlib import Path
 
 import pandas as pd
+from sqlalchemy import Column, String, JSON
 
 from datapipe.compute import build_compute, run_steps
 from datapipe.datatable import DataStore
-from datapipe.compute import Catalog, Table, ExternalTable, Pipeline, BatchTransform, LabelStudioModeration
+from datapipe.compute import Catalog, Table, Pipeline
 from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.core_steps import UpdateExternalTable, BatchTransform
+from datapipe.label_studio.pipeline import LabelStudioStep
 
 
 LS_LABEL_CONFIG_XML = """
@@ -65,27 +67,30 @@ def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
 (DATA_DIR / 'xx_datatables').mkdir(exist_ok=True, parents=True)
 ds = DataStore(DBConn('sqlite:///' + str(DATA_DIR / 'xx_datatables' / 'metadata.sqlite')))
 catalogue = Catalog({
-    "00_input_texts": ExternalTable(
+    "00_input_texts": Table(
         store=TableStoreJsonLine(DATA_DIR / '00_data.json'),
-    ),
-    "01_annotation_raw": Table(
-        store=TableStoreJsonLine(DATA_DIR / "01_annotation_raw.json"),
     ),
     "02_annotation_parsed": Table(
         store=TableStoreJsonLine(DATA_DIR / "02_annotation_parsed.json")
     ),
 })
 pipeline = Pipeline([
-    LabelStudioModeration(
+    UpdateExternalTable('00_input_texts'),
+    LabelStudioStep(
         ls_url=f'http://{HOST}:{LS_PORT}/',
-        inputs=["00_input_texts"],
-        outputs=["01_annotation_raw"],
+        input="00_input_texts",
+        output="01_annotation_ls",
         auth=('moderation@epoch8.co', 'qwerty123'),
-        project_title='Text classification project',
-        project_description='Text classification project!',
-        project_label_config=LS_LABEL_CONFIG_XML,
-        data=['text', 'prediction', 'category'],
-        chunk_size=1000
+        project_identifier='Text classification project',
+        project_description_at_create='Text classification project!',
+        project_label_config_at_create=LS_LABEL_CONFIG_XML,
+        data_sql_schema=[
+            Column('id', String(), primary_key=True),
+            Column('text', String()),
+            Column('prediction', JSON()),
+            Column('category', String()),
+        ],
+        page_chunk_size=100,
     ),
     BatchTransform(
         parse_annotation,
@@ -93,20 +98,10 @@ pipeline = Pipeline([
         outputs=["02_annotation_parsed"],
     ),
 ])
+
+
 steps = build_compute(ds, catalogue, pipeline)
 
-
-if __name__ == "__main__":
-    label_studio_service = Popen([
-        'label-studio',
-        '--database', str(DATA_DIR / 'xx_datatables' / 'ls.db'),
-        '--internal-host', '0.0.0.0',
-        '--port', LS_PORT,
-        '--no-browser'
-    ])
-    try:
-        while True:
-            run_steps(ds, steps)
-            time.sleep(5)
-    finally:
-        label_studio_service.terminate()
+while True:
+    run_steps(ds, steps)
+    time.sleep(5)

@@ -148,6 +148,7 @@ class CasesLabelStudio:
                     ],
                 )
             ),
+            # '01_labeled_data' будет создана изнутри LabelStudioStep
         })
         pipeline = Pipeline([
             LabelStudioStep(
