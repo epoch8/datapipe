@@ -231,7 +231,7 @@ class DataStore:
             sql_requests.append(sql)
 
         for out_dt, out in out_tbls:
-            fields = get_inner_sql_fields(inp_tbls + [(out_dt, out)])
+            fields = get_inner_sql_fields([(out_dt, out)] + inp_tbls)
             sql = select(fields).select_from(
                 left_join((out_dt, out), inp_tbls)
             ).where(
