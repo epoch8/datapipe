@@ -231,25 +231,13 @@ class DataStore:
                     [inp for _, inp in inp_tbls]
                 )
             ).where(
-                and_(
-                    or_(
-                        or_(
-                            (
-                                out.c.process_ts
-                                <
-                                inp.c.delete_ts
-                            )
-                            for _, inp in inp_tbls
-                        ),
-                        and_(
-                            (
-                                inp.c.create_ts.is_(None)
-                            )
-                            for _, inp in inp_tbls
-                        )
-
-                    ),
-                    out.c.delete_ts.is_(None)
+                or_(
+                    (
+                        out.c.process_ts
+                        <
+                        inp.c.delete_ts
+                    )
+                    for _, inp in inp_tbls
                 )
             )
 
