@@ -236,13 +236,10 @@ class DataStore:
                 left_join((out_dt, out), inp_tbls)
             ).where(
                 or_(
-                    or_(
-                        (
-                            out.c.process_ts
-                            <
-                            inp.c.delete_ts
-                        ),
-                        inp.c.create_ts.is_(None)
+                    (
+                        out.c.process_ts
+                        <
+                        inp.c.delete_ts
                     )
                     for _, inp in inp_tbls
                 )
