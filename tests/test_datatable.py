@@ -127,3 +127,26 @@ def test_get_process_ids(dbconn) -> None:
     idx = pd.concat(list(idx_dfs))
 
     assert_df_equal(idx, upd_df[['id']])
+
+
+def test_store_chunk_changelist(dbconn) -> None:
+    ds = DataStore(dbconn)
+
+    tbl = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+
+    tbl.store_chunk(TEST_DF)
+
+    upd_df = TEST_DF.copy()
+
+    upd_df.loc[1, 'a'] = 10
+    upd_df = upd_df.append({'id': 10, 'a': 11}, ignore_index=True)
+
+    proc_idx = upd_df[['id']]
+    idx = pd.DataFrame({"id": [0, 1, 10]})
+
+    change_idx = tbl.store_chunk(upd_df[1:], processed_idx=proc_idx)
+
+    assert_df_equal(idx, change_idx)

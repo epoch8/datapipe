@@ -1,4 +1,5 @@
-from typing import List, NewType, cast
+from typing import List, Dict, NewType, cast
+from dataclasses import dataclass, field
 
 import pandas as pd
 from sqlalchemy import Column
@@ -14,6 +15,17 @@ MetadataDF = NewType('MetadataDF', pd.DataFrame)
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
 # DataDF = NewType('DataDF', pd.DataFrame)
 DataDF = pd.DataFrame
+
+
+@dataclass
+class ChangeList:
+    changes: Dict[str, IndexDF] = field(default_factory=lambda: cast(Dict[str, IndexDF], {}))
+
+    def append(self, table_name: str, idx: IndexDF) -> None:
+        if table_name in self.changes:
+            self.changes[table_name] = self.changes[table_name].append(idx)
+        else:
+            self.changes[table_name] = idx
 
 
 def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:

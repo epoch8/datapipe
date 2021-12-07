@@ -4,6 +4,7 @@ from abc import ABC
 
 import logging
 
+from datapipe.types import ChangeList
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
@@ -74,7 +75,7 @@ class DatatableTransformStep:
     kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
     check_for_changes: bool = True
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
+    def _run(self, ds: DataStore, func: ComputeStepFunc, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
             changed_idx_count = ds.get_changed_idx_count(
                 inputs=self.input_dts,
@@ -89,7 +90,16 @@ class DatatableTransformStep:
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
-        self.func(ds, self.input_dts, self.output_dts, run_config)
+        return func(ds, self.input_dts, self.output_dts, run_config)
+
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
+        self._run(ds, self.func, run_config=run_config)
+
+
+@dataclass
+class PartialTransformStep(DatatableTransformStep):
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+        raise NotImplementedError("You must implement run_changelist method in your step class")
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:

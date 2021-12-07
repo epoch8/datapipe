@@ -1,14 +1,16 @@
-from typing import Callable, List, Iterator, Tuple, Union
+from typing import Callable, List, Iterator, Tuple, Union, Generator
 from dataclasses import dataclass
 
 import time
 import tqdm
 import logging
+import pandas as pd
 
 from datapipe.types import DataDF
-from datapipe.compute import PipelineStep, Catalog, DatatableTransformStep
+from datapipe.compute import PipelineStep, Catalog, DatatableTransformStep, PartialTransformStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.types import ChangeList, data_to_index
 
 
 logger = logging.getLogger('datapipe.core_steps')
@@ -23,7 +25,9 @@ def batch_transform_wrapper(
     input_dts: List[DataTable],
     output_dts: List[DataTable],
     chunksize: int = 1000,
-    run_config: RunConfig = None
+    run_config: RunConfig = None,
+    process_ids_func: Callable = None,
+    store_changes: bool = False
 ) -> None:
     import math
 
@@ -31,7 +35,12 @@ def batch_transform_wrapper(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    idx_count, idx_gen = ds.get_process_ids(
+    get_process_ids = ds.get_process_ids
+
+    if process_ids_func:
+        get_process_ids = process_ids_func
+
+    idx_count, idx_gen = get_process_ids(
         inputs=input_dts,
         outputs=output_dts,
         chunksize=chunksize,
@@ -39,6 +48,8 @@ def batch_transform_wrapper(
     )
 
     logger.info(f'Items to update {idx_count}')
+
+    changes = ChangeList()
 
     if idx_count > 0:
         for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
@@ -64,17 +75,25 @@ def batch_transform_wrapper(
                 for k, res_dt in enumerate(output_dts):
                     # Берем k-ое значение функции для k-ой таблички
                     # Добавляем результат в результирующие чанки
-                    res_dt.store_chunk(
+                    change_idx = res_dt.store_chunk(
                         data_df=chunks_df[k],
                         processed_idx=idx,
                         run_config=run_config,
                     )
+
+                    if store_changes:
+                        changes.append(res_dt.name, change_idx)
 
             else:
                 for k, res_dt in enumerate(output_dts):
                     del_idx = res_dt.meta_table.get_existing_idx(idx)
 
                     res_dt.delete_by_idx(del_idx, run_config=run_config)
+
+                    if store_changes:
+                        changes.append(res_dt.name, del_idx)
+
+    return changes
 
 
 @dataclass
@@ -88,6 +107,23 @@ class BatchTransform(PipelineStep):
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
+        return [
+            BatchTransformStep(
+                f'{self.func.__name__}',
+                input_dts=input_dts,
+                output_dts=output_dts,
+                func=self.func,
+                chunk_size=self.chunk_size,
+
+            )
+        ]
+
+
+@dataclass
+class BatchTransformStep(PartialTransformStep):
+    chunk_size: int = 1000
+
+    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         def transform_func(ds, input_dts, output_dts, run_config):
             return batch_transform_wrapper(
                 self.func,
@@ -98,14 +134,43 @@ class BatchTransform(PipelineStep):
                 run_config=run_config,
             )
 
-        return [
-            DatatableTransformStep(
-                f'{self.func.__name__}',
+        super()._run(ds, transform_func, run_config=run_config)
+
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+        def process_ids_func(ds, input_dts, output_dts, chunksize, run_config):
+            join_keys = ds.get_join_keys(input_dts, output_dts)
+            changes = []
+
+            if not join_keys:
+                raise ValueError("Primary keys intersection for ChangeList are empty")
+
+            for inp in input_dts:
+                if inp.name in changelist.changes:
+                    idx = changelist.change[inp.name]
+
+                    changes.append(data_to_index(idx, join_keys))
+
+            idx = pd.concat(changes).drop_duplicaes(subset=join_keys)
+
+            return len(idx), [idx]
+
+        def transform_func(ds, input_dts, output_dts, run_config):
+            return batch_transform_wrapper(
+                self.func,
+                chunksize=self.chunk_size,
+                ds=ds,
                 input_dts=input_dts,
                 output_dts=output_dts,
-                func=transform_func,
+                run_config=run_config,
+                process_ids_func=self._process_ids_func,
+                store_changes=True
             )
-        ]
+
+        return super()._run(
+            ds, 
+            transform_func, 
+            run_config=run_config,
+        )
 
 
 BatchGenerateFunc = Callable[[], Iterator[Tuple[DataDF, ...]]]
