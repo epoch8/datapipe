@@ -23,7 +23,7 @@ class ChangeList:
 
     def append(self, table_name: str, idx: IndexDF) -> None:
         if table_name in self.changes:
-            self.changes[table_name] = self.changes[table_name].append(idx)
+            self.changes[table_name] = cast(IndexDF, self.changes[table_name].append(idx))
         else:
             self.changes[table_name] = idx
 

@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, Optional, Tuple, Set
+from typing import Dict, Iterator, List, Optional, Tuple, Set, cast
 
 import logging
 
@@ -52,8 +52,8 @@ class DataTable:
         При указанном `processed_idx` удалить те строки, которые находятся внутри `processed_idx`, но
         отсутствуют в `data_df`.
         '''
-        changed_idx = IndexDF(pd.DataFrame(columns=self.primary_keys))
-        
+        changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
+
         if not data_df.empty:
             logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
@@ -80,8 +80,8 @@ class DataTable:
             self.meta_table.insert_meta_for_store_chunk(new_meta_df)
             self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-            changed_idx = changed_idx.append(data_to_index(new_df, self.primary_keys))
-            changed_idx = changed_idx.append(data_to_index(changed_df, self.primary_keys))
+            changes.append(data_to_index(new_df, self.primary_keys))
+            changes.append(data_to_index(changed_df, self.primary_keys))
         else:
             data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -93,9 +93,9 @@ class DataTable:
 
             self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-            changed_idx = changed_idx.append(deleted_idx)
+            changes.append(deleted_idx)
 
-        return changed_idx
+        return cast(IndexDF, pd.concat(changes))
 
     def delete_by_idx(
         self,
@@ -165,10 +165,10 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
-    def get_join_keys(self, inputs: List[DataTable], outputs: List[DataTable]) -> List[str]:
+    def get_join_keys(self, inputs: List[DataTable], outputs: List[DataTable]) -> Set[str]:
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
-        
+
         return set.intersection(*inp_p_keys, *out_p_keys)
 
     def _build_changed_idx_sql(
@@ -183,7 +183,7 @@ class DataStore:
         Returns: [join_keys, select]
         """
 
-        join_keys = self.get_join_keys(inputs, outputs) 
+        join_keys = self.get_join_keys(inputs, outputs)
 
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")

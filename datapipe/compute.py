@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable, Optional, Any, cast
+from typing import List, Dict, Callable, Optional, Any, cast, Union
 from dataclasses import dataclass, field
 from abc import ABC
 
@@ -75,7 +75,7 @@ class DatatableTransformStep:
     kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
     check_for_changes: bool = True
 
-    def _run(self, ds: DataStore, func: ComputeStepFunc, run_config: RunConfig = None) -> None:
+    def _run(self, ds: DataStore, func: ComputeStepFunc, run_config: RunConfig = None) -> Any:
         if len(self.input_dts) > 0 and self.check_for_changes:
             changed_idx_count = ds.get_changed_idx_count(
                 inputs=self.input_dts,

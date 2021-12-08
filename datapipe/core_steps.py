@@ -1,4 +1,4 @@
-from typing import Callable, List, Iterator, Tuple, Union, Generator
+from typing import Callable, List, Iterator, Tuple, Union
 from dataclasses import dataclass
 
 import time
@@ -28,7 +28,7 @@ def batch_transform_wrapper(
     run_config: RunConfig = None,
     process_ids_func: Callable = None,
     store_changes: bool = False
-) -> None:
+) -> ChangeList:
     import math
 
     '''
@@ -167,8 +167,8 @@ class BatchTransformStep(PartialTransformStep):
             )
 
         return super()._run(
-            ds, 
-            transform_func, 
+            ds,
+            transform_func,
             run_config=run_config,
         )
 
