@@ -137,20 +137,20 @@ class BatchTransformStep(PartialTransformStep):
         super()._run(ds, transform_func, run_config=run_config)
 
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        def process_ids_func(ds, input_dts, output_dts, chunksize, run_config):
-            join_keys = ds.get_join_keys(input_dts, output_dts)
-            changes = []
+        def process_ids_func(inputs, outputs, chunksize, run_config):
+            join_keys = ds.get_join_keys(inputs, outputs)
+            changes = [pd.DataFrame(columns=join_keys)]
 
             if not join_keys:
                 raise ValueError("Primary keys intersection for ChangeList are empty")
 
-            for inp in input_dts:
+            for inp in inputs:
                 if inp.name in changelist.changes:
-                    idx = changelist.change[inp.name]
+                    idx = changelist.changes[inp.name]
 
                     changes.append(data_to_index(idx, join_keys))
 
-            idx = pd.concat(changes).drop_duplicaes(subset=join_keys)
+            idx = pd.concat(changes).drop_duplicates(subset=join_keys)
 
             return len(idx), [idx]
 
@@ -162,7 +162,7 @@ class BatchTransformStep(PartialTransformStep):
                 input_dts=input_dts,
                 output_dts=output_dts,
                 run_config=run_config,
-                process_ids_func=self._process_ids_func,
+                process_ids_func=process_ids_func,
                 store_changes=True
             )
 

@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable, Optional, Any, cast, Union
+from typing import List, Dict, Callable, Optional, Any, cast
 from dataclasses import dataclass, field
 from abc import ABC
 
