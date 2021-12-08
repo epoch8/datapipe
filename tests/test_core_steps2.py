@@ -10,7 +10,8 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper
+from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper, BatchTransformStep
+from datapipe.types import ChangeList, IndexDF
 from datapipe.run_config import RunConfig
 
 from .util import assert_datatable_equal
@@ -200,3 +201,38 @@ def test_gen_with_filter(dbconn):
     )
 
     assert_datatable_equal(tbl, TEST_DF1_1.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
+
+
+def test_transform_with_changelist(dbconn):
+    ds = DataStore(dbconn)
+
+    tbl1 = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA1, True)
+    )
+
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA1, True)
+    )
+
+    tbl1.store_chunk(TEST_DF1_1, now=0)
+
+    def func(df):
+        return df
+
+    step = BatchTransformStep(
+        'test',
+        func=func,
+        input_dts=[tbl1],
+        output_dts=[tbl2]
+    )
+
+    change_list = ChangeList()
+    changes_df = TEST_DF1_1.loc[[0, 1, 2]]
+
+    change_list.append('tbl1', IndexDF(changes_df[['item_id', 'pipeline_id']]))
+
+    step.run_changelist(ds, change_list)
+
+    assert_datatable_equal(tbl2, changes_df)
