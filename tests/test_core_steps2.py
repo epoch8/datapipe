@@ -14,7 +14,7 @@ from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper,
 from datapipe.types import ChangeList, IndexDF
 from datapipe.run_config import RunConfig
 
-from .util import assert_datatable_equal
+from .util import assert_datatable_equal, assert_df_equal
 
 
 TEST_SCHEMA1 = [
@@ -229,10 +229,17 @@ def test_transform_with_changelist(dbconn):
     )
 
     change_list = ChangeList()
+
+    idx_keys = ['item_id', 'pipeline_id']
     changes_df = TEST_DF1_1.loc[[0, 1, 2]]
+    changes_idx = IndexDF(changes_df[idx_keys])
 
-    change_list.append('tbl1', IndexDF(changes_df[['item_id', 'pipeline_id']]))
+    change_list.append('tbl1', changes_idx)
 
-    step.run_changelist(ds, change_list)
+    next_change_list = step.run_changelist(ds, change_list)
 
     assert_datatable_equal(tbl2, changes_df)
+
+    assert list(next_change_list.changes.keys()) == ['tbl2']
+
+    assert_df_equal(next_change_list.changes['tbl2'], changes_idx, index_cols=idx_keys)
