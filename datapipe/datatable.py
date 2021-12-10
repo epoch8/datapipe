@@ -3,7 +3,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Set
 import logging
 
 import pandas as pd
-from sqlalchemy import Column, alias, func, select, union_all, and_, or_, literal, \
+from sqlalchemy import Column, alias, func, select, union, and_, or_, literal, \
     Table as SQLTable
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
@@ -249,7 +249,7 @@ class DataStore:
 
             sql_requests.append(sql)
 
-        u1 = union_all(*sql_requests)
+        u1 = union(*sql_requests)
 
         return (join_keys, u1)
 
