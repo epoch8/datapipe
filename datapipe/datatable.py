@@ -31,6 +31,7 @@ class DataTable:
         self.table_store = table_store
         self.event_logger = event_logger
 
+        self.primary_schema = meta_table.primary_schema
         self.primary_keys = meta_table.primary_keys
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
@@ -168,10 +169,25 @@ class DataStore:
 
         Returns: [join_keys, select]
         """
-
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+        key_to_column_type_inp = {
+            column.name: type(column.type)
+            for inp in inputs
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        key_to_column_type_out = {
+            column.name: type(column.type)
+            for inp in outputs
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        for key in join_keys:
+            if key_to_column_type_inp[key] != key_to_column_type_out[key]:
+                raise ValueError(
+                    f'Primary key "{key}" in inputs and outputs must have same column\'s type: '
+                    f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
+                )
 
         # if not join_keys:
         #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
