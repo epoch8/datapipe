@@ -16,6 +16,7 @@ from PIL import Image
 from datapipe.types import DataDF, DataSchema, IndexDF
 from datapipe.store.table_store import TableStore
 from datapipe.run_config import RunConfig
+from sqlalchemy.sql.type_api import TypeEngine
 
 
 class ItemStoreFileAdapter(ABC):
@@ -107,6 +108,7 @@ class TableStoreFiledir(TableStore):
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
+        columns_types: Union[TypeEngine, List[TypeEngine]] = String(100)
     ):
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
@@ -130,9 +132,20 @@ class TableStoreFiledir(TableStore):
         self.attrnames = _pattern_to_attrnames(self.filename_pattern)
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
+        if isinstance(columns_types, list):
+            assert len(self.attrnames) == len(columns_types)
+            self.primary_schema = [
+                Column(attrname, column_type, primary_key=True) 
+                for attrname, column_type in zip(self.attrnames, columns_types)
+            ]
+        else:
+            self.primary_schema = [
+                Column(attrname, columns_types, primary_key=True)
+                for attrname in self.attrnames
+            ]
 
     def get_primary_schema(self) -> DataSchema:
-        return [Column(attrname, String(100), primary_key=True) for attrname in self.attrnames]
+        return self.primary_schema
 
     def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать

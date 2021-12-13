@@ -86,6 +86,7 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id}.json',
+        String(100),
         id='str_id'
     ),
     pytest.param(
@@ -96,6 +97,7 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id1}__{id2}.json',
+        String(100),
         id='multi_id'
     ),
     pytest.param(
@@ -109,6 +111,7 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id1}______{id2}______{id3}______{id4}______{id5}.json',
+        String(100),
         id='multi_ids2'
     ),
     pytest.param(
@@ -120,7 +123,20 @@ FILEDIR_DATA_PARAMS = [
             'price': [1000 + i for i in range(100)],
         }),
         '{id2}__{id1}__{id3}.json',
+        String(100),
         id='multi_ids_check_commutativity'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [i for i in range(100)],
+            'id2': [i for i in range(100, 200)],
+            'id3': [str(i) for i in range(150, 250)],
+            'name': [f'Product {i}' for i in range(100)],
+            'price': [1000 + i for i in range(100)],
+        }),
+        '{id2}__{id1}__{id3}.json',
+        [Integer, Integer, String(100)],
+        id='columns_types'
     )
 ]
 
@@ -178,12 +194,13 @@ class CasesTableStore:
             df
         )
 
-    @parametrize('df,fn_template', FILEDIR_DATA_PARAMS)
-    def case_filedir_json(self, tmp_dir, df, fn_template):
+    @parametrize('df,fn_template, columns_types', FILEDIR_DATA_PARAMS)
+    def case_filedir_json(self, tmp_dir, df, fn_template, columns_types):
         return (
             TableStoreFiledir(
                 tmp_dir / fn_template,
                 adapter=JSONFile(),
+                columns_types=columns_types
             ),
             df
         )
