@@ -15,6 +15,8 @@ from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_inde
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
 
+from sqlalchemy.orm import declarative_base, Session, mapper
+
 
 logger = logging.getLogger('datapipe.metastore')
 
@@ -254,33 +256,22 @@ class MetaTable:
             )
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
-        if len(df) > 0:
-            stmt = (
-                update(self.sql_table)
-                .values({
-                    'hash': bindparam('b_hash'),
-                    'update_ts': bindparam('b_update_ts'),
-                    'process_ts': bindparam('b_process_ts'),
-                    'delete_ts': bindparam('b_delete_ts'),
-                })
-            )
+        def _get_mapper(schema):
+            class _MappedObject:
+                def __init__(self, **kwargs):
+                    for key, value in kwargs.items():
+                        setattr(self, key, value)
 
-            for key in self.primary_keys:
-                stmt = stmt.where(self.sql_table.c[key] == bindparam(f'b_{key}'))
+            return mapper(_MappedObject, self.sql_table)
 
-            columns = self.primary_keys + ['hash', 'update_ts', 'process_ts', 'delete_ts']
-
-            self.dbconn.con.execute(
-                stmt,
-                [
-                    {f'b_{k}': v for k, v in row.items()}
-                    for row in
-                    cast(
-                        Dict,
-                        df.reset_index()[columns].to_dict(orient='records')
-                    )
-                ]
-            )
+        mappings = [
+            row.to_dict()
+            for _, row in df.iterrows()
+        ]
+        with Session(self.dbconn.con) as session:
+            session.bulk_update_mappings(_get_mapper(self.sql_schema), mappings)
+            session.flush()
+            session.commit()
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
