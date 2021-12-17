@@ -5,7 +5,7 @@ from sqlalchemy.sql.sqltypes import Integer, JSON
 
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.types import data_to_index
+from datapipe.types import data_to_index, IndexDF
 
 from .util import assert_df_equal, assert_datatable_equal
 
@@ -145,7 +145,7 @@ def test_store_chunk_changelist(dbconn) -> None:
     upd_df = upd_df.append({'id': 10, 'a': 11}, ignore_index=True)
 
     proc_idx = upd_df[['id']]
-    idx = pd.DataFrame({"id": [0, 1, 10]})
+    idx = IndexDF(pd.DataFrame({"id": [0, 1, 10]}))
 
     change_idx = tbl.store_chunk(upd_df[1:], processed_idx=proc_idx)
 
