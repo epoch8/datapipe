@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, Iterator, Tuple, cast, List
+from typing import Iterator, Tuple, cast, List
 
 import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, or_, select, tuple_
+from sqlalchemy.sql.expression import and_, bindparam, or_, select, tuple_, update
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
@@ -14,8 +14,6 @@ import pandas as pd
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
-
-from sqlalchemy.orm import Session, mapper
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -46,6 +44,7 @@ class MetaTable:
         self.name = name
 
         self.primary_keys: List[str] = [column.name for column in primary_schema]
+        self.value_keys: List[str] = [column.name for column in METADATA_SQL_SCHEMA]
 
         for item in primary_schema:
             item.primary_key = True
@@ -256,22 +255,27 @@ class MetaTable:
             )
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
-        def _get_mapper(schema):
-            class _MappedObject:
-                def __init__(self, **kwargs):
-                    for key, value in kwargs.items():
-                        setattr(self, key, value)
+        val_params = {
+            col: bindparam(f'_{col}')
+            for col in self.value_keys
+        }
 
-            return mapper(_MappedObject, self.sql_table)
+        sql = update(self.sql_table).values(
+            **val_params
+        ).where(
+            tuple_(*[
+                self.sql_table.c[col]
+                for col in self.primary_keys
+            ]) == tuple_(*[
+                bindparam(f'_{col}')
+                for col in self.primary_keys
+            ])
+        )
 
-        mappings: List[Any] = [
-            row.to_dict()
-            for _, row in df.iterrows()
-        ]
-        with Session(self.dbconn.con) as session:
-            session.bulk_update_mappings(_get_mapper(self.sql_schema), mappings)
-            session.flush()
-            session.commit()
+        self.dbconn.con.execute(
+            sql,
+            df.rename(columns=lambda x: f'_{x}').to_dict(orient='records')
+        )
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
