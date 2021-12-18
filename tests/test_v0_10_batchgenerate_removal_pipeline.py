@@ -1,4 +1,3 @@
-from black import out
 from datapipe.compute import DataStore, Table, Catalog, Pipeline, run_pipeline
 from datapipe.core_steps import BatchGenerate, BatchTransform
 from datapipe.store.database import TableStoreDB
@@ -23,7 +22,7 @@ def _build_gen_func():
         else:
             raise ValueError()
         counter += 1
-    
+
     return func
 
 

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Iterator, Tuple, Dict, cast, List
+from typing import Any, Iterator, Tuple, cast, List
 
 import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, bindparam, or_, select, tuple_, update
+from sqlalchemy.sql.expression import and_, or_, select, tuple_
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
@@ -15,7 +15,7 @@ from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_inde
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
 
-from sqlalchemy.orm import declarative_base, Session, mapper
+from sqlalchemy.orm import Session, mapper
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -264,7 +264,7 @@ class MetaTable:
 
             return mapper(_MappedObject, self.sql_table)
 
-        mappings = [
+        mappings: List[Any] = [
             row.to_dict()
             for _, row in df.iterrows()
         ]
