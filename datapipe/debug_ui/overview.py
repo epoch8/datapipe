@@ -31,11 +31,11 @@ def ui_overview_index(app, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
         )
 
     for step in steps:
-        steps_dots.append(f'{step.name} [shape=box]')
-        for inp in step.input_dts:
-            steps_dots.append(f'{inp.name} -> {step.name}')
-        for out in step.output_dts:
-            steps_dots.append(f'{step.name} -> {out.name}')
+        steps_dots.append(f'{step.get_name()} [shape=box]')
+        for inp in step.get_input_dts():
+            steps_dots.append(f'{inp.name} -> {step.get_name()}')
+        for out in step.get_output_dts():
+            steps_dots.append(f'{step.get_name()} -> {out.name}')
 
     steps_dot = '\n'.join(steps_dots)
 
