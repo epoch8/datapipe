@@ -19,5 +19,23 @@
     "python.linting.flake8Args": [
         "--max-line-length=127"
     ],
-    "python.formatting.provider": "black"
+    "python.formatting.provider": "black",
+    "githubIssues.queries": [
+        {
+            "label": "My Issues",
+            "query": "default"
+        },
+        {
+            "label": "v0.10 Issues",
+            "query": "state:open repo:${owner}/${repository} sort:created-desc milestone:v0.10 "
+        },
+        {
+            "label": "v0.11 Issues",
+            "query": "state:open repo:${owner}/${repository} sort:created-desc milestone:v0.11 "
+        },
+        {
+            "label": "Backlog",
+            "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
+        },
+    ]
 }
