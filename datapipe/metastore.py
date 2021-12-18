@@ -255,27 +255,28 @@ class MetaTable:
             )
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
-        val_params = {
-            col: bindparam(f'_{col}')
-            for col in self.value_keys
-        }
+        if len(df) > 0:
+            val_params = {
+                col: bindparam(f'_{col}')
+                for col in self.value_keys
+            }
 
-        sql = update(self.sql_table).values(
-            **val_params
-        ).where(
-            tuple_(*[
-                self.sql_table.c[col]
-                for col in self.primary_keys
-            ]) == tuple_(*[
-                bindparam(f'_{col}')
-                for col in self.primary_keys
-            ])
-        )
+            sql = update(self.sql_table).values(
+                **val_params
+            ).where(
+                tuple_(*[
+                    self.sql_table.c[col]
+                    for col in self.primary_keys
+                ]) == tuple_(*[
+                    bindparam(f'_{col}')
+                    for col in self.primary_keys
+                ])
+            )
 
-        self.dbconn.con.execute(
-            sql,
-            df.rename(columns=lambda x: f'_{x}').to_dict(orient='records')
-        )
+            self.dbconn.con.execute(
+                sql,
+                df.rename(columns=lambda x: f'_{x}').to_dict(orient='records')
+            )
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
