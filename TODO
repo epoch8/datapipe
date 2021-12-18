@@ -1,38 +1,29 @@
 v0.10:
-    ✔ Работающий Transform без пересекающихся ключей @done(21-11-22 19:36)
-    ✔ Аккуратный рефакторинг core_steps (функции run в Steps) @done(21-11-22 23:58)
-    ✔ BatchGenerate через DatatableTransform @done(21-11-22 23:21)
-    ✔ BatchTransform через DatatableTransform @done(21-11-22 23:58)
-    ✔ UpdateExternalTableStep через DatatableTransform @done(21-11-23 00:10)
-    ✔ Обобщить Transform и Generate через DTTransform @done(21-11-22 23:59)
-    ✔ Объединить DatatableTransformStep с ComputeStep @done(21-11-23 00:24)
-    ☐ Решить что делать с подавлением исключений в BatchGenerateStep
-    ☐ Вынести интеграцию с Labelstudio в отдельную библиотеку datapipe-moderation
-    ✔ Убрать обязательные inputs, outputs у PipelineStep @done(21-11-20 19:06)
-    ✔ Убрать input_dts у BatchGenerateStep @done(21-11-20 19:06)
-    ☐ Реализовать автоименование у шагов
-    ✔ Добавить шаг, который работает на уровне всей DataTable, а не батчей изменений @done(21-11-22 20:37)
+    ☐ Ускорить обновление метадаты: заменить удаление/создание на апдейт
+    ☐ Добавить возможность передавать аргументы в *Generate и *Transform
+
+v0.11:
+    ☐ Объединить шаг трансформации и объявление схем результирующих таблиц (сделать каталог опциональным)
     ☐ Режим демона
         ☐ datapipe-exporter для экспорта состояния таблиц
     ☐ Внести интеграцию с Prefect в основную библиотеку
     ☐ Реализовать компиляцию из пайплайна в Prefect flow
+    ☐ Вынести интеграцию с Labelstudio в отдельную библиотеку datapipe-moderation
 
-v0.11:
-    ☐ Объединить шаг трансформации и объявление схем результирующих таблиц (сделать каталог опциональным)
+v0.12:
     ☐ Добавить схему данных как класс
     ☐ Нормальное управление схемами (полная схема в Table, а не частичная в Store)
     ☐ Причесать работу с primary_schema
     ☐ Поддержка сквозной сущности по схеме идентификации
+    ☐ Реализовать автоименование у шагов
 
 Backlog:
     ☐ Считать хеш-сумму в Store
     ☐ Сделать MetaTable декоратором над транзакцией (или DataTable?)
     ☐ Сделать прогрессбар для gen_* шага
     ☐ Сделать возможность передавать fsspec urls в TableStoreFiledir, ex: zip://{label}/{id}_test.jpg::./CATALOG_DIR/archive.zip
-    ☐ Ускорить обновление метадаты: заменить удаление/создание на апдейт
     ☐ Сделать "контекст записи"/"контекст чтения" для TableDataStore чтобы можно было кешировать операции чтения
     ☐ Сделать синхронизацию DataStore с метадатой, как отдельный шаг
-    ☐ Добавить возможность передавать аргументы в *Generate и *Transform
     
 Ветка Label Studio:
     ☐ Починить баг с авторизацией в 1.0.2+ лейбел студии (в 1.0.1 работает)
@@ -42,6 +33,17 @@ Backlog:
     ☐ Идемпотентная запись задач в LS, если задача уже есть, то она должна обновляться, а не дублироваться
 
 Archive:
+  ✔ Работающий Transform без пересекающихся ключей @done(21-11-22 19:36) @project(v0.10)
+  ✔ Аккуратный рефакторинг core_steps (функции run в Steps) @done(21-11-22 23:58) @project(v0.10)
+  ✔ BatchGenerate через DatatableTransform @done(21-11-22 23:21) @project(v0.10)
+  ✔ BatchTransform через DatatableTransform @done(21-11-22 23:58) @project(v0.10)
+  ✔ UpdateExternalTableStep через DatatableTransform @done(21-11-23 00:10) @project(v0.10)
+  ✔ Обобщить Transform и Generate через DTTransform @done(21-11-22 23:59) @project(v0.10)
+  ✔ Объединить DatatableTransformStep с ComputeStep @done(21-11-23 00:24) @project(v0.10)
+  ✔ Убрать обязательные inputs, outputs у PipelineStep @done(21-11-20 19:06) @project(v0.10)
+  ✔ Убрать input_dts у BatchGenerateStep @done(21-11-20 19:06) @project(v0.10)
+  ✔ Добавить шаг, который работает на уровне всей DataTable, а не батчей изменений @done(21-11-22 20:37) @project(v0.10)
+  ✔ Решить что делать с подавлением исключений в BatchGenerateStep @done(21-12-18 23:55) @project(v0.11)
   ✔ Перенести логику создания подшагов пайплайна в PipelineStep @done(21-11-20 16:22) @project(build-compute)
   ✔ Слить dsl, step, compute @done(21-11-20 16:21) @project(build-compute)
   ✔ Перенести RunConfig в run_config @done(21-11-20 16:22) @project(build-compute)
