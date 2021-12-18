@@ -111,7 +111,7 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(TEST_DF)
 
-    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    count, idx_dfs = ds.get_full_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert(sorted(list(idx.index)) == list(TEST_DF.index))
@@ -123,7 +123,7 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(upd_df)
 
-    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    count, idx_dfs = ds.get_full_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert_df_equal(idx, upd_df[['id']])
@@ -144,7 +144,7 @@ def test_store_chunk_changelist(dbconn) -> None:
     upd_df.loc[1, 'a'] = 10
     upd_df = upd_df.append({'id': 10, 'a': 11}, ignore_index=True)
 
-    proc_idx = upd_df[['id']]
+    proc_idx = IndexDF(upd_df[['id']])
     idx = IndexDF(pd.DataFrame({"id": [0, 1, 10]}))
 
     change_idx = tbl.store_chunk(upd_df[1:], processed_idx=proc_idx)

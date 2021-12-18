@@ -69,7 +69,7 @@ digraph {{
                 html.Ul([
                     html.Li('Inputs: [' + ', '.join(i.name for i in step.input_dts) + ']'),
                     html.Li('Outputs: [' + ', '.join(i.name for i in step.output_dts) + ']'),
-                    html.Li(f'To process: {len(ds.get_process_ids(step.input_dts, step.output_dts))}')
+                    html.Li(f'To process: {len(ds.get_full_process_ids(step.input_dts, step.output_dts))}')
                 ])
             ]))
 

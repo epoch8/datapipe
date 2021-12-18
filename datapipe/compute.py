@@ -1,6 +1,6 @@
-from typing import List, Dict, Callable, Optional, Any, cast
-from dataclasses import dataclass, field
-from abc import ABC
+from typing import List, Dict, Callable, Optional, Any
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 import logging
 
@@ -34,20 +34,26 @@ class Pipeline:
     steps: List['PipelineStep']
 
 
-# Пайплайн описывается через PipelineStep
-# Для выполнения у каждого pipeline_step выполняется build_compute на основании которых создается граф вычислений
 class PipelineStep(ABC):
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+    """
+    Пайплайн описывается через PipelineStep.
+
+    Для выполнения у каждого pipeline_step выполняется build_compute на
+    основании которых создается граф вычислений.
+    """
+
+    @abstractmethod
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         raise NotImplementedError
 
 
-ComputeStepFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
+DatatableTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
 
 
 class DatatableTransform(PipelineStep):
     def __init__(
         self,
-        func: ComputeStepFunc,
+        func: DatatableTransformFunc,
         inputs: List[str],
         outputs: List[str],
     ) -> None:
@@ -55,7 +61,7 @@ class DatatableTransform(PipelineStep):
         self.inputs = inputs
         self.outputs = outputs
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
@@ -66,16 +72,72 @@ class DatatableTransform(PipelineStep):
         ]
 
 
-@dataclass
-class DatatableTransformStep:
-    name: str
-    input_dts: List[DataTable]
-    output_dts: List[DataTable]
-    func: ComputeStepFunc
-    kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
-    check_for_changes: bool = True
+class ComputeStep(ABC):
+    '''
+    Шаг вычислений в графе вычислений.
 
-    def _run(self, ds: DataStore, func: ComputeStepFunc, run_config: RunConfig = None) -> Any:
+    Каждый шаг должен уметь отвечать на вопросы:
+    - какие таблицы приходят на вход
+    - какие таблицы изменяются в результате трансформации
+
+    Шаг может запускаться в режиме полной обработки, то есть без указания какие
+    объекты изменились. Или в changelist-режиме, когда на вход поступают
+    измененные индексы для каждой из входных таблиц.
+
+    В changelist-режиме шаг обрабатывает только минимально необходимое
+    количество батчей, которые покрывают все измененные индексы.
+    '''
+
+    @abstractmethod
+    def get_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_input_dts(self) -> List[DataTable]:
+        pass
+
+    @abstractmethod
+    def get_output_dts(self) -> List[DataTable]:
+        pass
+
+    @abstractmethod
+    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
+        pass
+
+    @abstractmethod
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+        pass
+
+
+class DatatableTransformStep(ComputeStep):
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+
+        func: DatatableTransformFunc,
+        kwargs: Dict[str, Any] = None,
+        check_for_changes: bool = True,
+    ) -> None:
+        self.name = name
+        self.input_dts = input_dts
+        self.output_dts = output_dts
+
+        self.func = func
+        self.kwargs: Dict[str, Any] = kwargs or {}
+        self.check_for_changes = check_for_changes
+
+    def get_name(self) -> str:
+        return self.name
+
+    def get_input_dts(self) -> List[DataTable]:
+        return self.input_dts
+
+    def get_output_dts(self) -> List[DataTable]:
+        return self.output_dts
+
+    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
             changed_idx_count = ds.get_changed_idx_count(
                 inputs=self.input_dts,
@@ -90,20 +152,14 @@ class DatatableTransformStep:
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
-        return func(ds, self.input_dts, self.output_dts, run_config)
+        self.func(ds, self.input_dts, self.output_dts, run_config)
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        self._run(ds, self.func, run_config=run_config)
-
-
-@dataclass
-class PartialTransformStep(DatatableTransformStep):
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        raise NotImplementedError("You must implement run_changelist method in your step class")
+        raise NotImplementedError
 
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:
-    res: List[DatatableTransformStep] = []
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
+    res: List[ComputeStep] = []
 
     for step in pipeline.steps:
         res.extend(step.build_compute(ds, catalog))
@@ -111,18 +167,21 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[D
     return res
 
 
-def print_compute(steps: List[DatatableTransformStep]) -> None:
+def print_compute(steps: List[ComputeStep]) -> None:
     import pprint
     pprint.pp(
         steps
     )
 
 
-def run_steps(ds: DataStore, steps: List[DatatableTransformStep], run_config: RunConfig = None) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
     for step in steps:
-        logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
+        logger.info(
+            f'Running {step.get_name()} '
+            f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+        )
 
-        step.run(ds, run_config)
+        step.run_full(ds, run_config)
 
 
 def run_pipeline(
