@@ -1,8 +1,8 @@
 import pandas as pd
 
-from datapipe.compute import build_compute, run_steps
 from datapipe.datatable import DataStore
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
+from datapipe.compute import build_compute, run_steps, Catalog, Pipeline, Table
+from datapipe.core_steps import BatchTransform, UpdateExternalTable
 from datapipe.store.pandas import TableStoreJsonLine
 
 
@@ -40,7 +40,7 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
 
     ds = DataStore(dbconn)
     catalog = Catalog({
-        "input_data": ExternalTable(
+        "input_data": Table(
             store=TableStoreJsonLine(tmp_dir / "data.json"),
         ),
         "transfomed_data": Table(
@@ -48,6 +48,7 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
         )
     })
     pipeline = Pipeline([
+        UpdateExternalTable("input_data"),
         BatchTransform(
             lambda df: df,
             inputs=["input_data"],

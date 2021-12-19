@@ -9,6 +9,8 @@ from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 
+from datapipe.run_config import RunConfig
+
 
 logger = logging.getLogger('datapipe.event_logger')
 
@@ -41,39 +43,86 @@ class EventLogger:
             Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
         ]
 
-    def log_state(self, table_name, added_count, updated_count, deleted_count):
-        logger.debug(f'Table "{table_name}": added = {added_count}; updated = {updated_count}; deleted = {deleted_count}')
+    def log_state(
+        self,
+        table_name,
+        added_count,
+        updated_count,
+        deleted_count,
+        processed_count,
+        run_config: RunConfig = None,
+    ):
+        logger.debug(
+            f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
+            f'deleted = {deleted_count}, processed_count = {deleted_count}'
+        )
+
+        if run_config is not None:
+            meta = {
+                "labels": run_config.labels,
+                "filters": run_config.filters,
+            }
+        else:
+            meta = {}
 
         ins = self.events_table.insert().values(
             type=EventTypes.STATE.value,
             event={
-                "table_name": table_name,
-                "added_count": added_count,
-                "updated_count": updated_count,
-                "deleted_count": deleted_count
+                "meta": meta,
+                "data": {
+                    "table_name": table_name,
+                    "added_count": added_count,
+                    "updated_count": updated_count,
+                    "deleted_count": deleted_count,
+                    "processed_count": processed_count,
+                }
             }
         )
 
         self.dbconn.con.execute(ins)
 
-    def log_error(self, type, message, description, params):
-        logger.debug(f'Error {type} {message}')
+    def log_error(
+        self,
+        type,
+        message,
+        description,
+        params,
+        run_config: RunConfig = None,
+    ) -> None:
+        if run_config is not None:
+            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
+            meta = {
+                "labels": run_config.labels,
+                "filters": run_config.filters,
+            }
+        else:
+            logger.debug(f'Error: {type} {message}')
+            meta = {}
+
         ins = self.events_table.insert().values(
             type=EventTypes.ERROR.value,
             event={
-                "type": type,
-                "message": message,
-                "description": description,
-                "params": params
+                "meta": meta,
+                "data": {
+                    "type": type,
+                    "message": message,
+                    "description": description,
+                    "params": params,
+                }
             }
         )
 
         self.dbconn.con.execute(ins)
 
-    def log_exception(self, exc: Exception):
+    def log_exception(
+        self,
+        exc: Exception,
+        run_config: RunConfig = None,
+    ) -> None:
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
             description=traceback.format_exc(),
-            params=exc.args
+            params=exc.args,
+            run_config=run_config,
         )

@@ -4,7 +4,7 @@ from typing import List, Optional, Union, Iterator
 from sqlalchemy import Column, String
 import pandas as pd
 from pathlib import Path
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 from datapipe.types import IndexDF, DataDF, DataSchema, data_to_index
 
@@ -37,7 +37,7 @@ class TableStore(ABC):
 
 class TableDataSingleFileStore(TableStore):
     def __init__(self, filename: Union[Path, str] = None, primary_schema: DataSchema = None):
-        if not primary_schema:
+        if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 
         self.primary_schema = primary_schema
@@ -57,10 +57,13 @@ class TableDataSingleFileStore(TableStore):
 
         if file_df is not None:
             if index_df is not None:
-                file_df = file_df.set_index(self.primary_keys)
-                idx = index_df.set_index(self.primary_keys)
+                if len(index_df):
+                    file_df = file_df.set_index(self.primary_keys)
+                    idx = index_df.set_index(self.primary_keys)
 
-                return file_df.loc[idx.index].reset_index()
+                    return file_df.loc[idx.index].reset_index()
+                else:
+                    return pd.DataFrame()
             else:
                 return file_df
         else:

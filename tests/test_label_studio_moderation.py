@@ -5,17 +5,17 @@ import distutils.util
 from subprocess import Popen
 
 import time
-from datapipe.datatable import gen_process
 import pytest
 import pandas as pd
 import numpy as np
 from PIL import Image
 
-from datapipe.dsl import Catalog, LabelStudioModeration, Pipeline, Table, BatchGenerate, BatchTransform
 from datapipe.datatable import DataStore
-from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
+from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.compute import build_compute, run_steps
-from datapipe.label_studio.session import LabelStudioModerationStep, LabelStudioSession
+from datapipe.core_steps import BatchGenerate, BatchTransform, batch_generate_wrapper
+from datapipe.store.filedir import JSONFile, TableStoreFiledir, PILFile
+from datapipe.label_studio.session import LabelStudioModeration, LabelStudioModerationStep, LabelStudioSession
 
 
 LABEL_STUDIO_AUTH = ('test@epoch8.co', 'qwerty123')
@@ -186,10 +186,12 @@ def test_label_studio_moderation(dbconn, tmp_dir, ls_url, include_annotations, i
     run_steps(ds, steps)
 
     # These steps should upload tasks (it also can be BatchGenerate as first step of pipeline, like in the next test)
-    gen_process(
-        dt=catalog.get_datatable(ds, '00_images'),
-        proc_func=gen_images
+    batch_generate_wrapper(
+        func=gen_images,
+        ds=ds,
+        output_dts=[catalog.get_datatable(ds, '00_images')],
     )
+
     run_steps(ds, steps)
 
     assert len(catalog.get_datatable(ds, '02_annotations').get_data()) == 10

@@ -4,10 +4,13 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 
-from sqlalchemy import Column, String
-
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, Table, BatchGenerate, BatchTransform
-from datapipe.datatable import DataStore, DataTable, gen_process, inc_process
+from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.core_steps import (
+    BatchGenerate, batch_generate_wrapper,
+    BatchTransform, batch_transform_wrapper,
+    UpdateExternalTable,
+)
+from datapipe.datatable import DataStore
 from datapipe.store.filedir import TableStoreFiledir, PILFile
 from datapipe.compute import build_compute, run_pipeline, run_steps
 
@@ -53,16 +56,17 @@ def test_image_datatables(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    gen_process(
-        tbl1,
-        gen_images
+    batch_generate_wrapper(
+        func=gen_images,
+        ds=ds,
+        output_dts=[tbl1],
     )
 
-    inc_process(
-        ds,
-        [tbl1],
-        tbl2,
-        resize_images
+    batch_transform_wrapper(
+        func=resize_images,
+        ds=ds,
+        input_dts=[tbl1],
+        output_dts=[tbl2],
     )
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
@@ -116,7 +120,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
         row['image'].save(tmp_dir / 'tbl1' / f'{row["id"]}.png')
 
     catalog = Catalog({
-        'tbl1': ExternalTable(
+        'tbl1': Table(
             store=TableStoreFiledir(
                 tmp_dir / 'tbl1' / '{id}.png',
                 adapter=PILFile('png')
@@ -131,6 +135,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     })
 
     pipeline = Pipeline([
+        UpdateExternalTable("tbl1"),
         BatchTransform(
             lambda df: df,
             inputs=["tbl1"],

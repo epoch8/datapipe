@@ -1,114 +1,125 @@
-from typing import List, Callable
-from dataclasses import dataclass
+from typing import List, Dict, Callable, Optional, Any, cast
+from dataclasses import dataclass, field
+from abc import ABC
 
 import logging
-from datapipe.label_studio.session import LabelStudioModerationStep
 
-from datapipe.datatable import DataStore, gen_process_many, inc_process_many, ExternalTableUpdater
-
-from .dsl import BatchGenerate, ExternalTable, Catalog, Pipeline, BatchTransform, LabelStudioModeration
-from .step import ComputeStep, RunConfig
+from datapipe.datatable import DataTable, DataStore
+from datapipe.run_config import RunConfig
+from datapipe.store.table_store import TableStore
 
 logger = logging.getLogger('datapipe.compute')
 
 
 @dataclass
-class BatchGenerateStep(ComputeStep):
-    func: Callable
+class Table:
+    store: TableStore
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        gen_process_many(
-            self.output_dts,
-            self.func,
-            run_config=run_config,
+
+class Catalog:
+    def __init__(self, catalog: Dict[str, Table]):
+        self.catalog = catalog
+        self.data_tables: Dict[str, DataTable] = {}
+
+    def get_datatable(self, ds: DataStore, name: str) -> DataTable:
+        return ds.get_or_create_table(
+            name=name,
+            table_store=self.catalog[name].store
         )
 
 
 @dataclass
-class BatchTransformIncStep(ComputeStep):
-    func: Callable
-    chunk_size: int
+class Pipeline:
+    steps: List['PipelineStep']
+
+
+# Пайплайн описывается через PipelineStep
+# Для выполнения у каждого pipeline_step выполняется build_compute на основании которых создается граф вычислений
+class PipelineStep(ABC):
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+        raise NotImplementedError
+
+
+ComputeStepFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
+
+
+class DatatableTransform(PipelineStep):
+    def __init__(
+        self,
+        func: ComputeStepFunc,
+        inputs: List[str],
+        outputs: List[str],
+    ) -> None:
+        self.func = func
+        self.inputs = inputs
+        self.outputs = outputs
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+        return [
+            DatatableTransformStep(
+                name=self.func.__name__,
+                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
+                output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
+                func=self.func,
+            )
+        ]
+
+
+@dataclass
+class DatatableTransformStep:
+    name: str
+    input_dts: List[DataTable]
+    output_dts: List[DataTable]
+    func: ComputeStepFunc
+    kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
+    check_for_changes: bool = True
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
-        inc_process_many(
-            ds,
-            self.input_dts,
-            self.output_dts,
-            self.func,
-            self.chunk_size,
-            run_config=run_config
-        )
+        if len(self.input_dts) > 0 and self.check_for_changes:
+            changed_idx_count = ds.get_changed_idx_count(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                run_config=run_config
+            )
+
+            if changed_idx_count == 0:
+                logger.debug(f'Skipping {self.name} execution - nothing to compute')
+
+                return
+
+        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
+
+        self.func(ds, self.input_dts, self.output_dts, run_config)
 
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
-    res: List[ComputeStep] = []
-
-    for name, tbl in catalog.catalog.items():
-        if isinstance(tbl, ExternalTable):
-            res.append(ExternalTableUpdater(
-                name=f'update_{name}',
-                table=catalog.get_datatable(ds, name)
-            ))
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:
+    res: List[DatatableTransformStep] = []
 
     for step in pipeline.steps:
-        if isinstance(step, BatchGenerate):
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchGenerateStep(
-                f'{step.func.__name__}',
-                input_dts=[],
-                output_dts=output_dts,
-                func=step.func,
-            ))
-
-        if isinstance(step, BatchTransform):
-            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(BatchTransformIncStep(
-                f'{step.func.__name__}',
-                input_dts=input_dts,
-                output_dts=output_dts,
-                func=step.func,
-                chunk_size=step.chunk_size
-            ))
-
-        if isinstance(step, LabelStudioModeration):
-            input_dts = [catalog.get_datatable(ds, name) for name in step.inputs]
-            output_dts = [catalog.get_datatable(ds, name) for name in step.outputs]
-
-            res.append(LabelStudioModerationStep(
-                name=f"LabelStudioModeration (Project {step.project_title})",
-                input_dts=input_dts,
-                output_dts=output_dts,
-                ls_url=step.ls_url,
-                auth=step.auth,
-                project_title=step.project_title,
-                project_description=step.project_description,
-                project_label_config=step.project_label_config,
-                data=step.data,
-                annotations=step.annotations,
-                predictions=step.predictions,
-                chunk_size=step.chunk_size,
-            ))
+        res.extend(step.build_compute(ds, catalog))
 
     return res
 
 
-def print_compute(steps: List[ComputeStep]) -> None:
+def print_compute(steps: List[DatatableTransformStep]) -> None:
     import pprint
     pprint.pp(
         steps
     )
 
 
-def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
+def run_steps(ds: DataStore, steps: List[DatatableTransformStep], run_config: RunConfig = None) -> None:
     for step in steps:
         logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
 
         step.run(ds, run_config)
 
 
-def run_pipeline(ds: DataStore, catalog: Catalog, pipeline: Pipeline, run_config: RunConfig = None) -> None:
+def run_pipeline(
+    ds: DataStore,
+    catalog: Catalog,
+    pipeline: Pipeline,
+    run_config: RunConfig = None,
+) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)

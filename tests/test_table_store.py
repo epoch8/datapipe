@@ -1,13 +1,14 @@
+import pytest
+from pytest_cases import parametrize_with_cases, case, parametrize
+
 import datetime
 import os
 import time
 from typing import Iterable, List, cast
-import pytest
-from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 from datapipe.types import DataDF, IndexDF
 from datapipe.store.table_store import TableStore
@@ -15,6 +16,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.yandex_toloka.store import TableStoreYandexToloka
+from datapipe.store.leveldb import LevelDBStore
 
 from .util import assert_df_equal, assert_ts_contains
 
@@ -56,6 +58,34 @@ DATA_PARAMS = [
             Column('id_str', String(100), primary_key=True),
         ],
         id='multi_id'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(1000)],
+            'id2': [f'id_{i}' for i in range(1000)],
+            'name': [f'Product {i}' for i in range(1000)],
+            'price': [1000 + i for i in range(1000)],
+        }),
+        [
+            Column('id1', String(100), primary_key=True),
+            Column('id2', String(100), primary_key=True),
+        ],
+        id='double_id_1000_records'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id1': [f'id_{i}' for i in range(1000)],
+            'id2': [f'id_{i}' for i in range(1000)],
+            'id3': [f'id_{i}' for i in range(1000)],
+            'name': [f'Product {i}' for i in range(1000)],
+            'price': [1000 + i for i in range(1000)],
+        }),
+        [
+            Column('id1', String(100), primary_key=True),
+            Column('id2', String(100), primary_key=True),
+            Column('id3', String(100), primary_key=True),
+        ],
+        id='triple_id_1000_records'
     )
 ]
 
@@ -114,7 +144,7 @@ FILEDIR_DATA_PARAMS = [
 ]
 
 
-def GEN_DATA_PARAMS_N(data_parms: List[pytest.param], N: int) -> List[pytest.param]:
+def GEN_DATA_PARAMS_N(data_parms: List, N: int):
     return [pytest.param(param.values[0](N), param.values[1], id=param.id) for param in data_parms]
 
 
@@ -152,6 +182,21 @@ class CasesTableStore:
             TableStoreExcel(
                 tmp_dir / "data.xlsx",
                 primary_schema=schema
+            ),
+            df
+        )
+
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', GEN_DATA_PARAMS_N(DATA_PARAMS, 100))
+    def case_leveldb(self, tmp_dir, df, schema):
+        return (
+            LevelDBStore(
+                'tbl1',
+                tmp_dir / 'levelDB-tbl1',
+                schema + [
+                    Column('name', String(100)),
+                    Column('price', Integer),
+                ]
             ),
             df
         )
@@ -245,7 +290,10 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
     df_empty = pd.DataFrame()
+
     assert store.read_rows(cast(IndexDF, df_empty)).empty
 
 

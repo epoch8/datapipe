@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, Tuple, Dict, cast
+from typing import Iterator, Tuple, Dict, cast, List
 
 import copy
 import logging
@@ -13,8 +13,7 @@ import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
-from datapipe.event_logger import EventLogger
-from datapipe.step import RunConfig
+from datapipe.run_config import RunConfig
 
 
 logger = logging.getLogger('datapipe.metastore')
@@ -40,17 +39,11 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
-        event_logger: EventLogger = None
     ):
         self.dbconn = dbconn
         self.name = name
 
-        if event_logger is None:
-            self.event_logger = EventLogger(dbconn)
-        else:
-            self.event_logger = event_logger
-
-        self.primary_keys = [column.name for column in primary_schema]
+        self.primary_keys: List[str] = [column.name for column in primary_schema]
 
         for item in primary_schema:
             item.primary_key = True
@@ -77,7 +70,11 @@ class MetaTable:
         sql = select(self.sql_schema)
 
         if idx is not None:
-            if len(self.primary_keys) == 1:
+            if len(self.primary_keys) == 0:
+                # Когда ключей нет - не делаем ничего
+                pass
+
+            elif len(self.primary_keys) == 1:
                 # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
                 sql = sql.where(
@@ -143,20 +140,26 @@ class MetaTable:
 
             row_queries = []
 
+            # FIXME поправить на сравнение кортежей
             for _, row in idx.iterrows():
-                and_params = [self.sql_table.c[key] == self._get_sql_param(row[key]) for key in idx_cols]
+                and_params = [
+                    self.sql_table.c[key] == self._get_sql_param(row[key])
+                    for key in idx_cols
+                    if key in self.primary_keys
+                ]
                 and_query = and_(*and_params)
                 row_queries.append(and_query)
 
             sql = sql.where(or_(*row_queries))
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
-        res_df = pd.read_sql_query(
+
+        res_df: DataDF = pd.read_sql_query(
             sql,
             con=self.dbconn.con,
         )
 
-        return res_df[self.primary_keys]
+        return data_to_index(res_df, self.primary_keys)
 
     def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(
@@ -288,11 +291,12 @@ class MetaTable:
         if len(changed_meta_df) > 0:
             self._update_existing_metadata_rows(changed_meta_df)
 
-    def mark_rows_deleted(self, deleted_idx: IndexDF, now: float = None) -> None:
+    def mark_rows_deleted(
+        self,
+        deleted_idx: IndexDF,
+        now: float = None,
+    ) -> None:
         if len(deleted_idx) > 0:
-            logger.debug(f'Deleting {len(deleted_idx.index)} rows from {self.name} data')
-            self.event_logger.log_state(self.name, added_count=0, updated_count=0, deleted_count=len(deleted_idx))
-
             if now is None:
                 now = time.time()
 

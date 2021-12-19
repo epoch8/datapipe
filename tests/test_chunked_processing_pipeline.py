@@ -5,7 +5,8 @@ import pandas as pd
 from datapipe.datatable import DataStore
 from datapipe.compute import build_compute, run_steps
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.dsl import Catalog, ExternalTable, Pipeline, BatchTransform, Table
+from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.core_steps import BatchTransform, UpdateExternalTable
 
 
 CHUNK_SIZE = 100
@@ -27,7 +28,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
 
     ds = DataStore(dbconn)
     catalog = Catalog({
-        "input_data": ExternalTable(
+        "input_data": Table(
             store=TableStoreJsonLine(test_input_fname),
         ),
         "output_data": Table(
@@ -35,6 +36,9 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
         ),
     })
     pipeline = Pipeline([
+        UpdateExternalTable(
+            "input_data"
+        ),
         BatchTransform(
             conversion,
             inputs=["input_data"],

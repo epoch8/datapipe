@@ -2,7 +2,7 @@ import dash_html_components as html
 import dash_interactive_graphviz as gv
 from dash.dependencies import Input, Output
 
-from datapipe.dsl import Catalog, Pipeline
+from datapipe.compute import Catalog, Pipeline
 from datapipe.compute import build_compute
 from datapipe.datatable import DataStore
 
