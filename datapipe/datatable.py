@@ -51,8 +51,8 @@ class DataTable:
         '''
         Записать новые данные в таблицу.
 
-        При указанном `processed_idx` удалить те строки, которые находятся внутри `processed_idx`, но
-        отсутствуют в `data_df`.
+        При указанном `processed_idx` удалить те строки, которые находятся
+        внутри `processed_idx`, но отсутствуют в `data_df`.
         '''
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
