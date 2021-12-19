@@ -74,6 +74,28 @@ class DatatableTransformStep:
     kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
     check_for_changes: bool = True
 
+    def __post_init__(self):
+        inp_p_keys = set(*[inp.primary_keys for inp in self.input_dts]) if len(self.input_dts) > 0 else set()
+        out_p_keys = set(*[out.primary_keys for out in self.output_dts]) if len(self.output_dts) > 0 else set()
+        join_keys = set.intersection(inp_p_keys, out_p_keys)
+
+        key_to_column_type_inp = {
+            column.name: type(column.type)
+            for inp in self.input_dts
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        key_to_column_type_out = {
+            column.name: type(column.type)
+            for inp in self.output_dts
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        for key in join_keys:
+            if key_to_column_type_inp[key] != key_to_column_type_out[key]:
+                raise ValueError(
+                    f'Primary key "{key}" in inputs and outputs must have same column\'s type: '
+                    f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
+                )
+
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
             changed_idx_count = ds.get_changed_idx_count(
