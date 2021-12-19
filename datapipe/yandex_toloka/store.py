@@ -16,7 +16,7 @@ from toloka.client.pool.mixer_config import MixerConfig
 
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.step import RunConfig
+from datapipe.compute import RunConfig
 from datapipe.types import (
     DataDF, DataSchema, IndexDF, data_to_index, index_to_data
 )

@@ -60,12 +60,14 @@ DATA_PARAMS = [
         id='multi_id'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id1': [f'id_{i}' for i in range(1000)],
-            'id2': [f'id_{i}' for i in range(1000)],
-            'name': [f'Product {i}' for i in range(1000)],
-            'price': [1000 + i for i in range(1000)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id1': [f'id_{i}' for i in range(N)],
+                'id2': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         [
             Column('id1', String(100), primary_key=True),
             Column('id2', String(100), primary_key=True),
@@ -73,13 +75,15 @@ DATA_PARAMS = [
         id='double_id_1000_records'
     ),
     pytest.param(
-        pd.DataFrame({
-            'id1': [f'id_{i}' for i in range(1000)],
-            'id2': [f'id_{i}' for i in range(1000)],
-            'id3': [f'id_{i}' for i in range(1000)],
-            'name': [f'Product {i}' for i in range(1000)],
-            'price': [1000 + i for i in range(1000)],
-        }),
+        lambda N: (
+            pd.DataFrame({
+                'id1': [f'id_{i}' for i in range(N)],
+                'id2': [f'id_{i}' for i in range(N)],
+                'id3': [f'id_{i}' for i in range(N)],
+                'name': [f'Product {i}' for i in range(N)],
+                'price': [1000 + i for i in range(N)],
+            })
+        ),
         [
             Column('id1', String(100), primary_key=True),
             Column('id2', String(100), primary_key=True),
