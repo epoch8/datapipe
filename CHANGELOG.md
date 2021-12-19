@@ -14,6 +14,11 @@
 * `DataStore.get_process_ids` переименован в `get_full_process_ids`
 * Добавлен метод `get_change_list_process_ids`
 
+# 0.10.1
+
+* Поддержка явного задания `primary_schema` для `TableStoreFiledir`
+* Первичная проверка корректности схем данных в `DatatableTransformStep`
+
 # 0.10.0
 
 * Не считать отсутствие строки в одной из входных таблиц необходимым условием

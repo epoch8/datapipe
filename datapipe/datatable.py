@@ -32,6 +32,7 @@ class DataTable:
         self.table_store = table_store
         self.event_logger = event_logger
 
+        self.primary_schema = meta_table.primary_schema
         self.primary_keys = meta_table.primary_keys
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:

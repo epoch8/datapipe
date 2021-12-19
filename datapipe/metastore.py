@@ -43,6 +43,7 @@ class MetaTable:
         self.dbconn = dbconn
         self.name = name
 
+        self.primary_schema = primary_schema
         self.primary_keys: List[str] = [column.name for column in primary_schema]
 
         for item in primary_schema:

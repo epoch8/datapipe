@@ -20,7 +20,6 @@
         "--max-line-length=127"
     ],
     "python.formatting.provider": "black",
-
     "githubIssues.queries": [
         {
             "label": "My Issues",

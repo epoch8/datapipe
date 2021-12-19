@@ -100,6 +100,28 @@ class ComputeStep(ABC):
     def get_output_dts(self) -> List[DataTable]:
         pass
 
+    def validate(self):
+        inp_p_keys = set(*[inp.primary_keys for inp in self.get_input_dts()]) if len(self.get_input_dts()) > 0 else set()
+        out_p_keys = set(*[out.primary_keys for out in self.get_output_dts()]) if len(self.get_output_dts()) > 0 else set()
+        join_keys = set.intersection(inp_p_keys, out_p_keys)
+
+        key_to_column_type_inp = {
+            column.name: type(column.type)
+            for inp in self.get_input_dts()
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        key_to_column_type_out = {
+            column.name: type(column.type)
+            for inp in self.get_output_dts()
+            for column in inp.primary_schema if column.name in join_keys
+        }
+        for key in join_keys:
+            if key_to_column_type_inp[key] != key_to_column_type_out[key]:
+                raise ValueError(
+                    f'Primary key "{key}" in inputs and outputs must have same column\'s type: '
+                    f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
+                )
+
     @abstractmethod
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         pass
@@ -159,12 +181,15 @@ class DatatableTransformStep(ComputeStep):
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
-    res: List[ComputeStep] = []
+    compute_pipeline: List[ComputeStep] = []
 
     for step in pipeline.steps:
-        res.extend(step.build_compute(ds, catalog))
+        compute_pipeline.extend(step.build_compute(ds, catalog))
 
-    return res
+    for compute_step in compute_pipeline:
+        compute_step.validate()
+
+    return compute_pipeline
 
 
 def print_compute(steps: List[ComputeStep]) -> None:
