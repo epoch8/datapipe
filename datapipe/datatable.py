@@ -1,7 +1,7 @@
 from typing import Dict, Iterator, List, Optional, Tuple, Set
 
 import logging
-from opentelemetry import trace  # type: ignore
+from opentelemetry import trace
 
 import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_, literal

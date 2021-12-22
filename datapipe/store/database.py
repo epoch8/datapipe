@@ -3,8 +3,8 @@ from typing import List, Any, Dict, Union, Optional, Iterator
 import copy
 import logging
 import pandas as pd
-from opentelemetry import trace  # type: ignore
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # type: ignore
+from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, tuple_

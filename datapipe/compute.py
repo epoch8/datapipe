@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from abc import ABC
 
 import logging
-from opentelemetry import trace  # type: ignore
+from opentelemetry import trace
 
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
@@ -78,7 +78,11 @@ class DatatableTransformStep:
 
     def __post_init__(self):
         inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in self.input_dts]) if len(self.input_dts) > 0 else set()
-        out_p_keys = set.intersection(*[set(out.primary_keys) for out in self.output_dts]) if len(self.output_dts) > 0 else set()
+        out_p_keys = (
+            set.intersection(*[set(out.primary_keys) for out in self.output_dts])
+            if len(self.output_dts) > 0
+            else set()
+        )
         join_keys = set.intersection(inp_p_keys, out_p_keys)
 
         key_to_column_type_inp = {

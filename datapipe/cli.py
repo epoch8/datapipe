@@ -1,8 +1,8 @@
 import click
 
-from opentelemetry import trace  # type: ignore
-from opentelemetry.sdk.trace import TracerProvider  # type: ignore
-from opentelemetry.sdk.trace.export import (  # type: ignore
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
 )
@@ -38,7 +38,7 @@ def main(
             processor = BatchSpanProcessor(ConsoleSpanExporter())
             provider.add_span_processor(processor)
             trace.set_tracer_provider(provider)
-        
+
         if trace_jaeger:
             from opentelemetry import trace
             from opentelemetry.exporter.jaeger.thrift import JaegerExporter
@@ -55,8 +55,8 @@ def main(
             # create a JaegerExporter
             jaeger_exporter = JaegerExporter(
                 # configure agent
-                #agent_host_name='localhost',
-                #agent_port=6831,
+                # agent_host_name='localhost',
+                # agent_port=6831,
                 # optional: configure also collector
                 collector_endpoint='http://localhost:14268/api/traces?format=jaeger.thrift',
                 # username=xxxx, # optional
@@ -68,7 +68,7 @@ def main(
             span_processor = BatchSpanProcessor(jaeger_exporter)
 
             # add to the tracer
-            trace.get_tracer_provider().add_span_processor(span_processor)
+            trace.get_tracer_provider().add_span_processor(span_processor)  # type: ignore
 
     @cli.command()
     def run():

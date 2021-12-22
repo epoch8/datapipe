@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import time
 import tqdm
 import logging
-from opentelemetry import trace  # type: ignore
+from opentelemetry import trace
 
 from datapipe.types import DataDF
 from datapipe.compute import PipelineStep, Catalog, DatatableTransformStep

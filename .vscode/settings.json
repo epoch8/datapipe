@@ -19,6 +19,13 @@
     "python.linting.flake8Args": [
         "--max-line-length=127"
     ],
+    "python.linting.mypyArgs": [
+        "--follow-imports=silent",
+        "--ignore-missing-imports",
+        "--show-column-numbers",
+        "--no-pretty",
+        "--namespace-packages"
+    ],
     "python.formatting.provider": "black",
     "githubIssues.queries": [
         {
