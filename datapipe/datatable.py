@@ -1,6 +1,7 @@
 from typing import Dict, Iterator, List, Optional, Tuple, Set
 
 import logging
+from opentelemetry import trace  # type: ignore
 
 import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_, literal
@@ -14,6 +15,7 @@ from datapipe.run_config import RunConfig, LabelDict
 
 
 logger = logging.getLogger('datapipe.datatable')
+tracer = trace.get_tracer("datapipe.datatable")
 
 
 class DataTable:
@@ -54,41 +56,46 @@ class DataTable:
         отсутствуют в `data_df`.
         '''
 
-        if not data_df.empty:
-            logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
+        with tracer.start_as_current_span(f"{self.name} store_chunk"):
+            if not data_df.empty:
+                logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-            (
-                new_df,
-                changed_df,
-                new_meta_df,
-                changed_meta_df
-            ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
+                with tracer.start_as_current_span("get_changes_for_store_chunk"):
+                    (
+                        new_df,
+                        changed_df,
+                        new_meta_df,
+                        changed_meta_df
+                    ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-            self.event_logger.log_state(
-                self.name,
-                added_count=len(new_df),
-                updated_count=len(changed_df),
-                deleted_count=0,
-                processed_count=len(data_df),
-                run_config=run_config,
-            )
+                self.event_logger.log_state(
+                    self.name,
+                    added_count=len(new_df),
+                    updated_count=len(changed_df),
+                    deleted_count=0,
+                    processed_count=len(data_df),
+                    run_config=run_config,
+                )
 
-            # TODO implement transaction meckanism
-            self.table_store.insert_rows(new_df)
-            self.table_store.update_rows(changed_df)
+                # TODO implement transaction meckanism
+                with tracer.start_as_current_span("store data"):
+                    self.table_store.insert_rows(new_df)
+                    self.table_store.update_rows(changed_df)
 
-            self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-            self.meta_table.update_meta_for_store_chunk(changed_meta_df)
-        else:
-            data_df = pd.DataFrame(columns=self.primary_keys)
+                with tracer.start_as_current_span("store metadata"):
+                    self.meta_table.insert_meta_for_store_chunk(new_meta_df)
+                    self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+            else:
+                data_df = pd.DataFrame(columns=self.primary_keys)
 
-        data_idx = data_to_index(data_df, self.primary_keys)
+            with tracer.start_as_current_span("cleanup deleted rows"):
+                data_idx = data_to_index(data_df, self.primary_keys)
 
-        if processed_idx is not None:
-            existing_idx = self.meta_table.get_existing_idx(processed_idx)
-            deleted_idx = index_difference(existing_idx, data_idx)
+                if processed_idx is not None:
+                    existing_idx = self.meta_table.get_existing_idx(processed_idx)
+                    deleted_idx = index_difference(existing_idx, data_idx)
 
-            self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
+                    self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
     def delete_by_idx(
         self,

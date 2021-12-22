@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import time
 import tqdm
 import logging
+from opentelemetry import trace  # type: ignore
 
 from datapipe.types import DataDF
 from datapipe.compute import PipelineStep, Catalog, DatatableTransformStep
@@ -12,6 +13,7 @@ from datapipe.run_config import RunConfig
 
 
 logger = logging.getLogger('datapipe.core_steps')
+tracer = trace.get_tracer("datapipe.core_steps")
 
 
 BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF], Tuple[DataDF, ...]]]
@@ -31,50 +33,56 @@ def batch_transform_wrapper(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    idx_count, idx_gen = ds.get_process_ids(
-        inputs=input_dts,
-        outputs=output_dts,
-        chunksize=chunksize,
-        run_config=run_config
-    )
+    with tracer.start_as_current_span("compute ids to process"):
+        idx_count, idx_gen = ds.get_process_ids(
+            inputs=input_dts,
+            outputs=output_dts,
+            chunksize=chunksize,
+            run_config=run_config
+        )
 
     logger.info(f'Items to update {idx_count}')
 
     if idx_count > 0:
         for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
-            logger.debug(f'Idx to process: {idx.to_records()}')
+            with tracer.start_as_current_span("process batch"):
+                logger.debug(f'Idx to process: {idx.to_records()}')
 
-            input_dfs = [inp.get_data(idx) for inp in input_dts]
+                with tracer.start_as_current_span("get input data"):
+                    input_dfs = [inp.get_data(idx) for inp in input_dts]
 
-            if sum(len(j) for j in input_dfs) > 0:
-                try:
-                    chunks_df = func(*input_dfs)
-                except Exception as e:
-                    logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                    ds.event_logger.log_exception(e, run_config=run_config)
+                if sum(len(j) for j in input_dfs) > 0:
+                    with tracer.start_as_current_span("run transform"):
+                        try:
+                            chunks_df = func(*input_dfs)
+                        except Exception as e:
+                            logger.error(f"Transform failed ({func.__name__}): {str(e)}")
+                            ds.event_logger.log_exception(e, run_config=run_config)
 
-                    continue
+                            continue
 
-                if isinstance(chunks_df, (list, tuple)):
-                    assert len(chunks_df) == len(output_dts)
+                    if isinstance(chunks_df, (list, tuple)):
+                        assert len(chunks_df) == len(output_dts)
+                    else:
+                        assert len(output_dts) == 1
+                        chunks_df = [chunks_df]
+
+                    with tracer.start_as_current_span("store output batch"):
+                        for k, res_dt in enumerate(output_dts):
+                            # Берем k-ое значение функции для k-ой таблички
+                            # Добавляем результат в результирующие чанки
+                            res_dt.store_chunk(
+                                data_df=chunks_df[k],
+                                processed_idx=idx,
+                                run_config=run_config,
+                            )
+
                 else:
-                    assert len(output_dts) == 1
-                    chunks_df = [chunks_df]
+                    with tracer.start_as_current_span("delete missing data from output"):
+                        for k, res_dt in enumerate(output_dts):
+                            del_idx = res_dt.meta_table.get_existing_idx(idx)
 
-                for k, res_dt in enumerate(output_dts):
-                    # Берем k-ое значение функции для k-ой таблички
-                    # Добавляем результат в результирующие чанки
-                    res_dt.store_chunk(
-                        data_df=chunks_df[k],
-                        processed_idx=idx,
-                        run_config=run_config,
-                    )
-
-            else:
-                for k, res_dt in enumerate(output_dts):
-                    del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                    res_dt.delete_by_idx(del_idx, run_config=run_config)
+                            res_dt.delete_by_idx(del_idx, run_config=run_config)
 
 
 @dataclass
@@ -130,48 +138,52 @@ def batch_generate_wrapper(
 
     assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
-    try:
-        iterable = func()
-    except Exception as e:
-        logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
-        ds.event_logger.log_exception(e, run_config=run_config)
-
-        # raise e
-        return
-
-    while True:
+    with tracer.start_as_current_span("init generator"):
         try:
-            chunk_dfs = next(iterable)
-
-            if isinstance(chunk_dfs, pd.DataFrame):
-                chunk_dfs = [chunk_dfs]
-        except StopIteration:
-            if empty_generator:
-                for k, dt_k in enumerate(output_dts):
-                    dt_k.event_logger.log_state(
-                        dt_k.name,
-                        added_count=0,
-                        updated_count=0,
-                        deleted_count=0,
-                        processed_count=0,
-                        run_config=run_config,
-                    )
-
-            break
+            iterable = func()
         except Exception as e:
-            logger.exception(f"Generating failed ({func}): {str(e)}")
+            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
             ds.event_logger.log_exception(e, run_config=run_config)
 
             # raise e
             return
 
+    while True:
+        with tracer.start_as_current_span("get next batch"):
+            try:
+                chunk_dfs = next(iterable)
+
+                if isinstance(chunk_dfs, pd.DataFrame):
+                    chunk_dfs = [chunk_dfs]
+            except StopIteration:
+                if empty_generator:
+                    for k, dt_k in enumerate(output_dts):
+                        dt_k.event_logger.log_state(
+                            dt_k.name,
+                            added_count=0,
+                            updated_count=0,
+                            deleted_count=0,
+                            processed_count=0,
+                            run_config=run_config,
+                        )
+
+                break
+            except Exception as e:
+                logger.exception(f"Generating failed ({func}): {str(e)}")
+                ds.event_logger.log_exception(e, run_config=run_config)
+
+                # raise e
+                return
+
         empty_generator = False
 
-        for k, dt_k in enumerate(output_dts):
-            dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
+        with tracer.start_as_current_span("store results"):
+            for k, dt_k in enumerate(output_dts):
+                dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
 
-    for k, dt_k in enumerate(output_dts):
-        dt_k.delete_stale_by_process_ts(now, run_config=run_config)
+    with tracer.start_as_current_span("delete stale rows"):
+        for k, dt_k in enumerate(output_dts):
+            dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
 @dataclass
