@@ -8,8 +8,9 @@ exclude=["tests", "examples"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-fsspec = "==2021.5.0"
-gcsfs = "==2021.5.0"
+fsspec = "==2021.11.1"
+gcsfs = "==2021.11.1"
+s3fs = "==2021.11.1"
 
 pandas = "^1.2.0"
 numpy = "^1.21.0"
