@@ -77,12 +77,8 @@ class DatatableTransformStep:
     check_for_changes: bool = True
 
     def __post_init__(self):
-        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in self.input_dts]) if len(self.input_dts) > 0 else set()
-        out_p_keys = (
-            set.intersection(*[set(out.primary_keys) for out in self.output_dts])
-            if len(self.output_dts) > 0
-            else set()
-        )
+        inp_p_keys = {key for inp in self.input_dts for key in inp.primary_keys}
+        out_p_keys = {key for out in self.output_dts for key in out.primary_keys}
         join_keys = set.intersection(inp_p_keys, out_p_keys)
 
         key_to_column_type_inp = {
