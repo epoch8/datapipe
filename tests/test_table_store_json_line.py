@@ -35,10 +35,10 @@ def make_file2(file):
         out.write('{"id": "2", "text": "text2"}\n')
 
 
-def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
+def test_table_store_json_line_with_deleting(dbconn_no_transaction, tmp_dir):
     input_file = tmp_dir / "data.json"
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn_no_transaction)
     catalog = Catalog({
         "input_data": Table(
             store=TableStoreJsonLine(tmp_dir / "data.json"),

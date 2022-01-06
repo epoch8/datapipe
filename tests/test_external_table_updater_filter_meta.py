@@ -10,10 +10,9 @@ from datapipe.run_config import RunConfig
 from .util import assert_df_equal
 
 
-def test_external_table_updater_filter(dbconn: DBConn):
-    meta_dbconn = DBConn(dbconn.connstr, dbconn.schema)
+def test_external_table_updater_filter(dbconn_no_transaction: DBConn):
     test_store = TableStoreDB(
-        dbconn=dbconn,
+        dbconn=dbconn_no_transaction,
         name="test_data",
         data_sql_schema=[
             Column("composite_id_1", Integer(), primary_key=True),
@@ -35,7 +34,7 @@ def test_external_table_updater_filter(dbconn: DBConn):
             output="test"
         )
     ])
-    ds = DataStore(meta_dbconn)
+    ds = DataStore(dbconn_no_transaction)
 
     test_store.insert_rows(df_test)
 
