@@ -1,4 +1,6 @@
 from typing import Dict, Iterator, List, Optional, Tuple, Set
+from contextlib import contextmanager
+from itertools import chain
 
 import logging
 from opentelemetry import trace
@@ -7,9 +9,9 @@ import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_, literal
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable
 from datapipe.store.table_store import TableStore
+from datapipe.store.database import DBConn, TableStoreDB, dbconn_transaction, sql_apply_runconfig_filter
 from datapipe.event_logger import EventLogger
 from datapipe.run_config import RunConfig, LabelDict
 
@@ -331,3 +333,18 @@ class DataStore:
                 yield df.drop(columns='_1')
 
         return idx_count, alter_res_df()
+
+    @contextmanager
+    def transaction(
+        self,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+    ):
+        dbconns = [self.meta_dbconn]
+
+        for dt in chain(input_dts, output_dts):
+            if isinstance(dt.table_store, TableStoreDB):
+                dbconns.append(dt.table_store.dbconn)
+
+        with dbconn_transaction(dbconns):
+            yield

@@ -40,7 +40,7 @@ class EventLogger:
             Column('id', Integer, primary_key=True, autoincrement=True),
             Column('event_ts', DateTime, server_default=func.now()),
             Column('type', String(100)),
-            Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
+            Column('event', JSON if dbconn.engine.name == 'sqlite' else JSONB)
         ]
 
     def log_state(

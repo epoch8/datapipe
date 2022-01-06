@@ -2,12 +2,14 @@ from typing import List, Any, Dict, Union, Optional, Iterator
 
 import copy
 import logging
-import pandas as pd
+from contextlib import contextmanager
+
 from opentelemetry import trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
+import pandas as pd
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
-from sqlalchemy.sql.expression import select, delete, tuple_
+from sqlalchemy.sql.expression import insert, select, delete, tuple_
 from sqlalchemy.pool import SingletonThreadPool
 from datapipe.run_config import RunConfig
 
@@ -46,14 +48,17 @@ class DBConn:
         self.connstr = connstr
         self.schema = schema
 
-        self.con = create_engine(
+        self.engine = create_engine(
             connstr,
             poolclass=SingletonThreadPool,
+            future=True,
         )
 
         SQLAlchemyInstrumentor().instrument(
-            engine=self.con
+            engine=self.engine
         )
+
+        self._con = None
 
         self.sqla_metadata = MetaData(schema=schema)
 
@@ -65,6 +70,33 @@ class DBConn:
 
     def __setstate__(self, state):
         self._init(state['connstr'], state['schema'])
+
+    @property
+    def con(self):
+        if self._con is None:
+            return self.engine.connect()
+        else:
+            return self._con
+
+
+@contextmanager
+def dbconn_transaction(dbconns: List[DBConn]):
+    unique_dbconns = set(dbconns)
+
+    try:
+        for dbconn in unique_dbconns:
+            dbconn._con = dbconn.engine.connect()
+
+        yield
+
+        for dbconn in unique_dbconns:
+            assert dbconn._con is not None
+            dbconn._con.commit()
+    finally:
+        for dbconn in unique_dbconns:
+            assert dbconn._con is not None
+            dbconn._con.close()
+            dbconn._con = None
 
 
 def sql_apply_runconfig_filter(sql: select, table: Table, primary_keys: List[str], run_config: RunConfig = None) -> select:
@@ -141,15 +173,9 @@ class TableStoreDB(TableStore):
         self.delete_rows(data_to_index(df, self.primary_keys))
         logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
-        df.to_sql(
-            name=self.name,
-            con=self.dbconn.con,
-            schema=self.dbconn.schema,
-            if_exists='append',
-            index=False,
-            chunksize=1000,
-            method='multi',
-            dtype=sql_schema_to_sqltype(self.data_sql_schema),
+        self.dbconn.con.execute(
+            insert(self.data_table),
+            df.to_dict(orient='records')
         )
 
     def update_rows(self, df: DataDF) -> None:

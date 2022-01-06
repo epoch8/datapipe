@@ -142,7 +142,11 @@ def run_steps(ds: DataStore, steps: List[DatatableTransformStep], run_config: Ru
             ):
                 logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
 
-                step.run(ds, run_config)
+                with ds.transaction(
+                    step.input_dts,
+                    step.output_dts
+                ):
+                    step.run(ds, run_config)
 
 
 def run_pipeline(
