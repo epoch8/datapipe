@@ -12,7 +12,8 @@ from datapipe.cli import main
 from datapipe.run_config import RunConfig
 
 
-dbconn = DBConn('sqlite:///db.sqlite')
+# dbconn = DBConn('sqlite:///db.sqlite')
+dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
 ds = DataStore(dbconn)
 
 run_config = RunConfig(
