@@ -15,3 +15,10 @@ services:
       - 14250:14250
       - 9411:9411
   
+
+  postgres:
+    image: postgres:12
+    environment:
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
