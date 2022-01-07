@@ -7,6 +7,7 @@ from opentelemetry import trace
 
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
+from datapipe.store.database import dbconn_transaction
 from datapipe.store.table_store import TableStore
 
 logger = logging.getLogger("datapipe.compute")
@@ -121,8 +122,9 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[D
     with tracer.start_as_current_span("build_compute"):
         res: List[DatatableTransformStep] = []
 
-        for step in pipeline.steps:
-            res.extend(step.build_compute(ds, catalog))
+        with dbconn_transaction([ds.meta_dbconn]):
+            for step in pipeline.steps:
+                res.extend(step.build_compute(ds, catalog))
 
         return res
 

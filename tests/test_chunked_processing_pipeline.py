@@ -30,7 +30,7 @@ TEST_DF = pd.DataFrame(
 )
 
 
-def test_table_store_json_line_reading(tmp_dir, dbconn_no_transaction):
+def test_table_store_json_line_reading(tmp_dir, dbconn):
     def conversion(df):
         df["y"] = df["x"] ** 2
         return df
@@ -44,7 +44,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn_no_transaction):
     test_output_fname = os.path.join(tmp_dir, "table-output-pandas.json")
     test_df.to_json(test_input_fname, orient="records", lines=True)
 
-    ds = DataStore(dbconn_no_transaction)
+    ds = DataStore(dbconn)
     catalog = Catalog({
         "input_data": Table(
             store=TableStoreJsonLine(test_input_fname),
@@ -74,33 +74,33 @@ def test_table_store_json_line_reading(tmp_dir, dbconn_no_transaction):
     assert len(set(df_transformed["x"].values).symmetric_difference(set(x))) == 0
 
 
-def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn_no_transaction):
-    ds = DataStore(dbconn_no_transaction)
+def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
+    ds = DataStore(dbconn)
     catalog = Catalog({
         "inp1": Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'inp1_data',
                 TEST_SCHEMA
             )
         ),
         "inp2": Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'inp2_data',
                 TEST_SCHEMA
             )
         ),
         "out1": Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'out1_data',
                 TEST_SCHEMA
             )
         ),
         "out2": Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'out2_data',
                 TEST_SCHEMA
             )

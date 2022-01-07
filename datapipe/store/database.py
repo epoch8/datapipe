@@ -73,27 +73,35 @@ class DBConn:
 
     @property
     def con(self):
-        if self._con is None:
-            return self.engine.connect()
-        else:
+        assert self._con is not None
+        return self._con
+
+    @property
+    def con_ro(self):
+        if self._con is not None:
             return self._con
+        else:
+            return self.engine.connect()
 
 
 @contextmanager
 def dbconn_transaction(dbconns: List[DBConn]):
     unique_dbconns = set(dbconns)
 
+    need_transaction_dbconns = [i for i in unique_dbconns if i._con is None]
+
     try:
-        for dbconn in unique_dbconns:
+        for dbconn in need_transaction_dbconns:
+            assert dbconn._con is None
             dbconn._con = dbconn.engine.connect()
 
         yield
 
-        for dbconn in unique_dbconns:
+        for dbconn in need_transaction_dbconns:
             assert dbconn._con is not None
             dbconn._con.commit()
     finally:
-        for dbconn in unique_dbconns:
+        for dbconn in need_transaction_dbconns:
             assert dbconn._con is not None
             dbconn._con.close()
             dbconn._con = None

@@ -35,8 +35,8 @@ def update_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def test_meta_info_in_datapipe_events(dbconn_no_transaction) -> None:
-    ds = DataStore(dbconn_no_transaction)
+def test_meta_info_in_datapipe_events(dbconn) -> None:
+    ds = DataStore(dbconn)
 
     run_config = RunConfig(
         filters={
@@ -51,14 +51,14 @@ def test_meta_info_in_datapipe_events(dbconn_no_transaction) -> None:
     catalog = Catalog({
         'test_generate': Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'test_generate_data',
                 TEST_SCHEMA
             )
         ),
         'test_transform': Table(
             store=TableStoreDB(
-                dbconn_no_transaction,
+                dbconn,
                 'test_transform_data',
                 TEST_SCHEMA
             )
@@ -79,7 +79,7 @@ def test_meta_info_in_datapipe_events(dbconn_no_transaction) -> None:
 
     run_pipeline(ds, catalog, pipeline, run_config)
 
-    df_events = pd.read_sql_query(select(catalog.get_datatable(ds, 'test_generate').event_logger.events_table), dbconn_no_transaction.con)
+    df_events = pd.read_sql_query(select(catalog.get_datatable(ds, 'test_generate').event_logger.events_table), dbconn.con)
 
     assert df_events.loc[0]["event"] == {
         "meta": {

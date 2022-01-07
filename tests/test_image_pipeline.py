@@ -111,7 +111,7 @@ def test_image_pipeline(dbconn_no_transaction, tmp_dir):
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
 
 
-def test_image_batch_generate_with_later_deleting(dbconn_no_transaction, tmp_dir):
+def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
 
     # Add images to tmp_dir
     df_images = make_df()
@@ -147,7 +147,7 @@ def test_image_batch_generate_with_later_deleting(dbconn_no_transaction, tmp_dir
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn_no_transaction)
+    ds = DataStore(dbconn)
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 

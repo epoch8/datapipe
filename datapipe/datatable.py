@@ -137,7 +137,8 @@ class DataStore:
         meta_dbconn: DBConn
     ) -> None:
         self.meta_dbconn = meta_dbconn
-        self.event_logger = EventLogger(self.meta_dbconn)
+        with dbconn_transaction([self.meta_dbconn]):
+            self.event_logger = EventLogger(self.meta_dbconn)
         self.tables: Dict[str, DataTable] = {}
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
