@@ -30,6 +30,7 @@ cityhash = "^0.2.3"
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
 opentelemetry-instrumentation-sqlalchemy = "^0.27b0"
+opentelemetry-exporter-jaeger = "^1.8.0"
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
@@ -37,7 +38,6 @@ openpyxl = {version=">=3.0.7", optional=true}
 dash = {version="==1.20.*", optional=true}
 dash_bootstrap_components = {version="== 0.12.*", optional=true}
 dash_interactive_graphviz = {version="==0.3.*", optional=true}
-opentelemetry-exporter-jaeger = "^1.8.0"
 
 [tool.poetry.extras]
 
