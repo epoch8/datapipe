@@ -31,6 +31,7 @@ class DataTable:
         self.table_store = table_store
         self.event_logger = event_logger
 
+        self.primary_schema = meta_table.primary_schema
         self.primary_keys = meta_table.primary_keys
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
@@ -168,7 +169,6 @@ class DataStore:
 
         Returns: [join_keys, select]
         """
-
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
         join_keys = set.intersection(*inp_p_keys, *out_p_keys)

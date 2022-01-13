@@ -107,7 +107,18 @@ class TableStoreFiledir(TableStore):
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
+        primary_schema: DataSchema = None,
     ):
+        """
+        При построении `TableStoreFiledir` есть два способа указать схему
+        индексов:
+
+        1. Явный - в конструктор передается `primary_schema`, которая должна
+           содержать все поля, упоминаемые в `filename_pattern`
+        2. Неявный - `primary_schema` = `None`, тогда все поля получают
+           дефолтный тип `String(100)`
+        """
+
         protocol, path = fsspec.core.split_protocol(filename_pattern)
 
         if protocol is None or protocol == 'file':
@@ -131,8 +142,18 @@ class TableStoreFiledir(TableStore):
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
 
+        if primary_schema is not None:
+            assert sorted(self.attrnames) == sorted(i.name for i in primary_schema)
+
+            self.primary_schema = primary_schema
+        else:
+            self.primary_schema = [
+                Column(attrname, String(100), primary_key=True)
+                for attrname in self.attrnames
+            ]
+
     def get_primary_schema(self) -> DataSchema:
-        return [Column(attrname, String(100), primary_key=True) for attrname in self.attrnames]
+        return self.primary_schema
 
     def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать
