@@ -9,9 +9,13 @@
     "sqltools.connections": [
         {
             "previewLimit": 50,
-            "driver": "SQLite",
-            "name": "test",
-            "database": "${workspaceFolder:c12n-pipe}/test_data/test.sqlite"
+            "server": "localhost",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "test_pg",
+            "database": "postgres",
+            "username": "postgres",
+            "password": "password"
         }
     ],
     "sqltools.useNodeRuntime": true,
