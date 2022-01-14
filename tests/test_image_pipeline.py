@@ -73,7 +73,7 @@ def test_image_datatables(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 10
 
 
-def test_image_pipeline(dbconn, tmp_dir):
+def test_image_pipeline(dbconn_no_transaction, tmp_dir):
     catalog = Catalog({
         'tbl1': Table(
             store=TableStoreFiledir(
@@ -104,7 +104,7 @@ def test_image_pipeline(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn_no_transaction)
     run_pipeline(ds, catalog, pipeline)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10

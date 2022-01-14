@@ -5,14 +5,14 @@ import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, bindparam, or_, select, tuple_, update
+from sqlalchemy.sql.expression import and_, bindparam, insert, or_, select, tuple_, update
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
 import pandas as pd
 
 from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.run_config import RunConfig
 
 
@@ -243,15 +243,9 @@ class MetaTable:
         if len(df) > 0:
             logger.debug(f'Inserting {len(df)} rows into {self.name} data')
 
-            df.to_sql(
-                name=self.sql_table.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
-                if_exists='append',
-                index=False,
-                chunksize=1000,
-                method='multi',
-                dtype=sql_schema_to_sqltype(self.sql_schema),
+            self.dbconn.con.execute(
+                insert(self.sql_table),
+                df.to_dict(orient='records')
             )
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:

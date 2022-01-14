@@ -9,15 +9,26 @@
     "sqltools.connections": [
         {
             "previewLimit": 50,
-            "driver": "SQLite",
-            "name": "test",
-            "database": "${workspaceFolder:c12n-pipe}/test_data/test.sqlite"
+            "server": "localhost",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "test_pg",
+            "database": "postgres",
+            "username": "postgres",
+            "password": "password"
         }
     ],
     "sqltools.useNodeRuntime": true,
     "python.linting.flake8Enabled": true,
     "python.linting.flake8Args": [
         "--max-line-length=127"
+    ],
+    "python.linting.mypyArgs": [
+        "--follow-imports=silent",
+        "--ignore-missing-imports",
+        "--show-column-numbers",
+        "--no-pretty",
+        "--namespace-packages"
     ],
     "python.formatting.provider": "black",
     "githubIssues.queries": [
