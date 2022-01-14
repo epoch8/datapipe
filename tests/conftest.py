@@ -6,7 +6,7 @@ import os
 import pandas as pd
 from sqlalchemy import create_engine
 
-from datapipe.store.database import DBConn
+from datapipe.store.database import DBConn, dbconn_transaction
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
 
 
 @pytest.fixture
-def dbconn():
+def dbconn_no_transaction():
     if os.environ.get('TEST_DB_ENV') == 'postgres':
         pg_host = os.getenv("POSTGRES_HOST", "localhost")
         pg_port = os.getenv("POSTGRES_PORT", "5432")
@@ -62,9 +62,18 @@ def dbconn():
 
         eng.execute(f'CREATE SCHEMA {DB_TEST_SCHEMA}')
 
-        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
-
-        eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
+        dbconn = DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
     else:
-        yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+        dbconn = DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+
+    yield dbconn
+
+    if DB_TEST_SCHEMA:
+        eng.execute(f'DROP SCHEMA {DB_TEST_SCHEMA} CASCADE')
+
+
+@pytest.fixture
+def dbconn(dbconn_no_transaction):
+    with dbconn_transaction([dbconn_no_transaction]):
+        yield dbconn_no_transaction
