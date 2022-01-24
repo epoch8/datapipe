@@ -3,12 +3,14 @@ from dataclasses import dataclass, field
 from abc import ABC
 
 import logging
+from opentelemetry import trace
 
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
 
-logger = logging.getLogger('datapipe.compute')
+logger = logging.getLogger("datapipe.compute")
+tracer = trace.get_tracer("datapipe.compute")
 
 
 @dataclass
@@ -75,8 +77,8 @@ class DatatableTransformStep:
     check_for_changes: bool = True
 
     def __post_init__(self):
-        inp_p_keys = set(*[inp.primary_keys for inp in self.input_dts]) if len(self.input_dts) > 0 else set()
-        out_p_keys = set(*[out.primary_keys for out in self.output_dts]) if len(self.output_dts) > 0 else set()
+        inp_p_keys = {key for inp in self.input_dts for key in inp.primary_keys}
+        out_p_keys = {key for out in self.output_dts for key in out.primary_keys}
         join_keys = set.intersection(inp_p_keys, out_p_keys)
 
         key_to_column_type_inp = {
@@ -98,16 +100,17 @@ class DatatableTransformStep:
 
     def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
-            changed_idx_count = ds.get_changed_idx_count(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                run_config=run_config
-            )
+            with tracer.start_as_current_span("check for changes"):
+                changed_idx_count = ds.get_changed_idx_count(
+                    inputs=self.input_dts,
+                    outputs=self.output_dts,
+                    run_config=run_config
+                )
 
-            if changed_idx_count == 0:
-                logger.debug(f'Skipping {self.name} execution - nothing to compute')
+                if changed_idx_count == 0:
+                    logger.debug(f'Skipping {self.name} execution - nothing to compute')
 
-                return
+                    return
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
@@ -115,12 +118,13 @@ class DatatableTransformStep:
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:
-    res: List[DatatableTransformStep] = []
+    with tracer.start_as_current_span("build_compute"):
+        res: List[DatatableTransformStep] = []
 
-    for step in pipeline.steps:
-        res.extend(step.build_compute(ds, catalog))
+        for step in pipeline.steps:
+            res.extend(step.build_compute(ds, catalog))
 
-    return res
+        return res
 
 
 def print_compute(steps: List[DatatableTransformStep]) -> None:
@@ -131,10 +135,14 @@ def print_compute(steps: List[DatatableTransformStep]) -> None:
 
 
 def run_steps(ds: DataStore, steps: List[DatatableTransformStep], run_config: RunConfig = None) -> None:
-    for step in steps:
-        logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
+    with tracer.start_as_current_span("run_steps"):
+        for step in steps:
+            with tracer.start_as_current_span(
+                f'{step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}'
+            ):
+                logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
 
-        step.run(ds, run_config)
+                step.run(ds, run_config)
 
 
 def run_pipeline(

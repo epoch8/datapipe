@@ -6,6 +6,8 @@ import sqlite3
 from pkg_resources import parse_version
 
 import pandas as pd
+from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, tuple_
@@ -16,7 +18,8 @@ from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
 
-logger = logging.getLogger('datapipe.store.database')
+logger = logging.getLogger("datapipe.store.database")
+tracer = trace.get_tracer("datapipe.store.database")
 
 
 SCHEMA_TO_DTYPE_LOOKUP = {
@@ -58,6 +61,10 @@ class DBConn:
         self.con = create_engine(
             connstr,
             poolclass=SingletonThreadPool,
+        )
+
+        SQLAlchemyInstrumentor().instrument(
+            engine=self.con
         )
 
         self.sqla_metadata = MetaData(schema=schema)

@@ -42,7 +42,7 @@ jobs:
 
     - name: Lint with mypy
       run: |
-        poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent
+        poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
 
   test:
     # needs: lint
