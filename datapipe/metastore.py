@@ -45,7 +45,6 @@ class MetaTable:
 
         self.primary_schema = primary_schema
         self.primary_keys: List[str] = [column.name for column in primary_schema]
-        self.disabled_update_from = self._check_old_db_version()
 
         for item in primary_schema:
             item.primary_key = True
@@ -102,21 +101,6 @@ class MetaTable:
             sql,
             con=self.dbconn.con,
         )
-
-    def _check_old_db_version(self):
-        dialect = self.dbconn.con.url.get_backend_name()
-
-        if dialect == "sqlite":
-            version = self.dbconn.con.execute('select sqlite_version();').fetchone()[0]
-
-            # TODO реализовать нормальный механизм проверки версий
-            def normalize(v):
-                return [int(x) for x in v.split(".")]
-
-            if normalize(version) < normalize('3.33'):
-                return True
-
-        return False
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         res_df = df[self.primary_keys]
@@ -338,7 +322,7 @@ class MetaTable:
 
     def update_meta_for_store_chunk(self, changed_meta_df: MetadataDF) -> None:
         if len(changed_meta_df) > 0:
-            if not self.disabled_update_from:
+            if self.dbconn.supports_update_from:
                 self._update_existing_metadata_rows(changed_meta_df)
             else:
                 self._delete_rows(changed_meta_df)

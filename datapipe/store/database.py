@@ -2,6 +2,9 @@ from typing import List, Any, Dict, Union, Optional, Iterator
 
 import copy
 import logging
+import sqlite3
+from pkg_resources import parse_version
+
 import pandas as pd
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
@@ -35,9 +38,18 @@ def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
     }
 
 
+SQLITE_SUPPORTS_UPDATE_FROM = parse_version(sqlite3.sqlite_version) >= parse_version("3.33.0")
+
+
 class DBConn:
     def __init__(self, connstr: str, schema: str = None):
-        self._init(connstr, schema)
+        if connstr.startswith('sqlite'):
+            self.supports_update_from = SQLITE_SUPPORTS_UPDATE_FROM
+        else:
+            # Assume relatively new Postgres
+            self.supports_update_from = True
+
+        self._init(connstr, schema)        
 
     def _init(self, connstr: str, schema: Optional[str]) -> None:
         self.connstr = connstr
