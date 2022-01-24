@@ -146,17 +146,18 @@ class DataStore:
 
         primary_schema = table_store.get_primary_schema()
 
-        res = DataTable(
-            name=name,
-            meta_dbconn=self.meta_dbconn,
-            meta_table=MetaTable(
-                dbconn=self.meta_dbconn,
+        with dbconn_transaction([self.meta_dbconn]):
+            res = DataTable(
                 name=name,
-                primary_schema=primary_schema,
-            ),
-            table_store=table_store,
-            event_logger=self.event_logger,
-        )
+                meta_dbconn=self.meta_dbconn,
+                meta_table=MetaTable(
+                    dbconn=self.meta_dbconn,
+                    name=name,
+                    primary_schema=primary_schema,
+                ),
+                table_store=table_store,
+                event_logger=self.event_logger,
+            )
 
         self.tables[name] = res
 
