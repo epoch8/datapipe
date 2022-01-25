@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, JSON
 
-from datapipe.store.database import TableStoreDB
+from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.datatable import DataStore
 from datapipe.types import data_to_index
 
@@ -66,7 +66,18 @@ def test_cloudpickle(dbconn) -> None:
         table_store=TableStoreDB(dbconn, 'test_data', TEST_SCHEMA, True)
     )
 
-    cloudpickle.dumps([ds, tbl])
+    dump = cloudpickle.dumps([ds, tbl])
+
+    _, tbl_desrl = cloudpickle.loads(dump)
+
+    dbconn_a = tbl.meta_dbconn
+    dbconn_b: DBConn = tbl_desrl.meta_dbconn
+
+    assert (
+        (dbconn_a.connstr, dbconn_a.schema, dbconn_a.supports_update_from)
+        ==
+        (dbconn_b.connstr, dbconn_b.schema, dbconn_b.supports_update_from)
+    )
 
 
 def test_simple(dbconn) -> None:
