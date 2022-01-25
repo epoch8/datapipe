@@ -46,17 +46,17 @@ SQLITE_SUPPORTS_UPDATE_FROM = parse_version(sqlite3.sqlite_version) >= parse_ver
 
 class DBConn:
     def __init__(self, connstr: str, schema: str = None):
-        if connstr.startswith('sqlite'):
-            self.supports_update_from = SQLITE_SUPPORTS_UPDATE_FROM
-        else:
-            # Assume relatively new Postgres
-            self.supports_update_from = True
-
         self._init(connstr, schema)
 
     def _init(self, connstr: str, schema: Optional[str]) -> None:
         self.connstr = connstr
         self.schema = schema
+
+        if connstr.startswith('sqlite'):
+            self.supports_update_from = SQLITE_SUPPORTS_UPDATE_FROM
+        else:
+            # Assume relatively new Postgres
+            self.supports_update_from = True
 
         self.con = create_engine(
             connstr,
@@ -73,12 +73,9 @@ class DBConn:
         return {
             'connstr': self.connstr,
             'schema': self.schema,
-            'supports_update_from': self.supports_update_from
         }
 
     def __setstate__(self, state):
-        self.supports_update_from = state["supports_update_from"]
-
         self._init(state['connstr'], state['schema'])
 
 
