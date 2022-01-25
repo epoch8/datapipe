@@ -52,7 +52,7 @@ class DBConn:
             # Assume relatively new Postgres
             self.supports_update_from = True
 
-        self._init(connstr, schema)        
+        self._init(connstr, schema)
 
     def _init(self, connstr: str, schema: Optional[str]) -> None:
         self.connstr = connstr
@@ -72,10 +72,13 @@ class DBConn:
     def __getstate__(self):
         return {
             'connstr': self.connstr,
-            'schema': self.schema
+            'schema': self.schema,
+            'supports_update_from': self.supports_update_from
         }
 
     def __setstate__(self, state):
+        self.supports_update_from = state["supports_update_from"]
+
         self._init(state['connstr'], state['schema'])
 
 
