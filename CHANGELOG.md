@@ -1,3 +1,7 @@
+# 0.10.5
+
+* Fix `DBConn.supports_update_from` serialization
+
 # 0.10.4
 
 * Ускорение обновления метаданных через UPDATE FROM
