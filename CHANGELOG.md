@@ -1,3 +1,7 @@
+# 0.11.0-alpha.2
+
+* Port fixes from v0.10.4, v0.10.5
+
 # 0.11.0-alpha.1
 
 * Добавлено управление транзакциями для TableStoreDB и Metastore
