@@ -108,7 +108,3 @@ jobs:
         POSTGRES_HOST: localhost
         # The default PostgreSQL port
         POSTGRES_PORT: 5432
-
-        LABEL_STUDIO_HOST: localhost
-        LABEL_STUDIO_PORT: 8080
-        TEST_START_LABEL_STUDIO: False
