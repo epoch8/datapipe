@@ -70,11 +70,6 @@ jobs:
         ports:
           - 5432:5432
 
-    #   label-studio:
-    #     image: heartexlabs/label-studio:1.0.1
-    #     ports:
-    #         - 8080:8080
-
     steps:
     - uses: actions/checkout@v2
 
