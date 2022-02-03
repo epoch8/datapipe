@@ -313,7 +313,7 @@ class MetaTable:
                 WHERE {where_expressiom}
             """)
 
-            self.dbconn.con.execute(stmt, params)
+            self.dbconn.con.execution_options(compiled_cache=None).execute(stmt, params)
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
