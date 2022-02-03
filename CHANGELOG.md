@@ -1,3 +1,7 @@
+# WIP 0.10.6
+
+* Disable SQLAlchemy compiled cache for `UPDATE FROM VALUES` query
+
 # 0.10.5
 
 * Fix `DBConn.supports_update_from` serialization
