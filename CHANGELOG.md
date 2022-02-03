@@ -1,6 +1,7 @@
-# WIP 0.10.6
+# 0.10.6
 
 * Disable SQLAlchemy compiled cache for `UPDATE FROM VALUES` query
+* Backport from 0.11.0-alpha.1: Фикс для join-а таблиц без пересекающихся индексов
 
 # 0.10.5
 
