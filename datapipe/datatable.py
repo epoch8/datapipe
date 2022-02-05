@@ -165,6 +165,9 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
+    def get_table(self, name: str) -> DataTable:
+        return self.tables[name]
+
     def _build_changed_idx_sql(
         self,
         inputs: List[DataTable],
