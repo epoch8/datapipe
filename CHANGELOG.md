@@ -3,6 +3,8 @@
 * Move LabelStudio support to separate repo
 * Move LevelDB TableStore to separate repo
 * Remove `UPDATE FROM VALUES` support for SQLite
+* Add methods `Catalog.add_datatable`, `Catalog.remove_datatable`, `DataStore.get_datatable`
+* Add methods `index_intersection`, `index_to_data`
 
 # 0.10.6
 
