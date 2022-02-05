@@ -1,3 +1,7 @@
+# WIP 0.10.7
+
+* Move LabelStudio support to separate repo
+
 # 0.10.6
 
 * Disable SQLAlchemy compiled cache for `UPDATE FROM VALUES` query
