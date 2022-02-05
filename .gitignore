@@ -4,4 +4,6 @@
 .venv/
 __pycache__/
 *.egg-info
+dist/
+
 test_data/
