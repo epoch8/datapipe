@@ -915,14 +915,6 @@ dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
-name = "plyvel"
-version = "1.4.0"
-description = "Plyvel, a fast and feature-rich Python interface to LevelDB"
-category = "main"
-optional = true
-python-versions = "*"
-
-[[package]]
 name = "protobuf"
 version = "3.19.4"
 description = "Protocol Buffers"
@@ -994,7 +986,7 @@ diagrams = ["jinja2", "railroad-diagrams"]
 
 [[package]]
 name = "pytest"
-version = "7.0.0"
+version = "6.2.5"
 description = "pytest: simple powerful testing with Python"
 category = "dev"
 optional = false
@@ -1008,10 +1000,10 @@ iniconfig = "*"
 packaging = "*"
 pluggy = ">=0.12,<2.0"
 py = ">=1.8.2"
-tomli = ">=1.0.0"
+toml = "*"
 
 [package.extras]
-testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "pygments (>=2.7.2)", "requests", "xmlschema"]
+testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "requests", "xmlschema"]
 
 [[package]]
 name = "pytest-cases"
@@ -1311,7 +1303,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "7e8c1afb11636a254d7a52b101006accdb6a9e1d3728710476b6f920fe1280ed"
+content-hash = "7757e82443f328dd52c71694f1cbfbf6293a4dd125a63341e007fa3126a9469e"
 
 [metadata.files]
 aiobotocore = [
@@ -2168,14 +2160,6 @@ pluggy = [
     {file = "pluggy-1.0.0-py2.py3-none-any.whl", hash = "sha256:74134bbf457f031a36d68416e1509f34bd5ccc019f0bcc952c7b909d06b37bd3"},
     {file = "pluggy-1.0.0.tar.gz", hash = "sha256:4224373bacce55f955a878bf9cfa763c1e360858e330072059e10bad68531159"},
 ]
-plyvel = [
-    {file = "plyvel-1.4.0-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:0741be98096db98929ba507c5d99be6b9e009e38fb1361e755e52e69b2a6a496"},
-    {file = "plyvel-1.4.0-cp36-cp36m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:daef3f2076db41fa0a0fcbb3eabf1a36445739e101367356b7ad3c455b77b44d"},
-    {file = "plyvel-1.4.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:61d6dc2edff07412be0bcfb20cd3a6cb0b2ac6e136e0d53ce91a2d9b10e89ebc"},
-    {file = "plyvel-1.4.0-cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:b4a4e25b75852a379744f14e743f17ae78513d0ba4f354be54199735487c71d7"},
-    {file = "plyvel-1.4.0-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:d50eb65421e40d788868943bbaa0e1b62e806a07323a21ce9a4b7bf6bea022ec"},
-    {file = "plyvel-1.4.0.tar.gz", hash = "sha256:4ea98bea04ebf0f44747bacdfafefc8827787106fbb787f0aedc46482b2dfd53"},
-]
 protobuf = [
     {file = "protobuf-3.19.4-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:f51d5a9f137f7a2cec2d326a74b6e3fc79d635d69ffe1b036d39fc7d75430d37"},
     {file = "protobuf-3.19.4-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:09297b7972da685ce269ec52af761743714996b4381c085205914c41fcab59fb"},
@@ -2309,8 +2293,8 @@ pyparsing = [
     {file = "pyparsing-3.0.7.tar.gz", hash = "sha256:18ee9022775d270c55187733956460083db60b37d0d0fb357445f3094eed3eea"},
 ]
 pytest = [
-    {file = "pytest-7.0.0-py3-none-any.whl", hash = "sha256:42901e6bd4bd4a0e533358a86e848427a49005a3256f657c5c8f8dd35ef137a9"},
-    {file = "pytest-7.0.0.tar.gz", hash = "sha256:dad48ffda394e5ad9aa3b7d7ddf339ed502e5e365b1350e0af65f4a602344b11"},
+    {file = "pytest-6.2.5-py3-none-any.whl", hash = "sha256:7310f8d27bc79ced999e760ca304d69f6ba6c6649c0b60fb0e04a4a77cacc134"},
+    {file = "pytest-6.2.5.tar.gz", hash = "sha256:131b36680866a76e6781d13f101efb86cf674ebb9762eb70d3082b6f29889e89"},
 ]
 pytest-cases = [
     {file = "pytest-cases-3.6.8.tar.gz", hash = "sha256:d423e87b30e1080cc162d86c72bfa35861cccfe3539125e81c68ba142ab974bc"},
