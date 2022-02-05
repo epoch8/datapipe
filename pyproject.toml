@@ -1,10 +1,11 @@
 [tool.poetry]
-name = "datapipe"
+name = "datapipe-core"
 version = "0.10.7"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
-
-exclude=["tests", "examples"]
+packages = [
+    { include = "datapipe" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"
