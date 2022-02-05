@@ -1,6 +1,7 @@
 # WIP 0.10.7
 
 * Move LabelStudio support to separate repo
+* Move LevelDB TableStore to separate repo
 
 # 0.10.6
 
