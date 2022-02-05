@@ -2,6 +2,7 @@
 
 * Move LabelStudio support to separate repo
 * Move LevelDB TableStore to separate repo
+* Remove `UPDATE FROM VALUES` support for SQLite
 
 # 0.10.6
 
