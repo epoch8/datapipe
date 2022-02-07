@@ -108,6 +108,7 @@ class TableStoreFiledir(TableStore):
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
         primary_schema: DataSchema = None,
+        read_data: bool = True
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -137,6 +138,7 @@ class TableStoreFiledir(TableStore):
 
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
+        self.read_data = read_data
 
         self.attrnames = _pattern_to_attrnames(self.filename_pattern)
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
@@ -211,13 +213,17 @@ class TableStoreFiledir(TableStore):
             for row_idx in idx.index:
                 with (file_open := fsspec.open(self._filename_from_idxs_values(idx.loc[row_idx, self.attrnames]),
                                                f'r{self.adapter.mode}')) as f:
-                    data = self.adapter.load(f)
+                    data = {}
 
-                    attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
-                    assert len(attrnames_in_data) == 0, (
-                        f"Found repeated keys inside data that are already used (from scheme): {attrnames_in_data}. "
-                        f"Remove these keys from data."
-                    )
+                    if self.read_data:
+                        data = self.adapter.load(f)
+
+                        attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
+                        assert len(attrnames_in_data) == 0, (
+                            f"Found repeated keys inside data that are already used (from scheme): "
+                            f"{attrnames_in_data}. "
+                            f"Remove these keys from data."
+                        )
 
                     for attrname in self.attrnames:
                         data[attrname] = idx.loc[row_idx, attrname]
