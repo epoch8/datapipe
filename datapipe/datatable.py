@@ -209,7 +209,7 @@ class DataStore:
                 used_fields |= tbl_keys
             for key in join_keys - used_fields:
                 fields.append(literal(None).label(key))
-            return fields
+            return sorted(fields, key=lambda x: x.name)
 
         inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.name}")) for inp in inputs]
         out_tbls = [(out, out.meta_table.sql_table.alias(f"out_{out.name}")) for out in outputs]
