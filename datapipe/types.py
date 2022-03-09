@@ -1,3 +1,4 @@
+from __future__ import annotations # NOQA
 from typing import List, Dict, NewType, cast
 from dataclasses import dataclass, field
 
@@ -23,9 +24,19 @@ class ChangeList:
 
     def append(self, table_name: str, idx: IndexDF) -> None:
         if table_name in self.changes:
+            self_cols = set(self.changes[table_name].columns)
+            other_cols = set(idx.columns)
+
+            if self_cols != other_cols:
+                raise ValueError(f"Different IndexDF for table {table_name}")
+
             self.changes[table_name] = cast(IndexDF, self.changes[table_name].append(idx))
         else:
             self.changes[table_name] = idx
+
+    def extend(self, other: ChangeList):
+        for key in other.changes.keys():
+            self.append(other.changes[key])
 
 
 def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:
