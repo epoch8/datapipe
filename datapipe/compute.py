@@ -101,9 +101,21 @@ class ComputeStep(ABC):
         pass
 
     def validate(self):
+        inp_p_keys_arr = [set(inp.primary_keys) for inp in self.get_input_dts() if inp]
+        out_p_keys_arr = [set(out.primary_keys) for out in self.get_output_dts() if out]
+
+        inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
+        out_p_keys = set.intersection(*out_p_keys_arr) if len(out_p_keys_arr) else set()
+        print(inp_p_keys)
+        print(out_p_keys)
+        join_keys = set.intersection(inp_p_keys, out_p_keys)
+        """
         inp_p_keys = set(*[inp.primary_keys for inp in self.get_input_dts()]) if len(self.get_input_dts()) > 0 else set()
         out_p_keys = set(*[out.primary_keys for out in self.get_output_dts()]) if len(self.get_output_dts()) > 0 else set()
         join_keys = set.intersection(inp_p_keys, out_p_keys)
+        """
+
+        print(join_keys)
 
         key_to_column_type_inp = {
             column.name: type(column.type)
@@ -115,6 +127,11 @@ class ComputeStep(ABC):
             for inp in self.get_output_dts()
             for column in inp.primary_schema if column.name in join_keys
         }
+
+        print(join_keys)
+        print(key_to_column_type_inp)
+        print(key_to_column_type_out)
+
         for key in join_keys:
             if key_to_column_type_inp[key] != key_to_column_type_out[key]:
                 raise ValueError(
