@@ -36,7 +36,7 @@ class ChangeList:
 
     def extend(self, other: ChangeList):
         for key in other.changes.keys():
-            self.append(other.changes[key])
+            self.append(key, other.changes[key])
 
 
 def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:
