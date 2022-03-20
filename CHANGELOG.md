@@ -1,3 +1,9 @@
+# WIP 0.10.8
+
+* Add `read_data` parameter to `TableStoreFiledir` (https://github.com/epoch8/datapipe/pull/132)
+* Fix fields order for compound indexes in `get_process_idx` (https://github.com/epoch8/datapipe/pull/136)
+* Add `check_for_changes` parameter to `DatatableTransform` step (https://github.com/epoch8/datapipe/pull/131)
+
 # 0.10.7
 
 * Move LabelStudio support to separate repo
