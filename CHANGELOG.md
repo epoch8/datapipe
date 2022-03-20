@@ -1,3 +1,7 @@
+# WIP 0.10.8
+
+* Add `read_data` parameter to `TableStoreFiledir`
+
 # 0.10.7
 
 * Move LabelStudio support to separate repo
