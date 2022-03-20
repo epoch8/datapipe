@@ -22,7 +22,7 @@ class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
         self.data_tables: Dict[str, DataTable] = {}
-        
+
     def add_datatable(self, name: str, dt: Table):
         self.catalog[name] = dt
 
@@ -57,10 +57,12 @@ class DatatableTransform(PipelineStep):
         func: ComputeStepFunc,
         inputs: List[str],
         outputs: List[str],
+        check_for_changes: bool = True
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
+        self.check_for_changes = check_for_changes
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
         return [
@@ -69,6 +71,7 @@ class DatatableTransform(PipelineStep):
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
+                check_for_changes=self.check_for_changes
             )
         ]
 
