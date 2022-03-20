@@ -1,6 +1,7 @@
 # WIP 0.10.8
 
-* Add `read_data` parameter to `TableStoreFiledir`
+* Add `read_data` parameter to `TableStoreFiledir` (https://github.com/epoch8/datapipe/pull/132)
+* Fix fields order for compound indexes in `get_process_idx` (https://github.com/epoch8/datapipe/pull/136)
 
 # 0.10.7
 
