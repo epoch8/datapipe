@@ -118,6 +118,26 @@ class TableStoreFiledir(TableStore):
            содержать все поля, упоминаемые в `filename_pattern`
         2. Неявный - `primary_schema` = `None`, тогда все поля получают
            дефолтный тип `String(100)`
+
+        Args:
+        
+        filename_pattern -- Путь к файлам в формате fsspec (но без chaining),
+        может содержать два типа шаблонов:
+          - {id_field} - поле из индекса учитывается как при чтении так и при
+            записи
+          - * - не попадает в индекс, и стор работает режиме "только чтение"
+        
+        primary_schema -- дает возможность в явном виде задать типы полей,
+        который упоминаются в filename_pattern
+
+        adapter -- объект отвечающий за преобразование содержимого файла в
+        структурированную запись и обратно
+
+        add_filepath_column -- если True - в объект добавляется поле filepath с
+        адресом файла
+
+        read_data -- если False - при чтении не происходит парсинга содержимого
+        файла
         """
 
         protocol, path = fsspec.core.split_protocol(filename_pattern)
