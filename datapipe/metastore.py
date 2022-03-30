@@ -228,9 +228,9 @@ class MetaTable:
         changed_meta_df = merged_df[merged_df['hash'].notna()]
 
         changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
-        changed_meta_df['process_ts'] = now
-        changed_meta_df['delete_ts'] = None
-        changed_meta_df['hash'] = changed_meta_df['data_hash']
+        changed_meta_df.loc[:, 'process_ts'] = now
+        changed_meta_df.loc[:, 'delete_ts'] = None
+        changed_meta_df.loc[:, 'hash'] = changed_meta_df['data_hash']
 
         return (
             cast(DataDF, new_df),
