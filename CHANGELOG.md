@@ -1,3 +1,7 @@
+# WIP 0.10.9
+
+* Fix SettingWithCopyWarning in `MetaTable`
+
 # 0.10.8
 
 * Add `read_data` parameter to `TableStoreFiledir` (https://github.com/epoch8/datapipe/pull/132)
