@@ -192,12 +192,11 @@ class TableStoreFiledir(TableStore):
         _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
 
-        idxs_values_np = np.array(idxs_values)
+        idxs_values_np = np.array([str(x) for x in idxs_values])
         idxs_values_parsed_from_filepath = np.array([
             m.group(attrname) for attrname in self.attrnames
             if m is not None
         ])
-
         assert (
             len(idxs_values_np) == len(idxs_values_parsed_from_filepath) and
 
@@ -271,6 +270,7 @@ class TableStoreFiledir(TableStore):
             for attrname in self.attrnames
         }
         ukeys = []
+        filepaths = []
 
         for f in files:
             m = re.match(self.filename_match, f.path)
@@ -280,19 +280,22 @@ class TableStoreFiledir(TableStore):
                 ids[attrname].append(m.group(attrname))
 
             ukeys.append(files.fs.ukey(f.path))
+            filepaths.append(f"{self.protocol_str}{f.path}")
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
                 {
                     **ids,
                     'ukey': ukeys,
+                    **({'filepath': filepaths} if self.add_filepath_column else {})
                 }
             )
-            yield pseudo_data_df
+            yield pseudo_data_df.astype(object)
         else:
             yield pd.DataFrame(
                 {
                     **ids,
-                    'ukey': []
+                    'ukey': [],
+                    **({'filepath': []} if self.add_filepath_column else {})
                 }
-            )
+            ).astype(object)
