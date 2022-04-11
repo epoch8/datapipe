@@ -20,17 +20,17 @@ TEST_SCHEMA = [
 ]
 
 
-def generate_data():
+def generate_data(value: int):
     df_data = [{
-        "pipeline_id": 1,
-        "offer_id": 1,
-        "test_field": {"a": 1}
+        "pipeline_id": value,
+        "offer_id": value,
+        "test_field": {"a": value}
     }]
     yield pd.DataFrame(data=df_data)
 
 
-def update_data(df: pd.DataFrame) -> pd.DataFrame:
-    df["test_field"].apply(lambda x: {**x, "b": 2})
+def update_data(df: pd.DataFrame, value: int) -> pd.DataFrame:
+    df["test_field"].apply(lambda x: {**x, "b": value})
     df.index = df.index.astype('str')
     return df
 
@@ -69,11 +69,13 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
         BatchGenerate(
             generate_data,
             outputs=["test_generate"],
+            value=1
         ),
         BatchTransform(
             update_data,
             inputs=["test_generate"],
             outputs=["test_transform"],
+            value=2
         )
     ])
 

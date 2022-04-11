@@ -31,8 +31,8 @@ TEST_DF = pd.DataFrame(
 
 
 def test_table_store_json_line_reading(tmp_dir, dbconn):
-    def conversion(df):
-        df["y"] = df["x"] ** 2
+    def conversion(df, multiply):
+        df["y"] = df["x"] ** multiply
         return df
 
     x = pd.Series(np.arange(2 * CHUNK_SIZE, dtype=np.int32))
@@ -62,6 +62,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
             inputs=["input_data"],
             outputs=["output_data"],
             chunk_size=CHUNK_SIZE,
+            multiply=2
         ),
     ])
 
@@ -115,7 +116,7 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
             transform,
             inputs=["inp1", "inp2"],
             outputs=["out1", "out2"],
-            chunk_size=CHUNK_SIZE,
+            chunk_size=CHUNK_SIZE
         ),
     ])
 

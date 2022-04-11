@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable, Optional, Any, cast
+from typing import List, Dict, Optional, Any, cast, Protocol
 from dataclasses import dataclass, field
 from abc import ABC
 
@@ -48,7 +48,16 @@ class PipelineStep(ABC):
         raise NotImplementedError
 
 
-ComputeStepFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
+class ComputeStepFunc(Protocol):
+    __name__: str
+    def __call__(
+        self,
+        ds: DataStore,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        run_config: Optional[RunConfig],
+        **kwargs
+    ) -> None: ...
 
 
 class DatatableTransform(PipelineStep):
@@ -57,12 +66,14 @@ class DatatableTransform(PipelineStep):
         func: ComputeStepFunc,
         inputs: List[str],
         outputs: List[str],
-        check_for_changes: bool = True
+        check_for_changes: bool = True,
+        **kwargs
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.check_for_changes = check_for_changes
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
         return [
@@ -71,19 +82,28 @@ class DatatableTransform(PipelineStep):
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
-                check_for_changes=self.check_for_changes
+                kwargs=self.kwargs,
+                check_for_changes=self.check_for_changes,
             )
         ]
 
 
-@dataclass
 class DatatableTransformStep:
-    name: str
-    input_dts: List[DataTable]
-    output_dts: List[DataTable]
-    func: ComputeStepFunc
-    kwargs: Dict[str, Any] = field(default_factory=lambda: cast(Dict[str, Any], {}))
-    check_for_changes: bool = True
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        func: ComputeStepFunc,
+        check_for_changes: bool = True,
+        **kwargs
+    ):
+        self.name = name
+        self.input_dts = input_dts
+        self.output_dts = output_dts
+        self.func = func
+        self.check_for_changes = check_for_changes
+        self.kwargs = kwargs
 
     def __post_init__(self):
         inp_p_keys = {key for inp in self.input_dts for key in inp.primary_keys}
@@ -123,7 +143,7 @@ class DatatableTransformStep:
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
-        self.func(ds, self.input_dts, self.output_dts, run_config)
+        self.func(ds, self.input_dts, self.output_dts, run_config, **self.kwargs)
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:

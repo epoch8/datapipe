@@ -1,5 +1,5 @@
-from typing import Callable, List, Iterator, Tuple, Union
-from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Iterator, Optional, Tuple, Union, cast, Protocol
+from dataclasses import dataclass, field
 
 import time
 import tqdm
@@ -16,7 +16,9 @@ logger = logging.getLogger('datapipe.core_steps')
 tracer = trace.get_tracer("datapipe.core_steps")
 
 
-BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF], Tuple[DataDF, ...]]]
+class BatchTransformFunc(Protocol):
+    __name__: str
+    def __call__(self, *inputs, **kwargs) -> Union[DataDF, List[DataDF], Tuple[DataDF, ...]]: ...
 
 
 def batch_transform_wrapper(
@@ -25,7 +27,8 @@ def batch_transform_wrapper(
     input_dts: List[DataTable],
     output_dts: List[DataTable],
     chunksize: int = 1000,
-    run_config: RunConfig = None
+    run_config: RunConfig = None,
+    **kwargs
 ) -> None:
     import math
 
@@ -54,7 +57,7 @@ def batch_transform_wrapper(
                 if sum(len(j) for j in input_dfs) > 0:
                     with tracer.start_as_current_span("run transform"):
                         try:
-                            chunks_df = func(*input_dfs)
+                            chunks_df = func(*input_dfs, **kwargs)
                         except Exception as e:
                             logger.error(f"Transform failed ({func.__name__}): {str(e)}")
                             ds.event_logger.log_exception(e, run_config=run_config)
@@ -85,18 +88,32 @@ def batch_transform_wrapper(
                             res_dt.delete_by_idx(del_idx, run_config=run_config)
 
 
-@dataclass
 class BatchTransform(PipelineStep):
-    func: Callable
-    inputs: List[str]
-    outputs: List[str]
-    chunk_size: int = 1000
+    def __init__(
+        self,
+        func: BatchTransformFunc,
+        inputs: List[str],
+        outputs: List[str],
+        chunk_size: int = 1000,
+        **kwargs
+    ):
+        self.func = func
+        self.inputs = inputs
+        self.outputs = outputs
+        self.chunk_size = chunk_size
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
-        def transform_func(ds, input_dts, output_dts, run_config):
+        def transform_func(
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
+        ) -> None:
             return batch_transform_wrapper(
                 self.func,
                 chunksize=self.chunk_size,
@@ -104,6 +121,7 @@ class BatchTransform(PipelineStep):
                 input_dts=input_dts,
                 output_dts=output_dts,
                 run_config=run_config,
+                **kwargs
             )
 
         return [
@@ -111,19 +129,23 @@ class BatchTransform(PipelineStep):
                 f'{self.func.__name__}',
                 input_dts=input_dts,
                 output_dts=output_dts,
-                func=transform_func,
+                func=transform_func,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                **self.kwargs
             )
         ]
 
 
-BatchGenerateFunc = Callable[[], Iterator[Tuple[DataDF, ...]]]
+class BatchGenerateFunc(Protocol):
+    __name__: str
+    def __call__(self, **kwargs) -> Iterator[Tuple[DataDF, ...]]: ...
 
 
 def batch_generate_wrapper(
     func: BatchGenerateFunc,
     ds: DataStore,
     output_dts: List[DataTable],
-    run_config: RunConfig = None
+    run_config: RunConfig = None,
+    **kwargs
 ) -> None:
     import inspect
     import pandas as pd
@@ -140,7 +162,7 @@ def batch_generate_wrapper(
 
     with tracer.start_as_current_span("init generator"):
         try:
-            iterable = func()
+            iterable = func(**kwargs)
         except Exception as e:
             logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
             ds.event_logger.log_exception(e, run_config=run_config)
@@ -186,22 +208,35 @@ def batch_generate_wrapper(
             dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
-@dataclass
 class BatchGenerate(PipelineStep):
-    func: BatchGenerateFunc
-    outputs: List[str]
+    def __init__(
+        self,
+        func: BatchGenerateFunc,
+        outputs: List[str],
+        **kwargs
+    ):
+        self.func = func
+        self.outputs = outputs
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
-            return batch_generate_wrapper(self.func, ds, output_dts, run_config)
+        def transform_func(
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
+        ):
+            return batch_generate_wrapper(self.func, ds, output_dts, run_config, **kwargs)
 
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
-                func=transform_func,
+                func=transform_func,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
-                check_for_changes=False
+                check_for_changes=False,
+                **self.kwargs,
             )
         ]
 
@@ -251,13 +286,19 @@ class UpdateExternalTable(PipelineStep):
         self.output_table_name = output
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[DatatableTransformStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
+        def transform_func(
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
+        ):
             return update_external_table(ds, output_dts[0], run_config)
 
         return [
             DatatableTransformStep(
                 name=f'update_{self.output_table_name}',
-                func=transform_func,
+                func=transform_func,  # type: ignore # (mypy bug: https://github.com/python/mypy/issues/10976)
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
             )

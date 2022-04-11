@@ -1,3 +1,4 @@
+from typing import List
 import click
 
 from opentelemetry import trace
@@ -12,11 +13,20 @@ from datapipe.compute import Catalog, Pipeline
 from datapipe.run_config import RunConfig
 
 
+def yad(decorators):
+    def decorator(f):
+        for d in reversed(decorators):
+            f = d(f)
+        return f
+    return decorator
+
+
 def main(
     ds: DataStore,
     catalog: Catalog,
     pipeline: Pipeline,
     run_config: RunConfig = None,
+    additional_options: List[click.Option] = []
 ) -> None:
     @click.group()
     @click.option('--debug', is_flag=True, help='Log debug output')
@@ -25,6 +35,7 @@ def main(
     @click.option('--trace-jaeger', is_flag=True, help='Enable tracing to Jaeger')
     @click.option('--trace-jaeger-host', type=click.STRING, default='localhost', help='Jaeger host')
     @click.option('--trace-jaeger-port', type=click.INT, default=14268, help='Jaeger port')
+    @yad(additional_options)
     def cli(
         debug: bool,
         debug_sql: bool,
