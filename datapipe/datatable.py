@@ -142,6 +142,7 @@ class DataStore:
         assert(name not in self.tables)
 
         primary_schema = table_store.get_primary_schema()
+        meta_schema = table_store.get_meta_schema()
 
         res = DataTable(
             name=name,
@@ -150,6 +151,7 @@ class DataStore:
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
+                meta_schema=meta_schema
             ),
             table_store=table_store,
             event_logger=self.event_logger,

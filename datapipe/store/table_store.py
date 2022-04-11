@@ -6,11 +6,14 @@ import pandas as pd
 from pathlib import Path
 from datapipe.run_config import RunConfig
 
-from datapipe.types import IndexDF, DataDF, DataSchema, data_to_index
+from datapipe.types import IndexDF, DataDF, DataSchema, MetaSchema, data_to_index
 
 
 class TableStore(ABC):
     def get_primary_schema(self) -> DataSchema:
+        raise NotImplementedError
+
+    def get_meta_schema(self) -> MetaSchema:
         raise NotImplementedError
 
     @property
@@ -45,6 +48,9 @@ class TableDataSingleFileStore(TableStore):
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
+
+    def get_meta_schema(self) -> MetaSchema:
+        raise []
 
     def load_file(self) -> Optional[DataDF]:
         raise NotImplementedError
