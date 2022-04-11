@@ -98,7 +98,7 @@ FILEDIR_DATA_PARAMS = [
         }),
         '{id}.json',
         [
-            Column('id', String(100)),
+            Column('id', Integer)
         ],
         id='integer_id'
     ),
@@ -172,20 +172,6 @@ FILEDIR_DATA_PARAMS = [
         pd.DataFrame({
             'id1': [i for i in range(100)],
             'id2': [i for i in range(100, 200)],
-            'name': [f'Product {i}' for i in range(100)],
-            'price': [1000 + i for i in range(100)],
-        }),
-        '{id1}/{id2}.json',
-        [
-            Column('id1', Integer),
-            Column('id2', Integer),
-        ],
-        id='multi_ids_slash'
-    ),
-    pytest.param(
-        pd.DataFrame({
-            'id1': [i for i in range(100)],
-            'id2': [i for i in range(100, 200)],
             'id3': [i for i in range(100, 200)],
             'id4': [i for i in range(100, 200)],
             'name': [f'Product {i}' for i in range(100)],
@@ -199,6 +185,18 @@ FILEDIR_DATA_PARAMS = [
             Column('id4', String(100)),
         ],
         id='multi_ids_slash2'
+    ),
+    pytest.param(
+        pd.DataFrame({
+            'id': ['json', 'json.', 'AAjson', 'AAAjsonBB.j', "assdjson.json", "jsonjson.jsonasdad.fdsds.json"],
+            'name': [f'Product {i}' for i in range(6)],
+            'price': [1000 + i for i in range(6)],
+        }),
+        '{id}.json',
+        [
+            Column('id', String(100)),
+        ],
+        id='complex_values'
     )
 ]
 

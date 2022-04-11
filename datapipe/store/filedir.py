@@ -88,6 +88,7 @@ def _pattern_to_match(pat: str) -> str:
 
     pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)
     pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
+    pat = f"{pat}\\Z"
     return pat
 
 
