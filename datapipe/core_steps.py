@@ -17,7 +17,7 @@ tracer = trace.get_tracer("datapipe.core_steps")
 
 
 class BatchTransformFunc(Protocol):
-    __name__: str
+    # __name__: str
     def __call__(self, *inputs, **kwargs) -> Union[DataDF, List[DataDF], Tuple[DataDF, ...]]: ...
 
 
@@ -59,7 +59,7 @@ def batch_transform_wrapper(
                         try:
                             chunks_df = func(*input_dfs, **kwargs)
                         except Exception as e:
-                            logger.error(f"Transform failed ({func.__name__}): {str(e)}")
+                            logger.error(f"Transform failed ({func.__name__}): {str(e)}")  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                             ds.event_logger.log_exception(e, run_config=run_config)
 
                             continue
@@ -126,10 +126,10 @@ class BatchTransform(PipelineStep):
 
         return [
             DatatableTransformStep(
-                f'{self.func.__name__}',
+                f'{self.func.__name__}',  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=input_dts,
                 output_dts=output_dts,
-                func=transform_func,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                func=transform_func,
                 **self.kwargs
             )
         ]
@@ -164,7 +164,7 @@ def batch_generate_wrapper(
         try:
             iterable = func(**kwargs)
         except Exception as e:
-            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
+            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
             ds.event_logger.log_exception(e, run_config=run_config)
 
             # raise e
@@ -231,8 +231,8 @@ class BatchGenerate(PipelineStep):
 
         return [
             DatatableTransformStep(
-                name=self.func.__name__,
-                func=transform_func,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                name=self.func.__name__,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                func=transform_func,
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
                 check_for_changes=False,
@@ -298,7 +298,7 @@ class UpdateExternalTable(PipelineStep):
         return [
             DatatableTransformStep(
                 name=f'update_{self.output_table_name}',
-                func=transform_func,  # type: ignore # (mypy bug: https://github.com/python/mypy/issues/10976)
+                func=transform_func,
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
             )
