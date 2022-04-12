@@ -83,6 +83,7 @@ class DatatableTransform(PipelineStep):
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
                 check_for_changes=self.check_for_changes,
+                **self.kwargs
             )
         ]
 
