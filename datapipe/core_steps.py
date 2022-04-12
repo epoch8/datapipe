@@ -136,7 +136,7 @@ class BatchTransform(PipelineStep):
 
 
 class BatchGenerateFunc(Protocol):
-    __name__: str
+    # __name__: str
     def __call__(self, **kwargs) -> Iterator[Tuple[DataDF, ...]]: ...
 
 
