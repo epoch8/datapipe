@@ -56,7 +56,8 @@ def batch_transform_wrapper(
                         try:
                             chunks_df = func(*input_dfs)
                         except Exception as e:
-                            logger.error(f"Transform failed ({func.__name__}): {str(e)}")
+                            from traceback_with_variables.print import print_exc
+                            logger.exception(f"Transform failed ({func.__name__}): {print_exc(e)}")
                             ds.event_logger.log_exception(e, run_config=run_config)
 
                             continue
@@ -142,7 +143,8 @@ def batch_generate_wrapper(
         try:
             iterable = func()
         except Exception as e:
-            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
+            from traceback_with_variables.print import print_exc
+            logger.exception(f"Generating failed ({func.__name__}): {print_exc(e)}")
             ds.event_logger.log_exception(e, run_config=run_config)
 
             # raise e
