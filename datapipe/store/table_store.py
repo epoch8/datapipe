@@ -50,7 +50,7 @@ class TableDataSingleFileStore(TableStore):
         return self.primary_schema
 
     def get_meta_schema(self) -> MetaSchema:
-        raise []
+        return []
 
     def load_file(self) -> Optional[DataDF]:
         raise NotImplementedError

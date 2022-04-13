@@ -39,7 +39,7 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
-        meta_schema: MetaSchema
+        meta_schema: MetaSchema = []
     ):
         self.dbconn = dbconn
         self.name = name
@@ -113,7 +113,7 @@ class MetaTable:
         )
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
-        meta_keys = self.primary_keys + self.meta_keys.values()
+        meta_keys = self.primary_keys + list(self.meta_keys.values())
         res_df = df[meta_keys]
 
         res_df = res_df.assign(
@@ -127,7 +127,7 @@ class MetaTable:
         return cast(MetadataDF, res_df)
 
     def _get_meta_data_columns(self):
-        return self.primary_keys + self.meta_keys.values() + [column.name for column in METADATA_SQL_SCHEMA]
+        return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
         return (
@@ -372,3 +372,18 @@ class MetaTable:
             con=self.dbconn.con,
             chunksize=1000
         )
+
+
+class MetaTableData:
+    def __init__(self, tbl: MetaTable, sql_prefix: str = '') -> None:
+        self.primary_keys = set(tbl.primary_keys)
+        self.meta_keys = set(tbl.meta_keys.keys())
+        self.meta_column_names = tbl.meta_keys
+        self.sql_table = tbl.sql_table.alias(f"{sql_prefix}_{tbl.name}")
+
+    def get_keys(self):
+        return self.primary_keys | self.meta_keys
+
+    def get_column(self, key: str) -> Column:
+        column_key = key if key in self.primary_keys else self.meta_column_names[key]
+        return self.sql_table.c[column_key]
