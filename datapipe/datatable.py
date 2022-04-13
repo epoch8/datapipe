@@ -234,7 +234,7 @@ class DataStore:
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, inp.sql_table, inp.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, inp.sql_table, list(inp.primary_keys), run_config)
 
             sql_requests.append(sql)
 
@@ -254,7 +254,7 @@ class DataStore:
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, out.sql_table, out.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, out.sql_table, list(out.primary_keys), run_config)
 
             sql_requests.append(sql)
 

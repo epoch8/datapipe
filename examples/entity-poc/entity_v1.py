@@ -1,3 +1,19 @@
+class Entity:
+    pass
+
+
+class PropGroup:
+    pass
+
+
+class String:
+    pass
+
+
+class Integer:
+    pass
+
+
 entities = {
     "item": Entity(
         name="item",
@@ -11,7 +27,7 @@ entities = {
                     ("price", Integer()),
                 ]
             )
-        ]
+        ],
         parts=[
             "feed",
             "ozon_edit",

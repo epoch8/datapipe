@@ -1,3 +1,19 @@
+class Entity:
+    pass
+
+
+class DataStore:
+    pass
+
+
+class Catalog:
+    pass
+
+
+def api_start(ds, catalog, entities):
+    pass
+
+
 entities = {
     "item": Entity(
         name="item",
@@ -9,7 +25,8 @@ entities = {
         ]
     )
 }
-
+ds = DataStore()
+catalog = Catalog()
 
 api_start(ds, catalog, entities)
 

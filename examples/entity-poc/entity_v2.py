@@ -1,4 +1,7 @@
+from typing import List
+
 # DataPipe ######################################################################################
+
 
 class Entity:
     properties = {}
@@ -79,6 +82,17 @@ class Deployment:
     pass
 
 
+def run_graph(graph, ds, executor):
+    pass
+
+
+def run_api(api, ds):
+    pass
+
+
+def kub_deploy(graph, ds, deploy):
+    pass
+
 # T4mp ######################################################################################
 
 
@@ -155,5 +169,4 @@ deploy = Deployment()
 
 run_graph(T4mpGraph, datastore, executor)
 run_api(T4mpApi, datastore)
-
 kub_deploy(T4mpGraph, datastore, deploy)
