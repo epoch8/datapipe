@@ -1,6 +1,7 @@
 # WIP 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
+* `DatatableTransform`, `DatatableTransformStep`, `BatchGenerate`, `BatchGenerateStep`, `BatchTransform`, `BatchTransformStep` now accepts keyworded arguments `**kwargs` to parametrize arguments of corresponding function `func` (https://github.com/epoch8/datapipe/pull/150)
 
 # 0.10.8
 
