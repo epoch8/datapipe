@@ -212,7 +212,7 @@ class DataStore:
 
         for inp in inp_tbls:
             fields = get_inner_sql_fields(inp)
-            meta_columns = [inp.get_column(key) for key in join_keys - inp.primary_keys]
+            # meta_columns = [inp.get_column(key) for key in join_keys - inp.primary_keys]
 
             sql = select(fields).select_from(
                 left_join(inp, out_tbls)
@@ -226,7 +226,7 @@ class DataStore:
                                 inp.sql_table.c.update_ts
                             ),
                             out.sql_table.c.process_ts.is_(None),
-                            *[col.is_not(None) for col in meta_columns]
+                            # *[col.is_not(None) for col in meta_columns]
                         ),
                         inp.sql_table.c.delete_ts.is_(None),
                     )
