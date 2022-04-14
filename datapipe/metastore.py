@@ -210,7 +210,8 @@ class MetaTable:
             existing_meta_df,
             how='left',
             left_on=self.primary_keys,
-            right_on=self.primary_keys
+            right_on=self.primary_keys,
+            suffixes=('', '_exist')
         )
 
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
