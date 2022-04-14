@@ -1,7 +1,7 @@
 # WIP 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
-* Replace `click` with `simple-parser` for `datapipe.cli` (https://github.com/epoch8/datapipe/pull/152)
+* Replace the module `click` with `simple-parser` for `datapipe.cli` (https://github.com/epoch8/datapipe/pull/152)
 
 # 0.10.8
 
