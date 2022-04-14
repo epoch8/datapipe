@@ -8,12 +8,12 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.store.database import TableStoreDB
+from datapipe.store.database import TableStoreDB, MetaKey
 from datapipe.datatable import DataStore
 from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper
 from datapipe.run_config import RunConfig
 
-from .util import assert_datatable_equal
+from .util import assert_datatable_equal, assert_df_equal
 
 
 TEST_SCHEMA1 = [
@@ -27,6 +27,29 @@ TEST_SCHEMA2 = [
     Column('a', Integer),
 ]
 
+TEST_SCHEMA2 = [
+    Column('item_id', Integer, primary_key=True),
+    Column('a', Integer),
+]
+
+TEST_SCHEMA2 = [
+    Column('item_id', Integer, primary_key=True),
+    Column('a', Integer),
+]
+
+PRODUCTS_SCHEMA = [
+    Column('product_id', Integer, primary_key=True),
+    Column('pipeline_id', Integer, primary_key=True),
+    Column('b', Integer),
+]
+
+ITEMS_SCHEMA = [
+    Column('item_id', Integer, primary_key=True),
+    Column('pipeline_id', Integer, primary_key=True),
+    Column('product_id', Integer, MetaKey()),
+    Column('a', Integer),
+]
+
 TEST_DF1_1 = pd.DataFrame(
     {
         'item_id': range(10),
@@ -35,12 +58,30 @@ TEST_DF1_1 = pd.DataFrame(
     },
 )
 
+
 TEST_DF1_2 = pd.DataFrame(
     {
         'item_id': list(range(5)) * 2,
         'pipeline_id': [i // 5 for i in range(10)],
         'a': range(10),
     },
+)
+
+PRODUCTS_DF = pd.DataFrame(
+    {
+        'product_id': list(range(2)),
+        'pipeline_id': list(range(2)),
+        'b': range(10, 12),
+    }
+)
+
+ITEMS_DF = pd.DataFrame(
+    {
+        'item_id': list(range(5)) * 2,
+        'pipeline_id': list(range(2)) * 5,
+        'product_id': list(range(2)) * 5,
+        'a': range(10),
+    }
 )
 
 
@@ -200,3 +241,49 @@ def test_gen_with_filter(dbconn):
     )
 
     assert_datatable_equal(tbl, TEST_DF1_1.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
+
+
+def test_batch_transform_with_entity(dbconn):
+    ds = DataStore(dbconn)
+
+    products = ds.create_table(
+        'products',
+        table_store=TableStoreDB(dbconn, 'products_data', PRODUCTS_SCHEMA, True)
+    )
+
+    items = ds.create_table(
+        'items',
+        table_store=TableStoreDB(dbconn, 'items_data', ITEMS_SCHEMA, True)
+    )
+
+    items2 = ds.create_table(
+        'items2',
+        table_store=TableStoreDB(dbconn, 'items2_data', ITEMS_SCHEMA, True)
+    )
+
+    products.store_chunk(PRODUCTS_DF, now=0)
+    items.store_chunk(ITEMS_DF, now=0)
+
+    def update_df(products: pd.DataFrame, items: pd.DataFrame):
+        merged_df = pd.merge(items, products, on=['product_id', 'pipeline_id'])
+        merged_df['a'] = merged_df.apply(lambda x: x['a'] + x['b'], axis=1)
+
+        return merged_df[['item_id', 'pipeline_id', 'product_id', 'a']]
+
+    batch_transform_wrapper(
+        func=update_df,
+        ds=ds,
+        input_dts=[products, items],
+        output_dts=[items2],
+    )
+
+    merged_df = pd.merge(ITEMS_DF, PRODUCTS_DF, on=['product_id', 'pipeline_id'])
+    merged_df['a'] = merged_df.apply(lambda x: x['a'] + x['b'], axis=1)
+
+    items2_df = merged_df[['item_id', 'pipeline_id', 'product_id', 'a']]
+
+    assert_df_equal(
+        items2.get_data(),
+        items2_df,
+        index_cols=['item_id', 'pipeline_id']
+    )
