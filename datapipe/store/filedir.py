@@ -157,9 +157,9 @@ class TableStoreFiledir(TableStore):
             filename_pattern_for_match = path
             self.protocol_str = f"{self.protocol}://"
 
-        if '*' in path and readonly:
+        if '*' in path and not readonly:
             raise ValueError(
-                "When `disable_rm=False`, in filename_pattern shouldn't be any `*` characters."
+                "When `readonly=False`, in filename_pattern shouldn't be any `*` characters."
             )
         self.readonly = readonly
         self.disable_rm = disable_rm
