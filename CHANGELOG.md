@@ -5,7 +5,7 @@
   https://github.com/epoch8/datapipe/issues/146 and
   https://github.com/epoch8/datapipe/issues/147
   (https://github.com/epoch8/datapipe/pull/149)
-
+* Added new arguments `readonly` and `disable_rm` in `TableStoreFiledir`. By default `TableStoreFiledir` is running as reader and writer, but if `enable_rm=True` then it also removes files. When `readonly=None` (defualt), it checks for patterns `*` to disable/enable writing files, but if it needed to force enable or disable writing, `readonly` should be changed accordingly.
 # 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
