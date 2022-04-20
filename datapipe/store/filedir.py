@@ -13,7 +13,7 @@ import pandas as pd
 from sqlalchemy import Column, String
 from PIL import Image
 
-from datapipe.types import DataDF, DataSchema, IndexDF
+from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF
 from datapipe.store.table_store import TableStore
 from datapipe.run_config import RunConfig
 
@@ -108,6 +108,7 @@ class TableStoreFiledir(TableStore):
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
         primary_schema: DataSchema = None,
+        read_data: bool = True
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -117,6 +118,26 @@ class TableStoreFiledir(TableStore):
            содержать все поля, упоминаемые в `filename_pattern`
         2. Неявный - `primary_schema` = `None`, тогда все поля получают
            дефолтный тип `String(100)`
+
+        Args:
+
+        filename_pattern -- Путь к файлам в формате fsspec (но без chaining),
+        может содержать два типа шаблонов:
+          - {id_field} - поле из индекса учитывается как при чтении так и при
+            записи
+          - * - не попадает в индекс, и стор работает режиме "только чтение"
+
+        primary_schema -- дает возможность в явном виде задать типы полей,
+        который упоминаются в filename_pattern
+
+        adapter -- объект отвечающий за преобразование содержимого файла в
+        структурированную запись и обратно
+
+        add_filepath_column -- если True - в объект добавляется поле filepath с
+        адресом файла
+
+        read_data -- если False - при чтении не происходит парсинга содержимого
+        файла
         """
 
         protocol, path = fsspec.core.split_protocol(filename_pattern)
@@ -137,6 +158,7 @@ class TableStoreFiledir(TableStore):
 
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
+        self.read_data = read_data
 
         self.attrnames = _pattern_to_attrnames(self.filename_pattern)
         self.filename_glob = _pattern_to_glob(self.filename_pattern)
@@ -154,6 +176,9 @@ class TableStoreFiledir(TableStore):
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
+
+    def get_meta_schema(self) -> MetaSchema:
+        return []
 
     def delete_rows(self, idx: IndexDF) -> None:
         # FIXME: Реализовать
@@ -211,13 +236,17 @@ class TableStoreFiledir(TableStore):
             for row_idx in idx.index:
                 with (file_open := fsspec.open(self._filename_from_idxs_values(idx.loc[row_idx, self.attrnames]),
                                                f'r{self.adapter.mode}')) as f:
-                    data = self.adapter.load(f)
+                    data = {}
 
-                    attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
-                    assert len(attrnames_in_data) == 0, (
-                        f"Found repeated keys inside data that are already used (from scheme): {attrnames_in_data}. "
-                        f"Remove these keys from data."
-                    )
+                    if self.read_data:
+                        data = self.adapter.load(f)
+
+                        attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
+                        assert len(attrnames_in_data) == 0, (
+                            f"Found repeated keys inside data that are already used (from scheme): "
+                            f"{attrnames_in_data}. "
+                            f"Remove these keys from data."
+                        )
 
                     for attrname in self.attrnames:
                         data[attrname] = idx.loc[row_idx, attrname]

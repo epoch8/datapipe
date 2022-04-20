@@ -6,6 +6,7 @@ import pandas as pd
 from sqlalchemy import Column
 
 DataSchema = List[Column]
+MetaSchema = List[Column]
 
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType('IndexDF', pd.DataFrame)
@@ -55,3 +56,20 @@ def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
     idx2_idx = idx2_df.set_index(cols).index
 
     return cast(IndexDF, idx1_idx.difference(idx2_idx).to_frame(index=False))
+
+
+def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
+    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))
+    cols = idx1_df.columns.to_list()
+
+    idx1_idx = idx1_df.set_index(cols).index
+    idx2_idx = idx2_df.set_index(cols).index
+
+    return cast(IndexDF, idx1_idx.intersection(idx2_idx).to_frame(index=False))
+
+
+def index_to_data(data_df: DataDF, idx_df: IndexDF) -> DataDF:
+    idx_columns = list(idx_df.columns)
+    data_df = data_df.set_index(idx_columns)
+    indexes = idx_df.set_index(idx_columns)
+    return cast(DataDF, data_df.loc[indexes.index].reset_index())

@@ -2,18 +2,24 @@ from typing import List, Any, Dict, Union, Optional, Iterator
 
 import copy
 import logging
+
 import pandas as pd
+from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 from sqlalchemy import Column, Table, create_engine, MetaData, String, Integer
 from sqlalchemy.sql.expression import select, delete, tuple_
 from sqlalchemy.pool import SingletonThreadPool
-from datapipe.run_config import RunConfig
+from sqlalchemy.schema import SchemaItem
+from sqlalchemy.sql.base import SchemaEventTarget
 
-from datapipe.types import DataDF, IndexDF, DataSchema, data_to_index
+from datapipe.run_config import RunConfig
+from datapipe.types import DataDF, IndexDF, DataSchema, MetaSchema, data_to_index
 from datapipe.store.table_store import TableStore
 
 
-logger = logging.getLogger('datapipe.store.database')
+logger = logging.getLogger("datapipe.store.database")
+tracer = trace.get_tracer("datapipe.store.database")
 
 
 SCHEMA_TO_DTYPE_LOOKUP = {
@@ -43,9 +49,19 @@ class DBConn:
         self.connstr = connstr
         self.schema = schema
 
+        if connstr.startswith('sqlite'):
+            self.supports_update_from = False
+        else:
+            # Assume relatively new Postgres
+            self.supports_update_from = True
+
         self.con = create_engine(
             connstr,
             poolclass=SingletonThreadPool,
+        )
+
+        SQLAlchemyInstrumentor().instrument(
+            engine=self.con
         )
 
         self.sqla_metadata = MetaData(schema=schema)
@@ -53,7 +69,7 @@ class DBConn:
     def __getstate__(self):
         return {
             'connstr': self.connstr,
-            'schema': self.schema
+            'schema': self.schema,
         }
 
     def __setstate__(self, state):
@@ -69,6 +85,22 @@ def sql_apply_runconfig_filter(sql: select, table: Table, primary_keys: List[str
                 )
 
     return sql
+
+
+class MetaKey(SchemaItem):
+    def __init__(self, target_name: str = None) -> None:
+        self.target_name = target_name
+
+    def _set_parent(self, parent: SchemaEventTarget, **kw: Any) -> None:
+        self.parent = parent
+        self.parent.meta_key = self
+
+        if not self.target_name:
+            self.target_name = parent.name
+
+    @classmethod
+    def get_property_name(cls) -> str:
+        return "meta_key"
 
 
 class TableStoreDB(TableStore):
@@ -98,6 +130,10 @@ class TableStoreDB(TableStore):
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
+
+    def get_meta_schema(self) -> MetaSchema:
+        meta_key_prop = MetaKey.get_property_name()
+        return [column for column in self.data_sql_schema if hasattr(column, meta_key_prop)]
 
     def _apply_where_expression(self, sql, idx: IndexDF):
         if len(self.primary_keys) == 1:

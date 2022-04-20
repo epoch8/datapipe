@@ -1,18 +1,18 @@
 from dataclasses import dataclass
-from typing import Iterator, Tuple, Dict, cast, List
+from typing import Iterator, Tuple, cast, List
 
 import copy
 import logging
 import time
 
-from sqlalchemy.sql.expression import and_, bindparam, or_, select, tuple_, update
+from sqlalchemy.sql.expression import and_, or_, select, tuple_, text, delete
 from sqlalchemy import Table, Column, Integer, Float, func
 
 from cityhash import CityHash32
 import pandas as pd
 
-from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
+from datapipe.types import IndexDF, DataSchema, MetaSchema, DataDF, MetadataDF, data_to_index
+from datapipe.store.database import DBConn, MetaKey, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
 
 
@@ -39,6 +39,7 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
+        meta_schema: MetaSchema = []
     ):
         self.dbconn = dbconn
         self.name = name
@@ -49,7 +50,16 @@ class MetaTable:
         for item in primary_schema:
             item.primary_key = True
 
-        sql_schema = primary_schema + METADATA_SQL_SCHEMA
+        self.meta_schema = meta_schema
+        self.meta_keys = {}
+
+        meta_key_prop = MetaKey.get_property_name()
+
+        for column in meta_schema:
+            target_name = column.meta_key.target_name if hasattr(column, meta_key_prop) else column.name
+            self.meta_keys[target_name] = column.name
+
+        sql_schema = primary_schema + meta_schema + METADATA_SQL_SCHEMA
 
         self.sql_schema = [copy.copy(i) for i in sql_schema]
 
@@ -103,7 +113,8 @@ class MetaTable:
         )
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
-        res_df = df[self.primary_keys]
+        meta_keys = self.primary_keys + list(self.meta_keys.values())
+        res_df = df[meta_keys]
 
         res_df = res_df.assign(
             hash=self._get_hash_for_df(df),
@@ -116,7 +127,7 @@ class MetaTable:
         return cast(MetadataDF, res_df)
 
     def _get_meta_data_columns(self):
-        return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
+        return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
         return (
@@ -199,7 +210,8 @@ class MetaTable:
             existing_meta_df,
             how='left',
             left_on=self.primary_keys,
-            right_on=self.primary_keys
+            right_on=self.primary_keys,
+            suffixes=('', '_exist')
         )
 
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
@@ -228,9 +240,9 @@ class MetaTable:
         changed_meta_df = merged_df[merged_df['hash'].notna()]
 
         changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
-        changed_meta_df['process_ts'] = now
-        changed_meta_df['delete_ts'] = None
-        changed_meta_df['hash'] = changed_meta_df['data_hash']
+        changed_meta_df.loc[:, 'process_ts'] = now
+        changed_meta_df.loc[:, 'delete_ts'] = None
+        changed_meta_df.loc[:, 'hash'] = changed_meta_df['data_hash']
 
         return (
             cast(DataDF, new_df),
@@ -254,34 +266,66 @@ class MetaTable:
                 dtype=sql_schema_to_sqltype(self.sql_schema),
             )
 
+    def _delete_rows(self, df: MetadataDF) -> None:
+        if len(df) > 0:
+            idx = df[self.primary_keys]
+            sql = delete(self.sql_table)
+
+            if len(self.primary_keys) == 1:
+                # Когда ключ один - сравниваем напрямую
+                key = self.primary_keys[0]
+                sql = sql.where(
+                    self.sql_table.c[key].in_(idx[key].to_list())
+                )
+
+            else:
+                # Когда ключей много - сравниваем через tuple
+                keys = tuple_(*[
+                    self.sql_table.c[key]
+                    for key in self.primary_keys
+                ])
+
+                sql = sql.where(keys.in_([
+                    tuple([r[key] for key in self.primary_keys])  # type: ignore
+                    for r in idx.to_dict(orient='records')
+                ]))
+
+            self.dbconn.con.execute(sql)
+
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
-            stmt = (
-                update(self.sql_table)
-                .values({
-                    'hash': bindparam('b_hash'),
-                    'update_ts': bindparam('b_update_ts'),
-                    'process_ts': bindparam('b_process_ts'),
-                    'delete_ts': bindparam('b_delete_ts'),
-                })
-            )
+            table = f'{self.dbconn.schema}.{self.sql_table.name}' if self.dbconn.schema else self.sql_table.name
+            values_table = f'{self.sql_table.name}_values'
+            columns = [column.name for column in self.sql_schema]
+            update_columns = set(columns) - set(self.primary_keys)
 
-            for key in self.primary_keys:
-                stmt = stmt.where(self.sql_table.c[key] == bindparam(f'b_{key}'))
+            update_expression = ', '.join([f'{column}={values_table}.{column}'
+                                           for column in update_columns])
 
-            columns = self.primary_keys + ['hash', 'update_ts', 'process_ts', 'delete_ts']
+            where_expressiom = ' AND '.join([f'{table}.{key} = {values_table}.{key}'
+                                             for key in self.primary_keys])
 
-            self.dbconn.con.execute(
-                stmt,
-                [
-                    {f'b_{k}': v for k, v in row.items()}
-                    for row in
-                    cast(
-                        Dict,
-                        df.reset_index()[columns].to_dict(orient='records')
-                    )
-                ]
-            )
+            params_df = df.reset_index()[columns]
+            values_params = []
+            params = {}
+
+            for index, row in params_df.iterrows():
+                row_values = [f'CAST(:{column.name}_{index} AS {column.type})' for column in self.sql_schema]
+                row_params = {f'{key}_{index}': row[key] for key in row.keys()}
+
+                values_params.append(f'({", ".join(row_values)})')
+                params.update(row_params)
+
+            stmt = text(f"""
+                UPDATE {table}
+                SET {update_expression}
+                FROM (
+                    VALUES {", ".join(values_params)}
+                ) AS {values_table} ({', '.join(columns)})
+                WHERE {where_expressiom}
+            """)
+
+            self.dbconn.con.execution_options(compiled_cache=None).execute(stmt, params)
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
@@ -290,7 +334,11 @@ class MetaTable:
 
     def update_meta_for_store_chunk(self, changed_meta_df: MetadataDF) -> None:
         if len(changed_meta_df) > 0:
-            self._update_existing_metadata_rows(changed_meta_df)
+            if self.dbconn.supports_update_from:
+                self._update_existing_metadata_rows(changed_meta_df)
+            else:
+                self._delete_rows(changed_meta_df)
+                self._insert_rows(changed_meta_df)
 
     def mark_rows_deleted(
         self,
@@ -307,7 +355,7 @@ class MetaTable:
             meta_df.loc[:, "delete_ts"] = now
             meta_df.loc[:, "process_ts"] = now
 
-            self._update_existing_metadata_rows(meta_df)
+            self.update_meta_for_store_chunk(meta_df)
 
     def get_stale_idx(self, process_ts: float, run_config: RunConfig = None) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
@@ -325,3 +373,18 @@ class MetaTable:
             con=self.dbconn.con,
             chunksize=1000
         )
+
+
+class MetaTableData:
+    def __init__(self, tbl: MetaTable, sql_prefix: str = '') -> None:
+        self.primary_keys = set(tbl.primary_keys)
+        self.meta_keys = set(tbl.meta_keys.keys())
+        self.meta_column_names = tbl.meta_keys
+        self.sql_table = tbl.sql_table.alias(f"{sql_prefix}_{tbl.name}")
+
+    def get_keys(self):
+        return self.primary_keys | self.meta_keys
+
+    def get_column(self, key: str) -> Column:
+        column_key = key if key in self.primary_keys else self.meta_column_names[key]
+        return self.sql_table.c[column_key]

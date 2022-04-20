@@ -126,6 +126,21 @@ def test_read_png_rows(tmp_dir_with_img_data):
     assert('image' in rows.columns)
 
 
+def test_read_rows_without_data(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        f'{tmp_dir_with_img_data}/{{id}}.png',
+        adapter=PILFile('png'),
+        read_data=False
+    )
+
+    df = pd.DataFrame({"id": ["aaa"]})
+    rows = ts.read_rows(df)
+
+    assert_df_equal(rows, df)
+
+    assert('image' not in rows.columns)
+
+
 def test_insert_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
         f'{tmp_dir_with_img_data}/{{id}}.png',

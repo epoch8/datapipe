@@ -3,13 +3,15 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 import logging
+from opentelemetry import trace
 
 from datapipe.types import ChangeList
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
 
-logger = logging.getLogger('datapipe.compute')
+logger = logging.getLogger("datapipe.compute")
+tracer = trace.get_tracer("datapipe.compute")
 
 
 @dataclass
@@ -21,6 +23,12 @@ class Catalog:
     def __init__(self, catalog: Dict[str, Table]):
         self.catalog = catalog
         self.data_tables: Dict[str, DataTable] = {}
+
+    def add_datatable(self, name: str, dt: Table):
+        self.catalog[name] = dt
+
+    def remove_datatable(self, name: str):
+        del self.catalog[name]
 
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
@@ -56,10 +64,12 @@ class DatatableTransform(PipelineStep):
         func: DatatableTransformFunc,
         inputs: List[str],
         outputs: List[str],
+        check_for_changes: bool = True
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
+        self.check_for_changes = check_for_changes
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
@@ -68,6 +78,7 @@ class DatatableTransform(PipelineStep):
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
+                check_for_changes=self.check_for_changes
             )
         ]
 
@@ -106,7 +117,6 @@ class ComputeStep(ABC):
 
         inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
         out_p_keys = set.intersection(*out_p_keys_arr) if len(out_p_keys_arr) else set()
-
         join_keys = set.intersection(inp_p_keys, out_p_keys)
 
         key_to_column_type_inp = {
@@ -166,16 +176,17 @@ class DatatableTransformStep(ComputeStep):
 
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
-            changed_idx_count = ds.get_changed_idx_count(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                run_config=run_config
-            )
+            with tracer.start_as_current_span("check for changes"):
+                changed_idx_count = ds.get_changed_idx_count(
+                    inputs=self.input_dts,
+                    outputs=self.output_dts,
+                    run_config=run_config
+                )
 
-            if changed_idx_count == 0:
-                logger.debug(f'Skipping {self.name} execution - nothing to compute')
+                if changed_idx_count == 0:
+                    logger.debug(f'Skipping {self.name} execution - nothing to compute')
 
-                return
+                    return
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
@@ -186,15 +197,16 @@ class DatatableTransformStep(ComputeStep):
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
-    compute_pipeline: List[ComputeStep] = []
+    with tracer.start_as_current_span("build_compute"):
+        compute_pipeline: List[ComputeStep] = []
 
-    for step in pipeline.steps:
-        compute_pipeline.extend(step.build_compute(ds, catalog))
+        for step in pipeline.steps:
+            compute_pipeline.extend(step.build_compute(ds, catalog))
 
-    for compute_step in compute_pipeline:
-        compute_step.validate()
+        for compute_step in compute_pipeline:
+            compute_step.validate()
 
-    return compute_pipeline
+        return compute_pipeline
 
 
 def print_compute(steps: List[ComputeStep]) -> None:
@@ -205,13 +217,17 @@ def print_compute(steps: List[ComputeStep]) -> None:
 
 
 def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
-    for step in steps:
-        logger.info(
-            f'Running {step.get_name()} '
-            f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
-        )
+    with tracer.start_as_current_span("run_steps"):
+        for step in steps:
+            with tracer.start_as_current_span(
+                f'{step.name} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+            ):
+                logger.info(
+                    f'Running {step.get_name()} '
+                    f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                )
 
-        step.run_full(ds, run_config)
+                step.run_full(ds, run_config)
 
 
 def run_pipeline(

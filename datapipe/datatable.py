@@ -2,19 +2,21 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import logging
 import math
+from opentelemetry import trace
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_, literal
+from sqlalchemy import alias, func, select, union, and_, or_, literal, Column
 
 from datapipe.types import ChangeList, DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
-from datapipe.metastore import MetaTable
+from datapipe.metastore import MetaTable, MetaTableData
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
 from datapipe.run_config import RunConfig, LabelDict
 
 
 logger = logging.getLogger('datapipe.datatable')
+tracer = trace.get_tracer("datapipe.datatable")
 
 
 class DataTable:
@@ -56,44 +58,49 @@ class DataTable:
         '''
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
-        if not data_df.empty:
-            logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
+        with tracer.start_as_current_span(f"{self.name} store_chunk"):
+            if not data_df.empty:
+                logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-            (
-                new_df,
-                changed_df,
-                new_meta_df,
-                changed_meta_df
-            ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
+                with tracer.start_as_current_span("get_changes_for_store_chunk"):
+                    (
+                        new_df,
+                        changed_df,
+                        new_meta_df,
+                        changed_meta_df
+                    ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-            self.event_logger.log_state(
-                self.name,
-                added_count=len(new_df),
-                updated_count=len(changed_df),
-                deleted_count=0,
-                processed_count=len(data_df),
-                run_config=run_config,
-            )
+                self.event_logger.log_state(
+                    self.name,
+                    added_count=len(new_df),
+                    updated_count=len(changed_df),
+                    deleted_count=0,
+                    processed_count=len(data_df),
+                    run_config=run_config,
+                )
 
-            # TODO implement transaction meckanism
-            self.table_store.insert_rows(new_df)
-            self.table_store.update_rows(changed_df)
+                # TODO implement transaction meckanism
+                with tracer.start_as_current_span("store data"):
+                    self.table_store.insert_rows(new_df)
+                    self.table_store.update_rows(changed_df)
 
-            self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-            self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+                with tracer.start_as_current_span("store metadata"):
+                    self.meta_table.insert_meta_for_store_chunk(new_meta_df)
+                    self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-            changes.append(data_to_index(new_df, self.primary_keys))
-            changes.append(data_to_index(changed_df, self.primary_keys))
-        else:
-            data_df = pd.DataFrame(columns=self.primary_keys)
+                    changes.append(data_to_index(new_df, self.primary_keys))
+                    changes.append(data_to_index(changed_df, self.primary_keys))
+            else:
+                data_df = pd.DataFrame(columns=self.primary_keys)
 
-        data_idx = data_to_index(data_df, self.primary_keys)
+            with tracer.start_as_current_span("cleanup deleted rows"):
+                data_idx = data_to_index(data_df, self.primary_keys)
 
-        if processed_idx is not None:
-            existing_idx = self.meta_table.get_existing_idx(processed_idx)
-            deleted_idx = index_difference(existing_idx, data_idx)
+                if processed_idx is not None:
+                    existing_idx = self.meta_table.get_existing_idx(processed_idx)
+                    deleted_idx = index_difference(existing_idx, data_idx)
 
-            self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
+                    self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
             changes.append(deleted_idx)
 
@@ -144,6 +151,7 @@ class DataStore:
         assert(name not in self.tables)
 
         primary_schema = table_store.get_primary_schema()
+        meta_schema = table_store.get_meta_schema()
 
         res = DataTable(
             name=name,
@@ -152,6 +160,7 @@ class DataStore:
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
+                meta_schema=meta_schema
             ),
             table_store=table_store,
             event_logger=self.event_logger,
@@ -173,6 +182,9 @@ class DataStore:
 
         return list(set.intersection(*inp_p_keys, *out_p_keys))
 
+    def get_table(self, name: str) -> DataTable:
+        return self.tables[name]
+
     def _build_changed_idx_sql(
         self,
         inputs: List[DataTable],
@@ -184,78 +196,81 @@ class DataStore:
 
         Returns: [join_keys, select]
         """
+        inp_tbls = [MetaTableData(inp.meta_table, sql_prefix='inp') for inp in inputs]
+        out_tbls = [MetaTableData(out.meta_table, sql_prefix='out') for out in outputs]
 
-        join_keys = self.get_join_keys(inputs, outputs)
+        inp_keys = [inp.get_keys() for inp in inp_tbls]
+        out_keys = [out.get_keys() for out in out_tbls]
+        join_keys = set.intersection(*inp_keys, *out_keys)
 
-        # if not join_keys:
-        #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+        def get_inner_sql_fields(inp: MetaTableData) -> List[Column]:
+            fields = [literal(1).label('_1')]
 
-        def left_join(tbl_a, tbl_bbb):
-            q = tbl_a.join(
-                tbl_bbb[0],
-                and_(True, *[tbl_a.c[key] == tbl_bbb[0].c[key] for key in join_keys]),
-                isouter=True
-            )
-            for tbl_b in tbl_bbb[1:]:
+            for key in join_keys:
+                fields.append(inp.get_column(key))
+
+            return fields
+
+        def left_join(left_tbl: MetaTableData, right_tbls: List[MetaTableData]):
+            q = left_tbl.sql_table
+
+            for right_tbl in right_tbls:
+                join_keys = left_tbl.get_keys() & right_tbl.get_keys()
+
                 q = q.join(
-                    tbl_b,
-                    and_(True, *[tbl_a.c[key] == tbl_b.c[key] for key in join_keys]),
+                    right_tbl.sql_table,
+                    and_(True, *[left_tbl.get_column(key) == right_tbl.get_column(key) for key in join_keys]),
                     isouter=True
                 )
-
             return q
 
-        inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.name}")) for inp in inputs]
-        out_tbls = [(out, out.meta_table.sql_table.alias(f"out_{out.name}")) for out in outputs]
         sql_requests = []
 
-        for inp_dt, inp in inp_tbls:
-            fields = [literal(1).label('_1')] + [inp.c[key] for key in join_keys]
+        for inp in inp_tbls:
+            fields = get_inner_sql_fields(inp)
+            # meta_columns = [inp.get_column(key) for key in join_keys - inp.primary_keys]
+
             sql = select(fields).select_from(
-                left_join(
-                    inp,
-                    [out for _, out in out_tbls]
-                )
+                left_join(inp, out_tbls)
             ).where(
                 or_(
                     and_(
                         or_(
                             (
-                                out.c.process_ts
+                                out.sql_table.c.process_ts
                                 <
-                                inp.c.update_ts
+                                inp.sql_table.c.update_ts
                             ),
-                            out.c.process_ts.is_(None)
+                            out.sql_table.c.process_ts.is_(None),
+                            # *[col.is_not(None) for col in meta_columns]
                         ),
-                        inp.c.delete_ts.is_(None)
+                        inp.sql_table.c.delete_ts.is_(None),
                     )
-                    for _, out in out_tbls
+                    for out in out_tbls
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, inp, inp_dt.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, inp.sql_table, list(inp.primary_keys), run_config)
 
             sql_requests.append(sql)
 
-        for out_dt, out in out_tbls:
-            fields = [literal(1).label('_1')] + [out.c[key] for key in join_keys]
+        for out in out_tbls:
+            fields = get_inner_sql_fields(out)
+
             sql = select(fields).select_from(
-                left_join(
-                    out,
-                    [inp for _, inp in inp_tbls]
-                )
+                left_join(out, inp_tbls)
             ).where(
                 or_(
                     (
-                        out.c.process_ts
+                        out.sql_table.c.process_ts
                         <
-                        inp.c.delete_ts
+                        inp.sql_table.c.delete_ts
                     )
-                    for _, inp in inp_tbls
+                    for inp in inp_tbls
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, out, out_dt.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, out.sql_table, list(out.primary_keys), run_config)
 
             sql_requests.append(sql)
 
