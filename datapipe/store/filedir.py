@@ -88,6 +88,7 @@ def _pattern_to_match(pat: str) -> str:
 
     pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)
     pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
+    pat = f"{pat}\\Z"
     return pat
 
 
@@ -244,8 +245,8 @@ class TableStoreFiledir(TableStore):
             np.all(idxs_values_np == idxs_values_parsed_from_filepath)
         ), (
             "Multiply indexes have complex contradictory values, so that it couldn't unambiguously name the files. "
-            "This is most likely due to imperfect separators between {id} keys in the scheme.",
-            f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}"
+            "This is most likely due to imperfect separators between {id} keys in the scheme or "
+            " idxs types differences. ", f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}"
         )
 
     def insert_rows(self, df: pd.DataFrame) -> None:
@@ -316,6 +317,7 @@ class TableStoreFiledir(TableStore):
             for attrname in self.attrnames
         }
         ukeys = []
+        filepaths = []
 
         for f in files:
             m = re.match(self.filename_match, f.path)
@@ -325,19 +327,22 @@ class TableStoreFiledir(TableStore):
                 ids[attrname].append(m.group(attrname))
 
             ukeys.append(files.fs.ukey(f.path))
+            filepaths.append(f"{self.protocol_str}{f.path}")
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
                 {
                     **ids,
                     'ukey': ukeys,
+                    **({'filepath': filepaths} if self.add_filepath_column else {})
                 }
             )
-            yield pseudo_data_df
+            yield pseudo_data_df.astype(object)
         else:
             yield pd.DataFrame(
                 {
                     **ids,
-                    'ukey': []
+                    'ukey': [],
+                    **({'filepath': []} if self.add_filepath_column else {})
                 }
-            )
+            ).astype(object)
