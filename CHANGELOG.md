@@ -1,13 +1,11 @@
-# 0.10.9
-
-* Fix SettingWithCopyWarning in `MetaTable`
-<<<<<<< HEAD
+# 0.10.10
 * `DatatableTransform`, `DatatableTransformStep`, `BatchGenerate`, `BatchGenerateStep`, `BatchTransform`, `BatchTransformStep` now accepts keyworded arguments `**kwargs` to parametrize arguments of corresponding function `func` (https://github.com/epoch8/datapipe/pull/150)
-=======
+
+# 0.10.9
+* Fix SettingWithCopyWarning in `MetaTable`
 * Add `MetaKey()` support for `MetaTable` columns. Now it's possible to add
   non-primary keys into MetaTable for joins. See example:
   `examples/meta_key_pipeline.py`
->>>>>>> master
 
 # 0.10.8
 
