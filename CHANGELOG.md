@@ -14,6 +14,49 @@
 * `DataStore.get_process_ids` переименован в `get_full_process_ids`
 * Добавлен метод `get_change_list_process_ids`
 
+# 0.10.9
+
+* Fix SettingWithCopyWarning in `MetaTable`
+* Add `MetaKey()` support for `MetaTable` columns. Now it's possible to add
+  non-primary keys into MetaTable for joins. See example:
+  `examples/meta_key_pipeline.py`
+
+# 0.10.8
+
+* Add `read_data` parameter to `TableStoreFiledir` (https://github.com/epoch8/datapipe/pull/132)
+* Fix fields order for compound indexes in `get_process_idx` (https://github.com/epoch8/datapipe/pull/136)
+* Add `check_for_changes` parameter to `DatatableTransform` step (https://github.com/epoch8/datapipe/pull/131)
+* Update `Pillow` to version `9.0.0`
+
+# 0.10.7
+
+* Move LabelStudio support to separate repo
+* Move LevelDB TableStore to separate repo
+* Remove `UPDATE FROM VALUES` support for SQLite
+* Add methods `Catalog.add_datatable`, `Catalog.remove_datatable`, `DataStore.get_datatable`
+* Add methods `index_intersection`, `index_to_data`
+
+# 0.10.6
+
+* Disable SQLAlchemy compiled cache for `UPDATE FROM VALUES` query
+* Backport from 0.11.0-alpha.1: Фикс для join-а таблиц без пересекающихся индексов
+
+# 0.10.5
+
+* Fix `DBConn.supports_update_from` serialization
+
+# 0.10.4
+
+* Ускорение обновления метаданных через UPDATE FROM
+
+# 0.10.3
+
+* Добавлено инструментирование для трейсинга выполнения пайплайнов в Jaeger
+
+# 0.10.2
+
+* Исправлен баг с падением проверки типов в `DatatableTransformStep` при несколькох входных и выходных таблицах
+
 # 0.10.1
 
 * Поддержка явного задания `primary_schema` для `TableStoreFiledir`
