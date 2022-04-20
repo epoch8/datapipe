@@ -791,12 +791,12 @@ def test_error_handling(dbconn) -> None:
 
             yield TEST_DF.loc[idx[i:i+chunk_size]]
 
-    with pytest.raises(Exception):
-        do_batch_generate(
-            func=partial(gen_bad1, chunk_size=CHUNKSIZE),
-            ds=ds,
-            output_dts=[tbl],
-        )
+    # with pytest.raises(Exception):
+    do_batch_generate(
+        func=partial(gen_bad1, chunk_size=CHUNKSIZE),
+        ds=ds,
+        output_dts=[tbl],
+    )
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
@@ -829,12 +829,12 @@ def test_error_handling(dbconn) -> None:
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
 
     # Checks that records are not being deleted
-    with pytest.raises(Exception):
-        do_batch_generate(
-            func=partial(gen_bad2, chunk_size=CHUNKSIZE),
-            ds=ds,
-            output_dts=[tbl],
-        )
+    # with pytest.raises(Exception):
+    do_batch_generate(
+        func=partial(gen_bad2, chunk_size=CHUNKSIZE),
+        ds=ds,
+        output_dts=[tbl],
+    )
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 

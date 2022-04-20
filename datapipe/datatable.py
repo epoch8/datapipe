@@ -102,7 +102,7 @@ class DataTable:
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-            changes.append(deleted_idx)
+                    changes.append(deleted_idx)
 
         return cast(IndexDF, pd.concat(changes))
 

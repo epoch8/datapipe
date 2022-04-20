@@ -313,7 +313,7 @@ def test_batch_transform_with_entity(dbconn):
 
         return merged_df[['item_id', 'pipeline_id', 'product_id', 'a']]
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=update_df,
         ds=ds,
         input_dts=[products, items],
