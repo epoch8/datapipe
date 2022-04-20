@@ -124,14 +124,14 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
             store=TableStoreFiledir(
                 tmp_dir / 'tbl1' / '{id}.png',
                 adapter=PILFile('png'),
-                disable_rm=False
+                enable_rm=True
             )
         ),
         'tbl2': Table(
             store=TableStoreFiledir(
                 tmp_dir / 'tbl2' / '{id}.png',
                 adapter=PILFile('png'),
-                disable_rm=False
+                enable_rm=True
             )
         ),
     })

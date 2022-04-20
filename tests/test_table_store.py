@@ -204,7 +204,7 @@ class CasesTableStore:
                 tmp_dir / fn_template,
                 adapter=JSONFile(),
                 primary_schema=primary_schema,
-                disable_rm=False
+                enable_rm=True
             ),
             df
         )

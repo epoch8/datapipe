@@ -180,13 +180,13 @@ TEST_DF_FOLDER0 = pd.DataFrame(
 def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json',
-        adapter=JSONFile()
+        adapter=JSONFile(), readonly=True
     )
     assert_ts_contains(ts, TEST_DF_FOLDER0)
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json',
-        adapter=JSONFile(), add_filepath_column=True
+        adapter=JSONFile(), add_filepath_column=True, readonly=True
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
@@ -209,13 +209,13 @@ TEST_DF_FOLDER_RECURSIVELY = pd.DataFrame(
 def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
     ts = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/**/{{id}}.json',
-        adapter=JSONFile()
+        adapter=JSONFile(), readonly=True
     )
     assert_ts_contains(ts, TEST_DF_FOLDER_RECURSIVELY)
 
     ts_with_filepath = TableStoreFiledir(
         f'{tmp_several_dirs_with_json_data}/**/{{id}}.json',
-        adapter=JSONFile(), add_filepath_column=True
+        adapter=JSONFile(), add_filepath_column=True, readonly=True
     )
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH = TEST_DF_FOLDER_RECURSIVELY.copy()
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH['filepath'] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(

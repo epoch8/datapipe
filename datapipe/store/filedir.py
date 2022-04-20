@@ -109,8 +109,8 @@ class TableStoreFiledir(TableStore):
         add_filepath_column: bool = False,
         primary_schema: DataSchema = None,
         read_data: bool = True,
-        readonly: bool = False,
-        disable_rm: Optional[bool] = True
+        readonly: Optional[bool] = None,
+        enable_rm: bool = False
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -141,8 +141,10 @@ class TableStoreFiledir(TableStore):
         read_data -- если False - при чтении не происходит парсинга содержимого
         файла
 
-        readonly -- если True, отключить запись файлов
-        disable_rm -- если True, отключить удаление файлов
+        readonly -- если True, отключить запись файлов; если None, то запись файлов включается в случае
+        если нету * и ** путей в шаблоне
+
+        enable_rm -- если True, включить удаление файлов
         """
 
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
@@ -157,12 +159,18 @@ class TableStoreFiledir(TableStore):
             filename_pattern_for_match = path
             self.protocol_str = f"{self.protocol}://"
 
-        if '*' in path and not readonly:
-            raise ValueError(
-                "When `readonly=False`, in filename_pattern shouldn't be any `*` characters."
-            )
+        if '*' in path:
+            if readonly is not None and not readonly:
+                raise ValueError(
+                    "When `readonly=False`, in filename_pattern shouldn't be any `*` characters."
+                )
+            elif readonly is None:
+                readonly = True
+        elif readonly is None:
+            readonly = False
+
         self.readonly = readonly
-        self.disable_rm = disable_rm
+        self.enable_rm = enable_rm
 
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
@@ -198,8 +206,10 @@ class TableStoreFiledir(TableStore):
         return []
 
     def delete_rows(self, idx: IndexDF) -> None:
-        if self.disable_rm:
+        if not self.enable_rm:
             return
+
+        assert(not self.readonly)
 
         for row_idx in idx.index:
             _, path = fsspec.core.split_protocol(
