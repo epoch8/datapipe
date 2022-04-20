@@ -4,11 +4,11 @@ import logging
 from opentelemetry import trace
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_, literal, Table, Column
+from sqlalchemy import alias, func, select, union, and_, or_, literal, Column
 
 from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
-from datapipe.metastore import MetaTable
+from datapipe.metastore import MetaTable, MetaTableData
 from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
 from datapipe.run_config import RunConfig, LabelDict
@@ -142,6 +142,7 @@ class DataStore:
         assert(name not in self.tables)
 
         primary_schema = table_store.get_primary_schema()
+        meta_schema = table_store.get_meta_schema()
 
         res = DataTable(
             name=name,
@@ -150,6 +151,7 @@ class DataStore:
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
+                meta_schema=meta_schema
             ),
             table_store=table_store,
             event_logger=self.event_logger,
@@ -179,83 +181,80 @@ class DataStore:
 
         Returns: [join_keys, select]
         """
-        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
-        out_p_keys = [set(out.primary_keys) for out in outputs]
-        join_keys = set.intersection(*inp_p_keys, *out_p_keys)
+        inp_tbls = [MetaTableData(inp.meta_table, sql_prefix='inp') for inp in inputs]
+        out_tbls = [MetaTableData(out.meta_table, sql_prefix='out') for out in outputs]
 
-        # if not join_keys:
-        #     raise ValueError("Impossible to carry out transformation. datatables do not contain intersecting ids")
+        inp_keys = [inp.get_keys() for inp in inp_tbls]
+        out_keys = [out.get_keys() for out in out_tbls]
+        join_keys = set.intersection(*inp_keys, *out_keys)
 
-        def left_join(tbl_left: Tuple[DataTable, Table], tbls_right: List[Tuple[DataTable, Table]]):
-            dt_left, sql_left = tbl_left
-            q = sql_left
-            for dt_right, sql_right in tbls_right:
-                join_keys = set(dt_left.primary_keys) & set(dt_right.primary_keys)
+        def get_inner_sql_fields(inp: MetaTableData) -> List[Column]:
+            fields = [literal(1).label('_1')]
+
+            for key in join_keys:
+                fields.append(inp.get_column(key))
+
+            return fields
+
+        def left_join(left_tbl: MetaTableData, right_tbls: List[MetaTableData]):
+            q = left_tbl.sql_table
+
+            for right_tbl in right_tbls:
+                join_keys = left_tbl.get_keys() & right_tbl.get_keys()
                 q = q.join(
-                    sql_right,
-                    and_(True, *[sql_left.c[key] == sql_right.c[key] for key in join_keys]),
+                    right_tbl.sql_table,
+                    and_(True, *[left_tbl.get_column(key) == right_tbl.get_column(key) for key in join_keys]),
                     isouter=True
                 )
             return q
 
-        def get_inner_sql_fields(tables: List[Tuple[DataTable, Table]]) -> List[Column]:
-            fields = [literal(1).label('_1')]
-            # fields += [tables[0][1].c[key] for key in join_keys]
-            used_fields: Set[str] = set()
-            for dt, sql in tables:
-                tbl_keys = join_keys & set(dt.primary_keys)
-                for key in tbl_keys - used_fields:
-                    fields.append(sql.c[key])
-                used_fields |= tbl_keys
-            for key in join_keys - used_fields:
-                fields.append(literal(None).label(key))
-            return sorted(fields, key=lambda x: x.name)
-
-        inp_tbls = [(inp, inp.meta_table.sql_table.alias(f"inp_{inp.name}")) for inp in inputs]
-        out_tbls = [(out, out.meta_table.sql_table.alias(f"out_{out.name}")) for out in outputs]
         sql_requests = []
 
-        for inp_dt, inp in inp_tbls:
-            fields = get_inner_sql_fields([(inp_dt, inp)] + out_tbls)
+        for inp in inp_tbls:
+            fields = get_inner_sql_fields(inp)
+            # meta_columns = [inp.get_column(key) for key in join_keys - inp.primary_keys]
+
             sql = select(fields).select_from(
-                left_join((inp_dt, inp), out_tbls)
+                left_join(inp, out_tbls)
             ).where(
                 or_(
                     and_(
                         or_(
                             (
-                                out.c.process_ts
+                                out.sql_table.c.process_ts
                                 <
-                                inp.c.update_ts
+                                inp.sql_table.c.update_ts
                             ),
-                            out.c.process_ts.is_(None)
+                            out.sql_table.c.process_ts.is_(None),
+                            # *[col.is_not(None) for col in meta_columns]
                         ),
-                        inp.c.delete_ts.is_(None)
+                        inp.sql_table.c.delete_ts.is_(None),
                     )
-                    for _, out in out_tbls
+                    for out in out_tbls
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, inp, inp_dt.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, inp.sql_table, list(inp.primary_keys), run_config)
 
             sql_requests.append(sql)
 
-        for out_dt, out in out_tbls:
-            fields = get_inner_sql_fields([(out_dt, out)] + inp_tbls)
+        for out in out_tbls:
+            fields = get_inner_sql_fields(out)
+
             sql = select(fields).select_from(
-                left_join((out_dt, out), inp_tbls)
+                left_join(out, inp_tbls)
             ).where(
                 or_(
                     (
-                        out.c.process_ts
+                        out.sql_table.c.process_ts
                         <
-                        inp.c.delete_ts
+                        inp.sql_table.c.delete_ts
                     )
-                    for _, inp in inp_tbls
+                    for inp in inp_tbls
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, out, out_dt.primary_keys, run_config)
+            sql = sql_apply_runconfig_filter(sql, out.sql_table, list(out.primary_keys), run_config)
 
             sql_requests.append(sql)
 
