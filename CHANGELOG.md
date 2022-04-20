@@ -1,6 +1,9 @@
-# WIP 0.10.9
+# 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
+* Add `MetaKey()` support for `MetaTable` columns. Now it's possible to add
+  non-primary keys into MetaTable for joins. See example:
+  `examples/meta_key_pipeline.py`
 
 # 0.10.8
 
