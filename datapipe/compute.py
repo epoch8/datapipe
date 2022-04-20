@@ -220,7 +220,7 @@ def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = N
     with tracer.start_as_current_span("run_steps"):
         for step in steps:
             with tracer.start_as_current_span(
-                f'{step.name} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                f'{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
             ):
                 logger.info(
                     f'Running {step.get_name()} '

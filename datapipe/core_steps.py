@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import time
 import tqdm
 import logging
+import math
 from opentelemetry import trace
 
 from datapipe.types import DataDF, IndexDF
@@ -111,30 +112,29 @@ def do_full_batch_transform(
     )
 
 
-def do_batch_transform_old(
+def do_full_batch_transform_v10(
     func: BatchTransformFunc,
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
-    idx_gen: Iterable[IndexDF],
-    idx_count: int = None,
+    chunk_size: int = 1000,
     run_config: RunConfig = None,
-) -> ChangeList:
+) -> None:
     '''
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
     with tracer.start_as_current_span("compute ids to process"):
-        idx_count, idx_gen = ds.get_process_ids(
+        idx_count, idx_gen = ds.get_full_process_ids(
             inputs=input_dts,
             outputs=output_dts,
-            chunksize=chunksize,
+            chunk_size=chunk_size,
             run_config=run_config
         )
 
     logger.info(f'Items to update {idx_count}')
 
     if idx_count > 0:
-        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunksize)):
+        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunk_size)):
             with tracer.start_as_current_span("process batch"):
                 logger.debug(f'Idx to process: {idx.to_records()}')
 

@@ -276,7 +276,7 @@ class DataStore:
 
         u1 = union(*sql_requests)
 
-        return (join_keys, u1)
+        return (list(join_keys), u1)
 
     def get_changed_idx_count(
         self,
