@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import Column
 
 DataSchema = List[Column]
+MetaSchema = List[Column]
 
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType('IndexDF', pd.DataFrame)

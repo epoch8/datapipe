@@ -11,8 +11,8 @@ from sqlalchemy import Table, Column, Integer, Float, func
 from cityhash import CityHash32
 import pandas as pd
 
-from datapipe.types import IndexDF, DataSchema, DataDF, MetadataDF, data_to_index
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter, sql_schema_to_sqltype
+from datapipe.types import IndexDF, DataSchema, MetaSchema, DataDF, MetadataDF, data_to_index
+from datapipe.store.database import DBConn, MetaKey, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
 
 
@@ -39,6 +39,7 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
+        meta_schema: MetaSchema = []
     ):
         self.dbconn = dbconn
         self.name = name
@@ -49,7 +50,16 @@ class MetaTable:
         for item in primary_schema:
             item.primary_key = True
 
-        sql_schema = primary_schema + METADATA_SQL_SCHEMA
+        self.meta_schema = meta_schema
+        self.meta_keys = {}
+
+        meta_key_prop = MetaKey.get_property_name()
+
+        for column in meta_schema:
+            target_name = column.meta_key.target_name if hasattr(column, meta_key_prop) else column.name
+            self.meta_keys[target_name] = column.name
+
+        sql_schema = primary_schema + meta_schema + METADATA_SQL_SCHEMA
 
         self.sql_schema = [copy.copy(i) for i in sql_schema]
 
@@ -103,7 +113,8 @@ class MetaTable:
         )
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
-        res_df = df[self.primary_keys]
+        meta_keys = self.primary_keys + list(self.meta_keys.values())
+        res_df = df[meta_keys]
 
         res_df = res_df.assign(
             hash=self._get_hash_for_df(df),
@@ -116,7 +127,7 @@ class MetaTable:
         return cast(MetadataDF, res_df)
 
     def _get_meta_data_columns(self):
-        return self.primary_keys + [column.name for column in METADATA_SQL_SCHEMA]
+        return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in METADATA_SQL_SCHEMA]
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
         return (
@@ -199,7 +210,8 @@ class MetaTable:
             existing_meta_df,
             how='left',
             left_on=self.primary_keys,
-            right_on=self.primary_keys
+            right_on=self.primary_keys,
+            suffixes=('', '_exist')
         )
 
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
@@ -361,3 +373,18 @@ class MetaTable:
             con=self.dbconn.con,
             chunksize=1000
         )
+
+
+class MetaTableData:
+    def __init__(self, tbl: MetaTable, sql_prefix: str = '') -> None:
+        self.primary_keys = set(tbl.primary_keys)
+        self.meta_keys = set(tbl.meta_keys.keys())
+        self.meta_column_names = tbl.meta_keys
+        self.sql_table = tbl.sql_table.alias(f"{sql_prefix}_{tbl.name}")
+
+    def get_keys(self):
+        return self.primary_keys | self.meta_keys
+
+    def get_column(self, key: str) -> Column:
+        column_key = key if key in self.primary_keys else self.meta_column_names[key]
+        return self.sql_table.c[column_key]
