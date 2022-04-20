@@ -1,3 +1,11 @@
+# 0.10.10
+* Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
+  `add_filepath_column` is enabled (https://github.com/epoch8/datapipe/pull/149)
+* Fix `TableStoreFiledir` issues with regular expressions:
+  https://github.com/epoch8/datapipe/issues/146 and
+  https://github.com/epoch8/datapipe/issues/147
+  (https://github.com/epoch8/datapipe/pull/149)
+
 # 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`

@@ -6,7 +6,7 @@ import pandas as pd
 from sqlalchemy import Column, Integer, String
 from datapipe.run_config import RunConfig
 
-from datapipe.types import DataDF, IndexDF
+from datapipe.types import DataDF, IndexDF, data_to_index
 from datapipe.store.table_store import TableStore
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
@@ -204,6 +204,7 @@ class CasesTableStore:
                 tmp_dir / fn_template,
                 adapter=JSONFile(),
                 primary_schema=primary_schema,
+                disable_rm=False
             ),
             df
         )
@@ -214,6 +215,13 @@ def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.insert_rows(test_df)
 
     assert_ts_contains(store, test_df)
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
+def test_write_read_full_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.insert_rows(test_df)
+
+    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
@@ -285,7 +293,7 @@ def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
 def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     store.insert_rows(test_df)
 
-    assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
+    assert_df_equal(store.read_rows(data_to_index(test_df, store.primary_keys)), test_df, index_cols=store.primary_keys)
 
     store.delete_rows(test_df.loc[20:50, store.primary_keys])
 
