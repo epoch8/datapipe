@@ -198,7 +198,8 @@ class TableStoreFiledir(TableStore):
         return []
 
     def delete_rows(self, idx: IndexDF) -> None:
-        assert(not self.disable_rm)
+        if self.disable_rm:
+            return
 
         for row_idx in idx.index:
             _, path = fsspec.core.split_protocol(
