@@ -104,11 +104,11 @@ def _pattern_to_patterns_or(pat) -> List[str]:
         for match in pattern_or.finditer(pat)
     ]
     # Всевозможные комбинации для замены [[aaa, ddd], [aaa, eee], [bbb, ddd], ...]
-    possible_values = list(itertools.product(*values))
+    possible_combinatios_values = [list(combination) for combination in itertools.product(*values)]
     # Получаем всевозможные списки шаблонов из комбинаций
     filename_patterns = [
-        re.sub(pattern_or, Replacer(values), pat)
-        for values in possible_values
+        re.sub(pattern_or, Replacer(combination), pat)
+        for combination in possible_combinatios_values
     ]
     return filename_patterns
 
