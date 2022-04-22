@@ -27,6 +27,8 @@ class TableStore(ABC):
         raise NotImplementedError
 
     def update_rows(self, df: DataDF) -> None:
+        if df.empty:
+            return
         self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 

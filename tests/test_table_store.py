@@ -239,6 +239,7 @@ class CasesTableStore:
             df
         )
 
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,fn_template,primary_schema', FILEDIR_DATA_PARAMS)
     def case_filedir_json(self, tmp_dir, df, fn_template, primary_schema):
         return (

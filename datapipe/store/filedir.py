@@ -78,23 +78,6 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
     return attrnames
 
 
-# _extensions_pattern_or = re.compile(r'.(?P<ext>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))\Z')
-
-
-# def _pattern_to_extensions(pat: str) -> Optional[List[str]]:
-#     extensions = None
-#     match = _extensions_pattern_or.search(pat)
-#     if match is not None:
-#         extensions = match.group('ext')[1:-1].split('|')
-#         # Убираем возможные дубликаты вида (jpg|jpg)
-#         extensions = list(dict.fromkeys(extensions))
-#     else:
-#         match_suffix = re.search(r'.(?P<ext>[a-zA-Z0-9]+)\Z', pat)
-#         if match_suffix is not None:
-#             extensions = [match_suffix.group('ext')]
-
-#     return extensions
-
 def _pattern_to_patterns_or(pat) -> List[str]:
     pattern_or = re.compile(r'(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))')
     # Ищем вхождения вида (aaa|bbb|ccc), в виду list of list [[aaa, bbb, ccc], [ddd, eee], ...]
