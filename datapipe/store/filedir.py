@@ -1,8 +1,7 @@
 from abc import ABC
 import itertools
-from typing import IO, Any, Dict, List, Optional, Tuple, Union, cast, Iterator
+from typing import IO, Any, Dict, List, Optional, Union, cast, Iterator
 from pathlib import Path
-from h11 import Data
 
 import numpy as np
 from iteration_utilities import duplicates
