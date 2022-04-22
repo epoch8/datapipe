@@ -1,6 +1,8 @@
 from abc import ABC
-from typing import IO, Any, Dict, List, Optional, Union, cast, Iterator
+import itertools
+from typing import IO, Any, Dict, List, Optional, Tuple, Union, cast, Iterator
 from pathlib import Path
+from h11 import Data
 
 import numpy as np
 from iteration_utilities import duplicates
@@ -77,8 +79,42 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
     return attrnames
 
 
+# _extensions_pattern_or = re.compile(r'.(?P<ext>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))\Z')
+
+
+# def _pattern_to_extensions(pat: str) -> Optional[List[str]]:
+#     extensions = None
+#     match = _extensions_pattern_or.search(pat)
+#     if match is not None:
+#         extensions = match.group('ext')[1:-1].split('|')
+#         # Убираем возможные дубликаты вида (jpg|jpg)
+#         extensions = list(dict.fromkeys(extensions))
+#     else:
+#         match_suffix = re.search(r'.(?P<ext>[a-zA-Z0-9]+)\Z', pat)
+#         if match_suffix is not None:
+#             extensions = [match_suffix.group('ext')]
+
+#     return extensions
+
+def _pattern_to_patterns_or(pat) -> List[str]:
+    pattern_or = re.compile(r'(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))')
+    # Ищем вхождения вида (aaa|bbb|ccc), в виду list of list [[aaa, bbb, ccc], [ddd, eee], ...]
+    values = [
+        list(dict.fromkeys(match.group('or')[1:-1].split('|')))
+        for match in pattern_or.finditer(pat)
+    ]
+    # Всевозможные комбинации для замены [[aaa, ddd], [aaa, eee], [bbb, ddd], ...]
+    possible_values = list(itertools.product(*values))
+    # Получаем всевозможные списки шаблонов из комбинаций
+    filename_patterns = [
+        re.sub(pattern_or, Replacer(values), pat)
+        for values in possible_values
+    ]
+    return filename_patterns
+
+
 def _pattern_to_glob(pat: str) -> str:
-    return re.sub(r'\{([^/]+?)\}', '*', pat)
+    return re.sub(r'\{([^/]+?)\}', '*', pat)  # Меняем все вхождения {id1}_{id2} в звездочки *_*
 
 
 def _pattern_to_match(pat: str) -> str:
@@ -86,9 +122,9 @@ def _pattern_to_match(pat: str) -> str:
     # * -> r'[^/]+'
     # ** -> r'([^/]+/)*?[^/]+'
 
-    pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)
-    pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)
-    pat = f"{pat}\\Z"
+    pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)  # Меняем все вхождения * и ** в произвольные символы
+    pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)  # Меняем все вхождения вида {id} на непустые послед. символов
+    pat = f"{pat}\\Z"  # Учитываем конец строки
     return pat
 
 
@@ -142,8 +178,8 @@ class TableStoreFiledir(TableStore):
         read_data -- если False - при чтении не происходит парсинга содержимого
         файла
 
-        readonly -- если True, отключить запись файлов; если None, то запись файлов включается в случае
-        если нету * и ** путей в шаблоне
+        readonly -- если True, отключить запись файлов; если None, то запись файлов включается в случае,
+        если нету * и ** путей в шаблоне и нет множественных расширений файлов вида (jpg|png|mp4)
 
         enable_rm -- если True, включить удаление файлов
         """
@@ -152,14 +188,28 @@ class TableStoreFiledir(TableStore):
         self.filesystem = fsspec.filesystem(self.protocol)
 
         if self.protocol is None or self.protocol == 'file':
-            self.filename_pattern = str(Path(path).resolve())
-            filename_pattern_for_match = self.filename_pattern
+            filename_pattern = str(Path(path).resolve())
+            filename_pattern_for_match = filename_pattern
             self.protocol_str = "" if self.protocol is None else "file://"
         else:
-            self.filename_pattern = str(filename_pattern)
+            filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
             self.protocol_str = f"{self.protocol}://"
 
+        self.filename_patterns = _pattern_to_patterns_or(filename_pattern)
+        self.attrnames = _pattern_to_attrnames(filename_pattern)
+        self.filename_glob = [_pattern_to_glob(pat) for pat in self.filename_patterns]
+        self.filename_match = _pattern_to_match(filename_pattern_for_match)
+
+        # Multiply extensions check
+        if len(self.filename_glob) >= 2:
+            if readonly is not None and not readonly:
+                raise ValueError(
+                    "When `readonly=False`, in filename_pattern shouldn't be several extensions."
+                )
+            elif readonly:
+                readonly = True
+        # Any * and ** pattern check
         if '*' in path:
             if readonly is not None and not readonly:
                 raise ValueError(
@@ -176,10 +226,6 @@ class TableStoreFiledir(TableStore):
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
         self.read_data = read_data
-
-        self.attrnames = _pattern_to_attrnames(self.filename_pattern)
-        self.filename_glob = _pattern_to_glob(self.filename_pattern)
-        self.filename_match = _pattern_to_match(filename_pattern_for_match)
 
         type_to_cls = {
             String: str,
@@ -214,12 +260,14 @@ class TableStoreFiledir(TableStore):
 
         for row_idx in idx.index:
             _, path = fsspec.core.split_protocol(
-                self._filename_from_idxs_values(idx.loc[row_idx, self.attrnames])
+                self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])[0]
             )
             self.filesystem.rm(path)
 
-    def _filename_from_idxs_values(self, idxs_values: List[str]) -> str:
-        return re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), self.filename_pattern)
+    def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
+        return [
+            re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), pat) for pat in self.filename_patterns
+        ]
 
     def _idxs_values_from_filepath(self, filepath: str) -> Dict[str, Any]:
         _, filepath = fsspec.core.split_protocol(filepath)
@@ -249,18 +297,19 @@ class TableStoreFiledir(TableStore):
             " idxs types differences. ", f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}"
         )
 
-    def insert_rows(self, df: pd.DataFrame) -> None:
+    def insert_rows(self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None) -> None:
         if df.empty:
             return
-
         assert(not self.readonly)
+        if adapter is None:
+            adapter = self.adapter
 
         # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени
         for row_idx, data in zip(
             df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
         ):
             idxs_values = df.loc[row_idx, self.attrnames].tolist()
-            filepath = self._filename_from_idxs_values(idxs_values)
+            filepath = self._filenames_from_idxs_values(idxs_values)[0]
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
@@ -268,23 +317,50 @@ class TableStoreFiledir(TableStore):
             with fsspec.open(filepath, f'w{self.adapter.mode}') as f:
                 self.adapter.dump(data, f)
 
-    def read_rows(self, idx: IndexDF = None) -> DataDF:
+    def read_rows(
+        self,
+        idx: IndexDF = None,
+        read_data: Optional[bool] = None,
+        adapter: Optional[ItemStoreFileAdapter] = None
+    ) -> DataDF:
+
+        if read_data is None:
+            read_data = self.read_data
+        if adapter is None:
+            adapter = self.adapter
+
         def _iterate_files():
             if idx is None:
-                for file_open in fsspec.open_files(self.filename_glob, f'r{self.adapter.mode}'):
+                for file_open in fsspec.open_files(self.filename_glob, f'r{adapter.mode}'):
                     yield file_open
             else:
-                for row_idx in idx.index:
-                    yield fsspec.open(
-                        self._filename_from_idxs_values(idx.loc[row_idx, self.attrnames]), f'r{self.adapter.mode}'
-                    )
+                filepaths_extenstions = [
+                    self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])
+                    for row_idx in idx.index
+                ]
+                for filepaths in filepaths_extenstions:
+                    found_files = [
+                        file_open
+                        for file_open in fsspec.open_files(filepaths, f'r{adapter.mode}')
+                        if self.filesystem.exists(file_open.path)
+                    ]
+                    if len(found_files) == 0:
+                        raise FileNotFoundError(f"No such file: {' or '.join(filepaths)}")
+                    elif len(found_files) > 1:
+                        raise ValueError(
+                            f"Some files are duplitcated as indexes in filepaths: {found_files}. "
+                            "Change the pattern or delete them."
+                        )
+                    for file_open in found_files:
+                        yield file_open
+
         df = []
         for file_open in _iterate_files():
             with file_open as f:
                 data = {}
 
-                if self.read_data:
-                    data = self.adapter.load(f)
+                if read_data:
+                    data = adapter.load(f)
 
                     attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
                     assert len(attrnames_in_data) == 0, (
@@ -328,6 +404,16 @@ class TableStoreFiledir(TableStore):
 
             ukeys.append(files.fs.ukey(f.path))
             filepaths.append(f"{self.protocol_str}{f.path}")
+
+        keys_values = [
+            (ids[attrname][i] for attrname in self.attrnames)
+            for i in range(len(ukeys))
+        ]
+        duplicates_keys_values = list(duplicates(keys_values))
+        assert len(duplicates_keys_values) == 0, (
+            f"Some files are duplitcated as indexes in filepaths: {duplicates_keys_values}. "
+            "Change the pattern or delete them."
+        )
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(

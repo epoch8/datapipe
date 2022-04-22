@@ -6,6 +6,7 @@
   https://github.com/epoch8/datapipe/issues/147
   (https://github.com/epoch8/datapipe/pull/149)
 * Added new arguments `readonly` and `disable_rm` in `TableStoreFiledir`. By default `TableStoreFiledir` is running as reader and writer, but if `enable_rm=True` then it also removes files. When `readonly=None` (defualt), it checks for patterns `*` to disable/enable writing files, but if it needed to force enable or disable writing, `readonly` should be changed accordingly.
+* Addeed OR patterns support in format `(aaa|bbb|ccc)` in `TableStoreFiledir`. For example: `/path/to/(folder1|folder2|folder3)/to/the/files.(jpg|png|jpeg)`.
 # 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
