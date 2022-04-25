@@ -238,3 +238,35 @@ def run_pipeline(
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)
+
+
+def run_changelist(
+    ds: DataStore,
+    catalog: Catalog,
+    pipeline: Pipeline,
+    changelist: ChangeList,
+    run_config: RunConfig = None,
+) -> None:
+    steps = build_compute(ds, catalog, pipeline)
+    current_changes = changelist
+    next_changes = ChangeList()
+    iteration = 0
+
+    with tracer.start_as_current_span("Start pipeline for changelist"):
+        while current_changes.empty() or iteration < 100:
+            with tracer.start_as_current_span("run_steps"):
+                for step in steps:
+                    with tracer.start_as_current_span(
+                        f'{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                    ):
+                        logger.info(
+                            f'Running {step.get_name()} '
+                            f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                        )
+
+                        step_changes = step.run_changelist(ds, current_changes, run_config)
+                        next_changes.extend(step_changes)
+
+            current_changes = next_changes
+            next_changes = ChangeList()
+            iteration += 1

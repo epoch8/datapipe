@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import time
 import tqdm
 import logging
-import math
 from opentelemetry import trace
 
 from datapipe.types import DataDF, IndexDF
@@ -31,59 +30,64 @@ def do_batch_transform(
     idx_gen: Iterable[IndexDF],
     idx_count: int = None,
     run_config: RunConfig = None,
-) -> ChangeList:
+) -> Iterator[ChangeList]:
     '''
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
     logger.info(f'Items to update {idx_count}')
 
-    changes = ChangeList()
-
     if idx_count is not None and idx_count == 0:
         # Nothing to process
-        return changes
+        return [ChangeList()]
 
     for idx in tqdm.tqdm(idx_gen, total=idx_count):
-        logger.debug(f'Idx to process: {idx.to_records()}')
+        with tracer.start_as_current_span("process batch"):
+            logger.debug(f'Idx to process: {idx.to_records()}')
 
-        input_dfs = [inp.get_data(idx) for inp in input_dts]
+            with tracer.start_as_current_span("get input data"):
+                input_dfs = [inp.get_data(idx) for inp in input_dts]
 
-        if sum(len(j) for j in input_dfs) > 0:
-            try:
-                chunks_df = func(*input_dfs)
-            except Exception as e:
-                logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                ds.event_logger.log_exception(e, run_config=run_config)
+            changes = ChangeList()
 
-                continue
+            if sum(len(j) for j in input_dfs) > 0:
+                with tracer.start_as_current_span("run transform"):
+                    try:
+                        chunks_df = func(*input_dfs)
+                    except Exception as e:
+                        logger.error(f"Transform failed ({func.__name__}): {str(e)}")
+                        ds.event_logger.log_exception(e, run_config=run_config)
 
-            if isinstance(chunks_df, (list, tuple)):
-                assert len(chunks_df) == len(output_dts)
+                        continue
+
+                if isinstance(chunks_df, (list, tuple)):
+                    assert len(chunks_df) == len(output_dts)
+                else:
+                    assert len(output_dts) == 1
+                    chunks_df = [chunks_df]
+
+                with tracer.start_as_current_span("store output batch"):
+                    for k, res_dt in enumerate(output_dts):
+                        # Берем k-ое значение функции для k-ой таблички
+                        # Добавляем результат в результирующие чанки
+                        change_idx = res_dt.store_chunk(
+                            data_df=chunks_df[k],
+                            processed_idx=idx,
+                            run_config=run_config,
+                        )
+
+                        changes.append(res_dt.name, change_idx)
+
             else:
-                assert len(output_dts) == 1
-                chunks_df = [chunks_df]
+                with tracer.start_as_current_span("delete missing data from output"):
+                    for k, res_dt in enumerate(output_dts):
+                        del_idx = res_dt.meta_table.get_existing_idx(idx)
 
-            for k, res_dt in enumerate(output_dts):
-                # Берем k-ое значение функции для k-ой таблички
-                # Добавляем результат в результирующие чанки
-                change_idx = res_dt.store_chunk(
-                    data_df=chunks_df[k],
-                    processed_idx=idx,
-                    run_config=run_config,
-                )
+                        res_dt.delete_by_idx(del_idx, run_config=run_config)
 
-                changes.append(res_dt.name, change_idx)
+                        changes.append(res_dt.name, del_idx)
 
-        else:
-            for k, res_dt in enumerate(output_dts):
-                del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                res_dt.delete_by_idx(del_idx, run_config=run_config)
-
-                changes.append(res_dt.name, del_idx)
-
-    return changes
+            yield changes
 
 
 def do_full_batch_transform(
@@ -94,14 +98,15 @@ def do_full_batch_transform(
     chunk_size: int = 1000,
     run_config: RunConfig = None,
 ) -> None:
-    idx_count, idx_gen = ds.get_full_process_ids(
-        inputs=input_dts,
-        outputs=output_dts,
-        chunk_size=chunk_size,
-        run_config=run_config
-    )
+    with tracer.start_as_current_span("compute ids to process"):
+        idx_count, idx_gen = ds.get_full_process_ids(
+            inputs=input_dts,
+            outputs=output_dts,
+            chunk_size=chunk_size,
+            run_config=run_config
+        )
 
-    do_batch_transform(
+    gen = do_batch_transform(
         func,
         ds=ds,
         idx_count=idx_count,
@@ -111,68 +116,8 @@ def do_full_batch_transform(
         run_config=run_config,
     )
 
-
-def do_full_batch_transform_v10(
-    func: BatchTransformFunc,
-    ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    chunk_size: int = 1000,
-    run_config: RunConfig = None,
-) -> None:
-    '''
-    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
-    '''
-    with tracer.start_as_current_span("compute ids to process"):
-        idx_count, idx_gen = ds.get_full_process_ids(
-            inputs=input_dts,
-            outputs=output_dts,
-            chunk_size=chunk_size,
-            run_config=run_config
-        )
-
-    logger.info(f'Items to update {idx_count}')
-
-    if idx_count > 0:
-        for idx in tqdm.tqdm(idx_gen, total=math.ceil(idx_count / chunk_size)):
-            with tracer.start_as_current_span("process batch"):
-                logger.debug(f'Idx to process: {idx.to_records()}')
-
-                with tracer.start_as_current_span("get input data"):
-                    input_dfs = [inp.get_data(idx) for inp in input_dts]
-
-                if sum(len(j) for j in input_dfs) > 0:
-                    with tracer.start_as_current_span("run transform"):
-                        try:
-                            chunks_df = func(*input_dfs)
-                        except Exception as e:
-                            logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                            ds.event_logger.log_exception(e, run_config=run_config)
-
-                            continue
-
-                    if isinstance(chunks_df, (list, tuple)):
-                        assert len(chunks_df) == len(output_dts)
-                    else:
-                        assert len(output_dts) == 1
-                        chunks_df = [chunks_df]
-
-                    with tracer.start_as_current_span("store output batch"):
-                        for k, res_dt in enumerate(output_dts):
-                            # Берем k-ое значение функции для k-ой таблички
-                            # Добавляем результат в результирующие чанки
-                            res_dt.store_chunk(
-                                data_df=chunks_df[k],
-                                processed_idx=idx,
-                                run_config=run_config,
-                            )
-
-                else:
-                    with tracer.start_as_current_span("delete missing data from output"):
-                        for k, res_dt in enumerate(output_dts):
-                            del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                            res_dt.delete_by_idx(del_idx, run_config=run_config)
+    for changes in gen:
+        pass
 
 
 @dataclass
@@ -239,7 +184,7 @@ class BatchTransformStep(ComputeStep):
             run_config=run_config
         )
 
-        do_batch_transform(
+        gen = do_batch_transform(
             self.func,
             ds=ds,
             idx_count=idx_count,
@@ -248,6 +193,9 @@ class BatchTransformStep(ComputeStep):
             output_dts=self.output_dts,
             run_config=run_config,
         )
+
+        for changes in gen:
+            pass
 
     def run_changelist(self, ds: DataStore, change_list: ChangeList, run_config: RunConfig = None) -> ChangeList:
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
@@ -259,18 +207,23 @@ class BatchTransformStep(ComputeStep):
             run_config=run_config
         )
 
-        return do_batch_transform(
+        gen = do_batch_transform(
             self.func,
             ds=ds,
-
             input_dts=self.input_dts,
             output_dts=self.output_dts,
-
             idx_count=idx_count,
             idx_gen=idx_gen,
-
             run_config=run_config,
         )
+
+        res_changelist = ChangeList()
+
+        for changes in gen:
+            print(changes)
+            res_changelist.extend(changes)
+
+        return res_changelist
 
 
 BatchGenerateFunc = Callable[[], Iterator[Tuple[DataDF, ...]]]

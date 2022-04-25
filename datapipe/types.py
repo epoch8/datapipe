@@ -39,6 +39,16 @@ class ChangeList:
         for key in other.changes.keys():
             self.append(key, other.changes[key])
 
+    def empty(self):
+        return len(self.changes) == 0
+
+    @classmethod
+    def create(cls, name: str, idx: IndexDF) -> ChangeList:
+        changelist = cls()
+        changelist.append(name, idx)
+
+        return changelist
+
 
 def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:
     return cast(IndexDF, data_df[primary_keys])
