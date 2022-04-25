@@ -364,10 +364,10 @@ class TableStoreFiledir(TableStore):
 
                 df.append(data)
 
-        df = pd.DataFrame(df)
-        if df.empty:
-            df = pd.DataFrame(columns=self.primary_keys)
-        return df
+        dataframe = pd.DataFrame(df)
+        if dataframe.empty:
+            dataframe = pd.DataFrame(columns=self.primary_keys)
+        return dataframe
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
