@@ -234,7 +234,10 @@ def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
 
     df_empty = pd.DataFrame()
 
-    assert store.read_rows(cast(IndexDF, df_empty)).empty
+    # Empty df must have primary keys columns
+    df_result = store.read_rows(cast(IndexDF, df_empty))
+    assert df_result.empty
+    df_result[store.primary_keys]
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
