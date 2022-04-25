@@ -13,7 +13,7 @@ from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import BatchTransform, UpdateExternalTable
 from datapipe.types import data_to_index, ChangeList
 
-from .util import assert_datatable_equal
+from .util import assert_datatable_equal, assert_df_equal
 
 
 CHUNK_SIZE = 100
@@ -221,8 +221,10 @@ def test_run_changelist_cycle(dbconn):
 
     run_changelist(ds, catalog, pipeline, changelist)
 
-    assert (
-        catalog.get_datatable(ds, 'a').get_data()['a']
-        ==
-        [0, 1, 10, 10, 10, 5, 6, 7, 8, 9]
-    ).all()
+    assert_df_equal(
+        catalog.get_datatable(ds, 'a').get_data(),
+        pd.DataFrame({
+            "id": range(10),
+            "a": [0, 1, 10, 10, 10, 5, 6, 7, 8, 9],
+        }),
+    )
