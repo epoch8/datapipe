@@ -2,7 +2,6 @@ from abc import ABC
 import itertools
 from typing import IO, Any, Dict, List, Optional, Union, cast, Iterator
 from pathlib import Path
-from cv2 import dft
 
 import numpy as np
 from iteration_utilities import duplicates
