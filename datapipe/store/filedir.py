@@ -366,7 +366,7 @@ class TableStoreFiledir(TableStore):
 
         df = pd.DataFrame(df)
         if df.empty:
-            df = pd.DateOffset(columns=self.primary_keys)
+            df = pd.DataFrame(columns=self.primary_keys)
         return df
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
