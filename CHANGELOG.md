@@ -1,3 +1,7 @@
+# WIP 0.10.10
+
+* Fix: `read_rows()` should return `DataFrame` with primary key columns even if empty
+
 # 0.10.9
 
 * Fix SettingWithCopyWarning in `MetaTable`
