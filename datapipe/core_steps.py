@@ -20,8 +20,6 @@ tracer = trace.get_tracer("datapipe.core_steps")
 BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF]]]
 
 
-# FIXME может быть возвращать не ChangeList а Iterable[ChangeList] и сделать
-# функцию генератором?
 def do_batch_transform(
     func: BatchTransformFunc,
     ds: DataStore,
