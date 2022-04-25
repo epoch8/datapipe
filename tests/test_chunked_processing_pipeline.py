@@ -133,7 +133,7 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
     assert_datatable_equal(out2, TEST_DF)
 
 
-def test_run_changelist(dbconn):
+def test_run_changelist_simple(dbconn):
     ds = DataStore(dbconn)
     catalog = Catalog({
         "inp": Table(
@@ -172,3 +172,57 @@ def test_run_changelist(dbconn):
     run_changelist(ds, catalog, pipeline, changelist)
 
     assert_datatable_equal(catalog.get_datatable(ds, 'out'), TEST_DF.loc[changeIdx.index])
+
+
+def test_run_changelist_cycle(dbconn):
+    ds = DataStore(dbconn)
+    catalog = Catalog({
+        "a": Table(
+            store=TableStoreDB(
+                dbconn,
+                'a_data',
+                TEST_SCHEMA
+            )
+        ),
+        "b": Table(
+            store=TableStoreDB(
+                dbconn,
+                'b_data',
+                TEST_SCHEMA
+            )
+        ),
+    })
+
+    def inc(df):
+        return df.assign(a=df['a'] + 1)
+
+    def cap_10(df):
+        return df.assign(a=df['a'].clip(0, 10))
+
+    pipeline = Pipeline([
+        BatchTransform(
+            inc,
+            inputs=["a"],
+            outputs=["b"],
+            chunk_size=CHUNK_SIZE,
+        ),
+        BatchTransform(
+            cap_10,
+            inputs=["b"],
+            outputs=["a"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ])
+
+    changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4]], ['id'])
+    changelist = ChangeList.create('a', changeIdx)
+
+    catalog.get_datatable(ds, 'a').store_chunk(TEST_DF, now=0)
+
+    run_changelist(ds, catalog, pipeline, changelist)
+
+    assert (
+        catalog.get_datatable(ds, 'a').get_data()['a']
+        ==
+        [0, 1, 10, 10, 10, 5, 6, 7, 8, 9]
+    ).all()
