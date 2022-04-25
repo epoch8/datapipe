@@ -2,6 +2,7 @@ from abc import ABC
 import itertools
 from typing import IO, Any, Dict, List, Optional, Union, cast, Iterator
 from pathlib import Path
+from cv2 import dft
 
 import numpy as np
 from iteration_utilities import duplicates
@@ -363,7 +364,10 @@ class TableStoreFiledir(TableStore):
 
                 df.append(data)
 
-        return pd.DataFrame(df)
+        df = pd.DataFrame(df)
+        if df.empty:
+            df = pd.DateOffset(columns=self.primary_keys)
+        return df
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
