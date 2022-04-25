@@ -336,7 +336,7 @@ class TableStoreFiledir(TableStore):
                     for file_open in found_files:
                         yield file_open
 
-        df = []
+        df_records = []
         for file_open in _iterate_files():
             with file_open as f:
                 data = {}
@@ -361,12 +361,13 @@ class TableStoreFiledir(TableStore):
                     )
                     data['filepath'] = f"{self.protocol_str}{file_open.path}"
 
-                df.append(data)
+                df_records.append(data)
 
-        dataframe = pd.DataFrame(df)
-        if dataframe.empty:
-            dataframe = pd.DataFrame(columns=self.primary_keys)
-        return dataframe
+        df = pd.DataFrame(df_records)
+        if df.empty:
+            df = pd.DataFrame(columns=self.primary_keys)
+        
+        return df
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование

@@ -71,11 +71,11 @@ class TableDataSingleFileStore(TableStore):
 
                     return file_df.loc[idx.index].reset_index()
                 else:
-                    return pd.DataFrame()
+                    return pd.DataFrame(columns=self.primary_keys)
             else:
                 return file_df
         else:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=self.primary_keys)
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
