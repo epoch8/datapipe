@@ -6,11 +6,12 @@ from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.datatable import DataStore
-from datapipe.compute import build_compute, run_steps
+from datapipe.compute import build_compute, run_steps, run_changelist
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.store.database import TableStoreDB
 from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import BatchTransform, UpdateExternalTable
+from datapipe.types import data_to_index, ChangeList
 
 from .util import assert_datatable_equal
 
@@ -130,3 +131,44 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
 
     assert_datatable_equal(out1, TEST_DF)
     assert_datatable_equal(out2, TEST_DF)
+
+
+def test_run_changelist(dbconn):
+    ds = DataStore(dbconn)
+    catalog = Catalog({
+        "inp": Table(
+            store=TableStoreDB(
+                dbconn,
+                'inp_data',
+                TEST_SCHEMA
+            )
+        ),
+        "out": Table(
+            store=TableStoreDB(
+                dbconn,
+                'out_data',
+                TEST_SCHEMA
+            )
+        )
+    })
+
+    def transform(df):
+        return df
+
+    pipeline = Pipeline([
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ])
+
+    changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4]], ['id'])
+    changelist = ChangeList.create('inp', changeIdx)
+
+    catalog.get_datatable(ds, 'inp').store_chunk(TEST_DF, now=0)
+
+    run_changelist(ds, catalog, pipeline, changelist)
+
+    assert_datatable_equal(catalog.get_datatable(ds, 'out'), TEST_DF.loc[changeIdx.index])

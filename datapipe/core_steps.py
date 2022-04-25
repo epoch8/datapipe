@@ -220,7 +220,6 @@ class BatchTransformStep(ComputeStep):
         res_changelist = ChangeList()
 
         for changes in gen:
-            print(changes)
             res_changelist.extend(changes)
 
         return res_changelist

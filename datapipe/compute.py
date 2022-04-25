@@ -253,7 +253,7 @@ def run_changelist(
     iteration = 0
 
     with tracer.start_as_current_span("Start pipeline for changelist"):
-        while current_changes.empty() or iteration < 100:
+        while not current_changes.empty() and iteration < 100:
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
                     with tracer.start_as_current_span(

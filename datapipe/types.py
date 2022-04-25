@@ -40,7 +40,7 @@ class ChangeList:
             self.append(key, other.changes[key])
 
     def empty(self):
-        return len(self.changes) == 0
+        return len(self.changes.keys()) == 0
 
     @classmethod
     def create(cls, name: str, idx: IndexDF) -> ChangeList:
