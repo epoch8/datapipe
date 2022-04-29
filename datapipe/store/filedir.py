@@ -260,9 +260,12 @@ class TableStoreFiledir(TableStore):
 
                     yield data
 
-        return pd.DataFrame.from_records(
+        df = pd.DataFrame.from_records(
             _gen()
         )
+        if df.empty:
+            df = pd.DataFrame(columns=self.primary_keys)
+        return df
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
