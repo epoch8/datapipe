@@ -26,6 +26,7 @@ click = ">=7.1.2"
 requests = ">=2.24.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.2.3"
+pymilvus = "==2.0.2"
 
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
