@@ -17,6 +17,7 @@ from .util import assert_datatable_equal, assert_df_equal
 
 
 CHUNK_SIZE = 100
+CHUNK_SIZE_SMALL = 3
 
 TEST_SCHEMA = [
     Column('id', Integer, primary_key=True),
@@ -165,6 +166,50 @@ def test_run_changelist_simple(dbconn):
     ])
 
     changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4]], ['id'])
+    changelist = ChangeList.create('inp', changeIdx)
+
+    catalog.get_datatable(ds, 'inp').store_chunk(TEST_DF, now=0)
+
+    run_changelist(ds, catalog, pipeline, changelist)
+
+    assert_datatable_equal(catalog.get_datatable(ds, 'out'), TEST_DF.loc[changeIdx.index])
+
+
+def test_run_changelist_by_chunk_size_simple(dbconn):
+    ds = DataStore(dbconn)
+    catalog = Catalog({
+        "inp": Table(
+            store=TableStoreDB(
+                dbconn,
+                'inp_data',
+                TEST_SCHEMA
+            )
+        ),
+        "out": Table(
+            store=TableStoreDB(
+                dbconn,
+                'out_data',
+                TEST_SCHEMA
+            )
+        )
+    })
+
+    def transform(df):
+        if len(df) > CHUNK_SIZE_SMALL:
+            raise Exception("Test chunk size")
+
+        return df
+
+    pipeline = Pipeline([
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE_SMALL,
+        ),
+    ])
+
+    changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4, 5, 6]], ['id'])
     changelist = ChangeList.create('inp', changeIdx)
 
     catalog.get_datatable(ds, 'inp').store_chunk(TEST_DF, now=0)

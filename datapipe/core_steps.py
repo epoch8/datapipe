@@ -202,6 +202,7 @@ class BatchTransformStep(ComputeStep):
             inputs=self.input_dts,
             outputs=self.output_dts,
             change_list=change_list,
+            chunk_size=self.chunk_size,
             run_config=run_config
         )
 

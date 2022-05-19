@@ -360,8 +360,7 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         change_list: ChangeList,
-        # Считаем, что все помещается в один чанк
-        # chunk_size: int = 1000,
+        chunk_size: int = 1000,
         run_config: RunConfig = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         join_keys = self.get_join_keys(inputs, outputs)
@@ -378,4 +377,8 @@ class DataStore:
 
         idx = IndexDF(pd.concat(changes).drop_duplicates(subset=join_keys))
 
-        return len(idx), [idx]
+        def gen():
+            for i in range(math.ceil(len(idx) / chunk_size)):
+                yield idx[i * chunk_size: (i + 1) * chunk_size]
+
+        return len(idx), gen()
