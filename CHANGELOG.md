@@ -14,6 +14,10 @@
 * `DataStore.get_process_ids` переименован в `get_full_process_ids`
 * Добавлен метод `get_change_list_process_ids`
 
+## Fixes
+
+* fix: Fixed pipeline run with changlist by chunk_size
+
 # 0.10.10
 
 * Fix: `read_rows()` should return `DataFrame` with primary key columns even if empty
