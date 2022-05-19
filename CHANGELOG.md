@@ -1,3 +1,7 @@
+# 0.11.0
+
+* New table store: `MilvusStore`
+
 # WIP 0.11.0 - Realtime
 
 ## Несовместимые изменения
