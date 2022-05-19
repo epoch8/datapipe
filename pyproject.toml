@@ -34,6 +34,7 @@ opentelemetry-exporter-jaeger = "^1.8.0"
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
+pymilvus = {version="^2.0.2", optional=true}
 
 dash = {version="==1.20.*", optional=true}
 dash_bootstrap_components = {version="== 0.12.*", optional=true}
@@ -43,6 +44,7 @@ dash_interactive_graphviz = {version="==0.3.*", optional=true}
 
 excel = ["xlrd", "openpyxl"]
 ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
+milvus = ["pymilvus"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
