@@ -75,12 +75,16 @@ class MilvusStore(TableStore):
             self._collection_loaded = False
 
     def update_rows(self, df: DataDF) -> None:
-        self.delete_rows(data_to_index(df, self.pk_field))
+        self.delete_rows(data_to_index(df, [self.pk_field]))
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+        if not idx:
+            raise Exception("Milvus doesn't support full store reading")
+
         ids_joined = self.pk_expr(idx)
         names = [field.name for field in self.schema]
+
         result = self.query_search(f"{self.pk_field} in [{ids_joined}]", names)
 
         return pd.DataFrame.from_records(result)
