@@ -202,25 +202,26 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
 name = "dash"
-version = "1.20.0"
+version = "2.3.1"
 description = "A Python framework for building reactive web-apps. Developed by Plotly."
 category = "main"
 optional = true
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
+python-versions = ">=3.6"
 
 [package.dependencies]
-dash-core-components = "1.16.0"
-dash-html-components = "1.1.3"
-dash_renderer = "1.9.1"
-dash-table = "4.11.3"
+dash-core-components = "2.0.0"
+dash-html-components = "2.0.0"
+dash-table = "5.0.0"
 Flask = ">=1.0.4"
 flask-compress = "*"
-future = "*"
-plotly = "*"
+plotly = ">=5.0.0"
 
 [package.extras]
-dev = ["dash_flow_example (==0.0.5)", "dash-dangerously-set-inner-html", "flake8 (==3.8.4)", "PyYAML (==5.3.1)", "fire (==0.3.1)", "coloredlogs (==15.0)", "flask-talisman (==0.7.0)", "isort (==4.3.21)", "pylint (==1.9.5)", "mock (==3.0.5)", "virtualenv (==20.2.2)", "mock (==4.0.3)", "black (==19.10b0)", "pylint (==2.6.0)", "astroid (==2.4.2)"]
-testing = ["pytest-sugar (>=0.9.4)", "lxml (>=4.6.2)", "selenium (>=3.141.0)", "percy (>=2.0.2)", "requests[security] (>=2.21.0)", "waitress (>=1.4.4)", "cryptography (<3.4)", "pytest (>=4.6,<5)", "pytest-mock (>=2.0.0,<3)", "beautifulsoup4 (>=4.8.2,<=4.9.3)", "pytest (>=6.0.2)", "pytest-mock (>=3.2.0)", "beautifulsoup4 (>=4.8.2)"]
+celery = ["redis (>=3.5.3)", "celery[redis] (>=5.1.2)"]
+ci = ["black (==21.6b0)", "click (<8.1)", "dash-flow-example (==0.0.5)", "dash-dangerously-set-inner-html", "flake8 (==3.9.2)", "flaky (==3.7.0)", "flask-talisman (==0.8.1)", "mimesis", "mock (==4.0.3)", "numpy", "preconditions", "pylint (==2.10.2)", "pytest-mock (==3.2.0)", "pytest-sugar (==0.9.4)", "isort (==4.3.21)", "orjson (==3.5.4)", "pyarrow (<3)", "pandas (==1.1.5)", "xlrd (<2)", "orjson (==3.6.3)", "pyarrow", "openpyxl", "pandas (>=1.4.0)", "xlrd (>=2.0.1)"]
+dev = ["coloredlogs (>=15.0.1)", "fire (>=0.4.0)", "PyYAML (>=5.4.1)"]
+diskcache = ["diskcache (>=5.2.1)", "multiprocess (>=0.70.12)", "psutil (>=5.8.0)"]
+testing = ["beautifulsoup4 (>=4.8.2)", "lxml (>=4.6.2)", "percy (>=2.0.2)", "pytest (>=6.0.2)", "requests[security] (>=2.21.0)", "selenium (>=3.141.0)", "waitress (>=1.4.4)", "cryptography (<3.4)"]
 
 [[package]]
 name = "dash-bootstrap-components"
@@ -238,7 +239,7 @@ pandas = ["numpy", "pandas"]
 
 [[package]]
 name = "dash-core-components"
-version = "1.16.0"
+version = "2.0.0"
 description = "Core component suite for Dash"
 category = "main"
 optional = true
@@ -246,7 +247,7 @@ python-versions = "*"
 
 [[package]]
 name = "dash-html-components"
-version = "1.1.3"
+version = "2.0.0"
 description = "Vanilla HTML components for Dash"
 category = "main"
 optional = true
@@ -261,16 +262,8 @@ optional = true
 python-versions = "*"
 
 [[package]]
-name = "dash-renderer"
-version = "1.9.1"
-description = "Front-end component renderer for Dash"
-category = "main"
-optional = true
-python-versions = "*"
-
-[[package]]
 name = "dash-table"
-version = "4.11.3"
+version = "5.0.0"
 description = "Dash table"
 category = "main"
 optional = true
@@ -398,14 +391,6 @@ s3 = ["s3fs"]
 sftp = ["paramiko"]
 smb = ["smbprotocol"]
 ssh = ["paramiko"]
-
-[[package]]
-name = "future"
-version = "0.18.2"
-description = "Clean single-source support for Python 3 and 2"
-category = "main"
-optional = true
-python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "gcsfs"
@@ -1383,7 +1368,7 @@ ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "4d653e3a90001ab11c0e3c8b21d2636736fc1ab38e8deced5a4101ecb79671f8"
+content-hash = "1c2361b85d617b7c7834f973936f7d0932e527063c324e69db52ba2c874e01b6"
 
 [metadata.files]
 aiobotocore = [
@@ -1553,26 +1538,27 @@ colorama = [
     {file = "colorama-0.4.4.tar.gz", hash = "sha256:5941b2b48a20143d2267e95b1c2a7603ce057ee39fd88e7329b0c292aa16869b"},
 ]
 dash = [
-    {file = "dash-1.20.0.tar.gz", hash = "sha256:127c16f71d3c8345dd29ab2aed099330aafd6d558734bec5bbcccadd0a7e6b29"},
+    {file = "dash-2.3.1-py3-none-any.whl", hash = "sha256:fff9701bb35ae597f7117c83404b6f6de37dce843d775efa385b09584534d368"},
+    {file = "dash-2.3.1.tar.gz", hash = "sha256:07f59e2ebec62c9123a8d8ccfd9c57c73095080b5cbfb3bb44f27ce0b228b4ef"},
 ]
 dash-bootstrap-components = [
     {file = "dash-bootstrap-components-0.12.2.tar.gz", hash = "sha256:b3266967f16d542ce715fd8ea0ed082b56e64dfa623750bf8150b72fe7b303ff"},
     {file = "dash_bootstrap_components-0.12.2-py3-none-any.whl", hash = "sha256:4f697a0996e458a17859614a429f093ab0e143ab359b825e7ac0c1625738c2c8"},
 ]
 dash-core-components = [
-    {file = "dash_core_components-1.16.0.tar.gz", hash = "sha256:e8cdfaf3580577670bb2d1c3168efa06f5a7b439fbe5527cfaefa3e32394542f"},
+    {file = "dash_core_components-2.0.0-py3-none-any.whl", hash = "sha256:52b8e8cce13b18d0802ee3acbc5e888cb1248a04968f962d63d070400af2e346"},
+    {file = "dash_core_components-2.0.0.tar.gz", hash = "sha256:c6733874af975e552f95a1398a16c2ee7df14ce43fa60bb3718a3c6e0b63ffee"},
 ]
 dash-html-components = [
-    {file = "dash_html_components-1.1.3.tar.gz", hash = "sha256:88adb77a674d5d7d0835d71c469f6e7b4aa692f9673808a474d244b71863c58a"},
+    {file = "dash_html_components-2.0.0-py3-none-any.whl", hash = "sha256:b42cc903713c9706af03b3f2548bda4be7307a7cf89b7d6eae3da872717d1b63"},
+    {file = "dash_html_components-2.0.0.tar.gz", hash = "sha256:8703a601080f02619a6390998e0b3da4a5daabe97a1fd7a9cebc09d015f26e50"},
 ]
 dash-interactive-graphviz = [
     {file = "dash_interactive_graphviz-0.3.0.tar.gz", hash = "sha256:84bf319e4272bc08a23e47a643c3c69a847c7e10418099a7e21f4f2588fc37b8"},
 ]
-dash-renderer = [
-    {file = "dash_renderer-1.9.1.tar.gz", hash = "sha256:73a69e3d145880e68e42723ad10182251d92b44f3efe92b8763145cfd2158e7e"},
-]
 dash-table = [
-    {file = "dash_table-4.11.3.tar.gz", hash = "sha256:0a4f22a5cf5120882a252a3348fc15ef45a1b75bf900934783e338aceac52f56"},
+    {file = "dash_table-5.0.0-py3-none-any.whl", hash = "sha256:19036fa352bb1c11baf38068ec62d172f0515f73ca3276c79dee49b95ddc16c9"},
+    {file = "dash_table-5.0.0.tar.gz", hash = "sha256:18624d693d4c8ef2ddec99a6f167593437a7ea0bf153aa20f318c170c5bc7308"},
 ]
 decopatch = [
     {file = "decopatch-1.4.10-py2.py3-none-any.whl", hash = "sha256:e151f7f93de2b1b3fd3f3272dcc7cefd1a69f68ec1c2d8e288ecd9deb36dc5f7"},
@@ -1666,9 +1652,6 @@ frozenlist = [
 fsspec = [
     {file = "fsspec-2021.11.1-py3-none-any.whl", hash = "sha256:bcb136caa37e1470dd8314a7d3917cb9b25dd9da44c10d36df556ab4ef038185"},
     {file = "fsspec-2021.11.1.tar.gz", hash = "sha256:03683e606651d5e4bd9180525d57477bd5430e5dc68d2e459835dc14cecc3dd4"},
-]
-future = [
-    {file = "future-0.18.2.tar.gz", hash = "sha256:b1bead90b70cf6ec3f0710ae53a525360fa360d306a86583adc6bf83a4db537d"},
 ]
 gcsfs = [
     {file = "gcsfs-2021.11.1-py2.py3-none-any.whl", hash = "sha256:7cbc3cc9525c0f32680606428f3980e09d794e6e260711f701405ae365e3e824"},
