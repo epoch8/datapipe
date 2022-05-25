@@ -9,9 +9,9 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-fsspec = "==2021.11.1"
-gcsfs = "==2021.11.1"
-s3fs = "==2021.11.1"
+fsspec = ">=2021.11.1"
+gcsfs = ">=2021.11.1"
+s3fs = ">=2021.11.1"
 
 pandas = "^1.2.0"
 numpy = "^1.21.0"
@@ -27,14 +27,15 @@ requests = ">=2.24.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.2.3"
 
-opentelemetry-api = "^1.8.0"
-opentelemetry-sdk = "^1.8.0"
-opentelemetry-instrumentation-sqlalchemy = "^0.27b0"
-opentelemetry-exporter-jaeger = "^1.8.0"
+pymilvus = {version="^2.0.2", optional=true}
+
+opentelemetry-api = {version="^1.8.0", optional=true}
+opentelemetry-sdk = {version="^1.8.0", optional=true}
+opentelemetry-instrumentation-sqlalchemy = {version="^0.27b0", optional=true}
+opentelemetry-exporter-jaeger = {version="^1.8.0", optional=true}
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
-pymilvus = {version="^2.0.2", optional=true}
 
 dash = {version="==2.3.*", optional=true}
 dash_bootstrap_components = {version="== 0.12.*", optional=true}
@@ -45,7 +46,7 @@ dash_interactive_graphviz = {version="==0.3.*", optional=true}
 excel = ["xlrd", "openpyxl"]
 ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 milvus = ["pymilvus"]
-
+opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-instrumentation-sqlalchemy", "opentelemetry-exporter-jaeger"]
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
 flake8 = "^3.9.2"
