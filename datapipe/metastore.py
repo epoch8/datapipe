@@ -39,7 +39,8 @@ class MetaTable:
         dbconn: DBConn,
         name: str,
         primary_schema: DataSchema,
-        meta_schema: MetaSchema = []
+        meta_schema: MetaSchema = [],
+        create_table: bool = True
     ):
         self.dbconn = dbconn
         self.name = name
@@ -69,7 +70,8 @@ class MetaTable:
             *self.sql_schema,
         )
 
-        self.sql_table.create(self.dbconn.con, checkfirst=True)
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
         '''
