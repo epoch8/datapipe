@@ -141,11 +141,13 @@ class DataTable:
 class DataStore:
     def __init__(
         self,
-        meta_dbconn: DBConn
+        meta_dbconn: DBConn,
+        create_meta_table: bool = True
     ) -> None:
         self.meta_dbconn = meta_dbconn
         self.event_logger = EventLogger(self.meta_dbconn)
         self.tables: Dict[str, DataTable] = {}
+        self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
         assert(name not in self.tables)
@@ -160,7 +162,8 @@ class DataStore:
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
-                meta_schema=meta_schema
+                meta_schema=meta_schema,
+                create_table=self.create_meta_table
             ),
             table_store=table_store,
             event_logger=self.event_logger,
