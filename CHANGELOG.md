@@ -1,3 +1,13 @@
+# 0.11.0-beta.4
+
+* Add `create_meta_table` flag in `DataStore` - controls automatic creation of
+  meta tables.
+* Fix optionality for opentelemetry packages
+
+# 0.11.0-beta.3
+
+* Relax dependencies for `fsspec`
+
 # 0.11.0-beta.2
 
 * New table store: `MilvusStore`

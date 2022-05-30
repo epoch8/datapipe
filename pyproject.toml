@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.11.0-beta.3"
+version = "0.11.0-beta.4"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -29,9 +29,9 @@ cityhash = "^0.2.3"
 
 pymilvus = {version="^2.0.2", optional=true}
 
-opentelemetry-api = {version="^1.8.0", optional=false}
-opentelemetry-sdk = {version="^1.8.0", optional=false}
-opentelemetry-instrumentation-sqlalchemy = {version="^0.27b0", optional=false}
+opentelemetry-api = "^1.8.0"
+opentelemetry-sdk = "^1.8.0"
+opentelemetry-instrumentation-sqlalchemy = "^0.27b0"
 opentelemetry-exporter-jaeger = {version="^1.8.0", optional=true}
 
 xlrd = {version=">=2.0.1", optional=true}
@@ -46,7 +46,7 @@ dash_interactive_graphviz = {version="==0.3.*", optional=true}
 excel = ["xlrd", "openpyxl"]
 ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 milvus = ["pymilvus"]
-opentelemetry = ["opentelemetry-api", "opentelemetry-sdk", "opentelemetry-instrumentation-sqlalchemy", "opentelemetry-exporter-jaeger"]
+opentelemetry = ["opentelemetry-exporter-jaeger"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
