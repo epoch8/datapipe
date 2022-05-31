@@ -27,14 +27,21 @@ class MilvusStore(TableStore):
         self.embedding_field = embedding_field
         self.connection_details = connection_details
         self._collection_loaded = False
+        self.inited = False
 
-        connections.connect(**connection_details)
+    def __init(self):
+        connections.connect(**self.connection_details)
 
-        schema_milvus = CollectionSchema(schema, "MilvusStore")
-        self.collection = Collection(name, schema_milvus)
+        schema_milvus = CollectionSchema(self.schema, "MilvusStore")
+        self.collection = Collection(self.name, schema_milvus)
 
-        if not utility.has_collection(name):
-            self.collection.create_index(embedding_field, index_params)
+        if not utility.has_collection(self.name):
+            self.collection.create_index(self.embedding_field, self.index_params)
+
+    def __check_init(self):
+        if not self.inited:
+            self.__init()
+            self.inited = True
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_db_schema
@@ -51,6 +58,8 @@ class MilvusStore(TableStore):
         return ", ".join(values)
 
     def delete_rows(self, idx: IndexDF) -> None:
+        self.__check_init()
+
         if len(idx) == 0:
             return
 
@@ -63,6 +72,8 @@ class MilvusStore(TableStore):
             self._collection_loaded = False
 
     def insert_rows(self, df: DataDF) -> None:
+        self.__check_init()
+
         if len(df) == 0:
             return
 
@@ -79,6 +90,8 @@ class MilvusStore(TableStore):
         self.insert_rows(df)
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+        self.__check_init()
+
         if not idx:
             raise Exception("Milvus doesn't support full store reading")
 
@@ -96,6 +109,8 @@ class MilvusStore(TableStore):
         expr: str,
         limit: int
     ) -> SearchResult:
+        self.__check_init()
+
         if not self._collection_loaded:
             self.collection.load()
             self._collection_loaded = True
@@ -110,6 +125,8 @@ class MilvusStore(TableStore):
         )
 
     def query_search(self, expr: str, output_fields: List) -> List:
+        self.__check_init()
+
         if not self._collection_loaded:
             self.collection.load()
             self._collection_loaded = True
