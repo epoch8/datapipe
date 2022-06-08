@@ -115,10 +115,12 @@ class MilvusStore(TableStore):
             self.collection.load()
             self._collection_loaded = True
 
+        metric_type = self.index_params.get("metric_type", "L2")
+
         return self.collection.search(
             data=embeddings,
             anns_field=self.embedding_field,
-            param={"params": query_params},
+            param={"params": query_params, "metric_type": metric_type},
             limit=limit,
             expr=expr,
             consistency_level="Strong",
