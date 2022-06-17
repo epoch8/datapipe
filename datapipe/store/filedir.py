@@ -220,7 +220,7 @@ class TableStoreFiledir(TableStore):
         for row_idx, data in zip(
             df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
         ):
-            idxs_values = df.loc[row_idx, self.attrnames].tolist()
+            idxs_values = df.loc[row_idx, self.attrnames].astype(str).tolist()
             filepath = self._filename_from_idxs_values(idxs_values)
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
