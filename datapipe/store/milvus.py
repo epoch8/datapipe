@@ -35,7 +35,7 @@ class MilvusStore(TableStore):
         schema_milvus = CollectionSchema(self.schema, "MilvusStore")
         self.collection = Collection(self.name, schema_milvus)
 
-        if not utility.has_collection(self.name):
+        if not self.collection.has_index():
             self.collection.create_index(self.embedding_field, self.index_params)
 
     def __check_init(self):
