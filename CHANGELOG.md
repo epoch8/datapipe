@@ -1,3 +1,7 @@
+# 0.11.0-beta.5
+
+* Split `run_changelist` into `run_changelist` and `run_steps_changelist`
+
 # 0.11.0-beta.4
 
 * Add `create_meta_table` flag in `DataStore` - controls automatic creation of
