@@ -248,6 +248,16 @@ def run_changelist(
     run_config: RunConfig = None,
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
+
+    return run_steps_changelist(ds, steps, changelist, run_config)
+
+
+def run_steps_changelist(
+    ds: DataStore,
+    steps: List[ComputeStep],
+    changelist: ChangeList,
+    run_config: RunConfig = None,
+) -> None:
     current_changes = changelist
     next_changes = ChangeList()
     iteration = 0
