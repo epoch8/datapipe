@@ -1,6 +1,7 @@
 # 0.11.0-beta.6
 
 * Make `gcsfs` and `s3fs` dependencies optional
+* Remove `poetry.lock` from project
 
 # 0.11.0-beta.5
 
