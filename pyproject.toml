@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.11.0-beta.5"
+version = "0.11.0-beta.6"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -10,8 +10,9 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.8"
 fsspec = ">=2021.11.1"
-gcsfs = ">=2021.11.1"
-s3fs = ">=2021.11.1"
+
+gcsfs = {version=">=2021.11.1", optional=true}
+s3fs = {version=">=2021.11.1", optional=true}
 
 pandas = "^1.2.0"
 numpy = "^1.21.0"
