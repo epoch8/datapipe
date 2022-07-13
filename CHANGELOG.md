@@ -1,3 +1,7 @@
+# 0.11.0-beta.6
+
+* Make `gcsfs` and `s3fs` dependencies optional
+
 # 0.11.0-beta.5
 
 * Split `run_changelist` into `run_changelist` and `run_steps_changelist`

@@ -11,6 +11,9 @@ packages = [
 python = "^3.8"
 fsspec = ">=2021.11.1"
 
+gcsfs = {version=">=2021.11.1", optional=true}
+s3fs = {version=">=2021.11.1", optional=true}
+
 pandas = "^1.2.0"
 numpy = "^1.21.0"
 SQLAlchemy = "^1.4.25"
@@ -55,8 +58,6 @@ pandas-stubs = "^1.2.0"
 types-requests = "^2.25.6"
 pytest-cases = "^3.6.4"
 types-setuptools = "^57.4.7"
-gcsfs = ">=2021.11.1"
-s3fs = ">=2021.11.1"
 
 
 [build-system]
