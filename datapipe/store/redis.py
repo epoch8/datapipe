@@ -15,10 +15,8 @@ from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF, data_to_inde
 class RedisStore(TableStore):
     def __init__(
         self,
-        # ВОПРОС: какие типы соединений мы хотим поддерживать?
+        # ВОПРОС: какие типы соединений мы хотим поддерживать? Пока не трогаем pydantic, но по-хорошему наверное стоит.
         connection: Union[Redis, str],
-        # Нам понадобится описание схемы для конвертации типов (редис возвращает str)
-        # Наверное логично ее описать так же как остальные схемы
         primary_schema: Optional[DataSchema] = None
     ) -> None:
 
@@ -53,7 +51,7 @@ class RedisStore(TableStore):
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
             return
-        # Проверка на дубликаты
+        # ВОПРОС: Тут нужна проверка на дубликаты, или она делается где-то уровнями выше?
         if df[self.primary_key].duplicated().any():
             raise ValueError("DataDF contains duplicate primary keys.")
 
@@ -64,21 +62,19 @@ class RedisStore(TableStore):
         pipeline = self.redis_connection.pipeline()
         for key, value in zip(df[self.primary_key], df[self.value_col]):
             pipeline.set(key, value)
-        _ = pipeline.execute()
+        pipeline.execute()
     
     def update_rows(self, df: DataDF) -> None:
         # удаляем существующие ключи
         self.delete_rows(data_to_index(df, self.primary_key))
         self.insert_rows(df)
 
-    # ВОПРОС: корректно ли тут использовать IndexDF?
     def read_rows(self, keys: Optional[IndexDF] = None) -> DataDF:
         # без ключей читаем всю базу
         if keys is None:
             keys = self.redis_connection.keys()
             values = self.redis_connection.mget(keys)
         else:
-            # берем значения из primary_key колонки фрейма, конвертим все в стринг
             keys = keys[self.primary_key].astype(str).to_list()
             values = self.redis_connection.mget(keys)
         
@@ -95,7 +91,6 @@ class RedisStore(TableStore):
         result_df = result_df.astype(dtypes)
         return result_df
 
-    # Сломано, разобраться как эта шняга должна работать!
     def delete_rows(self, keys: IndexDF) -> None:
         # как всегда конверсия
         if keys.empty:
