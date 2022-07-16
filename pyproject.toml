@@ -41,6 +41,8 @@ openpyxl = {version=">=3.0.7", optional=true}
 dash = {version="==2.3.*", optional=true}
 dash_bootstrap_components = {version="== 0.12.*", optional=true}
 dash_interactive_graphviz = {version="==0.3.*", optional=true}
+redis = "^4.3.4"
+pydantic-redis = "^0.0.5"
 
 [tool.poetry.extras]
 
