@@ -12,11 +12,13 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF, data_to_index
 
 
+# Бомж-версия, не умеет хранить ничего, кроме таблиц из пар ключ-значение
 class RedisStore(TableStore):
     def __init__(
         self,
         # ВОПРОС: какие типы соединений мы хотим поддерживать? Пока не трогаем pydantic, но по-хорошему наверное стоит.
         connection: Union[Redis, str],
+        name: str,
         primary_schema: Optional[DataSchema] = None
     ) -> None:
 
@@ -24,6 +26,7 @@ class RedisStore(TableStore):
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
             self.redis_connection = connection
+        self.name = name
         
         if primary_schema is None:
             self.primary_schema = [
@@ -59,10 +62,8 @@ class RedisStore(TableStore):
         # при чтении конвертируем обратно в соответствии со схемой
         df = df.astype(str) 
         # Заливка через пайплайн должна работать быстрей для большого кол-ва ключей.
-        pipeline = self.redis_connection.pipeline()
-        for key, value in zip(df[self.primary_key], df[self.value_col]):
-            pipeline.set(key, value)
-        pipeline.execute()
+        mapping = {k: v for k, v in zip(df[self.primary_key], df[self.value_col])}
+        self.redis_connection.hset(self.name, mapping=mapping)
     
     def update_rows(self, df: DataDF) -> None:
         # удаляем существующие ключи
@@ -72,11 +73,13 @@ class RedisStore(TableStore):
     def read_rows(self, keys: Optional[IndexDF] = None) -> DataDF:
         # без ключей читаем всю базу
         if keys is None:
-            keys = self.redis_connection.keys()
-            values = self.redis_connection.mget(keys)
+            pairs = self.redis_connection.hgetall(self.name)
+            keys = pairs.keys()
+            values = pairs.values()
         else:
             keys = keys[self.primary_key].astype(str).to_list()
-            values = self.redis_connection.mget(keys)
+            values = self.redis_connection.hmget(self.name, keys) if keys else []
+
         
         # проверяем кодирование
         if keys:
@@ -96,7 +99,7 @@ class RedisStore(TableStore):
         if keys.empty:
             return
         keys = keys[self.primary_key].astype(str).to_list()
-        self.redis_connection.delete(*keys)
+        self.redis_connection.hdel(self.name, *keys)
     
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
