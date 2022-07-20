@@ -1,8 +1,6 @@
-from distutils.log import warn
 from logging import warning
-from optparse import Option
 from typing import Optional, Union
-import warnings
+import json
 
 import pandas as pd
 from redis.client import Redis
@@ -12,22 +10,29 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF, data_to_index
 
 
-# Бомж-версия, не умеет хранить ничего, кроме таблиц из пар ключ-значение
+def _serialize(dict):
+    return json.dumps(dict)
+
+
+def _deserialize(bytes):
+    return json.loads(bytes)
+
+
 class RedisStore(TableStore):
     def __init__(
         self,
-        # ВОПРОС: какие типы соединений мы хотим поддерживать? Пока не трогаем pydantic, но по-хорошему наверное стоит.
         connection: Union[Redis, str],
         name: str,
         primary_schema: Optional[DataSchema] = None
     ) -> None:
 
         if isinstance(connection, str):
+            print(connection)
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
             self.redis_connection = connection
         self.name = name
-        
+
         if primary_schema is None:
             self.primary_schema = [
                 Column("id", String(), primary_key=True),
@@ -42,67 +47,54 @@ class RedisStore(TableStore):
         else:
             self.primary_schema = primary_schema
 
-        self.primary_key = [column.name for column in self.primary_schema if column.primary_key]
-        if not self.primary_key:
+        self.prim_keys = [column.name for column in self.primary_schema if column.primary_key]
+        # Вопрос: нам нужна эта проверка?
+        if not self.prim_keys:
             raise RuntimeError('Primary key for Redis store not specified.')
-        elif len(self.primary_key) > 1:
-            raise RuntimeError('Multiple primary keys for Redis store are not supported.')
-        else:
-            self.primary_key = self.primary_key[0]
-            self.value_col = [column.name for column in self.primary_schema if not column.primary_key][0]
+
+        self.value_cols = [column.name for column in self.primary_schema if not column.primary_key]
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
             return
-        # ВОПРОС: Тут нужна проверка на дубликаты, или она делается где-то уровнями выше?
-        if df[self.primary_key].duplicated().any():
-            raise ValueError("DataDF contains duplicate primary keys.")
+        # ВОПРОС: Как делать проверку на дубликаты для множественных primary_key?
+        # key pairs as dict {'key_1: key_1_val, 'key_2': key_2_val}
+        key_rows = df[self.prim_keys].to_dict(orient='records')
+        value_rows = df[self.value_cols].to_dict(orient='records')
+        redis_pipe = self.redis_connection.pipeline()
+        for keys, values in zip(key_rows, value_rows):
+            redis_pipe.hset(self.name, _serialize(keys), _serialize(values))
+        redis_pipe.execute()
 
-        # Редис будет ругаться на пандасовые типы, поэтому сколлапсим все в стрингу,
-        # при чтении конвертируем обратно в соответствии со схемой
-        df = df.astype(str) 
-        # Заливка через пайплайн должна работать быстрей для большого кол-ва ключей.
-        mapping = {k: v for k, v in zip(df[self.primary_key], df[self.value_col])}
-        self.redis_connection.hset(self.name, mapping=mapping)
-    
     def update_rows(self, df: DataDF) -> None:
         # удаляем существующие ключи
-        self.delete_rows(data_to_index(df, self.primary_key))
+        self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
     def read_rows(self, keys: Optional[IndexDF] = None) -> DataDF:
         # без ключей читаем всю базу
         if keys is None:
             pairs = self.redis_connection.hgetall(self.name)
-            keys = pairs.keys()
-            values = pairs.values()
+            keys = [_deserialize(key) for key in pairs.keys()]
+            values = [_deserialize(val) for val in pairs.values()]
         else:
-            keys = keys[self.primary_key].astype(str).to_list()
-            values = self.redis_connection.hmget(self.name, keys) if keys else []
+            keys = keys[self.prim_keys].to_dict(orient='records')
+            keys_json = [_serialize(key) for key in keys]
+            values = self.redis_connection.hmget(self.name, keys_json) if keys_json else []
+            values = [_deserialize(val) for val in values]
 
-        
-        # проверяем кодирование
-        if keys:
-            if isinstance(keys[0], bytes):
-                keys = [k.decode() for k in keys]
-            if isinstance(values[0], bytes):
-                values = [v.decode() for v in values]
-        
-        result_df = pd.DataFrame({self.primary_key: keys, self.value_col: values})
-        # приводим типы к схеме
-        dtypes = {column.name: column.type.python_type for column in self.primary_schema}
-        result_df = result_df.astype(dtypes)
+        result_df = pd.concat([pd.DataFrame(keys), pd.DataFrame(values)], axis=1)
         return result_df
 
     def delete_rows(self, keys: IndexDF) -> None:
-        # как всегда конверсия
         if keys.empty:
             return
-        keys = keys[self.primary_key].astype(str).to_list()
+        keys = keys[self.prim_keys].to_dict(orient='records')
+        keys = [_serialize(key) for key in keys]
         self.redis_connection.hdel(self.name, *keys)
-    
+
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
-    
+
     def get_meta_schema(self) -> MetaSchema:
         return []
