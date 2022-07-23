@@ -5,6 +5,7 @@ import os
 
 import pandas as pd
 from sqlalchemy import create_engine
+import redis
 
 from datapipe.store.database import DBConn
 
@@ -68,3 +69,11 @@ def dbconn():
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
+
+
+@pytest.fixture
+def redis_conn():
+    redis_host = os.getenv("REDIS_HOST", 'localhost')
+    redis_port = os.getenv("REDIS_PORT", "6379")
+    conn = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+    yield conn
