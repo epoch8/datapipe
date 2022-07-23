@@ -1,3 +1,7 @@
+# 0.11.0-beta.7
+
+* New table store: `RedisStore`
+
 # 0.11.0-beta.6
 
 * Make `gcsfs` and `s3fs` dependencies optional

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.11.0-beta.6"
+version = "0.11.0-beta.7"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -60,6 +60,7 @@ pandas-stubs = "^1.2.0"
 types-requests = "^2.25.6"
 pytest-cases = "^3.6.4"
 types-setuptools = "^57.4.7"
+types-redis = "^4.3.10"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
