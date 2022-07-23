@@ -1,21 +1,23 @@
-from logging import warning
 from typing import Optional, Union
 import json
 
 import pandas as pd
 from redis.client import Redis
-from sqlalchemy import Column, String
 
 from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF, data_to_index
 
 
-def _serialize(dict):
-    return json.dumps(dict)
+def _serialize(values):
+    return json.dumps(values)
 
 
-def _deserialize(bytes):
-    return json.loads(bytes)
+def _deserialize(bytestring):
+    return json.loads(bytestring)
+
+
+def _to_itertuples(df: DataDF, colnames):
+    return tuple(df[colnames].itertuples(index=False, name=None))
 
 
 class RedisStore(TableStore):
@@ -23,44 +25,25 @@ class RedisStore(TableStore):
         self,
         connection: Union[Redis, str],
         name: str,
-        primary_schema: Optional[DataSchema] = None
+        primary_schema: DataSchema
     ) -> None:
 
         if isinstance(connection, str):
-            print(connection)
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
             self.redis_connection = connection
         self.name = name
-
-        if primary_schema is None:
-            self.primary_schema = [
-                Column("id", String(), primary_key=True),
-                Column("value", String())
-            ]
-            warning.warn(
-                '''
-                    Primary schema for redis store is not specified.
-                    Input data must contain fields "id" for keys and "value" for values.
-                '''
-            )
-        else:
-            self.primary_schema = primary_schema
-
+        self.primary_schema = primary_schema
         self.prim_keys = [column.name for column in self.primary_schema if column.primary_key]
-        # Вопрос: нам нужна эта проверка?
-        if not self.prim_keys:
-            raise RuntimeError('Primary key for Redis store not specified.')
-
         self.value_cols = [column.name for column in self.primary_schema if not column.primary_key]
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
             return
-        # ВОПРОС: Как делать проверку на дубликаты для множественных primary_key?
-        # key pairs as dict {'key_1: key_1_val, 'key_2': key_2_val}
-        key_rows = df[self.prim_keys].to_dict(orient='records')
-        value_rows = df[self.value_cols].to_dict(orient='records')
+
+        # get rows as Iter[Tuple]
+        key_rows = _to_itertuples(df, self.prim_keys)
+        value_rows = _to_itertuples(df, self.value_cols)
         redis_pipe = self.redis_connection.pipeline()
         for keys, values in zip(key_rows, value_rows):
             redis_pipe.hset(self.name, _serialize(keys), _serialize(values))
@@ -71,25 +54,28 @@ class RedisStore(TableStore):
         self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
-    def read_rows(self, keys: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
         # без ключей читаем всю базу
-        if keys is None:
+        if df_keys is None:
             pairs = self.redis_connection.hgetall(self.name)
             keys = [_deserialize(key) for key in pairs.keys()]
             values = [_deserialize(val) for val in pairs.values()]
         else:
-            keys = keys[self.prim_keys].to_dict(orient='records')
+            keys = _to_itertuples(df_keys, self.prim_keys)
             keys_json = [_serialize(key) for key in keys]
             values = self.redis_connection.hmget(self.name, keys_json) if keys_json else []
             values = [_deserialize(val) for val in values]
 
-        result_df = pd.concat([pd.DataFrame(keys), pd.DataFrame(values)], axis=1)
+        result_df = pd.concat([
+            pd.DataFrame.from_records(keys, columns=self.prim_keys),
+            pd.DataFrame.from_records(values, columns=self.value_cols)
+        ], axis=1)
         return result_df
 
-    def delete_rows(self, keys: IndexDF) -> None:
-        if keys.empty:
+    def delete_rows(self, df_keys: IndexDF) -> None:
+        if df_keys.empty:
             return
-        keys = keys[self.prim_keys].to_dict(orient='records')
+        keys = _to_itertuples(df_keys, self.prim_keys)
         keys = [_serialize(key) for key in keys]
         self.redis_connection.hdel(self.name, *keys)
 
