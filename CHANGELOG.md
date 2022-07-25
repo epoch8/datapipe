@@ -1,4 +1,44 @@
-# WIP 0.10.10
+# 0.11.0-beta.6
+
+* Make `gcsfs` and `s3fs` dependencies optional
+* Remove `poetry.lock` from project
+
+# 0.11.0-beta.5
+
+* Split `run_changelist` into `run_changelist` and `run_steps_changelist`
+
+# 0.11.0-beta.4
+
+* Add `create_meta_table` flag in `DataStore` - controls automatic creation of
+  meta tables.
+* Fix optionality for opentelemetry packages
+
+# 0.11.0-beta.3
+
+* Relax dependencies for `fsspec`
+
+# 0.11.0-beta.2
+
+* New table store: `MilvusStore`
+* fix: Fixed pipeline run with changlist by chunk_size
+
+# 0.11.0-beta.1 - Realtime
+
+## Несовместимые изменения
+
+* Вернулся класс `ComputeStep` как основа вычислительного пайплайна
+* Введено понятие `full` и `changelist` обработки
+* `batch_transform_wrapper` переименован в `do_full_batch_transform`
+* Появился метод `do_batch_transform` который принимает итератор индексов и
+  делает итерационную обработку
+* `batch_generate_wrapper` переименован в `do_batch_generate`
+* Исключения в `do_batch_generate` больше не скрываются
+* По всему коду параметр `batchsize` переименован в `batch_size` для
+  консистентности с `input_dts`, `change_list` и тп
+* `DataStore.get_process_ids` переименован в `get_full_process_ids`
+* Добавлен метод `get_change_list_process_ids`
+
+# 0.10.10
 
 * Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
   `add_filepath_column` is enabled (https://github.com/epoch8/datapipe/pull/149)
@@ -65,17 +105,20 @@
 
 # 0.10.0
 
-* Не считать отсутствие строки в одной из входных таблиц необходимым условием для повторной обработки
+* Не считать отсутствие строки в одной из входных таблиц необходимым условием
+  для повторной обработки
 
 # 0.10.0-alpha.2
 
 * Добавлен `LevelDBStore`
-* Трансформация может работать без пересекающихся ключей (любая строка слева сравнивается со строкой справа)
+* Трансформация может работать без пересекающихся ключей (любая строка слева
+  сравнивается со строкой справа)
 * `ComputeStep` объединен с `DatatableTransformStep`
 
 # 0.10.0-alpha.1
 
-* Удален класс `ExternalTable`, теперь это явный шаг пайплайна `UpdateExternalTable`
+* Удален класс `ExternalTable`, теперь это явный шаг пайплайна
+  `UpdateExternalTable`
 * Удален модуль `dsl`, классы переехали в `compute` и `core_steps`
 * Удален модуль `step`, классы переехали в `run_config` и `compute`
 * Исправлена проблема обновления `ExternalTable` с фильтрацией через `RunConfig`
@@ -98,11 +141,13 @@
 
 # 0.9.16
 
-* Фикс для `read_rows` в `TableStore`, для случая когда передаеться пустой `IndexDF`
+* Фикс для `read_rows` в `TableStore`, для случая когда передаеться пустой
+  `IndexDF`
 
 # 0.9.15
 
-* Фикс для случая когда одна и та же таблица является и входом и выходом в трансформацию
+* Фикс для случая когда одна и та же таблица является и входом и выходом в
+  трансформацию
 
 # 0.9.14
 
@@ -125,7 +170,9 @@
 
 # 0.9.10
 
-* Новый класс `RunConfig` который можно передать в `run_pipeline`. Предоставляет возможность фильтрации данных по конкретному значению одного или нескольких индексов.
+* Новый класс `RunConfig` который можно передать в `run_pipeline`. Предоставляет
+  возможность фильтрации данных по конкретному значению одного или нескольких
+  индексов.
 
 # 0.9.9
 
@@ -133,7 +180,8 @@
 
 # 0.9.8
 
-* Фикс работы с SQLite для чанков больше 1000 (https://github.com/epoch8/datapipe/issues/63)
+* Фикс работы с SQLite для чанков больше 1000
+  (https://github.com/epoch8/datapipe/issues/63)
 
 # 0.9.7
 
@@ -142,7 +190,8 @@
 
 ## Minor breaking changes: code
 
-* теперь нужно создавать отдельный `DBConn` для данных и метаданных из-за стримингового чтения
+* теперь нужно создавать отдельный `DBConn` для данных и метаданных из-за
+  стримингового чтения
 
 # 0.9.6
 
@@ -154,7 +203,8 @@
 
 ## Breaking changes DB
 
-* Поле `hash` метадаты теперь имеет тип `int32` и считается с помощью модуля `cityhash`
+* Поле `hash` метадаты теперь имеет тип `int32` и считается с помощью модуля
+  `cityhash`
 
 # 0.9.4
 
@@ -170,7 +220,8 @@
 
 * **Индексация данных теперь множественная**
 * Класса `MetaStore` больше нет, его роль выполняет `DataStore`
-* `DataTable.store_chunk` теперь принимает `processed_idx`, отдельного метода `sync_meta_for_store_chunk` больше нет
+* `DataTable.store_chunk` теперь принимает `processed_idx`, отдельного метода
+  `sync_meta_for_store_chunk` больше нет
 
 # 0.8.2
 
@@ -178,12 +229,15 @@
 
 # 0.8.1
 
-* Функция `MetaStore.get_process_chunks` перестала быть методом `MetaStore` и переехала в модуль `datatable`
+* Функция `MetaStore.get_process_chunks` перестала быть методом `MetaStore` и
+  переехала в модуль `datatable`
 
 # 0.8.0
 
-* Добавлена обработка ошибок в gen_process: исключение ловится, логгируется и выполнение переходит к следующим шагам
-* Добавлена обработка ошибок в inc_process: исключение ловится, чанк с ошибкой игнорируется и выполнение продолжается
+* Добавлена обработка ошибок в gen_process: исключение ловится, логгируется и
+  выполнение переходит к следующим шагам
+* Добавлена обработка ошибок в inc_process: исключение ловится, чанк с ошибкой
+  игнорируется и выполнение продолжается
 
 ## Breaking changes DB
 
@@ -195,8 +249,11 @@
 
 # 0.7.0
 
-* Добавлен аттрибут `const_idx` в `TableStoreDB`, позволяет хранить данные разных шагов/пайплайнов в одной физической таблице с помощью доп.идентификаторов
-* Добавлен класс `metastore.MetaTable`, который собирает в себе все задачи по работе с метаданными одной таблицы.
+* Добавлен аттрибут `const_idx` в `TableStoreDB`, позволяет хранить данные
+  разных шагов/пайплайнов в одной физической таблице с помощью
+  доп.идентификаторов
+* Добавлен класс `metastore.MetaTable`, который собирает в себе все задачи по
+  работе с метаданными одной таблицы.
 
 **Важно**: Поменялся интерфейс создания `DataTable`.
 

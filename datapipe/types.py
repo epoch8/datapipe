@@ -1,4 +1,6 @@
-from typing import List, NewType, cast
+from __future__ import annotations # NOQA
+from typing import List, Dict, NewType, cast
+from dataclasses import dataclass, field
 
 import pandas as pd
 from sqlalchemy import Column
@@ -15,6 +17,37 @@ MetadataDF = NewType('MetadataDF', pd.DataFrame)
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
 # DataDF = NewType('DataDF', pd.DataFrame)
 DataDF = pd.DataFrame
+
+
+@dataclass
+class ChangeList:
+    changes: Dict[str, IndexDF] = field(default_factory=lambda: cast(Dict[str, IndexDF], {}))
+
+    def append(self, table_name: str, idx: IndexDF) -> None:
+        if table_name in self.changes:
+            self_cols = set(self.changes[table_name].columns)
+            other_cols = set(idx.columns)
+
+            if self_cols != other_cols:
+                raise ValueError(f"Different IndexDF for table {table_name}")
+
+            self.changes[table_name] = cast(IndexDF, self.changes[table_name].append(idx))
+        else:
+            self.changes[table_name] = idx
+
+    def extend(self, other: ChangeList):
+        for key in other.changes.keys():
+            self.append(key, other.changes[key])
+
+    def empty(self):
+        return len(self.changes.keys()) == 0
+
+    @classmethod
+    def create(cls, name: str, idx: IndexDF) -> ChangeList:
+        changelist = cls()
+        changelist.append(name, idx)
+
+        return changelist
 
 
 def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:

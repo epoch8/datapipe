@@ -1,12 +1,13 @@
-from typing import Dict, Iterator, List, Optional, Tuple, Set
+from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import logging
+import math
 from opentelemetry import trace
 
 import pandas as pd
 from sqlalchemy import alias, func, select, union, and_, or_, literal, Column
 
-from datapipe.types import DataDF, MetadataDF, IndexDF, data_to_index, index_difference
+from datapipe.types import ChangeList, DataDF, MetadataDF, IndexDF, data_to_index, index_difference
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.metastore import MetaTable, MetaTableData
 from datapipe.store.table_store import TableStore
@@ -48,13 +49,14 @@ class DataTable:
         processed_idx: IndexDF = None,
         now: float = None,
         run_config: RunConfig = None,
-    ) -> None:
+    ) -> IndexDF:
         '''
         Записать новые данные в таблицу.
 
-        При указанном `processed_idx` удалить те строки, которые находятся внутри `processed_idx`, но
-        отсутствуют в `data_df`.
+        При указанном `processed_idx` удалить те строки, которые находятся
+        внутри `processed_idx`, но отсутствуют в `data_df`.
         '''
+        changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
             if not data_df.empty:
@@ -85,6 +87,9 @@ class DataTable:
                 with tracer.start_as_current_span("store metadata"):
                     self.meta_table.insert_meta_for_store_chunk(new_meta_df)
                     self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+
+                    changes.append(data_to_index(new_df, self.primary_keys))
+                    changes.append(data_to_index(changed_df, self.primary_keys))
             else:
                 data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -96,6 +101,10 @@ class DataTable:
                     deleted_idx = index_difference(existing_idx, data_idx)
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
+
+                    changes.append(deleted_idx)
+
+        return cast(IndexDF, pd.concat(changes))
 
     def delete_by_idx(
         self,
@@ -132,11 +141,13 @@ class DataTable:
 class DataStore:
     def __init__(
         self,
-        meta_dbconn: DBConn
+        meta_dbconn: DBConn,
+        create_meta_table: bool = True
     ) -> None:
         self.meta_dbconn = meta_dbconn
         self.event_logger = EventLogger(self.meta_dbconn)
         self.tables: Dict[str, DataTable] = {}
+        self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
         assert(name not in self.tables)
@@ -151,7 +162,8 @@ class DataStore:
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,
-                meta_schema=meta_schema
+                meta_schema=meta_schema,
+                create_table=self.create_meta_table
             ),
             table_store=table_store,
             event_logger=self.event_logger,
@@ -167,6 +179,12 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
+    def get_join_keys(self, inputs: List[DataTable], outputs: List[DataTable]) -> List[str]:
+        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
+        out_p_keys = [set(out.primary_keys) for out in outputs]
+
+        return list(set.intersection(*inp_p_keys, *out_p_keys))
+
     def get_table(self, name: str) -> DataTable:
         return self.tables[name]
 
@@ -175,7 +193,7 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         run_config: RunConfig = None,
-    ) -> Tuple[Set[str], select]:
+    ) -> Tuple[List[str], select]:
         """
         Построить SQL запрос на получение измененных идентификаторов.
 
@@ -201,6 +219,7 @@ class DataStore:
 
             for right_tbl in right_tbls:
                 join_keys = left_tbl.get_keys() & right_tbl.get_keys()
+
                 q = q.join(
                     right_tbl.sql_table,
                     and_(True, *[left_tbl.get_column(key) == right_tbl.get_column(key) for key in join_keys]),
@@ -260,7 +279,7 @@ class DataStore:
 
         u1 = union(*sql_requests)
 
-        return (join_keys, u1)
+        return (list(join_keys), u1)
 
     def get_changed_idx_count(
         self,
@@ -283,19 +302,20 @@ class DataStore:
 
         return idx_count
 
-    def get_process_ids(
+    def get_full_process_ids(
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        chunksize: int = 1000,
+        chunk_size: int = 1000,
         run_config: RunConfig = None,
-    ) -> Tuple[int, Iterator[IndexDF]]:
+    ) -> Tuple[int, Iterable[IndexDF]]:
         '''
         Метод для получения перечня индексов для обработки.
 
         Returns: (idx_size, iterator<idx_df>)
-            idx_size - количество индексов требующих обработки
-            idx_df - датафрейм без колонок с данными, только индексная колонка
+
+        - idx_size - количество индексов требующих обработки
+        - idx_df - датафрейм без колонок с данными, только индексная колонка
         '''
 
         if len(inputs) == 0:
@@ -328,7 +348,7 @@ class DataStore:
             for df in pd.read_sql_query(
                 u1,
                 con=self.meta_dbconn.con,
-                chunksize=chunksize
+                chunksize=chunk_size
             ):
                 for k, v in extra_filters.items():
                     df[k] = v
@@ -336,4 +356,32 @@ class DataStore:
                 # drop pseudo column
                 yield df.drop(columns='_1')
 
-        return idx_count, alter_res_df()
+        return math.ceil(idx_count / chunk_size), alter_res_df()
+
+    def get_change_list_process_ids(
+        self,
+        inputs: List[DataTable],
+        outputs: List[DataTable],
+        change_list: ChangeList,
+        chunk_size: int = 1000,
+        run_config: RunConfig = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        join_keys = self.get_join_keys(inputs, outputs)
+        changes = [pd.DataFrame(columns=join_keys)]
+
+        if not join_keys:
+            raise ValueError("Primary keys intersection for ChangeList are empty")
+
+        for inp in inputs:
+            if inp.name in change_list.changes:
+                idx = change_list.changes[inp.name]
+
+                changes.append(data_to_index(idx, join_keys))
+
+        idx = IndexDF(pd.concat(changes).drop_duplicates(subset=join_keys))
+
+        def gen():
+            for i in range(math.ceil(len(idx) / chunk_size)):
+                yield idx[i * chunk_size: (i + 1) * chunk_size]
+
+        return len(idx), gen()
