@@ -1,3 +1,19 @@
+# 0.11.x
+* Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
+  `add_filepath_column` is enabled (https://github.com/epoch8/datapipe/pull/149)
+* Fix `TableStoreFiledir` issues with regular expressions:
+  https://github.com/epoch8/datapipe/issues/146 and
+  https://github.com/epoch8/datapipe/issues/147
+  (https://github.com/epoch8/datapipe/pull/149)
+* Added new arguments `readonly` and `disable_rm` in `TableStoreFiledir`. By
+  default `TableStoreFiledir` is running as reader and writer, but if
+  `enable_rm=True` then it also removes files. When `readonly=None` (defualt),
+  it checks for patterns `*` to disable/enable writing files, but if it needed
+  to force enable or disable writing, `readonly` should be changed accordingly.
+* Addeed OR patterns support in format `(aaa|bbb|ccc)` in `TableStoreFiledir`.
+  For example: `/path/to/(folder1|folder2|folder3)/to/the/files.(jpg|png|jpeg)`.
+* Fix: `read_rows()` should return `DataFrame` with primary key columns even if empty
+
 # 0.11.0-beta.6
 
 * Make `gcsfs` and `s3fs` dependencies optional
@@ -37,23 +53,6 @@
   консистентности с `input_dts`, `change_list` и тп
 * `DataStore.get_process_ids` переименован в `get_full_process_ids`
 * Добавлен метод `get_change_list_process_ids`
-
-# 0.10.10
-
-* Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
-  `add_filepath_column` is enabled (https://github.com/epoch8/datapipe/pull/149)
-* Fix `TableStoreFiledir` issues with regular expressions:
-  https://github.com/epoch8/datapipe/issues/146 and
-  https://github.com/epoch8/datapipe/issues/147
-  (https://github.com/epoch8/datapipe/pull/149)
-* Added new arguments `readonly` and `disable_rm` in `TableStoreFiledir`. By
-  default `TableStoreFiledir` is running as reader and writer, but if
-  `enable_rm=True` then it also removes files. When `readonly=None` (defualt),
-  it checks for patterns `*` to disable/enable writing files, but if it needed
-  to force enable or disable writing, `readonly` should be changed accordingly.
-* Addeed OR patterns support in format `(aaa|bbb|ccc)` in `TableStoreFiledir`.
-  For example: `/path/to/(folder1|folder2|folder3)/to/the/files.(jpg|png|jpeg)`.
-* Fix: `read_rows()` should return `DataFrame` with primary key columns even if empty
 
 # 0.10.9
 
