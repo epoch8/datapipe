@@ -48,6 +48,8 @@ excel = ["xlrd", "openpyxl"]
 ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 milvus = ["pymilvus"]
 opentelemetry = ["opentelemetry-exporter-jaeger"]
+gcsfs = ["gcsfs"]
+s3fs = ["s3fs"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
