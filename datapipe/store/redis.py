@@ -56,21 +56,27 @@ class RedisStore(TableStore):
 
     def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
         # без ключей читаем всю базу
-        if df_keys is None:
+        if df_keys is None or df_keys.empty:
             pairs = self.redis_connection.hgetall(self.name)
             keys = [_deserialize(key) for key in pairs.keys()]
             values = [_deserialize(val) for val in pairs.values()]
         else:
             keys = _to_itertuples(df_keys, self.prim_keys)
             keys_json = [_serialize(key) for key in keys]
-            values = self.redis_connection.hmget(self.name, keys_json) if keys_json else []
-            values = [_deserialize(val) for val in values]
+            values = self.redis_connection.hmget(self.name, keys_json)
+            if values and values[-1] is not None:
+                values = [_deserialize(val) for val in values]
+            else:
+                values = []
 
         result_df = pd.concat([
             pd.DataFrame.from_records(keys, columns=self.prim_keys),
             pd.DataFrame.from_records(values, columns=self.value_cols)
         ], axis=1)
-        return result_df
+        if values:
+            return result_df
+        else:
+            return result_df.iloc[:0]
 
     def delete_rows(self, df_keys: IndexDF) -> None:
         if df_keys.empty:
