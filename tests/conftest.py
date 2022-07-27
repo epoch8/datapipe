@@ -76,4 +76,6 @@ def redis_conn():
     redis_host = os.getenv("REDIS_HOST", 'localhost')
     redis_port = os.getenv("REDIS_PORT", "6379")
     conn = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+    if (keys := conn.keys()):
+        conn.delete(*keys)
     yield conn

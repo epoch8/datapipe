@@ -51,16 +51,16 @@ class RedisStore(TableStore):
 
     def update_rows(self, df: DataDF) -> None:
         # удаляем существующие ключи
+        if df.empty:
+            df = pd.DataFrame(columns=[column.name for column in self.primary_schema])
         self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
     def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
-        # без ключей читаем всю базу
-        if df_keys is None or df_keys.empty:
-            pairs = self.redis_connection.hgetall(self.name)
-            keys = [_deserialize(key) for key in pairs.keys()]
-            values = [_deserialize(val) for val in pairs.values()]
-        else:
+        if df_keys is not None:
+            if df_keys.empty:
+                return pd.DataFrame(columns=[column.name for column in self.primary_schema])
+
             keys = _to_itertuples(df_keys, self.prim_keys)
             keys_json = [_serialize(key) for key in keys]
             values = self.redis_connection.hmget(self.name, keys_json)
@@ -68,6 +68,10 @@ class RedisStore(TableStore):
                 values = [_deserialize(val) for val in values]
             else:
                 values = []
+        else:
+            pairs = self.redis_connection.hgetall(self.name)
+            keys = [_deserialize(key) for key in pairs.keys()]
+            values = [_deserialize(val) for val in pairs.values()]
 
         result_df = pd.concat([
             pd.DataFrame.from_records(keys, columns=self.prim_keys),
