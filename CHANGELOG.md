@@ -1,3 +1,8 @@
+# 0.12.0-alpha.1 - UI and CLI
+
+* Move `datapipe.cli` and `datapipe.debug_ui` to `datapipe_app`
+* Remove obsolete dependencies: `requests` and `toml`
+
 # 0.11.0-beta.6
 
 * Make `gcsfs` and `s3fs` dependencies optional
