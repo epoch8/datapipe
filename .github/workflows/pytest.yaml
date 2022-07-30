@@ -31,7 +31,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E ui
+        poetry install -E excel
 
     - name: Lint with flake8
       run: |
@@ -92,7 +92,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E ui -E milvus
+        poetry install -E excel -E milvus
 
     - name: Test with pytest
       run: |
