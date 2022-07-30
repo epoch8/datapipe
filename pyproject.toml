@@ -40,6 +40,8 @@ openpyxl = {version=">=3.0.7", optional=true}
 excel = ["xlrd", "openpyxl"]
 milvus = ["pymilvus"]
 opentelemetry = ["opentelemetry-exporter-jaeger"]
+gcsfs = ["gcsfs"]
+s3fs = ["s3fs"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
