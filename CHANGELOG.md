@@ -2,6 +2,8 @@
 
 * Move `datapipe.cli` and `datapipe.debug_ui` to `datapipe_app`
 * Remove obsolete dependencies: `requests` and `toml`
+* Changed default of `create_table` parameters to `False`; now by default no
+  tables will be created. Needed for Alembic migrations autogeneration
 
 # 0.11.0-beta.6
 
