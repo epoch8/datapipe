@@ -46,7 +46,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
     test_output_fname = os.path.join(tmp_dir, "table-output-pandas.json")
     test_df.to_json(test_input_fname, orient="records", lines=True)
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "input_data": Table(
             store=TableStoreJsonLine(test_input_fname),
@@ -77,34 +77,39 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
 
 
 def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "inp1": Table(
             store=TableStoreDB(
                 dbconn,
                 'inp1_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         "inp2": Table(
             store=TableStoreDB(
                 dbconn,
                 'inp2_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
+            
             )
         ),
         "out1": Table(
             store=TableStoreDB(
                 dbconn,
                 'out1_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         "out2": Table(
             store=TableStoreDB(
                 dbconn,
                 'out2_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
     })
@@ -135,20 +140,22 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
 
 
 def test_run_changelist_simple(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "inp": Table(
             store=TableStoreDB(
                 dbconn,
                 'inp_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         "out": Table(
             store=TableStoreDB(
                 dbconn,
                 'out_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         )
     })
@@ -176,20 +183,22 @@ def test_run_changelist_simple(dbconn):
 
 
 def test_run_changelist_by_chunk_size_simple(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "inp": Table(
             store=TableStoreDB(
                 dbconn,
                 'inp_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         "out": Table(
             store=TableStoreDB(
                 dbconn,
                 'out_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         )
     })
@@ -220,20 +229,22 @@ def test_run_changelist_by_chunk_size_simple(dbconn):
 
 
 def test_run_changelist_cycle(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "a": Table(
             store=TableStoreDB(
                 dbconn,
                 'a_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         "b": Table(
             store=TableStoreDB(
                 dbconn,
                 'b_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
     })
