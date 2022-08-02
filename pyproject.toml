@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.11.0-beta.7"
+version = "0.11.0-beta.8"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -22,9 +22,6 @@ cloudpickle = ">=1.6.0"
 PyYAML = ">=5.3.1"
 Pillow = "^9.0.0"
 tqdm = ">=4.60.0"
-toml = ">=0.10.2"
-click = ">=7.1.2"
-requests = ">=2.24.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.2.3"
 
@@ -38,17 +35,15 @@ opentelemetry-exporter-jaeger = {version="^1.8.0", optional=true}
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
 
-dash = {version="==2.3.*", optional=true}
-dash_bootstrap_components = {version="== 0.12.*", optional=true}
-dash_interactive_graphviz = {version="==0.3.*", optional=true}
 redis = {version="^4.3.4", optional=true}
 
 [tool.poetry.extras]
 
 excel = ["xlrd", "openpyxl"]
-ui = ["dash", "dash_bootstrap_components", "dash_interactive_graphviz"]
 milvus = ["pymilvus"]
 opentelemetry = ["opentelemetry-exporter-jaeger"]
+gcsfs = ["gcsfs"]
+s3fs = ["s3fs"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
@@ -56,7 +51,6 @@ flake8 = "^3.9.2"
 mypy = "^0.910"
 black = "^22.3.0"
 pandas-stubs = "^1.2.0"
-types-requests = "^2.25.6"
 pytest-cases = "^3.6.4"
 types-setuptools = "^57.4.7"
 types-redis = "^4.3.10"

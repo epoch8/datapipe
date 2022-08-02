@@ -65,7 +65,7 @@ def yield_df(data):
 
 
 def test_gen_process(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -95,7 +95,7 @@ def test_gen_process(dbconn) -> None:
 
 
 def test_inc_process_modify_values(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -134,7 +134,7 @@ def test_inc_process_modify_values(dbconn) -> None:
 
 
 def test_inc_process_delete_values_from_input(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -174,7 +174,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
 
 
 def test_inc_process_delete_values_from_proc(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -203,7 +203,7 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
 
 
 def test_inc_process_proc_no_change(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -265,7 +265,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
 
 def test_gen_process_many(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl_gen = ds.create_table(
         'tbl_gen',
@@ -300,7 +300,7 @@ def test_gen_process_many(dbconn) -> None:
 
 
 def test_inc_process_many_modify_values(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -381,7 +381,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
 
 
 def test_inc_process_many_several_inputs(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -520,7 +520,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
 
 
 def test_inc_process_many_several_outputs(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     bad_ids = [0, 1, 5, 8]
     good_ids = [2, 3, 4, 6, 7, 9]
@@ -570,7 +570,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
 
 
 def test_inc_process_many_one_to_many(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -643,7 +643,7 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
 
 
 def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -761,7 +761,7 @@ def test_error_handling(dbconn) -> None:
     GOOD_IDXS1 = [0, 1, 2, 3, 4, 5]
     CHUNKSIZE = 2
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -849,7 +849,7 @@ def test_error_handling(dbconn) -> None:
 
 
 def test_gen_from_empty_rows(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     tbl = ds.create_table('test', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
 
     def proc_func():
@@ -869,7 +869,7 @@ def test_gen_from_empty_rows(dbconn) -> None:
 
 
 def test_gen_from_empty_df(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     tbl = ds.create_table('test', table_store=TableStoreDB(dbconn, 'tbl_data', TEST_SCHEMA, True))
 
     def proc_func():

@@ -40,7 +40,7 @@ class MetaTable:
         name: str,
         primary_schema: DataSchema,
         meta_schema: MetaSchema = [],
-        create_table: bool = True
+        create_table: bool = False,
     ):
         self.dbconn = dbconn
         self.name = name
@@ -239,7 +239,7 @@ class MetaTable:
             (merged_df['hash'] != merged_df['data_hash']) |
             (merged_df['delete_ts'].notnull())
         )
-        changed_meta_df = merged_df[merged_df['hash'].notna()]
+        changed_meta_df = merged_df.loc[merged_df['hash'].notna(), :]
 
         changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
         changed_meta_df.loc[:, 'process_ts'] = now

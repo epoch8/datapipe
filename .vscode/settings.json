@@ -4,17 +4,7 @@
         "--ignore=test_data"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.nosetestsEnabled": false,
     "python.testing.pytestEnabled": true,
-    "sqltools.connections": [
-        {
-            "previewLimit": 50,
-            "driver": "SQLite",
-            "name": "test",
-            "database": "${workspaceFolder:c12n-pipe}/test_data/test.sqlite"
-        }
-    ],
-    "sqltools.useNodeRuntime": true,
     "python.linting.flake8Enabled": true,
     "python.linting.flake8Args": [
         "--max-line-length=127"

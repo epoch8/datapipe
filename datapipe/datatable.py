@@ -142,10 +142,10 @@ class DataStore:
     def __init__(
         self,
         meta_dbconn: DBConn,
-        create_meta_table: bool = True
+        create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
-        self.event_logger = EventLogger(self.meta_dbconn)
+        self.event_logger = EventLogger(self.meta_dbconn, create_table=create_meta_table)
         self.tables: Dict[str, DataTable] = {}
         self.create_meta_table = create_meta_table
 
