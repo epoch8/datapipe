@@ -1,30 +1,41 @@
-# 0.11.0-beta.6
+# 0.11.0
+
+## 0.11.0-beta.7 - UI and CLI
+
+**Несовместимые изменения**
+
+* Move `datapipe.cli` and `datapipe.debug_ui` to `datapipe_app`
+* Remove obsolete dependencies: `requests` and `toml`
+* Changed default of `create_table` parameters to `False`; now by default no
+  tables will be created. Needed for Alembic migrations autogeneration
+
+## 0.11.0-beta.6
 
 * Make `gcsfs` and `s3fs` dependencies optional
 * Remove `poetry.lock` from project
 
-# 0.11.0-beta.5
+## 0.11.0-beta.5
 
 * Split `run_changelist` into `run_changelist` and `run_steps_changelist`
 
-# 0.11.0-beta.4
+## 0.11.0-beta.4
 
 * Add `create_meta_table` flag in `DataStore` - controls automatic creation of
   meta tables.
 * Fix optionality for opentelemetry packages
 
-# 0.11.0-beta.3
+## 0.11.0-beta.3
 
 * Relax dependencies for `fsspec`
 
-# 0.11.0-beta.2
+## 0.11.0-beta.2
 
 * New table store: `MilvusStore`
 * fix: Fixed pipeline run with changlist by chunk_size
 
-# 0.11.0-beta.1 - Realtime
+## 0.11.0-beta.1 - Realtime
 
-## Несовместимые изменения
+**Несовместимые изменения**
 
 * Вернулся класс `ComputeStep` как основа вычислительного пайплайна
 * Введено понятие `full` и `changelist` обработки
@@ -95,14 +106,16 @@
 * Не считать отсутствие строки в одной из входных таблиц необходимым условием
   для повторной обработки
 
-# 0.10.0-alpha.2
+## 0.10.0-alpha.2
 
 * Добавлен `LevelDBStore`
 * Трансформация может работать без пересекающихся ключей (любая строка слева
   сравнивается со строкой справа)
 * `ComputeStep` объединен с `DatatableTransformStep`
 
-# 0.10.0-alpha.1
+## 0.10.0-alpha.1
+
+**Несовместимые изменения**
 
 * Удален класс `ExternalTable`, теперь это явный шаг пайплайна
   `UpdateExternalTable`

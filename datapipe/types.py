@@ -31,7 +31,7 @@ class ChangeList:
             if self_cols != other_cols:
                 raise ValueError(f"Different IndexDF for table {table_name}")
 
-            self.changes[table_name] = cast(IndexDF, self.changes[table_name].append(idx))
+            self.changes[table_name] = cast(IndexDF, pd.concat([self.changes[table_name], idx], axis='index'))
         else:
             self.changes[table_name] = idx
 

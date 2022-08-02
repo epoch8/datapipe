@@ -103,7 +103,8 @@ def test_insert_rows(
         name='test',
         dbconn=dbconn,
         primary_schema=primary_schema,
-        meta_schema=meta_schema
+        meta_schema=meta_schema,
+        create_table=True,
     )
     keys = set(mt.primary_keys) | set(mt.meta_keys.keys())
 
@@ -140,7 +141,8 @@ def test_get_metadata(
         name='test',
         dbconn=dbconn,
         primary_schema=primary_schema,
-        meta_schema=meta_schema
+        meta_schema=meta_schema,
+        create_table=True,
     )
 
     new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
@@ -148,7 +150,7 @@ def test_get_metadata(
 
     part_df = test_df.iloc[0:2]
     part_idx = part_df[index_cols]
-    keys = set(mt.primary_keys) | set(mt.meta_keys.keys())
+    keys = list(set(mt.primary_keys) | set(mt.meta_keys.keys()))
 
     assert_df_equal(
         mt.get_metadata(part_idx)[index_cols],

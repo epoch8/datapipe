@@ -89,7 +89,7 @@ class TableDataSingleFileStore(TableStore):
         if file_df is None:
             new_df = df
         else:
-            new_df = file_df.append(df)
+            new_df = pd.concat([file_df, df], axis="index")
 
         check_df = new_df.drop_duplicates(subset=self.primary_keys)
 
