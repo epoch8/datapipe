@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.12.0-alpha.1"
+version = "0.11.0-beta.7"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
