@@ -1,4 +1,4 @@
-from typing import Iterable, List, Iterator, Tuple, Union, Protocol
+from typing import Iterable, List, Iterator, Optional, Tuple, Union, Protocol
 
 import time
 import tqdm
@@ -321,7 +321,11 @@ class BatchGenerate(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
-            ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable], run_config: RunConfig
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
         ):
             return do_batch_generate(self.func, ds, output_dts, run_config, **self.kwargs)
 
@@ -382,7 +386,11 @@ class UpdateExternalTable(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
-            ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable], run_config: RunConfig
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
         ):
             return update_external_table(ds, output_dts[0], run_config)
 

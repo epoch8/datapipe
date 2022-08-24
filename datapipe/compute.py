@@ -56,7 +56,7 @@ class PipelineStep(ABC):
 
 
 class DatatableTransformFunc(Protocol):
-    __name__: str
+    # __name__: str
 
     def __call__(
         self,
@@ -87,7 +87,7 @@ class DatatableTransform(PipelineStep):
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
             DatatableTransformStep(
-                name=self.func.__name__,
+                name=self.func.__name__,    # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
