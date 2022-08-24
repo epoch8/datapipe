@@ -10,7 +10,8 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.store.database import TableStoreDB, MetaKey
 from datapipe.datatable import DataStore
-from datapipe.core_steps import batch_generate_wrapper, batch_transform_wrapper
+from datapipe.core_steps import do_batch_generate, do_full_batch_transform, BatchTransformStep
+from datapipe.types import ChangeList, IndexDF
 from datapipe.run_config import RunConfig
 
 from .util import assert_datatable_equal, assert_df_equal
@@ -86,7 +87,7 @@ ITEMS_DF = pd.DataFrame(
 
 
 def test_batch_transform(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -100,7 +101,7 @@ def test_batch_transform(dbconn):
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=lambda df: df,
         ds=ds,
         input_dts=[tbl1],
@@ -114,7 +115,7 @@ def test_batch_transform(dbconn):
 
     time.sleep(0.1)
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=lambda df: df,
         ds=ds,
         input_dts=[tbl1],
@@ -128,7 +129,7 @@ def test_batch_transform(dbconn):
 
 
 def test_batch_transform_with_filter(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -142,7 +143,7 @@ def test_batch_transform_with_filter(dbconn):
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=lambda df: df,
         ds=ds,
         input_dts=[tbl1],
@@ -154,7 +155,7 @@ def test_batch_transform_with_filter(dbconn):
 
 
 def test_batch_transform_with_filter_not_in_transform_index(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -168,7 +169,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
     tbl1.store_chunk(TEST_DF1_2, now=0)
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=lambda df: df[['item_id', 'a']],
         ds=ds,
         input_dts=[tbl1],
@@ -180,7 +181,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
 
 def test_batch_transform_with_dt_on_input_and_output(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -206,7 +207,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
         return df1.reset_index()
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=update_df,
         ds=ds,
         input_dts=[tbl1, tbl2],
@@ -221,7 +222,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
 
 def test_gen_with_filter(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -233,7 +234,7 @@ def test_gen_with_filter(dbconn):
     def gen_func():
         yield TEST_DF1_1.query('pipeline_id == 0 and item_id == 0')
 
-    batch_generate_wrapper(
+    do_batch_generate(
         func=gen_func,
         ds=ds,
         output_dts=[tbl],
@@ -243,8 +244,50 @@ def test_gen_with_filter(dbconn):
     assert_datatable_equal(tbl, TEST_DF1_1.query('(pipeline_id == 0 and item_id == 0) or pipeline_id == 1'))
 
 
+def test_transform_with_changelist(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl1 = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA1, True)
+    )
+
+    tbl2 = ds.create_table(
+        'tbl2',
+        table_store=TableStoreDB(dbconn, 'tbl2_data', TEST_SCHEMA1, True)
+    )
+
+    tbl1.store_chunk(TEST_DF1_1, now=0)
+
+    def func(df):
+        return df
+
+    step = BatchTransformStep(
+        'test',
+        func=func,
+        input_dts=[tbl1],
+        output_dts=[tbl2]
+    )
+
+    change_list = ChangeList()
+
+    idx_keys = ['item_id', 'pipeline_id']
+    changes_df = TEST_DF1_1.loc[[0, 1, 2]]
+    changes_idx = IndexDF(changes_df[idx_keys])
+
+    change_list.append('tbl1', changes_idx)
+
+    next_change_list = step.run_changelist(ds, change_list)
+
+    assert_datatable_equal(tbl2, changes_df)
+
+    assert list(next_change_list.changes.keys()) == ['tbl2']
+
+    assert_df_equal(next_change_list.changes['tbl2'], changes_idx, index_cols=idx_keys)
+
+
 def test_batch_transform_with_entity(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     products = ds.create_table(
         'products',
@@ -270,7 +313,7 @@ def test_batch_transform_with_entity(dbconn):
 
         return merged_df[['item_id', 'pipeline_id', 'product_id', 'a']]
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=update_df,
         ds=ds,
         input_dts=[products, items],

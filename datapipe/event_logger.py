@@ -24,7 +24,7 @@ class EventTypes(Enum):
 
 
 class EventLogger:
-    def __init__(self, dbconn: 'DBConn'):
+    def __init__(self, dbconn: 'DBConn', create_table: bool = False):
         self.dbconn = dbconn
 
         self.events_table = Table(
@@ -33,7 +33,8 @@ class EventLogger:
             *self._make_table_schema(dbconn),
         )
 
-        self.events_table.create(self.dbconn.con, checkfirst=True)
+        if create_table:
+            self.events_table.create(self.dbconn.con, checkfirst=True)
 
     def _make_table_schema(self, dbconn: 'DBConn'):
         return [

@@ -27,7 +27,7 @@ class TableStore(ABC):
         raise NotImplementedError
 
     def update_rows(self, df: DataDF) -> None:
-        self.delete_rows(df.index)
+        self.delete_rows(data_to_index(df, []))
         self.insert_rows(df)
 
     def read_rows(self, idx: IndexDF = None) -> DataDF:
@@ -69,11 +69,11 @@ class TableDataSingleFileStore(TableStore):
 
                     return file_df.loc[idx.index].reset_index()
                 else:
-                    return pd.DataFrame()
+                    return pd.DataFrame(columns=self.primary_keys)
             else:
                 return file_df
         else:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=self.primary_keys)
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
@@ -89,7 +89,7 @@ class TableDataSingleFileStore(TableStore):
         if file_df is None:
             new_df = df
         else:
-            new_df = file_df.append(df)
+            new_df = pd.concat([file_df, df], axis="index")
 
         check_df = new_df.drop_duplicates(subset=self.primary_keys)
 

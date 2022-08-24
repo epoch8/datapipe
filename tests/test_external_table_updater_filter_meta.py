@@ -19,7 +19,8 @@ def test_external_table_updater_filter(dbconn: DBConn):
             Column("composite_id_1", Integer(), primary_key=True),
             Column("composite_id_2", Integer(), primary_key=True),
             Column("data", String())
-        ]
+        ],
+        create_table=True,
     )
     df_test = pd.DataFrame({
         "composite_id_1": [1, 1, 2, 2],
@@ -35,7 +36,7 @@ def test_external_table_updater_filter(dbconn: DBConn):
             output="test"
         )
     ])
-    ds = DataStore(meta_dbconn)
+    ds = DataStore(meta_dbconn, create_meta_table=True)
 
     test_store.insert_rows(df_test)
 

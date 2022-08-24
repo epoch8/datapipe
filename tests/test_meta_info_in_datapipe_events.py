@@ -36,7 +36,7 @@ def update_data(df: pd.DataFrame, value: int) -> pd.DataFrame:
 
 
 def test_meta_info_in_datapipe_events(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     run_config = RunConfig(
         filters={
@@ -53,14 +53,16 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             store=TableStoreDB(
                 dbconn,
                 'test_generate_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         ),
         'test_transform': Table(
             store=TableStoreDB(
                 dbconn,
                 'test_transform_data',
-                TEST_SCHEMA
+                TEST_SCHEMA,
+                create_table=True,
             )
         )
     })

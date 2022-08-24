@@ -1,10 +1,11 @@
-from typing import List, Dict, Optional, Any, cast, Protocol
-from dataclasses import dataclass, field
-from abc import ABC
+from typing import List, Dict, Optional, Any, Protocol
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 import logging
 from opentelemetry import trace
 
+from datapipe.types import ChangeList
 from datapipe.datatable import DataTable, DataStore
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
@@ -41,14 +42,20 @@ class Pipeline:
     steps: List['PipelineStep']
 
 
-# Пайплайн описывается через PipelineStep
-# Для выполнения у каждого pipeline_step выполняется build_compute на основании которых создается граф вычислений
 class PipelineStep(ABC):
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+    """
+    Пайплайн описывается через PipelineStep.
+
+    Для выполнения у каждого pipeline_step выполняется build_compute на
+    основании которых создается граф вычислений.
+    """
+
+    @abstractmethod
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         raise NotImplementedError
 
 
-class ComputeStepFunc(Protocol):
+class DatatableTransformFunc(Protocol):
     # __name__: str
     def __call__(
         self,
@@ -57,13 +64,14 @@ class ComputeStepFunc(Protocol):
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
         **kwargs
-    ) -> None: ...
+    ) -> None:
+        ...
 
 
 class DatatableTransform(PipelineStep):
     def __init__(
         self,
-        func: ComputeStepFunc,
+        func: DatatableTransformFunc,
         inputs: List[str],
         outputs: List[str],
         check_for_changes: bool = True,
@@ -75,7 +83,7 @@ class DatatableTransform(PipelineStep):
         self.check_for_changes = check_for_changes
         self.kwargs = kwargs
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['DatatableTransformStep']:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
             DatatableTransformStep(
                 name=self.func.__name__,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
@@ -88,38 +96,53 @@ class DatatableTransform(PipelineStep):
         ]
 
 
-class DatatableTransformStep:
-    def __init__(
-        self,
-        name: str,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        func: ComputeStepFunc,
-        check_for_changes: bool = True,
-        **kwargs
-    ):
-        self.name = name
-        self.input_dts = input_dts
-        self.output_dts = output_dts
-        self.func = func
-        self.check_for_changes = check_for_changes
-        self.kwargs = kwargs
+class ComputeStep(ABC):
+    '''
+    Шаг вычислений в графе вычислений.
 
-    def __post_init__(self):
-        inp_p_keys = {key for inp in self.input_dts for key in inp.primary_keys}
-        out_p_keys = {key for out in self.output_dts for key in out.primary_keys}
+    Каждый шаг должен уметь отвечать на вопросы:
+    - какие таблицы приходят на вход
+    - какие таблицы изменяются в результате трансформации
+
+    Шаг может запускаться в режиме полной обработки, то есть без указания какие
+    объекты изменились. Или в changelist-режиме, когда на вход поступают
+    измененные индексы для каждой из входных таблиц.
+
+    В changelist-режиме шаг обрабатывает только минимально необходимое
+    количество батчей, которые покрывают все измененные индексы.
+    '''
+
+    @abstractmethod
+    def get_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_input_dts(self) -> List[DataTable]:
+        pass
+
+    @abstractmethod
+    def get_output_dts(self) -> List[DataTable]:
+        pass
+
+    def validate(self):
+        inp_p_keys_arr = [set(inp.primary_keys) for inp in self.get_input_dts() if inp]
+        out_p_keys_arr = [set(out.primary_keys) for out in self.get_output_dts() if out]
+
+        inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
+        out_p_keys = set.intersection(*out_p_keys_arr) if len(out_p_keys_arr) else set()
         join_keys = set.intersection(inp_p_keys, out_p_keys)
 
         key_to_column_type_inp = {
             column.name: type(column.type)
-            for inp in self.input_dts
+            for inp in self.get_input_dts()
             for column in inp.primary_schema if column.name in join_keys
         }
         key_to_column_type_out = {
             column.name: type(column.type)
-            for inp in self.output_dts
+            for inp in self.get_output_dts()
             for column in inp.primary_schema if column.name in join_keys
         }
+
         for key in join_keys:
             if key_to_column_type_inp[key] != key_to_column_type_out[key]:
                 raise ValueError(
@@ -127,7 +150,44 @@ class DatatableTransformStep:
                     f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
                 )
 
-    def run(self, ds: DataStore, run_config: RunConfig = None) -> None:
+    @abstractmethod
+    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
+        pass
+
+    @abstractmethod
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+        pass
+
+
+class DatatableTransformStep(ComputeStep):
+    def __init__(
+        self,
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+
+        func: DatatableTransformFunc,
+        kwargs: Dict[str, Any] = None,
+        check_for_changes: bool = True,
+    ) -> None:
+        self.name = name
+        self.input_dts = input_dts
+        self.output_dts = output_dts
+
+        self.func = func
+        self.kwargs: Dict[str, Any] = kwargs or {}
+        self.check_for_changes = check_for_changes
+
+    def get_name(self) -> str:
+        return self.name
+
+    def get_input_dts(self) -> List[DataTable]:
+        return self.input_dts
+
+    def get_output_dts(self) -> List[DataTable]:
+        return self.output_dts
+
+    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
             with tracer.start_as_current_span("check for changes"):
                 changed_idx_count = ds.get_changed_idx_count(
@@ -145,33 +205,42 @@ class DatatableTransformStep:
 
         self.func(ds, self.input_dts, self.output_dts, run_config, **self.kwargs)
 
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+        raise NotImplementedError
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[DatatableTransformStep]:
+
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
-        res: List[DatatableTransformStep] = []
+        compute_pipeline: List[ComputeStep] = []
 
         for step in pipeline.steps:
-            res.extend(step.build_compute(ds, catalog))
+            compute_pipeline.extend(step.build_compute(ds, catalog))
 
-        return res
+        for compute_step in compute_pipeline:
+            compute_step.validate()
+
+        return compute_pipeline
 
 
-def print_compute(steps: List[DatatableTransformStep]) -> None:
+def print_compute(steps: List[ComputeStep]) -> None:
     import pprint
     pprint.pp(
         steps
     )
 
 
-def run_steps(ds: DataStore, steps: List[DatatableTransformStep], run_config: RunConfig = None) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
     with tracer.start_as_current_span("run_steps"):
         for step in steps:
             with tracer.start_as_current_span(
-                f'{step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}'
+                f'{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
             ):
-                logger.info(f'Running {step.name} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}')
+                logger.info(
+                    f'Running {step.get_name()} '
+                    f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                )
 
-                step.run(ds, run_config)
+                step.run_full(ds, run_config)
 
 
 def run_pipeline(
@@ -182,3 +251,46 @@ def run_pipeline(
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)
+
+
+def run_changelist(
+    ds: DataStore,
+    catalog: Catalog,
+    pipeline: Pipeline,
+    changelist: ChangeList,
+    run_config: RunConfig = None,
+) -> None:
+    steps = build_compute(ds, catalog, pipeline)
+
+    return run_steps_changelist(ds, steps, changelist, run_config)
+
+
+def run_steps_changelist(
+    ds: DataStore,
+    steps: List[ComputeStep],
+    changelist: ChangeList,
+    run_config: RunConfig = None,
+) -> None:
+    current_changes = changelist
+    next_changes = ChangeList()
+    iteration = 0
+
+    with tracer.start_as_current_span("Start pipeline for changelist"):
+        while not current_changes.empty() and iteration < 100:
+            with tracer.start_as_current_span("run_steps"):
+                for step in steps:
+                    with tracer.start_as_current_span(
+                        f'{step.get_name()} '
+                        f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                    ):
+                        logger.info(
+                            f'Running {step.get_name()} '
+                            f'{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}'
+                        )
+
+                        step_changes = step.run_changelist(ds, current_changes, run_config)
+                        next_changes.extend(step_changes)
+
+            current_changes = next_changes
+            next_changes = ChangeList()
+            iteration += 1

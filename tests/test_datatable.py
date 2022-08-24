@@ -5,7 +5,7 @@ from sqlalchemy.sql.sqltypes import Integer, JSON
 
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.types import data_to_index
+from datapipe.types import data_to_index, IndexDF
 
 from .util import assert_df_equal, assert_datatable_equal
 
@@ -59,7 +59,7 @@ def yield_df(data):
 
 
 def test_cloudpickle(dbconn) -> None:
-    ds = DataStore(meta_dbconn=dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         name='test',
@@ -81,7 +81,7 @@ def test_cloudpickle(dbconn) -> None:
 
 
 def test_simple(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'test',
@@ -94,7 +94,7 @@ def test_simple(dbconn) -> None:
 
 
 def test_store_less_values(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'test',
@@ -109,7 +109,7 @@ def test_store_less_values(dbconn) -> None:
 
 
 def test_get_process_ids(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -122,7 +122,7 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(TEST_DF)
 
-    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    count, idx_dfs = ds.get_full_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert(sorted(list(idx.index)) == list(TEST_DF.index))
@@ -134,7 +134,30 @@ def test_get_process_ids(dbconn) -> None:
 
     tbl1.store_chunk(upd_df)
 
-    count, idx_dfs = ds.get_process_ids([tbl1], [tbl2])
+    count, idx_dfs = ds.get_full_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
     assert_df_equal(idx, upd_df[['id']])
+
+
+def test_store_chunk_changelist(dbconn) -> None:
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+
+    tbl.store_chunk(TEST_DF)
+
+    upd_df = TEST_DF.copy()
+
+    upd_df.loc[1, 'a'] = 10
+    upd_df = pd.concat([upd_df, pd.DataFrame.from_records([{'id': 10, 'a': 11}])], axis='index')
+
+    proc_idx = IndexDF(upd_df[['id']])
+    idx = IndexDF(pd.DataFrame({"id": [0, 1, 10]}))
+
+    change_idx = tbl.store_chunk(upd_df[1:], processed_idx=proc_idx)
+
+    assert_df_equal(idx, change_idx)

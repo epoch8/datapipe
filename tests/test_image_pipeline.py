@@ -6,8 +6,8 @@ from PIL import Image
 
 from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import (
-    BatchGenerate, batch_generate_wrapper,
-    BatchTransform, batch_transform_wrapper,
+    BatchGenerate, do_batch_generate,
+    BatchTransform, do_full_batch_transform,
     UpdateExternalTable,
 )
 from datapipe.datatable import DataStore
@@ -35,7 +35,7 @@ def resize_images(df):
 
 
 def test_image_datatables(dbconn, tmp_dir):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -56,13 +56,13 @@ def test_image_datatables(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    batch_generate_wrapper(
+    do_batch_generate(
         func=gen_images,
         ds=ds,
         output_dts=[tbl1],
     )
 
-    batch_transform_wrapper(
+    do_full_batch_transform(
         func=resize_images,
         ds=ds,
         input_dts=[tbl1],
@@ -104,7 +104,7 @@ def test_image_pipeline(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     run_pipeline(ds, catalog, pipeline)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
@@ -147,7 +147,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 

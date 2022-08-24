@@ -16,7 +16,7 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Setup poetry
       run: |
         pip install poetry==1.1.6
@@ -31,7 +31,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E ui
+        poetry install -E excel -E gcsfs -E s3fs
 
     - name: Lint with flake8
       run: |
@@ -77,7 +77,7 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Setup poetry
       run: |
         pip install poetry==1.1.6
@@ -92,7 +92,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E ui
+        poetry install -E excel -E milvus -E gcsfs -E s3fs
 
     - name: Test with pytest
       run: |

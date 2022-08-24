@@ -170,7 +170,8 @@ class CasesTableStore:
                 schema + [
                     Column('name', String(100)),
                     Column('price', Integer),
-                ]
+                ],
+                create_table=True,
             ),
             df
         )
@@ -234,7 +235,9 @@ def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
 
     df_empty = pd.DataFrame()
 
-    assert store.read_rows(cast(IndexDF, df_empty)).empty
+    df_result = store.read_rows(cast(IndexDF, df_empty))
+    assert df_result.empty
+    df_result[store.primary_keys]  # Empty df must have primary keys columns
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
@@ -242,7 +245,9 @@ def test_insert_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
     df_empty = pd.DataFrame()
     store.insert_rows(df_empty)
 
-    assert store.read_rows().empty
+    df_result = store.read_rows()
+    assert df_result.empty
+    df_result[store.primary_keys]  # Empty df must have primary keys columns
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_all_read_rows')
@@ -250,7 +255,9 @@ def test_update_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
     df_empty = pd.DataFrame()
     store.update_rows(df_empty)
 
-    assert store.read_rows().empty
+    df_result = store.read_rows()
+    assert df_result.empty
+    df_result[store.primary_keys]  # Empty df must have primary keys columns
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
@@ -309,6 +316,15 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
+def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    pseudo_df_iter = store.read_rows_meta_pseudo_df()
+    assert(isinstance(pseudo_df_iter, Iterable))
+    for pseudo_df in pseudo_df_iter:
+        assert(isinstance(pseudo_df, DataDF))
+        pseudo_df[store.primary_keys]  # Empty df must have primary keys columns
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.DataFrame) -> None:
     store.insert_rows(test_df)
 
@@ -316,6 +332,6 @@ def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.
 
     # TODO проверять, что runconfig реально влияет на результирующие данные
     pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters={'a': 1}))
-
     assert(isinstance(pseudo_df_iter, Iterable))
-    assert(isinstance(next(pseudo_df_iter), DataDF))
+    for pseudo_df in pseudo_df_iter:
+        assert(isinstance(pseudo_df, DataDF))
