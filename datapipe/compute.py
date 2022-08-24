@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Any, Protocol
+from typing import List, Dict, Optional, Protocol
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -56,7 +56,8 @@ class PipelineStep(ABC):
 
 
 class DatatableTransformFunc(Protocol):
-    # __name__: str
+    __name__: str
+
     def __call__(
         self,
         ds: DataStore,
@@ -86,7 +87,7 @@ class DatatableTransform(PipelineStep):
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
             DatatableTransformStep(
-                name=self.func.__name__,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                name=self.func.__name__,
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
@@ -167,16 +168,16 @@ class DatatableTransformStep(ComputeStep):
         output_dts: List[DataTable],
 
         func: DatatableTransformFunc,
-        kwargs: Dict[str, Any] = None,
         check_for_changes: bool = True,
+        **kwargs
     ) -> None:
         self.name = name
         self.input_dts = input_dts
         self.output_dts = output_dts
 
         self.func = func
-        self.kwargs: Dict[str, Any] = kwargs or {}
         self.check_for_changes = check_for_changes
+        self.kwargs = kwargs
 
     def get_name(self) -> str:
         return self.name

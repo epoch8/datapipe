@@ -1,4 +1,4 @@
-from typing import Any, Iterable, List, Iterator, Tuple, Union, Dict, Protocol
+from typing import Iterable, List, Iterator, Tuple, Union, Protocol
 
 import time
 import tqdm
@@ -17,7 +17,8 @@ tracer = trace.get_tracer("datapipe.core_steps")
 
 
 class BatchTransformFunc(Protocol):
-    # __name__: str
+    __name__: str
+
     def __call__(self, *inputs, **kwargs) -> Union[DataDF, List[DataDF], Tuple[DataDF, ...]]:
         ...
 
@@ -143,7 +144,7 @@ class BatchTransform(PipelineStep):
 
         return [
             BatchTransformStep(
-                f'{self.func.__name__}',
+                f'{self.func.__name__}',  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=self.func,
@@ -319,7 +320,9 @@ class BatchGenerate(PipelineStep):
         self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
+        def transform_func(
+            ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable], run_config: RunConfig
+        ):
             return do_batch_generate(self.func, ds, output_dts, run_config, **self.kwargs)
 
         return [
@@ -378,7 +381,9 @@ class UpdateExternalTable(PipelineStep):
         self.output_table_name = output
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
+        def transform_func(
+            ds: DataStore, input_dts: List[DataTable], output_dts: List[DataTable], run_config: RunConfig
+        ):
             return update_external_table(ds, output_dts[0], run_config)
 
         return [
