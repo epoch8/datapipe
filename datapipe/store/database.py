@@ -109,7 +109,7 @@ class TableStoreDB(TableStore):
         dbconn: Union['DBConn', str],
         name: str,
         data_sql_schema: List[Column],
-        create_table: bool = True,
+        create_table: bool = False,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)

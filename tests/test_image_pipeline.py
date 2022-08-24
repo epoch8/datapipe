@@ -35,7 +35,7 @@ def resize_images(df):
 
 
 def test_image_datatables(dbconn, tmp_dir):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -104,7 +104,7 @@ def test_image_pipeline(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 0
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     run_pipeline(ds, catalog, pipeline)
 
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
@@ -148,7 +148,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 

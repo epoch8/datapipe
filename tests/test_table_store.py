@@ -212,7 +212,8 @@ class CasesTableStore:
                 schema + [
                     Column('name', String(100)),
                     Column('price', Integer),
-                ]
+                ],
+                create_table=True,
             ),
             df
         )

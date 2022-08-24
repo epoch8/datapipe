@@ -59,7 +59,7 @@ def yield_df(data):
 
 
 def test_cloudpickle(dbconn) -> None:
-    ds = DataStore(meta_dbconn=dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         name='test',
@@ -81,7 +81,7 @@ def test_cloudpickle(dbconn) -> None:
 
 
 def test_simple(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'test',
@@ -94,7 +94,7 @@ def test_simple(dbconn) -> None:
 
 
 def test_store_less_values(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'test',
@@ -109,7 +109,7 @@ def test_store_less_values(dbconn) -> None:
 
 
 def test_get_process_ids(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -141,7 +141,7 @@ def test_get_process_ids(dbconn) -> None:
 
 
 def test_store_chunk_changelist(dbconn) -> None:
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl1',
@@ -153,7 +153,7 @@ def test_store_chunk_changelist(dbconn) -> None:
     upd_df = TEST_DF.copy()
 
     upd_df.loc[1, 'a'] = 10
-    upd_df = upd_df.append({'id': 10, 'a': 11}, ignore_index=True)
+    upd_df = pd.concat([upd_df, pd.DataFrame.from_records([{'id': 10, 'a': 11}])], axis='index')
 
     proc_idx = IndexDF(upd_df[['id']])
     idx = IndexDF(pd.DataFrame({"id": [0, 1, 10]}))

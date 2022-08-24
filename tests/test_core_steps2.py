@@ -87,7 +87,7 @@ ITEMS_DF = pd.DataFrame(
 
 
 def test_batch_transform(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -129,7 +129,7 @@ def test_batch_transform(dbconn):
 
 
 def test_batch_transform_with_filter(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -155,7 +155,7 @@ def test_batch_transform_with_filter(dbconn):
 
 
 def test_batch_transform_with_filter_not_in_transform_index(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -181,7 +181,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
 
 def test_batch_transform_with_dt_on_input_and_output(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -222,7 +222,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
 
 def test_gen_with_filter(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
         'tbl',
@@ -245,7 +245,7 @@ def test_gen_with_filter(dbconn):
 
 
 def test_transform_with_changelist(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
         'tbl1',
@@ -287,7 +287,7 @@ def test_transform_with_changelist(dbconn):
 
 
 def test_batch_transform_with_entity(dbconn):
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
 
     products = ds.create_table(
         'products',

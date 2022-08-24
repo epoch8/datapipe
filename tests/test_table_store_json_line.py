@@ -38,7 +38,7 @@ def make_file2(file):
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     input_file = tmp_dir / "data.json"
 
-    ds = DataStore(dbconn)
+    ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "input_data": Table(
             store=TableStoreJsonLine(tmp_dir / "data.json"),
