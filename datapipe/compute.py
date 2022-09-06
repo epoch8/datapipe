@@ -101,12 +101,12 @@ class ComputeStep(ABC):
     '''
 
     def __init__(self, name: str) -> None:
-        self.name = name
+        self._name = name
 
     def get_name(self) -> str:
         ss = [
             self.__class__.__name__,
-            self.name,
+            self._name,
             *[i.name for i in self.get_input_dts()],
             *[o.name for o in self.get_output_dts()],
         ]
@@ -114,7 +114,11 @@ class ComputeStep(ABC):
         m = hashlib.shake_128()
         m.update(''.join(ss).encode('utf-8'))
 
-        return f"{self.name}_{m.hexdigest(5)}"
+        return f"{self._name}_{m.hexdigest(5)}"
+
+    @property
+    def name(self) -> str:
+        return self.get_name()
 
     @abstractmethod
     def get_input_dts(self) -> List[DataTable]:
@@ -170,7 +174,8 @@ class DatatableTransformStep(ComputeStep):
         kwargs: Dict[str, Any] = None,
         check_for_changes: bool = True,
     ) -> None:
-        self.name = name
+        ComputeStep.__init__(self, name)
+
         self.input_dts = input_dts
         self.output_dts = output_dts
 

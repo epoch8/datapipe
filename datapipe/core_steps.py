@@ -154,7 +154,8 @@ class BatchTransformStep(ComputeStep):
         kwargs: Dict[str, Any] = None,
         chunk_size: int = 1000,
     ) -> None:
-        self.name = name
+        ComputeStep.__init__(self, name)
+
         self.input_dts = input_dts
         self.output_dts = output_dts
 
