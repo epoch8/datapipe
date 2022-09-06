@@ -1,14 +1,15 @@
-from typing import List, Dict, Callable, Optional, Any
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-
+import hashlib
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
+
 from opentelemetry import trace
 
-from datapipe.types import ChangeList
-from datapipe.datatable import DataTable, DataStore
+from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
+from datapipe.types import ChangeList
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -99,9 +100,21 @@ class ComputeStep(ABC):
     количество батчей, которые покрывают все измененные индексы.
     '''
 
-    @abstractmethod
+    def __init__(self, name: str) -> None:
+        self.name = name
+
     def get_name(self) -> str:
-        pass
+        ss = [
+            self.__class__.__name__,
+            self.name,
+            *[i.name for i in self.get_input_dts()],
+            *[o.name for o in self.get_output_dts()],
+        ]
+
+        m = hashlib.shake_128()
+        m.update(''.join(ss).encode('utf-8'))
+
+        return f"{self.name}_{m.hexdigest(5)}"
 
     @abstractmethod
     def get_input_dts(self) -> List[DataTable]:
@@ -165,9 +178,6 @@ class DatatableTransformStep(ComputeStep):
         self.kwargs: Dict[str, Any] = kwargs or {}
         self.check_for_changes = check_for_changes
 
-    def get_name(self) -> str:
-        return self.name
-
     def get_input_dts(self) -> List[DataTable]:
         return self.input_dts
 
@@ -184,11 +194,11 @@ class DatatableTransformStep(ComputeStep):
                 )
 
                 if changed_idx_count == 0:
-                    logger.debug(f'Skipping {self.name} execution - nothing to compute')
+                    logger.debug(f'Skipping {self.get_name()} execution - nothing to compute')
 
                     return
 
-        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
+        run_config = RunConfig.add_labels(run_config, {'step_name': self.get_name()})
 
         self.func(ds, self.input_dts, self.output_dts, run_config)
 
