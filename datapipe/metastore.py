@@ -311,7 +311,7 @@ class MetaTable:
             values_params = []
             params = {}
 
-            for index, row in params_df.iterrows():
+            for index, row in enumerate(params_df.to_dict(orient='records')):
                 row_values = [f'CAST(:{column.name}_{index} AS {column.type})' for column in self.sql_schema]
                 row_params = {f'{key}_{index}': row[key] for key in row.keys()}
 
