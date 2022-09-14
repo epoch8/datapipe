@@ -1,3 +1,4 @@
+from distutils import extension
 import json
 import pandas as pd
 import numpy as np
@@ -226,3 +227,69 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         )
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)
+
+
+TEST_DF_SEVERAL_EXTENSIONS = pd.DataFrame(
+    {
+        "id": ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+        "a": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "b": [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+    }
+)
+
+@pytest.fixture
+def tmp_several_extensions_with_json_data(tmp_dir):
+    for i in range(10):
+        ext = 'json' if i < 5 else 'txt'
+        with fsspec.open(f'{tmp_dir}/folder0/folder1/{i}.{ext}', 'w') as out:
+            out.write(f'{{"a": {i}, "b": -1}}')
+    yield tmp_dir
+
+
+def test_read_json_rows_or_extensions(tmp_several_extensions_with_json_data):
+    ts = TableStoreFiledir(
+        f'{tmp_several_extensions_with_json_data}/folder0/folder1/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts, TEST_DF_SEVERAL_EXTENSIONS)
+
+    ts2 = TableStoreFiledir(
+        f'{tmp_several_extensions_with_json_data}/folder0/*/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts2, TEST_DF_SEVERAL_EXTENSIONS)
+
+    ts3 = TableStoreFiledir(
+        f'{tmp_several_extensions_with_json_data}/(folder0|folder1|folder2)/*/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts3, TEST_DF_SEVERAL_EXTENSIONS)
+
+    ts4 = TableStoreFiledir(
+        f'{tmp_several_extensions_with_json_data}/**/folder1/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts4, TEST_DF_SEVERAL_EXTENSIONS)
+
+    ts5 = TableStoreFiledir(
+        f'{tmp_several_extensions_with_json_data}/**/(folder0|folder1)/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts5, TEST_DF_SEVERAL_EXTENSIONS)
+
+
+@pytest.fixture
+def tmp_several_extensions_and_folders_with_json_data(tmp_dir):
+    for i in range(10):
+        ext = 'json' if i < 5 else 'txt'
+        with fsspec.open(f'{tmp_dir}/folder{i%3}/{i}.{ext}', 'w') as out:
+            out.write(f'{{"a": {i}, "b": -1}}')
+    yield tmp_dir
+
+
+def test_read_json_rows_or_folders(tmp_several_extensions_and_folders_with_json_data):
+    ts = TableStoreFiledir(
+        f'{tmp_several_extensions_and_folders_with_json_data}/(folder0|folder1|folder2)/{{id}}.(json|txt)',
+        adapter=JSONFile()
+    )
+    assert_ts_contains(ts, TEST_DF_SEVERAL_EXTENSIONS)

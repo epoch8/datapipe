@@ -80,7 +80,7 @@ jobs:
 
     - name: Setup poetry
       run: |
-        pip install poetry==1.1.6
+        pip install poetry==1.1.14
 
     - name: Cache Python dependencies
       uses: actions/cache@v2
