@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Dict, List, Optional, Protocol
 
 from opentelemetry import trace
 
@@ -77,13 +77,13 @@ class DatatableTransform(PipelineStep):
         inputs: List[str],
         outputs: List[str],
         check_for_changes: bool = True,
-        **kwargs
+        func_kwargs: Optional[Dict] = None,
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.check_for_changes = check_for_changes
-        self.kwargs = kwargs
+        self.func_kwargs = func_kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
@@ -92,8 +92,8 @@ class DatatableTransform(PipelineStep):
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
+                func_kwargs=self.func_kwargs,
                 check_for_changes=self.check_for_changes,
-                **self.kwargs
             )
         ]
 
@@ -185,8 +185,8 @@ class DatatableTransformStep(ComputeStep):
         output_dts: List[DataTable],
 
         func: DatatableTransformFunc,
+        func_kwargs: Optional[Dict] = None,
         check_for_changes: bool = True,
-        **kwargs
     ) -> None:
         ComputeStep.__init__(self, name)
 
@@ -195,10 +195,7 @@ class DatatableTransformStep(ComputeStep):
 
         self.func = func
         self.check_for_changes = check_for_changes
-        self.kwargs = kwargs
-
-    def get_name(self) -> str:
-        return self.name
+        self.func_kwargs = func_kwargs if func_kwargs is not None else {}
 
     def get_input_dts(self) -> List[DataTable]:
         return self.input_dts
@@ -222,7 +219,13 @@ class DatatableTransformStep(ComputeStep):
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.get_name()})
 
-        self.func(ds, self.input_dts, self.output_dts, run_config, **self.kwargs)
+        self.func(
+            ds=ds,
+            input_dts=self.input_dts,
+            output_dts=self.output_dts,
+            run_config=run_config,
+            **self.func_kwargs
+        )
 
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
         raise NotImplementedError

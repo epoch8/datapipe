@@ -1,17 +1,13 @@
 import pandas as pd
 from sqlalchemy.sql.expression import select
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, Integer
 
+from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
+from datapipe.core_steps import BatchGenerate, BatchTransform
+from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
-from datapipe.datatable import DataStore
-from datapipe.compute import Catalog, Pipeline,\
-    Table
-from datapipe.core_steps import BatchTransform, BatchGenerate
-from datapipe.compute import run_pipeline
-
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import Integer, JSON
-
 
 TEST_SCHEMA = [
     Column('pipeline_id', Integer(), primary_key=True),
@@ -71,13 +67,17 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
         BatchGenerate(
             generate_data,
             outputs=["test_generate"],
-            value=1
+            func_kwargs=dict(
+                value=1,
+            ),
         ),
         BatchTransform(
             update_data,
             inputs=["test_generate"],
             outputs=["test_transform"],
-            value=2
+            func_kwargs=dict(
+                value=2,
+            ),
         )
     ])
 

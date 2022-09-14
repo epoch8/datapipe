@@ -1,20 +1,19 @@
 import os
+
 import numpy as np
 import pandas as pd
-
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.datatable import DataStore
-from datapipe.compute import build_compute, run_steps, run_changelist
-from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.store.database import TableStoreDB
-from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.compute import (Catalog, Pipeline, Table, build_compute,
+                              run_changelist, run_steps)
 from datapipe.core_steps import BatchTransform, UpdateExternalTable
-from datapipe.types import data_to_index, ChangeList
+from datapipe.datatable import DataStore
+from datapipe.store.database import TableStoreDB
+from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.types import ChangeList, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
-
 
 CHUNK_SIZE = 100
 CHUNK_SIZE_SMALL = 3
@@ -64,7 +63,9 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
             inputs=["input_data"],
             outputs=["output_data"],
             chunk_size=CHUNK_SIZE,
-            multiply=2
+            func_kwargs=dict(
+                multiply=2,
+            ),
         ),
     ])
 
