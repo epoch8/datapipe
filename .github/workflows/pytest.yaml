@@ -92,7 +92,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E ui -E milvus -E gcsfs -E s3fs
+        poetry install -E excel -E milvus -E gcsfs -E s3fs
 
     - name: Test with pytest
       run: |
