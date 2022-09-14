@@ -75,6 +75,7 @@
 * Добавлен метод `get_change_list_process_ids`
 
 # 0.10.9
+
 * Fix SettingWithCopyWarning in `MetaTable`
 * Add `MetaKey()` support for `MetaTable` columns. Now it's possible to add
   non-primary keys into MetaTable for joins. See example:
