@@ -88,7 +88,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
     assert df_events.loc[0]["event"] == {
         "meta": {
             "labels": {
-                "step_name": "generate_data",
+                "step_name": "generate_data_20c95c39e8",
                 "pipeline_name": "test_name",
                 "pipeline_id": 1,
             },
@@ -108,7 +108,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
     assert df_events.loc[1]["event"] == {
         "meta": {
             "labels": {
-                "step_name": "update_data",
+                "step_name": "update_data_486e78720b",
                 "pipeline_name": "test_name",
                 "pipeline_id": 1,
             },

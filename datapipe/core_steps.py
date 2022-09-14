@@ -1,16 +1,16 @@
-from typing import Iterable, List, Iterator, Optional, Tuple, Union, Protocol
-
-import time
-import tqdm
 import logging
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Tuple, Union, Protocol
+
+import tqdm
 from opentelemetry import trace
 
-from datapipe.types import DataDF, IndexDF
-from datapipe.compute import ComputeStep, PipelineStep, Catalog, DatatableTransformStep
+from datapipe.compute import (Catalog, ComputeStep, DatatableTransformStep,
+                              PipelineStep)
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList
-
+from datapipe.types import ChangeList, DataDF, IndexDF
 
 logger = logging.getLogger('datapipe.core_steps')
 tracer = trace.get_tracer("datapipe.core_steps")
@@ -164,13 +164,13 @@ class BatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         **kwargs
     ) -> None:
-        self.name = name
+        ComputeStep.__init__(self, name)
+
         self.input_dts = input_dts
         self.output_dts = output_dts
 
         self.func = func
         self.chunk_size = chunk_size
-        self.kwargs = kwargs
 
     def get_name(self) -> str:
         return self.name
@@ -249,6 +249,7 @@ def do_batch_generate(
     **kwargs
 ) -> None:
     import inspect
+
     import pandas as pd
 
     '''
