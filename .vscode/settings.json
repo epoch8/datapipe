@@ -16,7 +16,13 @@
         "--no-pretty",
         "--namespace-packages"
     ],
-    "python.formatting.provider": "black",
+    "python.formatting.provider": "none",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}"
+    ],
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
     "githubIssues.queries": [
         {
             "label": "My Issues",
