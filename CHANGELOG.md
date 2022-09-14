@@ -1,3 +1,10 @@
+# 0.11.2
+
+* `DatatableTransform`, `DatatableTransformStep`, `BatchGenerate`,
+  `BatchGenerateStep`, `BatchTransform`, `BatchTransformStep` now accepts
+  keyworded arguments `**kwargs` to parametrize arguments of corresponding
+  function `func` (https://github.com/epoch8/datapipe/pull/150)
+
 # 0.11.1
 
 * Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
@@ -68,7 +75,6 @@
 * Добавлен метод `get_change_list_process_ids`
 
 # 0.10.9
-
 * Fix SettingWithCopyWarning in `MetaTable`
 * Add `MetaKey()` support for `MetaTable` columns. Now it's possible to add
   non-primary keys into MetaTable for joins. See example:

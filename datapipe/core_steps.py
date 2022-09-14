@@ -1,7 +1,7 @@
 import logging
 import time
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Tuple, Union
+from typing import (Any, Dict, Iterable, Iterator, List, Optional, Protocol, Tuple,
+                    Union)
 
 import tqdm
 from opentelemetry import trace
@@ -16,7 +16,11 @@ logger = logging.getLogger('datapipe.core_steps')
 tracer = trace.get_tracer("datapipe.core_steps")
 
 
-BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF]]]
+class BatchTransformFunc(Protocol):
+    __name__: str
+
+    def __call__(self, *inputs, **kwargs) -> Union[DataDF, List[DataDF], Tuple[DataDF, ...]]:
+        ...
 
 
 def do_batch_transform(
@@ -26,6 +30,7 @@ def do_batch_transform(
     output_dts: List[DataTable],
     idx_gen: Iterable[IndexDF],
     idx_count: int = None,
+    kwargs: Dict[str, Any] = None,
     run_config: RunConfig = None,
 ) -> Iterator[ChangeList]:
     '''
@@ -50,7 +55,7 @@ def do_batch_transform(
             if sum(len(j) for j in input_dfs) > 0:
                 with tracer.start_as_current_span("run transform"):
                     try:
-                        chunks_df = func(*input_dfs)
+                        chunks_df = func(*input_dfs, **kwargs or {})
                     except Exception as e:
                         logger.error(f"Transform failed ({func.__name__}): {str(e)}")
                         ds.event_logger.log_exception(e, run_config=run_config)
@@ -92,6 +97,7 @@ def do_full_batch_transform(
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
+    kwargs: Optional[Dict] = None,
     chunk_size: int = 1000,
     run_config: RunConfig = None,
 ) -> None:
@@ -105,6 +111,7 @@ def do_full_batch_transform(
 
     gen = do_batch_transform(
         func,
+        kwargs=kwargs,
         ds=ds,
         idx_count=idx_count,
         idx_gen=idx_gen,
@@ -117,12 +124,20 @@ def do_full_batch_transform(
         pass
 
 
-@dataclass
 class BatchTransform(PipelineStep):
-    func: Callable
-    inputs: List[str]
-    outputs: List[str]
-    chunk_size: int = 1000
+    def __init__(
+        self,
+        func: BatchTransformFunc,
+        inputs: List[str],
+        outputs: List[str],
+        chunk_size: int = 1000,
+        kwargs: Dict[str, Any] = None,
+    ):
+        self.func = func
+        self.inputs = inputs
+        self.outputs = outputs
+        self.chunk_size = chunk_size
+        self.kwargs = kwargs or {}
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -130,20 +145,17 @@ class BatchTransform(PipelineStep):
 
         return [
             BatchTransformStep(
-                f'{self.func.__name__}',
+                f'{self.func.__name__}',  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=self.func,
+                kwargs=self.kwargs,
                 chunk_size=self.chunk_size,
             )
         ]
 
 
 class BatchTransformStep(ComputeStep):
-    name: str
-    input_dts: List[DataTable]
-    output_dts: List[DataTable]
-
     def __init__(
         self,
         name: str,
@@ -160,7 +172,7 @@ class BatchTransformStep(ComputeStep):
         self.output_dts = output_dts
 
         self.func = func
-        self.kwargs: Dict[str, Any] = kwargs or {}
+        self.kwargs = kwargs or {}
         self.chunk_size = chunk_size
 
     def get_input_dts(self) -> List[DataTable]:
@@ -187,6 +199,7 @@ class BatchTransformStep(ComputeStep):
             input_dts=self.input_dts,
             output_dts=self.output_dts,
             run_config=run_config,
+            kwargs=self.kwargs,
         )
 
         for changes in gen:
@@ -211,6 +224,7 @@ class BatchTransformStep(ComputeStep):
             idx_count=idx_count,
             idx_gen=idx_gen,
             run_config=run_config,
+            kwargs=self.kwargs,
         )
 
         res_changelist = ChangeList()
@@ -221,14 +235,19 @@ class BatchTransformStep(ComputeStep):
         return res_changelist
 
 
-BatchGenerateFunc = Callable[[], Iterator[Tuple[DataDF, ...]]]
+class BatchGenerateFunc(Protocol):
+    # __name__: str
+    def __call__(self, **kwargs) -> Iterator[Union[DataDF, Tuple[DataDF, ...]]]:
+        ...
 
 
 def do_batch_generate(
     func: BatchGenerateFunc,
+
     ds: DataStore,
     output_dts: List[DataTable],
-    run_config: RunConfig = None
+    kwargs: Dict[str, Any] = None,
+    run_config: RunConfig = None,
 ) -> None:
     import inspect
 
@@ -246,9 +265,10 @@ def do_batch_generate(
 
     with tracer.start_as_current_span("init generator"):
         try:
-            iterable = func()
+            iterable = func(**kwargs or {})
         except Exception as e:
-            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
+            # mypy bug: https://github.com/python/mypy/issues/10976
+            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")  # type: ignore
             ds.event_logger.log_exception(e, run_config=run_config)
 
             raise e
@@ -259,7 +279,7 @@ def do_batch_generate(
                 chunk_dfs = next(iterable)
 
                 if isinstance(chunk_dfs, pd.DataFrame):
-                    chunk_dfs = [chunk_dfs]
+                    chunk_dfs = (chunk_dfs,)
             except StopIteration:
                 if empty_generator:
                     for k, dt_k in enumerate(output_dts):
@@ -291,22 +311,41 @@ def do_batch_generate(
             dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
-@dataclass
 class BatchGenerate(PipelineStep):
-    func: BatchGenerateFunc
-    outputs: List[str]
+    def __init__(
+        self,
+        func: BatchGenerateFunc,
+        outputs: List[str],
+        kwargs: Optional[Dict] = None,
+    ):
+        self.func = func
+        self.outputs = outputs
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
-            return do_batch_generate(self.func, ds, output_dts, run_config)
+        def transform_func(
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
+        ):
+            return do_batch_generate(
+                func=self.func,
+                kwargs=kwargs,
+                ds=ds,
+                output_dts=output_dts,
+                run_config=run_config,
+            )
 
         return [
             DatatableTransformStep(
-                name=self.func.__name__,
+                name=self.func.__name__,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 func=transform_func,
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
-                check_for_changes=False
+                check_for_changes=False,
+                kwargs=self.kwargs,
             )
         ]
 
@@ -356,7 +395,13 @@ class UpdateExternalTable(PipelineStep):
         self.output_table_name = output
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(ds, input_dts, output_dts, run_config):
+        def transform_func(
+            ds: DataStore,
+            input_dts: List[DataTable],
+            output_dts: List[DataTable],
+            run_config: Optional[RunConfig],
+            **kwargs
+        ):
             return update_external_table(ds, output_dts[0], run_config)
 
         return [
