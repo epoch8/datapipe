@@ -1,4 +1,5 @@
-# 0.12.x
+# 0.11.1
+
 * Column `filepath` is now written to meta-pseudo-df of `TableStoreFiledir` when
   `add_filepath_column` is enabled (https://github.com/epoch8/datapipe/pull/149)
 * Fix `TableStoreFiledir` issues with regular expressions:
@@ -12,13 +13,14 @@
   to force enable or disable writing, `readonly` should be changed accordingly.
 * Addeed OR patterns support in format `(aaa|bbb|ccc)` in `TableStoreFiledir`.
   For example: `/path/to/(folder1|folder2|folder3)/to/the/files.(jpg|png|jpeg)`.
-* Fix: `read_rows()` should return `DataFrame` with primary key columns even if empty
+* Fix: `read_rows()` should return `DataFrame` with primary key columns even if
+  empty
 
 # 0.11.0
 
 ## 0.11.0-beta.7 - UI and CLI
 
-**Несовместимые изменения**
+**Backwards incompatible changes**
 
 * Move `datapipe.cli` and `datapipe.debug_ui` to `datapipe_app`
 * Remove obsolete dependencies: `requests` and `toml`
