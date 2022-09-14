@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from opentelemetry import trace
 
@@ -65,6 +65,8 @@ class DatatableTransformFunc(Protocol):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
+
+        # Возможно, лучше передавать как переменную, а не  **
         **kwargs
     ) -> None:
         ...
@@ -77,13 +79,13 @@ class DatatableTransform(PipelineStep):
         inputs: List[str],
         outputs: List[str],
         check_for_changes: bool = True,
-        func_kwargs: Optional[Dict] = None,
+        kwargs: Optional[Dict] = None,
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.check_for_changes = check_for_changes
-        self.func_kwargs = func_kwargs
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
@@ -92,7 +94,7 @@ class DatatableTransform(PipelineStep):
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
-                func_kwargs=self.func_kwargs,
+                kwargs=self.kwargs,
                 check_for_changes=self.check_for_changes,
             )
         ]
@@ -185,7 +187,7 @@ class DatatableTransformStep(ComputeStep):
         output_dts: List[DataTable],
 
         func: DatatableTransformFunc,
-        func_kwargs: Optional[Dict] = None,
+        kwargs: Dict[str, Any] = None,
         check_for_changes: bool = True,
     ) -> None:
         ComputeStep.__init__(self, name)
@@ -194,8 +196,8 @@ class DatatableTransformStep(ComputeStep):
         self.output_dts = output_dts
 
         self.func = func
+        self.kwargs = kwargs or {}
         self.check_for_changes = check_for_changes
-        self.func_kwargs = func_kwargs if func_kwargs is not None else {}
 
     def get_input_dts(self) -> List[DataTable]:
         return self.input_dts
@@ -224,7 +226,7 @@ class DatatableTransformStep(ComputeStep):
             input_dts=self.input_dts,
             output_dts=self.output_dts,
             run_config=run_config,
-            **self.func_kwargs
+            **self.kwargs
         )
 
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:

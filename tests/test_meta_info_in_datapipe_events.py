@@ -67,7 +67,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
         BatchGenerate(
             generate_data,
             outputs=["test_generate"],
-            func_kwargs=dict(
+            kwargs=dict(
                 value=1,
             ),
         ),
@@ -75,7 +75,7 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
             update_data,
             inputs=["test_generate"],
             outputs=["test_transform"],
-            func_kwargs=dict(
+            kwargs=dict(
                 value=2,
             ),
         )

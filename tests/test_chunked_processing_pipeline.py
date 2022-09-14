@@ -63,7 +63,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
             inputs=["input_data"],
             outputs=["output_data"],
             chunk_size=CHUNK_SIZE,
-            func_kwargs=dict(
+            kwargs=dict(
                 multiply=2,
             ),
         ),
