@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.11.3"
+version = "0.11.3-post.1"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -29,7 +29,7 @@ pymilvus = {version="^2.0.2", optional=true}
 
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
-opentelemetry-instrumentation-sqlalchemy = "^0.27b0"
+opentelemetry-instrumentation-sqlalchemy = "0.27b0"
 opentelemetry-exporter-jaeger = {version="^1.8.0", optional=true}
 
 xlrd = {version=">=2.0.1", optional=true}
