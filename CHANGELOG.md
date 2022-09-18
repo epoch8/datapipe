@@ -1,3 +1,7 @@
+# 0.11.3
+
+* Added `DataTable.get_size()` method
+
 # 0.11.2
 
 * `DatatableTransform`, `DatatableTransformStep`, `BatchGenerate`,

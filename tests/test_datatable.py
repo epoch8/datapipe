@@ -1,14 +1,13 @@
 import cloudpickle
 import pandas as pd
 from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import Integer, JSON
+from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.datatable import DataStore
-from datapipe.types import data_to_index, IndexDF
+from datapipe.store.database import DBConn, TableStoreDB
+from datapipe.types import IndexDF, data_to_index
 
-from .util import assert_df_equal, assert_datatable_equal
-
+from .util import assert_datatable_equal, assert_df_equal
 
 TEST_SCHEMA = [
     Column('id', Integer, primary_key=True),
@@ -161,3 +160,16 @@ def test_store_chunk_changelist(dbconn) -> None:
     change_idx = tbl.store_chunk(upd_df[1:], processed_idx=proc_idx)
 
     assert_df_equal(idx, change_idx)
+
+
+def test_get_size(dbconn) -> None:
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl = ds.create_table(
+        'tbl1',
+        table_store=TableStoreDB(dbconn, 'tbl1_data', TEST_SCHEMA, True)
+    )
+
+    tbl.store_chunk(TEST_DF)
+
+    assert tbl.get_size() == len(TEST_DF)
