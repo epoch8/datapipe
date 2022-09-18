@@ -1,20 +1,20 @@
-from dataclasses import dataclass
-from typing import Iterator, Tuple, cast, List
-
 import copy
 import logging
 import time
+from dataclasses import dataclass
+from typing import Iterator, List, Tuple, cast
 
-from sqlalchemy.sql.expression import and_, or_, select, tuple_, text, delete
-from sqlalchemy import Table, Column, Integer, Float, func
-
-from cityhash import CityHash32
 import pandas as pd
+from cityhash import CityHash32
+from sqlalchemy import Column, Float, Integer, Table, func
+from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
-from datapipe.types import IndexDF, DataSchema, MetaSchema, DataDF, MetadataDF, data_to_index
-from datapipe.store.database import DBConn, MetaKey, sql_apply_runconfig_filter, sql_schema_to_sqltype
 from datapipe.run_config import RunConfig
-
+from datapipe.store.database import (DBConn, MetaKey,
+                                     sql_apply_runconfig_filter,
+                                     sql_schema_to_sqltype)
+from datapipe.types import (DataDF, DataSchema, IndexDF, MetadataDF,
+                            MetaSchema, data_to_index)
 
 logger = logging.getLogger('datapipe.metastore')
 
@@ -73,15 +73,7 @@ class MetaTable:
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
-    def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
-        '''
-        Получить датафрейм с метаданными.
-
-        idx - опциональный фильтр по целевым строкам
-        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
-        '''
-        sql = select(self.sql_schema)
-
+    def _build_metadata_query(self, sql, idx: IndexDF = None, include_deleted: bool = False):
         if idx is not None:
             if len(self.primary_keys) == 0:
                 # Когда ключей нет - не делаем ничего
@@ -109,10 +101,37 @@ class MetaTable:
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
+        return sql
+
+    def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
+        '''
+        Получить датафрейм с метаданными.
+
+        idx - опциональный фильтр по целевым строкам
+        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
+        '''
+
+        sql = select(self.sql_schema)
+        sql = self._build_metadata_query(sql, idx, include_deleted)
+
         return pd.read_sql_query(
             sql,
             con=self.dbconn.con,
         )
+
+    def get_metadata_size(self, idx: IndexDF = None, include_deleted: bool = False) -> int:
+        '''
+        Получить количество строк метаданных.
+
+        idx - опциональный фильтр по целевым строкам
+        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
+        '''
+
+        sql = select([func.count()]).select_from(self.sql_table)
+        sql = self._build_metadata_query(sql, idx, include_deleted)
+
+        res = self.dbconn.con.execute(sql).fetchone()
+        return res[0]
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         meta_keys = self.primary_keys + list(self.meta_keys.values())

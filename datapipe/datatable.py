@@ -1,19 +1,18 @@
-from typing import Dict, Iterable, List, Optional, Tuple, cast
-
 import logging
 import math
-from opentelemetry import trace
+from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
-from sqlalchemy import alias, func, select, union, and_, or_, literal, Column
+from opentelemetry import trace
+from sqlalchemy import Column, alias, and_, func, literal, or_, select, union
 
-from datapipe.types import ChangeList, DataDF, MetadataDF, IndexDF, data_to_index, index_difference
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter
-from datapipe.metastore import MetaTable, MetaTableData
-from datapipe.store.table_store import TableStore
 from datapipe.event_logger import EventLogger
-from datapipe.run_config import RunConfig, LabelDict
-
+from datapipe.metastore import MetaTable, MetaTableData
+from datapipe.run_config import LabelDict, RunConfig
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter
+from datapipe.store.table_store import TableStore
+from datapipe.types import (ChangeList, DataDF, IndexDF, MetadataDF,
+                            data_to_index, index_difference)
 
 logger = logging.getLogger('datapipe.datatable')
 tracer = trace.get_tracer("datapipe.datatable")
@@ -42,6 +41,12 @@ class DataTable:
 
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
+
+    def get_size(self) -> int:
+        '''
+        Get the number of non-deleted rows in the DataTable
+        '''
+        return self.meta_table.get_metadata_size(idx=None, include_deleted=False)
 
     def store_chunk(
         self,
