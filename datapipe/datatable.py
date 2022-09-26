@@ -64,6 +64,9 @@ class DataTable:
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
+            # Magic number derived empirically
+            # See https://github.com/epoch8/datapipe/issues/178 for details
+            # TODO Investigate deeper how does stack in Postgres work
             chunk_size = 5000 // len(self.primary_keys)
 
             for chunk_no in range(len(data_df) // chunk_size + 1):
