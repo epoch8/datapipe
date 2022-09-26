@@ -1,19 +1,18 @@
 from typing import Iterable, cast
-import pytest
-from pytest_cases import parametrize_with_cases, case, parametrize
 
 import pandas as pd
+import pytest
+from pytest_cases import case, parametrize, parametrize_with_cases
 from sqlalchemy import Column, Integer, String
-from datapipe.run_config import RunConfig
 
-from datapipe.types import DataDF, IndexDF, data_to_index
-from datapipe.store.table_store import TableStore
+from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
-from datapipe.store.pandas import TableStoreJsonLine, TableStoreExcel
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
+from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
+from datapipe.store.table_store import TableStore
+from datapipe.types import DataDF, IndexDF, data_to_index
 
 from .util import assert_df_equal, assert_ts_contains
-
 
 DATA_PARAMS = [
     pytest.param(
