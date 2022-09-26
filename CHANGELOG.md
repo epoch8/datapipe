@@ -1,3 +1,7 @@
+# 0.11.4
+
+* Fix [#178](https://github.com/epoch8/datapipe/issues/178)
+
 # 0.11.3
 
 * Added `DataTable.get_size()` method
