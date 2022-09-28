@@ -31,6 +31,10 @@ class Catalog:
     def remove_datatable(self, name: str):
         del self.catalog[name]
 
+    def init_all_tables(self, ds: DataStore):
+        for name in self.catalog.keys():
+            self.get_datatable(ds, name)
+
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
             name=name,
@@ -235,6 +239,8 @@ class DatatableTransformStep(ComputeStep):
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
+        catalog.init_all_tables(ds)
+
         compute_pipeline: List[ComputeStep] = []
 
         for step in pipeline.steps:

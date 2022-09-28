@@ -1,3 +1,7 @@
+# 0.11.5
+
+* Force initialization of all tables in catalog in `build_compute`
+
 # 0.11.4
 
 * Fix [#178](https://github.com/epoch8/datapipe/issues/178)
