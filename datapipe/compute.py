@@ -31,6 +31,10 @@ class Catalog:
     def remove_datatable(self, name: str):
         del self.catalog[name]
 
+    def init_all_tables(self, ds: DataStore):
+        for name in self.catalog.keys():
+            self.get_datatable(ds, name)
+
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
             name=name,
@@ -170,13 +174,11 @@ class ComputeStep(ABC):
                     f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
                 )
 
-    @abstractmethod
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         pass
 
-    @abstractmethod
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        pass
+        return ChangeList()
 
 
 class DatatableTransformStep(ComputeStep):
@@ -229,12 +231,11 @@ class DatatableTransformStep(ComputeStep):
             **self.kwargs
         )
 
-    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        raise NotImplementedError
-
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
+        catalog.init_all_tables(ds)
+
         compute_pipeline: List[ComputeStep] = []
 
         for step in pipeline.steps:
