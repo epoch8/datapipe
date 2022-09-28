@@ -174,13 +174,11 @@ class ComputeStep(ABC):
                     f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
                 )
 
-    @abstractmethod
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         pass
 
-    @abstractmethod
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        pass
+        return ChangeList()
 
 
 class DatatableTransformStep(ComputeStep):
@@ -232,9 +230,6 @@ class DatatableTransformStep(ComputeStep):
             run_config=run_config,
             **self.kwargs
         )
-
-    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        raise NotImplementedError
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
