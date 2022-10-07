@@ -5,7 +5,6 @@
 * Fix some more Pandas warnings in `metastore`
 * New table store: `RedisStore`
 
-
 # 0.11.4
 
 * Fix [#178](https://github.com/epoch8/datapipe/issues/178)
