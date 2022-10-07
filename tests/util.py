@@ -1,8 +1,8 @@
 import pandas as pd
 
-from datapipe.types import DataDF, data_to_index
 from datapipe.datatable import DataTable
 from datapipe.store.table_store import TableStore
+from datapipe.types import DataDF, data_to_index
 
 
 def assert_idx_equal(a, b):

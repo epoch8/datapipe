@@ -1,14 +1,15 @@
-from typing import List, Dict, Callable, Optional, Any
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-
+import hashlib
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Protocol
+
 from opentelemetry import trace
 
-from datapipe.types import ChangeList
-from datapipe.datatable import DataTable, DataStore
+from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
+from datapipe.types import ChangeList
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -29,6 +30,10 @@ class Catalog:
 
     def remove_datatable(self, name: str):
         del self.catalog[name]
+
+    def init_all_tables(self, ds: DataStore):
+        for name in self.catalog.keys():
+            self.get_datatable(ds, name)
 
     def get_datatable(self, ds: DataStore, name: str) -> DataTable:
         return ds.get_or_create_table(
@@ -55,7 +60,20 @@ class PipelineStep(ABC):
         raise NotImplementedError
 
 
-DatatableTransformFunc = Callable[[DataStore, List[DataTable], List[DataTable], Optional[RunConfig]], None]
+class DatatableTransformFunc(Protocol):
+    # __name__: str
+
+    def __call__(
+        self,
+        ds: DataStore,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        run_config: Optional[RunConfig],
+
+        # Возможно, лучше передавать как переменную, а не  **
+        **kwargs
+    ) -> None:
+        ...
 
 
 class DatatableTransform(PipelineStep):
@@ -64,21 +82,24 @@ class DatatableTransform(PipelineStep):
         func: DatatableTransformFunc,
         inputs: List[str],
         outputs: List[str],
-        check_for_changes: bool = True
+        check_for_changes: bool = True,
+        kwargs: Optional[Dict] = None,
     ) -> None:
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.check_for_changes = check_for_changes
+        self.kwargs = kwargs
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List['ComputeStep']:
         return [
             DatatableTransformStep(
-                name=self.func.__name__,
+                name=self.func.__name__,    # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
-                check_for_changes=self.check_for_changes
+                kwargs=self.kwargs,
+                check_for_changes=self.check_for_changes,
             )
         ]
 
@@ -99,9 +120,25 @@ class ComputeStep(ABC):
     количество батчей, которые покрывают все измененные индексы.
     '''
 
-    @abstractmethod
+    def __init__(self, name: str) -> None:
+        self._name = name
+
     def get_name(self) -> str:
-        pass
+        ss = [
+            self.__class__.__name__,
+            self._name,
+            *[i.name for i in self.get_input_dts()],
+            *[o.name for o in self.get_output_dts()],
+        ]
+
+        m = hashlib.shake_128()
+        m.update(''.join(ss).encode('utf-8'))
+
+        return f"{self._name}_{m.hexdigest(5)}"
+
+    @property
+    def name(self) -> str:
+        return self.get_name()
 
     @abstractmethod
     def get_input_dts(self) -> List[DataTable]:
@@ -137,13 +174,11 @@ class ComputeStep(ABC):
                     f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
                 )
 
-    @abstractmethod
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         pass
 
-    @abstractmethod
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        pass
+        return ChangeList()
 
 
 class DatatableTransformStep(ComputeStep):
@@ -157,16 +192,14 @@ class DatatableTransformStep(ComputeStep):
         kwargs: Dict[str, Any] = None,
         check_for_changes: bool = True,
     ) -> None:
-        self.name = name
+        ComputeStep.__init__(self, name)
+
         self.input_dts = input_dts
         self.output_dts = output_dts
 
         self.func = func
-        self.kwargs: Dict[str, Any] = kwargs or {}
+        self.kwargs = kwargs or {}
         self.check_for_changes = check_for_changes
-
-    def get_name(self) -> str:
-        return self.name
 
     def get_input_dts(self) -> List[DataTable]:
         return self.input_dts
@@ -184,20 +217,25 @@ class DatatableTransformStep(ComputeStep):
                 )
 
                 if changed_idx_count == 0:
-                    logger.debug(f'Skipping {self.name} execution - nothing to compute')
+                    logger.debug(f'Skipping {self.get_name()} execution - nothing to compute')
 
                     return
 
-        run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
+        run_config = RunConfig.add_labels(run_config, {'step_name': self.get_name()})
 
-        self.func(ds, self.input_dts, self.output_dts, run_config)
-
-    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
-        raise NotImplementedError
+        self.func(
+            ds=ds,
+            input_dts=self.input_dts,
+            output_dts=self.output_dts,
+            run_config=run_config,
+            **self.kwargs
+        )
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
+        catalog.init_all_tables(ds)
+
         compute_pipeline: List[ComputeStep] = []
 
         for step in pipeline.steps:

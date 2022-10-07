@@ -123,13 +123,15 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
         'tbl1': Table(
             store=TableStoreFiledir(
                 tmp_dir / 'tbl1' / '{id}.png',
-                adapter=PILFile('png')
+                adapter=PILFile('png'),
+                enable_rm=True
             )
         ),
         'tbl2': Table(
             store=TableStoreFiledir(
                 tmp_dir / 'tbl2' / '{id}.png',
-                adapter=PILFile('png')
+                adapter=PILFile('png'),
+                enable_rm=True
             )
         ),
     })
@@ -143,7 +145,6 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
         )
     ])
 
-    print(f"{list(tmp_dir.glob('tbl1/*.png'))=}")
     assert len(list(tmp_dir.glob('tbl1/*.png'))) == 10
     assert len(list(tmp_dir.glob('tbl2/*.png'))) == 0
 
@@ -166,7 +167,6 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     assert len(catalog.get_datatable(ds, 'tbl1').get_data()) == 5
     assert len(catalog.get_datatable(ds, 'tbl1').get_metadata()) == 5
 
-    # TODO: uncomment follow when we make files deletion
-    # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 5
+    assert len(list(tmp_dir.glob('tbl2/*.png'))) == 5
     assert len(catalog.get_datatable(ds, 'tbl2').get_data()) == 5
     assert len(catalog.get_datatable(ds, 'tbl2').get_metadata()) == 5

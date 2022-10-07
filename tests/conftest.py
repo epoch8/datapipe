@@ -1,9 +1,9 @@
+import os
 import tempfile
 from pathlib import Path
-import pytest
-import os
 
 import pandas as pd
+import pytest
 from sqlalchemy import create_engine
 import redis
 
