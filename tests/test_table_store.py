@@ -9,6 +9,7 @@ from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
+from datapipe.store.redis import RedisStore
 from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, IndexDF, data_to_index
 
@@ -201,6 +202,21 @@ FILEDIR_DATA_PARAMS = [
 
 
 class CasesTableStore:
+    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @parametrize('df,schema', DATA_PARAMS)
+    def case_redis(self, redis_conn, df, schema):
+        return (
+            RedisStore(
+                redis_conn,
+                'redis_table',
+                schema + [
+                    Column('name', String(100)),
+                    Column('price', Integer),
+                ]
+            ),
+            df
+        )
+
     @case(tags=['supports_delete', 'supports_all_read_rows'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_db(self, dbconn, df, schema):

@@ -69,6 +69,15 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
 
     steps:
     - uses: actions/checkout@v2
@@ -92,7 +101,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E milvus -E gcsfs -E s3fs
+        poetry install -E excel -E milvus -E gcsfs -E s3fs -E redis
 
     - name: Test with pytest
       run: |
@@ -103,3 +112,6 @@ jobs:
         POSTGRES_HOST: localhost
         # The default PostgreSQL port
         POSTGRES_PORT: 5432
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+

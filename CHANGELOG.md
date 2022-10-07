@@ -3,6 +3,8 @@
 * Force initialization of all tables in catalog in `build_compute`
 * Do not throw `NotImplementedError` in `run_changelist`
 * Fix some more Pandas warnings in `metastore`
+* New table store: `RedisStore`
+
 
 # 0.11.4
 
