@@ -258,12 +258,12 @@ class MetaTable:
             (merged_df['hash'] != merged_df['data_hash']) |
             (merged_df['delete_ts'].notnull())
         )
-        changed_meta_df = merged_df.loc[merged_df['hash'].notna(), :]
+        changed_meta_df = merged_df.loc[merged_df['hash'].notna(), :].copy()
 
         changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
-        changed_meta_df.loc[:, 'process_ts'] = now
-        changed_meta_df.loc[:, 'delete_ts'] = None
-        changed_meta_df.loc[:, 'hash'] = changed_meta_df['data_hash']
+        changed_meta_df['process_ts'] = now
+        changed_meta_df['delete_ts'] = None
+        changed_meta_df['hash'] = changed_meta_df['data_hash']
 
         return (
             cast(DataDF, new_df),
@@ -372,9 +372,9 @@ class MetaTable:
 
             meta_df = self.get_metadata(deleted_idx)
 
-            meta_df.loc[:, "hash"] = 0
-            meta_df.loc[:, "delete_ts"] = now
-            meta_df.loc[:, "process_ts"] = now
+            meta_df["hash"] = 0
+            meta_df["delete_ts"] = now
+            meta_df["process_ts"] = now
 
             self.update_meta_for_store_chunk(meta_df)
 
