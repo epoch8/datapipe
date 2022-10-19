@@ -66,10 +66,7 @@ class RedisStore(TableStore):
             keys = _to_itertuples(df_keys, self.prim_keys)
             keys_json = [_serialize(key) for key in keys]
             values = self.redis_connection.hmget(self.name, keys_json)
-            if values and values[-1] is not None:
-                values = [_deserialize(val) for val in values]
-            else:
-                values = []
+            values = [_deserialize(val) for val in values if val]
         else:
             pairs = self.redis_connection.hgetall(self.name)
             keys = [_deserialize(key) for key in pairs.keys()]
