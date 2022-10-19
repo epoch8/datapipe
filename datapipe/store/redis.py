@@ -1,13 +1,14 @@
-from typing import Optional, Union, List
 import json
+from typing import List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
 from sqlalchemy import Column
 
-from datapipe.store.table_store import TableStore
 from datapipe.store.database import MetaKey
-from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF, data_to_index
+from datapipe.store.table_store import TableStore
+from datapipe.types import (DataDF, DataSchema, IndexDF, MetaSchema,
+                            data_to_index)
 
 
 def _serialize(values):
