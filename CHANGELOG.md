@@ -1,3 +1,7 @@
+# 0.11.6
+
+* Fix `RedisStore.read_rows`
+
 # 0.11.5
 
 * Force initialization of all tables in catalog in `build_compute`
