@@ -114,9 +114,12 @@ class MetaTable:
         sql = select(self.sql_schema)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con,
+        return cast(
+            MetadataDF,
+            pd.read_sql_query(
+                sql,
+                con=self.dbconn.con,
+            )
         )
 
     def get_metadata_size(self, idx: IndexDF = None, include_deleted: bool = False) -> int:
@@ -238,10 +241,10 @@ class MetaTable:
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
 
         # Ищем новые записи
-        new_df = data_df.iloc[new_idx.values][data_cols]
+        new_df = data_df.loc[new_idx.values, data_cols]
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = merged_df.iloc[merged_df['hash'].isna().values][data_cols]
+        new_meta_data_df = merged_df.loc[merged_df['hash'].isna().values, data_cols]
         new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
@@ -250,7 +253,7 @@ class MetaTable:
             (merged_df['delete_ts'].isnull()) &
             (merged_df['hash'] != merged_df['data_hash'])
         )
-        changed_df = merged_df.iloc[changed_idx.values][data_cols]
+        changed_df = merged_df.loc[changed_idx.values, data_cols]
 
         # Меняем мета данные для существующих записей
         changed_meta_idx = (
@@ -389,10 +392,13 @@ class MetaTable:
 
         sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con,
-            chunksize=1000
+        return cast(
+            Iterator[IndexDF],
+            pd.read_sql_query(
+                sql,
+                con=self.dbconn.con,
+                chunksize=1000
+            )
         )
 
 
