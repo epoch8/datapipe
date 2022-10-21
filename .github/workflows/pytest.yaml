@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8]
+        python-version: [3.9] # 3.8, 3.10
 
     steps:
     - uses: actions/checkout@v2
@@ -19,7 +19,7 @@ jobs:
 
     - name: Setup poetry
       run: |
-        pip install poetry==1.1.6
+        pip install poetry==1.2.1
 
     - name: Cache Python dependencies
       uses: actions/cache@v2
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8]
+        python-version: [3.8,3.9,3.10]
         test-db-env: ['postgres', 'sqlite']
 
     services:
@@ -89,7 +89,7 @@ jobs:
 
     - name: Setup poetry
       run: |
-        pip install poetry==1.1.14
+        pip install poetry==1.2.1
 
     - name: Cache Python dependencies
       uses: actions/cache@v2
