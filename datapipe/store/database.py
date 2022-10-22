@@ -14,7 +14,7 @@ from sqlalchemy.sql.expression import delete, select, tuple_
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
-from datapipe.types import (DataDF, DataSchema, IndexDF, MetaSchema,
+from datapipe.types import (DataDF, DataSchema, IndexDF, MetaSchema, TAnyDF,
                             data_to_index)
 
 logger = logging.getLogger("datapipe.store.database")
@@ -144,7 +144,7 @@ class TableStoreDB(TableStore):
         # TODO Investigate deeper how does stack in Postgres work
         return 5000 // len(self.primary_keys)
 
-    def _chunk_idx_df(self, idx: pd.DataFrame) -> Iterator[pd.DataFrame]:
+    def _chunk_idx_df(self, idx: TAnyDF) -> Iterator[TAnyDF]:
         '''
         Split IndexDF to chunks acceptable for typical Postgres configuration.
         See `_chunk_size` for detatils.
