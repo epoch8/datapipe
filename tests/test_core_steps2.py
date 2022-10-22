@@ -4,18 +4,19 @@
 # import pytest
 
 import time
+
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.store.database import TableStoreDB, MetaKey
+from datapipe.core_steps import (BatchTransformStep, do_batch_generate,
+                                 do_full_batch_transform)
 from datapipe.datatable import DataStore
-from datapipe.core_steps import do_batch_generate, do_full_batch_transform, BatchTransformStep
-from datapipe.types import ChangeList, IndexDF
 from datapipe.run_config import RunConfig
+from datapipe.store.database import MetaKey, TableStoreDB
+from datapipe.types import ChangeList, IndexDF
 
 from .util import assert_datatable_equal, assert_df_equal
-
 
 TEST_SCHEMA1 = [
     Column('item_id', Integer, primary_key=True),
@@ -124,8 +125,8 @@ def test_batch_transform(dbconn):
 
     meta_df = tbl2.get_metadata()
 
-    assert(all(meta_df['update_ts'] == update_ts))
-    assert(all(meta_df['process_ts'] == process_ts))
+    assert all(meta_df['update_ts'] == update_ts)
+    assert all(meta_df['process_ts'] == process_ts)
 
 
 def test_batch_transform_with_filter(dbconn):

@@ -1,18 +1,16 @@
 # flake8: noqa
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from PIL import Image
 
-from datapipe.compute import Catalog, Pipeline, Table
-from datapipe.core_steps import (
-    BatchGenerate, do_batch_generate,
-    BatchTransform, do_full_batch_transform,
-    UpdateExternalTable,
-)
+from datapipe.compute import (Catalog, Pipeline, Table, build_compute,
+                              run_pipeline, run_steps)
+from datapipe.core_steps import (BatchGenerate, BatchTransform,
+                                 UpdateExternalTable, do_batch_generate,
+                                 do_full_batch_transform)
 from datapipe.datatable import DataStore
-from datapipe.store.filedir import TableStoreFiledir, PILFile
-from datapipe.compute import build_compute, run_pipeline, run_steps
+from datapipe.store.filedir import PILFile, TableStoreFiledir
 
 
 def make_df():

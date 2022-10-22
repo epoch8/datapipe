@@ -64,58 +64,50 @@ class DataTable:
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
-            # Magic number derived empirically
-            # See https://github.com/epoch8/datapipe/issues/178 for details
-            # TODO Investigate deeper how does stack in Postgres work
-            chunk_size = 5000 // len(self.primary_keys)
+            if not data_df.empty:
+                logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
 
-            for chunk_no in range(len(data_df) // chunk_size + 1):
-                chunk_data_df = data_df.iloc[(chunk_no * chunk_size):((chunk_no+1) * chunk_size)]
+                with tracer.start_as_current_span("get_changes_for_store_chunk"):
+                    (
+                        new_df,
+                        changed_df,
+                        new_meta_df,
+                        changed_meta_df
+                    ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-                if not chunk_data_df.empty:
-                    logger.debug(f'Inserting chunk {len(chunk_data_df.index)} rows into {self.name}')
+                self.event_logger.log_state(
+                    self.name,
+                    added_count=len(new_df),
+                    updated_count=len(changed_df),
+                    deleted_count=0,
+                    processed_count=len(data_df),
+                    run_config=run_config,
+                )
 
-                    with tracer.start_as_current_span("get_changes_for_store_chunk"):
-                        (
-                            new_df,
-                            changed_df,
-                            new_meta_df,
-                            changed_meta_df
-                        ) = self.meta_table.get_changes_for_store_chunk(chunk_data_df, now)
+                # TODO implement transaction meckanism
+                with tracer.start_as_current_span("store data"):
+                    self.table_store.insert_rows(new_df)
+                    self.table_store.update_rows(changed_df)
 
-                    self.event_logger.log_state(
-                        self.name,
-                        added_count=len(new_df),
-                        updated_count=len(changed_df),
-                        deleted_count=0,
-                        processed_count=len(chunk_data_df),
-                        run_config=run_config,
-                    )
+                with tracer.start_as_current_span("store metadata"):
+                    self.meta_table.insert_meta_for_store_chunk(new_meta_df)
+                    self.meta_table.update_meta_for_store_chunk(changed_meta_df)
 
-                    # TODO implement transaction meckanism
-                    with tracer.start_as_current_span("store data"):
-                        self.table_store.insert_rows(new_df)
-                        self.table_store.update_rows(changed_df)
+                    changes.append(data_to_index(new_df, self.primary_keys))
+                    changes.append(data_to_index(changed_df, self.primary_keys))
+            else:
+                data_df = pd.DataFrame(columns=self.primary_keys)
 
-                    with tracer.start_as_current_span("store metadata"):
-                        self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-                        self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+            with tracer.start_as_current_span("cleanup deleted rows"):
+                data_idx = data_to_index(data_df, self.primary_keys)
 
-                        changes.append(data_to_index(new_df, self.primary_keys))
-                        changes.append(data_to_index(changed_df, self.primary_keys))
-                else:
-                    chunk_data_df = pd.DataFrame(columns=self.primary_keys)
+                if processed_idx is not None:
+                    existing_idx = self.meta_table.get_existing_idx(processed_idx)
+                    deleted_idx = index_difference(existing_idx, data_idx)
 
-                with tracer.start_as_current_span("cleanup deleted rows"):
-                    data_idx = data_to_index(chunk_data_df, self.primary_keys)
+                    self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-                    if processed_idx is not None:
-                        existing_idx = self.meta_table.get_existing_idx(processed_idx)
-                        deleted_idx = index_difference(existing_idx, data_idx)
-
-                        self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
-
-                        changes.append(deleted_idx)
+                    changes.append(deleted_idx)
 
         return cast(IndexDF, pd.concat(changes))
 
@@ -163,7 +155,7 @@ class DataStore:
         self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
-        assert(name not in self.tables)
+        assert name not in self.tables
 
         primary_schema = table_store.get_primary_schema()
         meta_schema = table_store.get_meta_schema()

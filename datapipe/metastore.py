@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 import time
 from dataclasses import dataclass
 from typing import Iterator, List, Tuple, cast
@@ -14,7 +15,7 @@ from datapipe.store.database import (DBConn, MetaKey,
                                      sql_apply_runconfig_filter,
                                      sql_schema_to_sqltype)
 from datapipe.types import (DataDF, DataSchema, IndexDF, MetadataDF,
-                            MetaSchema, data_to_index)
+                            MetaSchema, TAnyDF, data_to_index)
 
 logger = logging.getLogger('datapipe.metastore')
 
@@ -73,6 +74,26 @@ class MetaTable:
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
+    def _chunk_size(self):
+        # Magic number derived empirically. See
+        # https://github.com/epoch8/datapipe/issues/178 for details.
+        #
+        # TODO Investigate deeper how does stack in Postgres work
+        return 5000 // len(self.primary_keys)
+
+    def _chunk_idx_df(self, idx: TAnyDF) -> Iterator[TAnyDF]:
+        '''
+        Split IndexDF to chunks acceptable for typical Postgres configuration.
+        See `_chunk_size` for detatils.
+        '''
+
+        CHUNK_SIZE = self._chunk_size()
+
+        for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
+            chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
+
+            yield chunk_idx
+
     def _build_metadata_query(self, sql, idx: IndexDF = None, include_deleted: bool = False):
         if idx is not None:
             if len(self.primary_keys) == 0:
@@ -111,16 +132,21 @@ class MetaTable:
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
         '''
 
+        res = []
         sql = select(self.sql_schema)
-        sql = self._build_metadata_query(sql, idx, include_deleted)
 
-        return cast(
-            MetadataDF,
-            pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-            )
-        )
+        if idx is None:
+            sql = self._build_metadata_query(sql, idx, include_deleted)
+            return pd.read_sql_query(sql, con=self.dbconn.con)
+
+        for chunk_idx in self._chunk_idx_df(idx):
+            chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
+            res.append(pd.read_sql_query(chunk_sql, con=self.dbconn.con))
+
+        if len(res) > 0:
+            return cast(MetadataDF, pd.concat(res))
+        else:
+            return cast(MetadataDF, pd.DataFrame(columns=self.primary_keys))
 
     def get_metadata_size(self, idx: IndexDF = None, include_deleted: bool = False) -> int:
         '''
@@ -291,15 +317,18 @@ class MetaTable:
             )
 
     def _delete_rows(self, df: MetadataDF) -> None:
-        if len(df) > 0:
-            idx = df[self.primary_keys]
-            sql = delete(self.sql_table)
+        if len(df) == 0:
+            return
 
+        idx = df[self.primary_keys]
+        sql = delete(self.sql_table)
+
+        for chunk_idx in self._chunk_idx_df(idx):
             if len(self.primary_keys) == 1:
                 # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
-                sql = sql.where(
-                    self.sql_table.c[key].in_(idx[key].to_list())
+                chunk_sql = sql.where(
+                    self.sql_table.c[key].in_(chunk_idx[key].to_list())
                 )
 
             else:
@@ -309,27 +338,30 @@ class MetaTable:
                     for key in self.primary_keys
                 ])
 
-                sql = sql.where(keys.in_([
+                chunk_sql = sql.where(keys.in_([
                     tuple([r[key] for key in self.primary_keys])  # type: ignore
-                    for r in idx.to_dict(orient='records')
+                    for r in chunk_idx.to_dict(orient='records')
                 ]))
 
-            self.dbconn.con.execute(sql)
+            self.dbconn.con.execute(chunk_sql)
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
-        if len(df) > 0:
-            table = f'{self.dbconn.schema}.{self.sql_table.name}' if self.dbconn.schema else self.sql_table.name
-            values_table = f'{self.sql_table.name}_values'
-            columns = [column.name for column in self.sql_schema]
-            update_columns = set(columns) - set(self.primary_keys)
+        if len(df) == 0:
+            return
 
-            update_expression = ', '.join([f'{column}={values_table}.{column}'
-                                           for column in update_columns])
+        table = f'{self.dbconn.schema}.{self.sql_table.name}' if self.dbconn.schema else self.sql_table.name
+        values_table = f'{self.sql_table.name}_values'
+        columns = [column.name for column in self.sql_schema]
+        update_columns = set(columns) - set(self.primary_keys)
 
-            where_expressiom = ' AND '.join([f'{table}.{key} = {values_table}.{key}'
-                                             for key in self.primary_keys])
+        update_expression = ', '.join([f'{column}={values_table}.{column}'
+                                       for column in update_columns])
 
-            params_df = df.reset_index()[columns]
+        where_expressiom = ' AND '.join([f'{table}.{key} = {values_table}.{key}'
+                                         for key in self.primary_keys])
+
+        for chunk_df in self._chunk_idx_df(df):
+            params_df = chunk_df.reset_index()[columns]
             values_params = []
             params = {}
 
