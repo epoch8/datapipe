@@ -1,13 +1,12 @@
-from distutils import extension
 import json
-import pandas as pd
-import numpy as np
 
-import pytest
 import fsspec
+import numpy as np
+import pandas as pd
+import pytest
 from PIL import Image
 
-from datapipe.store.filedir import PILFile, JSONFile, TableStoreFiledir
+from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
 
 from .util import assert_df_equal, assert_ts_contains
 

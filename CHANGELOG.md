@@ -1,3 +1,9 @@
+# 0.11.7
+
+* Fix `DataTable.get_data` for large batches
+* Refactored implementation for chunked storage in `MetaTable` and
+  `TableStoreDB`
+
 # 0.11.6
 
 * Fix `RedisStore.read_rows`
@@ -102,9 +108,12 @@
 
 # 0.10.8
 
-* Add `read_data` parameter to `TableStoreFiledir` (https://github.com/epoch8/datapipe/pull/132)
-* Fix fields order for compound indexes in `get_process_idx` (https://github.com/epoch8/datapipe/pull/136)
-* Add `check_for_changes` parameter to `DatatableTransform` step (https://github.com/epoch8/datapipe/pull/131)
+* Add `read_data` parameter to `TableStoreFiledir`
+  (https://github.com/epoch8/datapipe/pull/132)
+* Fix fields order for compound indexes in `get_process_idx`
+  (https://github.com/epoch8/datapipe/pull/136)
+* Add `check_for_changes` parameter to `DatatableTransform` step
+  (https://github.com/epoch8/datapipe/pull/131)
 * Update `Pillow` to version `9.0.0`
 
 # 0.10.7
@@ -112,13 +121,15 @@
 * Move LabelStudio support to separate repo
 * Move LevelDB TableStore to separate repo
 * Remove `UPDATE FROM VALUES` support for SQLite
-* Add methods `Catalog.add_datatable`, `Catalog.remove_datatable`, `DataStore.get_datatable`
+* Add methods `Catalog.add_datatable`, `Catalog.remove_datatable`,
+  `DataStore.get_datatable`
 * Add methods `index_intersection`, `index_to_data`
 
 # 0.10.6
 
 * Disable SQLAlchemy compiled cache for `UPDATE FROM VALUES` query
-* Backport from 0.11.0-alpha.1: Фикс для join-а таблиц без пересекающихся индексов
+* Backport from 0.11.0-alpha.1: Фикс для join-а таблиц без пересекающихся
+  индексов
 
 # 0.10.5
 
@@ -134,7 +145,8 @@
 
 # 0.10.2
 
-* Исправлен баг с падением проверки типов в `DatatableTransformStep` при несколькох входных и выходных таблицах
+* Исправлен баг с падением проверки типов в `DatatableTransformStep` при
+  несколькох входных и выходных таблицах
 
 # 0.10.1
 

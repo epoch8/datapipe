@@ -1,6 +1,7 @@
-from __future__ import annotations # NOQA
-from typing import List, Dict, NewType, cast
+from __future__ import annotations  # NOQA
+
 from dataclasses import dataclass, field
+from typing import Dict, List, NewType, TypeVar, cast
 
 import pandas as pd
 from sqlalchemy import Column
@@ -17,6 +18,8 @@ MetadataDF = NewType('MetadataDF', pd.DataFrame)
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
 # DataDF = NewType('DataDF', pd.DataFrame)
 DataDF = pd.DataFrame
+
+TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 
 
 @dataclass

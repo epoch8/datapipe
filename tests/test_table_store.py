@@ -217,7 +217,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @case(tags=['supports_delete', 'supports_all_read_rows', 'supports_get_schema'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_db(self, dbconn, df, schema):
         return (
@@ -267,6 +267,11 @@ class CasesTableStore:
             ),
             df
         )
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_get_schema')
+def test_get_schema(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.get_schema()
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
@@ -377,16 +382,16 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
 
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
 
-    assert(isinstance(pseudo_df_iter, Iterable))
-    assert(isinstance(next(pseudo_df_iter), DataDF))
+    assert isinstance(pseudo_df_iter, Iterable)
+    assert isinstance(next(pseudo_df_iter), DataDF)
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
-    assert(isinstance(pseudo_df_iter, Iterable))
+    assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
-        assert(isinstance(pseudo_df, DataDF))
+        assert isinstance(pseudo_df, DataDF)
         pseudo_df[store.primary_keys]  # Empty df must have primary keys columns
 
 
@@ -398,6 +403,6 @@ def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.
 
     # TODO проверять, что runconfig реально влияет на результирующие данные
     pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters={'a': 1}))
-    assert(isinstance(pseudo_df_iter, Iterable))
+    assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
-        assert(isinstance(pseudo_df, DataDF))
+        assert isinstance(pseudo_df, DataDF)
