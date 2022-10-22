@@ -1,12 +1,13 @@
 from abc import ABC
-from typing import List, Optional, Union, Iterator
-
-from sqlalchemy import Column, String
-import pandas as pd
 from pathlib import Path
-from datapipe.run_config import RunConfig
+from typing import Iterator, List, Optional, Union
 
-from datapipe.types import IndexDF, DataDF, DataSchema, MetaSchema, data_to_index
+import pandas as pd
+from sqlalchemy import Column, String
+
+from datapipe.run_config import RunConfig
+from datapipe.types import (DataDF, DataSchema, IndexDF, MetaSchema,
+                            data_to_index)
 
 
 class TableStore(ABC):
@@ -14,6 +15,9 @@ class TableStore(ABC):
         raise NotImplementedError
 
     def get_meta_schema(self) -> MetaSchema:
+        raise NotImplementedError
+
+    def get_schema(self) -> DataSchema:
         raise NotImplementedError
 
     @property

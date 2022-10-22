@@ -52,7 +52,7 @@ class DataTable:
         if len(res) > 0:
             return pd.concat(res)
         else:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=[column.name for column in self.table_store.get_schema()])
 
     def get_size(self) -> int:
         '''
@@ -175,7 +175,7 @@ class DataStore:
         self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
-        assert(name not in self.tables)
+        assert name not in self.tables
 
         primary_schema = table_store.get_primary_schema()
         meta_schema = table_store.get_meta_schema()
