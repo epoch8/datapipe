@@ -7,7 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9"] # 3.8, 3.10
+        python-version:
+          # - "3.8"
+          - "3.9"
+          # - "3.10"
 
     steps:
     - uses: actions/checkout@v2
@@ -50,8 +53,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10"]
-        test-db-env: ['postgres', 'sqlite']
+        python-version:
+          # - "3.8"
+          - "3.9"
+          - "3.10"
+        test-db-env:
+          - "postgres"
+          - "sqlite"
 
     services:
       # Label used to access the service container
