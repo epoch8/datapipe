@@ -49,7 +49,10 @@ class DataTable:
         for chunk_no in range(int(math.ceil(len(existing_idx) / CHUNK_SIZE))):
             res.append(self.table_store.read_rows(existing_idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]))
 
-        return pd.concat(res)
+        if len(res) > 0:
+            return pd.concat(res)
+        else:
+            return pd.DataFrame()
 
     def get_size(self) -> int:
         '''
