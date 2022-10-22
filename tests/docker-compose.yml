@@ -12,3 +12,8 @@ services:
     image: heartexlabs/label-studio:1.0.1
     ports:
         - 8080:8080
+
+  redis:
+    image: redis:7
+    ports:
+      - 6379:6379
