@@ -109,7 +109,7 @@ def _pattern_to_match(pat: str) -> str:
 
 
 class Replacer:
-    def __init__(self, values: Union[pd.DataFrame, List[str]]):
+    def __init__(self, values: List[str]):
         self.counter = -1
         self.values = values
 
@@ -244,7 +244,7 @@ class TableStoreFiledir(TableStore):
             )
             self.filesystem.rm(path)
 
-    def _filenames_from_idxs_values(self, idxs_values: pd.DataFrame) -> List[str]:
+    def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
         return [
             re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), pat) for pat in self.filename_patterns
         ]
@@ -288,7 +288,10 @@ class TableStoreFiledir(TableStore):
         for row_idx, data in zip(
             df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
         ):
-            idxs_values = df.loc[row_idx, self.attrnames].tolist()  # type: ignore
+            attrnames_series = df.loc[row_idx, self.attrnames]
+            assert isinstance(attrnames_series, pd.Series)
+
+            idxs_values = attrnames_series.tolist()
             filepath = self._filenames_from_idxs_values(idxs_values)[0]
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
