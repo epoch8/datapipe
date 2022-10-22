@@ -239,8 +239,11 @@ class TableStoreFiledir(TableStore):
         assert not self.readonly
 
         for row_idx in idx.index:
+            attrnames_series = idx.loc[row_idx, self.attrnames]
+            assert isinstance(attrnames_series, pd.Series)
+
             _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])[0]
+                self._filenames_from_idxs_values(attrnames_series.tolist())[0]
             )
             self.filesystem.rm(path)
 
