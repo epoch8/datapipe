@@ -92,7 +92,7 @@ class MetaTable:
         for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
             chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
 
-            yield chunk_idx
+            yield cast(TAnyDF, chunk_idx)
 
     def _build_metadata_query(self, sql, idx: IndexDF = None, include_deleted: bool = False):
         if idx is not None:
@@ -137,7 +137,7 @@ class MetaTable:
 
         if idx is None:
             sql = self._build_metadata_query(sql, idx, include_deleted)
-            return pd.read_sql_query(sql, con=self.dbconn.con)
+            return cast(MetadataDF, pd.read_sql_query(sql, con=self.dbconn.con))
 
         for chunk_idx in self._chunk_idx_df(idx):
             chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
