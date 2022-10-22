@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
@@ -189,19 +190,41 @@ class TableStoreDB(TableStore):
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
+    def _chunk_size(self):
+        # Magic number derived empirically See
+        # https://github.com/epoch8/datapipe/issues/178 for details 
+        #
+        # TODO Investigate deeper how does stack in Postgres work
+        return 5000 // len(self.primary_keys)
+
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         sql = select(self.data_table.c)
 
         if idx is not None:
-            if not len(idx.index):
+            if len(idx.index) == 0:
+                # Empty index -> empty result
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
-            sql = self._apply_where_expression(sql, idx)
+            res = []
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con
-        )
+            CHUNK_SIZE = self._chunk_size()
+
+            for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
+                chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
+
+                chunk_sql = self._apply_where_expression(sql, chunk_idx)
+
+                chunk_df = pd.read_sql_query(chunk_sql, con=self.dbconn.con)
+
+                res.append(chunk_df)
+
+            return pd.concat(res)
+
+        else:
+            return pd.read_sql_query(
+                sql,
+                con=self.dbconn.con
+            )
 
     def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
         sql = select(self.data_table.c)

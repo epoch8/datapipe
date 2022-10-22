@@ -40,19 +40,7 @@ class DataTable:
         return self.meta_table.get_metadata(idx)
 
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
-        # TODO refactor to make get_existing_idx generator
-        existing_idx = self.meta_table.get_existing_idx(idx)
-
-        res = []
-
-        CHUNK_SIZE = 1000
-        for chunk_no in range(int(math.ceil(len(existing_idx) / CHUNK_SIZE))):
-            res.append(self.table_store.read_rows(existing_idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]))
-
-        if len(res) > 0:
-            return pd.concat(res)
-        else:
-            return pd.DataFrame(columns=[column.name for column in self.table_store.get_schema()])
+        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def get_size(self) -> int:
         '''
@@ -76,9 +64,6 @@ class DataTable:
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
-            # Magic number derived empirically
-            # See https://github.com/epoch8/datapipe/issues/178 for details
-            # TODO Investigate deeper how does stack in Postgres work
             chunk_size = 5000 // len(self.primary_keys)
 
             for chunk_no in range(len(data_df) // chunk_size + 1):
