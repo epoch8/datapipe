@@ -1,7 +1,7 @@
 import logging
 import time
-from typing import (Any, Dict, Iterable, Iterator, List, Optional, Protocol, Tuple,
-                    Union)
+from typing import (Any, Dict, Iterable, Iterator, List, Optional, Protocol,
+                    Tuple, Union)
 
 import tqdm
 from opentelemetry import trace
@@ -37,7 +37,7 @@ def do_batch_transform(
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     '''
 
-    logger.info(f'Items to update {idx_count}')
+    logger.info(f'Batches to process {idx_count}')
 
     if idx_count is not None and idx_count == 0:
         # Nothing to process
