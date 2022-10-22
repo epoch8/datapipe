@@ -217,7 +217,7 @@ class CasesTableStore:
             df
         )
 
-    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @case(tags=['supports_delete', 'supports_all_read_rows', 'supports_get_schema'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_db(self, dbconn, df, schema):
         return (
@@ -267,6 +267,11 @@ class CasesTableStore:
             ),
             df
         )
+
+
+@parametrize_with_cases('store,test_df', cases=CasesTableStore, has_tag='supports_get_schema')
+def test_get_schema(store: TableStore, test_df: pd.DataFrame) -> None:
+    store.get_schema()
 
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
