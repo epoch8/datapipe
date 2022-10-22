@@ -1,3 +1,7 @@
+# 0.11.7
+
+* Fix `DataTable.get_data` for large batches
+
 # 0.11.6
 
 * Fix `RedisStore.read_rows`

@@ -40,7 +40,16 @@ class DataTable:
         return self.meta_table.get_metadata(idx)
 
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
-        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
+        # TODO refactor to make get_existing_idx generator
+        existing_idx = self.meta_table.get_existing_idx(idx)
+
+        res = []
+
+        CHUNK_SIZE = 1000
+        for chunk_no in range(int(math.ceil(len(existing_idx) / CHUNK_SIZE))):
+            res.append(self.table_store.read_rows(existing_idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]))
+
+        return pd.concat(res)
 
     def get_size(self) -> int:
         '''
