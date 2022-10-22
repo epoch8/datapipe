@@ -1,6 +1,8 @@
 # 0.11.7
 
 * Fix `DataTable.get_data` for large batches
+* Refactored implementation for chunked storage in `MetaTable` and
+  `TableStoreDB`
 
 # 0.11.6
 
