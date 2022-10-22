@@ -1,7 +1,7 @@
 import copy
 import logging
 import math
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import pandas as pd
 from opentelemetry import trace
@@ -155,7 +155,7 @@ class TableStoreDB(TableStore):
         for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
             chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
 
-            yield chunk_idx
+            yield cast(TAnyDF, chunk_idx)
 
     def _apply_where_expression(self, sql, idx: IndexDF):
         if len(self.primary_keys) == 1:

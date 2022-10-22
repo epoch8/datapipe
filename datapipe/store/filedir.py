@@ -1,22 +1,20 @@
-from abc import ABC
 import itertools
-from typing import IO, Any, Dict, List, Optional, Union, cast, Iterator
-from pathlib import Path
-
-import numpy as np
-from iteration_utilities import duplicates
-
-import re
 import json
+import re
+from abc import ABC
+from pathlib import Path
+from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
+
 import fsspec
+import numpy as np
 import pandas as pd
-
-from sqlalchemy import Column, Integer, String
+from iteration_utilities import duplicates
 from PIL import Image
+from sqlalchemy import Column, Integer, String
 
-from datapipe.types import DataDF, DataSchema, MetaSchema, IndexDF
-from datapipe.store.table_store import TableStore
 from datapipe.run_config import RunConfig
+from datapipe.store.table_store import TableStore
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
 
 class ItemStoreFileAdapter(ABC):
@@ -238,11 +236,14 @@ class TableStoreFiledir(TableStore):
         if not self.enable_rm:
             return
 
-        assert(not self.readonly)
+        assert not self.readonly
 
         for row_idx in idx.index:
+            attrnames_series = idx.loc[row_idx, self.attrnames]
+            assert isinstance(attrnames_series, pd.Series)
+
             _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])[0]
+                self._filenames_from_idxs_values(attrnames_series.tolist())[0]
             )
             self.filesystem.rm(path)
 
@@ -282,7 +283,7 @@ class TableStoreFiledir(TableStore):
     def insert_rows(self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None) -> None:
         if df.empty:
             return
-        assert(not self.readonly)
+        assert not self.readonly
         if adapter is None:
             adapter = self.adapter
 
@@ -290,7 +291,10 @@ class TableStoreFiledir(TableStore):
         for row_idx, data in zip(
             df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
         ):
-            idxs_values = df.loc[row_idx, self.attrnames].tolist()
+            attrnames_series = df.loc[row_idx, self.attrnames]
+            assert isinstance(attrnames_series, pd.Series)
+
+            idxs_values = attrnames_series.tolist()
             filepath = self._filenames_from_idxs_values(idxs_values)[0]
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
@@ -385,7 +389,7 @@ class TableStoreFiledir(TableStore):
         for f in files:
             m = re.match(self.filename_match, f.path)
 
-            assert(m is not None)
+            assert m is not None
             for attrname in self.attrnames:
                 ids[attrname].append(m.group(attrname))
 
@@ -412,10 +416,10 @@ class TableStoreFiledir(TableStore):
             )
             yield pseudo_data_df.astype(object)
         else:
+            filepath_kw: Dict = {'filepath': []} if self.add_filepath_column else {}
             yield pd.DataFrame(
                 {
-                    **ids,
                     'ukey': [],
-                    **({'filepath': []} if self.add_filepath_column else {})
+                    **filepath_kw,
                 }
             ).astype(object)

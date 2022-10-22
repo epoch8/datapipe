@@ -3,6 +3,7 @@
 * Fix `DataTable.get_data` for large batches
 * Refactored implementation for chunked storage in `MetaTable` and
   `TableStoreDB`
+* Switched default Python version to 3.9
 
 # 0.11.6
 

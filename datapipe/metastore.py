@@ -92,7 +92,7 @@ class MetaTable:
         for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
             chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
 
-            yield chunk_idx
+            yield cast(TAnyDF, chunk_idx)
 
     def _build_metadata_query(self, sql, idx: IndexDF = None, include_deleted: bool = False):
         if idx is not None:
@@ -137,14 +137,14 @@ class MetaTable:
 
         if idx is None:
             sql = self._build_metadata_query(sql, idx, include_deleted)
-            return pd.read_sql_query(sql, con=self.dbconn.con)
+            return cast(MetadataDF, pd.read_sql_query(sql, con=self.dbconn.con))
 
         for chunk_idx in self._chunk_idx_df(idx):
             chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
             res.append(pd.read_sql_query(chunk_sql, con=self.dbconn.con))
 
         if len(res) > 0:
-            return pd.concat(res)
+            return cast(MetadataDF, pd.concat(res))
         else:
             return cast(MetadataDF, pd.DataFrame(columns=self.primary_keys))
 
@@ -267,10 +267,10 @@ class MetaTable:
         new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
 
         # Ищем новые записи
-        new_df = data_df.iloc[new_idx.values][data_cols]
+        new_df = data_df.loc[new_idx.values, data_cols]
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = merged_df.iloc[merged_df['hash'].isna().values][data_cols]
+        new_meta_data_df = merged_df.loc[merged_df['hash'].isna().values, data_cols]
         new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
@@ -279,7 +279,7 @@ class MetaTable:
             (merged_df['delete_ts'].isnull()) &
             (merged_df['hash'] != merged_df['data_hash'])
         )
-        changed_df = merged_df.iloc[changed_idx.values][data_cols]
+        changed_df = merged_df.loc[changed_idx.values, data_cols]
 
         # Меняем мета данные для существующих записей
         changed_meta_idx = (
@@ -424,10 +424,13 @@ class MetaTable:
 
         sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con,
-            chunksize=1000
+        return cast(
+            Iterator[IndexDF],
+            pd.read_sql_query(
+                sql,
+                con=self.dbconn.con,
+                chunksize=1000
+            )
         )
 
 
