@@ -231,7 +231,7 @@ class TableStoreDB(TableStore):
 
                 res.append(chunk_df)
 
-            return pd.concat(res)
+            return pd.concat(res, ignore_index=True)
 
         else:
             return pd.read_sql_query(
