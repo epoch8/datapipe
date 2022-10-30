@@ -4,6 +4,7 @@
 * Refactored implementation for chunked storage in `MetaTable` and
   `TableStoreDB`
 * Switched default Python version to 3.9
+* Fix `DataTable.get_data` indices in returned DataFrame
 
 # 0.11.6
 
