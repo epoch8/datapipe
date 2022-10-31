@@ -1,3 +1,7 @@
+# 0.11.8
+
+* Fix metadata columns in case of empty `get_metadata`
+
 # 0.11.7
 
 * Fix `DataTable.get_data` for large batches
