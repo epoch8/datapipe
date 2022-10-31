@@ -146,7 +146,7 @@ class MetaTable:
         if len(res) > 0:
             return cast(MetadataDF, pd.concat(res))
         else:
-            return cast(MetadataDF, pd.DataFrame(columns=self.primary_keys))
+            return cast(MetadataDF, pd.DataFrame(columns=[column.name for column in self.sql_schema]))
 
     def get_metadata_size(self, idx: IndexDF = None, include_deleted: bool = False) -> int:
         '''
