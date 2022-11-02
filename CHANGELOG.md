@@ -1,3 +1,7 @@
+# 0.11.9
+
+* New method `DataTable.reset_metadata()`
+
 # 0.11.8
 
 * Fix metadata columns in case of empty `get_metadata`
