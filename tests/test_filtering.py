@@ -5,8 +5,9 @@ from sqlalchemy.sql.sqltypes import Integer, Boolean
 from datapipe.store.database import TableStoreDB
 from datapipe.datatable import DataStore
 
-from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
 from datapipe.core_steps import BatchGenerate, BatchTransform
+from .util import assert_datatable_equal
 
 
 TEST_SCHEMA = [
@@ -118,12 +119,18 @@ def test_delete_table_after_filter(dbconn):
 
     ds = DataStore(dbconn, create_meta_table=True)
 
+    tbl_final_id1_id2 = catalog.get_datatable(ds, 'tbl_final_id1_id2')
+    tbl_final_id1 = catalog.get_datatable(ds, 'tbl_final_id1')
     # Чистый Фильтр (10 значений)
     run_pipeline(ds, catalog, old_pipeline)
-    assert len(catalog.get_datatable(ds, 'tbl_final_id1_id2').get_data()) == 10
-    assert len(catalog.get_datatable(ds, 'tbl_final_id1').get_data()) == 10
+    assert len(tbl_final_id1_id2.get_data()) == 10
+    assert len(tbl_final_id1.get_data()) == 10
+    assert_datatable_equal(tbl_final_id1_id2, TEST_DF)
+    assert_datatable_equal(tbl_final_id1, TEST_DF.drop(columns=['id2']))
 
     # Фильтр отсеивает 5 значений, поэтому они должны быть удалены из дальнейших таблиц
     run_pipeline(ds, catalog, new_pipeline)
-    assert len(catalog.get_datatable(ds, 'tbl_final_id1_id2').get_data()) == 5
-    assert len(catalog.get_datatable(ds, 'tbl_final_id1').get_data()) == 5
+    assert len(tbl_final_id1_id2.get_data()) == 5
+    assert len(tbl_final_id1.get_data()) == 5
+    assert_datatable_equal(tbl_final_id1_id2, TEST_DF[:5])
+    assert_datatable_equal(tbl_final_id1, TEST_DF[:5].drop(columns=['id2']))
