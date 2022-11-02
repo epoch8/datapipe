@@ -122,6 +122,7 @@ def test_delete_table_after_filter(dbconn):
     tbl_filter = catalog.get_datatable(ds, 'tbl_filter')
     tbl_final_id1_id2 = catalog.get_datatable(ds, 'tbl_final_id1_id2')
     tbl_final_id1 = catalog.get_datatable(ds, 'tbl_final_id1')
+
     # Чистый Фильтр (10 значений)
     run_pipeline(ds, catalog, old_pipeline)
     assert len(tbl_final_id1_id2.get_data()) == 10
@@ -129,7 +130,7 @@ def test_delete_table_after_filter(dbconn):
     assert_datatable_equal(tbl_final_id1_id2, TEST_DF)
     assert_datatable_equal(tbl_final_id1, TEST_DF.drop(columns=['id2']))
 
-    # Меняем пайплайн -> делаем сброс метаданных на дальнейших табличках
+    # Меняем пайплайн в одной трансформации -> делаем сброс метаданных
     ds.meta_dbconn.con.execute(
         tbl_filter.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
     )
