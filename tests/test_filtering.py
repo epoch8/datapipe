@@ -102,7 +102,7 @@ def test_delete_table_after_filter(dbconn):
             inputs=['tbl'],
             outputs=['tbl_filter'],
             kwargs=dict(
-                value=5
+                value=4
             )
         ),
         BatchTransform(
@@ -119,6 +119,7 @@ def test_delete_table_after_filter(dbconn):
 
     ds = DataStore(dbconn, create_meta_table=True)
 
+    tbl_filter = catalog.get_datatable(ds, 'tbl_filter')
     tbl_final_id1_id2 = catalog.get_datatable(ds, 'tbl_final_id1_id2')
     tbl_final_id1 = catalog.get_datatable(ds, 'tbl_final_id1')
     # Чистый Фильтр (10 значений)
@@ -127,6 +128,11 @@ def test_delete_table_after_filter(dbconn):
     assert len(tbl_final_id1.get_data()) == 10
     assert_datatable_equal(tbl_final_id1_id2, TEST_DF)
     assert_datatable_equal(tbl_final_id1, TEST_DF.drop(columns=['id2']))
+
+    # Меняем пайплайн -> делаем сброс метаданных на дальнейших табличках
+    ds.meta_dbconn.con.execute(
+        tbl_filter.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
+    )
 
     # Фильтр отсеивает 5 значений, поэтому они должны быть удалены из дальнейших таблиц
     run_pipeline(ds, catalog, new_pipeline)
