@@ -42,6 +42,11 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
+    def reset_metadata(self):
+        self.meta_dbconn.con.execute(
+            self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
+        )
+
     def get_size(self) -> int:
         '''
         Get the number of non-deleted rows in the DataTable
