@@ -130,8 +130,8 @@ def test_delete_table_after_filter(dbconn):
     assert_datatable_equal(tbl_final_id1_id2, TEST_DF)
     assert_datatable_equal(tbl_final_id1, TEST_DF.drop(columns=['id2']))
 
-    # Меняем пайплайн в одной трансформации -> делаем сброс метаданных
-    tbl_final_id1_id2.reset_metadata()
+    # Меняем пайплайн в одной трансформации -> делаем сброс метаданных на целевой таблице
+    tbl_filter.reset_metadata()
 
     # Фильтр отсеивает 5 значений, поэтому они должны быть удалены из дальнейших таблиц
     run_pipeline(ds, catalog, new_pipeline)
