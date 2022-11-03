@@ -58,7 +58,10 @@ def do_batch_transform(
                         chunks_df = func(*input_dfs, **kwargs or {})
                     except Exception as e:
                         logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                        ds.event_logger.log_exception(e, run_config=run_config)
+                        ds.event_logger.log_exception(
+                            e,
+                            run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
+                        )
 
                         continue
 
