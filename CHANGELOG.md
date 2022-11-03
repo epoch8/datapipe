@@ -1,6 +1,7 @@
 # 0.11.9
 
 * New method `DataTable.reset_metadata()`
+* Add `idx` logging on errors
 
 # 0.11.8
 
