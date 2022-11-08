@@ -59,7 +59,7 @@ jobs:
           - "3.10"
         test-db-env:
           - "postgres"
-          - "sqlite"
+          # - "sqlite"
 
     services:
       # Label used to access the service container
