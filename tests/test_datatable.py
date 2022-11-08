@@ -124,7 +124,7 @@ def test_get_process_ids(dbconn) -> None:
     count, idx_dfs = ds.get_full_process_ids([tbl1], [tbl2])
     idx = pd.concat(list(idx_dfs))
 
-    assert(sorted(list(idx.index)) == list(TEST_DF.index))
+    assert sorted(list(idx.index)) == list(TEST_DF.index)
 
     tbl2.store_chunk(tbl1.get_data())
 

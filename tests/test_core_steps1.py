@@ -162,6 +162,8 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
     ##########################
     tbl1.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys))
 
+    assert_datatable_equal(tbl1, TEST_DF[:5])
+
     do_full_batch_transform(
         func=id_func,
         ds=ds,
@@ -224,7 +226,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(idx_len == len(TEST_DF))
+    assert idx_len == len(TEST_DF)
 
     do_full_batch_transform(
         func=id_func,
@@ -237,7 +239,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(idx_len == 0)
+    assert idx_len == 0
 
     tbl1.store_chunk(TEST_DF_INC1)
 
@@ -245,7 +247,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(idx_len == len(TEST_DF))
+    assert idx_len == len(TEST_DF)
 
     do_full_batch_transform(
         func=id_func,
@@ -258,7 +260,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
-    assert(idx_len == 0)
+    assert idx_len == 0
 
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
@@ -619,7 +621,7 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
     assert_datatable_equal(tbl2, TEST_OTM_DF.loc[1:])
 
     # Delete rows test
-    tbl.delete_by_idx(TEST_OTM_DF.loc[[9], ['id']])
+    tbl.delete_by_idx(cast(IndexDF, TEST_OTM_DF.loc[[9], ['id']]))
 
     rel_df = TEST_OTM_DF.loc[:8].explode('a')
     rel_df = rel_df[rel_df['a'].notna()]
@@ -698,7 +700,7 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
     assert_datatable_equal(tbl2, a_df)
 
     # Delete row with empty relations
-    tbl.delete_by_idx(TEST_OTM_DF.loc[[0], ['id']])
+    tbl.delete_by_idx(cast(IndexDF, TEST_OTM_DF.loc[[0], ['id']]))
 
     rel_df = TEST_OTM_DF.loc[1:].explode('a')
     rel_df = rel_df[rel_df['a'].notna()]
@@ -727,7 +729,7 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
     assert_datatable_equal(tbl2, a_df)
 
     # Delete rows test
-    tbl.delete_by_idx(TEST_OTM_DF.loc[[1], ['id']])
+    tbl.delete_by_idx(cast(IndexDF, TEST_OTM_DF.loc[[1], ['id']]))
 
     rel_df = TEST_OTM_DF.loc[2:].explode('a')
     rel_df = rel_df[rel_df['a'].notna()]
