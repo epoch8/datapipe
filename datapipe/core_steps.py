@@ -44,7 +44,16 @@ def do_batch_transform(
             logger.debug(f'Idx to process: {idx.to_records()}')
 
             with tracer.start_as_current_span("get input data"):
-                input_dfs = [inp.get_data(idx) for inp in input_dts]
+                try:
+                    input_dfs = [inp.get_data(idx) for inp in input_dts]
+                except Exception as e:
+                    logger.error(f"Get input data failed: {str(e)}")
+                    ds.event_logger.log_exception(
+                        e,
+                        run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
+                    )
+
+                    continue
 
             changes = ChangeList()
 
@@ -68,16 +77,25 @@ def do_batch_transform(
                     chunks_df = [chunks_df]
 
                 with tracer.start_as_current_span("store output batch"):
-                    for k, res_dt in enumerate(output_dts):
-                        # Берем k-ое значение функции для k-ой таблички
-                        # Добавляем результат в результирующие чанки
-                        change_idx = res_dt.store_chunk(
-                            data_df=chunks_df[k],
-                            processed_idx=idx,
-                            run_config=run_config,
+                    try:
+                        for k, res_dt in enumerate(output_dts):
+                            # Берем k-ое значение функции для k-ой таблички
+                            # Добавляем результат в результирующие чанки
+                            change_idx = res_dt.store_chunk(
+                                data_df=chunks_df[k],
+                                processed_idx=idx,
+                                run_config=run_config,
+                            )
+
+                            changes.append(res_dt.name, change_idx)
+                    except Exception as e:
+                        logger.error(f"Store output batch failed: {str(e)}")
+                        ds.event_logger.log_exception(
+                            e,
+                            run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
                         )
 
-                        changes.append(res_dt.name, change_idx)
+                        continue
 
             else:
                 with tracer.start_as_current_span("delete missing data from output"):
