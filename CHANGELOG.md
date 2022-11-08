@@ -2,6 +2,8 @@
 
 * New method `DataTable.reset_metadata()`
 * Add `idx` logging on errors
+* Add specialized implementation for `DataStoreFiledir` when file contents are
+  not needed
 
 # 0.11.8
 
