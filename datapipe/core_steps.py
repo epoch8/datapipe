@@ -1,7 +1,7 @@
 import logging
 import time
-from typing import (Any, Dict, Iterable, Iterator, List, Optional, Protocol,
-                    Tuple, Union)
+from typing import (
+    Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union, Callable)
 
 import tqdm
 from opentelemetry import trace
@@ -16,11 +16,7 @@ logger = logging.getLogger('datapipe.core_steps')
 tracer = trace.get_tracer("datapipe.core_steps")
 
 
-class BatchTransformFunc(Protocol):
-    __name__: str
-
-    def __call__(self, *inputs, **kwargs) -> Union[DataDF, List[DataDF], Tuple[DataDF, ...]]:
-        ...
+BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF], Tuple[DataDF, ...]]]
 
 
 def do_batch_transform(
@@ -238,10 +234,7 @@ class BatchTransformStep(ComputeStep):
         return res_changelist
 
 
-class BatchGenerateFunc(Protocol):
-    # __name__: str
-    def __call__(self, **kwargs) -> Iterator[Union[DataDF, Tuple[DataDF, ...]]]:
-        ...
+BatchGenerateFunc = Callable[..., Iterator[Union[DataDF, Tuple[DataDF, ...]]]]
 
 
 def do_batch_generate(
