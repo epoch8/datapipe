@@ -409,6 +409,7 @@ class MetaTable:
 
             meta_df["hash"] = 0
             meta_df["delete_ts"] = now
+            meta_df["update_ts"] = now
             meta_df["process_ts"] = now
 
             self.update_meta_for_store_chunk(meta_df)

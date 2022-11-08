@@ -4,10 +4,10 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, alias, and_, func, literal, or_, select, union
+from sqlalchemy import alias, and_, func, or_, select, column
 
 from datapipe.event_logger import EventLogger
-from datapipe.metastore import MetaTable, MetaTableData
+from datapipe.metastore import MetaTable
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore
@@ -203,93 +203,90 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         run_config: RunConfig = None,
-    ) -> Tuple[List[str], select]:
-        """
-        Построить SQL запрос на получение измененных идентификаторов.
+    ) -> Tuple[Iterable[str], select]:
+        inp_keys = [set(inp.primary_keys) for inp in inputs]
+        out_keys = [set(out.primary_keys) for out in outputs]
+        join_keys = list(set.intersection(*inp_keys, *out_keys))
 
-        Returns: [join_keys, select]
-        """
-        inp_tbls = [MetaTableData(inp.meta_table, sql_prefix='inp') for inp in inputs]
-        out_tbls = [MetaTableData(out.meta_table, sql_prefix='out') for out in outputs]
+        if self.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
+            greatest_func = func.max
+        else:
+            greatest_func = func.greatest
 
-        inp_keys = [inp.get_keys() for inp in inp_tbls]
-        out_keys = [out.get_keys() for out in out_tbls]
-        join_keys = set.intersection(*inp_keys, *out_keys)
+        def _make_agg_cte(dt: DataTable, agg_fun, agg_col: str):
+            tbl = dt.meta_table.sql_table
 
-        def get_inner_sql_fields(inp: MetaTableData) -> List[Column]:
-            fields = [literal(1).label('_1')]
+            key_cols = [column(k) for k in join_keys]
 
-            for key in join_keys:
-                fields.append(inp.get_column(key))
+            sql = select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])\
+                .select_from(tbl).group_by(*key_cols)
 
-            return fields
+            sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
-        def left_join(left_tbl: MetaTableData, right_tbls: List[MetaTableData]):
-            q = left_tbl.sql_table
+            return sql.cte(name=f"{tbl.name}__{agg_col}")
 
-            for right_tbl in right_tbls:
-                join_keys = left_tbl.get_keys() & right_tbl.get_keys()
+        def _make_agg_of_agg(ctes, agg_col):
+            assert len(ctes) > 0
 
-                q = q.join(
-                    right_tbl.sql_table,
-                    and_(True, *[left_tbl.get_column(key) == right_tbl.get_column(key) for key in join_keys]),
-                    isouter=True
+            if len(ctes) == 1:
+                return ctes[0]
+
+            if len(join_keys) > 1:
+                coalesce_keys = [
+                    func.coalesce(
+                        *[
+                            subq.c[key]
+                            for subq in ctes
+                        ]
+                    ).label(key)
+                    for key in join_keys
+                ]
+            else:
+                coalesce_keys = [subq.c[join_keys[0]] for subq in ctes]
+
+            agg = greatest_func(*[subq.c[agg_col] for subq in ctes]).label(agg_col)
+
+            sql = select(*coalesce_keys + [agg]).select_from(ctes[0])
+
+            for cte in ctes[1:]:
+                sql = sql.outerjoin(
+                    cte,
+                    onclause=and_(
+                        *[
+                            ctes[0].c[key] == cte.c[key]
+                            for key in join_keys
+                        ]
+                    ),
+                    full=True,
                 )
-            return q
 
-        sql_requests = []
+            return sql.cte(name=f"all__{agg_col}")
 
-        for inp in inp_tbls:
-            fields = get_inner_sql_fields(inp)
-            # meta_columns = [inp.get_column(key) for key in join_keys - inp.primary_keys]
+        inp_ctes = [_make_agg_cte(tbl, func.max, "update_ts") for tbl in inputs]
+        out_ctes = [_make_agg_cte(tbl, func.min, "process_ts") for tbl in outputs]
 
-            sql = select(fields).select_from(
-                left_join(inp, out_tbls)
+        inp = _make_agg_of_agg(inp_ctes, "update_ts")
+        out = _make_agg_of_agg(out_ctes, "process_ts")
+
+        sql = select(*[func.coalesce(inp.c[key], out.c[key]).label(key) for key in join_keys])\
+            .select_from(inp)\
+            .outerjoin(
+                out,
+                onclause=and_(
+                    *[
+                        inp.c[key] == out.c[key]
+                        for key in join_keys
+                    ]
+                )
             ).where(
                 or_(
-                    and_(
-                        or_(
-                            (
-                                out.sql_table.c.process_ts
-                                <
-                                inp.sql_table.c.update_ts
-                            ),
-                            out.sql_table.c.process_ts.is_(None),
-                            # *[col.is_not(None) for col in meta_columns]
-                        ),
-                        inp.sql_table.c.delete_ts.is_(None),
-                    )
-                    for out in out_tbls
+                    inp.c.update_ts > out.c.process_ts,
+                    inp.c.update_ts == None,  # noqa
+                    out.c.process_ts == None,  # noqa
                 )
             )
 
-            sql = sql_apply_runconfig_filter(sql, inp.sql_table, list(inp.primary_keys), run_config)
-
-            sql_requests.append(sql)
-
-        for out in out_tbls:
-            fields = get_inner_sql_fields(out)
-
-            sql = select(fields).select_from(
-                left_join(out, inp_tbls)
-            ).where(
-                or_(
-                    (
-                        out.sql_table.c.process_ts
-                        <
-                        inp.sql_table.c.delete_ts
-                    )
-                    for inp in inp_tbls
-                )
-            )
-
-            sql = sql_apply_runconfig_filter(sql, out.sql_table, list(out.primary_keys), run_config)
-
-            sql_requests.append(sql)
-
-        u1 = union(*sql_requests)
-
-        return (list(join_keys), u1)
+        return (join_keys, sql)
 
     def get_changed_idx_count(
         self,
@@ -363,8 +360,7 @@ class DataStore:
                 for k, v in extra_filters.items():
                     df[k] = v
 
-                # drop pseudo column
-                yield df.drop(columns='_1')
+                yield df
 
         return math.ceil(idx_count / chunk_size), alter_res_df()
 
