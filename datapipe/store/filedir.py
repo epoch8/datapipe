@@ -303,6 +303,25 @@ class TableStoreFiledir(TableStore):
             with fsspec.open(filepath, f'w{self.adapter.mode}') as f:
                 self.adapter.dump(data, f)
 
+    def _read_rows_fast(
+        self,
+        idx: IndexDF,
+    ) -> DataDF:
+        res = idx.copy()
+        res["filepath"] = None
+
+        for row_idx in idx.index:
+            attrnames_series = idx.loc[row_idx, self.attrnames]
+            assert isinstance(attrnames_series, pd.Series)
+
+            _, path = fsspec.core.split_protocol(
+                self._filenames_from_idxs_values(attrnames_series.tolist())[0]
+            )
+
+            res.loc[row_idx, "filepath"] = path
+
+        return res
+
     def read_rows(
         self,
         idx: IndexDF = None,
@@ -314,6 +333,9 @@ class TableStoreFiledir(TableStore):
             read_data = self.read_data
         if adapter is None:
             adapter = self.adapter
+
+        if (not read_data) and (len(self.filename_patterns) == 1) and (idx is not None) and self.add_filepath_column:
+            return self._read_rows_fast(idx)
 
         def _iterate_files():
             if idx is None:
