@@ -178,9 +178,6 @@ def test_cross_merge_scenaries(dbconn: DBConn):
     #   - измененному числу строк помножить на старое полное число строк справа
     #   плюс
     #   - измененное число строк слева помножить на измененное число строк справа
-    c = tbl_left_x_right.get_data()
-    c.to_pickle('c.pkl')
-
     run_pipeline(ds, catalog, get_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
     tbl_left_x_right.get_data().to_pickle('a.pkl')
     get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL).to_pickle('b.pkl')
