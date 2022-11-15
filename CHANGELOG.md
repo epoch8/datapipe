@@ -4,6 +4,8 @@
 * Add `idx` logging on errors
 * Add specialized implementation for `DataStoreFiledir` when file contents are
   not needed
+* Add trace span for getting ids to process
+* Add protocol in `TableStoreFiledir._read_rows_fast`
 
 # 0.11.8
 

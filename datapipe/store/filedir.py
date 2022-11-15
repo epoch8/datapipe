@@ -318,7 +318,7 @@ class TableStoreFiledir(TableStore):
                 self._filenames_from_idxs_values(attrnames_series.tolist())[0]
             )
 
-            res.loc[row_idx, "filepath"] = path
+            res.loc[row_idx, "filepath"] = f"{self.protocol_str}{path}"
 
         return res
 

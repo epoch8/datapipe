@@ -201,12 +201,13 @@ class BatchTransformStep(ComputeStep):
     def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
-        idx_count, idx_gen = ds.get_full_process_ids(
-            inputs=self.input_dts,
-            outputs=self.output_dts,
-            chunk_size=self.chunk_size,
-            run_config=run_config
-        )
+        with tracer.start_as_current_span("Get ids to process"):
+            idx_count, idx_gen = ds.get_full_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                chunk_size=self.chunk_size,
+                run_config=run_config
+            )
 
         gen = do_batch_transform(
             self.func,
