@@ -46,7 +46,7 @@ redis = ["redis"]
 [tool.poetry.dev-dependencies]
 pytest = "*"
 flake8 = "*"
-mypy = "*"
+mypy = "<=0.990"
 black = "*"
 pandas-stubs = "*"
 pytest-cases = "*"
