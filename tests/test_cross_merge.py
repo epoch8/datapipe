@@ -179,7 +179,6 @@ def test_cross_merge_scenaries(dbconn: DBConn):
     #   плюс
     #   - измененное число строк слева помножить на измененное число строк справа
     run_pipeline(ds, catalog, get_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
-    tbl_left_x_right.get_data().to_pickle('a.pkl')
     get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL).to_pickle('b.pkl')
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
     changed_idxs = ds.get_changed_idx_count([tbl_left_x_right], [tbl_left_x_right_final])
@@ -190,3 +189,22 @@ def test_cross_merge_scenaries(dbconn: DBConn):
     )
     run_pipeline(ds, catalog, pipeline_final)
     assert_datatable_equal(tbl_left_x_right_final, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
+
+
+    # Случай 5: удаляются какие-то строки и слева, и справа из случая 4
+    # -> change должно быть равным 
+    #   - старое полное числу строк слева помножить на измененное число строк справа
+    #   плюс
+    #   - измененному числу строк помножить на старое полное число строк справа
+    #   плюс
+    #   - измененное число строк слева помножить на измененное число строк справа
+    run_pipeline(ds, catalog, get_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
+    assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
+    changed_idxs = ds.get_changed_idx_count([tbl_left_x_right], [tbl_left_x_right_final])
+    assert changed_idxs == (
+        len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED) +
+        len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED) +
+        len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT_ADDED)
+    )
+    run_pipeline(ds, catalog, pipeline_final)
+    assert_datatable_equal(tbl_left_x_right_final, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
