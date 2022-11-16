@@ -6,6 +6,7 @@
   not needed
 * Add trace span for getting ids to process
 * Add protocol in `TableStoreFiledir._read_rows_fast`
+* `try/except` for `DatatableTransformStep`
 
 # 0.11.8
 

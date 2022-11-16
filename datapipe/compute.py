@@ -180,7 +180,7 @@ class ComputeStep(ABC):
     def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
         return ChangeList()
 
-
+# TODO move to `core_steps`
 class DatatableTransformStep(ComputeStep):
     def __init__(
         self,
@@ -223,13 +223,21 @@ class DatatableTransformStep(ComputeStep):
 
         run_config = RunConfig.add_labels(run_config, {'step_name': self.get_name()})
 
-        self.func(
-            ds=ds,
-            input_dts=self.input_dts,
-            output_dts=self.output_dts,
-            run_config=run_config,
-            **self.kwargs
-        )
+        with tracer.start_as_current_span(f"Run {self.func.__name__}"):
+            try:
+                self.func(
+                    ds=ds,
+                    input_dts=self.input_dts,
+                    output_dts=self.output_dts,
+                    run_config=run_config,
+                    **self.kwargs
+                )
+            except Exception as e:
+                logger.error(f"Datatable transform ({self.func.__name__}) run failed: {str(e)}")
+                ds.event_logger.log_exception(
+                    e,
+                    run_config=run_config
+                )
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
