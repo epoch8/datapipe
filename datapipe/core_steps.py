@@ -1,13 +1,13 @@
 import logging
 import time
 from typing import (
-    Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union, Callable)
+    Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union, Callable, cast)
 
 import tqdm
 from opentelemetry import trace
 
 from datapipe.compute import (Catalog, ComputeStep, DatatableTransformStep,
-                              PipelineStep)
+                              PipelineStep, DatatableTransformFunc)
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, DataDF, IndexDF
@@ -355,8 +355,8 @@ class BatchGenerate(PipelineStep):
 
         return [
             DatatableTransformStep(
-                name=self.func.__name__,  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
-                func=transform_func,
+                name=self.func.__name__,
+                func=cast(DatatableTransformFunc, transform_func),
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
                 check_for_changes=False,
@@ -422,7 +422,7 @@ class UpdateExternalTable(PipelineStep):
         return [
             DatatableTransformStep(
                 name=f'update_{self.output_table_name}',
-                func=transform_func,
+                func=cast(DatatableTransformFunc, transform_func),
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
             )
