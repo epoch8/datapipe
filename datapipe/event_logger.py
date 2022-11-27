@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from enum import Enum
 
 import logging
@@ -51,7 +51,7 @@ class EventLogger:
         updated_count,
         deleted_count,
         processed_count,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ):
         logger.debug(
             f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
@@ -88,7 +88,7 @@ class EventLogger:
         message,
         description,
         params,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         if run_config is not None:
             logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
@@ -118,7 +118,7 @@ class EventLogger:
     def log_exception(
         self,
         exc: Exception,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         self.log_error(
             type=type(exc).__name__,

@@ -36,16 +36,16 @@ class TableStore(ABC):
         self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
-    def read_rows(self, idx: IndexDF = None) -> DataDF:
+    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: Optional[RunConfig] = None) -> Iterator[DataDF]:
         # FIXME сделать честную чанкированную реализацию во всех сторах
         yield self.read_rows()
 
 
 class TableDataSingleFileStore(TableStore):
-    def __init__(self, filename: Union[Path, str] = None, primary_schema: DataSchema = None):
+    def __init__(self, filename: Union[Path, str, None] = None, primary_schema: Optional[DataSchema] = None):
         if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 

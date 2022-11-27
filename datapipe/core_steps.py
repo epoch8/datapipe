@@ -25,9 +25,9 @@ def do_batch_transform(
     input_dts: List[DataTable],
     output_dts: List[DataTable],
     idx_gen: Iterable[IndexDF],
-    idx_count: int = None,
-    kwargs: Dict[str, Any] = None,
-    run_config: RunConfig = None,
+    idx_count: Optional[int] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
+    run_config: Optional[RunConfig] = None,
 ) -> Iterator[ChangeList]:
     '''
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
@@ -114,9 +114,9 @@ def do_full_batch_transform(
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
-    kwargs: Optional[Dict] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     chunk_size: int = 1000,
-    run_config: RunConfig = None,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     with tracer.start_as_current_span("compute ids to process"):
         idx_count, idx_gen = ds.get_full_process_ids(
@@ -148,7 +148,7 @@ class BatchTransform(PipelineStep):
         inputs: List[str],
         outputs: List[str],
         chunk_size: int = 1000,
-        kwargs: Dict[str, Any] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ):
         self.func = func
         self.inputs = inputs
@@ -180,7 +180,7 @@ class BatchTransformStep(ComputeStep):
         output_dts: List[DataTable],
 
         func: BatchTransformFunc,
-        kwargs: Dict[str, Any] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
     ) -> None:
         ComputeStep.__init__(self, name)
@@ -198,7 +198,7 @@ class BatchTransformStep(ComputeStep):
     def get_output_dts(self) -> List[DataTable]:
         return self.output_dts
 
-    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
+    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
         with tracer.start_as_current_span("Get ids to process"):
@@ -223,7 +223,7 @@ class BatchTransformStep(ComputeStep):
         for changes in gen:
             pass
 
-    def run_changelist(self, ds: DataStore, change_list: ChangeList, run_config: RunConfig = None) -> ChangeList:
+    def run_changelist(self, ds: DataStore, change_list: ChangeList, run_config: Optional[RunConfig] = None) -> ChangeList:
         run_config = RunConfig.add_labels(run_config, {'step_name': self.name})
 
         idx_count, idx_gen = ds.get_change_list_process_ids(
@@ -261,8 +261,8 @@ def do_batch_generate(
 
     ds: DataStore,
     output_dts: List[DataTable],
-    kwargs: Dict[str, Any] = None,
-    run_config: RunConfig = None,
+    kwargs: Optional[Dict[str, Any]] = None,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     import inspect
 
@@ -365,7 +365,7 @@ class BatchGenerate(PipelineStep):
         ]
 
 
-def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig = None) -> None:
+def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
     now = time.time()
 
     for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):

@@ -56,9 +56,9 @@ class DataTable:
     def store_chunk(
         self,
         data_df: DataDF,
-        processed_idx: IndexDF = None,
-        now: float = None,
-        run_config: RunConfig = None,
+        processed_idx: Optional[IndexDF] = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> IndexDF:
         '''
         Записать новые данные в таблицу.
@@ -119,8 +119,8 @@ class DataTable:
     def delete_by_idx(
         self,
         idx: IndexDF,
-        now: float = None,
-        run_config: RunConfig = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         if len(idx) > 0:
             logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
@@ -139,8 +139,8 @@ class DataTable:
     def delete_stale_by_process_ts(
         self,
         process_ts: float,
-        now: float = None,
-        run_config: RunConfig = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
@@ -202,7 +202,7 @@ class DataStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[Iterable[str], select]:
         inp_keys = [set(inp.primary_keys) for inp in inputs]
         out_keys = [set(out.primary_keys) for out in outputs]
@@ -292,7 +292,7 @@ class DataStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> int:
         _, sql = self._build_changed_idx_sql(
             inputs=inputs,
@@ -314,7 +314,7 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         chunk_size: int = 1000,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         '''
         Метод для получения перечня индексов для обработки.
@@ -370,7 +370,7 @@ class DataStore:
         outputs: List[DataTable],
         change_list: ChangeList,
         chunk_size: int = 1000,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         join_keys = self.get_join_keys(inputs, outputs)
         changes = [pd.DataFrame(columns=join_keys)]

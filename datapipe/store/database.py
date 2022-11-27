@@ -41,7 +41,7 @@ def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
 
 
 class DBConn:
-    def __init__(self, connstr: str, schema: str = None):
+    def __init__(self, connstr: str, schema: Optional[str] = None):
         self._init(connstr, schema)
 
     def _init(self, connstr: str, schema: Optional[str]) -> None:
@@ -75,7 +75,12 @@ class DBConn:
         self._init(state['connstr'], state['schema'])
 
 
-def sql_apply_runconfig_filter(sql: select, table: Table, primary_keys: List[str], run_config: RunConfig = None) -> select:
+def sql_apply_runconfig_filter(
+    sql: select,
+    table: Table,
+    primary_keys: List[str],
+    run_config: Optional[RunConfig] = None
+) -> select:
     if run_config is not None:
         for k, v in run_config.filters.items():
             if k in primary_keys:
@@ -87,7 +92,7 @@ def sql_apply_runconfig_filter(sql: select, table: Table, primary_keys: List[str
 
 
 class MetaKey(SchemaItem):
-    def __init__(self, target_name: str = None) -> None:
+    def __init__(self, target_name: Optional[str] = None) -> None:
         self.target_name = target_name
 
     def _set_parent(self, parent: SchemaEventTarget, **kw: Any) -> None:
@@ -239,7 +244,7 @@ class TableStoreDB(TableStore):
                 con=self.dbconn.con
             )
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: Optional[RunConfig] = None) -> Iterator[DataDF]:
         sql = select(self.data_table.c)
 
         sql = sql_apply_runconfig_filter(sql, self.data_table, self.primary_keys, run_config)
