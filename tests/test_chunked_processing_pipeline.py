@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
+from sqlalchemy.exc import IntegrityError
 
 from datapipe.compute import (Catalog, Pipeline, Table, build_compute,
                               run_changelist, run_steps)
@@ -181,6 +182,30 @@ def test_run_changelist_simple(dbconn):
     run_changelist(ds, catalog, pipeline, changelist)
 
     assert_datatable_equal(catalog.get_datatable(ds, 'out'), TEST_DF.loc[changeIdx.index])
+
+
+def test_run_changelist_with_duplicate_input_keys(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        "inp": Table(
+            store=TableStoreDB(
+                dbconn,
+                'inp_data',
+                TEST_SCHEMA,
+                create_table=True,
+            )
+        ),
+    })
+
+    test_df_with_duplicates = pd.DataFrame({
+        "id": [1, 1],
+        "a": [1, 2],
+    })
+
+    try:
+        catalog.get_datatable(ds, 'inp').store_chunk(test_df_with_duplicates)
+    except Exception as e:
+        assert isinstance(e, IntegrityError)
 
 
 def test_run_changelist_by_chunk_size_simple(dbconn):
