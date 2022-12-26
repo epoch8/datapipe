@@ -1,10 +1,10 @@
 import os
 
+import pytest
 import numpy as np
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
-from sqlalchemy.exc import IntegrityError
 
 from datapipe.compute import (Catalog, Pipeline, Table, build_compute,
                               run_changelist, run_steps)
@@ -202,10 +202,14 @@ def test_run_changelist_with_duplicate_input_keys(dbconn):
         "a": [1, 2],
     })
 
-    try:
-        catalog.get_datatable(ds, 'inp').store_chunk(test_df_with_duplicates)
-    except Exception as e:
-        assert isinstance(e, IntegrityError)
+    dt = catalog.get_datatable(ds, 'inp')
+
+    dt.store_chunk(TEST_DF)
+
+    with pytest.raises(ValueError):
+        dt.store_chunk(test_df_with_duplicates)
+
+    assert_datatable_equal(dt, TEST_DF)
 
 
 def test_run_changelist_by_chunk_size_simple(dbconn):
