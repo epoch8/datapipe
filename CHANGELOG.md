@@ -7,6 +7,7 @@
 * Add trace span for getting ids to process
 * Add protocol in `TableStoreFiledir._read_rows_fast`
 * `try/except` for `DatatableTransformStep`
+* Add check for indexes uniqueness in `DataTable.store_chunk`
 
 # 0.11.8
 
