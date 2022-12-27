@@ -1,3 +1,9 @@
+# 0.11.10
+
+* Fix `RedisStore` and `TableDataSingleFileStore` `.read_rows` in case when
+  nonexistent rows are requested, align behavior with `TableStoreDB`
+* Add test for nonexistent rows read
+
 # 0.11.9
 
 * New method `DataTable.reset_metadata()`

@@ -73,7 +73,9 @@ class TableDataSingleFileStore(TableStore):
                     file_df = file_df.set_index(self.primary_keys)
                     idx = index_df.set_index(self.primary_keys)
 
-                    return file_df.loc[idx.index].reset_index()
+                    idx_to_read = file_df.index.intersection(idx.index)
+
+                    return file_df.loc[idx_to_read].reset_index()
                 else:
                     return pd.DataFrame(columns=self.primary_keys)
             else:

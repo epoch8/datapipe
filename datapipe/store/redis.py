@@ -20,7 +20,7 @@ def _deserialize(bytestring):
 
 
 def _to_itertuples(df: DataDF, colnames):
-    return tuple(df[colnames].itertuples(index=False, name=None))
+    return list(df[colnames].itertuples(index=False, name=None))
 
 
 class RedisStore(TableStore):
@@ -60,27 +60,18 @@ class RedisStore(TableStore):
         self.insert_rows(df)
 
     def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
-        if df_keys is not None:
-            if df_keys.empty:
-                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+        assert df_keys is not None 
+        
+        if df_keys.empty:
+            return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
-            keys = _to_itertuples(df_keys, self.prim_keys)
-            keys_json = [_serialize(key) for key in keys]
-            values = self.redis_connection.hmget(self.name, keys_json)
-            values = [_deserialize(val) for val in values if val]
-        else:
-            pairs = self.redis_connection.hgetall(self.name)
-            keys = [_deserialize(key) for key in pairs.keys()]
-            values = [_deserialize(val) for val in pairs.values()]
+        keys = _to_itertuples(df_keys, self.prim_keys)
+        keys_json = [_serialize(key) for key in keys]
+        values = self.redis_connection.hmget(self.name, keys_json)
+        data = [list(key) + _deserialize(val) for key, val in zip(keys, values) if val]
 
-        result_df = pd.concat([
-            pd.DataFrame.from_records(keys, columns=self.prim_keys),
-            pd.DataFrame.from_records(values, columns=self.value_cols)
-        ], axis=1)
-        if values:
-            return result_df
-        else:
-            return result_df.iloc[:0]
+        result_df = pd.DataFrame.from_records(data, columns=self.prim_keys + self.value_cols)
+        return result_df
 
     def delete_rows(self, df_keys: IndexDF) -> None:
         if df_keys.empty:
