@@ -202,7 +202,7 @@ FILEDIR_DATA_PARAMS = [
 
 
 class CasesTableStore:
-    @case(tags=['supports_delete', 'supports_all_read_rows'])
+    @case(tags=['supports_delete'])
     @parametrize('df,schema', DATA_PARAMS)
     def case_redis(self, redis_conn, df, schema):
         return (
