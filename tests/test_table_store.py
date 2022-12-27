@@ -302,7 +302,7 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
 
 @parametrize_with_cases('store,test_df', cases=CasesTableStore)
 def test_read_non_existent_rows(store: TableStore, test_df: pd.DataFrame) -> None:
-    test_df_to_store = test_df.iloc[-range(1, 5)]
+    test_df_to_store = test_df.drop(range(1, 5))
 
     store.insert_rows(test_df_to_store)
 
