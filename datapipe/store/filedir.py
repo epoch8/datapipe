@@ -242,8 +242,10 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
+            attrnames = cast(List[str], attrnames_series.tolist())
+
             _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(attrnames_series.tolist())[0]
+                self._filenames_from_idxs_values(attrnames)[0]
             )
             self.filesystem.rm(path)
 
@@ -314,8 +316,10 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
+            attrnames = cast(List[str], attrnames_series.tolist())
+
             _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(attrnames_series.tolist())[0]
+                self._filenames_from_idxs_values(attrnames)[0]
             )
 
             res.loc[row_idx, "filepath"] = f"{self.protocol_str}{path}"

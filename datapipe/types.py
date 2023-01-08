@@ -72,7 +72,7 @@ def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
 
 
 def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))
+    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))  # type: ignore
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index
