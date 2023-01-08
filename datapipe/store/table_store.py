@@ -91,7 +91,7 @@ class TableDataSingleFileStore(TableStore):
 
         file_df = self.load_file()
 
-        if set(self.primary_keys) - set(df.columns):
+        if set(self.primary_keys) - set(df.columns):  # type: ignore
             raise ValueError("DataDf does not contains all primary keys")
 
         if file_df is None:

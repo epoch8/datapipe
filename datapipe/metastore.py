@@ -205,7 +205,7 @@ class MetaTable:
             # FIXME поправить на сравнение кортежей
             for _, row in idx.iterrows():
                 and_params = [
-                    self.sql_table.c[key] == self._get_sql_param(row[key])
+                    self.sql_table.c[key] == self._get_sql_param(row[key])  # type: ignore
                     for key in idx_cols
                     if key in self.primary_keys
                 ]
