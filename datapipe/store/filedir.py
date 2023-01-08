@@ -124,7 +124,7 @@ class TableStoreFiledir(TableStore):
         filename_pattern: Union[str, Path],
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
-        primary_schema: DataSchema = None,
+        primary_schema: Optional[DataSchema] = None,
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False
@@ -324,7 +324,7 @@ class TableStoreFiledir(TableStore):
 
     def read_rows(
         self,
-        idx: IndexDF = None,
+        idx: Optional[IndexDF] = None,
         read_data: Optional[bool] = None,
         adapter: Optional[ItemStoreFileAdapter] = None
     ) -> DataDF:
@@ -396,7 +396,7 @@ class TableStoreFiledir(TableStore):
 
         return df
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig = None) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: Optional[RunConfig] = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob)

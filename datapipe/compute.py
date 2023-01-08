@@ -61,7 +61,7 @@ class PipelineStep(ABC):
 
 
 class DatatableTransformFunc(Protocol):
-    # __name__: str
+    __name__: str
 
     def __call__(
         self,
@@ -83,7 +83,7 @@ class DatatableTransform(PipelineStep):
         inputs: List[str],
         outputs: List[str],
         check_for_changes: bool = True,
-        kwargs: Optional[Dict] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.func = func
         self.inputs = inputs
@@ -174,11 +174,12 @@ class ComputeStep(ABC):
                     f'{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}'
                 )
 
-    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
+    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
         pass
 
-    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: RunConfig = None) -> ChangeList:
+    def run_changelist(self, ds: DataStore, changelist: ChangeList, run_config: Optional[RunConfig] = None) -> ChangeList:
         return ChangeList()
+
 
 # TODO move to `core_steps`
 class DatatableTransformStep(ComputeStep):
@@ -189,7 +190,7 @@ class DatatableTransformStep(ComputeStep):
         output_dts: List[DataTable],
 
         func: DatatableTransformFunc,
-        kwargs: Dict[str, Any] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
         check_for_changes: bool = True,
     ) -> None:
         ComputeStep.__init__(self, name)
@@ -207,7 +208,7 @@ class DatatableTransformStep(ComputeStep):
     def get_output_dts(self) -> List[DataTable]:
         return self.output_dts
 
-    def run_full(self, ds: DataStore, run_config: RunConfig = None) -> None:
+    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
         if len(self.input_dts) > 0 and self.check_for_changes:
             with tracer.start_as_current_span("check for changes"):
                 changed_idx_count = ds.get_changed_idx_count(
@@ -262,7 +263,7 @@ def print_compute(steps: List[ComputeStep]) -> None:
     )
 
 
-def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: RunConfig = None) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None) -> None:
     with tracer.start_as_current_span("run_steps"):
         for step in steps:
             with tracer.start_as_current_span(
@@ -280,7 +281,7 @@ def run_pipeline(
     ds: DataStore,
     catalog: Catalog,
     pipeline: Pipeline,
-    run_config: RunConfig = None,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)
@@ -291,7 +292,7 @@ def run_changelist(
     catalog: Catalog,
     pipeline: Pipeline,
     changelist: ChangeList,
-    run_config: RunConfig = None,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
 
@@ -302,7 +303,7 @@ def run_steps_changelist(
     ds: DataStore,
     steps: List[ComputeStep],
     changelist: ChangeList,
-    run_config: RunConfig = None,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     current_changes = changelist
     next_changes = ChangeList()

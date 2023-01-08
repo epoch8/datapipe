@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, cast
+from typing import Iterator, List, Tuple, cast, Optional
 
 import pandas as pd
 from cityhash import CityHash32
@@ -94,7 +94,7 @@ class MetaTable:
 
             yield cast(TAnyDF, chunk_idx)
 
-    def _build_metadata_query(self, sql, idx: IndexDF = None, include_deleted: bool = False):
+    def _build_metadata_query(self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False):
         if idx is not None:
             if len(self.primary_keys) == 0:
                 # Когда ключей нет - не делаем ничего
@@ -124,7 +124,7 @@ class MetaTable:
 
         return sql
 
-    def get_metadata(self, idx: IndexDF = None, include_deleted: bool = False) -> MetadataDF:
+    def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
         '''
         Получить датафрейм с метаданными.
 
@@ -148,7 +148,7 @@ class MetaTable:
         else:
             return cast(MetadataDF, pd.DataFrame(columns=[column.name for column in self.sql_schema]))
 
-    def get_metadata_size(self, idx: IndexDF = None, include_deleted: bool = False) -> int:
+    def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
         '''
         Получить количество строк метаданных.
 
@@ -191,7 +191,7 @@ class MetaTable:
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def get_existing_idx(self, idx: IndexDF = None) -> IndexDF:
+    def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
         sql = select(self.sql_schema)
 
         if idx is not None:
@@ -234,7 +234,7 @@ class MetaTable:
     def get_changes_for_store_chunk(
         self,
         data_df: DataDF,
-        now: float = None
+        now: Optional[float] = None
     ) -> Tuple[DataDF, DataDF, MetadataDF, MetadataDF]:
         '''
         Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
@@ -399,7 +399,7 @@ class MetaTable:
     def mark_rows_deleted(
         self,
         deleted_idx: IndexDF,
-        now: float = None,
+        now: Optional[float] = None,
     ) -> None:
         if len(deleted_idx) > 0:
             if now is None:
@@ -414,7 +414,7 @@ class MetaTable:
 
             self.update_meta_for_store_chunk(meta_df)
 
-    def get_stale_idx(self, process_ts: float, run_config: RunConfig = None) -> Iterator[IndexDF]:
+    def get_stale_idx(self, process_ts: float, run_config: Optional[RunConfig] = None) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(
