@@ -3,7 +3,8 @@ import hashlib
 import uuid
 import re
 
-from typing import Optional, Tuple
+from typing import Optional, Any
+from collections.abc import Iterable
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.exceptions import UnexpectedResponse
@@ -165,11 +166,11 @@ class QdrantShardedStore(TableStore):
 
     def __init_collection(self, name):
         try:
-            self.client.get_collection(self.name)
+            self.client.get_collection(name)
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 self.client.http.collections_api.create_collection(
-                    collection_name=self.name,
+                    collection_name=name,
                     create_collection=self.collection_params
                 )
 
@@ -187,10 +188,10 @@ class QdrantShardedStore(TableStore):
             axis=1
         ).to_list()
 
-        return map(
+        return list(map(
             lambda x: str(uuid.UUID(bytes=hashlib.md5(str(x).encode('utf-8')).digest())),
             ids_values
-        )
+        ))
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.schema if column.primary_key]
@@ -198,22 +199,24 @@ class QdrantShardedStore(TableStore):
     def get_meta_schema(self) -> MetaSchema:
         return []
 
-    def __get_collection_name(self, name_values: Tuple) -> str:
+    def __get_collection_name(self, name_values: Any) -> str:
+        if not isinstance(name_values, Iterable):
+            name_values = (name_values,)
+
         name_params = dict(zip(self.name_params, name_values))
         return self.name_pattern.format(**name_params)
 
     def insert_rows(self, df: DataDF) -> None:
-        for name_val, gdf in df.groupby(by=self.name_params):
-            name = self.__get_collection_name(name_val)
+        for name_values, gdf in df.groupby(by=self.name_params):
+            name = self.__get_collection_name(name_values)
 
             self.__check_init(name)
-
             self.client.upsert(
                 name,
                 rest.Batch(
                     ids=self.__get_ids(gdf),
-                    vectors=df[self.embedding_field].apply(list).to_list(),
-                    payloads=df[self.paylods_filelds].to_dict(orient='records')
+                    vectors=gdf[self.embedding_field].apply(list).to_list(),
+                    payloads=gdf[self.paylods_filelds].to_dict(orient='records')
                 ),
                 wait=True,
             )
