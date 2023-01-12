@@ -9,6 +9,7 @@
     "python.linting.flake8Args": [
         "--max-line-length=127"
     ],
+    "python.linting.mypyEnabled": true,
     "python.linting.mypyArgs": [
         "--follow-imports=silent",
         "--ignore-missing-imports",
