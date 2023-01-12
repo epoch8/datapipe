@@ -5,7 +5,6 @@ from typing import (
 
 import tqdm
 from opentelemetry import trace
-from traceback_with_variables import format_exc
 
 from datapipe.compute import (Catalog, ComputeStep, DatatableTransformStep,
                               PipelineStep)
@@ -48,7 +47,7 @@ def do_batch_transform(
                 try:
                     input_dfs = [inp.get_data(idx) for inp in input_dts]
                 except Exception as e:
-                    logger.error(f"Get input data failed:\n{format_exc(e)}")
+                    logger.error(f"Get input data failed: {str(e)}")
                     ds.event_logger.log_exception(
                         e,
                         run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
@@ -63,7 +62,7 @@ def do_batch_transform(
                     try:
                         chunks_df = func(*input_dfs, **kwargs or {})
                     except Exception as e:
-                        logger.error(f"Transform failed ({func.__name__}):\n{format_exc(e)}")
+                        logger.error(f"Transform failed ({func.__name__}): {str(e)}")
                         ds.event_logger.log_exception(
                             e,
                             run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
@@ -90,7 +89,7 @@ def do_batch_transform(
 
                             changes.append(res_dt.name, change_idx)
                     except Exception as e:
-                        logger.error(f"Store output batch failed:\n{format_exc(e)}")
+                        logger.error(f"Store output batch failed: {str(e)}")
                         ds.event_logger.log_exception(
                             e,
                             run_config=RunConfig.add_labels(run_config, {'idx': idx.to_dict(orient="records")})
@@ -284,7 +283,7 @@ def do_batch_generate(
             iterable = func(**kwargs or {})
         except Exception as e:
             # mypy bug: https://github.com/python/mypy/issues/10976
-            logger.exception(f"Generating failed ({func.__name__}):\n{format_exc(e)}")  # type: ignore
+            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")  # type: ignore
             ds.event_logger.log_exception(e, run_config=run_config)
 
             raise e
@@ -310,7 +309,7 @@ def do_batch_generate(
 
                 break
             except Exception as e:
-                logger.exception(f"Generating failed ({func}):\n{format_exc(e)}")
+                logger.exception(f"Generating failed ({func}): {str(e)}")
                 ds.event_logger.log_exception(e, run_config=run_config)
 
                 # raise e
