@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from opentelemetry import trace
+from traceback_with_variables import format_exc
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -233,7 +234,7 @@ class DatatableTransformStep(ComputeStep):
                     **self.kwargs
                 )
             except Exception as e:
-                logger.error(f"Datatable transform ({self.func.__name__}) run failed: {str(e)}")
+                logger.error(f"Datatable transform ({self.func.__name__}) run failed:\n{format_exc(e)}")
                 ds.event_logger.log_exception(
                     e,
                     run_config=run_config
