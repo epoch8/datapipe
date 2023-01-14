@@ -4,6 +4,7 @@
 * Add exception traceback to debug log output
 * Install sqlite from `pysqlite3-binary` package; Add `sqlite` extra; Update
   examples; Add `docs/sqlite.md` document 
+* Update type annotations for `mypy >= 0.991`
 
 # 0.11.10
 
