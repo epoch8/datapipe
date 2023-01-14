@@ -1,3 +1,8 @@
+# 0.11.11
+
+* Add formatting through `traceback_with_variables` in `event_logger`
+* Add exception traceback to debug log output
+
 # 0.11.10
 
 * Fix `RedisStore` and `TableDataSingleFileStore` `.read_rows` in case when
