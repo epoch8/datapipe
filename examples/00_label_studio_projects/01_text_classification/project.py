@@ -7,7 +7,14 @@ import pandas as pd
 
 from datapipe.compute import build_compute, run_steps
 from datapipe.datatable import DataStore
-from datapipe.compute import Catalog, Table, ExternalTable, Pipeline, BatchTransform, LabelStudioModeration
+from datapipe.compute import (
+    Catalog,
+    Table,
+    ExternalTable,
+    Pipeline,
+    BatchTransform,
+    LabelStudioModeration,
+)
 from datapipe.store.pandas import TableStoreJsonLine
 
 
@@ -40,9 +47,9 @@ LS_LABEL_CONFIG_XML = """
         </Choices>
     </View>
 """
-HOST = 'localhost'
-LS_PORT = '8080'
-DATA_DIR = Path('data/').absolute()
+HOST = "localhost"
+LS_PORT = "8080"
+DATA_DIR = Path("data/").absolute()
 
 
 def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
@@ -62,48 +69,59 @@ def parse_annotation(input_texts_df: pd.DataFrame, annotation_df: pd.DataFrame):
     return input_texts_df
 
 
-(DATA_DIR / 'xx_datatables').mkdir(exist_ok=True, parents=True)
-ds = DataStore(DBConn('sqlite:///' + str(DATA_DIR / 'xx_datatables' / 'metadata.sqlite')))
-catalogue = Catalog({
-    "00_input_texts": ExternalTable(
-        store=TableStoreJsonLine(DATA_DIR / '00_data.json'),
-    ),
-    "01_annotation_raw": Table(
-        store=TableStoreJsonLine(DATA_DIR / "01_annotation_raw.json"),
-    ),
-    "02_annotation_parsed": Table(
-        store=TableStoreJsonLine(DATA_DIR / "02_annotation_parsed.json")
-    ),
-})
-pipeline = Pipeline([
-    LabelStudioModeration(
-        ls_url=f'http://{HOST}:{LS_PORT}/',
-        inputs=["00_input_texts"],
-        outputs=["01_annotation_raw"],
-        auth=('moderation@epoch8.co', 'qwerty123'),
-        project_title='Text classification project',
-        project_description='Text classification project!',
-        project_label_config=LS_LABEL_CONFIG_XML,
-        data=['text', 'prediction', 'category'],
-        chunk_size=1000
-    ),
-    BatchTransform(
-        parse_annotation,
-        inputs=["00_input_texts", "01_annotation_raw"],
-        outputs=["02_annotation_parsed"],
-    ),
-])
+(DATA_DIR / "xx_datatables").mkdir(exist_ok=True, parents=True)
+ds = DataStore(
+    DBConn("sqlite+pysqlite3:///" + str(DATA_DIR / "xx_datatables" / "metadata.sqlite"))
+)
+catalogue = Catalog(
+    {
+        "00_input_texts": ExternalTable(
+            store=TableStoreJsonLine(DATA_DIR / "00_data.json"),
+        ),
+        "01_annotation_raw": Table(
+            store=TableStoreJsonLine(DATA_DIR / "01_annotation_raw.json"),
+        ),
+        "02_annotation_parsed": Table(
+            store=TableStoreJsonLine(DATA_DIR / "02_annotation_parsed.json")
+        ),
+    }
+)
+pipeline = Pipeline(
+    [
+        LabelStudioModeration(
+            ls_url=f"http://{HOST}:{LS_PORT}/",
+            inputs=["00_input_texts"],
+            outputs=["01_annotation_raw"],
+            auth=("moderation@epoch8.co", "qwerty123"),
+            project_title="Text classification project",
+            project_description="Text classification project!",
+            project_label_config=LS_LABEL_CONFIG_XML,
+            data=["text", "prediction", "category"],
+            chunk_size=1000,
+        ),
+        BatchTransform(
+            parse_annotation,
+            inputs=["00_input_texts", "01_annotation_raw"],
+            outputs=["02_annotation_parsed"],
+        ),
+    ]
+)
 steps = build_compute(ds, catalogue, pipeline)
 
 
 if __name__ == "__main__":
-    label_studio_service = Popen([
-        'label-studio',
-        '--database', str(DATA_DIR / 'xx_datatables' / 'ls.db'),
-        '--internal-host', '0.0.0.0',
-        '--port', LS_PORT,
-        '--no-browser'
-    ])
+    label_studio_service = Popen(
+        [
+            "label-studio",
+            "--database",
+            str(DATA_DIR / "xx_datatables" / "ls.db"),
+            "--internal-host",
+            "0.0.0.0",
+            "--port",
+            LS_PORT,
+            "--no-browser",
+        ]
+    )
     try:
         while True:
             run_steps(ds, steps)

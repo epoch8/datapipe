@@ -13,70 +13,56 @@ from datapipe.run_config import RunConfig
 
 
 PRODUCTS_SCHEMA = [
-    Column('product_id', Integer, primary_key=True),
-    Column('pipeline_id', Integer, primary_key=True),
-    Column('b', Integer),
+    Column("product_id", Integer, primary_key=True),
+    Column("pipeline_id", Integer, primary_key=True),
+    Column("b", Integer),
 ]
 
 ITEMS_SCHEMA = [
-    Column('item_id', Integer, primary_key=True),
-    Column('pipeline_id', Integer, primary_key=True),
-    Column('product_id', Integer, MetaKey()),
-    Column('a', Integer),
+    Column("item_id", Integer, primary_key=True),
+    Column("pipeline_id", Integer, primary_key=True),
+    Column("product_id", Integer, MetaKey()),
+    Column("a", Integer),
 ]
 
-dbconn = DBConn('sqlite:///db.sqlite')
-#dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
+dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
+# dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
 ds = DataStore(dbconn)
 
 run_config = RunConfig(
-    filters={},
-    labels={
-        "pipeline_name": 'test_name',
-        "pipeline_id": 1
-    }
+    filters={}, labels={"pipeline_name": "test_name", "pipeline_id": 1}
 )
 
-catalog = Catalog({
-    'test_products': Table(
-        store=TableStoreDB(
-            dbconn,
-            'test_products_data',
-            PRODUCTS_SCHEMA
-        )
-    ),
-    'test_attr_products': Table(
-        store=TableStoreDB(
-            dbconn,
-            'test_attr_products_data',
-            ITEMS_SCHEMA
-        )
-    ),
-    'test_new_attr_products': Table(
-        store=TableStoreDB(
-            dbconn,
-            'test_new_attr_products_data',
-            ITEMS_SCHEMA
-        )
-    ),
-})
+catalog = Catalog(
+    {
+        "test_products": Table(
+            store=TableStoreDB(dbconn, "test_products_data", PRODUCTS_SCHEMA)
+        ),
+        "test_attr_products": Table(
+            store=TableStoreDB(dbconn, "test_attr_products_data", ITEMS_SCHEMA)
+        ),
+        "test_new_attr_products": Table(
+            store=TableStoreDB(dbconn, "test_new_attr_products_data", ITEMS_SCHEMA)
+        ),
+    }
+)
 
 
 def generate_products():
     products_df = pd.DataFrame(
         {
-            'product_id': list(range(2)),
-            'pipeline_id': list(range(2)),
-            'b': range(10, 12),
+            "product_id": list(range(2)),
+            "pipeline_id": list(range(2)),
+            "b": range(10, 12),
         }
     )
 
     items_df = pd.DataFrame(
         {
-            'item_id': list(range(5)) * 2,
-            'pipeline_id': list(range(2)) * 5,
-            'product_id': list(range(2)) * 5,
-            'a': range(10),
+            "item_id": list(range(5)) * 2,
+            "pipeline_id": list(range(2)) * 5,
+            "product_id": list(range(2)) * 5,
+            "a": range(10),
         }
     )
 
@@ -84,22 +70,23 @@ def generate_products():
 
 
 def transform_attrs(products: pd.DataFrame, items: pd.DataFrame):
-    merged_df = pd.merge(items, products, on=['product_id', 'pipeline_id'])
-    merged_df['a'] = merged_df.apply(lambda x: x['a'] + x['b'], axis=1)
+    merged_df = pd.merge(items, products, on=["product_id", "pipeline_id"])
+    merged_df["a"] = merged_df.apply(lambda x: x["a"] + x["b"], axis=1)
 
-    return merged_df[['item_id', 'pipeline_id', 'product_id', 'a']]
+    return merged_df[["item_id", "pipeline_id", "product_id", "a"]]
 
 
-pipeline = Pipeline([
-    BatchGenerate(
-        generate_products,
-        outputs=["test_products", "test_attr_products"]
-    ),
-    BatchTransform(
-        transform_attrs,
-        inputs=["test_products", "test_attr_products"],
-        outputs=["test_new_attr_products"]
-    ),
-])
+pipeline = Pipeline(
+    [
+        BatchGenerate(
+            generate_products, outputs=["test_products", "test_attr_products"]
+        ),
+        BatchTransform(
+            transform_attrs,
+            inputs=["test_products", "test_attr_products"],
+            outputs=["test_new_attr_products"],
+        ),
+    ]
+)
 
 main(ds, catalog, pipeline, run_config)
