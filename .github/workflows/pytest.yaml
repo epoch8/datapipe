@@ -1,6 +1,10 @@
 name: Run tests
 
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 jobs:
   lint:
@@ -54,12 +58,12 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.8"
+          # - "3.8"
           - "3.9"
           - "3.10"
         test-db-env:
           - "postgres"
-          # - "sqlite"
+          - "sqlite"
 
     services:
       # Label used to access the service container
@@ -109,7 +113,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E milvus -E gcsfs -E s3fs -E redis
+        poetry install -E excel -E milvus -E gcsfs -E s3fs -E redis -E sqlite
 
     - name: Test with pytest
       run: |

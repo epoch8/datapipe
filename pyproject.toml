@@ -36,15 +36,19 @@ xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
 redis = {version="^4.3.4", optional=true}
 
+pysqlite3-binary = {version="^0.5.0", optional=true}
+sqlalchemy-pysqlite3 = {git="https://github.com/epoch8/sqlalchemy-pysqlite3.git", optional=true}
+
 [tool.poetry.extras]
 
+sqlite = ["pysqlite3-binary", "sqlalchemy-pysqlite3"]
 excel = ["xlrd", "openpyxl"]
 milvus = ["pymilvus"]
 gcsfs = ["gcsfs"]
 s3fs = ["s3fs"]
 redis = ["redis"]
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "*"
 flake8 = "*"
 mypy = "<=0.990"
@@ -53,6 +57,7 @@ pandas-stubs = "*"
 pytest-cases = "*"
 types-setuptools = "*"
 types-redis = "*"
+datapipe-app = "^0.2.1.post1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
