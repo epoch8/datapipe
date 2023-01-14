@@ -195,7 +195,7 @@ class MetaTable:
         sql = select(self.sql_schema)
 
         if idx is not None:
-            idx_cols = list(set(idx.columns) & set(self.primary_keys))
+            idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
 
             if not idx_cols:
                 raise ValueError("Index does not contain any primary key ")
