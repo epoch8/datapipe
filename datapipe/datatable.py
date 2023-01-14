@@ -66,6 +66,11 @@ class DataTable:
         При указанном `processed_idx` удалить те строки, которые находятся
         внутри `processed_idx`, но отсутствуют в `data_df`.
         '''
+
+        # Check that all index values in `data_df` is unique
+        if data_df.duplicated(self.primary_keys).any():
+            raise ValueError("`data_df` index values should be unique")
+
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):

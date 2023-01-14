@@ -9,6 +9,7 @@
     "python.linting.flake8Args": [
         "--max-line-length=127"
     ],
+    "python.linting.mypyEnabled": true,
     "python.linting.mypyArgs": [
         "--follow-imports=silent",
         "--ignore-missing-imports",
@@ -21,8 +22,9 @@
         "${workspaceFolder}"
     ],
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+      },
     "githubIssues.queries": [
         {
             "label": "My Issues",

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Optional
 from enum import Enum
 
 import logging
-import traceback
+from traceback_with_variables import format_exc
 
 from sqlalchemy.sql import func
 from sqlalchemy.sql.schema import Column, Table
@@ -91,13 +91,13 @@ class EventLogger:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         if run_config is not None:
-            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
+            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}\n{description}')
             meta = {
                 "labels": run_config.labels,
                 "filters": run_config.filters,
             }
         else:
-            logger.debug(f'Error: {type} {message}')
+            logger.debug(f'Error: {type} {message}\n{description}')
             meta = {}
 
         ins = self.events_table.insert().values(
@@ -123,7 +123,7 @@ class EventLogger:
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
-            description=traceback.format_exc(),
+            description=format_exc(exc),
             params=exc.args,
             run_config=run_config,
         )

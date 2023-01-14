@@ -9,7 +9,7 @@ def assert_idx_equal(a, b):
     a = sorted(list(a))
     b = sorted(list(b))
 
-    assert(a == b)
+    assert a == b
 
 
 def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=['id']) -> bool:

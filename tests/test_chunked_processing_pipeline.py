@@ -1,5 +1,6 @@
 import os
 
+import pytest
 import numpy as np
 import pandas as pd
 from sqlalchemy import Column
@@ -181,6 +182,34 @@ def test_run_changelist_simple(dbconn):
     run_changelist(ds, catalog, pipeline, changelist)
 
     assert_datatable_equal(catalog.get_datatable(ds, 'out'), TEST_DF.loc[changeIdx.index])
+
+
+def test_run_changelist_with_duplicate_input_keys(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        "inp": Table(
+            store=TableStoreDB(
+                dbconn,
+                'inp_data',
+                TEST_SCHEMA,
+                create_table=True,
+            )
+        ),
+    })
+
+    test_df_with_duplicates = pd.DataFrame({
+        "id": [1, 1],
+        "a": [1, 2],
+    })
+
+    dt = catalog.get_datatable(ds, 'inp')
+
+    dt.store_chunk(TEST_DF)
+
+    with pytest.raises(ValueError):
+        dt.store_chunk(test_df_with_duplicates)
+
+    assert_datatable_equal(dt, TEST_DF)
 
 
 def test_run_changelist_by_chunk_size_simple(dbconn):
