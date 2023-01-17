@@ -32,13 +32,13 @@ jobs:
       uses: actions/cache@v3
       with:
         path: /home/runner/.cache/pypoetry/virtualenvs
-        key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+        key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-${{ matrix.python-version }}
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E gcsfs -E s3fs
+        poetry install --all-extras
 
     - name: Lint with flake8
       run: |
@@ -113,7 +113,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        poetry install -E excel -E milvus -E gcsfs -E s3fs -E redis -E sqlite
+        poetry install --all-extras
 
     - name: Test with pytest
       run: |

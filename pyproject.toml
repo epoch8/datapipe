@@ -41,7 +41,7 @@ sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true}
 
 [tool.poetry.extras]
 
-sqlite = ["pysqlite3-binary", "sqlalchemy-pysqlite3"]
+sqlite = ["pysqlite3-binary", "sqlalchemy-pysqlite3-binary"]
 excel = ["xlrd", "openpyxl"]
 milvus = ["pymilvus"]
 gcsfs = ["gcsfs"]
