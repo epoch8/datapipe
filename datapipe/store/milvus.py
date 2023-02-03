@@ -19,7 +19,7 @@ class MilvusStore(TableStore):
         connection_details: Dict,
         allow_reset_metadata: bool = True
     ):
-        super().__init__()
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         self.name = name
         self.schema = schema
         self.primary_db_schema = primary_db_schema

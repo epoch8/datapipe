@@ -166,7 +166,7 @@ class TableStoreFiledir(TableStore):
 
         allow_reset_metadata -- если True, разрешить сброс метаданных
         """
-
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         self.filesystem = fsspec.filesystem(self.protocol)
 
@@ -228,8 +228,6 @@ class TableStoreFiledir(TableStore):
             column.name: type_to_cls[type(column.type)]
             for column in self.primary_schema
         }
-
-        self.allow_reset_metadata = allow_reset_metadata
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema

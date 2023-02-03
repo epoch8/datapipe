@@ -116,6 +116,7 @@ class TableStoreDB(TableStore):
         create_table: bool = False,
         allow_reset_metadata: bool = True,
     ) -> None:
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
         else:
@@ -129,8 +130,6 @@ class TableStoreDB(TableStore):
             *[copy.copy(i) for i in self.data_sql_schema],
             extend_existing=True
         )
-
-        self.allow_reset_metadata = allow_reset_metadata
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)

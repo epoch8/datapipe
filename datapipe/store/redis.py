@@ -31,7 +31,7 @@ class RedisStore(TableStore):
         data_sql_schema: List[Column],
         allow_reset_metadata: bool = True,
     ) -> None:
-
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         if isinstance(connection, str):
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
@@ -40,7 +40,6 @@ class RedisStore(TableStore):
         self.data_sql_schema = data_sql_schema
         self.prim_keys = [column.name for column in self.data_sql_schema if column.primary_key]
         self.value_cols = [column.name for column in self.data_sql_schema if not column.primary_key]
-        self.allow_reset_metadata = allow_reset_metadata
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
