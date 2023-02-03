@@ -127,7 +127,8 @@ class TableStoreFiledir(TableStore):
         primary_schema: Optional[DataSchema] = None,
         read_data: bool = True,
         readonly: Optional[bool] = None,
-        enable_rm: bool = False
+        enable_rm: bool = False,
+        allow_reset_metadata: bool = True
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -162,6 +163,8 @@ class TableStoreFiledir(TableStore):
         если нету * и ** путей в шаблоне и нет множественных расширений файлов вида (jpg|png|mp4)
 
         enable_rm -- если True, включить удаление файлов
+
+        allow_reset_metadata -- если True, разрешить сброс метаданных
         """
 
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
@@ -225,6 +228,8 @@ class TableStoreFiledir(TableStore):
             column.name: type_to_cls[type(column.type)]
             for column in self.primary_schema
         }
+
+        self.allow_reset_metadata = allow_reset_metadata
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema

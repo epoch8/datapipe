@@ -28,7 +28,8 @@ class RedisStore(TableStore):
         self,
         connection: Union[Redis, str],
         name: str,
-        data_sql_schema: List[Column]
+        data_sql_schema: List[Column],
+        allow_reset_metadata: bool = True,
     ) -> None:
 
         if isinstance(connection, str):
@@ -39,6 +40,7 @@ class RedisStore(TableStore):
         self.data_sql_schema = data_sql_schema
         self.prim_keys = [column.name for column in self.data_sql_schema if column.primary_key]
         self.value_cols = [column.name for column in self.data_sql_schema if not column.primary_key]
+        self.allow_reset_metadata = allow_reset_metadata
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:

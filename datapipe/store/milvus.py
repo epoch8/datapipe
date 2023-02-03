@@ -16,7 +16,8 @@ class MilvusStore(TableStore):
         index_params: Dict,
         pk_field: str,
         embedding_field: str,
-        connection_details: Dict
+        connection_details: Dict,
+        allow_reset_metadata: bool = True
     ):
         super().__init__()
         self.name = name
@@ -35,6 +36,8 @@ class MilvusStore(TableStore):
 
         if not utility.has_collection(name):
             self.collection.create_index(embedding_field, index_params)
+
+        self.allow_reset_metadata = allow_reset_metadata
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_db_schema

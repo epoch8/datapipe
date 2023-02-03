@@ -50,12 +50,15 @@ class TableDataSingleFileStore(TableStore):
         self,
         filename: Union[Path, str, None] = None,
         primary_schema: Optional[DataSchema] = None,
+        allow_reset_metadata: bool = True,
     ):
         if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 
         self.primary_schema = primary_schema
         self.filename = filename
+
+        self.allow_reset_metadata = allow_reset_metadata
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
