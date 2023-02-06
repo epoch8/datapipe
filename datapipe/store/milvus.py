@@ -1,7 +1,14 @@
 import pandas as pd
 
 from typing import Dict, List, Optional
-from pymilvus import connections, utility, CollectionSchema, Collection, FieldSchema, SearchResult
+from pymilvus import (
+    connections,
+    utility,
+    CollectionSchema,
+    Collection,
+    FieldSchema,
+    SearchResult,
+)
 
 from datapipe.types import DataSchema, MetaSchema, IndexDF, DataDF, data_to_index
 from datapipe.store.table_store import TableStore
@@ -16,7 +23,7 @@ class MilvusStore(TableStore):
         index_params: Dict,
         pk_field: str,
         embedding_field: str,
-        connection_details: Dict
+        connection_details: Dict,
     ):
         super().__init__()
         self.name = name
@@ -90,11 +97,7 @@ class MilvusStore(TableStore):
         return pd.DataFrame.from_records(result)
 
     def vector_search(
-        self,
-        embeddings: List,
-        query_params: Dict,
-        expr: str,
-        limit: int
+        self, embeddings: List, query_params: Dict, expr: str, limit: int
     ) -> SearchResult:
         if not self._collection_loaded:
             self.collection.load()
@@ -114,7 +117,4 @@ class MilvusStore(TableStore):
             self.collection.load()
             self._collection_loaded = True
 
-        return self.collection.query(
-            expr=expr,
-            output_fields=output_fields
-        )
+        return self.collection.query(expr=expr, output_fields=output_fields)
