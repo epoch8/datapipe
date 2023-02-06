@@ -44,7 +44,7 @@ def do_batch_transform(
     idx_count: Optional[int] = None,
     kwargs: Optional[Dict[str, Any]] = None,
     run_config: Optional[RunConfig] = None,
-) -> Iterator[ChangeList]:
+) -> Iterable[ChangeList]:
     """
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     """

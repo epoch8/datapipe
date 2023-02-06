@@ -11,7 +11,6 @@ from sqlalchemy.pool import SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select, tuple_
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
