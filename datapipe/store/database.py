@@ -14,8 +14,14 @@ from sqlalchemy.sql.expression import delete, select, tuple_
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
-from datapipe.types import (DataDF, DataSchema, IndexDF, MetaSchema, TAnyDF,
-                            data_to_index)
+from datapipe.types import (
+    DataDF,
+    DataSchema,
+    IndexDF,
+    MetaSchema,
+    TAnyDF,
+    data_to_index,
+)
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -28,16 +34,11 @@ SCHEMA_TO_DTYPE_LOOKUP = {
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
-    return {
-        i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__]
-        for i in schema
-    }
+    return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}
 
 
 def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
-    return {
-        i.name: i.type for i in schema
-    }
+    return {i.name: i.type for i in schema}
 
 
 class DBConn:
@@ -48,7 +49,7 @@ class DBConn:
         self.connstr = connstr
         self.schema = schema
 
-        if connstr.startswith('sqlite'):
+        if connstr.startswith("sqlite"):
             self.supports_update_from = False
         else:
             # Assume relatively new Postgres
@@ -59,34 +60,30 @@ class DBConn:
             poolclass=SingletonThreadPool,
         )
 
-        SQLAlchemyInstrumentor().instrument(
-            engine=self.con
-        )
+        SQLAlchemyInstrumentor().instrument(engine=self.con)
 
         self.sqla_metadata = MetaData(schema=schema)
 
     def __getstate__(self):
         return {
-            'connstr': self.connstr,
-            'schema': self.schema,
+            "connstr": self.connstr,
+            "schema": self.schema,
         }
 
     def __setstate__(self, state):
-        self._init(state['connstr'], state['schema'])
+        self._init(state["connstr"], state["schema"])
 
 
 def sql_apply_runconfig_filter(
     sql: select,
     table: Table,
     primary_keys: List[str],
-    run_config: Optional[RunConfig] = None
+    run_config: Optional[RunConfig] = None,
 ) -> select:
     if run_config is not None:
         for k, v in run_config.filters.items():
             if k in primary_keys:
-                sql = sql.where(
-                    table.c[k] == v
-                )
+                sql = sql.where(table.c[k] == v)
 
     return sql
 
@@ -110,7 +107,7 @@ class MetaKey(SchemaItem):
 class TableStoreDB(TableStore):
     def __init__(
         self,
-        dbconn: Union['DBConn', str],
+        dbconn: Union["DBConn", str],
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = False,
@@ -124,9 +121,10 @@ class TableStoreDB(TableStore):
         self.data_sql_schema = data_sql_schema
 
         self.data_table = Table(
-            self.name, self.dbconn.sqla_metadata,
+            self.name,
+            self.dbconn.sqla_metadata,
             *[copy.copy(i) for i in self.data_sql_schema],
-            extend_existing=True
+            extend_existing=True,
         )
 
         if create_table:
@@ -140,7 +138,9 @@ class TableStoreDB(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         meta_key_prop = MetaKey.get_property_name()
-        return [column for column in self.data_sql_schema if hasattr(column, meta_key_prop)]
+        return [
+            column for column in self.data_sql_schema if hasattr(column, meta_key_prop)
+        ]
 
     def _chunk_size(self):
         # Magic number derived empirically. See
@@ -150,15 +150,15 @@ class TableStoreDB(TableStore):
         return 5000 // len(self.primary_keys)
 
     def _chunk_idx_df(self, idx: TAnyDF) -> Iterator[TAnyDF]:
-        '''
+        """
         Split IndexDF to chunks acceptable for typical Postgres configuration.
         See `_chunk_size` for detatils.
-        '''
+        """
 
         CHUNK_SIZE = self._chunk_size()
 
         for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
-            chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
+            chunk_idx = idx.iloc[chunk_no * CHUNK_SIZE : (chunk_no + 1) * CHUNK_SIZE, :]
 
             yield cast(TAnyDF, chunk_idx)
 
@@ -166,21 +166,20 @@ class TableStoreDB(TableStore):
         if len(self.primary_keys) == 1:
             # Когда ключ один - сравниваем напрямую
             key = self.primary_keys[0]
-            sql = sql.where(
-                self.data_table.c[key].in_(idx[key].to_list())
-            )
+            sql = sql.where(self.data_table.c[key].in_(idx[key].to_list()))
 
         else:
             # Когда ключей много - сравниваем через tuple
-            keys = tuple_(*[
-                self.data_table.c[key]
-                for key in self.primary_keys
-            ])
+            keys = tuple_(*[self.data_table.c[key] for key in self.primary_keys])
 
-            sql = sql.where(keys.in_([
-                tuple([r[key] for key in self.primary_keys])  # type: ignore
-                for r in idx.to_dict(orient='records')
-            ]))
+            sql = sql.where(
+                keys.in_(
+                    [
+                        tuple([r[key] for key in self.primary_keys])  # type: ignore
+                        for r in idx.to_dict(orient="records")
+                    ]
+                )
+            )
 
         return sql
 
@@ -188,7 +187,7 @@ class TableStoreDB(TableStore):
         if idx is None or len(idx.index) == 0:
             return
 
-        logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
+        logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
         for chunk_idx in self._chunk_idx_df(idx):
             sql = self._apply_where_expression(delete(self.data_table), chunk_idx)
@@ -199,17 +198,17 @@ class TableStoreDB(TableStore):
             return
 
         self.delete_rows(data_to_index(df, self.primary_keys))
-        logger.debug(f'Inserting {len(df)} rows into {self.name} data')
+        logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
         for chunk_df in self._chunk_idx_df(df):
             chunk_df.to_sql(
                 name=self.name,
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
-                if_exists='append',
+                if_exists="append",
                 index=False,
                 chunksize=1000,
-                method='multi',
+                method="multi",
                 dtype=sql_schema_to_sqltype(self.data_sql_schema),
             )
 
@@ -226,7 +225,9 @@ class TableStoreDB(TableStore):
         if idx is not None:
             if len(idx.index) == 0:
                 # Empty index -> empty result
-                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+                return pd.DataFrame(
+                    columns=[column.name for column in self.data_sql_schema]
+                )
 
             res = []
 
@@ -239,18 +240,19 @@ class TableStoreDB(TableStore):
             return pd.concat(res, ignore_index=True)
 
         else:
-            return pd.read_sql_query(
-                sql,
-                con=self.dbconn.con
-            )
+            return pd.read_sql_query(sql, con=self.dbconn.con)
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: Optional[RunConfig] = None) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(
+        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
+    ) -> Iterator[DataDF]:
         sql = select(self.data_table.c)
 
-        sql = sql_apply_runconfig_filter(sql, self.data_table, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filter(
+            sql, self.data_table, self.primary_keys, run_config
+        )
 
         return pd.read_sql_query(
             sql,
             con=self.dbconn.con.execution_options(stream_results=True),
-            chunksize=chunksize
+            chunksize=chunksize,
         )
