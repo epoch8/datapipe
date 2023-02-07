@@ -138,6 +138,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
+        allow_reset_metadata: bool = True
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -172,8 +173,10 @@ class TableStoreFiledir(TableStore):
         если нету * и ** путей в шаблоне и нет множественных расширений файлов вида (jpg|png|mp4)
 
         enable_rm -- если True, включить удаление файлов
-        """
 
+        allow_reset_metadata -- если True, разрешить сброс метаданных
+        """
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         self.filesystem = fsspec.filesystem(self.protocol)
 

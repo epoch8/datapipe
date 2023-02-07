@@ -5,8 +5,9 @@ import pytest
 from pytest_cases import case, parametrize, parametrize_with_cases
 from sqlalchemy import Column, Integer, String
 
+from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
-from datapipe.store.database import TableStoreDB
+from datapipe.store.database import TableStoreDB, DBConn
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
 from datapipe.store.redis import RedisStore
@@ -500,3 +501,26 @@ def test_read_rows_meta_pseudo_df_with_runconfig(
     assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
         assert isinstance(pseudo_df, DataDF)
+
+
+@parametrize_with_cases("store,test_df", cases=CasesTableStore, )
+def test_lock_metadata(store: TableStore, test_df: pd.DataFrame, dbconn) -> None:
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl = ds.create_table(
+        'test',
+        table_store=store,
+        allow_reset_metadata=False,
+    )
+
+    tbl.store_chunk(test_df)
+    reset_succesfull = tbl.reset_metadata()
+    assert not reset_succesfull
+    assert (tbl.get_metadata().process_ts != 0).all()
+
+
+
+    # assert_datatable_equal(tbl, test_df)
+
+    # store.allow_reset_metadata = False
+    # assert store.allow_reset_metadata is False

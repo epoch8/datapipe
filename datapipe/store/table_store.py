@@ -10,6 +10,10 @@ from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_inde
 
 
 class TableStore(ABC):
+
+    def __init__(self, allow_reset_metadata: bool = True):
+        self.allow_reset_metadata = allow_reset_metadata
+
     def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
 
@@ -50,7 +54,9 @@ class TableDataSingleFileStore(TableStore):
         self,
         filename: Union[Path, str, None] = None,
         primary_schema: Optional[DataSchema] = None,
+        allow_reset_metadata: bool = True,
     ):
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 

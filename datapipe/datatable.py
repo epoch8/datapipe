@@ -32,12 +32,15 @@ class DataTable:
         meta_table: MetaTable,
         table_store: TableStore,
         event_logger: EventLogger,
+        allow_reset_metadata: bool = True,
     ):
         self.name = name
         self.meta_dbconn = meta_dbconn
         self.meta_table = meta_table
         self.table_store = table_store
         self.event_logger = event_logger
+        # if at least one metadata lock was set to False, then we don't allow metadata reset
+        self.allow_reset_metadata = self.table_store.allow_reset_metadata and allow_reset_metadata
 
         self.primary_schema = meta_table.primary_schema
         self.primary_keys = meta_table.primary_keys
@@ -49,9 +52,14 @@ class DataTable:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def reset_metadata(self):
-        self.meta_dbconn.con.execute(
-            self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
-        )
+
+        if self.allow_reset_metadata:
+            self.meta_dbconn.con.execute(
+                self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
+            )
+            return True
+        else:
+            return False
 
     def get_size(self) -> int:
         """
@@ -176,7 +184,7 @@ class DataStore:
         self.tables: Dict[str, DataTable] = {}
         self.create_meta_table = create_meta_table
 
-    def create_table(self, name: str, table_store: TableStore) -> DataTable:
+    def create_table(self, name: str, table_store: TableStore, allow_reset_metadata: bool = True) -> DataTable:
         assert name not in self.tables
 
         primary_schema = table_store.get_primary_schema()
@@ -194,6 +202,7 @@ class DataStore:
             ),
             table_store=table_store,
             event_logger=self.event_logger,
+            allow_reset_metadata=allow_reset_metadata,
         )
 
         self.tables[name] = res

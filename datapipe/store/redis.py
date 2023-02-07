@@ -24,9 +24,13 @@ def _to_itertuples(df: DataDF, colnames):
 
 class RedisStore(TableStore):
     def __init__(
-        self, connection: Union[Redis, str], name: str, data_sql_schema: List[Column]
+        self,
+        connection: Union[Redis, str],
+        name: str,
+        data_sql_schema: List[Column],
+        allow_reset_metadata: bool = True,
     ) -> None:
-
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         if isinstance(connection, str):
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
