@@ -138,7 +138,6 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
-        allow_reset_metadata: bool = True
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -176,7 +175,7 @@ class TableStoreFiledir(TableStore):
 
         allow_reset_metadata -- если True, разрешить сброс метаданных
         """
-        super().__init__(allow_reset_metadata=allow_reset_metadata)
+        super().__init__()
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         self.filesystem = fsspec.filesystem(self.protocol)
 

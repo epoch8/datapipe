@@ -54,9 +54,8 @@ class TableDataSingleFileStore(TableStore):
         self,
         filename: Union[Path, str, None] = None,
         primary_schema: Optional[DataSchema] = None,
-        allow_reset_metadata: bool = True,
     ):
-        super().__init__(allow_reset_metadata=allow_reset_metadata)
+        super().__init__()
         if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
 

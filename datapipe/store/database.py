@@ -111,9 +111,8 @@ class TableStoreDB(TableStore):
         name: str,
         data_sql_schema: List[Column],
         create_table: bool = False,
-        allow_reset_metadata: bool = True,
     ) -> None:
-        super().__init__(allow_reset_metadata=allow_reset_metadata)
+        super().__init__()
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
         else:
