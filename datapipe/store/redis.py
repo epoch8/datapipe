@@ -28,8 +28,9 @@ class RedisStore(TableStore):
         connection: Union[Redis, str],
         name: str,
         data_sql_schema: List[Column],
+        allow_reset_metadata: bool = True,
     ) -> None:
-        super().__init__()
+        super().__init__(allow_reset_metadata=allow_reset_metadata)
         if isinstance(connection, str):
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:

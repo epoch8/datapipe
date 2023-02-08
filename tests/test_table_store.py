@@ -517,3 +517,10 @@ def test_lock_metadata(store: TableStore, test_df: pd.DataFrame, dbconn) -> None
     reset_succesfull = tbl.reset_metadata()
     assert not reset_succesfull
     assert (tbl.get_metadata().process_ts != 0).all()
+
+
+
+    # assert_datatable_equal(tbl, test_df)
+
+    # store.allow_reset_metadata = False
+    # assert store.allow_reset_metadata is False
