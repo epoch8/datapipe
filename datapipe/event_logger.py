@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from datapipe.run_config import RunConfig
 
 
-logger = logging.getLogger('datapipe.event_logger')
+logger = logging.getLogger("datapipe.event_logger")
 
 if TYPE_CHECKING:
     from datapipe.metastore import DBConn
@@ -24,11 +24,11 @@ class EventTypes(Enum):
 
 
 class EventLogger:
-    def __init__(self, dbconn: 'DBConn', create_table: bool = False):
+    def __init__(self, dbconn: "DBConn", create_table: bool = False):
         self.dbconn = dbconn
 
         self.events_table = Table(
-            'datapipe_events',
+            "datapipe_events",
             dbconn.sqla_metadata,
             *self._make_table_schema(dbconn),
         )
@@ -36,12 +36,12 @@ class EventLogger:
         if create_table:
             self.events_table.create(self.dbconn.con, checkfirst=True)
 
-    def _make_table_schema(self, dbconn: 'DBConn'):
+    def _make_table_schema(self, dbconn: "DBConn"):
         return [
-            Column('id', Integer, primary_key=True, autoincrement=True),
-            Column('event_ts', DateTime, server_default=func.now()),
-            Column('type', String(100)),
-            Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("event_ts", DateTime, server_default=func.now()),
+            Column("type", String(100)),
+            Column("event", JSON if dbconn.con.name == "sqlite" else JSONB),
         ]
 
     def log_state(
@@ -55,7 +55,7 @@ class EventLogger:
     ):
         logger.debug(
             f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
-            f'deleted = {deleted_count}, processed_count = {deleted_count}'
+            f"deleted = {deleted_count}, processed_count = {deleted_count}"
         )
 
         if run_config is not None:
@@ -76,8 +76,8 @@ class EventLogger:
                     "updated_count": updated_count,
                     "deleted_count": deleted_count,
                     "processed_count": processed_count,
-                }
-            }
+                },
+            },
         )
 
         self.dbconn.con.execute(ins)
@@ -91,13 +91,15 @@ class EventLogger:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         if run_config is not None:
-            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}\n{description}')
+            logger.debug(
+                f'Error in step {run_config.labels.get("step_name")}: {type} {message}\n{description}'
+            )
             meta = {
                 "labels": run_config.labels,
                 "filters": run_config.filters,
             }
         else:
-            logger.debug(f'Error: {type} {message}\n{description}')
+            logger.debug(f"Error: {type} {message}\n{description}")
             meta = {}
 
         ins = self.events_table.insert().values(
@@ -109,8 +111,8 @@ class EventLogger:
                     "message": message,
                     "description": description,
                     "params": params,
-                }
-            }
+                },
+            },
         )
 
         self.dbconn.con.execute(ins)
@@ -124,6 +126,6 @@ class EventLogger:
             type=type(exc).__name__,
             message=str(exc),
             description=format_exc(exc),
-            params=exc.args,
+            params=[],  # exc.args, # Not all args can be serialized to JSON, dont really need them
             run_config=run_config,
         )
