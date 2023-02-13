@@ -28,11 +28,11 @@ class ItemStoreFileAdapter(ABC):
 
 
 class JSONFile(ItemStoreFileAdapter):
-    '''
+    """
     Converts each JSON file into Pandas record
-    '''
+    """
 
-    mode = 't'
+    mode = "t"
 
     def __init__(self, **dump_params) -> None:
         self.dump_params = dump_params
@@ -45,11 +45,11 @@ class JSONFile(ItemStoreFileAdapter):
 
 
 class PILFile(ItemStoreFileAdapter):
-    '''
+    """
     Uses `image` column with PIL.Image for save/load
-    '''
+    """
 
-    mode = 'b'
+    mode = "b"
 
     def __init__(self, format: str, **dump_params) -> None:
         self.format = format
@@ -58,33 +58,37 @@ class PILFile(ItemStoreFileAdapter):
     def load(self, f: IO) -> Dict[str, Any]:
         im = Image.open(f)
         im.load()
-        return {'image': im}
+        return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj['image']
+        im: Image.Image = obj["image"]
         im.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
-    attrnames = re.findall(r'\{([^/]+?)\}', pat)
+    attrnames = re.findall(r"\{([^/]+?)\}", pat)
 
     assert len(attrnames) > 0, "The scheme is not valid."
     if len(attrnames) >= 2:
         duplicates_attrnames = list(duplicates(attrnames))
-        assert len(duplicates_attrnames) == 0, f"Some keys are repeated: {duplicates_attrnames}. Rename them."
+        assert (
+            len(duplicates_attrnames) == 0
+        ), f"Some keys are repeated: {duplicates_attrnames}. Rename them."
 
     return attrnames
 
 
 def _pattern_to_patterns_or(pat) -> List[str]:
-    pattern_or = re.compile(r'(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))')
+    pattern_or = re.compile(r"(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))")
     # Ищем вхождения вида (aaa|bbb|ccc), в виду list of list [[aaa, bbb, ccc], [ddd, eee], ...]
     values = [
-        list(dict.fromkeys(match.group('or')[1:-1].split('|')))
+        list(dict.fromkeys(match.group("or")[1:-1].split("|")))
         for match in pattern_or.finditer(pat)
     ]
     # Всевозможные комбинации для замены [[aaa, ddd], [aaa, eee], [bbb, ddd], ...]
-    possible_combinatios_values = [list(combination) for combination in itertools.product(*values)]
+    possible_combinatios_values = [
+        list(combination) for combination in itertools.product(*values)
+    ]
     # Получаем всевозможные списки шаблонов из комбинаций
     filename_patterns = [
         re.sub(pattern_or, Replacer(combination), pat)
@@ -94,7 +98,9 @@ def _pattern_to_patterns_or(pat) -> List[str]:
 
 
 def _pattern_to_glob(pat: str) -> str:
-    return re.sub(r'\{([^/]+?)\}', '*', pat)  # Меняем все вхождения {id1}_{id2} в звездочки *_*
+    return re.sub(
+        r"\{([^/]+?)\}", "*", pat
+    )  # Меняем все вхождения {id1}_{id2} в звездочки *_*
 
 
 def _pattern_to_match(pat: str) -> str:
@@ -102,8 +108,12 @@ def _pattern_to_match(pat: str) -> str:
     # * -> r'[^/]+'
     # ** -> r'([^/]+/)*?[^/]+'
 
-    pat = re.sub(r'\*\*?', r'([^/]+/)*[^/]+', pat)  # Меняем все вхождения * и ** в произвольные символы
-    pat = re.sub(r'\{([^/]+?)\}', r'(?P<\1>[^/]+?)', pat)  # Меняем все вхождения вида {id} на непустые послед. символов
+    pat = re.sub(
+        r"\*\*?", r"([^/]+/)*[^/]+", pat
+    )  # Меняем все вхождения * и ** в произвольные символы
+    pat = re.sub(
+        r"\{([^/]+?)\}", r"(?P<\1>[^/]+?)", pat
+    )  # Меняем все вхождения вида {id} на непустые послед. символов
     pat = f"{pat}\\Z"  # Учитываем конец строки
     return pat
 
@@ -127,7 +137,7 @@ class TableStoreFiledir(TableStore):
         primary_schema: Optional[DataSchema] = None,
         read_data: bool = True,
         readonly: Optional[bool] = None,
-        enable_rm: bool = False
+        enable_rm: bool = False,
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -167,7 +177,7 @@ class TableStoreFiledir(TableStore):
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         self.filesystem = fsspec.filesystem(self.protocol)
 
-        if self.protocol is None or self.protocol == 'file':
+        if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
             filename_pattern_for_match = filename_pattern
             self.protocol_str = "" if self.protocol is None else "file://"
@@ -190,7 +200,7 @@ class TableStoreFiledir(TableStore):
             elif readonly:
                 readonly = True
         # Any * and ** pattern check
-        if '*' in path:
+        if "*" in path:
             if readonly is not None and not readonly:
                 raise ValueError(
                     "When `readonly=False`, in filename_pattern shouldn't be any `*` characters."
@@ -207,14 +217,16 @@ class TableStoreFiledir(TableStore):
         self.add_filepath_column = add_filepath_column
         self.read_data = read_data
 
-        type_to_cls = {
-            String: str,
-            Integer: int
-        }
+        type_to_cls = {String: str, Integer: int}
 
         if primary_schema is not None:
             assert sorted(self.attrnames) == sorted(i.name for i in primary_schema)
-            assert all([isinstance(column.type, (String, Integer)) for column in primary_schema])
+            assert all(
+                [
+                    isinstance(column.type, (String, Integer))
+                    for column in primary_schema
+                ]
+            )
             self.primary_schema = primary_schema
         else:
             self.primary_schema = [
@@ -249,13 +261,16 @@ class TableStoreFiledir(TableStore):
 
     def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
         return [
-            re.sub(r'\{([^/]+?)\}', Replacer(idxs_values), pat) for pat in self.filename_patterns
+            re.sub(r"\{([^/]+?)\}", Replacer(idxs_values), pat)
+            for pat in self.filename_patterns
         ]
 
     def _idxs_values_from_filepath(self, filepath: str) -> Dict[str, Any]:
         _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
-        assert m is not None, f"Filepath {filepath} does not match the pattern {self.filename_match}"
+        assert (
+            m is not None
+        ), f"Filepath {filepath} does not match the pattern {self.filename_match}"
 
         data = {}
         for attrname in self.attrnames:
@@ -270,17 +285,18 @@ class TableStoreFiledir(TableStore):
             [idx_data[attrname] for attrname in self.attrnames]
         )
 
-        assert (
-            len(idxs_values_np) == len(idxs_values_parsed_from_filepath) and
-
-            np.all(idxs_values_np == idxs_values_parsed_from_filepath)
+        assert len(idxs_values_np) == len(idxs_values_parsed_from_filepath) and np.all(
+            idxs_values_np == idxs_values_parsed_from_filepath
         ), (
             "Multiply indexes have complex contradictory values, so that it couldn't unambiguously name the files. "
             "This is most likely due to imperfect separators between {id} keys in the scheme or "
-            " idxs types differences. ", f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}"
+            " idxs types differences. ",
+            f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}",
         )
 
-    def insert_rows(self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None) -> None:
+    def insert_rows(
+        self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None
+    ) -> None:
         if df.empty:
             return
         assert not self.readonly
@@ -289,7 +305,10 @@ class TableStoreFiledir(TableStore):
 
         # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени
         for row_idx, data in zip(
-            df.index, cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict('records'))
+            df.index,
+            cast(
+                List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict("records")
+            ),
         ):
             attrnames_series = df.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
@@ -300,7 +319,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f'w{self.adapter.mode}') as f:
+            with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(
@@ -326,7 +345,7 @@ class TableStoreFiledir(TableStore):
         self,
         idx: Optional[IndexDF] = None,
         read_data: Optional[bool] = None,
-        adapter: Optional[ItemStoreFileAdapter] = None
+        adapter: Optional[ItemStoreFileAdapter] = None,
     ) -> DataDF:
 
         if read_data is None:
@@ -334,12 +353,19 @@ class TableStoreFiledir(TableStore):
         if adapter is None:
             adapter = self.adapter
 
-        if (not read_data) and (len(self.filename_patterns) == 1) and (idx is not None) and self.add_filepath_column:
+        if (
+            (not read_data)
+            and (len(self.filename_patterns) == 1)
+            and (idx is not None)
+            and self.add_filepath_column
+        ):
             return self._read_rows_fast(idx)
 
         def _iterate_files():
             if idx is None:
-                for file_open in fsspec.open_files(self.filename_glob, f'r{adapter.mode}'):
+                for file_open in fsspec.open_files(
+                    self.filename_glob, f"r{adapter.mode}"
+                ):
                     yield file_open
             else:
                 filepaths_extenstions = [
@@ -349,11 +375,15 @@ class TableStoreFiledir(TableStore):
                 for filepaths in filepaths_extenstions:
                     found_files = [
                         file_open
-                        for file_open in fsspec.open_files(filepaths, f'r{adapter.mode}')
+                        for file_open in fsspec.open_files(
+                            filepaths, f"r{adapter.mode}"
+                        )
                         if self.filesystem.exists(file_open.path)
                     ]
                     if len(found_files) == 0:
-                        raise FileNotFoundError(f"No such file: {' or '.join(filepaths)}")
+                        raise FileNotFoundError(
+                            f"No such file: {' or '.join(filepaths)}"
+                        )
                     elif len(found_files) > 1:
                         raise ValueError(
                             f"Some files are duplitcated as indexes in filepaths: {found_files}. "
@@ -370,7 +400,9 @@ class TableStoreFiledir(TableStore):
                 if read_data:
                     data = adapter.load(f)
 
-                    attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
+                    attrnames_in_data = [
+                        attrname for attrname in self.attrnames if attrname in data
+                    ]
                     assert len(attrnames_in_data) == 0, (
                         f"Found repeated keys inside data that are already used (from scheme): "
                         f"{attrnames_in_data}. "
@@ -381,11 +413,11 @@ class TableStoreFiledir(TableStore):
                 data.update(idxs_values)
 
                 if self.add_filepath_column:
-                    assert 'filepath' not in data, (
+                    assert "filepath" not in data, (
                         "The key 'filepath' is already exists in data. "
                         "Switch argument add_filepath_column to False or rename this key in input data."
                     )
-                    data['filepath'] = f"{self.protocol_str}{file_open.path}"
+                    data["filepath"] = f"{self.protocol_str}{file_open.path}"
 
                 df_records.append(data)
 
@@ -396,15 +428,14 @@ class TableStoreFiledir(TableStore):
 
         return df
 
-    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: Optional[RunConfig] = None) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(
+        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
+    ) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob)
 
-        ids: Dict[str, List[str]] = {
-            attrname: []
-            for attrname in self.attrnames
-        }
+        ids: Dict[str, List[str]] = {attrname: [] for attrname in self.attrnames}
         ukeys = []
         filepaths = []
 
@@ -419,8 +450,7 @@ class TableStoreFiledir(TableStore):
             filepaths.append(f"{self.protocol_str}{f.path}")
 
         keys_values = [
-            (ids[attrname][i] for attrname in self.attrnames)
-            for i in range(len(ukeys))
+            (ids[attrname][i] for attrname in self.attrnames) for i in range(len(ukeys))
         ]
         duplicates_keys_values = list(duplicates(keys_values))
         assert len(duplicates_keys_values) == 0, (
@@ -432,16 +462,16 @@ class TableStoreFiledir(TableStore):
             pseudo_data_df = pd.DataFrame.from_records(
                 {
                     **ids,
-                    'ukey': ukeys,
-                    **({'filepath': filepaths} if self.add_filepath_column else {})
+                    "ukey": ukeys,
+                    **({"filepath": filepaths} if self.add_filepath_column else {}),
                 }
             )
             yield pseudo_data_df.astype(object)
         else:
-            filepath_kw: Dict = {'filepath': []} if self.add_filepath_column else {}
+            filepath_kw: Dict = {"filepath": []} if self.add_filepath_column else {}
             yield pd.DataFrame(
                 {
-                    'ukey': [],
+                    "ukey": [],
                     **filepath_kw,
                 }
             ).astype(object)

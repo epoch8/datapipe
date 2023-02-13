@@ -11,20 +11,30 @@ from sqlalchemy import Column, Float, Integer, Table, func
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
-from datapipe.store.database import (DBConn, MetaKey,
-                                     sql_apply_runconfig_filter,
-                                     sql_schema_to_sqltype)
-from datapipe.types import (DataDF, DataSchema, IndexDF, MetadataDF,
-                            MetaSchema, TAnyDF, data_to_index)
+from datapipe.store.database import (
+    DBConn,
+    MetaKey,
+    sql_apply_runconfig_filter,
+    sql_schema_to_sqltype,
+)
+from datapipe.types import (
+    DataDF,
+    DataSchema,
+    IndexDF,
+    MetadataDF,
+    MetaSchema,
+    TAnyDF,
+    data_to_index,
+)
 
-logger = logging.getLogger('datapipe.metastore')
+logger = logging.getLogger("datapipe.metastore")
 
 METADATA_SQL_SCHEMA = [
-    Column('hash', Integer),
-    Column('create_ts', Float),   # Время создания строки
-    Column('update_ts', Float),   # Время последнего изменения
-    Column('process_ts', Float),  # Время последней успешной обработки
-    Column('delete_ts', Float),   # Время удаления
+    Column("hash", Integer),
+    Column("create_ts", Float),  # Время создания строки
+    Column("update_ts", Float),  # Время последнего изменения
+    Column("process_ts", Float),  # Время последней успешной обработки
+    Column("delete_ts", Float),  # Время удаления
 ]
 
 
@@ -58,7 +68,11 @@ class MetaTable:
         meta_key_prop = MetaKey.get_property_name()
 
         for column in meta_schema:
-            target_name = column.meta_key.target_name if hasattr(column, meta_key_prop) else column.name
+            target_name = (
+                column.meta_key.target_name
+                if hasattr(column, meta_key_prop)
+                else column.name
+            )
             self.meta_keys[target_name] = column.name
 
         sql_schema = primary_schema + meta_schema + METADATA_SQL_SCHEMA
@@ -66,7 +80,7 @@ class MetaTable:
         self.sql_schema = [copy.copy(i) for i in sql_schema]
 
         self.sql_table = Table(
-            f'{self.name}_meta',
+            f"{self.name}_meta",
             self.dbconn.sqla_metadata,
             *self.sql_schema,
         )
@@ -82,19 +96,21 @@ class MetaTable:
         return 5000 // len(self.primary_keys)
 
     def _chunk_idx_df(self, idx: TAnyDF) -> Iterator[TAnyDF]:
-        '''
+        """
         Split IndexDF to chunks acceptable for typical Postgres configuration.
         See `_chunk_size` for detatils.
-        '''
+        """
 
         CHUNK_SIZE = self._chunk_size()
 
         for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
-            chunk_idx = idx.iloc[chunk_no*CHUNK_SIZE:(chunk_no+1)*CHUNK_SIZE, :]
+            chunk_idx = idx.iloc[chunk_no * CHUNK_SIZE : (chunk_no + 1) * CHUNK_SIZE, :]
 
             yield cast(TAnyDF, chunk_idx)
 
-    def _build_metadata_query(self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False):
+    def _build_metadata_query(
+        self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False
+    ):
         if idx is not None:
             if len(self.primary_keys) == 0:
                 # Когда ключей нет - не делаем ничего
@@ -103,34 +119,35 @@ class MetaTable:
             elif len(self.primary_keys) == 1:
                 # Когда ключ один - сравниваем напрямую
                 key = self.primary_keys[0]
-                sql = sql.where(
-                    self.sql_table.c[key].in_(idx[key].to_list())
-                )
+                sql = sql.where(self.sql_table.c[key].in_(idx[key].to_list()))
 
             else:
                 # Когда ключей много - сравниваем через tuple
-                keys = tuple_(*[
-                    self.sql_table.c[key]
-                    for key in self.primary_keys
-                ])
+                keys = tuple_(*[self.sql_table.c[key] for key in self.primary_keys])
 
-                sql = sql.where(keys.in_([
-                    tuple([r[key] for key in self.primary_keys])  # type: ignore
-                    for r in idx.to_dict(orient='records')
-                ]))
+                sql = sql.where(
+                    keys.in_(
+                        [
+                            tuple([r[key] for key in self.primary_keys])  # type: ignore
+                            for r in idx.to_dict(orient="records")
+                        ]
+                    )
+                )
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
         return sql
 
-    def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
-        '''
+    def get_metadata(
+        self, idx: Optional[IndexDF] = None, include_deleted: bool = False
+    ) -> MetadataDF:
+        """
         Получить датафрейм с метаданными.
 
         idx - опциональный фильтр по целевым строкам
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
-        '''
+        """
 
         res = []
         sql = select(self.sql_schema)
@@ -146,15 +163,20 @@ class MetaTable:
         if len(res) > 0:
             return cast(MetadataDF, pd.concat(res))
         else:
-            return cast(MetadataDF, pd.DataFrame(columns=[column.name for column in self.sql_schema]))
+            return cast(
+                MetadataDF,
+                pd.DataFrame(columns=[column.name for column in self.sql_schema]),
+            )
 
-    def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
-        '''
+    def get_metadata_size(
+        self, idx: Optional[IndexDF] = None, include_deleted: bool = False
+    ) -> int:
+        """
         Получить количество строк метаданных.
 
         idx - опциональный фильтр по целевым строкам
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
-        '''
+        """
 
         sql = select([func.count()]).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
@@ -171,19 +193,23 @@ class MetaTable:
             create_ts=now,
             update_ts=now,
             process_ts=now,
-            delete_ts=None
+            delete_ts=None,
         )
 
         return cast(MetadataDF, res_df)
 
     def _get_meta_data_columns(self):
-        return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in METADATA_SQL_SCHEMA]
+        return (
+            self.primary_keys
+            + list(self.meta_keys.values())
+            + [column.name for column in METADATA_SQL_SCHEMA]
+        )
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
-        return (
-            df
-            .apply(lambda x: str(list(x)), axis=1)
-            .apply(lambda x: int.from_bytes(CityHash32(x).to_bytes(4, 'little'), 'little', signed=True))
+        return df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(
+                CityHash32(x).to_bytes(4, "little"), "little", signed=True
+            )
         )
 
     # Fix numpy types in Index
@@ -226,17 +252,17 @@ class MetaTable:
     def get_table_debug_info(self) -> TableDebugInfo:
         return TableDebugInfo(
             name=self.name,
-            size=self.dbconn.con.execute(select([func.count()]).select_from(self.sql_table)).fetchone()[0]
+            size=self.dbconn.con.execute(
+                select([func.count()]).select_from(self.sql_table)
+            ).fetchone()[0],
         )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
     # FIXME поправить возвращаемые структуры данных, _meta_df должны содержать только _meta колонки
     def get_changes_for_store_chunk(
-        self,
-        data_df: DataDF,
-        now: Optional[float] = None
+        self, data_df: DataDF, now: Optional[float] = None
     ) -> Tuple[DataDF, DataDF, MetadataDF, MetadataDF]:
-        '''
+        """
         Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
 
         Returns tuple:
@@ -244,13 +270,15 @@ class MetaTable:
             changed_data_df - строки данных, которые нужно изменить
             new_meta_df     - строки метаданных, которые нужно добавить
             changed_meta_df - строки метаданных, которые нужно изменить
-        '''
+        """
 
         if now is None:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_to_index(data_df, self.primary_keys), include_deleted=True)
+        existing_meta_df = self.get_metadata(
+            data_to_index(data_df, self.primary_keys), include_deleted=True
+        )
         data_cols = list(data_df.columns)
         meta_cols = self._get_meta_data_columns()
 
@@ -258,41 +286,39 @@ class MetaTable:
         merged_df = pd.merge(
             data_df.assign(data_hash=self._get_hash_for_df(data_df)),
             existing_meta_df,
-            how='left',
+            how="left",
             left_on=self.primary_keys,
             right_on=self.primary_keys,
-            suffixes=('', '_exist')
+            suffixes=("", "_exist"),
         )
 
-        new_idx = (merged_df['hash'].isna() | merged_df['delete_ts'].notnull())
+        new_idx = merged_df["hash"].isna() | merged_df["delete_ts"].notnull()
 
         # Ищем новые записи
         new_df = data_df.loc[new_idx.values, data_cols]
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = merged_df.loc[merged_df['hash'].isna().values, data_cols]
+        new_meta_data_df = merged_df.loc[merged_df["hash"].isna().values, data_cols]
         new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
         changed_idx = (
-            (merged_df['hash'].notna()) &
-            (merged_df['delete_ts'].isnull()) &
-            (merged_df['hash'] != merged_df['data_hash'])
+            (merged_df["hash"].notna())
+            & (merged_df["delete_ts"].isnull())
+            & (merged_df["hash"] != merged_df["data_hash"])
         )
         changed_df = merged_df.loc[changed_idx.values, data_cols]
 
         # Меняем мета данные для существующих записей
-        changed_meta_idx = (
-            (merged_df['hash'].notna()) &
-            (merged_df['hash'] != merged_df['data_hash']) |
-            (merged_df['delete_ts'].notnull())
-        )
-        changed_meta_df = merged_df.loc[merged_df['hash'].notna(), :].copy()
+        changed_meta_idx = (merged_df["hash"].notna()) & (
+            merged_df["hash"] != merged_df["data_hash"]
+        ) | (merged_df["delete_ts"].notnull())
+        changed_meta_df = merged_df.loc[merged_df["hash"].notna(), :].copy()
 
-        changed_meta_df.loc[changed_meta_idx, 'update_ts'] = now
-        changed_meta_df['process_ts'] = now
-        changed_meta_df['delete_ts'] = None
-        changed_meta_df['hash'] = changed_meta_df['data_hash']
+        changed_meta_df.loc[changed_meta_idx, "update_ts"] = now
+        changed_meta_df["process_ts"] = now
+        changed_meta_df["delete_ts"] = None
+        changed_meta_df["hash"] = changed_meta_df["data_hash"]
 
         return (
             cast(DataDF, new_df),
@@ -303,16 +329,16 @@ class MetaTable:
 
     def _insert_rows(self, df: MetadataDF) -> None:
         if len(df) > 0:
-            logger.debug(f'Inserting {len(df)} rows into {self.name} data')
+            logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
             df.to_sql(
                 name=self.sql_table.name,
                 con=self.dbconn.con,
                 schema=self.dbconn.schema,
-                if_exists='append',
+                if_exists="append",
                 index=False,
                 chunksize=1000,
-                method='multi',
+                method="multi",
                 dtype=sql_schema_to_sqltype(self.sql_schema),
             )
 
@@ -333,15 +359,16 @@ class MetaTable:
 
             else:
                 # Когда ключей много - сравниваем через tuple
-                keys = tuple_(*[
-                    self.sql_table.c[key]
-                    for key in self.primary_keys
-                ])
+                keys = tuple_(*[self.sql_table.c[key] for key in self.primary_keys])
 
-                chunk_sql = sql.where(keys.in_([
-                    tuple([r[key] for key in self.primary_keys])  # type: ignore
-                    for r in chunk_idx.to_dict(orient='records')
-                ]))
+                chunk_sql = sql.where(
+                    keys.in_(
+                        [
+                            tuple([r[key] for key in self.primary_keys])  # type: ignore
+                            for r in chunk_idx.to_dict(orient="records")
+                        ]
+                    )
+                )
 
             self.dbconn.con.execute(chunk_sql)
 
@@ -349,16 +376,22 @@ class MetaTable:
         if len(df) == 0:
             return
 
-        table = f'{self.dbconn.schema}.{self.sql_table.name}' if self.dbconn.schema else self.sql_table.name
-        values_table = f'{self.sql_table.name}_values'
+        table = (
+            f"{self.dbconn.schema}.{self.sql_table.name}"
+            if self.dbconn.schema
+            else self.sql_table.name
+        )
+        values_table = f"{self.sql_table.name}_values"
         columns = [column.name for column in self.sql_schema]
         update_columns = set(columns) - set(self.primary_keys)
 
-        update_expression = ', '.join([f'{column}={values_table}.{column}'
-                                       for column in update_columns])
+        update_expression = ", ".join(
+            [f"{column}={values_table}.{column}" for column in update_columns]
+        )
 
-        where_expressiom = ' AND '.join([f'{table}.{key} = {values_table}.{key}'
-                                         for key in self.primary_keys])
+        where_expressiom = " AND ".join(
+            [f"{table}.{key} = {values_table}.{key}" for key in self.primary_keys]
+        )
 
         for chunk_df in self._chunk_idx_df(df):
             params_df = chunk_df.reset_index()[columns]
@@ -366,20 +399,25 @@ class MetaTable:
             params = {}
 
             for index, row in params_df.iterrows():
-                row_values = [f'CAST(:{column.name}_{index} AS {column.type})' for column in self.sql_schema]
-                row_params = {f'{key}_{index}': row[key] for key in row.keys()}
+                row_values = [
+                    f"CAST(:{column.name}_{index} AS {column.type})"
+                    for column in self.sql_schema
+                ]
+                row_params = {f"{key}_{index}": row[key] for key in row.keys()}
 
                 values_params.append(f'({", ".join(row_values)})')
                 params.update(row_params)
 
-            stmt = text(f"""
+            stmt = text(
+                f"""
                 UPDATE {table}
                 SET {update_expression}
                 FROM (
                     VALUES {", ".join(values_params)}
                 ) AS {values_table} ({', '.join(columns)})
                 WHERE {where_expressiom}
-            """)
+            """
+            )
 
             self.dbconn.con.execution_options(compiled_cache=None).execute(stmt, params)
 
@@ -414,29 +452,29 @@ class MetaTable:
 
             self.update_meta_for_store_chunk(meta_df)
 
-    def get_stale_idx(self, process_ts: float, run_config: Optional[RunConfig] = None) -> Iterator[IndexDF]:
+    def get_stale_idx(
+        self, process_ts: float, run_config: Optional[RunConfig] = None
+    ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
             and_(
                 self.sql_table.c.process_ts < process_ts,
-                self.sql_table.c.delete_ts.is_(None)
+                self.sql_table.c.delete_ts.is_(None),
             )
         )
 
-        sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filter(
+            sql, self.sql_table, self.primary_keys, run_config
+        )
 
         return cast(
             Iterator[IndexDF],
-            pd.read_sql_query(
-                sql,
-                con=self.dbconn.con,
-                chunksize=1000
-            )
+            pd.read_sql_query(sql, con=self.dbconn.con, chunksize=1000),
         )
 
 
 class MetaTableData:
-    def __init__(self, tbl: MetaTable, sql_prefix: str = '') -> None:
+    def __init__(self, tbl: MetaTable, sql_prefix: str = "") -> None:
         self.primary_keys = set(tbl.primary_keys)
         self.meta_keys = set(tbl.meta_keys.keys())
         self.meta_column_names = tbl.meta_keys

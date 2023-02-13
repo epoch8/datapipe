@@ -14,7 +14,7 @@ class RunConfig:
     labels: LabelDict = field(default_factory=dict)
 
     @classmethod
-    def add_labels(cls, rc: Optional['RunConfig'], labels: LabelDict) -> 'RunConfig':
+    def add_labels(cls, rc: Optional["RunConfig"], labels: LabelDict) -> "RunConfig":
         if rc is not None:
             return RunConfig(
                 filters=rc.filters,
