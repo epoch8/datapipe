@@ -200,7 +200,7 @@ class QdrantShardedStore(TableStore):
         return []
 
     def __get_collection_name(self, name_values: Any) -> str:
-        if not isinstance(name_values, Iterable):
+        if len(self.name_params) == 1:
             name_values = (name_values,)
 
         name_params = dict(zip(self.name_params, name_values))
