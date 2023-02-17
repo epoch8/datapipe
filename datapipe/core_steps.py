@@ -170,12 +170,14 @@ class BatchTransform(PipelineStep):
         outputs: List[str],
         chunk_size: int = 1000,
         kwargs: Optional[Dict[str, Any]] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.chunk_size = chunk_size
         self.kwargs = kwargs or {}
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -189,6 +191,7 @@ class BatchTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 chunk_size=self.chunk_size,
+                labels=self.labels,
             )
         ]
 
@@ -361,10 +364,12 @@ class BatchGenerate(PipelineStep):
         func: BatchGenerateFunc,
         outputs: List[str],
         kwargs: Optional[Dict] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         self.func = func
         self.outputs = outputs
         self.kwargs = kwargs
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
@@ -390,6 +395,7 @@ class BatchGenerate(PipelineStep):
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
                 check_for_changes=False,
                 kwargs=self.kwargs,
+                labels=self.labels,
             )
         ]
 

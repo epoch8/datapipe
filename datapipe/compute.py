@@ -199,8 +199,9 @@ class DatatableTransformStep(ComputeStep):
         func: DatatableTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         check_for_changes: bool = True,
+        labels: Optional[Dict[str, str]] = None,
     ) -> None:
-        ComputeStep.__init__(self, name)
+        ComputeStep.__init__(self, name, labels=labels)
 
         self.input_dts = input_dts
         self.output_dts = output_dts
