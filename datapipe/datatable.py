@@ -11,10 +11,16 @@ from datapipe.metastore import MetaTable
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore
-from datapipe.types import (ChangeList, DataDF, IndexDF, MetadataDF,
-                            data_to_index, index_difference)
+from datapipe.types import (
+    ChangeList,
+    DataDF,
+    IndexDF,
+    MetadataDF,
+    data_to_index,
+    index_difference,
+)
 
-logger = logging.getLogger('datapipe.datatable')
+logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
 
 
@@ -48,36 +54,43 @@ class DataTable:
         )
 
     def get_size(self) -> int:
-        '''
+        """
         Get the number of non-deleted rows in the DataTable
-        '''
+        """
         return self.meta_table.get_metadata_size(idx=None, include_deleted=False)
 
     def store_chunk(
         self,
         data_df: DataDF,
-        processed_idx: IndexDF = None,
-        now: float = None,
-        run_config: RunConfig = None,
+        processed_idx: Optional[IndexDF] = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> IndexDF:
-        '''
+        """
         Записать новые данные в таблицу.
 
         При указанном `processed_idx` удалить те строки, которые находятся
         внутри `processed_idx`, но отсутствуют в `data_df`.
-        '''
+        """
+
+        # Check that all index values in `data_df` is unique
+        if data_df.duplicated(self.primary_keys).any():
+            raise ValueError("`data_df` index values should be unique")
+
         changes = [IndexDF(pd.DataFrame(columns=self.primary_keys))]
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
             if not data_df.empty:
-                logger.debug(f'Inserting chunk {len(data_df.index)} rows into {self.name}')
+                logger.debug(
+                    f"Inserting chunk {len(data_df.index)} rows into {self.name}"
+                )
 
                 with tracer.start_as_current_span("get_changes_for_store_chunk"):
                     (
                         new_df,
                         changed_df,
                         new_meta_df,
-                        changed_meta_df
+                        changed_meta_df,
                     ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
                 self.event_logger.log_state(
@@ -119,11 +132,11 @@ class DataTable:
     def delete_by_idx(
         self,
         idx: IndexDF,
-        now: float = None,
-        run_config: RunConfig = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         if len(idx) > 0:
-            logger.debug(f'Deleting {len(idx.index)} rows from {self.name} data')
+            logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
             self.event_logger.log_state(
                 self.name,
                 added_count=0,
@@ -139,10 +152,12 @@ class DataTable:
     def delete_stale_by_process_ts(
         self,
         process_ts: float,
-        now: float = None,
-        run_config: RunConfig = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
-        for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
+        for deleted_df in self.meta_table.get_stale_idx(
+            process_ts, run_config=run_config
+        ):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
 
             self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
@@ -155,7 +170,9 @@ class DataStore:
         create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
-        self.event_logger = EventLogger(self.meta_dbconn, create_table=create_meta_table)
+        self.event_logger = EventLogger(
+            self.meta_dbconn, create_table=create_meta_table
+        )
         self.tables: Dict[str, DataTable] = {}
         self.create_meta_table = create_meta_table
 
@@ -173,7 +190,7 @@ class DataStore:
                 name=name,
                 primary_schema=primary_schema,
                 meta_schema=meta_schema,
-                create_table=self.create_meta_table
+                create_table=self.create_meta_table,
             ),
             table_store=table_store,
             event_logger=self.event_logger,
@@ -189,7 +206,9 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
-    def get_join_keys(self, inputs: List[DataTable], outputs: List[DataTable]) -> List[str]:
+    def get_join_keys(
+        self, inputs: List[DataTable], outputs: List[DataTable]
+    ) -> List[str]:
         inp_p_keys = [set(inp.primary_keys) for inp in inputs]
         out_p_keys = [set(out.primary_keys) for out in outputs]
 
@@ -202,7 +221,7 @@ class DataStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[Iterable[str], select]:
         inp_keys = [set(inp.primary_keys) for inp in inputs]
         out_keys = [set(out.primary_keys) for out in outputs]
@@ -218,8 +237,11 @@ class DataStore:
 
             key_cols = [column(k) for k in join_keys]
 
-            sql = select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])\
-                .select_from(tbl).group_by(*key_cols)
+            sql = (
+                select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])
+                .select_from(tbl)
+                .group_by(*key_cols)
+            )
 
             sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
@@ -233,12 +255,7 @@ class DataStore:
 
             if len(join_keys) > 1:
                 coalesce_keys = [
-                    func.coalesce(
-                        *[
-                            subq.c[key]
-                            for subq in ctes
-                        ]
-                    ).label(key)
+                    func.coalesce(*[subq.c[key] for subq in ctes]).label(key)
                     for key in join_keys
                 ]
             else:
@@ -251,12 +268,7 @@ class DataStore:
             for cte in ctes[1:]:
                 sql = sql.outerjoin(
                     cte,
-                    onclause=and_(
-                        *[
-                            ctes[0].c[key] == cte.c[key]
-                            for key in join_keys
-                        ]
-                    ),
+                    onclause=and_(*[ctes[0].c[key] == cte.c[key] for key in join_keys]),
                     full=True,
                 )
 
@@ -268,23 +280,22 @@ class DataStore:
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
         out = _make_agg_of_agg(out_ctes, "process_ts")
 
-        sql = select(*[func.coalesce(inp.c[key], out.c[key]).label(key) for key in join_keys])\
-            .select_from(inp)\
+        sql = (
+            select(
+                *[func.coalesce(inp.c[key], out.c[key]).label(key) for key in join_keys]
+            )
+            .select_from(inp)
             .outerjoin(
-                out,
-                onclause=and_(
-                    *[
-                        inp.c[key] == out.c[key]
-                        for key in join_keys
-                    ]
-                )
-            ).where(
+                out, onclause=and_(*[inp.c[key] == out.c[key] for key in join_keys])
+            )
+            .where(
                 or_(
                     inp.c.update_ts > out.c.process_ts,
                     inp.c.update_ts == None,  # noqa
                     out.c.process_ts == None,  # noqa
                 )
             )
+        )
 
         return (join_keys, sql)
 
@@ -292,18 +303,15 @@ class DataStore:
         self,
         inputs: List[DataTable],
         outputs: List[DataTable],
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> int:
         _, sql = self._build_changed_idx_sql(
-            inputs=inputs,
-            outputs=outputs,
-            run_config=run_config
+            inputs=inputs, outputs=outputs, run_config=run_config
         )
 
         idx_count = self.meta_dbconn.con.execute(
-            select([func.count()])
-            .select_from(
-                alias(sql.subquery(), name='union_select')
+            select([func.count()]).select_from(
+                alias(sql.subquery(), name="union_select")
             )
         ).scalar()
 
@@ -314,16 +322,16 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         chunk_size: int = 1000,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
-        '''
+        """
         Метод для получения перечня индексов для обработки.
 
         Returns: (idx_size, iterator<idx_df>)
 
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
-        '''
+        """
 
         if len(inputs) == 0:
             return (0, iter([]))
@@ -344,18 +352,14 @@ class DataStore:
         extra_filters: LabelDict
         if run_config is not None:
             extra_filters = {
-                k: v
-                for k, v in run_config.filters.items()
-                if k not in join_keys
+                k: v for k, v in run_config.filters.items() if k not in join_keys
             }
         else:
             extra_filters = {}
 
         def alter_res_df():
             for df in pd.read_sql_query(
-                u1,
-                con=self.meta_dbconn.con,
-                chunksize=chunk_size
+                u1, con=self.meta_dbconn.con, chunksize=chunk_size
             ):
                 for k, v in extra_filters.items():
                     df[k] = v
@@ -370,7 +374,7 @@ class DataStore:
         outputs: List[DataTable],
         change_list: ChangeList,
         chunk_size: int = 1000,
-        run_config: RunConfig = None,
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         join_keys = self.get_join_keys(inputs, outputs)
         changes = [pd.DataFrame(columns=join_keys)]
@@ -388,6 +392,6 @@ class DataStore:
 
         def gen():
             for i in range(math.ceil(len(idx) / chunk_size)):
-                yield idx[i * chunk_size: (i + 1) * chunk_size]
+                yield idx[i * chunk_size : (i + 1) * chunk_size]
 
         return len(idx), gen()

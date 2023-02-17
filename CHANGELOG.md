@@ -1,3 +1,17 @@
+# 0.11.11
+
+* Add formatting through `traceback_with_variables` in `event_logger`
+* Add exception traceback to debug log output
+* Install sqlite from `pysqlite3-binary` package; Add `sqlite` extra; Update
+  examples; Add `docs/sqlite.md` document 
+* Update type annotations for `mypy >= 0.991`
+
+# 0.11.10
+
+* Fix `RedisStore` and `TableDataSingleFileStore` `.read_rows` in case when
+  nonexistent rows are requested, align behavior with `TableStoreDB`
+* Add test for nonexistent rows read
+
 # 0.11.9
 
 * New method `DataTable.reset_metadata()`
@@ -7,6 +21,7 @@
 * Add trace span for getting ids to process
 * Add protocol in `TableStoreFiledir._read_rows_fast`
 * `try/except` for `DatatableTransformStep`
+* Add check for indexes uniqueness in `DataTable.store_chunk`
 
 # 0.11.8
 

@@ -15,15 +15,15 @@ class TableStoreExcel(TableDataSingleFileStore, ABC):
 
         if of.fs.exists(of.path):
             dtypes = sql_schema_to_dtype(self.primary_schema)
-            df = pd.read_excel(of.open(), engine='openpyxl', dtype=dtypes)
+            df = pd.read_excel(of.open(), engine="openpyxl", dtype=dtypes)
 
             return df
         else:
             return None
 
     def save_file(self, df: DataDF) -> None:
-        with fsspec.open(self.filename, 'wb+') as f:
-            df.to_excel(f, engine='openpyxl', index=False)
+        with fsspec.open(self.filename, "wb+") as f:
+            df.to_excel(f, engine="openpyxl", index=False)
 
 
 class TableStoreJsonLine(TableDataSingleFileStore):
@@ -32,12 +32,12 @@ class TableStoreJsonLine(TableDataSingleFileStore):
 
         if of.fs.exists(of.path):
             dtypes = sql_schema_to_dtype(self.primary_schema)
-            df = pd.read_json(of.open(), orient='records', lines=True, dtype=dtypes)
+            df = pd.read_json(of.open(), orient="records", lines=True, dtype=dtypes)
 
             return df
         else:
             return None
 
     def save_file(self, df: DataDF) -> None:
-        with fsspec.open(self.filename, 'w+') as f:
-            df.to_json(f, orient='records', lines=True, force_ascii=False)
+        with fsspec.open(self.filename, "w+") as f:
+            df.to_json(f, orient="records", lines=True, force_ascii=False)
