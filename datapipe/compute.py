@@ -116,8 +116,9 @@ class ComputeStep(ABC):
     количество батчей, которые покрывают все измененные индексы.
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, labels: Optional[Dict[str, str]] = None) -> None:
         self._name = name
+        self._labels = labels
 
     def get_name(self) -> str:
         ss = [
@@ -135,6 +136,10 @@ class ComputeStep(ABC):
     @property
     def name(self) -> str:
         return self.get_name()
+
+    @property
+    def labels(self) -> Dict[str, str]:
+        return self._labels if self._labels else {}
 
     @abstractmethod
     def get_input_dts(self) -> List[DataTable]:
@@ -194,8 +199,9 @@ class DatatableTransformStep(ComputeStep):
         func: DatatableTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         check_for_changes: bool = True,
+        labels: Optional[Dict[str, str]] = None,
     ) -> None:
-        ComputeStep.__init__(self, name)
+        ComputeStep.__init__(self, name, labels=labels)
 
         self.input_dts = input_dts
         self.output_dts = output_dts
@@ -211,6 +217,8 @@ class DatatableTransformStep(ComputeStep):
         return self.output_dts
 
     def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
+        logger.info(f"Running: {self.name}")
+
         if len(self.input_dts) > 0 and self.check_for_changes:
             with tracer.start_as_current_span("check for changes"):
                 changed_idx_count = ds.get_changed_idx_count(

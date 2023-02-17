@@ -126,6 +126,6 @@ class EventLogger:
             type=type(exc).__name__,
             message=str(exc),
             description=format_exc(exc),
-            params=exc.args,
+            params=[],  # exc.args, # Not all args can be serialized to JSON, dont really need them
             run_config=run_config,
         )

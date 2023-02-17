@@ -170,12 +170,14 @@ class BatchTransform(PipelineStep):
         outputs: List[str],
         chunk_size: int = 1000,
         kwargs: Optional[Dict[str, Any]] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         self.func = func
         self.inputs = inputs
         self.outputs = outputs
         self.chunk_size = chunk_size
         self.kwargs = kwargs or {}
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -189,6 +191,7 @@ class BatchTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 chunk_size=self.chunk_size,
+                labels=self.labels,
             )
         ]
 
@@ -202,8 +205,9 @@ class BatchTransformStep(ComputeStep):
         func: BatchTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
+        labels: Optional[Dict[str, str]] = None,
     ) -> None:
-        ComputeStep.__init__(self, name)
+        ComputeStep.__init__(self, name=name, labels=labels)
 
         self.input_dts = input_dts
         self.output_dts = output_dts
@@ -219,6 +223,8 @@ class BatchTransformStep(ComputeStep):
         return self.output_dts
 
     def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
+        logger.info(f"Running: {self.name}")
+
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         with tracer.start_as_current_span("Get ids to process"):
@@ -358,10 +364,12 @@ class BatchGenerate(PipelineStep):
         func: BatchGenerateFunc,
         outputs: List[str],
         kwargs: Optional[Dict] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         self.func = func
         self.outputs = outputs
         self.kwargs = kwargs
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
@@ -387,6 +395,7 @@ class BatchGenerate(PipelineStep):
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
                 check_for_changes=False,
                 kwargs=self.kwargs,
+                labels=self.labels,
             )
         ]
 
