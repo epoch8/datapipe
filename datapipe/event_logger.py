@@ -43,7 +43,8 @@ class EventLogger:
         self.step_events_table = Table(
             "datapipe_step_events",
             dbconn.sqla_metadata,
-            Column("step", String(100), primary_key=True),
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("step", String(100)),
             Column("event_ts", DateTime, server_default=func.now()),
             Column("type", String(100)),
             Column("event", JSON if dbconn.con.name == "sqlite" else JSONB),
