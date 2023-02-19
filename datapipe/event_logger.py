@@ -51,6 +51,7 @@ class EventLogger:
 
         if create_table:
             self.events_table.create(self.dbconn.con, checkfirst=True)
+            self.step_events_table.create(self.dbconn.con, checkfirst=True)
 
     def log_state(
         self,
