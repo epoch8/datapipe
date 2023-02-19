@@ -249,6 +249,8 @@ class BatchTransformStep(ComputeStep):
         for changes in gen:
             pass
 
+        ds.event_logger.log_step_full_complete(self.name)
+
     def run_changelist(
         self,
         ds: DataStore,
