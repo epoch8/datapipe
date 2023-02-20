@@ -1,3 +1,17 @@
+# WIP 0.11.12
+
+* Add `labels` arg and property to `ComputeStep` base class
+* Add `labels` arg to `BatchTransform` and `BatchTransformStep`
+* Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+
+# 0.11.11
+
+* Add formatting through `traceback_with_variables` in `event_logger`
+* Add exception traceback to debug log output
+* Install sqlite from `pysqlite3-binary` package; Add `sqlite` extra; Update
+  examples; Add `docs/sqlite.md` document 
+* Update type annotations for `mypy >= 0.991`
+
 # 0.11.10
 
 * Fix `RedisStore` and `TableDataSingleFileStore` `.read_rows` in case when

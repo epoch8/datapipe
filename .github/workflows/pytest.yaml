@@ -1,6 +1,10 @@
 name: Run tests
 
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 jobs:
   lint:
@@ -13,39 +17,39 @@ jobs:
           # - "3.10"
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Setup poetry
-      run: |
-        pip install poetry==1.2.1
+      - name: Setup poetry
+        run: |
+          pip install poetry==1.2.1
 
-    - name: Cache Python dependencies
-      uses: actions/cache@v3
-      with:
-        path: /home/runner/.cache/pypoetry/virtualenvs
-        key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ matrix.python-version }}
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: /home/runner/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        poetry install -E excel -E gcsfs -E s3fs
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
 
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Lint with mypy
-      run: |
-        poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
+      - name: Lint with mypy
+        run: |
+          poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
 
   test:
     # needs: lint
@@ -54,12 +58,12 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.8"
+          # - "3.8"
           - "3.9"
           - "3.10"
         test-db-env:
           - "postgres"
-          # - "sqlite"
+          - "sqlite"
 
     services:
       # Label used to access the service container
@@ -88,38 +92,37 @@ jobs:
           - 6379:6379
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Setup poetry
-      run: |
-        pip install poetry==1.2.1
+      - name: Setup poetry
+        run: |
+          pip install poetry==1.2.1
 
-    - name: Cache Python dependencies
-      uses: actions/cache@v2
-      with:
-        path: /home/runner/.cache/pypoetry/virtualenvs
-        key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ matrix.python-version }}
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: /home/runner/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        poetry install -E excel -E milvus -E gcsfs -E s3fs -E redis
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
 
-    - name: Test with pytest
-      run: |
-        poetry run pytest
-      env:
-        TEST_DB_ENV: ${{ matrix.test-db-env }}
-        # The hostname used to communicate with the PostgreSQL service container
-        POSTGRES_HOST: localhost
-        # The default PostgreSQL port
-        POSTGRES_PORT: 5432
-        REDIS_HOST: localhost
-        REDIS_PORT: 6379
-
+      - name: Test with pytest
+        run: |
+          poetry run pytest
+        env:
+          TEST_DB_ENV: ${{ matrix.test-db-env }}
+          # The hostname used to communicate with the PostgreSQL service container
+          POSTGRES_HOST: localhost
+          # The default PostgreSQL port
+          POSTGRES_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379

@@ -44,4 +44,4 @@ pipeline = Pipeline(
 )
 
 
-ds = DataStore(DBConn("sqlite:///./test_data/metadata.sqlite"))
+ds = DataStore(DBConn("sqlite+pysqlite3:///./test_data/metadata.sqlite"))
