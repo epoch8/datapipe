@@ -46,8 +46,8 @@ class EventLogger:
             Column("id", Integer, primary_key=True, autoincrement=True),
             Column("step", String(100)),
             Column("event_ts", DateTime, server_default=func.now()),
-            Column("type", String(100)),
-            Column("event", JSON if dbconn.con.name == "sqlite" else JSONB),
+            Column("event", String(100)),
+            Column("event_payload", JSON if dbconn.con.name == "sqlite" else JSONB),
         )
 
         if create_table:
@@ -148,7 +148,7 @@ class EventLogger:
 
         ins = self.step_events_table.insert().values(
             step=step_name,
-            type=StepEventTypes.RUN_FULL_COMPLETE.value,
+            event=StepEventTypes.RUN_FULL_COMPLETE.value,
         )
 
         self.dbconn.con.execute(ins)
