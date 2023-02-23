@@ -15,6 +15,7 @@ from typing import (
 
 import tqdm
 from opentelemetry import trace
+import ray
 
 from datapipe.compute import (
     Catalog,
@@ -43,7 +44,7 @@ def do_batch_transform(
     idx_count: Optional[int] = None,
     kwargs: Optional[Dict[str, Any]] = None,
     run_config: Optional[RunConfig] = None,
-) -> Iterator[ChangeList]:
+) -> Iterable[ChangeList]:
     """
     Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
     """
@@ -54,15 +55,60 @@ def do_batch_transform(
         # Nothing to process
         return [ChangeList()]
 
-    for idx in tqdm.tqdm(idx_gen, total=idx_count):
-        with tracer.start_as_current_span("process batch"):
-            logger.debug(f"Idx to process: {idx.to_records()}")
+    batch_results = [
+        do_one_batch_transform.remote(
+            func=func,
+            ds=ds,
+            input_dts=input_dts,
+            output_dts=output_dts,
+            idx=idx,
+            kwargs=kwargs,
+            run_config=run_config,
+        )
+        for idx in idx_gen
+    ]
 
-            with tracer.start_as_current_span("get input data"):
+    return ray.get(batch_results)
+
+
+@ray.remote
+def do_one_batch_transform(
+    func: BatchTransformFunc,
+    ds: DataStore,
+    input_dts: List[DataTable],
+    output_dts: List[DataTable],
+    idx: IndexDF,
+    kwargs: Optional[Dict[str, Any]] = None,
+    run_config: Optional[RunConfig] = None,
+) -> ChangeList:
+
+    logger = logging.getLogger("datapipe.core_steps")
+    tracer = trace.get_tracer("datapipe.core_steps")
+
+    with tracer.start_as_current_span("process batch"):
+        logger.debug(f"Idx to process: {idx.to_records()}")
+        changes = ChangeList()
+
+        with tracer.start_as_current_span("get input data"):
+            try:
+                input_dfs = [inp.get_data(idx) for inp in input_dts]
+            except Exception as e:
+                logger.error(f"Get input data failed: {str(e)}")
+                ds.event_logger.log_exception(
+                    e,
+                    run_config=RunConfig.add_labels(
+                        run_config, {"idx": idx.to_dict(orient="records")}
+                    ),
+                )
+
+                return changes
+
+        if sum(len(j) for j in input_dfs) > 0:
+            with tracer.start_as_current_span("run transform"):
                 try:
-                    input_dfs = [inp.get_data(idx) for inp in input_dts]
+                    chunks_df = func(*input_dfs, **kwargs or {})
                 except Exception as e:
-                    logger.error(f"Get input data failed: {str(e)}")
+                    logger.error(f"Transform failed ({func.__name__}): {str(e)}")
                     ds.event_logger.log_exception(
                         e,
                         run_config=RunConfig.add_labels(
@@ -70,64 +116,47 @@ def do_batch_transform(
                         ),
                     )
 
-                    continue
+                    return changes
 
-            changes = ChangeList()
-
-            if sum(len(j) for j in input_dfs) > 0:
-                with tracer.start_as_current_span("run transform"):
-                    try:
-                        chunks_df = func(*input_dfs, **kwargs or {})
-                    except Exception as e:
-                        logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
-                        )
-
-                        continue
-
-                if isinstance(chunks_df, (list, tuple)):
-                    assert len(chunks_df) == len(output_dts)
-                else:
-                    assert len(output_dts) == 1
-                    chunks_df = [chunks_df]
-
-                with tracer.start_as_current_span("store output batch"):
-                    try:
-                        for k, res_dt in enumerate(output_dts):
-                            # Берем k-ое значение функции для k-ой таблички
-                            # Добавляем результат в результирующие чанки
-                            change_idx = res_dt.store_chunk(
-                                data_df=chunks_df[k],
-                                processed_idx=idx,
-                                run_config=run_config,
-                            )
-
-                            changes.append(res_dt.name, change_idx)
-                    except Exception as e:
-                        logger.error(f"Store output batch failed: {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
-                        )
-
-                        continue
-
+            if isinstance(chunks_df, (list, tuple)):
+                assert len(chunks_df) == len(output_dts)
             else:
-                with tracer.start_as_current_span("delete missing data from output"):
+                assert len(output_dts) == 1
+                chunks_df = [chunks_df]
+
+            with tracer.start_as_current_span("store output batch"):
+                try:
                     for k, res_dt in enumerate(output_dts):
-                        del_idx = res_dt.meta_table.get_existing_idx(idx)
+                        # Берем k-ое значение функции для k-ой таблички
+                        # Добавляем результат в результирующие чанки
+                        change_idx = res_dt.store_chunk(
+                            data_df=chunks_df[k],
+                            processed_idx=idx,
+                            run_config=run_config,
+                        )
 
-                        res_dt.delete_by_idx(del_idx, run_config=run_config)
+                        changes.append(res_dt.name, change_idx)
+                except Exception as e:
+                    logger.error(f"Store output batch failed: {str(e)}")
+                    ds.event_logger.log_exception(
+                        e,
+                        run_config=RunConfig.add_labels(
+                            run_config, {"idx": idx.to_dict(orient="records")}
+                        ),
+                    )
 
-                        changes.append(res_dt.name, del_idx)
+                    return changes
 
-            yield changes
+        else:
+            with tracer.start_as_current_span("delete missing data from output"):
+                for k, res_dt in enumerate(output_dts):
+                    del_idx = res_dt.meta_table.get_existing_idx(idx)
+
+                    res_dt.delete_by_idx(del_idx, run_config=run_config)
+
+                    changes.append(res_dt.name, del_idx)
+
+        return changes
 
 
 def do_full_batch_transform(

@@ -27,6 +27,8 @@ logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
 
 
+SQLAlchemyInstrumentor().instrument()
+
 SCHEMA_TO_DTYPE_LOOKUP = {
     String: str,
     Integer: int,
@@ -59,8 +61,6 @@ class DBConn:
             connstr,
             poolclass=SingletonThreadPool,
         )
-
-        SQLAlchemyInstrumentor().instrument(engine=self.con)
 
         self.sqla_metadata = MetaData(schema=schema)
 
