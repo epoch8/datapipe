@@ -3,6 +3,8 @@
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+* Add prototype events logging for steps, add
+  `event_logger.log_step_full_complete`, add table `datapipe_step_events`
 
 # 0.11.11
 
