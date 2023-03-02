@@ -281,17 +281,16 @@ def print_compute(steps: List[ComputeStep]) -> None:
 def run_steps(
     ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None
 ) -> None:
-    with tracer.start_as_current_span("run_steps"):
-        for step in steps:
-            with tracer.start_as_current_span(
-                f"{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
-            ):
-                logger.info(
-                    f"Running {step.get_name()} "
-                    f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
-                )
+    for step in steps:
+        with tracer.start_as_current_span(
+            f"{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
+        ):
+            logger.info(
+                f"Running {step.get_name()} "
+                f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
+            )
 
-                step.run_full(ds, run_config)
+            step.run_full(ds, run_config)
 
 
 def run_pipeline(
