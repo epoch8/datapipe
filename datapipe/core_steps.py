@@ -171,6 +171,7 @@ class BatchTransform(PipelineStep):
         chunk_size: int = 1000,
         kwargs: Optional[Dict[str, Any]] = None,
         labels: Optional[Dict[str, str]] = None,
+        enable_changelist: bool = True
     ):
         self.func = func
         self.inputs = inputs
@@ -178,6 +179,7 @@ class BatchTransform(PipelineStep):
         self.chunk_size = chunk_size
         self.kwargs = kwargs or {}
         self.labels = labels
+        self.enable_changelist = enable_changelist
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -192,6 +194,7 @@ class BatchTransform(PipelineStep):
                 kwargs=self.kwargs,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                enable_changelist=self.enable_changelist
             )
         ]
 
@@ -206,6 +209,7 @@ class BatchTransformStep(ComputeStep):
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
         labels: Optional[Dict[str, str]] = None,
+        enable_changelist: bool = True
     ) -> None:
         ComputeStep.__init__(self, name=name, labels=labels)
 
@@ -215,6 +219,7 @@ class BatchTransformStep(ComputeStep):
         self.func = func
         self.kwargs = kwargs or {}
         self.chunk_size = chunk_size
+        self.enable_changelist = enable_changelist
 
     def get_input_dts(self) -> List[DataTable]:
         return self.input_dts
@@ -257,6 +262,9 @@ class BatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
+        if not self.enable_changelist:
+            return ChangeList()
+
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         idx_count, idx_gen = ds.get_change_list_process_ids(
