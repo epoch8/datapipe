@@ -440,7 +440,8 @@ class TableStoreFiledir(TableStore):
                     **({'filepath': filepaths} if self.add_filepath_column else {})
                 }
             )
-            yield pseudo_data_df.astype(object)
+            # TODO fix typing issue
+            yield pseudo_data_df.astype(object)  # type: ignore
         else:
             filepath_kw: Dict = {'filepath': []} if self.add_filepath_column else {}
             yield pd.DataFrame(
@@ -448,4 +449,5 @@ class TableStoreFiledir(TableStore):
                     'ukey': [],
                     **filepath_kw,
                 }
-            ).astype(object)
+            # TODO fix typing issue
+            ).astype(object)  # type: ignore
