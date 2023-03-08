@@ -25,7 +25,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataDF, IndexDF
+from datapipe.types import ChangeList, Labels, DataDF, IndexDF
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")
@@ -65,9 +65,7 @@ def do_batch_transform(
                     logger.error(f"Get input data failed: {str(e)}")
                     ds.event_logger.log_exception(
                         e,
-                        run_config=RunConfig.add_labels(
-                            run_config, {"idx": idx.to_dict(orient="records")}
-                        ),
+                        run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
                     )
 
                     continue
@@ -82,9 +80,7 @@ def do_batch_transform(
                         logger.error(f"Transform failed ({func.__name__}): {str(e)}")
                         ds.event_logger.log_exception(
                             e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
+                            run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
                         )
 
                         continue
@@ -111,9 +107,7 @@ def do_batch_transform(
                         logger.error(f"Store output batch failed: {str(e)}")
                         ds.event_logger.log_exception(
                             e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
+                            run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
                         )
 
                         continue
@@ -170,7 +164,7 @@ class BatchTransform(PipelineStep):
         outputs: List[str],
         chunk_size: int = 1000,
         kwargs: Optional[Dict[str, Any]] = None,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ):
         self.func = func
         self.inputs = inputs
@@ -205,7 +199,7 @@ class BatchTransformStep(ComputeStep):
         func: BatchTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         ComputeStep.__init__(self, name=name, labels=labels)
 
@@ -308,9 +302,7 @@ def do_batch_generate(
     now = time.time()
     empty_generator = True
 
-    assert inspect.isgeneratorfunction(
-        func
-    ), "Starting v0.8.0 proc_func should be a generator"
+    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
     with tracer.start_as_current_span("init generator"):
         try:
@@ -366,7 +358,7 @@ class BatchGenerate(PipelineStep):
         func: BatchGenerateFunc,
         outputs: List[str],
         kwargs: Optional[Dict] = None,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ):
         self.func = func
         self.outputs = outputs
@@ -402,14 +394,10 @@ class BatchGenerate(PipelineStep):
         ]
 
 
-def update_external_table(
-    ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None
-) -> None:
+def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(
-        table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
-    ):
+    for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
 
         (
             new_df,

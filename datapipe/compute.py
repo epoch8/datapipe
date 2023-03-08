@@ -9,7 +9,7 @@ from opentelemetry import trace
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList
+from datapipe.types import ChangeList, Labels
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -80,7 +80,7 @@ class DatatableTransform(PipelineStep):
         outputs: List[str],
         check_for_changes: bool = True,
         kwargs: Optional[Dict[str, Any]] = None,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         self.func = func
         self.inputs = inputs
@@ -98,7 +98,7 @@ class DatatableTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 check_for_changes=self.check_for_changes,
-                labels=self.labels
+                labels=self.labels,
             )
         ]
 
@@ -119,7 +119,7 @@ class ComputeStep(ABC):
     количество батчей, которые покрывают все измененные индексы.
     """
 
-    def __init__(self, name: str, labels: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, name: str, labels: Optional[Labels] = None) -> None:
         self._name = name
         self._labels = labels
 
@@ -141,8 +141,8 @@ class ComputeStep(ABC):
         return self.get_name()
 
     @property
-    def labels(self) -> Dict[str, str]:
-        return self._labels if self._labels else {}
+    def labels(self) -> Labels:
+        return self._labels if self._labels else []
 
     @abstractmethod
     def get_input_dts(self) -> List[DataTable]:
@@ -202,7 +202,7 @@ class DatatableTransformStep(ComputeStep):
         func: DatatableTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         check_for_changes: bool = True,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         ComputeStep.__init__(self, name, labels=labels)
 
@@ -231,9 +231,7 @@ class DatatableTransformStep(ComputeStep):
                 )
 
                 if changed_idx_count == 0:
-                    logger.debug(
-                        f"Skipping {self.get_name()} execution - nothing to compute"
-                    )
+                    logger.debug(f"Skipping {self.get_name()} execution - nothing to compute")
 
                     return
 
@@ -249,15 +247,11 @@ class DatatableTransformStep(ComputeStep):
                     **self.kwargs,
                 )
             except Exception as e:
-                logger.error(
-                    f"Datatable transform ({self.func.__name__}) run failed: {str(e)}"
-                )
+                logger.error(f"Datatable transform ({self.func.__name__}) run failed: {str(e)}")
                 ds.event_logger.log_exception(e, run_config=run_config)
 
 
-def build_compute(
-    ds: DataStore, catalog: Catalog, pipeline: Pipeline
-) -> List[ComputeStep]:
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)
 
@@ -278,9 +272,7 @@ def print_compute(steps: List[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
-def run_steps(
-    ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None
-) -> None:
+def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None) -> None:
     for step in steps:
         with tracer.start_as_current_span(
             f"{step.get_name()} {[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
@@ -338,9 +330,7 @@ def run_steps_changelist(
                             f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
                         )
 
-                        step_changes = step.run_changelist(
-                            ds, current_changes, run_config
-                        )
+                        step_changes = step.run_changelist(ds, current_changes, run_config)
                         next_changes.extend(step_changes)
 
             current_changes = next_changes
