@@ -1,7 +1,7 @@
 from __future__ import annotations  # NOQA
 
 from dataclasses import dataclass, field
-from typing import Dict, List, NewType, TypeVar, cast
+from typing import Dict, List, NewType, TypeVar, Tuple, cast
 
 import pandas as pd
 from sqlalchemy import Column
@@ -10,16 +10,18 @@ DataSchema = List[Column]
 MetaSchema = List[Column]
 
 # Dataframe with columns (<index_cols ...>)
-IndexDF = NewType('IndexDF', pd.DataFrame)
+IndexDF = NewType("IndexDF", pd.DataFrame)
 
 # Dataframe with columns (<index_cols ...>, hash, create_ts, update_ts, process_ts, delete_ts)
-MetadataDF = NewType('MetadataDF', pd.DataFrame)
+MetadataDF = NewType("MetadataDF", pd.DataFrame)
 
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
 # DataDF = NewType('DataDF', pd.DataFrame)
 DataDF = pd.DataFrame
 
 TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
+
+Labels = List[Tuple[str, str]]
 
 
 @dataclass
@@ -34,7 +36,7 @@ class ChangeList:
             if self_cols != other_cols:
                 raise ValueError(f"Different IndexDF for table {table_name}")
 
-            self.changes[table_name] = cast(IndexDF, pd.concat([self.changes[table_name], idx], axis='index'))
+            self.changes[table_name] = cast(IndexDF, pd.concat([self.changes[table_name], idx], axis="index"))
         else:
             self.changes[table_name] = idx
 
@@ -62,7 +64,7 @@ def meta_to_index(meta_df: MetadataDF, primary_keys: List[str]) -> IndexDF:
 
 
 def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert(list(idx1_df.columns) == list(idx2_df.columns))
+    assert list(idx1_df.columns) == list(idx2_df.columns)
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index
@@ -72,7 +74,7 @@ def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
 
 
 def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert(sorted(list(idx1_df.columns)) == sorted(list(idx2_df.columns)))  # type: ignore
+    assert sorted(list(idx1_df.columns.tolist())) == sorted(list(idx2_df.columns.tolist()))
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index

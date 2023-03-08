@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Optional
 from enum import Enum
 
 import logging
-import traceback
+from traceback_with_variables import format_exc
 
 from sqlalchemy.sql import func
 from sqlalchemy.sql.schema import Column, Table
@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from datapipe.run_config import RunConfig
 
 
-logger = logging.getLogger('datapipe.event_logger')
+logger = logging.getLogger("datapipe.event_logger")
 
 if TYPE_CHECKING:
     from datapipe.metastore import DBConn
@@ -23,26 +23,36 @@ class EventTypes(Enum):
     ERROR = "error"
 
 
+class StepEventTypes(Enum):
+    RUN_FULL_COMPLETE = "run_full_complete"
+
+
 class EventLogger:
-    def __init__(self, dbconn: 'DBConn', create_table: bool = False):
+    def __init__(self, dbconn: "DBConn", create_table: bool = False):
         self.dbconn = dbconn
 
         self.events_table = Table(
-            'datapipe_events',
+            "datapipe_events",
             dbconn.sqla_metadata,
-            *self._make_table_schema(dbconn),
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("event_ts", DateTime, server_default=func.now()),
+            Column("type", String(100)),
+            Column("event", JSON if dbconn.con.name == "sqlite" else JSONB),
+        )
+
+        self.step_events_table = Table(
+            "datapipe_step_events",
+            dbconn.sqla_metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("step", String(100)),
+            Column("event_ts", DateTime, server_default=func.now()),
+            Column("event", String(100)),
+            Column("event_payload", JSON if dbconn.con.name == "sqlite" else JSONB),
         )
 
         if create_table:
             self.events_table.create(self.dbconn.con, checkfirst=True)
-
-    def _make_table_schema(self, dbconn: 'DBConn'):
-        return [
-            Column('id', Integer, primary_key=True, autoincrement=True),
-            Column('event_ts', DateTime, server_default=func.now()),
-            Column('type', String(100)),
-            Column('event', JSON if dbconn.con.name == 'sqlite' else JSONB)
-        ]
+            self.step_events_table.create(self.dbconn.con, checkfirst=True)
 
     def log_state(
         self,
@@ -55,7 +65,7 @@ class EventLogger:
     ):
         logger.debug(
             f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
-            f'deleted = {deleted_count}, processed_count = {deleted_count}'
+            f"deleted = {deleted_count}, processed_count = {deleted_count}"
         )
 
         if run_config is not None:
@@ -76,8 +86,8 @@ class EventLogger:
                     "updated_count": updated_count,
                     "deleted_count": deleted_count,
                     "processed_count": processed_count,
-                }
-            }
+                },
+            },
         )
 
         self.dbconn.con.execute(ins)
@@ -91,13 +101,15 @@ class EventLogger:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         if run_config is not None:
-            logger.debug(f'Error in step {run_config.labels.get("step_name")}: {type} {message}')
+            logger.debug(
+                f'Error in step {run_config.labels.get("step_name")}: {type} {message}\n{description}'
+            )
             meta = {
                 "labels": run_config.labels,
                 "filters": run_config.filters,
             }
         else:
-            logger.debug(f'Error: {type} {message}')
+            logger.debug(f"Error: {type} {message}\n{description}")
             meta = {}
 
         ins = self.events_table.insert().values(
@@ -109,8 +121,8 @@ class EventLogger:
                     "message": message,
                     "description": description,
                     "params": params,
-                }
-            }
+                },
+            },
         )
 
         self.dbconn.con.execute(ins)
@@ -123,7 +135,20 @@ class EventLogger:
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
-            description=traceback.format_exc(),
-            params=exc.args,
+            description=format_exc(exc),
+            params=[],  # exc.args, # Not all args can be serialized to JSON, dont really need them
             run_config=run_config,
         )
+
+    def log_step_full_complete(
+        self,
+        step_name: str,
+    ) -> None:
+        logger.debug(f"Step {step_name} is marked complete")
+
+        ins = self.step_events_table.insert().values(
+            step=step_name,
+            event=StepEventTypes.RUN_FULL_COMPLETE.value,
+        )
+
+        self.dbconn.con.execute(ins)
