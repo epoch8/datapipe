@@ -31,8 +31,7 @@ pymilvus = {version="^2.0.2", optional=true}
 
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
-opentelemetry-instrumentation-sqlalchemy = "^0.27b0"
-opentelemetry-exporter-jaeger = {version="^1.8.0", optional=true}
+opentelemetry-instrumentation-sqlalchemy = "0.35b0"
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
