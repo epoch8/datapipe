@@ -3,6 +3,8 @@
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+* Large refactoring, `ComputeStep` now contains pieces of overridable functions
+  for `run_full` and `run_changelist`
 
 # 0.11.11
 
