@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from opentelemetry import trace
 import tqdm
@@ -140,52 +140,65 @@ class ComputeStep:
     ) -> List[DataDF]:
         return [inp.get_data(idx) for inp in self.input_dts]
 
+    def process_batch_dfs(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        input_dfs: List[DataDF],
+        run_config: Optional[RunConfig] = None,
+    ) -> TransformResult:
+        raise NotImplementedError()
+
+    def process_batch_dts(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: Optional[RunConfig] = None,
+    ) -> Optional[TransformResult]:
+        with tracer.start_as_current_span("get input data"):
+            input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
+
+        if sum(len(j) for j in input_dfs) == 0:
+            return None
+
+        with tracer.start_as_current_span("run transform"):
+            output_dfs = self.process_batch_dfs(
+                ds=ds,
+                idx=idx,
+                input_dfs=input_dfs,
+                run_config=run_config,
+            )
+
+        return output_dfs
+
     def process_batch(
         self,
         ds: DataStore,
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
-    ) -> Iterator[ChangeList]:
+    ) -> ChangeList:
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {idx.to_records()}")
 
-            with tracer.start_as_current_span("get input data"):
-                try:
-                    input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
-                except Exception as e:
-                    logger.error(f"Get input data failed: {str(e)}")
-                    ds.event_logger.log_exception(
-                        e,
-                        run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
-                    )
+            try:
+                output_dfs = self.process_batch_dts(ds, idx, run_config)
+            except Exception as e:
+                logger.error(f"Transform failed: {str(e)}")
+                ds.event_logger.log_exception(
+                    e,
+                    run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
+                )
 
-                    return
+                return ChangeList()
 
             changes = ChangeList()
 
-            if sum(len(j) for j in input_dfs) > 0:
-                with tracer.start_as_current_span("run transform"):
-                    try:
-                        chunks_df = self.process_batch_dfs(
-                            ds=ds,
-                            idx=idx,
-                            input_dfs=input_dfs,
-                            run_config=run_config,
-                        )
-                    except Exception as e:
-                        logger.error(f"Transform failed: {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
-                        )
-
-                        return
-
-                if isinstance(chunks_df, (list, tuple)):
-                    assert len(chunks_df) == len(self.output_dts)
+            if output_dfs is not None:
+                if isinstance(output_dfs, (list, tuple)):
+                    assert len(output_dfs) == len(self.output_dts)
                 else:
                     assert len(self.output_dts) == 1
-                    chunks_df = [chunks_df]
+                    output_dfs = [output_dfs]
 
                 with tracer.start_as_current_span("store output batch"):
                     try:
@@ -193,7 +206,7 @@ class ComputeStep:
                             # Берем k-ое значение функции для k-ой таблички
                             # Добавляем результат в результирующие чанки
                             change_idx = res_dt.store_chunk(
-                                data_df=chunks_df[k],
+                                data_df=output_dfs[k],
                                 processed_idx=idx,
                                 run_config=run_config,
                             )
@@ -206,7 +219,7 @@ class ComputeStep:
                             run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
                         )
 
-                        return
+                        return ChangeList()
 
             else:
                 with tracer.start_as_current_span("delete missing data from output"):
@@ -217,16 +230,7 @@ class ComputeStep:
 
                         changes.append(res_dt.name, del_idx)
 
-            yield changes
-
-    def process_batch_dfs(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        input_dfs: List[DataDF],
-        run_config: Optional[RunConfig] = None,
-    ) -> TransformResult:
-        raise NotImplementedError()
+            return changes
 
     def run_full(
         self,
@@ -244,12 +248,11 @@ class ComputeStep:
             return
 
         for idx in tqdm.tqdm(idx_gen, total=idx_count):
-            for i in self.process_batch(
+            self.process_batch(
                 ds=ds,
                 idx=idx,
                 run_config=run_config,
-            ):
-                pass
+            )
 
     def run_changelist(
         self,
@@ -270,12 +273,12 @@ class ComputeStep:
         res_changelist = ChangeList()
 
         for idx in tqdm.tqdm(idx_gen, total=idx_count):
-            for changes in self.process_batch(
+            changes = self.process_batch(
                 ds=ds,
                 idx=idx,
                 run_config=run_config,
-            ):
-                res_changelist.extend(changes)
+            )
+            res_changelist.extend(changes)
 
         return res_changelist
 

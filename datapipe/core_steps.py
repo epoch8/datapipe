@@ -54,6 +54,7 @@ class DatatableBatchTransformFunc(Protocol):
         ds: DataStore,
         idx: IndexDF,
         input_dts: List[DataTable],
+        run_config: Optional[RunConfig] = None,
     ) -> TransformResult:
         ...
 
@@ -257,6 +258,42 @@ class DatatableBatchTransformStep(ComputeStep):
         self.func = func
         self.kwargs = kwargs
         self.chunk_size = chunk_size
+
+    def get_full_process_ids(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_full_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                chunk_size=self.chunk_size,
+                run_config=run_config,
+            )
+
+    def get_change_list_process_ids(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_change_list_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                change_list=change_list,
+                chunk_size=self.chunk_size,
+                run_config=run_config,
+            )
+
+    def process_batch_dts(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: Optional[RunConfig] = None,
+    ) -> Optional[TransformResult]:
+        return self.func(ds, idx, self.input_dts, run_config)
 
 
 def do_batch_generate(
