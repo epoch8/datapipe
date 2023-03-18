@@ -254,6 +254,8 @@ class ComputeStep:
                 run_config=run_config,
             )
 
+        ds.event_logger.log_step_full_complete(self.name)
+
     def run_changelist(
         self,
         ds: DataStore,
