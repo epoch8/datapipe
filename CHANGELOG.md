@@ -1,4 +1,4 @@
-# WIP 0.11.12
+# WIP 0.12.0
 
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
