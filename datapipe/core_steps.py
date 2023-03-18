@@ -24,7 +24,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataDF, IndexDF, TransformResult
+from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")
@@ -95,7 +95,7 @@ class DatatableTransformStep(ComputeStep):
         func: DatatableTransformFunc,
         kwargs: Optional[Dict] = None,
         check_for_changes: bool = True,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         ComputeStep.__init__(self, name, input_dts, output_dts, labels)
 
@@ -142,7 +142,7 @@ class BatchTransform(PipelineStep):
     outputs: List[str]
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
-    labels: Optional[Dict[str, str]] = None
+    labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -170,7 +170,7 @@ class BatchTransformStep(ComputeStep):
         output_dts: List[DataTable],
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         ComputeStep.__init__(self, name, input_dts, output_dts, labels)
 
@@ -251,7 +251,7 @@ class DatatableBatchTransformStep(ComputeStep):
         output_dts: List[DataTable],
         kwargs: Optional[Dict] = None,
         chunk_size: int = 1000,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         super().__init__(name, input_dts, output_dts, labels)
 
@@ -370,7 +370,7 @@ class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
     outputs: List[str]
     kwargs: Optional[Dict] = None
-    labels: Optional[Dict[str, str]] = None
+    labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return [

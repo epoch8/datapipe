@@ -29,6 +29,8 @@ DataDF = pd.DataFrame
 
 TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 
+Labels = List[Tuple[str, str]]
+
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
 

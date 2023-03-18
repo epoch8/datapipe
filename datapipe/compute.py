@@ -10,7 +10,7 @@ import tqdm
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, DataDF, IndexDF, TransformResult
+from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -61,7 +61,7 @@ class ComputeStep:
         name: str,
         input_dts: List[DataTable],
         output_dts: List[DataTable],
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
         self._name = name
         self.input_dts = input_dts
@@ -86,8 +86,8 @@ class ComputeStep:
         return self.get_name()
 
     @property
-    def labels(self) -> Dict[str, str]:
-        return self._labels if self._labels else {}
+    def labels(self) -> Labels:
+        return self._labels if self._labels else []
 
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.primary_keys) for inp in self.input_dts if inp]
@@ -323,17 +323,16 @@ def print_compute(steps: List[ComputeStep]) -> None:
 
 
 def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None) -> None:
-    with tracer.start_as_current_span("run_steps"):
-        for step in steps:
-            with tracer.start_as_current_span(
-                f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
-            ):
-                logger.info(
-                    f"Running {step.get_name()} "
-                    f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
-                )
+    for step in steps:
+        with tracer.start_as_current_span(
+            f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+        ):
+            logger.info(
+                f"Running {step.get_name()} "
+                f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+            )
 
-                step.run_full(ds, run_config)
+        step.run_full(ds, run_config)
 
 
 def run_pipeline(

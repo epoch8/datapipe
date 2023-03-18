@@ -223,7 +223,9 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
-            _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames_series.tolist())[0])
+            attrnames = cast(List[str], attrnames_series.tolist())
+
+            _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames)[0])
             self.filesystem.rm(path)
 
     def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
@@ -289,7 +291,9 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
-            _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames_series.tolist())[0])
+            attrnames = cast(List[str], attrnames_series.tolist())
+
+            _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames)[0])
 
             res.loc[row_idx, "filepath"] = f"{self.protocol_str}{path}"
 
@@ -404,7 +408,8 @@ class TableStoreFiledir(TableStore):
                     **({"filepath": filepaths} if self.add_filepath_column else {}),
                 }
             )
-            yield pseudo_data_df.astype(object)  # type: ignore
+
+            yield pseudo_data_df.astype(object)  # type: ignore # TODO fix typing issue
         else:
             filepath_kw: Dict = {"filepath": []} if self.add_filepath_column else {}
-            yield pd.DataFrame({"ukey": [], **filepath_kw}).astype(object)  # type: ignore
+            yield pd.DataFrame({"ukey": [], **filepath_kw}).astype(object)  # type: ignore # TODO fix typing issue
