@@ -223,7 +223,7 @@ class DatatableBatchTransform(PipelineStep):
     outputs: List[str]
     chunk_size: int = 1000
     kwargs: Optional[Dict] = None
-    labels: Optional[Dict[str, str]] = None
+    labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
