@@ -5,6 +5,7 @@
     :maxdepth: 2
     :hidden:
 
+    concepts
     transformation_lifecycle
     sqlite
 
