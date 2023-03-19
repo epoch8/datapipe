@@ -1,4 +1,4 @@
-# Lifecycle of transformation step
+# Lifecycle of a ComputeStep execution
 
 As a computational graph node, transformation consists of:
 
@@ -9,12 +9,18 @@ As a computational graph node, transformation consists of:
 In order to run transformation, runtime performs actions with the following
 structure:
 
-1. `transform`
-    * `get_idx_to_process` - Compute idx-es that require computation
-    * For each `idx` batch:
-        * `process_batch_dt` - Process batch in terms of DataTable
-            * `get_batch_df` - Retreive batch data in pd.DataFrame form
-            * `process_batch_df` - Process batch in terms of pd.DataFrame
-        * `store_outputs`
+* `run_full` / `run_changelist`
+    * `get_full_process_ds` / `get_change_list_process_ids` - Compute idx-es
+      that require computation
+    * For each `idx` in batch:
+        * `process_batch` - Process batch in terms of DataTable
+            * `process_batch_dts` - Process batch with DataTables as input and
+              `pd.DataFrame` as output
+                * `get_batch_input_dfs` - Retreive batch data in `pd.DataFrame`
+                  form
+                * `process_batch_df` - Process batch in terms of `pd.DataFrame`
+            * store results
+
+![](transformation_lifecycle.png)
 
 !! Note, lifecycle of generator is different
