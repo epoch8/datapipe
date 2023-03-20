@@ -72,6 +72,7 @@ class DatatableTransform(PipelineStep):
     outputs: List[str]
     check_for_changes: bool = True
     kwargs: Optional[Dict[str, Any]] = None
+    labels: Optional[Labels] = None,
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List["ComputeStep"]:
         return [
@@ -82,6 +83,7 @@ class DatatableTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 check_for_changes=self.check_for_changes,
+                labels=self.labels
             )
         ]
 
