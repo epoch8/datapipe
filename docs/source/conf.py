@@ -23,6 +23,7 @@ exclude_patterns = [
 ]
 
 source_suffix = [
+    ".rst",
     ".md",
 ]
 
