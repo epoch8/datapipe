@@ -1,8 +1,12 @@
-# WIP 0.11.12
+# WIP 0.12.0
 
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+* Large refactoring, `ComputeStep` now contains pieces of overridable functions
+  for `run_full` and `run_changelist`
+* Add prototype events logging for steps, add
+  `event_logger.log_step_full_complete`, add table `datapipe_step_events`
 
 # 0.11.11
 

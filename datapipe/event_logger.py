@@ -23,6 +23,10 @@ class EventTypes(Enum):
     ERROR = "error"
 
 
+class StepEventTypes(Enum):
+    RUN_FULL_COMPLETE = "run_full_complete"
+
+
 class EventLogger:
     def __init__(self, dbconn: "DBConn", create_table: bool = False):
         self.dbconn = dbconn
@@ -30,19 +34,25 @@ class EventLogger:
         self.events_table = Table(
             "datapipe_events",
             dbconn.sqla_metadata,
-            *self._make_table_schema(dbconn),
-        )
-
-        if create_table:
-            self.events_table.create(self.dbconn.con, checkfirst=True)
-
-    def _make_table_schema(self, dbconn: "DBConn"):
-        return [
             Column("id", Integer, primary_key=True, autoincrement=True),
             Column("event_ts", DateTime, server_default=func.now()),
             Column("type", String(100)),
             Column("event", JSON if dbconn.con.name == "sqlite" else JSONB),
-        ]
+        )
+
+        self.step_events_table = Table(
+            "datapipe_step_events",
+            dbconn.sqla_metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("step", String(100)),
+            Column("event_ts", DateTime, server_default=func.now()),
+            Column("event", String(100)),
+            Column("event_payload", JSON if dbconn.con.name == "sqlite" else JSONB),
+        )
+
+        if create_table:
+            self.events_table.create(self.dbconn.con, checkfirst=True)
+            self.step_events_table.create(self.dbconn.con, checkfirst=True)
 
     def log_state(
         self,
@@ -129,3 +139,16 @@ class EventLogger:
             params=[],  # exc.args, # Not all args can be serialized to JSON, dont really need them
             run_config=run_config,
         )
+
+    def log_step_full_complete(
+        self,
+        step_name: str,
+    ) -> None:
+        logger.debug(f"Step {step_name} is marked complete")
+
+        ins = self.step_events_table.insert().values(
+            step=step_name,
+            event=StepEventTypes.RUN_FULL_COMPLETE.value,
+        )
+
+        self.dbconn.con.execute(ins)
