@@ -1,4 +1,6 @@
 import os
+from typing import List, Optional
+from datapipe.run_config import RunConfig
 
 import pytest
 import numpy as np
@@ -8,8 +10,8 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.compute import (Catalog, Pipeline, Table, build_compute,
                               run_changelist, run_steps)
-from datapipe.core_steps import BatchTransform, UpdateExternalTable
-from datapipe.datatable import DataStore
+from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
+from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.types import ChangeList, data_to_index
@@ -314,3 +316,50 @@ def test_run_changelist_cycle(dbconn):
             "a": [0, 1, 10, 10, 10, 5, 6, 7, 8, 9],
         }),
     )
+
+
+def test_run_changelist_with_datatable_transform(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        "inp": Table(
+            store=TableStoreDB(
+                dbconn,
+                'inp_data',
+                TEST_SCHEMA,
+                create_table=True,
+            )
+        ),
+        "out": Table(
+            store=TableStoreDB(
+                dbconn,
+                'out_data',
+                TEST_SCHEMA,
+                create_table=True,
+            )
+        )
+    })
+
+    def transform(
+        ds: DataStore,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        run_config: Optional[RunConfig] = None,
+    ):
+        input_dt = input_dts[0]
+        output_dt = output_dts[0]
+        df = input_dt.get_data()
+        output_dt.store_chunk(df)
+
+    pipeline = Pipeline([
+        DatatableTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE_SMALL,
+        ),
+    ])
+
+    changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4, 5, 6]], ['id'])
+    changelist = ChangeList.create('inp', changeIdx)
+    catalog.get_datatable(ds, 'inp').store_chunk(TEST_DF, now=0)
+    run_changelist(ds, catalog, pipeline, changelist)
