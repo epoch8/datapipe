@@ -16,13 +16,6 @@
 
     api
 
-.. toctree::
-    :caption: Development
-    :maxdepth: 2
-    :hidden:
-
-    changelog
-
 Index and Search
 ----------------
 
