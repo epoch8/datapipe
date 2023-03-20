@@ -8,6 +8,11 @@ copyright = "2023, Epoch8 Team and Contributors"
 author = "Epoch8 Team and Contributors"
 
 extensions = [
+    "sphinx.ext.duration",
+    "sphinx.ext.doctest",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.intersphinx",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "myst_parser",
