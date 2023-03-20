@@ -382,8 +382,12 @@ def run_steps_changelist(
                             f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                         )
 
-                        step_changes = step.run_changelist(ds, current_changes, run_config)
-                        next_changes.extend(step_changes)
+                        try:
+                            step_changes = step.run_changelist(ds, current_changes, run_config)
+                            next_changes.extend(step_changes)
+                        except NotImplementedError:
+                            # Some steps do not implement `.run_changelist`, that's ok
+                            pass
 
             current_changes = next_changes
             next_changes = ChangeList()
