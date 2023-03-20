@@ -27,9 +27,4 @@ source_suffix = [
     ".md",
 ]
 
-html_theme = "furo"
-html_theme_options = {
-    "source_repository": "https://github.com/epoch8/datapipe/",
-    "source_branch": "master",
-    "source_directory": "docs/",
-}
+html_theme = "sphinx_rtd_theme"
