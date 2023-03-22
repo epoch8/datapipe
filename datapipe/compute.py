@@ -303,6 +303,15 @@ class Pipeline:
     steps: List[PipelineStep]
 
 
+class DatapipeApp:
+    def __init__(self, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+        self.ds = ds
+        self.catalog = catalog
+        self.pipeline = pipeline
+
+        self.compute_pipeline = build_compute(ds, catalog, pipeline)
+
+
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)

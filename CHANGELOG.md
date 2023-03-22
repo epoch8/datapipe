@@ -7,6 +7,7 @@
   for `run_full` and `run_changelist`
 * Add prototype events logging for steps, add
   `event_logger.log_step_full_complete`, add table `datapipe_step_events`
+* Move cli from `datapipe-app` to `datapipe`
 
 # 0.11.11
 
