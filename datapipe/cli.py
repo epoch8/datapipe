@@ -55,7 +55,14 @@ def parse_labels(labels: str) -> Labels:
     if labels == "":
         return []
 
-    labels_list = [kv.split("=") for kv in labels.split(",")]
+    labels_list = []
+
+    for kv in labels.split(","):
+        if "=" not in kv:
+            raise Exception(f"Expected labels in format 'key=value,key2=value2' got '{labels}'")
+
+        k, v = kv.split("=")
+        labels_list.append((k, v))
 
     return labels_list
 
