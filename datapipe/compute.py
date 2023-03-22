@@ -309,7 +309,7 @@ class DatapipeApp:
         self.catalog = catalog
         self.pipeline = pipeline
 
-        self.compute_pipeline = build_compute(ds, catalog, pipeline)
+        self.steps = build_compute(ds, catalog, pipeline)
 
 
 def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
