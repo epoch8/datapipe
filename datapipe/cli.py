@@ -37,7 +37,9 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     elif len(pipeline_split) == 2:
         module_name, app_name = pipeline_split
     else:
-        raise Exception(f"Expected PIPELINE in format 'module:app' got '{pipeline_name}'")
+        raise Exception(
+            f"Expected PIPELINE in format 'module:app' got '{pipeline_name}'"
+        )
 
     from importlib import import_module
 
@@ -59,7 +61,9 @@ def parse_labels(labels: str) -> Labels:
 
     for kv in labels.split(","):
         if "=" not in kv:
-            raise Exception(f"Expected labels in format 'key=value,key2=value2' got '{labels}'")
+            raise Exception(
+                f"Expected labels in format 'key=value,key2=value2' got '{labels}'"
+            )
 
         k, v = kv.split("=")
         labels_list.append((k, v))
@@ -67,7 +71,9 @@ def parse_labels(labels: str) -> Labels:
     return labels_list
 
 
-def filter_steps_by_labels_and_name(app: DatapipeApp, labels: Labels = [], name_prefix: str = "") -> List[ComputeStep]:
+def filter_steps_by_labels_and_name(
+    app: DatapipeApp, labels: Labels = [], name_prefix: str = ""
+) -> List[ComputeStep]:
     res = []
 
     for step in app.steps:
@@ -86,7 +92,9 @@ def filter_steps_by_labels_and_name(app: DatapipeApp, labels: Labels = [], name_
 @click.option("--debug-sql", is_flag=True, help="Log SQL queries VERY VERBOSE")
 @click.option("--trace-stdout", is_flag=True, help="Log traces to console")
 @click.option("--trace-jaeger", is_flag=True, help="Enable tracing to Jaeger")
-@click.option("--trace-jaeger-host", type=click.STRING, default="localhost", help="Jaeger host")
+@click.option(
+    "--trace-jaeger-host", type=click.STRING, default="localhost", help="Jaeger host"
+)
 @click.option("--trace-jaeger-port", type=click.INT, default=14268, help="Jaeger port")
 @click.option("--trace-gcp", is_flag=True, help="Enable tracing to Google Cloud Trace")
 @click.option("--pipeline", type=click.STRING, default="app")
@@ -118,7 +126,9 @@ def cli(
     if debug_sql:
         logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
-    trace.set_tracer_provider(TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"})))
+    trace.set_tracer_provider(
+        TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"}))
+    )
 
     if trace_stdout:
         processor = BatchSpanProcessor(ConsoleSpanExporter())
@@ -289,7 +299,9 @@ def to_human_repr(step) -> Dict:
     res: Dict[str, Any] = {"name": f"[green][bold]{step.name}[/bold][/green]"}
 
     if step.labels:
-        res["labels"] = " ".join([f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels])
+        res["labels"] = " ".join(
+            [f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels]
+        )
 
     if inputs := [i.name for i in step.input_dts]:
         res["inputs"] = ", ".join(inputs)
@@ -340,7 +352,9 @@ def status(ctx: click.Context) -> None:
 
 @step.command()  # type: ignore
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
-@click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option(
+    "--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds"
+)
 @click.pass_context
 def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
@@ -360,12 +374,16 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
             print("\n\n")
 
 
-def get_steps_range(steps: List[ComputeStep], first_step: Optional[str], last_step: Optional[str]) -> List[ComputeStep]:
+def get_steps_range(
+    steps: List[ComputeStep], first_step: Optional[str], last_step: Optional[str]
+) -> List[ComputeStep]:
     if first_step is None and last_step is None:
         print("Missing arguments: FIRST_STEP or LAST_STEP, running all graph.")
         steps_to_run = steps
     if first_step is not None:
-        first_step_idxs = [idx for idx, i in enumerate(steps) if i.name.startswith(first_step)]
+        first_step_idxs = [
+            idx for idx, i in enumerate(steps) if i.name.startswith(first_step)
+        ]
         if len(first_step_idxs) == 0:
             print(f"There's no step with name '{first_step}'")
             return []
@@ -373,7 +391,9 @@ def get_steps_range(steps: List[ComputeStep], first_step: Optional[str], last_st
     else:
         first_index = None
     if last_step is not None:
-        last_step_idxs = [idx for idx, i in enumerate(steps) if i.name.startswith(last_step)]
+        last_step_idxs = [
+            idx for idx, i in enumerate(steps) if i.name.startswith(last_step)
+        ]
         if len(last_step_idxs) == 0:
             print(f"There's no step with name '{last_step}'")
             return []
@@ -393,7 +413,9 @@ def get_steps_range(steps: List[ComputeStep], first_step: Optional[str], last_st
 @click.option("--first-step", type=click.STRING, default=None, required=False)
 @click.option("--last-step", type=click.STRING, default=None, required=False)
 @click.option("--pipeline", type=click.STRING, default="app")
-def run_in_range(pipeline: str, first_step: Optional[str] = None, last_step: Optional[str] = None) -> None:
+def run_in_range(
+    pipeline: str, first_step: Optional[str] = None, last_step: Optional[str] = None
+) -> None:
 
     app = load_pipeline(pipeline)
 
