@@ -6,6 +6,7 @@ import sys
 import time
 import importlib.metadata as metadata
 
+import yaml
 import click
 import rich
 from rich import print as rprint
@@ -295,59 +296,59 @@ def step(ctx: click.Context, labels: str, name: str):
     ctx.obj["steps"] = steps
 
 
-def to_human_repr(step) -> Dict:
-    res: Dict[str, Any] = {"name": f"[green][bold]{step.name}[/bold][/green]"}
+def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
+    res = []
+
+    res.append(f"[green][bold]{step.name}[/bold][/green]")
 
     if step.labels:
-        res["labels"] = " ".join(
+        labels = " ".join(
             [f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels]
         )
+        res.append(f"  labels: {labels}")
 
-    if inputs := [i.name for i in step.input_dts]:
-        res["inputs"] = ", ".join(inputs)
+    if inputs_arr := [i.name for i in step.input_dts]:
+        inputs = ", ".join(inputs_arr)
+        res.append(f"  inputs: {inputs}")
 
-    if outputs := [i.name for i in step.output_dts]:
-        res["outputs"] = ", ".join(outputs)
+    if outputs_arr := [i.name for i in step.output_dts]:
+        outputs = ", ".join(outputs_arr)
+        res.append(f"  outputs: {outputs}")
+    
+    if extra_args is not None:
+        for k, v in extra_args.items():
+            res.append(f"  {k}: {v}")
 
-    return res
+    return "\n".join(res)
 
 
 @step.command()  # type: ignore
+@click.option("--status", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
-def list(ctx: click.Context) -> None:
-    from yaml import dump
-
+def list(ctx: click.Context, status: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps: List[ComputeStep] = ctx.obj["steps"]
-
-    out: Dict = {"steps": []}
 
     for step in steps:
-        out["steps"].append(to_human_repr(step))
+        extra_args = {}
 
-    rprint(dump(out, sort_keys=False))
-
-
-@step.command()
-@click.pass_context
-def status(ctx: click.Context) -> None:
-    app: DatapipeApp = ctx.obj["pipeline"]
-    steps: List[ComputeStep] = ctx.obj["steps"]
-
-    if len(steps) > 0:
-        for step in steps:
-            labels = f"\t{step.labels}" if step.labels else ""
-            print(
-                f"{step.name} {labels}\t{tuple(i.name for i in step.input_dts)} -> {tuple(i.name for i in step.output_dts)}"
-            )
-
+        if status:
             if len(step.input_dts) > 0:
-                changed_idx_count = app.ds.get_changed_idx_count(
-                    inputs=step.input_dts,
-                    outputs=step.output_dts,
-                )
+                try:
+                    changed_idx_count = app.ds.get_changed_idx_count(
+                        inputs=step.input_dts,
+                        outputs=step.output_dts,
+                    )
 
-                print(f"Idx to process: {changed_idx_count}")
+                    if changed_idx_count > 0:
+                        extra_args["changed_idx_count"] = f"[red]{changed_idx_count}[/red]"
+                
+                except NotImplementedError:
+                    # Currently we do not support empty join_keys
+                    extra_args["changed_idx_count"] = "[red]N/A[/red]"
+
+        rprint(to_human_repr(step, extra_args=extra_args))
+        rprint("")
 
 
 @step.command()  # type: ignore
