@@ -171,6 +171,54 @@ class ComputeStep:
 
         return output_dfs
 
+    def store_batch_result(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        output_dfs: Optional[TransformResult],
+        run_config: Optional[RunConfig] = None,
+    ) -> ChangeList:
+        changes = ChangeList()
+
+        if output_dfs is not None:
+            with tracer.start_as_current_span("store output batch"):
+                if isinstance(output_dfs, (list, tuple)):
+                    assert len(output_dfs) == len(self.output_dts)
+                else:
+                    assert len(self.output_dts) == 1
+                    output_dfs = [output_dfs]
+
+                try:
+                    for k, res_dt in enumerate(self.output_dts):
+                        # Берем k-ое значение функции для k-ой таблички
+                        # Добавляем результат в результирующие чанки
+                        change_idx = res_dt.store_chunk(
+                            data_df=output_dfs[k],
+                            processed_idx=idx,
+                            run_config=run_config,
+                        )
+
+                        changes.append(res_dt.name, change_idx)
+                except Exception as e:
+                    logger.error(f"Store output batch failed: {str(e)}")
+                    ds.event_logger.log_exception(
+                        e,
+                        run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
+                    )
+
+                    return ChangeList()
+
+        else:
+            with tracer.start_as_current_span("delete missing data from output"):
+                for k, res_dt in enumerate(self.output_dts):
+                    del_idx = res_dt.meta_table.get_existing_idx(idx)
+
+                    res_dt.delete_by_idx(del_idx, run_config=run_config)
+
+                    changes.append(res_dt.name, del_idx)
+
+        return changes
+
     def process_batch(
         self,
         ds: DataStore,
@@ -191,46 +239,7 @@ class ComputeStep:
 
                 return ChangeList()
 
-            changes = ChangeList()
-
-            if output_dfs is not None:
-                if isinstance(output_dfs, (list, tuple)):
-                    assert len(output_dfs) == len(self.output_dts)
-                else:
-                    assert len(self.output_dts) == 1
-                    output_dfs = [output_dfs]
-
-                with tracer.start_as_current_span("store output batch"):
-                    try:
-                        for k, res_dt in enumerate(self.output_dts):
-                            # Берем k-ое значение функции для k-ой таблички
-                            # Добавляем результат в результирующие чанки
-                            change_idx = res_dt.store_chunk(
-                                data_df=output_dfs[k],
-                                processed_idx=idx,
-                                run_config=run_config,
-                            )
-
-                            changes.append(res_dt.name, change_idx)
-                    except Exception as e:
-                        logger.error(f"Store output batch failed: {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
-                        )
-
-                        return ChangeList()
-
-            else:
-                with tracer.start_as_current_span("delete missing data from output"):
-                    for k, res_dt in enumerate(self.output_dts):
-                        del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                        res_dt.delete_by_idx(del_idx, run_config=run_config)
-
-                        changes.append(res_dt.name, del_idx)
-
-            return changes
+            return self.store_batch_result(ds, idx, output_dfs, run_config)
 
     def run_full(
         self,
