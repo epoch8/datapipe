@@ -295,7 +295,14 @@ class DatatableBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> Optional[TransformResult]:
-        return self.func(ds, idx, self.input_dts, run_config)
+        return self.func(
+            ds=ds,
+            idx=idx,
+            input_dts=self.input_dts,
+            output_dts=self.output_dts,
+            run_config=run_config,
+            kwargs=self.kwargs
+        )
 
 
 def do_batch_generate(
