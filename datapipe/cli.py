@@ -299,7 +299,7 @@ def step(ctx: click.Context, labels: str, name: str):
 def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     res = []
 
-    res.append(f"[green][bold]{step.name}[/bold][/green]")
+    res.append(f"[green][bold]{step.name}[/bold][/green] ({step.__class__.__name__})")
 
     if step.labels:
         labels = " ".join(
