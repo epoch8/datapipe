@@ -1,5 +1,11 @@
 # WIP 0.12.0
 
+## Breaking changes
+* Move cli from `datapipe-app` to `datapipe`
+* Remove separate `datapipe step status` command, now it's a flag: `datapipe step list --status`
+* `DatatableTransform` moved from `datapipe.compute` to `datapipe.core_steps`
+
+## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`

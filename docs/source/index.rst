@@ -1,13 +1,14 @@
 .. 
 
 .. toctree::
-    :caption: Misc
+    :caption: Developer Guide
     :maxdepth: 2
     :hidden:
 
     concepts
-    transformation_lifecycle
+    transformation-lifecycle
     sqlite
+    extending-cli
 
 .. toctree::
     :caption: Reference

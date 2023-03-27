@@ -295,10 +295,10 @@ class MetaTable:
         new_idx = merged_df["hash"].isna() | merged_df["delete_ts"].notnull()
 
         # Ищем новые записи
-        new_df = data_df.loc[new_idx.values, data_cols]
+        new_df = data_df.loc[new_idx.values, data_cols]  # type: ignore
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = merged_df.loc[merged_df["hash"].isna().values, data_cols]
+        new_meta_data_df = merged_df.loc[merged_df["hash"].isna().values, data_cols]  # type: ignore
         new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
 
         # Ищем изменившиеся записи
@@ -307,7 +307,7 @@ class MetaTable:
             & (merged_df["delete_ts"].isnull())
             & (merged_df["hash"] != merged_df["data_hash"])
         )
-        changed_df = merged_df.loc[changed_idx.values, data_cols]
+        changed_df = merged_df.loc[changed_idx.values, data_cols]  # type: ignore
 
         # Меняем мета данные для существующих записей
         changed_meta_idx = (merged_df["hash"].notna()) & (
