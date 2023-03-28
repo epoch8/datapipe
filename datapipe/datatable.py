@@ -222,10 +222,12 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        join_keys: Optional[List[str]] = None
     ) -> Tuple[Iterable[str], select]:
         inp_keys = [set(inp.primary_keys) for inp in inputs]
         out_keys = [set(out.primary_keys) for out in outputs]
-        join_keys = list(set.intersection(*inp_keys, *out_keys))
+        if join_keys is None:
+            join_keys = list(set.intersection(*inp_keys, *out_keys))
 
         if len(join_keys) == 0:
             raise NotImplementedError()
@@ -307,9 +309,11 @@ class DataStore:
         inputs: List[DataTable],
         outputs: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        join_keys: Optional[List[str]] = None
     ) -> int:
         _, sql = self._build_changed_idx_sql(
-            inputs=inputs, outputs=outputs, run_config=run_config
+            inputs=inputs, outputs=outputs, run_config=run_config,
+            join_keys=join_keys
         )
 
         idx_count = self.meta_dbconn.con.execute(
@@ -326,6 +330,7 @@ class DataStore:
         outputs: List[DataTable],
         chunk_size: int = 1000,
         run_config: Optional[RunConfig] = None,
+        join_keys: Optional[List[str]] = None
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
         Метод для получения перечня индексов для обработки.
@@ -343,12 +348,14 @@ class DataStore:
             inputs=inputs,
             outputs=outputs,
             run_config=run_config,
+            join_keys=join_keys
         )
 
         join_keys, u1 = self._build_changed_idx_sql(
             inputs=inputs,
             outputs=outputs,
             run_config=run_config,
+            join_keys=join_keys
         )
 
         # Список ключей из фильтров, которые нужно добавить в результат
@@ -378,8 +385,10 @@ class DataStore:
         change_list: ChangeList,
         chunk_size: int = 1000,
         run_config: Optional[RunConfig] = None,
+        join_keys: Optional[List[str]] = None
     ) -> Tuple[int, Iterable[IndexDF]]:
-        join_keys = self.get_join_keys(inputs, outputs)
+        if join_keys is None:
+            join_keys = self.get_join_keys(inputs, outputs)
         changes = [pd.DataFrame(columns=join_keys)]
 
         if not join_keys:

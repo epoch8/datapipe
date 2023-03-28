@@ -39,7 +39,8 @@ class DatatableTransformFunc(Protocol):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
-        kwargs: Optional[Dict],
+        # Возможно, лучше передавать как переменную, а не  **
+        **kwargs,
     ) -> None:
         ...
 
@@ -54,7 +55,6 @@ class DatatableBatchTransformFunc(Protocol):
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
-        kwargs: Optional[Dict] = None
     ) -> TransformResult:
         ...
 
@@ -145,6 +145,7 @@ class BatchTransform(PipelineStep):
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
     labels: Optional[Labels] = None
+    join_keys: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -159,6 +160,7 @@ class BatchTransform(PipelineStep):
                 kwargs=self.kwargs,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                join_keys=self.join_keys
             )
         ]
 
@@ -173,12 +175,14 @@ class BatchTransformStep(ComputeStep):
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        join_keys: Optional[List[str]] = None
     ) -> None:
         ComputeStep.__init__(self, name, input_dts, output_dts, labels)
 
         self.func = func
         self.kwargs = kwargs or {}
         self.chunk_size = chunk_size
+        self.join_keys = join_keys
 
     def get_full_process_ids(
         self,
@@ -191,6 +195,7 @@ class BatchTransformStep(ComputeStep):
                 outputs=self.output_dts,
                 chunk_size=self.chunk_size,
                 run_config=run_config,
+                join_keys=self.join_keys
             )
 
     def get_change_list_process_ids(
@@ -206,6 +211,7 @@ class BatchTransformStep(ComputeStep):
                 change_list=change_list,
                 chunk_size=self.chunk_size,
                 run_config=run_config,
+                join_keys=self.join_keys
             )
 
     def process_batch_dfs(
