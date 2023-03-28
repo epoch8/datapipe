@@ -39,8 +39,7 @@ class DatatableTransformFunc(Protocol):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
-        # Возможно, лучше передавать как переменную, а не  **
-        **kwargs,
+        kwargs: Optional[Dict],
     ) -> None:
         ...
 
@@ -55,6 +54,7 @@ class DatatableBatchTransformFunc(Protocol):
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        kwargs: Optional[Dict] = None
     ) -> TransformResult:
         ...
 
