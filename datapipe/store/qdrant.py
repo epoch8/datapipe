@@ -21,7 +21,7 @@ class QdrantStore(TableStore):
     def __init__(
         self,
         name: str,
-        host: str,
+        url: str,
         port: int,
         schema: DataSchema,
         pk_field: str,
@@ -30,7 +30,7 @@ class QdrantStore(TableStore):
     ):
         super().__init__()
         self.name = name
-        self.host = host
+        self.url = url
         self.port = port
         self.schema = schema
         self.pk_field = pk_field
@@ -47,7 +47,7 @@ class QdrantStore(TableStore):
         self.paylods_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
 
     def __init(self):
-        self.client = QdrantClient(host=self.host, port=self.port)
+        self.client = QdrantClient(url=self.url, port=self.port)
         try:
             self.client.get_collection(self.name)
         except UnexpectedResponse as e:
@@ -136,7 +136,7 @@ class QdrantShardedStore(TableStore):
     def __init__(
         self,
         name_pattern: str,
-        host: str,
+        url: str,
         port: int,
         schema: DataSchema,
         embedding_field: str,
@@ -144,7 +144,7 @@ class QdrantShardedStore(TableStore):
     ):
         super().__init__()
         self.name_pattern = name_pattern
-        self.host = host
+        self.url = url
         self.port = port
         self.schema = schema
         self.embedding_field = embedding_field
@@ -175,7 +175,7 @@ class QdrantShardedStore(TableStore):
 
     def __check_init(self, name):
         if not self.client:
-            self.client = QdrantClient(host=self.host, port=self.port)
+            self.client = QdrantClient(url=self.url, port=self.port)
 
         if name not in self.inited_collections:
             self.__init_collection(name)
