@@ -106,6 +106,6 @@ pipeline = Pipeline(
 )
 
 
-ds = DataStore(dbconn)
+ds = DataStore(dbconn, create_meta_table=True)
 
 app = DatapipeApp(ds, catalog, pipeline)
