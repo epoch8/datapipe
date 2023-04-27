@@ -374,7 +374,7 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
 
 
 @step.command()  # type: ignore
-@click.option("--loop", is_flag=True, default=True, help="Run continuosly in a loop")
+@click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option(
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
