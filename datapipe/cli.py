@@ -1,12 +1,10 @@
-from typing import Any, Dict, Iterator, List
-from typing import Optional, List
+from typing import Dict, List, Optional
 
 import os.path
 import sys
 import time
 import importlib.metadata as metadata
 
-import yaml
 import click
 import rich
 from rich import print as rprint
@@ -19,9 +17,9 @@ from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME
 from opentelemetry.sdk.resources import Resource
 
-from datapipe.compute import ComputeStep, run_steps
+from datapipe.compute import ComputeStep, run_steps, run_steps_changelist
 from datapipe_app import DatapipeApp
-from datapipe.compute import ComputeStep
+from datapipe.types import ChangeList
 
 
 tracer = trace.get_tracer("datapipe_app")
@@ -314,7 +312,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     if outputs_arr := [i.name for i in step.output_dts]:
         outputs = ", ".join(outputs_arr)
         res.append(f"  outputs: {outputs}")
-    
+
     if extra_args is not None:
         for k, v in extra_args.items():
             res.append(f"  {k}: {v}")
@@ -375,56 +373,43 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
             print("\n\n")
 
 
-def get_steps_range(
-    steps: List[ComputeStep], first_step: Optional[str], last_step: Optional[str]
-) -> List[ComputeStep]:
-    if first_step is None and last_step is None:
-        print("Missing arguments: FIRST_STEP or LAST_STEP, running all graph.")
-        steps_to_run = steps
-    if first_step is not None:
-        first_step_idxs = [
-            idx for idx, i in enumerate(steps) if i.name.startswith(first_step)
-        ]
-        if len(first_step_idxs) == 0:
-            print(f"There's no step with name '{first_step}'")
-            return []
-        first_index = first_step_idxs[0]
-    else:
-        first_index = None
-    if last_step is not None:
-        last_step_idxs = [
-            idx for idx, i in enumerate(steps) if i.name.startswith(last_step)
-        ]
-        if len(last_step_idxs) == 0:
-            print(f"There's no step with name '{last_step}'")
-            return []
-        last_index = last_step_idxs[-1] + 1
-    else:
-        last_index = None
-
-    if first_index is not None and last_index is not None and first_index > last_index:
-        print(f"Step with name '{last_step}' is located before step with name '{step}'")
-        return []
-
-    steps_to_run = steps[first_index:last_index]
-    return steps_to_run
-
-
-@step.command()  # type:ignore
-@click.option("--first-step", type=click.STRING, default=None, required=False)
-@click.option("--last-step", type=click.STRING, default=None, required=False)
-@click.option("--pipeline", type=click.STRING, default="app")
-def run_in_range(
-    pipeline: str, first_step: Optional[str] = None, last_step: Optional[str] = None
-) -> None:
-
-    app = load_pipeline(pipeline)
-
-    steps_to_run = get_steps_range(app.steps, first_step, last_step)
+@step.command()  # type: ignore
+@click.option("--loop", is_flag=True, default=True, help="Run continuosly in a loop")
+@click.option(
+    "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
+)
+@click.pass_context
+@click.option("--chunk-size", type=click.INT, default=1000)
+def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
-    print(f"Running following steps: {', '.join(steps_to_run_names)}")
-
-    run_steps(app.ds, steps_to_run)
+    print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
+    idx_gen = None
+    while True:
+        if len(steps_to_run) > 0:
+            _, idx_gen = app.ds.get_full_process_ids(
+                inputs=steps_to_run[0].input_dts,
+                outputs=steps_to_run[0].output_dts,
+                chunk_size=chunk_size
+            )
+            try:
+                idx = next(idx_gen)
+            except StopIteration:
+                if not loop:
+                    break
+                else:
+                    continue
+            cl = ChangeList()
+            for input_dt in steps_to_run[0].input_dts:
+                cl.append(input_dt.name, input_dt.get_data(idx=idx))
+            run_steps_changelist(app.ds, steps_to_run, cl)
+        if not loop:
+            break
+        else:
+            print(f"Chunk ended, sleeping {loop_delay}s...")
+            time.sleep(loop_delay)
+            print("\n\n")
 
 
 for entry_point in metadata.entry_points().get("datapipe.cli", []):
