@@ -380,7 +380,7 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
 )
 @click.pass_context
 @click.option("--chunk-size", type=click.INT, default=1000)
-def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int) -> None:
+def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
