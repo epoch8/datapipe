@@ -386,7 +386,7 @@ def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size:
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
     idx_gen = None
-    cnt = 0
+    cnt = None
     while True:
         if len(steps_to_run) > 0:
             if idx_gen is None:
@@ -395,9 +395,9 @@ def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size:
                     outputs=steps_to_run[0].output_dts,
                     chunk_size=chunk_size
                 )
+                cnt = 0
             try:
                 idx = next(idx_gen)
-                cnt += 1
                 cl = ChangeList()
                 for input_dt in steps_to_run[0].input_dts:
                     cl.append(input_dt.name, input_dt.get_data(idx=idx))
@@ -405,12 +405,16 @@ def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size:
             except StopIteration:
                 idx_gen = None
                 cnt = 0
-        if not loop:
-            break
+        if idx_gen is not None:
+            print(f"Chunk {cnt}/{idx_count} ended")
+            cnt += 1
         else:
-            print(f"Chunk {cnt}/{idx_count} ended, sleeping {loop_delay}s...")
-            time.sleep(loop_delay)
-            print("\n\n")
+            if not loop:
+                break
+            else:
+                print(f"All chunks ended, sleeping {loop_delay}s...")
+                time.sleep(loop_delay)
+                print("\n\n")
 
 
 for entry_point in metadata.entry_points().get("datapipe.cli", []):
