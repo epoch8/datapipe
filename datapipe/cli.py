@@ -386,28 +386,29 @@ def run_сhangelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size:
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
     idx_gen = None
+    cnt = 0
     while True:
         if len(steps_to_run) > 0:
-            _, idx_gen = app.ds.get_full_process_ids(
-                inputs=steps_to_run[0].input_dts,
-                outputs=steps_to_run[0].output_dts,
-                chunk_size=chunk_size
-            )
+            if idx_gen is None:
+                idx_count, idx_gen = app.ds.get_full_process_ids(
+                    inputs=steps_to_run[0].input_dts,
+                    outputs=steps_to_run[0].output_dts,
+                    chunk_size=chunk_size
+                )
             try:
                 idx = next(idx_gen)
+                cnt += 1
+                cl = ChangeList()
+                for input_dt in steps_to_run[0].input_dts:
+                    cl.append(input_dt.name, input_dt.get_data(idx=idx))
+                run_steps_changelist(app.ds, steps_to_run, cl)
             except StopIteration:
-                if not loop:
-                    break
-                else:
-                    continue
-            cl = ChangeList()
-            for input_dt in steps_to_run[0].input_dts:
-                cl.append(input_dt.name, input_dt.get_data(idx=idx))
-            run_steps_changelist(app.ds, steps_to_run, cl)
+                idx_gen = None
+                cnt = 0
         if not loop:
             break
         else:
-            print(f"Chunk ended, sleeping {loop_delay}s...")
+            print(f"Chunk {cnt}/{idx_count} ended, sleeping {loop_delay}s...")
             time.sleep(loop_delay)
             print("\n\n")
 
