@@ -20,7 +20,7 @@ from opentelemetry import trace
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
-from datapipe.metastore import MetaTable
+from datapipe.metastore import MetaTable, TransformMetaTable
 from datapipe.run_config import RunConfig
 from datapipe.types import (
     ChangeList,
@@ -160,7 +160,8 @@ class BatchTransform(PipelineStep):
 
         return [
             BatchTransformStep(
-                f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                ds=ds,
+                name=f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=self.func,
@@ -175,6 +176,7 @@ class BatchTransform(PipelineStep):
 class BatchTransformStep(ComputeStep):
     def __init__(
         self,
+        ds: DataStore,
         name: str,
         func: BatchTransformFunc,
         input_dts: List[DataTable],
@@ -196,6 +198,12 @@ class BatchTransformStep(ComputeStep):
             [i.meta_table for i in input_dts],
             [i.meta_table for i in output_dts],
             transform_keys,
+        )
+
+        self.meta_table = TransformMetaTable(
+            dbconn=ds.meta_dbconn,
+            name=name,
+            primary_schema=self.transform_schema,
         )
 
         self.func = func
