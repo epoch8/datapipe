@@ -4,7 +4,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, func, or_, select, column
+from sqlalchemy import alias, and_, column, func, or_, select
 
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
@@ -174,6 +174,7 @@ class DataStore:
             self.meta_dbconn, create_table=create_meta_table
         )
         self.tables: Dict[str, DataTable] = {}
+
         self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
@@ -206,6 +207,7 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
+    # TODO remove, because it's implemented in BatchTransformStep
     def get_join_keys(
         self, inputs: List[DataTable], outputs: List[DataTable]
     ) -> List[str]:
@@ -371,6 +373,7 @@ class DataStore:
 
         return math.ceil(idx_count / chunk_size), alter_res_df()
 
+    # TODO remove, because it's implemented in BatchTransformStep
     def get_change_list_process_ids(
         self,
         inputs: List[DataTable],

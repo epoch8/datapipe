@@ -89,6 +89,7 @@ class ComputeStep:
     def labels(self) -> Labels:
         return self._labels if self._labels else []
 
+    # TODO: move to lints
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.primary_keys) for inp in self.input_dts if inp]
         out_p_keys_arr = [set(out.primary_keys) for out in self.output_dts if out]
@@ -203,7 +204,9 @@ class ComputeStep:
                     logger.error(f"Store output batch failed: {str(e)}")
                     ds.event_logger.log_exception(
                         e,
-                        run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
+                        run_config=RunConfig.add_labels(
+                            run_config, {"idx": idx.to_dict(orient="records")}
+                        ),
                     )
 
                     return ChangeList()
@@ -234,7 +237,9 @@ class ComputeStep:
                 logger.error(f"Transform failed: {str(e)}")
                 ds.event_logger.log_exception(
                     e,
-                    run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
+                    run_config=RunConfig.add_labels(
+                        run_config, {"idx": idx.to_dict(orient="records")}
+                    ),
                 )
 
                 return ChangeList()
@@ -274,7 +279,9 @@ class ComputeStep:
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
-        (idx_count, idx_gen) = self.get_change_list_process_ids(ds, change_list, run_config)
+        (idx_count, idx_gen) = self.get_change_list_process_ids(
+            ds, change_list, run_config
+        )
 
         logger.info(f"Batches to process {idx_count}")
 
@@ -321,7 +328,9 @@ class DatapipeApp:
         self.steps = build_compute(ds, catalog, pipeline)
 
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
+def build_compute(
+    ds: DataStore, catalog: Catalog, pipeline: Pipeline
+) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)
 
@@ -342,7 +351,9 @@ def print_compute(steps: List[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
-def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None) -> None:
+def run_steps(
+    ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None
+) -> None:
     for step in steps:
         with tracer.start_as_current_span(
             f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
@@ -401,7 +412,9 @@ def run_steps_changelist(
                         )
 
                         try:
-                            step_changes = step.run_changelist(ds, current_changes, run_config)
+                            step_changes = step.run_changelist(
+                                ds, current_changes, run_config
+                            )
                             next_changes.extend(step_changes)
                         except NotImplementedError:
                             # Some steps do not implement `.run_changelist`, that's ok

@@ -21,6 +21,6 @@ structure:
                 * `process_batch_df` - Process batch in terms of `pd.DataFrame`
             * store results
 
-![](transformation_lifecycle.png)
+![lifecycle](transformation_lifecycle.png)
 
 !! Note, lifecycle of generator is different

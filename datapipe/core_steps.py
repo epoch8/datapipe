@@ -1,8 +1,10 @@
-from dataclasses import dataclass
+import itertools
 import logging
 import time
+from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -10,21 +12,24 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
-    Callable,
     cast,
 )
 
 import tqdm
 from opentelemetry import trace
 
-from datapipe.compute import (
-    Catalog,
-    ComputeStep,
-    PipelineStep,
-)
+from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
+from datapipe.metastore import MetaTable
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
+from datapipe.types import (
+    ChangeList,
+    DataDF,
+    IndexDF,
+    Labels,
+    MetaSchema,
+    TransformResult,
+)
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")
@@ -83,7 +88,7 @@ class DatatableTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 check_for_changes=self.check_for_changes,
-                labels=self.labels
+                labels=self.labels,
             )
         ]
 
@@ -117,7 +122,9 @@ class DatatableTransformStep(ComputeStep):
                 )
 
                 if changed_idx_count == 0:
-                    logger.debug(f"Skipping {self.get_name()} execution - nothing to compute")
+                    logger.debug(
+                        f"Skipping {self.get_name()} execution - nothing to compute"
+                    )
 
                     return
 
@@ -144,6 +151,7 @@ class BatchTransform(PipelineStep):
     outputs: List[str]
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
+    transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
@@ -157,6 +165,7 @@ class BatchTransform(PipelineStep):
                 output_dts=output_dts,
                 func=self.func,
                 kwargs=self.kwargs,
+                transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
             )
@@ -171,14 +180,66 @@ class BatchTransformStep(ComputeStep):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         kwargs: Optional[Dict[str, Any]] = None,
+        transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
     ) -> None:
-        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
+        ComputeStep.__init__(
+            self,
+            name=name,
+            input_dts=input_dts,
+            output_dts=output_dts,
+            labels=labels,
+        )
+
+        self.transform_schema = self.compute_transform_schema(
+            [i.meta_table for i in input_dts],
+            [i.meta_table for i in output_dts],
+            transform_keys,
+        )
 
         self.func = func
         self.kwargs = kwargs or {}
         self.chunk_size = chunk_size
+
+    @classmethod
+    def compute_transform_schema(
+        cls,
+        input_mts: List[MetaTable],
+        output_mts: List[MetaTable],
+        transform_keys: Optional[List[str]],
+    ) -> MetaSchema:
+        # Hacky way to collect all the primary keys into a single set. Possible
+        # problem that is not handled here is that theres a possibility that the
+        # same key is defined differently in different input tables.
+        all_keys = {
+            col.name: col
+            for col in itertools.chain(
+                *(
+                    [dt.primary_schema for dt in input_mts]
+                    + [dt.primary_schema for dt in output_mts]
+                )
+            )
+        }
+
+        if transform_keys is not None:
+            return [all_keys[k] for k in transform_keys]
+
+        assert len(input_mts) > 0
+
+        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in input_mts])
+        assert len(inp_p_keys) > 0
+
+        if len(output_mts) == 0:
+            return [all_keys[k] for k in inp_p_keys]
+
+        out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
+        assert len(out_p_keys) > 0
+
+        inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
+        assert len(inp_out_p_keys) > 0
+
+        return [all_keys[k] for k in inp_out_p_keys]
 
     def get_full_process_ids(
         self,
@@ -317,7 +378,9 @@ def do_batch_generate(
     now = time.time()
     empty_generator = True
 
-    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
+    assert inspect.isgeneratorfunction(
+        func
+    ), "Starting v0.8.0 proc_func should be a generator"
 
     with tracer.start_as_current_span("init generator"):
         try:
@@ -381,7 +444,11 @@ class BatchGenerate(PipelineStep):
                 func=cast(
                     DatatableTransformFunc,
                     lambda ds, input_dts, output_dts, run_config, kwargs: do_batch_generate(
-                        func=self.func, ds=ds, output_dts=output_dts, run_config=run_config, kwargs=kwargs
+                        func=self.func,
+                        ds=ds,
+                        output_dts=output_dts,
+                        run_config=run_config,
+                        kwargs=kwargs,
                     ),
                 ),
                 input_dts=[],
@@ -393,11 +460,14 @@ class BatchGenerate(PipelineStep):
         ]
 
 
-def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
+def update_external_table(
+    ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None
+) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
-
+    for ps_df in tqdm.tqdm(
+        table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
+    ):
         (
             new_df,
             changed_df,

@@ -9,7 +9,7 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 from sqlalchemy.pool import SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
-from sqlalchemy.sql.base import SchemaEventTarget
+from sqlalchemy.sql.base import SchemaEventTarget, Executable
 from sqlalchemy.sql.expression import delete, select, tuple_
 
 from datapipe.run_config import RunConfig
@@ -75,15 +75,42 @@ class DBConn:
 
 
 def sql_apply_runconfig_filter(
-    sql: select,
+    sql: Executable,
     table: Table,
     primary_keys: List[str],
     run_config: Optional[RunConfig] = None,
-) -> select:
+) -> Executable:
     if run_config is not None:
         for k, v in run_config.filters.items():
             if k in primary_keys:
                 sql = sql.where(table.c[k] == v)
+
+    return sql
+
+
+def sql_apply_idx_filter(
+    sql: Executable,
+    table: Table,
+    primary_keys: List[str],
+    idx: IndexDF,
+) -> Executable:
+    if len(primary_keys) == 1:
+        # Когда ключ один - сравниваем напрямую
+        key = primary_keys[0]
+        sql = sql.where(table.c[key].in_(idx[key].to_list()))
+
+    else:
+        # Когда ключей много - сравниваем по кортежу
+        keys = tuple_(*[table.c[key] for key in primary_keys])
+
+        sql = sql.where(
+            keys.in_(
+                [
+                    tuple([r[key] for key in primary_keys])  # type: ignore
+                    for r in idx.to_dict(orient="records")
+                ]
+            )
+        )
 
     return sql
 
@@ -162,27 +189,6 @@ class TableStoreDB(TableStore):
 
             yield cast(TAnyDF, chunk_idx)
 
-    def _apply_where_expression(self, sql, idx: IndexDF):
-        if len(self.primary_keys) == 1:
-            # Когда ключ один - сравниваем напрямую
-            key = self.primary_keys[0]
-            sql = sql.where(self.data_table.c[key].in_(idx[key].to_list()))
-
-        else:
-            # Когда ключей много - сравниваем через tuple
-            keys = tuple_(*[self.data_table.c[key] for key in self.primary_keys])
-
-            sql = sql.where(
-                keys.in_(
-                    [
-                        tuple([r[key] for key in self.primary_keys])  # type: ignore
-                        for r in idx.to_dict(orient="records")
-                    ]
-                )
-            )
-
-        return sql
-
     def delete_rows(self, idx: IndexDF) -> None:
         if idx is None or len(idx.index) == 0:
             return
@@ -190,7 +196,9 @@ class TableStoreDB(TableStore):
         logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
         for chunk_idx in self._chunk_idx_df(idx):
-            sql = self._apply_where_expression(delete(self.data_table), chunk_idx)
+            sql = sql_apply_idx_filter(
+                delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
+            )
             self.dbconn.con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
@@ -232,7 +240,9 @@ class TableStoreDB(TableStore):
             res = []
 
             for chunk_idx in self._chunk_idx_df(idx):
-                chunk_sql = self._apply_where_expression(sql, chunk_idx)
+                chunk_sql = sql_apply_idx_filter(
+                    sql, self.data_table, self.primary_keys, chunk_idx
+                )
                 chunk_df = pd.read_sql_query(chunk_sql, con=self.dbconn.con)
 
                 res.append(chunk_df)
