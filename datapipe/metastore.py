@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, cast, Optional
+from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
@@ -34,6 +34,7 @@ TABLE_META_SCHEMA = [
     Column("hash", Integer),
     Column("create_ts", Float),  # Время создания строки
     Column("update_ts", Float),  # Время последнего изменения
+    Column("process_ts", Float),  # Время последней успешной обработки
     Column("delete_ts", Float),  # Время удаления
 ]
 

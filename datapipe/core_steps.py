@@ -202,7 +202,7 @@ class BatchTransformStep(ComputeStep):
 
         self.meta_table = TransformMetaTable(
             dbconn=ds.meta_dbconn,
-            name=name,
+            name=f"{self.get_name()}_meta",
             primary_schema=self.transform_schema,
         )
 
