@@ -204,12 +204,6 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     tbl2.store_chunk(TEST_DF)
     tbl1.store_chunk(TEST_DF)
 
-    count, idx_gen = ds.get_full_process_ids([tbl1], [tbl2])
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == len(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="step",
@@ -218,17 +212,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
         output_dts=[tbl2],
     )
 
-    step.run_full(ds)
-
-    count, idx_gen = ds.get_full_process_ids([tbl1], [tbl2])
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == 0
-
-    tbl1.store_chunk(TEST_DF_INC1)
-
-    count, idx_gen = ds.get_full_process_ids([tbl1], [tbl2])
+    count, idx_gen = step.get_full_process_ids(ds)
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 
@@ -236,7 +220,23 @@ def test_inc_process_proc_no_change(dbconn) -> None:
 
     step.run_full(ds)
 
-    count, idx_gen = ds.get_full_process_ids([tbl1], [tbl2])
+    count, idx_gen = step.get_full_process_ids(ds)
+    idx_dfs = list(idx_gen)
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
+
+    assert idx_len == 0
+
+    tbl1.store_chunk(TEST_DF_INC1)
+
+    count, idx_gen = step.get_full_process_ids(ds)
+    idx_dfs = list(idx_gen)
+    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
+
+    assert idx_len == len(TEST_DF)
+
+    step.run_full(ds)
+
+    count, idx_gen = step.get_full_process_ids(ds)
     idx_dfs = list(idx_gen)
     idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
 

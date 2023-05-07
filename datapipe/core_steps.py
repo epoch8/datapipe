@@ -1,5 +1,6 @@
 import itertools
 import logging
+import math
 import time
 from dataclasses import dataclass
 from typing import (
@@ -15,13 +16,16 @@ from typing import (
     cast,
 )
 
+import pandas as pd
 import tqdm
 from opentelemetry import trace
+from sqlalchemy import alias, and_, column, func, or_, select
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.metastore import MetaTable, TransformMetaTable
-from datapipe.run_config import RunConfig
+from datapipe.run_config import LabelDict, RunConfig
+from datapipe.store.database import sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
@@ -113,20 +117,22 @@ class DatatableTransformStep(ComputeStep):
     def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
         logger.info(f"Running: {self.name}")
 
-        if len(self.input_dts) > 0 and self.check_for_changes:
-            with tracer.start_as_current_span("check for changes"):
-                changed_idx_count = ds.get_changed_idx_count(
-                    inputs=self.input_dts,
-                    outputs=self.output_dts,
-                    run_config=run_config,
-                )
+        # TODO implement "watermark" system for tracking computation status in DatatableTransform
+        #
+        # if len(self.input_dts) > 0 and self.check_for_changes:
+        #     with tracer.start_as_current_span("check for changes"):
+        #         changed_idx_count = ds.get_changed_idx_count(
+        #             inputs=self.input_dts,
+        #             outputs=self.output_dts,
+        #             run_config=run_config,
+        #         )
 
-                if changed_idx_count == 0:
-                    logger.debug(
-                        f"Skipping {self.get_name()} execution - nothing to compute"
-                    )
+        #         if changed_idx_count == 0:
+        #             logger.debug(
+        #                 f"Skipping {self.get_name()} execution - nothing to compute"
+        #             )
 
-                    return
+        #             return
 
         run_config = RunConfig.add_labels(run_config, {"step_name": self.get_name()})
 
@@ -170,7 +176,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         self.chunk_size = chunk_size
 
-        self.transform_schema = self.compute_transform_schema(
+        self.transform_keys, self.transform_schema = self.compute_transform_schema(
             [i.meta_table for i in input_dts],
             [i.meta_table for i in output_dts],
             transform_keys,
@@ -189,7 +195,7 @@ class BaseBatchTransformStep(ComputeStep):
         input_mts: List[MetaTable],
         output_mts: List[MetaTable],
         transform_keys: Optional[List[str]],
-    ) -> MetaSchema:
+    ) -> Tuple[List[str], MetaSchema]:
         # Hacky way to collect all the primary keys into a single set. Possible
         # problem that is not handled here is that theres a possibility that the
         # same key is defined differently in different input tables.
@@ -204,7 +210,7 @@ class BaseBatchTransformStep(ComputeStep):
         }
 
         if transform_keys is not None:
-            return [all_keys[k] for k in transform_keys]
+            return (transform_keys, [all_keys[k] for k in transform_keys])
 
         assert len(input_mts) > 0
 
@@ -212,7 +218,7 @@ class BaseBatchTransformStep(ComputeStep):
         assert len(inp_p_keys) > 0
 
         if len(output_mts) == 0:
-            return [all_keys[k] for k in inp_p_keys]
+            return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
 
         out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
         assert len(out_p_keys) > 0
@@ -220,20 +226,161 @@ class BaseBatchTransformStep(ComputeStep):
         inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
         assert len(inp_out_p_keys) > 0
 
-        return [all_keys[k] for k in inp_out_p_keys]
+        return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
+
+    def _build_changed_idx_sql(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[Iterable[str], select]:
+        if len(self.transform_keys) == 0:
+            raise NotImplementedError()
+
+        # TODO move to DBConn compatiblity layer
+        if ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
+            greatest_func = func.max
+        else:
+            greatest_func = func.greatest
+
+        def _make_agg_cte(dt: DataTable, agg_fun, agg_col: str):
+            tbl = dt.meta_table.sql_table
+
+            key_cols = [column(k) for k in self.transform_keys]
+
+            sql = (
+                select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])
+                .select_from(tbl)
+                .group_by(*key_cols)
+            )
+
+            sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
+
+            return sql.cte(name=f"{tbl.name}__{agg_col}")
+
+        def _make_agg_of_agg(ctes, agg_col):
+            assert len(ctes) > 0
+
+            if len(ctes) == 1:
+                return ctes[0]
+
+            if len(self.transform_keys) > 1:
+                coalesce_keys = [
+                    func.coalesce(*[subq.c[key] for subq in ctes]).label(key)
+                    for key in self.transform_keys
+                ]
+            else:
+                coalesce_keys = [subq.c[self.transform_keys[0]] for subq in ctes]
+
+            agg = greatest_func(*[subq.c[agg_col] for subq in ctes]).label(agg_col)
+
+            sql = select(*coalesce_keys + [agg]).select_from(ctes[0])
+
+            for cte in ctes[1:]:
+                sql = sql.outerjoin(
+                    cte,
+                    onclause=and_(
+                        *[ctes[0].c[key] == cte.c[key] for key in self.transform_keys]
+                    ),
+                    full=True,
+                )
+
+            return sql.cte(name=f"all__{agg_col}")
+
+        inp_ctes = [_make_agg_cte(tbl, func.max, "update_ts") for tbl in self.input_dts]
+        out_ctes = [
+            _make_agg_cte(tbl, func.min, "process_ts") for tbl in self.output_dts
+        ]
+
+        inp = _make_agg_of_agg(inp_ctes, "update_ts")
+        out = _make_agg_of_agg(out_ctes, "process_ts")
+
+        sql = (
+            select(
+                *[
+                    func.coalesce(inp.c[key], out.c[key]).label(key)
+                    for key in self.transform_keys
+                ]
+            )
+            .select_from(inp)
+            .outerjoin(
+                out,
+                onclause=and_(
+                    *[inp.c[key] == out.c[key] for key in self.transform_keys]
+                ),
+            )
+            .where(
+                or_(
+                    inp.c.update_ts > out.c.process_ts,
+                    inp.c.update_ts == None,  # noqa
+                    out.c.process_ts == None,  # noqa
+                )
+            )
+        )
+
+        return (self.transform_keys, sql)
+
+    def get_changed_idx_count(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+    ) -> int:
+        _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
+
+        idx_count = ds.meta_dbconn.con.execute(
+            select([func.count()]).select_from(
+                alias(sql.subquery(), name="union_select")
+            )
+        ).scalar()
+
+        return idx_count
 
     def get_full_process_ids(
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
+        """
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+
+        - idx_size - количество индексов требующих обработки
+        - idx_df - датафрейм без колонок с данными, только индексная колонка
+        """
+
         with tracer.start_as_current_span("compute ids to process"):
-            return ds.get_full_process_ids(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                chunk_size=self.chunk_size,
+            if len(self.input_dts) == 0:
+                return (0, iter([]))
+
+            idx_count = self.get_changed_idx_count(
+                ds=ds,
                 run_config=run_config,
             )
+
+            join_keys, u1 = self._build_changed_idx_sql(
+                ds=ds,
+                run_config=run_config,
+            )
+
+            # Список ключей из фильтров, которые нужно добавить в результат
+            extra_filters: LabelDict
+            if run_config is not None:
+                extra_filters = {
+                    k: v for k, v in run_config.filters.items() if k not in join_keys
+                }
+            else:
+                extra_filters = {}
+
+            def alter_res_df():
+                for df in pd.read_sql_query(
+                    u1, con=ds.meta_dbconn.con, chunksize=self.chunk_size
+                ):
+                    for k, v in extra_filters.items():
+                        df[k] = v
+
+                    yield df
+
+            return math.ceil(idx_count / self.chunk_size), alter_res_df()
 
     def get_change_list_process_ids(
         self,

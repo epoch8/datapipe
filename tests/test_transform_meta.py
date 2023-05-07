@@ -78,7 +78,7 @@ def test_compute_transform_schema_success(
         make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)
     ]
 
-    sch = BatchTransformStep.compute_transform_schema(
+    _, sch = BatchTransformStep.compute_transform_schema(
         inp_mts, out_mts, transform_keys=transform_keys
     )
 

@@ -29,6 +29,10 @@
             "source.organizeImports": true
         },
     },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
     "githubIssues.queries": [
         {
             "label": "My Issues",
