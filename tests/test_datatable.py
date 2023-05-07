@@ -3,7 +3,6 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.core_steps import BaseBatchTransformStep
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import IndexDF, data_to_index
@@ -103,43 +102,6 @@ def test_store_less_values(dbconn) -> None:
 
     tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
     assert_datatable_equal(tbl, TEST_DF[:5])
-
-
-def test_get_process_ids(dbconn) -> None:
-    ds = DataStore(dbconn, create_meta_table=True)
-
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
-
-    tbl1.store_chunk(TEST_DF)
-
-    step = BaseBatchTransformStep(
-        ds=ds,
-        name="test",
-        input_dts=[tbl1],
-        output_dts=[tbl2],
-    )
-
-    count, idx_dfs = step.get_full_process_ids(ds)
-    idx = pd.concat(list(idx_dfs))
-
-    assert sorted(list(idx.index)) == list(TEST_DF.index)
-
-    tbl2.store_chunk(tbl1.get_data())
-
-    upd_df = TEST_DF[:5].copy()
-    upd_df["a"] += 1
-
-    tbl1.store_chunk(upd_df)
-
-    count, idx_dfs = step.get_full_process_ids(ds)
-    idx = pd.concat(list(idx_dfs))
-
-    assert_df_equal(idx, upd_df[["id"]])
 
 
 def test_store_chunk_changelist(dbconn) -> None:

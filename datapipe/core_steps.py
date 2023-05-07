@@ -245,6 +245,7 @@ class BaseBatchTransformStep(ComputeStep):
         def _make_agg_cte(dt: DataTable, agg_fun, agg_col: str):
             tbl = dt.meta_table.sql_table
 
+            # TODO add support for partially absent primary keys
             key_cols = [column(k) for k in self.transform_keys]
 
             sql = (
@@ -255,6 +256,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
+            # TODO also return keys that were used for grouping
             return sql.cte(name=f"{tbl.name}__{agg_col}")
 
         def _make_agg_of_agg(ctes, agg_col):
@@ -287,12 +289,16 @@ class BaseBatchTransformStep(ComputeStep):
             return sql.cte(name=f"all__{agg_col}")
 
         inp_ctes = [_make_agg_cte(tbl, func.max, "update_ts") for tbl in self.input_dts]
-        out_ctes = [
-            _make_agg_cte(tbl, func.min, "process_ts") for tbl in self.output_dts
-        ]
 
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
-        out = _make_agg_of_agg(out_ctes, "process_ts")
+
+        tr_tbl = self.meta_table.sql_table
+        out = (
+            select(*[column(k) for k in self.transform_keys] + [tr_tbl.c.process_ts])
+            .select_from(tr_tbl)
+            .group_by(*[column(k) for k in self.transform_keys])
+            .cte(name="transform")
+        )
 
         sql = (
             select(
