@@ -268,7 +268,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 
                             if fix_msg:
                                 print(fix_msg, end="")
-                    except:
+                    except:  # noqa
                         rprint("[red]... FAILED TO FIX[/red]", end="")
 
                 print()
@@ -315,7 +315,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
 @step.command()  # type: ignore
 @click.option("--status", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
-def list(ctx: click.Context, status: bool) -> None:
+def list(ctx: click.Context, status: bool) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps: List[ComputeStep] = ctx.obj["steps"]
 
@@ -349,7 +349,7 @@ def list(ctx: click.Context, status: bool) -> None:
     "--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds"
 )
 @click.pass_context
-def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
