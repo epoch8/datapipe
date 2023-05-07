@@ -246,9 +246,9 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        output_dfs: TransformResult | None,
+        output_dfs: Optional[TransformResult],
         process_ts: float,
-        run_config: RunConfig | None = None,
+        run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
         res = super().store_batch_result(ds, idx, output_dfs, process_ts, run_config)
 
@@ -264,7 +264,7 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         e: Exception,
         process_ts: float,
-        run_config: RunConfig | None = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         super().store_batch_err(ds, idx, e, process_ts, run_config)
 
