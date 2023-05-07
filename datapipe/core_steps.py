@@ -296,6 +296,7 @@ class BaseBatchTransformStep(ComputeStep):
         out = (
             select(*[column(k) for k in self.transform_keys] + [tr_tbl.c.process_ts])
             .select_from(tr_tbl)
+            .where(tr_tbl.c.is_success == True)  # noqa
             .group_by(*[column(k) for k in self.transform_keys])
             .cte(name="transform")
         )

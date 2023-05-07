@@ -6,7 +6,7 @@
 import time
 
 import pandas as pd
-from sqlalchemy import Column
+from sqlalchemy import Column, String
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.core_steps import BatchTransformStep, do_batch_generate
@@ -213,6 +213,71 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
     df_res.update(df2)
 
     assert_datatable_equal(tbl2, df_res)
+
+
+def test_batch_transform_with_fails(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl1 = ds.create_table(
+        "tbl1",
+        table_store=TableStoreDB(
+            dbconn,
+            "tbl1",
+            [
+                Column("id", Integer, primary_key=True),
+                Column("data", String),
+            ],
+            create_table=True,
+        ),
+    )
+
+    tbl2 = ds.create_table(
+        "tbl2",
+        table_store=TableStoreDB(
+            dbconn,
+            "tbl2",
+            [
+                Column("id", Integer, primary_key=True),
+                Column("data", String),
+            ],
+            create_table=True,
+        ),
+    )
+
+    context = {
+        "fail": True,
+    }
+
+    def transform_func(df, context=context):
+        if context["fail"]:
+            raise ValueError("fail")
+        return df
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="step1",
+        func=transform_func,
+        input_dts=[tbl1],
+        output_dts=[tbl2],
+    )
+
+    tbl1.store_chunk(
+        pd.DataFrame(
+            {
+                "id": range(10),
+                "data": ["a"] * 10,
+            }
+        )
+    )
+
+    step.run_full(ds)
+    assert len(tbl2.get_data()) == 0
+
+    context["fail"] = False
+
+    step.run_full(ds)
+
+    assert len(tbl2.get_data()) == 10
 
 
 def test_gen_with_filter(dbconn):
