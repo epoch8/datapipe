@@ -28,16 +28,6 @@ TEST_SCHEMA2 = [
     Column("a", Integer),
 ]
 
-TEST_SCHEMA2 = [
-    Column("item_id", Integer, primary_key=True),
-    Column("a", Integer),
-]
-
-TEST_SCHEMA2 = [
-    Column("item_id", Integer, primary_key=True),
-    Column("a", Integer),
-]
-
 PRODUCTS_SCHEMA = [
     Column("product_id", Integer, primary_key=True),
     Column("pipeline_id", Integer, primary_key=True),

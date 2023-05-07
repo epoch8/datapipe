@@ -469,7 +469,13 @@ TRANSFORM_META_SCHEMA = [
 
 
 class TransformMetaTable:
-    def __init__(self, dbconn: DBConn, name: str, primary_schema: DataSchema) -> None:
+    def __init__(
+        self,
+        dbconn: DBConn,
+        name: str,
+        primary_schema: DataSchema,
+        create_table: bool = False,
+    ) -> None:
         self.dbconn = dbconn
         self.name = name
         self.primary_schema = primary_schema
@@ -483,12 +489,17 @@ class TransformMetaTable:
             *self.sql_schema,
         )
 
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
+
     def mark_rows_processed_success(
         self,
         idx: IndexDF,
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys])
+
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
                 {
@@ -502,11 +513,12 @@ class TransformMetaTable:
         )
 
         sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
                 "is_success": True,
                 "error": None,
-            }
+            },
         )
 
         # execute
@@ -519,6 +531,8 @@ class TransformMetaTable:
         error: str,
         run_config: Optional[RunConfig] = None,
     ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys])
+
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
                 {
@@ -532,11 +546,12 @@ class TransformMetaTable:
         )
 
         sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
                 "is_success": False,
                 "error": error,
-            }
+            },
         )
 
         # execute

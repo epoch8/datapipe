@@ -144,6 +144,13 @@ class DatatableTransformStep(ComputeStep):
                 ds.event_logger.log_exception(e, run_config=run_config)
 
 
+def safe_func_name(func: Callable) -> str:
+    raw_name = func.__name__
+    if raw_name == "<lambda>":
+        return "lambda"
+    return raw_name
+
+
 class BaseBatchTransformStep(ComputeStep):
     """
     Abstract class for batch transform steps
@@ -173,6 +180,7 @@ class BaseBatchTransformStep(ComputeStep):
             dbconn=ds.meta_dbconn,
             name=f"{self.get_name()}_meta",
             primary_schema=self.transform_schema,
+            create_table=ds.create_meta_table,
         )
 
     @classmethod
