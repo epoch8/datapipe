@@ -21,6 +21,10 @@ structure:
                 * `process_batch_df` - Process batch in terms of `pd.DataFrame`
             * store results
 
+* `store_batch_result` is called when batch was processed successfuly
+* `store_batch_err` is called when there was an exception during batch
+  processing
+
 ![lifecycle](transformation_lifecycle.png)
 
 !! Note, lifecycle of generator is different

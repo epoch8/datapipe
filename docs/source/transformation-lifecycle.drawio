@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="_LABzlGnOxJPrFOFE8tK" name="run_full">
-        <mxGraphModel dx="1434" dy="806" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff" math="0" shadow="0">
+        <mxGraphModel dx="1492" dy="806" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -17,16 +17,16 @@
                     <mxGeometry x="200" y="80" width="360" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="6" value="process_batch_dts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="200" y="160" width="240" height="40" as="geometry"/>
+                    <mxGeometry x="200" y="160" width="240" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="7" value="store_batch_result" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="440" y="160" width="120" height="40" as="geometry"/>
+                    <mxGeometry x="440" y="160" width="120" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="8" value="get_batch_input_dfs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="200" y="200" width="120" height="40" as="geometry"/>
+                    <mxGeometry x="200" y="220" width="120" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="9" value="process_batch_dfs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="320" y="200" width="120" height="40" as="geometry"/>
+                    <mxGeometry x="320" y="220" width="120" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="GeVadQ1i7Gmi9rNTnFdB-9" value="run_changelist" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;fontColor=#000000;" parent="1" vertex="1">
                     <mxGeometry x="40" y="320" width="520" height="40" as="geometry"/>
@@ -40,17 +40,11 @@
                 <mxCell id="GeVadQ1i7Gmi9rNTnFdB-12" value="foreach batch" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
                     <mxGeometry x="200" y="360" width="360" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="GeVadQ1i7Gmi9rNTnFdB-13" value="process_batch_dts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="200" y="440" width="240" height="40" as="geometry"/>
-                </mxCell>
                 <mxCell id="GeVadQ1i7Gmi9rNTnFdB-15" value="get_batch_input_dfs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="200" y="480" width="120" height="40" as="geometry"/>
+                    <mxGeometry x="200" y="500" width="120" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="GeVadQ1i7Gmi9rNTnFdB-16" value="process_batch_dfs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="320" y="480" width="120" height="40" as="geometry"/>
-                </mxCell>
-                <mxCell id="10" value="store_batch_result" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
-                    <mxGeometry x="440" y="440" width="120" height="40" as="geometry"/>
+                    <mxGeometry x="320" y="500" width="120" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="11" value="run_generate" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0a30a;strokeColor=#BD7000;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;fontColor=#000000;" parent="1" vertex="1">
                     <mxGeometry x="40" y="600" width="520" height="40" as="geometry"/>
@@ -67,14 +61,26 @@
                 <mxCell id="19" value="finalize_generate" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" parent="1" vertex="1">
                     <mxGeometry x="400" y="640" width="160" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="20" value="Full" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" vertex="1" parent="1">
+                <mxCell id="20" value="Full" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" parent="1" vertex="1">
                     <mxGeometry x="40" width="280" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="21" value="Changelist" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" vertex="1" parent="1">
+                <mxCell id="21" value="Changelist" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" parent="1" vertex="1">
                     <mxGeometry x="40" y="280" width="280" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="22" value="Generate" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" vertex="1" parent="1">
+                <mxCell id="22" value="Generate" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;" parent="1" vertex="1">
                     <mxGeometry x="40" y="560" width="280" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="24" value="store_batch_err" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" vertex="1" parent="1">
+                    <mxGeometry x="440" y="190" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="26" value="process_batch_dts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" vertex="1" parent="1">
+                    <mxGeometry x="200" y="440" width="240" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="store_batch_result" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" vertex="1" parent="1">
+                    <mxGeometry x="440" y="440" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="store_batch_err" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;strokeWidth=1;perimeterSpacing=0;glass=0;sketch=1;curveFitting=1;jiggle=2;shadow=0;" vertex="1" parent="1">
+                    <mxGeometry x="440" y="470" width="120" height="30" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

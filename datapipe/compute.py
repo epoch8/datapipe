@@ -1,11 +1,12 @@
 import hashlib
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from opentelemetry import trace
 import tqdm
+from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -177,6 +178,7 @@ class ComputeStep:
         ds: DataStore,
         idx: IndexDF,
         output_dfs: Optional[TransformResult],
+        process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
         changes = ChangeList()
@@ -189,27 +191,17 @@ class ComputeStep:
                     assert len(self.output_dts) == 1
                     output_dfs = [output_dfs]
 
-                try:
-                    for k, res_dt in enumerate(self.output_dts):
-                        # Берем k-ое значение функции для k-ой таблички
-                        # Добавляем результат в результирующие чанки
-                        change_idx = res_dt.store_chunk(
-                            data_df=output_dfs[k],
-                            processed_idx=idx,
-                            run_config=run_config,
-                        )
-
-                        changes.append(res_dt.name, change_idx)
-                except Exception as e:
-                    logger.error(f"Store output batch failed: {str(e)}")
-                    ds.event_logger.log_exception(
-                        e,
-                        run_config=RunConfig.add_labels(
-                            run_config, {"idx": idx.to_dict(orient="records")}
-                        ),
+                for k, res_dt in enumerate(self.output_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    # Добавляем результат в результирующие чанки
+                    change_idx = res_dt.store_chunk(
+                        data_df=output_dfs[k],
+                        processed_idx=idx,
+                        now=process_ts,
+                        run_config=run_config,
                     )
 
-                    return ChangeList()
+                    changes.append(res_dt.name, change_idx)
 
         else:
             with tracer.start_as_current_span("delete missing data from output"):
@@ -222,6 +214,23 @@ class ComputeStep:
 
         return changes
 
+    def store_batch_err(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        e: Exception,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        logger.error(f"Process batch failed: {str(e)}")
+        ds.event_logger.log_exception(
+            e,
+            run_config=RunConfig.add_labels(
+                run_config,
+                {"idx": idx.to_dict(orient="records"), "process_ts": process_ts},
+            ),
+        )
+
     def process_batch(
         self,
         ds: DataStore,
@@ -231,20 +240,19 @@ class ComputeStep:
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {idx.to_records()}")
 
+            process_ts = time.time()
+
             try:
                 output_dfs = self.process_batch_dts(ds, idx, run_config)
-            except Exception as e:
-                logger.error(f"Transform failed: {str(e)}")
-                ds.event_logger.log_exception(
-                    e,
-                    run_config=RunConfig.add_labels(
-                        run_config, {"idx": idx.to_dict(orient="records")}
-                    ),
+
+                return self.store_batch_result(
+                    ds, idx, output_dfs, process_ts, run_config
                 )
 
-                return ChangeList()
+            except Exception as e:
+                self.store_batch_err(ds, idx, e, process_ts, run_config)
 
-            return self.store_batch_result(ds, idx, output_dfs, run_config)
+                return ChangeList()
 
     def run_full(
         self,
@@ -339,6 +347,7 @@ def build_compute(
         for step in pipeline.steps:
             compute_pipeline.extend(step.build_compute(ds, catalog))
 
+        # TODO move to lints
         for compute_step in compute_pipeline:
             compute_step.validate()
 

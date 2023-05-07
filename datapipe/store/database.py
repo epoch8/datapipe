@@ -9,7 +9,7 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 from sqlalchemy.pool import SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
-from sqlalchemy.sql.base import SchemaEventTarget, Executable
+from sqlalchemy.sql.base import Executable, SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select, tuple_
 
 from datapipe.run_config import RunConfig
@@ -51,9 +51,17 @@ class DBConn:
 
         if connstr.startswith("sqlite"):
             self.supports_update_from = False
+
+            from sqlalchemy.dialects.sqlite import insert
+
+            self.insert = insert
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
+
+            from sqlalchemy.dialects.postgresql import insert
+
+            self.insert = insert
 
         self.con = create_engine(
             connstr,

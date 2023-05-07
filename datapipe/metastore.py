@@ -7,7 +7,7 @@ from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
@@ -473,6 +473,7 @@ class TransformMetaTable:
         self.dbconn = dbconn
         self.name = name
         self.primary_schema = primary_schema
+        self.primary_keys = [i.name for i in primary_schema]
 
         self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
 
@@ -488,13 +489,25 @@ class TransformMetaTable:
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        sql = update(self.sql_table).values(
-            process_ts=process_ts,
-            is_success=True,
-            error=None,
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": True,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
         )
 
-        sql = sql_apply_idx_filter(sql, self.sql_table, self.primary_schema, idx)
+        sql = insert_sql.on_conflict_do_update(
+            set_={
+                "process_ts": process_ts,
+                "is_success": True,
+                "error": None,
+            }
+        )
 
         # execute
         self.dbconn.con.execute(sql)
@@ -506,13 +519,25 @@ class TransformMetaTable:
         error: str,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        sql = update(self.sql_table).values(
-            process_ts=process_ts,
-            is_success=False,
-            error=error,
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": False,
+                    "error": error,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
         )
 
-        sql = sql_apply_idx_filter(sql, self.sql_table, self.primary_schema, idx)
+        sql = insert_sql.on_conflict_do_update(
+            set_={
+                "process_ts": process_ts,
+                "is_success": False,
+                "error": error,
+            }
+        )
 
         # execute
         self.dbconn.con.execute(sql)

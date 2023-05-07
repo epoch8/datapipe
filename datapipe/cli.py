@@ -1,28 +1,20 @@
-from typing import Any, Dict, Iterator, List
-from typing import Optional, List
-
+import importlib.metadata as metadata
 import os.path
 import sys
 import time
-import importlib.metadata as metadata
+from typing import Dict, List, Optional
 
-import yaml
 import click
 import rich
+from datapipe_app import DatapipeApp
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
-from datapipe.types import Labels
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.trace.export import ConsoleSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME
-from opentelemetry.sdk.resources import Resource
-
 from datapipe.compute import ComputeStep, run_steps
-from datapipe_app import DatapipeApp
-from datapipe.compute import ComputeStep
-
+from datapipe.types import Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -302,9 +294,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     res.append(f"[green][bold]{step.name}[/bold][/green]")
 
     if step.labels:
-        labels = " ".join(
-            [f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels]
-        )
+        labels = " ".join([f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels])
         res.append(f"  labels: {labels}")
 
     if inputs_arr := [i.name for i in step.input_dts]:
@@ -314,7 +304,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     if outputs_arr := [i.name for i in step.output_dts]:
         outputs = ", ".join(outputs_arr)
         res.append(f"  outputs: {outputs}")
-    
+
     if extra_args is not None:
         for k, v in extra_args.items():
             res.append(f"  {k}: {v}")
@@ -341,8 +331,10 @@ def list(ctx: click.Context, status: bool) -> None:
                     )
 
                     if changed_idx_count > 0:
-                        extra_args["changed_idx_count"] = f"[red]{changed_idx_count}[/red]"
-                
+                        extra_args[
+                            "changed_idx_count"
+                        ] = f"[red]{changed_idx_count}[/red]"
+
                 except NotImplementedError:
                     # Currently we do not support empty join_keys
                     extra_args["changed_idx_count"] = "[red]N/A[/red]"
@@ -417,7 +409,6 @@ def get_steps_range(
 def run_in_range(
     pipeline: str, first_step: Optional[str] = None, last_step: Optional[str] = None
 ) -> None:
-
     app = load_pipeline(pipeline)
 
     steps_to_run = get_steps_range(app.steps, first_step, last_step)
