@@ -29,10 +29,8 @@ from datapipe.store.database import DBConn, TableStoreDB
 from datapipe_app import DatapipeApp
 
 from datapipe.core_steps import do_full_batch_transform, BatchGenerate
-import ray
 import time
-import uuid
-from step_worker import step_worker
+from examples.rq_tables.test_steps import step_worker, stepAB, stepBD, stepBCE, stepFC
 
 
 def gen_some_data_A() -> Iterator[pd.DataFrame]:
@@ -53,34 +51,6 @@ def gen_some_data_F() -> Iterator[pd.DataFrame]:
     )
 
 
-def stepAB(dfA: pd.DataFrame) -> pd.DataFrame:
-    df = dfA.copy()
-    df["col"] = df["col"] + "_AB"
-    time.sleep(3)
-    return df
-
-
-def stepBD(dfB: pd.DataFrame) -> pd.DataFrame:
-    df = dfB.copy()
-    df["col"] = df["col"] + "_BD"
-    time.sleep(3)
-    return df
-
-
-def stepFC(dfF: pd.DataFrame) -> pd.DataFrame:
-    df = dfF.copy()
-    df["col"] = df["col"] + "_FC"
-    time.sleep(3)
-    return df
-
-
-def stepBCE(dfB: pd.DataFrame, dfC: pd.DataFrame) -> pd.DataFrame:
-    df = dfB.copy()
-    df["col"] = dfB["col"] + "___" + dfC["col"] + "_BCE"
-    time.sleep(3)
-    return df
-
-
 redis_conn = Redis()
 queue = Queue(connection=redis_conn)
 
@@ -99,6 +69,11 @@ def schedule_runtime(
                     job = queue.enqueue(
                         step_worker, step, ds, steps, changelist, run_config
                     )
+
+                    wait_iterataions = 100
+                    while not job.result and wait_iterataions > 0:
+                        wait_iterataions -= 1
+                        time.sleep(3)
                     schedule_runtime(ds, steps, job.result, run_config)
                     # step_worker(step, ds, steps, changelist, run_config)
 
