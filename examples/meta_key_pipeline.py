@@ -27,7 +27,7 @@ ITEMS_SCHEMA = [
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 # dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
-ds = DataStore(dbconn, create_meta_table=True)
+ds = DataStore(dbconn)
 
 run_config = RunConfig(
     filters={}, labels={"pipeline_name": "test_name", "pipeline_id": 1}

@@ -14,7 +14,7 @@ from datapipe.store.database import DBConn
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 # dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
-ds = DataStore(dbconn, create_meta_table=True)
+ds = DataStore(dbconn)
 
 
 def generate_products():

@@ -80,6 +80,6 @@ pipeline = Pipeline(
 )
 
 
-ds = DataStore(DBConn("sqlite+pysqlite3:///metadata.sqlite"), create_meta_table=True)
+ds = DataStore(DBConn("sqlite+pysqlite3:///metadata.sqlite"))
 
 app = DatapipeApp(ds, catalog, pipeline)
