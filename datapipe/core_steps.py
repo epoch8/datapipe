@@ -55,6 +55,7 @@ class DatatableBatchTransformFunc(Protocol):
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> TransformResult:
         ...
 

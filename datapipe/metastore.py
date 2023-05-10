@@ -223,9 +223,9 @@ class MetaTable:
         if idx is not None:
             if len(idx.index) == 0:
                 # Empty index -> empty result
-                return pd.DataFrame(
+                return cast(IndexDF, pd.DataFrame(
                     columns=[column.name for column in self.sql_schema]
-                )
+                ))
             idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
 
             if not idx_cols:

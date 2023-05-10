@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 import os.path
 import sys
@@ -9,7 +9,7 @@ import click
 import rich
 from rich import print as rprint
 
-from datapipe.types import Labels
+from datapipe.types import IndexDF, Labels
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -385,8 +385,7 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
-    idx_gen = None
-    cnt = None
+    idx_gen, cnt = None, None
     while True:
         if len(steps_to_run) > 0:
             if idx_gen is None:
@@ -400,12 +399,12 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
                 idx = next(idx_gen)
                 cl = ChangeList()
                 for input_dt in steps_to_run[0].input_dts:
-                    cl.append(input_dt.name, input_dt.get_data(idx=idx))
+                    cl.append(input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx)))
                 run_steps_changelist(app.ds, steps_to_run, cl)
             except StopIteration:
                 idx_gen = None
                 cnt = 0
-        if idx_gen is not None:
+        if idx_gen is not None and cnt is not None:
             print(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1
         else:
