@@ -1,0 +1,3 @@
+{"model_id": "lower", "pipeline_id": "p1", "func": "lower"}
+{"model_id": "upper", "pipeline_id": "p1", "func": "upper"}
+{"model_id": "lower", "pipeline_id": "p2", "func": "lower"}
