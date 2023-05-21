@@ -278,7 +278,7 @@ class BaseBatchTransformStep(ComputeStep):
             assert len(ctes) > 0
 
             if len(ctes) == 1:
-                return ctes[0]
+                return ctes[0][1]
 
             coalesce_keys = []
 
@@ -303,7 +303,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             sql = select(*coalesce_keys + [agg]).select_from(first_cte)
 
-            for cte_keys, cte in ctes[1:]:
+            for _, cte in ctes[1:]:
                 if len(common_keys) > 0:
                     sql = sql.outerjoin(
                         cte,

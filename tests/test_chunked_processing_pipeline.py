@@ -1,16 +1,23 @@
 import os
 from typing import List, Optional
-from datapipe.run_config import RunConfig
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_changelist, run_steps
+from datapipe.compute import (
+    Catalog,
+    Pipeline,
+    Table,
+    build_compute,
+    run_changelist,
+    run_steps,
+)
 from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
 from datapipe.datatable import DataStore, DataTable
+from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.types import ChangeList, data_to_index
@@ -128,7 +135,12 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
 
     pipeline = Pipeline(
         [
-            BatchTransform(transform, inputs=["inp1", "inp2"], outputs=["out1", "out2"], chunk_size=CHUNK_SIZE),
+            BatchTransform(
+                transform,
+                inputs=["inp1", "inp2"],
+                outputs=["out1", "out2"],
+                chunk_size=CHUNK_SIZE,
+            ),
         ]
     )
 
@@ -189,7 +201,9 @@ def test_run_changelist_simple(dbconn):
 
     run_changelist(ds, catalog, pipeline, changelist)
 
-    assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
+    assert_datatable_equal(
+        catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index]
+    )
 
 
 def test_run_changelist_with_duplicate_input_keys(dbconn):
@@ -271,7 +285,9 @@ def test_run_changelist_by_chunk_size_simple(dbconn):
 
     run_changelist(ds, catalog, pipeline, changelist)
 
-    assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
+    assert_datatable_equal(
+        catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index]
+    )
 
 
 def test_run_changelist_cycle(dbconn):
