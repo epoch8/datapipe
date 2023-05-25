@@ -744,8 +744,9 @@ def update_external_table(
 
 
 class UpdateExternalTable(PipelineStep):
-    def __init__(self, output: str) -> None:
+    def __init__(self, output: str, labels: Optional[Labels] = None) -> None:
         self.output_table_name = output
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
@@ -763,5 +764,6 @@ class UpdateExternalTable(PipelineStep):
                 func=cast(DatatableTransformFunc, transform_func),
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
+                labels=self.labels,
             )
         ]
