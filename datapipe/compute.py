@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
+import ray
+
 from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
@@ -293,6 +295,34 @@ def run_pipeline(
     run_steps(ds, steps, run_config)
 
 
+@ray.remote
+def step_worker(
+    step: ComputeStep,
+    ds: DataStore,
+    steps: List[ComputeStep],
+    changelist: ChangeList,
+    run_config: Optional[RunConfig] = None,
+):
+    print(step._name)
+
+    result_changelist = step.run_changelist(ds, changelist, run_config)
+    schedule_runtime(ds, steps, result_changelist, run_config)
+
+
+def schedule_runtime(
+    ds: DataStore,
+    steps: List[ComputeStep],
+    changelist: ChangeList,
+    run_config: Optional[RunConfig] = None,
+):
+    if changelist:
+        changed_tables = set(changelist.changes.keys())
+        for step in steps:
+            for input_dt in step.get_input_dts():
+                if input_dt.name in changed_tables:
+                    step_worker.remote(step, ds, steps, changelist, run_config)
+
+
 def run_changelist(
     ds: DataStore,
     catalog: Catalog,
@@ -310,29 +340,34 @@ def run_steps_changelist(
     steps: List[ComputeStep],
     changelist: ChangeList,
     run_config: Optional[RunConfig] = None,
+    parallel_runtime: Optional[bool] = True,
 ) -> None:
-    current_changes = changelist
-    next_changes = ChangeList()
-    iteration = 0
+    if parallel_runtime:
+        schedule_runtime(ds, steps, changelist, run_config)
 
-    with tracer.start_as_current_span("Start pipeline for changelist"):
-        while not current_changes.empty() and iteration < 100:
-            with tracer.start_as_current_span("run_steps"):
-                for step in steps:
-                    with tracer.start_as_current_span(
-                        f"{step.get_name()} "
-                        f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
-                    ):
-                        logger.info(
-                            f"Running {step.get_name()} "
+    else:
+        current_changes = changelist
+        next_changes = ChangeList()
+        iteration = 0
+
+        with tracer.start_as_current_span("Start pipeline for changelist"):
+            while not current_changes.empty() and iteration < 100:
+                with tracer.start_as_current_span("run_steps"):
+                    for step in steps:
+                        with tracer.start_as_current_span(
+                            f"{step.get_name()} "
                             f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
-                        )
+                        ):
+                            logger.info(
+                                f"Running {step.get_name()} "
+                                f"{[i.name for i in step.get_input_dts()]} -> {[i.name for i in step.get_output_dts()]}"
+                            )
 
-                        step_changes = step.run_changelist(
-                            ds, current_changes, run_config
-                        )
-                        next_changes.extend(step_changes)
+                            step_changes = step.run_changelist(
+                                ds, current_changes, run_config
+                            )
+                            next_changes.extend(step_changes)
 
-            current_changes = next_changes
-            next_changes = ChangeList()
-            iteration += 1
+                current_changes = next_changes
+                next_changes = ChangeList()
+                iteration += 1

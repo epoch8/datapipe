@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pandas as pd
 import random
-from rq import Queue
-from redis import Redis
 
 from sqlalchemy import Column, String
 
@@ -13,24 +11,21 @@ from datapipe.compute import Catalog, Pipeline, Table
 from typing import Any, Dict, List, Optional, Protocol
 from datapipe.types import ChangeList
 from datapipe.run_config import RunConfig
-from datapipe.core_steps import BatchTransform, UpdateExternalTable
+from datapipe.core_steps import BatchTransform
 from datapipe.compute import (
     Catalog,
     Pipeline,
     Table,
-    ComputeStep,
-    build_compute,
-    # run_changelist,
-    # run_steps,
+    run_changelist,
 )
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 
 from datapipe_app import DatapipeApp
 
-from datapipe.core_steps import do_full_batch_transform, BatchGenerate
+from datapipe.core_steps import BatchGenerate
 import time
-from examples.rq_tables.test_steps import step_worker, stepAB, stepBD, stepBCE, stepFC
+from examples.tables_parallelization.test_steps import stepAB, stepBD, stepBCE, stepFC
 
 
 def gen_some_data_A() -> Iterator[pd.DataFrame]:
@@ -49,69 +44,6 @@ def gen_some_data_F() -> Iterator[pd.DataFrame]:
             "col": [f"dataF_{i}" for i in range(10)],
         }
     )
-
-
-redis_conn = Redis()
-queue = Queue(connection=redis_conn)
-
-
-def schedule_runtime(
-    ds: DataStore,
-    steps: List[ComputeStep],
-    changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
-):
-    if changelist:
-        changed_tables = set(changelist.changes.keys())
-        for step in steps:
-            for input_dt in step.get_input_dts():
-                if input_dt.name in changed_tables:
-                    job = queue.enqueue(
-                        step_worker, step, ds, steps, changelist, run_config
-                    )
-
-                    wait_iterataions = 100
-                    while not job.result and wait_iterataions > 0:
-                        wait_iterataions -= 1
-                        time.sleep(3)
-                    schedule_runtime(ds, steps, job.result, run_config)
-                    # step_worker(step, ds, steps, changelist, run_config)
-
-
-def run_changelist(
-    ds: DataStore,
-    catalog: Catalog,
-    pipeline: Pipeline,
-    changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
-) -> None:
-    steps = build_compute(ds, catalog, pipeline)
-
-    return run_steps_changelist(ds, steps, changelist, run_config)
-
-
-def run_steps_changelist(
-    ds: DataStore,
-    steps: List[ComputeStep],
-    changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
-    parallel_runtime: Optional[bool] = True,
-) -> None:
-    if parallel_runtime:
-        schedule_runtime(ds, steps, changelist, run_config)
-
-    else:
-        current_changes = changelist
-        next_changes = ChangeList()
-        iteration = 0
-
-        while not current_changes.empty() and iteration < 100:
-            for step in steps:
-                step_changes = step.run_changelist(ds, current_changes, run_config)
-                next_changes.extend(step_changes)
-            current_changes = next_changes
-            next_changes = ChangeList()
-            iteration += 1
 
 
 dbconn = DBConn("postgresql://postgres:password@localhost/postgres")
@@ -220,11 +152,6 @@ ds = DataStore(dbconn)
 app = DatapipeApp(ds, catalog, pipeline)
 
 if __name__ == "__main__":
-    # print("Running build_compute...")
-    # steps = build_compute(ds, catalog, pipeline)
-    # print("Running run_steps...")
-    # run_steps(ds, steps)
-
     start_time = time.time()
     new_id = time.time()
     # Change A
@@ -246,6 +173,7 @@ if __name__ == "__main__":
         pipeline=pipeline,
         changelist=change_list,
     )
+
     # Change E
     print("Running F changes...")
     change_list = ChangeList()
@@ -253,7 +181,7 @@ if __name__ == "__main__":
     change_list_data = data_table.store_chunk(
         pd.DataFrame(
             {
-                "id": [str(new_id)],
+                "id": [str(new_id) + "1"],
                 "col": ["newdataF_" + str(random.randrange(100, 200))],
             }
         )
@@ -268,3 +196,5 @@ if __name__ == "__main__":
 
     print("Done!")
     print("--- %s seconds ---" % (time.time() - start_time))
+
+    time.sleep(1000)

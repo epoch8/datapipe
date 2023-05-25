@@ -32,20 +32,10 @@ def stepFC(dfF: pd.DataFrame) -> pd.DataFrame:
 
 
 def stepBCE(dfB: pd.DataFrame, dfC: pd.DataFrame) -> pd.DataFrame:
-    df = dfB.copy()
-    df["col"] = dfB["col"] + "___" + dfC["col"] + "_BCE"
+    merged_df = dfB.merge(dfC, on="id")
+    merged_df["col"] = merged_df[["col_x", "col_y"]].apply(
+        lambda x: "___".join(x.dropna()), axis=1
+    )
+    merged_df.drop(["col_x", "col_y"], axis=1, inplace=True)
     time.sleep(3)
-    return df
-
-
-def step_worker(
-    step: ComputeStep,
-    ds: DataStore,
-    steps: List[ComputeStep],
-    changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
-):
-    print(step.name)
-
-    step_changes = step.run_changelist(ds, changelist, run_config)
-    return step_changes
+    return merged_df
