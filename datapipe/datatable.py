@@ -309,7 +309,7 @@ class DataStore:
         run_config: Optional[RunConfig] = None,
     ) -> int:
         _, sql = self._build_changed_idx_sql(
-            inputs=inputs, outputs=outputs, run_config=run_config,
+            inputs=inputs, outputs=outputs, run_config=run_config
         )
 
         idx_count = self.meta_dbconn.con.execute(
