@@ -67,7 +67,7 @@ def count_tbl(
     idx: IndexDF,
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
-    kwargs: Optional[Dict] = None
+    kwargs: Optional[Dict] = None,
 ) -> pd.DataFrame:
     (input_dt,) = input_dts
 
