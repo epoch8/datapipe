@@ -301,7 +301,7 @@ class DatatableBatchTransformStep(ComputeStep):
             idx=idx,
             input_dts=self.input_dts,
             run_config=run_config,
-            kwargs=self.kwargs
+            kwargs=self.kwargs,
         )
 
 
