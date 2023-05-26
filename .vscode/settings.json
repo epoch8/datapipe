@@ -24,8 +24,15 @@
     ],
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        },
     },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
     "githubIssues.queries": [
         {
             "label": "My Issues",
@@ -44,7 +51,4 @@
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
     ],
-    "black-formatter.args": [
-        "-l 120"
-    ]
 }

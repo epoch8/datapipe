@@ -3,17 +3,18 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterator, List, Tuple, cast, Optional
+from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Column, Float, Integer, Table, func
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
 from datapipe.store.database import (
     DBConn,
     MetaKey,
+    sql_apply_idx_filter,
     sql_apply_runconfig_filter,
     sql_schema_to_sqltype,
 )
@@ -29,7 +30,7 @@ from datapipe.types import (
 
 logger = logging.getLogger("datapipe.metastore")
 
-METADATA_SQL_SCHEMA = [
+TABLE_META_SCHEMA = [
     Column("hash", Integer),
     Column("create_ts", Float),  # Время создания строки
     Column("update_ts", Float),  # Время последнего изменения
@@ -75,9 +76,9 @@ class MetaTable:
             )
             self.meta_keys[target_name] = column.name
 
-        sql_schema = primary_schema + meta_schema + METADATA_SQL_SCHEMA
-
-        self.sql_schema = [copy.copy(i) for i in sql_schema]
+        self.sql_schema = [
+            copy.copy(i) for i in primary_schema + meta_schema + TABLE_META_SCHEMA
+        ]
 
         self.sql_table = Table(
             f"{self.name}_meta",
@@ -116,23 +117,8 @@ class MetaTable:
                 # Когда ключей нет - не делаем ничего
                 pass
 
-            elif len(self.primary_keys) == 1:
-                # Когда ключ один - сравниваем напрямую
-                key = self.primary_keys[0]
-                sql = sql.where(self.sql_table.c[key].in_(idx[key].to_list()))
-
             else:
-                # Когда ключей много - сравниваем через tuple
-                keys = tuple_(*[self.sql_table.c[key] for key in self.primary_keys])
-
-                sql = sql.where(
-                    keys.in_(
-                        [
-                            tuple([r[key] for key in self.primary_keys])  # type: ignore
-                            for r in idx.to_dict(orient="records")
-                        ]
-                    )
-                )
+                sql = sql_apply_idx_filter(sql, self.sql_table, self.primary_keys, idx)
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
@@ -202,7 +188,7 @@ class MetaTable:
         return (
             self.primary_keys
             + list(self.meta_keys.values())
-            + [column.name for column in METADATA_SQL_SCHEMA]
+            + [column.name for column in TABLE_META_SCHEMA]
         )
 
     def _get_hash_for_df(self, df) -> pd.DataFrame:
@@ -458,7 +444,9 @@ class MetaTable:
             self.update_meta_for_store_chunk(meta_df)
 
     def get_stale_idx(
-        self, process_ts: float, run_config: Optional[RunConfig] = None
+        self,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
     ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = select(idx_cols).where(
@@ -478,16 +466,98 @@ class MetaTable:
         )
 
 
-class MetaTableData:
-    def __init__(self, tbl: MetaTable, sql_prefix: str = "") -> None:
-        self.primary_keys = set(tbl.primary_keys)
-        self.meta_keys = set(tbl.meta_keys.keys())
-        self.meta_column_names = tbl.meta_keys
-        self.sql_table = tbl.sql_table.alias(f"{sql_prefix}_{tbl.name}")
+TRANSFORM_META_SCHEMA = [
+    Column("process_ts", Float),  # Время последней успешной обработки
+    Column("is_success", Boolean),  # Успешно ли обработана строка
+    Column("error", String),  # Текст ошибки
+]
 
-    def get_keys(self):
-        return self.primary_keys | self.meta_keys
 
-    def get_column(self, key: str) -> Column:
-        column_key = key if key in self.primary_keys else self.meta_column_names[key]
-        return self.sql_table.c[column_key]
+class TransformMetaTable:
+    def __init__(
+        self,
+        dbconn: DBConn,
+        name: str,
+        primary_schema: DataSchema,
+        create_table: bool = False,
+    ) -> None:
+        self.dbconn = dbconn
+        self.name = name
+        self.primary_schema = primary_schema
+        self.primary_keys = [i.name for i in primary_schema]
+
+        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
+
+        self.sql_table = Table(
+            name,
+            dbconn.sqla_metadata,
+            *self.sql_schema,
+        )
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    def mark_rows_processed_success(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys])
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": True,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": True,
+                "error": None,
+            },
+        )
+
+        # execute
+        self.dbconn.con.execute(sql)
+
+    def mark_rows_processed_error(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        error: str,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys])
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": False,
+                    "error": error,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": False,
+                "error": error,
+            },
+        )
+
+        # execute
+        self.dbconn.con.execute(sql)

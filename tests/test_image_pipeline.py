@@ -4,7 +4,14 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_pipeline, run_steps
+from datapipe.compute import (
+    Catalog,
+    Pipeline,
+    Table,
+    build_compute,
+    run_pipeline,
+    run_steps,
+)
 from datapipe.core_steps import (
     BatchGenerate,
     BatchTransform,
@@ -19,7 +26,13 @@ from datapipe.store.filedir import PILFile, TableStoreFiledir
 def make_df():
     idx = [f"im_{i}" for i in range(10)]
     return pd.DataFrame(
-        {"id": idx, "image": [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), "RGB") for i in idx]}
+        {
+            "id": idx,
+            "image": [
+                Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), "RGB")
+                for i in idx
+            ],
+        }
     )
 
 
@@ -35,9 +48,19 @@ def resize_images(df):
 def test_image_datatables(dbconn, tmp_dir):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table("tbl1", table_store=TableStoreFiledir(tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")))
+    tbl1 = ds.create_table(
+        "tbl1",
+        table_store=TableStoreFiledir(
+            tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")
+        ),
+    )
 
-    tbl2 = ds.create_table("tbl2", table_store=TableStoreFiledir(tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")))
+    tbl2 = ds.create_table(
+        "tbl2",
+        table_store=TableStoreFiledir(
+            tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")
+        ),
+    )
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 0
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 0
@@ -49,6 +72,7 @@ def test_image_datatables(dbconn, tmp_dir):
     )
 
     step = BatchTransformStep(
+        ds=ds,
         name="resize_images",
         func=resize_images,
         input_dts=[tbl1],
@@ -64,8 +88,16 @@ def test_image_datatables(dbconn, tmp_dir):
 def test_image_pipeline(dbconn, tmp_dir):
     catalog = Catalog(
         {
-            "tbl1": Table(store=TableStoreFiledir(tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png"))),
-            "tbl2": Table(store=TableStoreFiledir(tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png"))),
+            "tbl1": Table(
+                store=TableStoreFiledir(
+                    tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")
+                )
+            ),
+            "tbl2": Table(
+                store=TableStoreFiledir(
+                    tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")
+                )
+            ),
         }
     )
 
@@ -94,7 +126,6 @@ def test_image_pipeline(dbconn, tmp_dir):
 
 
 def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
-
     # Add images to tmp_dir
     df_images = make_df()
     (tmp_dir / "tbl1").mkdir()
@@ -104,15 +135,28 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     catalog = Catalog(
         {
             "tbl1": Table(
-                store=TableStoreFiledir(tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png"), enable_rm=True)
+                store=TableStoreFiledir(
+                    tmp_dir / "tbl1" / "{id}.png",
+                    adapter=PILFile("png"),
+                    enable_rm=True,
+                )
             ),
             "tbl2": Table(
-                store=TableStoreFiledir(tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png"), enable_rm=True)
+                store=TableStoreFiledir(
+                    tmp_dir / "tbl2" / "{id}.png",
+                    adapter=PILFile("png"),
+                    enable_rm=True,
+                )
             ),
         }
     )
 
-    pipeline = Pipeline([UpdateExternalTable("tbl1"), BatchTransform(lambda df: df, inputs=["tbl1"], outputs=["tbl2"])])
+    pipeline = Pipeline(
+        [
+            UpdateExternalTable("tbl1"),
+            BatchTransform(lambda df: df, inputs=["tbl1"], outputs=["tbl2"]),
+        ]
+    )
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 10
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 0

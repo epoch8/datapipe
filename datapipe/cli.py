@@ -1,26 +1,20 @@
-from typing import Dict, List, Optional, cast
-
+import importlib.metadata as metadata
 import os.path
 import sys
 import time
-import importlib.metadata as metadata
+from typing import Dict, List, Optional, cast
 
 import click
 import rich
+from datapipe_app import DatapipeApp
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
-from datapipe.types import IndexDF, Labels
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.trace.export import ConsoleSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME
-from opentelemetry.sdk.resources import Resource
-
 from datapipe.compute import ComputeStep, run_steps, run_steps_changelist
-from datapipe_app import DatapipeApp
-from datapipe.types import ChangeList
-
+from datapipe.types import ChangeList, IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -274,7 +268,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 
                             if fix_msg:
                                 print(fix_msg, end="")
-                    except:
+                    except:  # noqa
                         rprint("[red]... FAILED TO FIX[/red]", end="")
 
                 print()
@@ -300,9 +294,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     res.append(f"[green][bold]{step.name}[/bold][/green] ({step.__class__.__name__})")
 
     if step.labels:
-        labels = " ".join(
-            [f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels]
-        )
+        labels = " ".join([f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels])
         res.append(f"  labels: {labels}")
 
     if inputs_arr := [i.name for i in step.input_dts]:
@@ -323,7 +315,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
 @step.command()  # type: ignore
 @click.option("--status", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
-def list(ctx: click.Context, status: bool) -> None:
+def list(ctx: click.Context, status: bool) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps: List[ComputeStep] = ctx.obj["steps"]
 
@@ -339,8 +331,10 @@ def list(ctx: click.Context, status: bool) -> None:
                     )
 
                     if changed_idx_count > 0:
-                        extra_args["changed_idx_count"] = f"[red]{changed_idx_count}[/red]"
-                
+                        extra_args[
+                            "changed_idx_count"
+                        ] = f"[red]{changed_idx_count}[/red]"
+
                 except NotImplementedError:
                     # Currently we do not support empty join_keys
                     extra_args["changed_idx_count"] = "[red]N/A[/red]"
@@ -355,7 +349,7 @@ def list(ctx: click.Context, status: bool) -> None:
     "--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds"
 )
 @click.pass_context
-def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
@@ -380,11 +374,15 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
 )
 @click.pass_context
 @click.option("--chunk-size", type=click.INT, default=1000)
-def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int) -> None:
+def run_changelist(
+    ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int
+) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
-    print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
+    print(
+        f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}"
+    )
     idx_gen, cnt = None, None
     while True:
         if len(steps_to_run) > 0:
@@ -392,7 +390,7 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
                 idx_count, idx_gen = app.ds.get_full_process_ids(
                     inputs=steps_to_run[0].input_dts,
                     outputs=steps_to_run[0].output_dts,
-                    chunk_size=chunk_size
+                    chunk_size=chunk_size,
                 )
                 cnt = 0
             try:

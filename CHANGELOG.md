@@ -2,8 +2,10 @@
 
 ## Breaking changes
 * Move cli from `datapipe-app` to `datapipe`
-* Remove separate `datapipe step status` command, now it's a flag: `datapipe step list --status`
+* Remove separate `datapipe step status` command, now it's a flag: `datapipe
+  step list --status`
 * `DatatableTransform` moved from `datapipe.compute` to `datapipe.core_steps`
+* Remove `datapipe.metastore.MetaTableData` (nobody used it anyway)
 
 ## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class

@@ -1,20 +1,18 @@
 from typing import Dict, List, Optional
-import pandas as pd
+
 import numpy as np
-
-from sqlalchemy import Integer
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql import functions, select
-
+import pandas as pd
 from datapipe_app import DatapipeApp
-from datapipe.run_config import RunConfig
+from sqlalchemy import Integer
+from sqlalchemy.sql import functions, select
+from sqlalchemy.sql.schema import Column
 
-from datapipe.types import IndexDF
-from datapipe.datatable import DataStore, DataTable
-from datapipe.compute import Pipeline, Catalog, Table
+from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import BatchGenerate, DatatableBatchTransform
+from datapipe.datatable import DataStore, DataTable
+from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn, TableStoreDB
-
+from datapipe.types import IndexDF
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 
@@ -46,12 +44,14 @@ catalog = Catalog(
 
 
 def generate_data():
+    # N = 10_000
+    N = 100
     for i in range(10):
         print(i)
         yield pd.DataFrame(
             {
-                "group_id": np.random.randint(0, 100, size=10_000),
-                "item_id": np.random.randint(0, 100_000, size=10_000),
+                "group_id": np.random.randint(0, 100, size=N),
+                "item_id": np.random.randint(0, 100_000, size=N),
             }
         ).drop_duplicates()
 

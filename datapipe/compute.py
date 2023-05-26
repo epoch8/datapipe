@@ -1,11 +1,12 @@
 import hashlib
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from opentelemetry import trace
 import tqdm
+from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -89,6 +90,7 @@ class ComputeStep:
     def labels(self) -> Labels:
         return self._labels if self._labels else []
 
+    # TODO: move to lints
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.primary_keys) for inp in self.input_dts if inp]
         out_p_keys_arr = [set(out.primary_keys) for out in self.output_dts if out]
@@ -171,6 +173,64 @@ class ComputeStep:
 
         return output_dfs
 
+    def store_batch_result(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        output_dfs: Optional[TransformResult],
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> ChangeList:
+        changes = ChangeList()
+
+        if output_dfs is not None:
+            with tracer.start_as_current_span("store output batch"):
+                if isinstance(output_dfs, (list, tuple)):
+                    assert len(output_dfs) == len(self.output_dts)
+                else:
+                    assert len(self.output_dts) == 1
+                    output_dfs = [output_dfs]
+
+                for k, res_dt in enumerate(self.output_dts):
+                    # Берем k-ое значение функции для k-ой таблички
+                    # Добавляем результат в результирующие чанки
+                    change_idx = res_dt.store_chunk(
+                        data_df=output_dfs[k],
+                        processed_idx=idx,
+                        now=process_ts,
+                        run_config=run_config,
+                    )
+
+                    changes.append(res_dt.name, change_idx)
+
+        else:
+            with tracer.start_as_current_span("delete missing data from output"):
+                for k, res_dt in enumerate(self.output_dts):
+                    del_idx = res_dt.meta_table.get_existing_idx(idx)
+
+                    res_dt.delete_by_idx(del_idx, run_config=run_config)
+
+                    changes.append(res_dt.name, del_idx)
+
+        return changes
+
+    def store_batch_err(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        e: Exception,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        logger.error(f"Process batch failed: {str(e)}")
+        ds.event_logger.log_exception(
+            e,
+            run_config=RunConfig.add_labels(
+                run_config,
+                {"idx": idx.to_dict(orient="records"), "process_ts": process_ts},
+            ),
+        )
+
     def process_batch(
         self,
         ds: DataStore,
@@ -180,57 +240,19 @@ class ComputeStep:
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {idx.to_records()}")
 
+            process_ts = time.time()
+
             try:
                 output_dfs = self.process_batch_dts(ds, idx, run_config)
-            except Exception as e:
-                logger.error(f"Transform failed: {str(e)}")
-                ds.event_logger.log_exception(
-                    e,
-                    run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
+
+                return self.store_batch_result(
+                    ds, idx, output_dfs, process_ts, run_config
                 )
 
+            except Exception as e:
+                self.store_batch_err(ds, idx, e, process_ts, run_config)
+
                 return ChangeList()
-
-            changes = ChangeList()
-
-            if output_dfs is not None:
-                if isinstance(output_dfs, (list, tuple)):
-                    assert len(output_dfs) == len(self.output_dts)
-                else:
-                    assert len(self.output_dts) == 1
-                    output_dfs = [output_dfs]
-
-                with tracer.start_as_current_span("store output batch"):
-                    try:
-                        for k, res_dt in enumerate(self.output_dts):
-                            # Берем k-ое значение функции для k-ой таблички
-                            # Добавляем результат в результирующие чанки
-                            change_idx = res_dt.store_chunk(
-                                data_df=output_dfs[k],
-                                processed_idx=idx,
-                                run_config=run_config,
-                            )
-
-                            changes.append(res_dt.name, change_idx)
-                    except Exception as e:
-                        logger.error(f"Store output batch failed: {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(run_config, {"idx": idx.to_dict(orient="records")}),
-                        )
-
-                        return ChangeList()
-
-            else:
-                with tracer.start_as_current_span("delete missing data from output"):
-                    for k, res_dt in enumerate(self.output_dts):
-                        del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                        res_dt.delete_by_idx(del_idx, run_config=run_config)
-
-                        changes.append(res_dt.name, del_idx)
-
-            return changes
 
     def run_full(
         self,
@@ -265,7 +287,9 @@ class ComputeStep:
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
-        (idx_count, idx_gen) = self.get_change_list_process_ids(ds, change_list, run_config)
+        (idx_count, idx_gen) = self.get_change_list_process_ids(
+            ds, change_list, run_config
+        )
 
         logger.info(f"Batches to process {idx_count}")
 
@@ -312,7 +336,9 @@ class DatapipeApp:
         self.steps = build_compute(ds, catalog, pipeline)
 
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
+def build_compute(
+    ds: DataStore, catalog: Catalog, pipeline: Pipeline
+) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)
 
@@ -321,6 +347,7 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
         for step in pipeline.steps:
             compute_pipeline.extend(step.build_compute(ds, catalog))
 
+        # TODO move to lints
         for compute_step in compute_pipeline:
             compute_step.validate()
 
@@ -333,7 +360,9 @@ def print_compute(steps: List[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
-def run_steps(ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None) -> None:
+def run_steps(
+    ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None
+) -> None:
     for step in steps:
         with tracer.start_as_current_span(
             f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
@@ -392,7 +421,9 @@ def run_steps_changelist(
                         )
 
                         try:
-                            step_changes = step.run_changelist(ds, current_changes, run_config)
+                            step_changes = step.run_changelist(
+                                ds, current_changes, run_config
+                            )
                             next_changes.extend(step_changes)
                         except NotImplementedError:
                             # Some steps do not implement `.run_changelist`, that's ok
