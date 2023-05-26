@@ -7,6 +7,10 @@
 * `DatatableTransform` moved from `datapipe.compute` to `datapipe.core_steps`
 * Remove `datapipe.metastore.MetaTableData` (nobody used it anyway)
 
+## New features
+
+* Add command `step run_changelist` to CLI
+
 ## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`

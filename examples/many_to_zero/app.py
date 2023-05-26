@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Optional
 
 import pandas as pd
 from datapipe_app import DatapipeApp
@@ -45,8 +45,8 @@ def count(
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
-    run_config: RunConfig,
-    **kwargs,
+    kwargs: Dict,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     assert len(input_dts) == 1
     assert len(output_dts) == 1
@@ -71,6 +71,7 @@ pipeline = Pipeline(
             count,  # type: ignore
             inputs=["input"],
             outputs=["result"],
+            check_for_changes=False,
         ),
     ]
 )
