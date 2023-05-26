@@ -6,14 +6,14 @@ from typing import Dict, List, Optional
 
 import click
 import rich
-from datapipe_app import DatapipeApp
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
-from datapipe.compute import ComputeStep, run_steps
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps
+from datapipe.core_steps import BaseBatchTransformStep
 from datapipe.types import Labels
 
 tracer = trace.get_tracer("datapipe_app")
@@ -223,7 +223,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
         lints.LintDataWOMeta(),
     ]
 
-    tables_from_catalog = app.catalog.catalog.keys()
+    tables_from_catalog = list(app.catalog.catalog.keys())
     print(f"Pipeline contains {len(tables_from_catalog)} tables")
 
     if tables == "*":
@@ -325,15 +325,13 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
         if status:
             if len(step.input_dts) > 0:
                 try:
-                    changed_idx_count = app.ds.get_changed_idx_count(
-                        inputs=step.input_dts,
-                        outputs=step.output_dts,
-                    )
+                    if isinstance(step, BaseBatchTransformStep):
+                        changed_idx_count = step.get_changed_idx_count(ds=app.ds)
 
-                    if changed_idx_count > 0:
-                        extra_args[
-                            "changed_idx_count"
-                        ] = f"[red]{changed_idx_count}[/red]"
+                        if changed_idx_count > 0:
+                            extra_args[
+                                "changed_idx_count"
+                            ] = f"[red]{changed_idx_count}[/red]"
 
                 except NotImplementedError:
                     # Currently we do not support empty join_keys
