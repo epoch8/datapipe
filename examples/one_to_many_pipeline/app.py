@@ -141,7 +141,6 @@ catalog = Catalog(
                     Column("offer_id", Integer(), primary_key=True),
                     Column("attributes", JSON),
                 ],
-                create_table=True
             )
         ),
         "test_attr_products": Table(
@@ -154,7 +153,6 @@ catalog = Catalog(
                     Column("name", String(), primary_key=True),
                     Column("value", Integer()),
                 ],
-                create_table=True
             )
         ),
         "test_ozon_products": Table(
@@ -166,7 +164,6 @@ catalog = Catalog(
                     Column("offer_id", Integer(), primary_key=True),
                     Column("attributes", JSON),
                 ],
-                create_table=True
             )
         ),
         "test_offers_products": Table(
@@ -178,7 +175,6 @@ catalog = Catalog(
                     Column("name", String(), primary_key=True),
                     Column("offers", JSON),
                 ],
-                create_table=True
             )
         ),
         "test_all_products": Table(
@@ -191,7 +187,6 @@ catalog = Catalog(
                     Column("attributes_base", JSON),
                     Column("attributes_new", JSON),
                 ],
-                create_table=True
             )
         ),
         "test_store_products": Table(
@@ -204,7 +199,6 @@ catalog = Catalog(
                     Column("attributes", JSON),
                     Column("is_deleted", Boolean()),
                 ],
-                create_table=True
             )
         ),
         "test_filter_products": Table(
@@ -216,7 +210,6 @@ catalog = Catalog(
                     Column("offer_id", Integer(), primary_key=True),
                     Column("attributes", JSON),
                 ],
-                create_table=True
             )
         ),
     }
