@@ -25,7 +25,6 @@ from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.metastore import MetaTable, TransformMetaTable
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.store.database import sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
