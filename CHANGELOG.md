@@ -10,11 +10,13 @@
 ## New features
 
 * Add command `step run_changelist` to CLI
+* Add `datapipe.store.qdrant.QdrantStore`
 
 ## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+* Add `labels` arg to `UpdateExternalTable` and `DatatableTransformStep`
 * Large refactoring, `ComputeStep` now contains pieces of overridable functions
   for `run_full` and `run_changelist`
 * Add prototype events logging for steps, add

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 description = ""
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
@@ -38,6 +38,7 @@ redis = {version="^4.3.4", optional=true}
 
 pysqlite3-binary = {version="^0.5.0", optional=true}
 sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true}
+qdrant-client = {version="^1.1.7", optional=true}
 
 click = ">=7.1.2"
 rich = "^13.3.2"
@@ -54,6 +55,7 @@ milvus = ["pymilvus"]
 gcsfs = ["gcsfs"]
 s3fs = ["s3fs"]
 redis = ["redis"]
+qdrant = ["qdrant-client"]
 
 docs = ["sphinx", "myst-parser"]
 
