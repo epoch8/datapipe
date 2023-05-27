@@ -66,12 +66,16 @@ def test_cloudpickle(dbconn) -> None:
 
     dump = cloudpickle.dumps([ds, tbl])
 
-    _, tbl_desrl = cloudpickle.loads(dump)
+    ds_desrl, _ = cloudpickle.loads(dump)
 
-    dbconn_a = tbl.meta_dbconn
-    dbconn_b: DBConn = tbl_desrl.meta_dbconn
+    dbconn_a = ds.meta_dbconn
+    dbconn_b: DBConn = ds_desrl.meta_dbconn
 
-    assert (dbconn_a.connstr, dbconn_a.schema, dbconn_a.supports_update_from) == (
+    assert (
+        dbconn_a.connstr,
+        dbconn_a.schema,
+        dbconn_a.supports_update_from,
+    ) == (
         dbconn_b.connstr,
         dbconn_b.schema,
         dbconn_b.supports_update_from,
