@@ -10,6 +10,7 @@
 ## New features
 
 * Add command `step run_changelist` to CLI
+* Add `datapipe.store.qdrant.QdrantStore`
 
 ## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class
