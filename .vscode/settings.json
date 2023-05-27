@@ -5,11 +5,7 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.linting.flake8Enabled": true,
-    "python.linting.flake8Args": [
-        "--max-line-length=127",
-        "--extend-ignore=E203"
-    ],
+    "python.linting.flake8Enabled": false,
     "python.linting.mypyEnabled": true,
     "python.linting.mypyArgs": [
         "--follow-imports=silent",
@@ -24,8 +20,15 @@
     ],
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        },
     },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
     "githubIssues.queries": [
         {
             "label": "My Issues",
@@ -43,5 +46,5 @@
             "label": "Backlog",
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
-    ]
+    ],
 }

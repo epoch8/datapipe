@@ -4,12 +4,11 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, func, or_, select, column
 
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
-from datapipe.run_config import LabelDict, RunConfig
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter
+from datapipe.run_config import RunConfig
+from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
@@ -174,6 +173,7 @@ class DataStore:
             self.meta_dbconn, create_table=create_meta_table
         )
         self.tables: Dict[str, DataTable] = {}
+
         self.create_meta_table = create_meta_table
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
@@ -206,6 +206,7 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
+    # TODO remove, because it's implemented in BatchTransformStep
     def get_join_keys(
         self, inputs: List[DataTable], outputs: List[DataTable]
     ) -> List[str]:
@@ -217,157 +218,7 @@ class DataStore:
     def get_table(self, name: str) -> DataTable:
         return self.tables[name]
 
-    def _build_changed_idx_sql(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[Iterable[str], select]:
-        inp_keys = [set(inp.primary_keys) for inp in inputs]
-        out_keys = [set(out.primary_keys) for out in outputs]
-        join_keys = list(set.intersection(*inp_keys, *out_keys))
-
-        if self.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
-            greatest_func = func.max
-        else:
-            greatest_func = func.greatest
-
-        def _make_agg_cte(dt: DataTable, agg_fun, agg_col: str):
-            tbl = dt.meta_table.sql_table
-
-            key_cols = [column(k) for k in join_keys]
-
-            sql = (
-                select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])
-                .select_from(tbl)
-                .group_by(*key_cols)
-            )
-
-            sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
-
-            return sql.cte(name=f"{tbl.name}__{agg_col}")
-
-        def _make_agg_of_agg(ctes, agg_col):
-            assert len(ctes) > 0
-
-            if len(ctes) == 1:
-                return ctes[0]
-
-            if len(join_keys) > 1:
-                coalesce_keys = [
-                    func.coalesce(*[subq.c[key] for subq in ctes]).label(key)
-                    for key in join_keys
-                ]
-            else:
-                coalesce_keys = [subq.c[join_keys[0]] for subq in ctes]
-
-            agg = greatest_func(*[subq.c[agg_col] for subq in ctes]).label(agg_col)
-
-            sql = select(*coalesce_keys + [agg]).select_from(ctes[0])
-
-            for cte in ctes[1:]:
-                sql = sql.outerjoin(
-                    cte,
-                    onclause=and_(*[ctes[0].c[key] == cte.c[key] for key in join_keys]),
-                    full=True,
-                )
-
-            return sql.cte(name=f"all__{agg_col}")
-
-        inp_ctes = [_make_agg_cte(tbl, func.max, "update_ts") for tbl in inputs]
-        out_ctes = [_make_agg_cte(tbl, func.min, "process_ts") for tbl in outputs]
-
-        inp = _make_agg_of_agg(inp_ctes, "update_ts")
-        out = _make_agg_of_agg(out_ctes, "process_ts")
-
-        sql = (
-            select(
-                *[func.coalesce(inp.c[key], out.c[key]).label(key) for key in join_keys]
-            )
-            .select_from(inp)
-            .outerjoin(
-                out, onclause=and_(*[inp.c[key] == out.c[key] for key in join_keys])
-            )
-            .where(
-                or_(
-                    inp.c.update_ts > out.c.process_ts,
-                    inp.c.update_ts == None,  # noqa
-                    out.c.process_ts == None,  # noqa
-                )
-            )
-        )
-
-        return (join_keys, sql)
-
-    def get_changed_idx_count(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        run_config: Optional[RunConfig] = None,
-    ) -> int:
-        _, sql = self._build_changed_idx_sql(
-            inputs=inputs, outputs=outputs, run_config=run_config
-        )
-
-        idx_count = self.meta_dbconn.con.execute(
-            select([func.count()]).select_from(
-                alias(sql.subquery(), name="union_select")
-            )
-        ).scalar()
-
-        return idx_count
-
-    def get_full_process_ids(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        chunk_size: int = 1000,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
-        """
-        Метод для получения перечня индексов для обработки.
-
-        Returns: (idx_size, iterator<idx_df>)
-
-        - idx_size - количество индексов требующих обработки
-        - idx_df - датафрейм без колонок с данными, только индексная колонка
-        """
-
-        if len(inputs) == 0:
-            return (0, iter([]))
-
-        idx_count = self.get_changed_idx_count(
-            inputs=inputs,
-            outputs=outputs,
-            run_config=run_config,
-        )
-
-        join_keys, u1 = self._build_changed_idx_sql(
-            inputs=inputs,
-            outputs=outputs,
-            run_config=run_config,
-        )
-
-        # Список ключей из фильтров, которые нужно добавить в результат
-        extra_filters: LabelDict
-        if run_config is not None:
-            extra_filters = {
-                k: v for k, v in run_config.filters.items() if k not in join_keys
-            }
-        else:
-            extra_filters = {}
-
-        def alter_res_df():
-            for df in pd.read_sql_query(
-                u1, con=self.meta_dbconn.con, chunksize=chunk_size
-            ):
-                for k, v in extra_filters.items():
-                    df[k] = v
-
-                yield df
-
-        return math.ceil(idx_count / chunk_size), alter_res_df()
-
+    # TODO remove, because it's implemented in BatchTransformStep
     def get_change_list_process_ids(
         self,
         inputs: List[DataTable],

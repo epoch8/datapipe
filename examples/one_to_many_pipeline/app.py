@@ -1,16 +1,12 @@
 import pandas as pd
-
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import Integer, String, Boolean, JSON
-
 from datapipe_app import DatapipeApp
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, Boolean, Integer, String
 
-from datapipe.store.database import TableStoreDB
-from datapipe.datatable import DataStore
 from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.core_steps import BatchGenerate, BatchTransform
-from datapipe.store.database import DBConn
-
+from datapipe.datatable import DataStore
+from datapipe.store.database import DBConn, TableStoreDB
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 # dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
@@ -18,7 +14,7 @@ ds = DataStore(dbconn)
 
 
 def generate_products():
-    for pipeline_id in range(1, 3):
+    for pipeline_id in range(1, 4):
         df_data = []
 
         for offer_id in range(1, 6):
@@ -109,7 +105,6 @@ def gen_product_all(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
 
 
 def gen_product_store(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-
     keys = ["pipeline_id", "offer_id"]
     merged_df = pd.merge(df1, df2, how="outer", left_on=keys, right_on=keys)
 

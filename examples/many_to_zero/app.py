@@ -1,19 +1,16 @@
-from typing import List
+from typing import Dict, List, Optional
 
 import pandas as pd
-
+from datapipe_app import DatapipeApp
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe_app import DatapipeApp
-
+from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.core_steps import BatchGenerate, DatatableTransform
 from datapipe.datatable import DataStore, DataTable
-from datapipe.compute import Pipeline, Catalog, Table, DatatableTransform
-from datapipe.core_steps import BatchGenerate
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
-
 
 catalog = Catalog(
     {
@@ -48,7 +45,8 @@ def count(
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
-    run_config: RunConfig = None,
+    kwargs: Dict,
+    run_config: Optional[RunConfig] = None,
 ) -> None:
     assert len(input_dts) == 1
     assert len(output_dts) == 1
@@ -70,14 +68,15 @@ pipeline = Pipeline(
             outputs=["input"],
         ),
         DatatableTransform(
-            count,
+            count,  # type: ignore
             inputs=["input"],
             outputs=["result"],
+            check_for_changes=False,
         ),
     ]
 )
 
 
-ds = DataStore(DBConn("sqlite+pysqlite3:///metadata.sqlite"))
+ds = DataStore(DBConn("sqlite+pysqlite3:///db.sqlite"))
 
 app = DatapipeApp(ds, catalog, pipeline)
