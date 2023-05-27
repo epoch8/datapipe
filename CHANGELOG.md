@@ -1,13 +1,14 @@
 # WIP 0.13.0
 
-# 0.12.0
-
 ## Major changes
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
   meta table that tracks status of each transformation
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
   `BaseBatchTransformStep`
 * Add `transform_keys` to `*BatchTransform`
+* Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
+
+# 0.12.0
 
 ## Breaking changes
 * Move cli from `datapipe-app` to `datapipe`
@@ -30,7 +31,6 @@
   for `run_full` and `run_changelist`
 * Add prototype events logging for steps, add
   `event_logger.log_step_full_complete`, add table `datapipe_step_events`
-* Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
 
 # 0.11.11
 
