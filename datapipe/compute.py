@@ -119,6 +119,7 @@ class ComputeStep:
                     f"{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}"
                 )
 
+    @abstractmethod
     def get_full_process_ids(
         self,
         ds: DataStore,
@@ -126,6 +127,7 @@ class ComputeStep:
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
+    @abstractmethod
     def get_change_list_process_ids(
         self,
         ds: DataStore,
@@ -134,6 +136,7 @@ class ComputeStep:
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
+    @abstractmethod
     def run_full(
         self,
         ds: DataStore,
@@ -141,6 +144,7 @@ class ComputeStep:
     ) -> None:
         raise NotImplementedError()
 
+    @abstractmethod
     def run_changelist(
         self,
         ds: DataStore,
