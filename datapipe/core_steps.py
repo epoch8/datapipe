@@ -19,7 +19,7 @@ from typing import (
 import pandas as pd
 import tqdm
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, or_, select
+from sqlalchemy import alias, and_, column, func, literal, or_, select
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
@@ -237,17 +237,33 @@ class BaseBatchTransformStep(ComputeStep):
         if len(self.transform_keys) == 0:
             raise NotImplementedError()
 
+        all_input_keys_counts: Dict[str, int] = {}
+        for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
+            all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
+
+        # Check that all keys are either in one input table or in all input tables
+        # Currently we do not support partial primary keys
+        assert all(
+            v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
+        )
+
+        common_keys = [
+            k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
+        ]
+
         # TODO move to DBConn compatiblity layer
         if ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
             greatest_func = func.max
         else:
             greatest_func = func.greatest
 
-        def _make_agg_cte(dt: DataTable, agg_fun, agg_col: str):
+        def _make_agg_cte(
+            dt: DataTable, agg_fun, agg_col: str
+        ) -> Tuple[List[str], Any]:
             tbl = dt.meta_table.sql_table
 
-            # TODO add support for partially absent primary keys
-            key_cols = [column(k) for k in self.transform_keys]
+            keys = [k for k in self.transform_keys if k in dt.primary_keys]
+            key_cols = [column(k) for k in keys]
 
             sql = (
                 select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])
@@ -257,35 +273,52 @@ class BaseBatchTransformStep(ComputeStep):
 
             sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
-            # TODO also return keys that were used for grouping
-            return sql.cte(name=f"{tbl.name}__{agg_col}")
+            return (keys, sql.cte(name=f"{tbl.name}__{agg_col}"))
 
         def _make_agg_of_agg(ctes, agg_col):
             assert len(ctes) > 0
 
             if len(ctes) == 1:
-                return ctes[0]
+                return ctes[0][1]
 
-            if len(self.transform_keys) > 1:
-                coalesce_keys = [
-                    func.coalesce(*[subq.c[key] for subq in ctes]).label(key)
-                    for key in self.transform_keys
-                ]
-            else:
-                coalesce_keys = [subq.c[self.transform_keys[0]] for subq in ctes]
+            coalesce_keys = []
 
-            agg = greatest_func(*[subq.c[agg_col] for subq in ctes]).label(agg_col)
+            for key in self.transform_keys:
+                ctes_with_key = [subq for (subq_keys, subq) in ctes if key in subq_keys]
 
-            sql = select(*coalesce_keys + [agg]).select_from(ctes[0])
+                if len(ctes_with_key) == 0:
+                    raise ValueError(f"Key {key} not found in any of the input tables")
 
-            for cte in ctes[1:]:
-                sql = sql.outerjoin(
-                    cte,
-                    onclause=and_(
-                        *[ctes[0].c[key] == cte.c[key] for key in self.transform_keys]
-                    ),
-                    full=True,
-                )
+                if len(ctes_with_key) == 1:
+                    coalesce_keys.append(ctes_with_key[0].c[key])
+                else:
+                    coalesce_keys.append(
+                        func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
+                    )
+
+            agg = greatest_func(*[subq.c[agg_col] for (subq_keys, subq) in ctes]).label(
+                agg_col
+            )
+
+            _, first_cte = ctes[0]
+
+            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
+
+            for _, cte in ctes[1:]:
+                if len(common_keys) > 0:
+                    sql = sql.outerjoin(
+                        cte,
+                        onclause=and_(
+                            *[first_cte.c[key] == cte.c[key] for key in common_keys]
+                        ),
+                        full=True,
+                    )
+                else:
+                    sql = sql.outerjoin(
+                        cte,
+                        onclause=literal(True),
+                        full=True,
+                    )
 
             return sql.cte(name=f"all__{agg_col}")
 
@@ -315,6 +348,7 @@ class BaseBatchTransformStep(ComputeStep):
                 onclause=and_(
                     *[inp.c[key] == out.c[key] for key in self.transform_keys]
                 ),
+                full=True,
             )
             .where(
                 or_(
