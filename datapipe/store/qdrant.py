@@ -1,16 +1,16 @@
-import pandas as pd
 import hashlib
-import uuid
 import re
-
-from typing import Optional, Any
+import uuid
 from collections.abc import Iterable
+from typing import Any, Optional
+
+import pandas as pd
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-from datapipe.types import DataSchema, MetaSchema, IndexDF, DataDF
 from datapipe.store.table_store import TableStore
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
 
 class CollectionParams(rest.CreateCollection):
@@ -25,7 +25,7 @@ class QdrantStore(TableStore):
         schema: DataSchema,
         pk_field: str,
         embedding_field: str,
-        collection_params: CollectionParams
+        collection_params: CollectionParams,
     ):
         super().__init__()
         self.name = name
@@ -35,14 +35,16 @@ class QdrantStore(TableStore):
         self.embedding_field = embedding_field
         self.collection_params = collection_params
         self.inited = False
-        self.client: QdrantClient = None
+        self.client: Optional[QdrantClient] = None
 
         pk_columns = [column for column in self.schema if column.primary_key]
 
         if len(pk_columns) != 1 and pk_columns[0].name != pk_field:
             raise ValueError("Incorrect prymary key columns in schema")
 
-        self.paylods_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
+        self.paylods_filelds = [
+            column.name for column in self.schema if column.name != self.embedding_field
+        ]
 
     def __init(self):
         self.client = QdrantClient(url=self.url)
@@ -51,8 +53,7 @@ class QdrantStore(TableStore):
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 self.client.http.collections_api.create_collection(
-                    collection_name=self.name,
-                    create_collection=self.collection_params
+                    collection_name=self.name, create_collection=self.collection_params
                 )
 
     def __check_init(self):
@@ -61,9 +62,15 @@ class QdrantStore(TableStore):
             self.inited = True
 
     def __get_ids(self, df):
-        return df[self.pk_field].apply(
-            lambda x: str(uuid.UUID(bytes=hashlib.md5(str(x).encode('utf-8')).digest()))
-        ).to_list()
+        return (
+            df[self.pk_field]
+            .apply(
+                lambda x: str(
+                    uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())
+                )
+            )
+            .to_list()
+        )
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.schema if column.primary_key]
@@ -77,12 +84,13 @@ class QdrantStore(TableStore):
         if len(df) == 0:
             return
 
+        assert self.client is not None
         self.client.upsert(
             self.name,
             rest.Batch(
                 ids=self.__get_ids(df),
                 vectors=df[self.embedding_field].apply(list).to_list(),
-                payloads=df[self.paylods_filelds].to_dict(orient='records')
+                payloads=df[self.paylods_filelds].to_dict(orient="records"),
             ),
             wait=True,
         )
@@ -96,11 +104,10 @@ class QdrantStore(TableStore):
         if len(idx) == 0:
             return
 
+        assert self.client is not None
         self.client.delete(
             self.name,
-            rest.PointIdsList(
-                points=self.__get_ids(idx)
-            ),
+            rest.PointIdsList(points=self.__get_ids(idx)),
             wait=True,
         )
 
@@ -110,24 +117,28 @@ class QdrantStore(TableStore):
         if not idx:
             raise Exception("Qrand doesn't support full store reading")
 
+        assert self.client is not None
         response = self.client.http.points_api.get_points(
             self.name,
             point_request=rest.PointRequest(
-                ids=self.__get_ids(idx),
-                with_payload=True,
-                with_vector=True
-            )
+                ids=self.__get_ids(idx), with_payload=True, with_vector=True
+            ),
         )
 
         records = []
 
+        assert response.result is not None
         for point in response.result:
             record = point.payload
+
+            assert record is not None
             record[self.embedding_field] = point.vector
 
             records.append(record)
 
-        return pd.DataFrame.from_records(records)[[column.name for column in self.schema]]
+        return pd.DataFrame.from_records(records)[
+            [column.name for column in self.schema]
+        ]
 
 
 class QdrantShardedStore(TableStore):
@@ -137,7 +148,7 @@ class QdrantShardedStore(TableStore):
         url: str,
         schema: DataSchema,
         embedding_field: str,
-        collection_params: CollectionParams
+        collection_params: CollectionParams,
     ):
         super().__init__()
         self.name_pattern = name_pattern
@@ -147,11 +158,13 @@ class QdrantShardedStore(TableStore):
         self.collection_params = collection_params
 
         self.inited_collections: set = set()
-        self.client: QdrantClient = None
+        self.client: Optional[QdrantClient] = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
-        self.paylods_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
-        self.name_params = re.findall(r'\{([^/]+?)\}', self.name_pattern)
+        self.paylods_filelds = [
+            column.name for column in self.schema if column.name != self.embedding_field
+        ]
+        self.name_params = re.findall(r"\{([^/]+?)\}", self.name_pattern)
 
         if not len(self.pk_fields):
             raise ValueError("Prymary key columns not found in schema")
@@ -165,8 +178,7 @@ class QdrantShardedStore(TableStore):
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 self.client.http.collections_api.create_collection(
-                    collection_name=name,
-                    create_collection=self.collection_params
+                    collection_name=name, create_collection=self.collection_params
                 )
 
     def __check_init(self, name):
@@ -178,15 +190,20 @@ class QdrantShardedStore(TableStore):
             self.inited_collections.add(name)
 
     def __get_ids(self, df):
-        ids_values = df[self.pk_fields].apply(
-            lambda x: '_'.join([f"{i[0]}-{i[1]}" for i in x.items()]),
-            axis=1
-        ).to_list()
+        ids_values = (
+            df[self.pk_fields]
+            .apply(lambda x: "_".join([f"{i[0]}-{i[1]}" for i in x.items()]), axis=1)
+            .to_list()
+        )
 
-        return list(map(
-            lambda x: str(uuid.UUID(bytes=hashlib.md5(str(x).encode('utf-8')).digest())),
-            ids_values
-        ))
+        return list(
+            map(
+                lambda x: str(
+                    uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())
+                ),
+                ids_values,
+            )
+        )
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.schema if column.primary_key]
@@ -206,12 +223,14 @@ class QdrantShardedStore(TableStore):
             name = self.__get_collection_name(name_values)
 
             self.__check_init(name)
+
+            assert self.client is not None
             self.client.upsert(
                 name,
                 rest.Batch(
                     ids=self.__get_ids(gdf),
                     vectors=gdf[self.embedding_field].apply(list).to_list(),
-                    payloads=gdf[self.paylods_filelds].to_dict(orient='records')
+                    payloads=gdf[self.paylods_filelds].to_dict(orient="records"),
                 ),
                 wait=True,
             )
@@ -225,11 +244,10 @@ class QdrantShardedStore(TableStore):
 
             self.__check_init(name)
 
+            assert self.client is not None
             self.client.delete(
                 name,
-                rest.PointIdsList(
-                    points=self.__get_ids(gdf)
-                ),
+                rest.PointIdsList(points=self.__get_ids(gdf)),
                 wait=True,
             )
 
@@ -244,19 +262,23 @@ class QdrantShardedStore(TableStore):
 
             self.__check_init(name)
 
+            assert self.client is not None
             response = self.client.http.points_api.get_points(
                 name,
                 point_request=rest.PointRequest(
-                    ids=self.__get_ids(gdf),
-                    with_payload=True,
-                    with_vector=True
-                )
+                    ids=self.__get_ids(gdf), with_payload=True, with_vector=True
+                ),
             )
 
+            assert response.result is not None
             for point in response.result:
                 record = point.payload
+
+                assert record is not None
                 record[self.embedding_field] = point.vector
 
                 records.append(record)
 
-        return pd.DataFrame.from_records(records)[[column.name for column in self.schema]]
+        return pd.DataFrame.from_records(records)[
+            [column.name for column in self.schema]
+        ]
