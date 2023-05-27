@@ -3,10 +3,16 @@ from datapipe_app import DatapipeApp
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, Boolean, Integer, String
 
-from datapipe.compute import Catalog, Pipeline, Table
-from datapipe.core_steps import BatchGenerate, BatchTransform
-from datapipe.datatable import DataStore
-from datapipe.store.database import DBConn, TableStoreDB
+from datapipe import (
+    BatchGenerate,
+    BatchTransform,
+    Catalog,
+    DataStore,
+    DBConn,
+    Pipeline,
+    Table,
+    TableStoreDB,
+)
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 # dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')

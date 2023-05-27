@@ -8,10 +8,9 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.core_steps import BatchTransformStep, do_batch_generate
-from datapipe.datatable import DataStore
+from datapipe import BatchTransformStep, DataStore, IndexDF, data_to_index
+from datapipe.core_steps import do_batch_generate
 from datapipe.store.database import TableStoreDB
-from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 

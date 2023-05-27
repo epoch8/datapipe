@@ -3,9 +3,8 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.datatable import DataStore
-from datapipe.store.database import DBConn, TableStoreDB
-from datapipe.types import IndexDF, data_to_index
+from datapipe import DataStore, DBConn, IndexDF, data_to_index
+from datapipe.store.database import TableStoreDB
 
 from .util import assert_datatable_equal, assert_df_equal
 

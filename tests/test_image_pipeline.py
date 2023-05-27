@@ -4,22 +4,20 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from datapipe.compute import (
+from datapipe import (
+    BatchGenerate,
+    BatchTransform,
+    BatchTransformStep,
     Catalog,
+    DataStore,
     Pipeline,
     Table,
+    UpdateExternalTable,
     build_compute,
     run_pipeline,
     run_steps,
 )
-from datapipe.core_steps import (
-    BatchGenerate,
-    BatchTransform,
-    BatchTransformStep,
-    UpdateExternalTable,
-    do_batch_generate,
-)
-from datapipe.datatable import DataStore
+from datapipe.core_steps import do_batch_generate
 from datapipe.store.filedir import PILFile, TableStoreFiledir
 
 

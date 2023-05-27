@@ -2,10 +2,15 @@ import pandas as pd
 from datapipe_app import DatapipeApp
 from sqlalchemy import Column, Integer, String
 
-from datapipe.compute import Catalog, Pipeline, Table
-from datapipe.core_steps import BatchTransform, UpdateExternalTable
-from datapipe.datatable import DataStore
-from datapipe.store.database import DBConn
+from datapipe import (
+    BatchTransform,
+    Catalog,
+    DataStore,
+    DBConn,
+    Pipeline,
+    Table,
+    UpdateExternalTable,
+)
 from datapipe.store.pandas import TableStoreJsonLine
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
