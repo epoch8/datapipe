@@ -3,11 +3,11 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Tuple, cast
+from typing import Any, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, column, func
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
@@ -465,6 +465,34 @@ class MetaTable:
             Iterator[IndexDF],
             pd.read_sql_query(sql, con=self.dbconn.con, chunksize=1000),
         )
+
+    def make_agg_update_sql(
+        self,
+        transform_keys: List[str],
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[List[str], Any]:
+        """
+        Prepare SQL subquery for update_ts aggregation in relation to transform_keys
+
+        Returns tuple:
+            keys - list of keys for aggregation
+            sql - SQLAlchemy select with keys columns and max(update_ts) as update_ts
+        """
+
+        tbl = self.sql_table
+
+        keys = [k for k in transform_keys if k in self.primary_keys]
+        key_cols = [column(k) for k in keys]
+
+        sql = (
+            select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
+            .select_from(tbl)
+            .group_by(*key_cols)
+        )
+
+        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+
+        return (keys, sql.cte(name=f"{tbl.name}__update_ts"))
 
 
 TRANSFORM_META_SCHEMA = [

@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="680uwpuYkj8ZMehc0VYk" name="Page-2">
-        <mxGraphModel dx="1492" dy="1906" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1080" dy="1906" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="ur8WBRzY9eALHr9f39F1-0"/>
                 <mxCell id="ur8WBRzY9eALHr9f39F1-1" parent="ur8WBRzY9eALHr9f39F1-0"/>
@@ -61,7 +61,7 @@
                 <mxCell id="ur8WBRzY9eALHr9f39F1-13" style="edgeStyle=none;html=1;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" source="2" target="ur8WBRzY9eALHr9f39F1-7" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="1" style="edgeStyle=none;html=1;" edge="1" parent="ur8WBRzY9eALHr9f39F1-1" source="ur8WBRzY9eALHr9f39F1-12" target="2">
+                <mxCell id="1" style="edgeStyle=none;html=1;" parent="ur8WBRzY9eALHr9f39F1-1" source="ur8WBRzY9eALHr9f39F1-12" target="2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="ur8WBRzY9eALHr9f39F1-12" value="#BatchTransformStep" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" vertex="1">
@@ -119,27 +119,27 @@
                 <mxCell id="ur8WBRzY9eALHr9f39F1-36" value="#DataStore" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontFamily=Helvetica;fontSize=12;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" vertex="1">
                     <mxGeometry x="90" y="120" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="3" style="edgeStyle=none;html=1;" edge="1" parent="ur8WBRzY9eALHr9f39F1-1" source="0" target="2">
+                <mxCell id="3" style="edgeStyle=none;html=1;" parent="ur8WBRzY9eALHr9f39F1-1" source="0" target="2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="0" value="#DatatableBatchTransformStep" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" vertex="1" parent="ur8WBRzY9eALHr9f39F1-1">
+                <mxCell id="0" value="#DatatableBatchTransformStep" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" vertex="1">
                     <mxGeometry x="720" y="640" width="195" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="2" value="BaseBatchTransformStep" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" vertex="1" parent="ur8WBRzY9eALHr9f39F1-1">
+                <mxCell id="2" value="BatchComputeStep" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" vertex="1">
                     <mxGeometry x="840" y="370" width="195" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="5" style="edgeStyle=none;html=1;dashed=1;" edge="1" parent="ur8WBRzY9eALHr9f39F1-1" source="4" target="0">
+                <mxCell id="5" style="edgeStyle=none;html=1;dashed=1;" parent="ur8WBRzY9eALHr9f39F1-1" source="4" target="0" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="6" value="build_compute" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="5">
+                <mxCell id="6" value="build_compute" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="5" vertex="1" connectable="0">
                     <mxGeometry x="0.1517" y="-2" relative="1" as="geometry">
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="7" style="edgeStyle=none;html=1;" edge="1" parent="ur8WBRzY9eALHr9f39F1-1" source="4" target="ur8WBRzY9eALHr9f39F1-2">
+                <mxCell id="7" style="edgeStyle=none;html=1;" parent="ur8WBRzY9eALHr9f39F1-1" source="4" target="ur8WBRzY9eALHr9f39F1-2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="4" value="#DatatableBatchTransform" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" vertex="1" parent="ur8WBRzY9eALHr9f39F1-1">
+                <mxCell id="4" value="#DatatableBatchTransform" style="rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fontColor=default;" parent="ur8WBRzY9eALHr9f39F1-1" vertex="1">
                     <mxGeometry x="20" y="660" width="160" height="60" as="geometry"/>
                 </mxCell>
             </root>
