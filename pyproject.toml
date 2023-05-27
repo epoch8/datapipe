@@ -1,7 +1,9 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.12.0-alpha.2"
-description = ""
+version = "0.12.0"
+description = "`datapipe` is a realtime incremental ETL library for Python application"
+readme = "README.md"
+repository = "https://github.com/epoch8/datapipe"
 authors = ["Andrey Tatarinov <a@tatarinov.co>"]
 packages = [
     { include = "datapipe" }

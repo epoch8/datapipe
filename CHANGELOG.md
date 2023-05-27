@@ -1,4 +1,4 @@
-# WIP 0.12.0
+# 0.12.0
 
 ## Breaking changes
 * Move cli from `datapipe-app` to `datapipe`

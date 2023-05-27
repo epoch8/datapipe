@@ -1,11 +1,15 @@
-# Совместимость версий
+# Datapipe
 
-На текущий момент библиотека `datapipe` находится в активной разработке. Версии:
+`datapipe` is a realtime incremental ETL library for Python application.
+
+# Version compatibility
+
+At the moment, the datapipe library is under active development. Versions:
 `v0.*.*`
 
-Следует ожидать, что каждая минорная версия обратно не совместима с предыдущей.
-То есть `v0.7.0` не совместима с `v0.6.1`. Зависимости нужно фиксировать на
-точную версию.
+It should be expected that each minor version is not backward compatible with
+the previous one. That is, `v0.7.0` is not compatible with `v0.6.1`. Dependencies
+should be fixed to the exact minor version.
 
-После стабилизации и перехода на мажорную версию `v1.*.*` будут действовать
-общепринятые правила: все версии с общей мажорной компонентой - совместимы.
+After stabilization and transition to the major version `v1.*.*`, the common
+rules will apply: all versions with the same major component are compatible.
