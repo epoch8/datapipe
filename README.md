@@ -2,6 +2,15 @@
 
 `datapipe` is a realtime incremental ETL library for Python application.
 
+# Development
+
+At the moment these branches are active:
+
+* `master` - current development state, will be promoted to `0.13.x` series
+  release once ready
+* `v0.12` - current stable version
+* `v0.11` - legacy stable version
+
 # Version compatibility
 
 At the moment, the datapipe library is under active development. Versions:
