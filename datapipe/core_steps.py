@@ -720,8 +720,8 @@ class UpdateExternalTable(PipelineStep):
     def __init__(
         self,
         output: str,
-        labels: Optional[Dict[str, str]] = None,        
-        ) -> None:
+        labels: Optional[Labels] = None,
+    ) -> None:
         self.output_table_name = output
         self.labels = labels
 
