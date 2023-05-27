@@ -64,6 +64,7 @@ class DatatableBatchTransformFunc(Protocol):
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> TransformResult:
         ...
 
@@ -531,7 +532,13 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> Optional[TransformResult]:
-        return self.func(ds, idx, self.input_dts, run_config)
+        return self.func(
+            ds=ds,
+            idx=idx,
+            input_dts=self.input_dts,
+            run_config=run_config,
+            kwargs=self.kwargs,
+        )
 
 
 @dataclass
@@ -744,8 +751,13 @@ def update_external_table(
 
 
 class UpdateExternalTable(PipelineStep):
-    def __init__(self, output: str) -> None:
+    def __init__(
+        self,
+        output: str,
+        labels: Optional[Labels] = None,
+    ) -> None:
         self.output_table_name = output
+        self.labels = labels
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         def transform_func(
@@ -763,5 +775,6 @@ class UpdateExternalTable(PipelineStep):
                 func=cast(DatatableTransformFunc, transform_func),
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, self.output_table_name)],
+                labels=self.labels,
             )
         ]

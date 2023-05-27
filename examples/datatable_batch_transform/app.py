@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -67,6 +67,7 @@ def count_tbl(
     idx: IndexDF,
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
+    kwargs: Optional[Dict] = None,
 ) -> pd.DataFrame:
     (input_dt,) = input_dts
 

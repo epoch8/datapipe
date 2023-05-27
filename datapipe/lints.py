@@ -1,10 +1,10 @@
 from enum import Enum
 from typing import Optional, Tuple
 
+from sqlalchemy import and_, func, insert, literal, not_, or_, select, update
+
 from datapipe.datatable import DataTable
 from datapipe.store.database import TableStoreDB
-from sqlalchemy import and_, func, or_, select, update, literal, not_, insert
-from termcolor import colored
 
 
 class LintStatus(Enum):
