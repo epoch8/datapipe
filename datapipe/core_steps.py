@@ -114,6 +114,14 @@ class DatatableTransformStep(ComputeStep):
         self.kwargs = kwargs or {}
         self.check_for_changes = check_for_changes
 
+    def run_changelist(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: Optional[RunConfig] = None,
+    ) -> ChangeList:
+        raise NotImplementedError()
+
     def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
         logger.info(f"Running: {self.name}")
 
