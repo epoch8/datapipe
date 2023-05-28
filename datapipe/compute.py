@@ -120,23 +120,6 @@ class ComputeStep:
                 )
 
     @abstractmethod
-    def get_full_process_ids(
-        self,
-        ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def get_change_list_process_ids(
-        self,
-        ds: DataStore,
-        change_list: ChangeList,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
-        raise NotImplementedError()
-
-    @abstractmethod
     def run_full(
         self,
         ds: DataStore,
