@@ -1,0 +1,1 @@
+for i in `ls`; do echo $i; cd $i; datapipe db create-all && datapipe run; cd ..; done

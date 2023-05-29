@@ -9,11 +9,9 @@ import pandas as pd
 from sqlalchemy import Column, String
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.core_steps import BatchTransformStep, do_batch_generate
-from datapipe.datatable import DataStore
-from datapipe.run_config import RunConfig
+from datapipe import BatchTransformStep, ChangeList, DataStore, IndexDF, RunConfig
+from datapipe.core_steps import do_batch_generate
 from datapipe.store.database import MetaKey, TableStoreDB
-from datapipe.types import ChangeList, IndexDF
 
 from .util import assert_datatable_equal, assert_df_equal
 

@@ -1,16 +1,24 @@
 # WIP 0.13.0
 
 ## Major changes
+
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
   meta table that tracks status of each transformation
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
-  `BaseBatchTransformStep`
+  `BatchComputeStep`
+* Collect all batch-related functionality in `BatchComputeStep`
 * Add `transform_keys` to `*BatchTransform`
-* Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
+* Move changed idx computation out of `DataStore` to `BatchComputeStep`
+
+## Refactorings
+
+* Move `update_ts` aggregation to `DataTable`
+* Remove `meta_dbconn` from `DataTable`
 
 # 0.12.0
 
 ## Breaking changes
+
 * Move cli from `datapipe-app` to `datapipe`
 * Remove separate `datapipe step status` command, now it's a flag: `datapipe
   step list --status`
@@ -23,6 +31,7 @@
 * Add `datapipe.store.qdrant.QdrantStore`
 
 ## Refactorings
+
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`

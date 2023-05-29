@@ -1,6 +1,7 @@
 import copy
 import logging
 import math
+import typing
 from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import pandas as pd
@@ -22,6 +23,9 @@ from datapipe.types import (
     TAnyDF,
     data_to_index,
 )
+
+if typing.TYPE_CHECKING:
+    from datapipe.datatable import DataStore
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -69,8 +73,6 @@ class DBConn:
         )
 
         SQLAlchemyInstrumentor().instrument(engine=self.con)
-
-        self.sqla_metadata = MetaData(schema=schema)
 
     def __getstate__(self):
         return {
@@ -142,28 +144,20 @@ class MetaKey(SchemaItem):
 class TableStoreDB(TableStore):
     def __init__(
         self,
-        dbconn: Union["DBConn", str],
+        ds: DataStore,
         name: str,
         data_sql_schema: List[Column],
-        create_table: bool = False,
     ) -> None:
-        if isinstance(dbconn, str):
-            self.dbconn = DBConn(dbconn)
-        else:
-            self.dbconn = dbconn
         self.name = name
 
         self.data_sql_schema = data_sql_schema
 
         self.data_table = Table(
             self.name,
-            self.dbconn.sqla_metadata,
+            ds.sqla_metadata,
             *[copy.copy(i) for i in self.data_sql_schema],
             extend_existing=True,
         )
-
-        if create_table:
-            self.data_table.create(self.dbconn.con, checkfirst=True)
 
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema
@@ -207,9 +201,9 @@ class TableStoreDB(TableStore):
             sql = sql_apply_idx_filter(
                 delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
             )
-            self.dbconn.con.execute(sql)
+            dbconn.con.execute(sql)
 
-    def insert_rows(self, df: DataDF) -> None:
+    def insert_rows(self, dbconn: DBConn, df: DataDF) -> None:
         if df.empty:
             return
 
@@ -219,8 +213,8 @@ class TableStoreDB(TableStore):
         for chunk_df in self._chunk_idx_df(df):
             chunk_df.to_sql(
                 name=self.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
+                con=dbconn.con,
+                schema=dbconn.schema,
                 if_exists="append",
                 index=False,
                 chunksize=1000,

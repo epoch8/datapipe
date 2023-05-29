@@ -7,20 +7,24 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import (
+from datapipe import (
+    BatchTransform,
     Catalog,
+    ChangeList,
+    DataStore,
+    DataTable,
+    DatatableTransform,
     Pipeline,
+    RunConfig,
     Table,
+    UpdateExternalTable,
     build_compute,
+    data_to_index,
     run_changelist,
     run_steps,
 )
-from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
-from datapipe.datatable import DataStore, DataTable
-from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.types import ChangeList, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 

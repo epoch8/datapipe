@@ -3,10 +3,16 @@ from sqlalchemy.sql.expression import select
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
-from datapipe.core_steps import BatchGenerate, BatchTransform
-from datapipe.datatable import DataStore
-from datapipe.run_config import RunConfig
+from datapipe import (
+    BatchGenerate,
+    BatchTransform,
+    Catalog,
+    DataStore,
+    Pipeline,
+    RunConfig,
+    Table,
+    run_pipeline,
+)
 from datapipe.store.database import TableStoreDB
 
 TEST_SCHEMA = [
@@ -30,7 +36,10 @@ def update_data(df: pd.DataFrame, value: int) -> pd.DataFrame:
 def test_meta_info_in_datapipe_events(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    run_config = RunConfig(filters={"pipeline_id": 1}, labels={"pipeline_name": "test_name", "pipeline_id": 1})
+    run_config = RunConfig(
+        filters={"pipeline_id": 1},
+        labels={"pipeline_name": "test_name", "pipeline_id": 1},
+    )
 
     catalog = Catalog(
         {
@@ -76,7 +85,8 @@ def test_meta_info_in_datapipe_events(dbconn) -> None:
     run_pipeline(ds, catalog, pipeline, run_config)
 
     df_events = pd.read_sql_query(
-        select(catalog.get_datatable(ds, "test_generate").event_logger.events_table), dbconn.con
+        select(catalog.get_datatable(ds, "test_generate").event_logger.events_table),
+        dbconn.con,
     )
 
     assert df_events.loc[0]["event"] == {

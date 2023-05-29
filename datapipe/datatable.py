@@ -4,6 +4,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
 from opentelemetry import trace
+from sqlalchemy import MetaData
 
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
@@ -27,13 +28,11 @@ class DataTable:
     def __init__(
         self,
         name: str,
-        meta_dbconn: DBConn,
         meta_table: MetaTable,
         table_store: TableStore,
         event_logger: EventLogger,
     ):
         self.name = name
-        self.meta_dbconn = meta_dbconn
         self.meta_table = meta_table
         self.table_store = table_store
         self.event_logger = event_logger
@@ -47,8 +46,8 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
-    def reset_metadata(self):
-        self.meta_dbconn.con.execute(
+    def reset_metadata(self, ds: "DataStore"):
+        ds.meta_dbconn.con.execute(
             self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
         )
 
@@ -169,6 +168,8 @@ class DataStore:
         create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
+        self.sqla_metadata = MetaData()
+
         self.event_logger = EventLogger(
             self.meta_dbconn, create_table=create_meta_table
         )
@@ -184,9 +185,8 @@ class DataStore:
 
         res = DataTable(
             name=name,
-            meta_dbconn=self.meta_dbconn,
             meta_table=MetaTable(
-                dbconn=self.meta_dbconn,
+                ds=self,
                 name=name,
                 primary_schema=primary_schema,
                 meta_schema=meta_schema,

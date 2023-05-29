@@ -5,11 +5,17 @@ from datapipe_app import DatapipeApp
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.compute import Catalog, Pipeline, Table
-from datapipe.core_steps import BatchGenerate, DatatableTransform
-from datapipe.datatable import DataStore, DataTable
-from datapipe.run_config import RunConfig
-from datapipe.store.database import DBConn
+from datapipe import (
+    BatchGenerate,
+    Catalog,
+    DataStore,
+    DataTable,
+    DatatableTransform,
+    DBConn,
+    Pipeline,
+    RunConfig,
+    Table,
+)
 from datapipe.store.pandas import TableStoreJsonLine
 
 catalog = Catalog(
