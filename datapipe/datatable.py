@@ -4,6 +4,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
 from opentelemetry import trace
+from sqlalchemy import MetaData
 
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
@@ -167,6 +168,8 @@ class DataStore:
         create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
+        self.sqla_metadata = MetaData()
+
         self.event_logger = EventLogger(
             self.meta_dbconn, create_table=create_meta_table
         )
@@ -183,7 +186,7 @@ class DataStore:
         res = DataTable(
             name=name,
             meta_table=MetaTable(
-                dbconn=self.meta_dbconn,
+                ds=self,
                 name=name,
                 primary_schema=primary_schema,
                 meta_schema=meta_schema,
