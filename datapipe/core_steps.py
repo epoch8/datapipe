@@ -64,6 +64,7 @@ class DatatableBatchTransformFunc(Protocol):
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> TransformResult:
         ...
 
@@ -531,7 +532,13 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> Optional[TransformResult]:
-        return self.func(ds, idx, self.input_dts, run_config)
+        return self.func(
+            ds=ds,
+            idx=idx,
+            input_dts=self.input_dts,
+            run_config=run_config,
+            kwargs=self.kwargs,
+        )
 
 
 @dataclass
@@ -744,7 +751,11 @@ def update_external_table(
 
 
 class UpdateExternalTable(PipelineStep):
-    def __init__(self, output: str, labels: Optional[Labels] = None) -> None:
+    def __init__(
+        self,
+        output: str,
+        labels: Optional[Labels] = None,
+    ) -> None:
         self.output_table_name = output
         self.labels = labels
 

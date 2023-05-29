@@ -1,4 +1,4 @@
-# WIP 0.12.0
+# WIP 0.13.0
 
 ## Major changes
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
@@ -6,6 +6,9 @@
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
   `BaseBatchTransformStep`
 * Add `transform_keys` to `*BatchTransform`
+* Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
+
+# 0.12.0
 
 ## Breaking changes
 * Move cli from `datapipe-app` to `datapipe`
@@ -14,15 +17,20 @@
 * `DatatableTransform` moved from `datapipe.compute` to `datapipe.core_steps`
 * Remove `datapipe.metastore.MetaTableData` (nobody used it anyway)
 
+## New features
+
+* Add command `step run_changelist` to CLI
+* Add `datapipe.store.qdrant.QdrantStore`
+
 ## Refactorings
 * Add `labels` arg and property to `ComputeStep` base class
 * Add `labels` arg to `BatchTransform` and `BatchTransformStep`
 * Add `labels` arg to `BatchGenerate` and `DatatableTransformStep`
+* Add `labels` arg to `UpdateExternalTable` and `DatatableTransformStep`
 * Large refactoring, `ComputeStep` now contains pieces of overridable functions
   for `run_full` and `run_changelist`
 * Add prototype events logging for steps, add
   `event_logger.log_step_full_complete`, add table `datapipe_step_events`
-* Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
 
 # 0.11.11
 
