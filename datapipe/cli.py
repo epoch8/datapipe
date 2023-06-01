@@ -387,34 +387,36 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
     print(f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}")
     idx_gen = None
     cnt = None
-    while True:
-        if len(steps_to_run) > 0:
-            if idx_gen is None:
-                idx_count, idx_gen = app.ds.get_full_process_ids(
-                    inputs=steps_to_run[0].input_dts,
-                    outputs=steps_to_run[0].output_dts,
-                    chunk_size=chunk_size
-                )
-                cnt = 0
-            try:
-                idx = next(idx_gen)
-                cl = ChangeList()
-                for input_dt in steps_to_run[0].input_dts:
-                    cl.append(input_dt.name, input_dt.get_data(idx=idx))
-                run_steps_changelist(app.ds, steps_to_run, cl)
-            except StopIteration:
-                idx_gen = None
-                cnt = 0
-        if idx_gen is not None:
-            print(f"Chunk {cnt}/{idx_count} ended")
-            cnt += 1
-        else:
-            if not loop:
-                break
-            else:
-                print(f"All chunks ended, sleeping {loop_delay}s...")
-                time.sleep(loop_delay)
-                print("\n\n")
+    with tracer.start_as_current_span("Start run-changelist"):
+        while True:
+            with tracer.start_as_current_span("run_steps"):
+                if len(steps_to_run) > 0:
+                    if idx_gen is None:
+                        idx_count, idx_gen = app.ds.get_full_process_ids(
+                            inputs=steps_to_run[0].input_dts,
+                            outputs=steps_to_run[0].output_dts,
+                            chunk_size=chunk_size
+                        )
+                        cnt = 0
+                    try:
+                        idx = next(idx_gen)
+                        cl = ChangeList()
+                        for input_dt in steps_to_run[0].input_dts:
+                            cl.append(input_dt.name, input_dt.get_data(idx=idx))
+                        run_steps_changelist(app.ds, steps_to_run, cl)
+                    except StopIteration:
+                        idx_gen = None
+                        cnt = 0
+                if idx_gen is not None:
+                    print(f"Chunk {cnt}/{idx_count} ended")
+                    cnt += 1
+                else:
+                    if not loop:
+                        break
+                    else:
+                        print(f"All chunks ended, sleeping {loop_delay}s...")
+                        time.sleep(loop_delay)
+                        print("\n\n")
 
 
 for entry_point in metadata.entry_points().get("datapipe.cli", []):
