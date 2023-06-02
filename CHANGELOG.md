@@ -7,6 +7,7 @@
   `BaseBatchTransformStep`
 * Add `transform_keys` to `*BatchTransform`
 * Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
+* Add column `priority` to transform meta table, sort work by priority
 
 # 0.12.0
 

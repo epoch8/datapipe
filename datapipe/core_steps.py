@@ -328,9 +328,11 @@ class BaseBatchTransformStep(ComputeStep):
 
         tr_tbl = self.meta_table.sql_table
         out = (
-            select(*[column(k) for k in self.transform_keys] + [tr_tbl.c.process_ts])
+            select(
+                *[column(k) for k in self.transform_keys]
+                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            )
             .select_from(tr_tbl)
-            .where(tr_tbl.c.is_success == True)  # noqa
             .group_by(*[column(k) for k in self.transform_keys])
             .cte(name="transform")
         )
@@ -352,10 +354,17 @@ class BaseBatchTransformStep(ComputeStep):
             )
             .where(
                 or_(
-                    inp.c.update_ts > out.c.process_ts,
-                    inp.c.update_ts == None,  # noqa
+                    and_(
+                        out.c.is_success == True,  # noqa
+                        inp.c.update_ts > out.c.process_ts,
+                    ),
+                    out.c.is_success != True,  # noqa
                     out.c.process_ts == None,  # noqa
                 )
+            )
+            .order_by(
+                out.c.priority.desc().nullslast(),
+                *[column(k) for k in self.transform_keys],
             )
         )
 
