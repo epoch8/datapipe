@@ -401,6 +401,7 @@ class DataStore:
                 changes.append(data_to_index(idx, join_keys))
 
         idx = IndexDF(pd.concat(changes).drop_duplicates(subset=join_keys))
+        idx = idx[join_keys]
 
         def gen():
             for i in range(math.ceil(len(idx) / chunk_size)):
