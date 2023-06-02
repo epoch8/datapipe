@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-import tqdm
+from tqdm_loggable.auto import tqdm
 from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
@@ -269,7 +269,7 @@ class ComputeStep:
         if idx_count is not None and idx_count == 0:
             return
 
-        for idx in tqdm.tqdm(idx_gen, total=idx_count):
+        for idx in tqdm(idx_gen, total=idx_count):
             self.process_batch(
                 ds=ds,
                 idx=idx,
@@ -298,7 +298,7 @@ class ComputeStep:
 
         res_changelist = ChangeList()
 
-        for idx in tqdm.tqdm(idx_gen, total=idx_count):
+        for idx in tqdm(idx_gen, total=idx_count):
             changes = self.process_batch(
                 ds=ds,
                 idx=idx,

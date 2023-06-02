@@ -17,7 +17,7 @@ from typing import (
 )
 
 import pandas as pd
-import tqdm
+from tqdm_loggable.auto import tqdm
 from opentelemetry import trace
 from sqlalchemy import alias, and_, column, func, literal, or_, select
 
@@ -721,7 +721,7 @@ def update_external_table(
 ) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(
+    for ps_df in tqdm(
         table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
     ):
         (
