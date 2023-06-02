@@ -226,20 +226,23 @@ class DataStore:
         change_list: ChangeList,
         chunk_size: int = 1000,
         run_config: Optional[RunConfig] = None,
+        transform_keys: Optional[List[str]] = None
     ) -> Tuple[int, Iterable[IndexDF]]:
-        join_keys = self.get_join_keys(inputs, outputs)
-        changes = [pd.DataFrame(columns=join_keys)]
+        if transform_keys is None:
+            transform_keys = self.get_join_keys(inputs, outputs)
+        changes = [pd.DataFrame(columns=transform_keys)]
 
-        if not join_keys:
+        if not transform_keys:
             raise ValueError("Primary keys intersection for ChangeList are empty")
 
         for inp in inputs:
             if inp.name in change_list.changes:
                 idx = change_list.changes[inp.name]
 
-                changes.append(data_to_index(idx, join_keys))
+                changes.append(data_to_index(idx, transform_keys))
 
-        idx = IndexDF(pd.concat(changes).drop_duplicates(subset=join_keys))
+        idx = IndexDF(pd.concat(changes).drop_duplicates(subset=transform_keys))
+        idx = idx[transform_keys]
 
         def gen():
             for i in range(math.ceil(len(idx) / chunk_size)):

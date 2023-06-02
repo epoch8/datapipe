@@ -437,6 +437,7 @@ class BaseBatchTransformStep(ComputeStep):
                 change_list=change_list,
                 chunk_size=self.chunk_size,
                 run_config=run_config,
+                transform_keys=self.transform_keys
             )
 
     def store_batch_result(
