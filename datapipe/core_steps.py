@@ -33,6 +33,7 @@ from datapipe.types import (
     Labels,
     MetaSchema,
     TransformResult,
+    data_to_index,
 )
 
 logger = logging.getLogger("datapipe.core_steps")
@@ -431,13 +432,22 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
-            return ds.get_change_list_process_ids(
-                inputs=self.input_dts,
-                outputs=self.output_dts,
-                change_list=change_list,
-                chunk_size=self.chunk_size,
-                run_config=run_config,
-            )
+            changes = [pd.DataFrame(columns=self.transform_keys)]
+
+            for inp in self.input_dts:
+                if inp.name in change_list.changes:
+                    idx = change_list.changes[inp.name]
+
+                    changes.append(data_to_index(idx, self.transform_keys))
+
+            idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
+            idx = IndexDF(idx_df[self.transform_keys])
+
+            def gen():
+                for i in range(math.ceil(len(idx) / self.chunk_size)):
+                    yield idx[i * self.chunk_size : (i + 1) * self.chunk_size]
+
+            return len(idx), gen()
 
     def store_batch_result(
         self,
