@@ -129,11 +129,14 @@ class CasesCrossMerge:
     def case_excel(self, dbconn, left_schema: List[Column], right_schema: List[Column]):
         left_columns_primary_keys = [x for x in left_schema if x.primary_key]
         right_columns_primary_keys = [x for x in right_schema if x.primary_key]
-        intersecting_idxs = set([x.name for x in left_columns_primary_keys]).intersection(set([x.name for x in right_columns_primary_keys]))
+        intersecting_idxs = list(
+            set([x.name for x in left_columns_primary_keys]).intersection(set([x.name for x in right_columns_primary_keys]))
+        )
         left_columns_primary_keys_no_intersecting = [x for x in left_columns_primary_keys if x.name not in intersecting_idxs]
         right_columns_primary_keys_no_intersecting = [x for x in right_columns_primary_keys if x.name not in intersecting_idxs]
+        lext_x_right_columns_primary_keys_intersecting = [x for x in left_columns_primary_keys if x.name in intersecting_idxs]
         left_x_right_columns_primary_keys = (
-            left_columns_primary_keys_no_intersecting + right_columns_primary_keys_no_intersecting
+            left_columns_primary_keys_no_intersecting + right_columns_primary_keys_no_intersecting + lext_x_right_columns_primary_keys_intersecting
         )
         left_x_right_columns_nonprimary_keys = [x for x in left_schema if not x.primary_key] + [x for x in right_schema if not x.primary_key]
         left_x_right_schema = left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
@@ -155,109 +158,82 @@ class CasesCrossMerge:
         else:
             test_df_left_x_right = pd.merge(test_df_left, test_df_right, how='cross')
         ds = DataStore(dbconn, create_meta_table=True)
-        return ds, catalog, test_df_left, test_df_right, test_df_left_x_right
+        return ds, catalog, test_df_left, test_df_right, test_df_left_x_right, intersecting_idxs
 
 
-def get_df_cross_merge(df_left, df_right):
-    intersection_idxs = set(df_left.columns).intersection(set(df_right.columns))
-    if len(intersection_idxs) > 0:
-        df = pd.merge(df_left, df_right, on=intersection_idxs)
-    else:
-        df = pd.merge(df_left, df_right, how='cross')
-    return df
-
-
-@parametrize_with_cases("ds,catalog,test_df_left,test_df_right,test_df_left_x_right", cases=CasesCrossMerge)
-def test_complex_cross_merge_scenaries(ds, catalog, test_df_left, test_df_right, test_df_left_x_right):
+@parametrize_with_cases(
+    "ds,catalog,test_df_left,test_df_right,test_df_left_x_right,intersecting_idxs",
+    cases=CasesCrossMerge
+)
+def test_complex_cross_merge_scenaries(
+    ds: DataStore,
+    catalog: Catalog,
+    test_df_left: pd.DataFrame,
+    test_df_right: pd.DataFrame,
+    test_df_left_x_right: pd.DataFrame,
+    intersecting_idxs: List[str]
+):  
     def gen_tbl(df):
         yield df
 
-    def gen_pipeline(df_left, df_right):
-        return Pipeline([
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=['tbl_left'],
-                kwargs=dict(
-                    df=df_left
+    def clean_db():
+        for table_name in ds.meta_dbconn.con.table_names():
+            ds.meta_dbconn.con.execute(f'DELETE FROM {table_name};').close()
+
+    tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
+    if len(intersecting_idxs) > 0:
+        primary_keys = intersecting_idxs
+    else:
+        primary_keys = tbl_left_x_right.table_store.primary_keys
+    for len_transform_keys in range(1, len(primary_keys)+1):
+        for transform_keys_candidates in itertools.combinations(primary_keys, len_transform_keys):
+            transform_keys_case = list(transform_keys_candidates)
+            def get_df_cross_merge_case(  # чтобы функция создавалась разная для каждого кейса
+                df_left: pd.DataFrame,
+                df_right: pd.DataFrame
+            ):
+                intersection_idxs = list(set(df_left.columns).intersection(set(df_right.columns)))
+                if len(intersection_idxs) > 0:
+                    df = pd.merge(df_left, df_right, on=intersection_idxs)
+                else:
+                    df = pd.merge(df_left, df_right, how='cross')
+                return df
+            get_df_cross_merge_case.__name__ += ("_" + "_".join(transform_keys_case))
+
+            if not (
+                any(
+                    [key in test_df_left.columns for key in transform_keys_case]
+                ) and any(
+                    [key in test_df_right.columns for key in transform_keys_case]
+                )
+            ):
+                test_df_left_x_right_case = pd.DataFrame([], columns=test_df_left_x_right.columns)
+            else:
+                test_df_left_x_right_case = test_df_left_x_right
+
+            pipeline_case = Pipeline([
+                BatchGenerate(
+                    func=gen_tbl,
+                    outputs=['tbl_left'],
+                    kwargs=dict(
+                        df=test_df_left
+                    ),
                 ),
-            ),
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=['tbl_right'],
-                kwargs=dict(
-                    df=df_right
+                BatchGenerate(
+                    func=gen_tbl,
+                    outputs=['tbl_right'],
+                    kwargs=dict(
+                        df=test_df_right
+                    ),
                 ),
-            ),
-            BatchTransform(
-                func=get_df_cross_merge,
-                inputs=['tbl_left', 'tbl_right'],
-                outputs=['tbl_left_x_right'],
-                transform_keys=[],
-                chunk_size=2
-            )
-        ])
-    tbl_left_x_right = catalog.get_datatable(ds, 'tbl_left_x_right')
-
-    # Чистый пайплайн
-    run_pipeline(ds, catalog, gen_pipeline(test_df_left, test_df_right))
-    assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
-
-    # # Случай 1: меняется что-то слева
-    # # -> change должно быть равным числу изменненых строк слева помножить на полное число строк справа
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
-    # changed_idxs = cross_step.get_changed_idx_count(ds)
-    # assert changed_idxs == len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT)
-    # run_steps(ds, [cross_step])
-    # assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
-
-    # # # Возвращаем пайплайн к первому состоянию
-    # clean_db()
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
-    # run_steps(ds, [cross_step])
-
-    # # Случай 2: меняется что-то справа
-    # # -> change должно быть равным полному числу строк слева помножить на измененное число строк справа
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
-    # changed_idxs = cross_step.get_changed_idx_count(ds)
-    # assert changed_idxs == len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
-    # run_steps(ds, [cross_step])
-    # assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
-
-    # # Возвращаем пайплайн к первому состоянию
-    # clean_db()
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
-    # run_steps(ds, [cross_step])
-
-    # # Случай 3: меняется что-то и слева, и справа
-    # # -> change должно быть равным 
-    # #   - старое полное числу строк слева помножить на измененное число строк справа
-    # #   плюс
-    # #   - измененному числу строк помножить на старое полное число строк справа
-    # #   плюс
-    # #   - измененное число строк слева помножить на измененное число строк справа
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
-    # changed_idxs = cross_step.get_changed_idx_count(ds)
-    # assert changed_idxs == (
-    #     len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED) +
-    #     len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED) +
-    #     len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT_ADDED)
-    # )
-    # run_steps(ds, [cross_step])
-    # assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
-
-    # # Случай 4: удаляются какие-то строки и слева, и справа из случая 3
-    # # -> change должно быть равным 
-    # #   - старое полное числу строк слева помножить на удаленное число строк справа
-    # #   плюс
-    # #   - удаленное числу строк помножить на старое полное число строк справа
-    # #   плюс
-    # #   - удаленное число строк слева помножить на удаленное число строк справа
-    # run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
-    # changed_idxs = cross_step.get_changed_idx_count(ds)
-    # assert changed_idxs == (
-    #     len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED) +
-    #     len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED) +
-    #     len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT_ADDED)
-    # )
-    # run_steps(ds, [cross_step])
-    # assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
+                BatchTransform(
+                    func=get_df_cross_merge_case,
+                    inputs=['tbl_left', 'tbl_right'],
+                    outputs=['tbl_left_x_right'],
+                    transform_keys=transform_keys_case,
+                    chunk_size=6
+                )
+            ])
+            run_pipeline(ds, catalog, pipeline_case)
+            assert_datatable_equal(tbl_left_x_right, test_df_left_x_right_case)
+            clean_db()
