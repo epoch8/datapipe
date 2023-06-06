@@ -188,7 +188,7 @@ def test_complex_cross_merge_scenaries(
     for len_transform_keys in range(1, len(primary_keys)+1):
         for transform_keys_candidates in itertools.combinations(primary_keys, len_transform_keys):
             transform_keys_case = list(transform_keys_candidates)
-            def get_df_cross_merge_case(  # чтобы функция создавалась разная для каждого кейса
+            def f(  # чтобы функция создавалась разная для каждого кейса
                 df_left: pd.DataFrame,
                 df_right: pd.DataFrame
             ):
@@ -198,7 +198,7 @@ def test_complex_cross_merge_scenaries(
                 else:
                     df = pd.merge(df_left, df_right, how='cross')
                 return df
-            get_df_cross_merge_case.__name__ += ("_" + "_".join(transform_keys_case))
+            f.__name__ += ("_".join(transform_keys_case))
 
             if not (
                 any(
@@ -227,7 +227,7 @@ def test_complex_cross_merge_scenaries(
                     ),
                 ),
                 BatchTransform(
-                    func=get_df_cross_merge_case,
+                    func=f,
                     inputs=['tbl_left', 'tbl_right'],
                     outputs=['tbl_left_x_right'],
                     transform_keys=transform_keys_case,
