@@ -206,43 +206,5 @@ class DataStore:
         else:
             return self.create_table(name, table_store)
 
-    # TODO remove, because it's implemented in BatchTransformStep
-    def get_join_keys(
-        self, inputs: List[DataTable], outputs: List[DataTable]
-    ) -> List[str]:
-        inp_p_keys = [set(inp.primary_keys) for inp in inputs]
-        out_p_keys = [set(out.primary_keys) for out in outputs]
-
-        return list(set.intersection(*inp_p_keys, *out_p_keys))
-
     def get_table(self, name: str) -> DataTable:
         return self.tables[name]
-
-    # TODO remove, because it's implemented in BatchTransformStep
-    def get_change_list_process_ids(
-        self,
-        inputs: List[DataTable],
-        outputs: List[DataTable],
-        change_list: ChangeList,
-        chunk_size: int = 1000,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
-        join_keys = self.get_join_keys(inputs, outputs)
-        changes = [pd.DataFrame(columns=join_keys)]
-
-        if not join_keys:
-            raise ValueError("Primary keys intersection for ChangeList are empty")
-
-        for inp in inputs:
-            if inp.name in change_list.changes:
-                idx = change_list.changes[inp.name]
-
-                changes.append(data_to_index(idx, join_keys))
-
-        idx = IndexDF(pd.concat(changes).drop_duplicates(subset=join_keys))
-
-        def gen():
-            for i in range(math.ceil(len(idx) / chunk_size)):
-                yield idx[i * chunk_size : (i + 1) * chunk_size]
-
-        return len(idx), gen()
