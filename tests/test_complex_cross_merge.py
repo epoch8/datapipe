@@ -275,7 +275,7 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
             )
         )
     ])
-    # run_pipeline(ds, catalog, pipeline_case)
+    run_pipeline(ds, catalog, pipeline_case)
     tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
