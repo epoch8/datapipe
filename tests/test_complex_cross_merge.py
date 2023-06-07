@@ -17,7 +17,7 @@ from sqlalchemy.sql.sqltypes import Integer
 from datapipe.store.database import TableStoreDB
 from datapipe.compute import Catalog, Pipeline, Table, run_pipeline, build_compute
 from datapipe.core_steps import BatchGenerate, BatchTransform
-from .util import assert_datatable_equal
+from .util import assert_datatable_equal, assert_df_equal
 
 
 TEST_SCHEMA_LEFT = [
@@ -26,7 +26,7 @@ TEST_SCHEMA_LEFT = [
             Column('id_left', Integer, primary_key=True),
             Column('a_left', Integer),
         ],
-        id="id_left"
+        id="left"
     ),
     pytest.param(
         [
@@ -35,7 +35,7 @@ TEST_SCHEMA_LEFT = [
             Column('a_left1', Integer),
             Column('a_left2', Integer),
         ],
-        id="id_left_x2"
+        id="left_x2"
     ),
     pytest.param(
         [
@@ -46,7 +46,7 @@ TEST_SCHEMA_LEFT = [
             Column('a_left2', Integer),
             Column('a_left3', Integer),
         ],
-        id="id_left_x3"
+        id="left_x3"
     ),
     pytest.param(
         [
@@ -54,7 +54,7 @@ TEST_SCHEMA_LEFT = [
             Column('id', Integer, primary_key=True),
             Column('a_left', Integer),
         ],
-        id="id_left_with_id"
+        id="left_with_id"
     ),
     pytest.param(
         [
@@ -63,7 +63,7 @@ TEST_SCHEMA_LEFT = [
             Column('id2', Integer, primary_key=True),
             Column('a_left', Integer),
         ],
-        id="id_left_with_id_x2"
+        id="left_with_id_x2"
     )
 ]
 
@@ -73,7 +73,7 @@ TEST_SCHEMA_RIGHT = [
             Column('id_right', Integer, primary_key=True),
             Column('b_right', Integer),
         ],
-        id="id_right"
+        id="right"
     ),
     pytest.param(
         [
@@ -82,7 +82,7 @@ TEST_SCHEMA_RIGHT = [
             Column('b_right1', Integer),
             Column('b_right2', Integer),
         ],
-        id="id_right_x2"
+        id="right_x2"
     ),
     pytest.param(
         [
@@ -93,7 +93,7 @@ TEST_SCHEMA_RIGHT = [
             Column('b_right2', Integer),
             Column('b_right3', Integer),
         ],
-        id="id_right_x3"
+        id="right_x3"
     ),
     pytest.param(
         [
@@ -101,7 +101,7 @@ TEST_SCHEMA_RIGHT = [
             Column('id', Integer, primary_key=True),
             Column('b_right', Integer),
         ],
-        id="id_right_with_id"
+        id="right_with_id"
     ),
     pytest.param(
         [
@@ -110,17 +110,12 @@ TEST_SCHEMA_RIGHT = [
             Column('id2', Integer, primary_key=True),
             Column('b_right', Integer),
         ],
-        id="id_right_with_id_x2"
+        id="right_with_id_x2"
     )
 ]
 
-TEST_DF_LEFT_VALUES = [x for x in range(5)]
-TEST_DF_LEFT_ADDED_VALUES = [6, 7, -5, -9]
-# TEST_DF_LEFT_FINAL = pd.concat([TEST_DF_LEFT, TEST_DF_LEFT_ADDED], ignore_index=True)
-
-TEST_DF_RIGHT_VALUES = [-x for x in range(5)]
-TEST_DF_RIGHT_ADDED_VALUES = [-5, -6, -7, -8, 10, 12]
-# TEST_DF_RIGHT_FINAL = pd.concat([TEST_DF_RIGHT, TEST_DF_RIGHT_ADDED], ignore_index=True)
+TEST_DF_LEFT_VALUES = [x for x in range(5)] + [6, 7, -5, -9]
+TEST_DF_RIGHT_VALUES = [-x for x in range(5)] + [5, -6, 7, -8, 10, 12]
 
 
 def get_all_cases():
@@ -152,18 +147,11 @@ def get_all_cases():
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                     id_transform_keys = "_".join(transform_keys)
-                    if not (
-                        any([key in [x.name for x in left_columns_primary_keys] for key in transform_keys]) and
-                        any([key in [x.name for x in right_columns_primary_keys] for key in transform_keys])
-                    ):
-                        test_df_left_x_right_case = pd.DataFrame([], columns=[x.name for x in left_x_right_schema])
-                    else:
-                        test_df_left_x_right_case = test_df_left_x_right
                         
                     yield pytest.param(
                         [
                             left_schema, right_schema, left_x_right_schema,
-                            test_df_left, test_df_right, test_df_left_x_right_case,
+                            test_df_left, test_df_right, test_df_left_x_right,
                             transform_keys
                         ],
                         id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}"
@@ -183,13 +171,13 @@ def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
 def test_complex_cross_merge_scenary(dbconn, test_case):
     (
         left_schema, right_schema, left_x_right_schema,
-        test_df_left, test_df_right, test_df_left_x_right_case,
+        test_df_left, test_df_right, test_df_left_x_right,
         transform_keys
     ) = test_case
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         'tbl_left': Table(
-            store=TableStoreDB(dbconn, 'id_left', left_schema, True)
+            store=TableStoreDB(dbconn, 'tbl_left', left_schema, True)
         ),
         'tbl_right': Table(
             store=TableStoreDB(dbconn, 'tbl_right', right_schema, True)
@@ -202,7 +190,6 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     def gen_tbl(df):
         yield df
 
-    tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
     pipeline_case = Pipeline([
         BatchGenerate(
             func=gen_tbl,
@@ -227,4 +214,74 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
         )
     ])
     run_pipeline(ds, catalog, pipeline_case)
-    assert_datatable_equal(tbl_left_x_right, test_df_left_x_right_case)
+    tbl_left = catalog.get_datatable(ds, "tbl_left")
+    tbl_right = catalog.get_datatable(ds, "tbl_right")
+    tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
+    assert_datatable_equal(tbl_left, test_df_left)
+    assert_datatable_equal(tbl_right, test_df_right)
+    assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
+
+
+def reverse_cross_merge_func(
+    df_left_x_right: pd.DataFrame,
+    left_schema: List[Column],
+    right_schema: List[Column]
+):
+    df_left = df_left_x_right[[x.name for x in left_schema]].drop_duplicates()
+    df_right = df_left_x_right[[x.name for x in right_schema]].drop_duplicates()
+    return df_left, df_right
+
+
+@parametrize("test_case",list(get_all_cases()))
+def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
+    (
+        left_schema, right_schema, left_x_right_schema,
+        test_df_left, test_df_right, test_df_left_x_right,
+        transform_keys
+    ) = test_case
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        'tbl_left_x_right': Table(
+            store=TableStoreDB(dbconn, 'tbl_left_x_right', left_x_right_schema, True)
+        ),
+        'tbl_left': Table(
+            store=TableStoreDB(dbconn, 'tbl_left', left_schema, True)
+        ),
+        'tbl_right': Table(
+            store=TableStoreDB(dbconn, 'tbl_right', right_schema, True)
+        ),
+    })
+
+    def gen_tbl(df):
+        yield df
+
+    pipeline_case = Pipeline([
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=['tbl_left_x_right'],
+            kwargs=dict(
+                df=test_df_left_x_right
+            ),
+        ),
+        BatchTransform(
+            func=reverse_cross_merge_func,
+            inputs=['tbl_left_x_right'],
+            outputs=['tbl_left', 'tbl_right'],
+            transform_keys=transform_keys,
+            chunk_size=6,
+            kwargs=dict(
+                left_schema=left_schema,
+                right_schema=right_schema
+            )
+        )
+    ])
+    # run_pipeline(ds, catalog, pipeline_case)
+    tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
+    tbl_left = catalog.get_datatable(ds, "tbl_left")
+    tbl_right = catalog.get_datatable(ds, "tbl_right")
+    df_left, df_right = reverse_cross_merge_func(test_df_left_x_right, left_schema, right_schema)
+    assert_df_equal(df_left, test_df_left, index_cols=[x.name for x in left_schema if x.primary_key])
+    assert_df_equal(df_right, test_df_right, index_cols=[x.name for x in right_schema if x.primary_key])
+    assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
+    assert_datatable_equal(tbl_left, test_df_left)
+    assert_datatable_equal(tbl_right, test_df_right)
