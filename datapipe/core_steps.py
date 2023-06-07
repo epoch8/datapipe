@@ -252,6 +252,8 @@ class BaseBatchTransformStep(ComputeStep):
             k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
         ]
 
+        common_transform_keys = [k for k in self.transform_keys if k in common_keys]
+
         # TODO move to DBConn compatiblity layer
         if ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
             greatest_func = func.max
@@ -306,11 +308,14 @@ class BaseBatchTransformStep(ComputeStep):
             sql = select(*coalesce_keys + [agg]).select_from(first_cte)
 
             for _, cte in ctes[1:]:
-                if len(common_keys) > 0:
+                if len(common_transform_keys) > 0:
                     sql = sql.outerjoin(
                         cte,
                         onclause=and_(
-                            *[first_cte.c[key] == cte.c[key] for key in common_keys]
+                            *[
+                                first_cte.c[key] == cte.c[key]
+                                for key in common_transform_keys
+                            ]
                         ),
                         full=True,
                     )
