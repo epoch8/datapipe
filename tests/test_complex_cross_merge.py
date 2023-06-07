@@ -2,6 +2,7 @@
 
 import copy
 import time
+import os
 from typing import List
 import pandas as pd
 import pytest
@@ -20,6 +21,8 @@ from datapipe.core_steps import BatchGenerate, BatchTransform
 from .util import assert_datatable_equal, assert_df_equal
 
 
+SKIP_BIG_CROSS_MERGE_TESTS = int(os.environ.get("SKIP_BIG_CROSS_MERGE_TESTS", True))
+
 TEST_SCHEMA_LEFT = [
     pytest.param(
         [
@@ -35,7 +38,8 @@ TEST_SCHEMA_LEFT = [
             Column('a_left1', Integer),
             Column('a_left2', Integer),
         ],
-        id="left_x2"
+        id="left_x2",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
     ),
     pytest.param(
         [
@@ -46,7 +50,8 @@ TEST_SCHEMA_LEFT = [
             Column('a_left2', Integer),
             Column('a_left3', Integer),
         ],
-        id="left_x3"
+        id="left_x3",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
     ),
     pytest.param(
         [
@@ -54,7 +59,8 @@ TEST_SCHEMA_LEFT = [
             Column('id', Integer, primary_key=True),
             Column('a_left', Integer),
         ],
-        id="left_with_id"
+        id="left_with_id",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
     ),
     pytest.param(
         [
@@ -82,7 +88,8 @@ TEST_SCHEMA_RIGHT = [
             Column('b_right1', Integer),
             Column('b_right2', Integer),
         ],
-        id="right_x2"
+        id="right_x2",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
     ),
     pytest.param(
         [
@@ -93,7 +100,8 @@ TEST_SCHEMA_RIGHT = [
             Column('b_right2', Integer),
             Column('b_right3', Integer),
         ],
-        id="right_x3"
+        id="right_x3",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
     ),
     pytest.param(
         [
@@ -101,7 +109,8 @@ TEST_SCHEMA_RIGHT = [
             Column('id', Integer, primary_key=True),
             Column('b_right', Integer),
         ],
-        id="right_with_id"
+        id="right_with_id",
+        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
     ),
     pytest.param(
         [
@@ -147,14 +156,19 @@ def get_all_cases():
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                     id_transform_keys = "_".join(transform_keys)
-                        
+                    
+                    if len(intersecting_idxs) > 0:
+                        test_df_left = pd.merge(test_df_left, test_df_left_x_right)[test_df_left.columns]
+                        test_df_right = pd.merge(test_df_right, test_df_left_x_right)[test_df_right.columns]
+
                     yield pytest.param(
                         [
                             left_schema, right_schema, left_x_right_schema,
                             test_df_left, test_df_right, test_df_left_x_right,
                             transform_keys
                         ],
-                        id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}"
+                        id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}",
+                        marks=left_schema_param.marks + right_schema_param.marks
                     )
 
 
