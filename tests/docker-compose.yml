@@ -8,11 +8,6 @@ services:
     environment:
       POSTGRES_PASSWORD: password
 
-  label-studio:
-    image: ghcr.io/epoch8/label-studio/label-studio:1.5.0post.0rq1
-    ports:
-        - 8080:8080
-
   redis:
     image: redis:7
     ports:

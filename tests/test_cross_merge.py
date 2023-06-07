@@ -143,7 +143,7 @@ def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
 
 
-def test_cross_merge_scenary2(ds_catalog_pipeline_tbls):
+def test_cross_merge_scenary_changed_right(ds_catalog_pipeline_tbls):
     ds, catalog, tbl_left, tbl_right, tbl_left_x_right, cross_step = ds_catalog_pipeline_tbls
     test_cross_merge_scenary_clear(ds_catalog_pipeline_tbls)
     # Случай 2: меняется что-то справа
@@ -174,6 +174,7 @@ def test_cross_merge_scenary_changed_left_and_right(ds_catalog_pipeline_tbls):
     )
     run_steps(ds, [cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
+
 
 def test_cross_merge_scenary_changed_left_and_right_then_deleted_left_and_right(ds_catalog_pipeline_tbls):
     ds, catalog, tbl_left, tbl_right, tbl_left_x_right, cross_step = ds_catalog_pipeline_tbls
