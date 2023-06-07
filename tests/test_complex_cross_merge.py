@@ -156,16 +156,12 @@ def get_all_cases():
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                     id_transform_keys = "_".join(transform_keys)
-                    
-                    if len(intersecting_idxs) > 0:
-                        test_df_left = pd.merge(test_df_left, test_df_left_x_right)[test_df_left.columns]
-                        test_df_right = pd.merge(test_df_right, test_df_left_x_right)[test_df_right.columns]
 
                     yield pytest.param(
                         [
                             left_schema, right_schema, left_x_right_schema,
                             test_df_left, test_df_right, test_df_left_x_right,
-                            transform_keys
+                            intersecting_idxs, transform_keys
                         ],
                         id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}",
                         marks=left_schema_param.marks + right_schema_param.marks
@@ -186,7 +182,7 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     (
         left_schema, right_schema, left_x_right_schema,
         test_df_left, test_df_right, test_df_left_x_right,
-        transform_keys
+        intersecting_idxs, transform_keys
     ) = test_case
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
@@ -251,7 +247,7 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     (
         left_schema, right_schema, left_x_right_schema,
         test_df_left, test_df_right, test_df_left_x_right,
-        transform_keys
+        intersecting_idxs, transform_keys
     ) = test_case
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
@@ -293,6 +289,9 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
+    if len(intersecting_idxs) > 0:
+        test_df_left = pd.merge(test_df_left, test_df_left_x_right)[test_df_left.columns]
+        test_df_right = pd.merge(test_df_right, test_df_left_x_right)[test_df_right.columns]
     df_left, df_right = reverse_cross_merge_func(test_df_left_x_right, left_schema, right_schema)
     assert_df_equal(df_left, test_df_left, index_cols=[x.name for x in left_schema if x.primary_key])
     assert_df_equal(df_right, test_df_right, index_cols=[x.name for x in right_schema if x.primary_key])
