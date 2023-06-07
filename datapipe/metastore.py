@@ -214,13 +214,14 @@ class MetaTable:
                     pd.DataFrame(columns=[column.name for column in self.sql_schema]),
                 )
             idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
+        else:
+            idx_cols = []
 
-            if not idx_cols:
-                raise ValueError("Index does not contain any primary key ")
-
+        if len(idx_cols) > 0:
             row_queries = []
 
             # FIXME поправить на сравнение кортежей
+            assert idx is not None
             for _, row in idx.iterrows():
                 and_params = [
                     self.sql_table.c[key] == self._get_sql_param(row[key])  # type: ignore
