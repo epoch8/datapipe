@@ -135,7 +135,7 @@ def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
         df = pd.merge(df_left, df_right, how='cross')
     return df
 
-
+looked_total_id = set()
 def get_all_cases():
     for left_schema_param in TEST_SCHEMA_LEFT:
         for right_schema_param in TEST_SCHEMA_RIGHT:
@@ -161,14 +161,17 @@ def get_all_cases():
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                     id_transform_keys = "__".join(transform_keys)
-
+                    total_id = f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]"
+                    if total_id in looked_total_id:
+                        continue
+                    looked_total_id.add(total_id)
                     yield pytest.param(
                         [
                             left_schema, right_schema, left_x_right_schema,
                             test_df_left, test_df_right, test_df_left_x_right,
                             intersecting_idxs, transform_keys
                         ],
-                        id=f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]",
+                        id=total_id,
                         marks=left_schema_param.marks + right_schema_param.marks
                     )
 
