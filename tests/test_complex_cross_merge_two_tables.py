@@ -127,6 +127,15 @@ TEST_DF_LEFT_VALUES = [x for x in range(5)] + [6, 7, -5, -9]
 TEST_DF_RIGHT_VALUES = [-x for x in range(5)] + [5, -6, 7, -8, 10, 12]
 
 
+def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
+    intersection_idxs = list(set(df_left.columns).intersection(set(df_right.columns)))
+    if len(intersection_idxs) > 0:
+        df = pd.merge(df_left, df_right, on=intersection_idxs)
+    else:
+        df = pd.merge(df_left, df_right, how='cross')
+    return df
+
+
 def get_all_cases():
     for left_schema_param in TEST_SCHEMA_LEFT:
         for right_schema_param in TEST_SCHEMA_RIGHT:
@@ -147,15 +156,11 @@ def get_all_cases():
             left_x_right_schema = left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
             test_df_left = pd.DataFrame({column.name: TEST_DF_LEFT_VALUES for column in left_schema})
             test_df_right = pd.DataFrame({column.name: TEST_DF_RIGHT_VALUES for column in right_schema})
-            if len(intersecting_idxs) > 0:
-                test_df_left_x_right = pd.merge(test_df_left, test_df_right, on=intersecting_idxs)
-                primary_keys = intersecting_idxs
-            else:
-                test_df_left_x_right = pd.merge(test_df_left, test_df_right, how='cross')
-                primary_keys = [x.name for x in left_x_right_columns_primary_keys]
+            test_df_left_x_right = cross_merge_func(test_df_left, test_df_right)
+            primary_keys = intersecting_idxs if len(intersecting_idxs) > 0 else [x.name for x in left_x_right_columns_primary_keys]
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
-                    id_transform_keys = "_".join(transform_keys)
+                    id_transform_keys = "__".join(transform_keys)
 
                     yield pytest.param(
                         [
@@ -163,18 +168,9 @@ def get_all_cases():
                             test_df_left, test_df_right, test_df_left_x_right,
                             intersecting_idxs, transform_keys
                         ],
-                        id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}",
+                        id=f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]",
                         marks=left_schema_param.marks + right_schema_param.marks
                     )
-
-
-def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
-    intersection_idxs = list(set(df_left.columns).intersection(set(df_right.columns)))
-    if len(intersection_idxs) > 0:
-        df = pd.merge(df_left, df_right, on=intersection_idxs)
-    else:
-        df = pd.merge(df_left, df_right, how='cross')
-    return df
 
 
 @parametrize("test_case",list(get_all_cases()))
