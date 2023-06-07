@@ -115,125 +115,116 @@ TEST_SCHEMA_RIGHT = [
 ]
 
 TEST_DF_LEFT_VALUES = [x for x in range(5)]
-TEST_DF_LEFT_ADDED_VALUES = [6, 7]
+TEST_DF_LEFT_ADDED_VALUES = [6, 7, -5, -9]
 # TEST_DF_LEFT_FINAL = pd.concat([TEST_DF_LEFT, TEST_DF_LEFT_ADDED], ignore_index=True)
 
 TEST_DF_RIGHT_VALUES = [-x for x in range(5)]
-TEST_DF_RIGHT_ADDED_VALUES = [-5, -6, -7, -8]
+TEST_DF_RIGHT_ADDED_VALUES = [-5, -6, -7, -8, 10, 12]
 # TEST_DF_RIGHT_FINAL = pd.concat([TEST_DF_RIGHT, TEST_DF_RIGHT_ADDED], ignore_index=True)
 
 
-class CasesCrossMerge:
-    @parametrize("left_schema", TEST_SCHEMA_LEFT)
-    @parametrize("right_schema", TEST_SCHEMA_RIGHT)
-    def case_excel(self, dbconn, left_schema: List[Column], right_schema: List[Column]):
-        left_columns_primary_keys = [x for x in left_schema if x.primary_key]
-        right_columns_primary_keys = [x for x in right_schema if x.primary_key]
-        intersecting_idxs = list(
-            set([x.name for x in left_columns_primary_keys]).intersection(set([x.name for x in right_columns_primary_keys]))
-        )
-        left_columns_primary_keys_no_intersecting = [x for x in left_columns_primary_keys if x.name not in intersecting_idxs]
-        right_columns_primary_keys_no_intersecting = [x for x in right_columns_primary_keys if x.name not in intersecting_idxs]
-        lext_x_right_columns_primary_keys_intersecting = [x for x in left_columns_primary_keys if x.name in intersecting_idxs]
-        left_x_right_columns_primary_keys = (
-            left_columns_primary_keys_no_intersecting + right_columns_primary_keys_no_intersecting + lext_x_right_columns_primary_keys_intersecting
-        )
-        left_x_right_columns_nonprimary_keys = [x for x in left_schema if not x.primary_key] + [x for x in right_schema if not x.primary_key]
-        left_x_right_schema = left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
-        catalog = Catalog({
-            'tbl_left': Table(
-                store=TableStoreDB(dbconn, 'id_left', left_schema, True)
-            ),
-            'tbl_right': Table(
-                store=TableStoreDB(dbconn, 'tbl_right', right_schema, True)
-            ),
-            'tbl_left_x_right': Table(
-                store=TableStoreDB(dbconn, 'tbl_left_x_right', left_x_right_schema, True)
-            ),
-        })
-        test_df_left = pd.DataFrame({column.name: TEST_DF_LEFT_VALUES for column in left_schema})
-        test_df_right = pd.DataFrame({column.name: TEST_DF_RIGHT_VALUES for column in right_schema})
-        if len(intersecting_idxs) > 0:
-            test_df_left_x_right = pd.merge(test_df_left, test_df_right, on=intersecting_idxs)
-        else:
-            test_df_left_x_right = pd.merge(test_df_left, test_df_right, how='cross')
-        ds = DataStore(dbconn, create_meta_table=True)
-        return ds, catalog, test_df_left, test_df_right, test_df_left_x_right, intersecting_idxs
+def get_all_cases():
+    for left_schema_param in TEST_SCHEMA_LEFT:
+        for right_schema_param in TEST_SCHEMA_RIGHT:
+            left_schema = left_schema_param.values[0]
+            right_schema = right_schema_param.values[0]
+            left_columns_primary_keys = [x for x in left_schema if x.primary_key]
+            right_columns_primary_keys = [x for x in right_schema if x.primary_key]
+            intersecting_idxs = list(
+                set([x.name for x in left_columns_primary_keys]).intersection(set([x.name for x in right_columns_primary_keys]))
+            )
+            left_columns_primary_keys_no_intersecting = [x for x in left_columns_primary_keys if x.name not in intersecting_idxs]
+            right_columns_primary_keys_no_intersecting = [x for x in right_columns_primary_keys if x.name not in intersecting_idxs]
+            lext_x_right_columns_primary_keys_intersecting = [x for x in left_columns_primary_keys if x.name in intersecting_idxs]
+            left_x_right_columns_primary_keys = (
+                left_columns_primary_keys_no_intersecting + right_columns_primary_keys_no_intersecting + lext_x_right_columns_primary_keys_intersecting
+            )
+            left_x_right_columns_nonprimary_keys = [x for x in left_schema if not x.primary_key] + [x for x in right_schema if not x.primary_key]
+            left_x_right_schema = left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
+            test_df_left = pd.DataFrame({column.name: TEST_DF_LEFT_VALUES for column in left_schema})
+            test_df_right = pd.DataFrame({column.name: TEST_DF_RIGHT_VALUES for column in right_schema})
+            if len(intersecting_idxs) > 0:
+                test_df_left_x_right = pd.merge(test_df_left, test_df_right, on=intersecting_idxs)
+                primary_keys = intersecting_idxs
+            else:
+                test_df_left_x_right = pd.merge(test_df_left, test_df_right, how='cross')
+                primary_keys = [x.name for x in left_x_right_columns_primary_keys]
+            for len_transform_keys in range(1, len(primary_keys)+1):
+                for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
+                    id_transform_keys = "_".join(transform_keys)
+                    if not (
+                        any([key in [x.name for x in left_columns_primary_keys] for key in transform_keys]) and
+                        any([key in [x.name for x in right_columns_primary_keys] for key in transform_keys])
+                    ):
+                        test_df_left_x_right_case = pd.DataFrame([], columns=[x.name for x in left_x_right_schema])
+                    else:
+                        test_df_left_x_right_case = test_df_left_x_right
+                        
+                    yield pytest.param(
+                        [
+                            left_schema, right_schema, left_x_right_schema,
+                            test_df_left, test_df_right, test_df_left_x_right_case,
+                            transform_keys
+                        ],
+                        id=f"{left_schema_param.id}-{right_schema_param.id}-trasnforms-keys-{id_transform_keys}"
+                    )
 
 
-@parametrize_with_cases(
-    "ds,catalog,test_df_left,test_df_right,test_df_left_x_right,intersecting_idxs",
-    cases=CasesCrossMerge
-)
-def test_complex_cross_merge_scenaries(
-    ds: DataStore,
-    catalog: Catalog,
-    test_df_left: pd.DataFrame,
-    test_df_right: pd.DataFrame,
-    test_df_left_x_right: pd.DataFrame,
-    intersecting_idxs: List[str]
-):  
+def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
+    intersection_idxs = list(set(df_left.columns).intersection(set(df_right.columns)))
+    if len(intersection_idxs) > 0:
+        df = pd.merge(df_left, df_right, on=intersection_idxs)
+    else:
+        df = pd.merge(df_left, df_right, how='cross')
+    return df
+
+
+@parametrize("test_case",list(get_all_cases()))
+def test_complex_cross_merge_scenary(dbconn, test_case):
+    (
+        left_schema, right_schema, left_x_right_schema,
+        test_df_left, test_df_right, test_df_left_x_right_case,
+        transform_keys
+    ) = test_case
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        'tbl_left': Table(
+            store=TableStoreDB(dbconn, 'id_left', left_schema, True)
+        ),
+        'tbl_right': Table(
+            store=TableStoreDB(dbconn, 'tbl_right', right_schema, True)
+        ),
+        'tbl_left_x_right': Table(
+            store=TableStoreDB(dbconn, 'tbl_left_x_right', left_x_right_schema, True)
+        ),
+    })
+
     def gen_tbl(df):
         yield df
 
-    def clean_db():
-        for table_name in ds.meta_dbconn.con.table_names():
-            ds.meta_dbconn.con.execute(f'DELETE FROM {table_name};').close()
-
     tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
-    if len(intersecting_idxs) > 0:
-        primary_keys = intersecting_idxs
-    else:
-        primary_keys = tbl_left_x_right.table_store.primary_keys
-    for len_transform_keys in range(1, len(primary_keys)+1):
-        for transform_keys_candidates in itertools.combinations(primary_keys, len_transform_keys):
-            transform_keys_case = list(transform_keys_candidates)
-            def f(  # чтобы функция создавалась разная для каждого кейса
-                df_left: pd.DataFrame,
-                df_right: pd.DataFrame
-            ):
-                intersection_idxs = list(set(df_left.columns).intersection(set(df_right.columns)))
-                if len(intersection_idxs) > 0:
-                    df = pd.merge(df_left, df_right, on=intersection_idxs)
-                else:
-                    df = pd.merge(df_left, df_right, how='cross')
-                return df
-            f.__name__ += ("_".join(transform_keys_case))
-
-            if not (
-                any(
-                    [key in test_df_left.columns for key in transform_keys_case]
-                ) and any(
-                    [key in test_df_right.columns for key in transform_keys_case]
-                )
-            ):
-                test_df_left_x_right_case = pd.DataFrame([], columns=test_df_left_x_right.columns)
-            else:
-                test_df_left_x_right_case = test_df_left_x_right
-
-            pipeline_case = Pipeline([
-                BatchGenerate(
-                    func=gen_tbl,
-                    outputs=['tbl_left'],
-                    kwargs=dict(
-                        df=test_df_left
-                    ),
-                ),
-                BatchGenerate(
-                    func=gen_tbl,
-                    outputs=['tbl_right'],
-                    kwargs=dict(
-                        df=test_df_right
-                    ),
-                ),
-                BatchTransform(
-                    func=f,
-                    inputs=['tbl_left', 'tbl_right'],
-                    outputs=['tbl_left_x_right'],
-                    transform_keys=transform_keys_case,
-                    chunk_size=6
-                )
-            ])
-            run_pipeline(ds, catalog, pipeline_case)
-            assert_datatable_equal(tbl_left_x_right, test_df_left_x_right_case)
-            clean_db()
+    pipeline_case = Pipeline([
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=['tbl_left'],
+            kwargs=dict(
+                df=test_df_left
+            ),
+        ),
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=['tbl_right'],
+            kwargs=dict(
+                df=test_df_right
+            ),
+        ),
+        BatchTransform(
+            func=cross_merge_func,
+            inputs=['tbl_left', 'tbl_right'],
+            outputs=['tbl_left_x_right'],
+            transform_keys=transform_keys,
+            chunk_size=6
+        )
+    ])
+    run_pipeline(ds, catalog, pipeline_case)
+    assert_datatable_equal(tbl_left_x_right, test_df_left_x_right_case)
