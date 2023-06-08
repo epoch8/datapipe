@@ -7,7 +7,7 @@ from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
@@ -589,6 +589,29 @@ class TransformMetaTable:
                 "is_success": False,
                 "error": error,
             },
+        )
+
+        # execute
+        self.dbconn.con.execute(sql)
+
+    def mark_all_rows_unprocessed(
+        self,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        update_sql = (
+            update(self.sql_table)
+            .values(
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "error": None,
+                }
+            )
+            .where(self.sql_table.c.is_success == True)
+        )
+
+        sql = sql_apply_runconfig_filter(
+            update_sql, self.sql_table, self.primary_keys, run_config
         )
 
         # execute

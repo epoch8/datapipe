@@ -491,6 +491,9 @@ class BaseBatchTransformStep(ComputeStep):
             run_config=run_config,
         )
 
+    def reset_metadata(self, ds: DataStore) -> None:
+        self.meta_table.mark_all_rows_unprocessed()
+
 
 @dataclass
 class DatatableBatchTransform(PipelineStep):

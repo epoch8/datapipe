@@ -9,6 +9,10 @@
 * Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
 * Add column `priority` to transform meta table, sort work by priority
 
+## New features
+
+* Add `step reset-metadata` CLI command
+
 # 0.12.0
 
 ## Breaking changes

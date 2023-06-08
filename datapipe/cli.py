@@ -175,16 +175,6 @@ def list(ctx: click.Context) -> None:
         print(table)
 
 
-@table.command()
-@click.argument("table")
-@click.pass_context
-def reset_metadata(ctx: click.Context, table: str) -> None:
-    app: DatapipeApp = ctx.obj["pipeline"]
-
-    dt = app.catalog.get_datatable(app.ds, table)
-    dt.reset_metadata()
-
-
 @cli.command()
 @click.pass_context
 def run(ctx: click.Context) -> None:
@@ -406,6 +396,19 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int) -> None:
                 print(f"All chunks ended, sleeping {loop_delay}s...")
                 time.sleep(loop_delay)
                 print("\n\n")
+
+
+@step.command()  # type: ignore
+@click.pass_context
+def reset_metadata(ctx: click.Context) -> None:  # noqa
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+    print(f"Resetting following steps: {', '.join(steps_to_run_names)}")
+
+    for step in steps_to_run:
+        if isinstance(step, BaseBatchTransformStep):
+            step.reset_metadata(app.ds)
 
 
 for entry_point in metadata.entry_points().get("datapipe.cli", []):
