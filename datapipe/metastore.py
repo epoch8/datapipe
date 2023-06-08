@@ -563,3 +563,18 @@ class TransformMetaTable:
 
         # execute
         self.dbconn.con.execute(sql)
+
+    def reset_metadata(self):
+        self.dbconn.con.execute(self.sql_table.update().values(process_ts=0))
+
+    def get_metadata_size(self) -> int:
+        """
+        Получить количество строк метаданных.
+
+        idx - опциональный фильтр по целевым строкам
+        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
+        """
+
+        sql = select([func.count()]).select_from(self.sql_table)
+        res = self.dbconn.con.execute(sql).fetchone()
+        return res[0]

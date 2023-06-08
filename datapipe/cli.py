@@ -5,6 +5,7 @@ import time
 from typing import Dict, List, Optional, cast
 
 import click
+import pandas as pd
 import rich
 from datapipe_app import DatapipeApp
 from opentelemetry import trace
@@ -15,6 +16,9 @@ from rich import print as rprint
 
 from datapipe.compute import ComputeStep, run_steps, run_steps_changelist
 from datapipe.types import ChangeList, IndexDF, Labels
+from datapipe.core_steps import BaseBatchTransformStep
+from sqlalchemy import insert, literal
+from sqlalchemy.sql import select, and_, func
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -421,3 +425,58 @@ for entry_point in metadata.entry_points().get("datapipe.cli", []):
 
 def main():
     cli(auto_envvar_prefix="DATAPIPE")
+
+
+@table.command()
+@click.argument("transform")
+@click.pass_context
+def reset_transform_metadata(ctx: click.Context, transform: str) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
+    transform_names = [step.get_name() for step in batch_transforms_steps]
+    transform_step = batch_transforms_steps[transform_names.index(transform)]
+    transform_step.meta_table.reset_metadata()
+
+
+@table.command()
+@click.pass_context
+def migrate_transform_tables(ctx: click.Context) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
+    for batch_transform in batch_transforms_steps:
+        print(f"Checking '{batch_transform.get_name()}': ", end="")
+        if batch_transform.meta_table.get_metadata_size():
+            print("Skipping -- size of metadata is greater 0")
+            continue
+        if app.ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
+            greatest_func = func.max
+        else:
+            greatest_func = func.greatest
+        output_tbls = [output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts]
+        sql = (
+            select(
+                *[output_tbls[0].c[k] for k in batch_transform.transform_keys],
+                greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls]).label("process_ts")
+            ).distinct()
+            .select_from(output_tbls[0])
+            .where(and_(*[tbl.c.delete_ts.is_(None) for tbl in output_tbls]))
+        )
+        prev_tbl = output_tbls[0]
+        for tbl in output_tbls[1:]:
+            sql = sql.outerjoin(
+                tbl,
+                and_(*[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]),
+                full=True
+            )
+            prev_tbl = tbl
+        insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
+            batch_transform.transform_keys + ["process_ts", "is_success", "error"],
+            select(
+                *[sql.c[k] for k in batch_transform.transform_keys],
+                sql.c["process_ts"],
+                literal(True),
+                literal(None)
+            )
+        )
+        app.ds.meta_dbconn.con.execute(insert_stmt)
+        rprint("[green] ok[/green]")
