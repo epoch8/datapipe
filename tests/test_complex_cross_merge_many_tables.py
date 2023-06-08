@@ -80,9 +80,8 @@ TEST_SCHEMA_RIGHT = [
 TEST_DF_VALUES = [x for x in range(5)] + [6, 7, -5, -9]
 
 def get_all_cases_schemes():
-    i = 0
-    for len_input in range(2, 3):
-        for len_output in range(2, 3):
+    for len_input in range(2, 4):
+        for len_output in range(2, 4):
             for input_schema_tables in itertools.combinations(
                 TEST_SCHEMA_LEFT + TEST_SCHEMA_CENTER + TEST_SCHEMA_RIGHT,
                 len_input
@@ -91,9 +90,6 @@ def get_all_cases_schemes():
                     TEST_SCHEMA_LEFT + TEST_SCHEMA_CENTER + TEST_SCHEMA_RIGHT,
                     len_output
                 ):
-                    i += 1
-                    if (i % 2 == 0):  # Скипаем часть честов
-                        continue
                     yield input_schema_tables, output_schema_tables
 
 
@@ -151,7 +147,11 @@ def get_all_cases():
         ]))
         if any([output_column not in input_all_columns for output_column in output_all_columns]):
             continue
-        output_primary_keys = list(set([
+        outputs_primary_keys = [
+            [x.name for x in schema if x.primary_key]
+            for schema in output_schema_tables
+        ]
+        total_output_primary_keys = list(set([
             x.name for schema in output_schema_tables for x in schema if x.primary_key
         ]))
         input_intersection_idxs = max(
@@ -160,9 +160,8 @@ def get_all_cases():
         for sets in input_table_name1_table_name2_to_intersection_idxs.values():
             input_intersection_idxs = input_intersection_idxs.intersection(sets)
         if len(input_schema_tables) > 2 and len(input_intersection_idxs) == 0:
-            # TODO: добавить случай с разными попарного пересечения индексов таблиц
+            # TODO: добавить случай с разными попарными пересечения индексов таблиц
             continue
-        
         test_input_dfs = [
             pd.DataFrame({column.name: TEST_DF_VALUES for column in input_schema})
             for input_schema in input_schema_tables
@@ -172,11 +171,17 @@ def get_all_cases():
             input_intersection_idxs=input_intersection_idxs,
             output_schema_tables=output_schema_tables
         )
-        primary_keys = list(input_intersection_idxs) if len(input_intersection_idxs) > 0 else output_primary_keys
+        primary_keys = list(input_intersection_idxs) if len(input_intersection_idxs) > 0 else total_output_primary_keys
         input_id = "__".join(sorted([param.id for param in input_schema_tables_params]))
         output_id = "__".join(sorted([param.id for param in output_schema_tables_params]))
         for len_transform_keys in range(1, len(primary_keys)+1):
             for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
+                if not all(
+                    all([transform_key in output_primary_keys for transform_key in transform_keys])
+                    for output_primary_keys in outputs_primary_keys
+                ):
+                    # Все ключи трансформаций должны полностью входить в ключи выходных таблиц
+                    continue
                 id_transform_keys = "__".join(sorted(transform_keys))
                 total_id = f"inputs-[{input_id}]-outputs-[{output_id}]-trasnforms-keys-[{id_transform_keys}]"
                 if total_id in looked_total_id:
