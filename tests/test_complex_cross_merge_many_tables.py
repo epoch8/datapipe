@@ -273,8 +273,6 @@ def get_all_cases():
                     id=f"inputs-[{input_id}]-outputs-[{output_id}]-trasnforms-keys-[{id_transform_keys}]"
                 )
 
-
-
 @parametrize("test_case",list(get_all_cases()))
 def test_complex_cross_merge_on_many_tables(dbconn, test_case):
     (
@@ -331,9 +329,8 @@ def test_complex_cross_merge_on_many_tables(dbconn, test_case):
         print(f"{input_table_name}\n{test_input_df}")
     for output_table_name, test_output_df in zip(output_tables_names, test_output_dfs):
         print(f"{output_table_name} should be \n{test_output_df}")
-    for output_table_name, test_output_df in zip(output_tables_names, test_output_dfs):
         tbl_output = catalog.get_datatable(ds, output_table_name)
-        print(f"{output_table_name} in pipeline =\n{tbl_output.get_data()}")
+        print(f"but {output_table_name} in pipeline =\n{tbl_output.get_data()}")
 
     for input_table_name, test_input_df in zip(input_tables_names, test_input_dfs):
         tbl_input = catalog.get_datatable(ds, input_table_name)
