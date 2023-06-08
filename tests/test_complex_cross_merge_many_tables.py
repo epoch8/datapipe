@@ -173,11 +173,11 @@ def get_all_cases():
             output_schema_tables=output_schema_tables
         )
         primary_keys = list(input_intersection_idxs) if len(input_intersection_idxs) > 0 else output_primary_keys
-        input_id = "__".join([param.id for param in input_schema_tables_params])
-        output_id = "__".join([param.id for param in output_schema_tables_params])
+        input_id = "__".join(sorted([param.id for param in input_schema_tables_params]))
+        output_id = "__".join(sorted([param.id for param in output_schema_tables_params]))
         for len_transform_keys in range(1, len(primary_keys)+1):
             for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
-                id_transform_keys = "__".join(transform_keys)
+                id_transform_keys = "__".join(sorted(transform_keys))
                 total_id = f"inputs-[{input_id}]-outputs-[{output_id}]-trasnforms-keys-[{id_transform_keys}]"
                 if total_id in looked_total_id:
                     continue

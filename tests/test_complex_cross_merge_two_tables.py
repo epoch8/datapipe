@@ -158,7 +158,7 @@ def get_all_cases():
             primary_keys = intersecting_idxs if len(intersecting_idxs) > 0 else [x.name for x in left_x_right_columns_primary_keys]
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
-                    id_transform_keys = "__".join(transform_keys)
+                    id_transform_keys = "__".join(sorted(transform_keys))
                     total_id = f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]"
                     if total_id in looked_total_id:
                         continue
