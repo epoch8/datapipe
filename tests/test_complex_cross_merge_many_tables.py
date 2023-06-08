@@ -28,6 +28,34 @@ TEST_SCHEMA_LEFT = [
         ],
         id="left"
     ),
+    # pytest.param(
+    #     [
+    #         Column('id_left1', Integer, primary_key=True),
+    #         Column('id_left2', Integer, primary_key=True),
+    #         Column('a_left1', Integer),
+    #         Column('a_left2', Integer),
+    #     ],
+    #     id="left_x2"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left1', Integer, primary_key=True),
+    #         Column('id_left2', Integer, primary_key=True),
+    #         Column('id_left3', Integer, primary_key=True),
+    #         Column('a_left1', Integer),
+    #         Column('a_left2', Integer),
+    #         Column('a_left3', Integer),
+    #     ],
+    #     id="left_x3"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left', Integer, primary_key=True),
+    #         Column('id', Integer, primary_key=True),
+    #         Column('a_left', Integer),
+    #     ],
+    #     id="left_with_id"
+    # ),
     pytest.param(
         [
             Column('id_left', Integer, primary_key=True),
@@ -47,6 +75,34 @@ TEST_SCHEMA_CENTER = [
         ],
         id="center"
     ),
+    # pytest.param(
+    #     [
+    #         Column('id_center1', Integer, primary_key=True),
+    #         Column('id_center2', Integer, primary_key=True),
+    #         Column('c_center1', Integer),
+    #         Column('c_center2', Integer),
+    #     ],
+    #     id="center_x2"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left1', Integer, primary_key=True),
+    #         Column('id_left2', Integer, primary_key=True),
+    #         Column('id_left3', Integer, primary_key=True),
+    #         Column('a_left1', Integer),
+    #         Column('a_left2', Integer),
+    #         Column('a_left3', Integer),
+    #     ],
+    #     id="center_x3"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left', Integer, primary_key=True),
+    #         Column('id', Integer, primary_key=True),
+    #         Column('a_left', Integer),
+    #     ],
+    #     id="center_with_id"
+    # ),
     pytest.param(
         [
             Column('id_left', Integer, primary_key=True),
@@ -66,6 +122,34 @@ TEST_SCHEMA_RIGHT = [
         ],
         id="right"
     ),
+    # pytest.param(
+    #     [
+    #         Column('id_right1', Integer, primary_key=True),
+    #         Column('id_right2', Integer, primary_key=True),
+    #         Column('b_right1', Integer),
+    #         Column('b_right2', Integer),
+    #     ],
+    #     id="right_x2"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_right1', Integer, primary_key=True),
+    #         Column('id_right2', Integer, primary_key=True),
+    #         Column('id_right3', Integer, primary_key=True),
+    #         Column('b_right1', Integer),
+    #         Column('b_right2', Integer),
+    #         Column('b_right3', Integer),
+    #     ],
+    #     id="right_x3"
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_right', Integer, primary_key=True),
+    #         Column('id', Integer, primary_key=True),
+    #         Column('b_right', Integer),
+    #     ],
+    #     id="right_with_id"
+    # ),
     pytest.param(
         [
             Column('id_right', Integer, primary_key=True),
@@ -170,7 +254,7 @@ def get_all_cases():
         )
         primary_keys = list(input_intersection_idxs) if len(input_intersection_idxs) > 0 else output_primary_keys
         input_id = "__".join([param.id for param in input_schema_tables_params])
-        output_id = "__".join([param.id for param in input_schema_tables_params])
+        output_id = "__".join([param.id for param in output_schema_tables_params])
         for len_transform_keys in range(1, len(primary_keys)+1):
             for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                 id_transform_keys = "__".join(transform_keys)
@@ -242,6 +326,15 @@ def test_complex_cross_merge_on_many_tables(dbconn, test_case):
         )
     ])
     run_pipeline(ds, catalog, pipeline_case)
+    print(f"{input_intersection_idxs=}")
+    for input_table_name, test_input_df in zip(input_tables_names, test_input_dfs):
+        print(f"{input_table_name}\n{test_input_df}")
+    for output_table_name, test_output_df in zip(output_tables_names, test_output_dfs):
+        print(f"{output_table_name} should be \n{test_output_df}")
+    for output_table_name, test_output_df in zip(output_tables_names, test_output_dfs):
+        tbl_output = catalog.get_datatable(ds, output_table_name)
+        print(f"{output_table_name} in pipeline =\n{tbl_output.get_data()}")
+
     for input_table_name, test_input_df in zip(input_tables_names, test_input_dfs):
         tbl_input = catalog.get_datatable(ds, input_table_name)
         assert_datatable_equal(tbl_input, test_input_df)
