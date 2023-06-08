@@ -133,7 +133,7 @@ def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
         df = pd.merge(df_left, df_right, how='cross')
     return df
 
-def get_all_cases():
+def get_all_cases(reversed: bool):
     looked_total_id = set()
     for left_schema_param in TEST_SCHEMA_LEFT:
         for right_schema_param in TEST_SCHEMA_RIGHT:
@@ -158,6 +158,14 @@ def get_all_cases():
             primary_keys = intersecting_idxs if len(intersecting_idxs) > 0 else [x.name for x in left_x_right_columns_primary_keys]
             for len_transform_keys in range(1, len(primary_keys)+1):
                 for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
+                    if reversed and not all(
+                        transform_key in columns
+                        for columns in [test_df_left.columns, test_df_right.columns]
+                        for transform_key in transform_keys
+                    ):
+                        # Все ключи трансформаций должны полностью входить в ключи выходных таблиц
+                        continue
+                        
                     id_transform_keys = "__".join(sorted(transform_keys))
                     total_id = f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]"
                     if total_id in looked_total_id:
@@ -174,7 +182,7 @@ def get_all_cases():
                     )
 
 
-@parametrize("test_case",list(get_all_cases()))
+@parametrize("test_case",list(get_all_cases(reversed=False)))
 def test_complex_cross_merge_scenary(dbconn, test_case):
     (
         left_schema, right_schema, left_x_right_schema,
@@ -239,7 +247,7 @@ def reverse_cross_merge_func(
     return df_left, df_right
 
 
-@parametrize("test_case",list(get_all_cases()))
+@parametrize("test_case",list(get_all_cases(reversed=True)))
 def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     (
         left_schema, right_schema, left_x_right_schema,
