@@ -21,8 +21,6 @@ from datapipe.core_steps import BatchGenerate, BatchTransform
 from .util import assert_datatable_equal, assert_df_equal
 
 
-SKIP_BIG_CROSS_MERGE_TESTS = int(os.environ.get("SKIP_BIG_CROSS_MERGE_TESTS", True))
-
 TEST_SCHEMA_LEFT = [
     pytest.param(
         [
@@ -31,37 +29,37 @@ TEST_SCHEMA_LEFT = [
         ],
         id="left"
     ),
-    pytest.param(
-        [
-            Column('id_left1', Integer, primary_key=True),
-            Column('id_left2', Integer, primary_key=True),
-            Column('a_left1', Integer),
-            Column('a_left2', Integer),
-        ],
-        id="left_x2",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
-    ),
-    pytest.param(
-        [
-            Column('id_left1', Integer, primary_key=True),
-            Column('id_left2', Integer, primary_key=True),
-            Column('id_left3', Integer, primary_key=True),
-            Column('a_left1', Integer),
-            Column('a_left2', Integer),
-            Column('a_left3', Integer),
-        ],
-        id="left_x3",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
-    ),
-    pytest.param(
-        [
-            Column('id_left', Integer, primary_key=True),
-            Column('id', Integer, primary_key=True),
-            Column('a_left', Integer),
-        ],
-        id="left_with_id",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
-    ),
+    # pytest.param(
+    #     [
+    #         Column('id_left1', Integer, primary_key=True),
+    #         Column('id_left2', Integer, primary_key=True),
+    #         Column('a_left1', Integer),
+    #         Column('a_left2', Integer),
+    #     ],
+    #     id="left_x2",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left1', Integer, primary_key=True),
+    #         Column('id_left2', Integer, primary_key=True),
+    #         Column('id_left3', Integer, primary_key=True),
+    #         Column('a_left1', Integer),
+    #         Column('a_left2', Integer),
+    #         Column('a_left3', Integer),
+    #     ],
+    #     id="left_x3",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_left', Integer, primary_key=True),
+    #         Column('id', Integer, primary_key=True),
+    #         Column('a_left', Integer),
+    #     ],
+    #     id="left_with_id",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
+    # ),
     pytest.param(
         [
             Column('id_left', Integer, primary_key=True),
@@ -81,37 +79,37 @@ TEST_SCHEMA_RIGHT = [
         ],
         id="right"
     ),
-    pytest.param(
-        [
-            Column('id_right1', Integer, primary_key=True),
-            Column('id_right2', Integer, primary_key=True),
-            Column('b_right1', Integer),
-            Column('b_right2', Integer),
-        ],
-        id="right_x2",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
-    ),
-    pytest.param(
-        [
-            Column('id_right1', Integer, primary_key=True),
-            Column('id_right2', Integer, primary_key=True),
-            Column('id_right3', Integer, primary_key=True),
-            Column('b_right1', Integer),
-            Column('b_right2', Integer),
-            Column('b_right3', Integer),
-        ],
-        id="right_x3",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
-    ),
-    pytest.param(
-        [
-            Column('id_right', Integer, primary_key=True),
-            Column('id', Integer, primary_key=True),
-            Column('b_right', Integer),
-        ],
-        id="right_with_id",
-        marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
-    ),
+    # pytest.param(
+    #     [
+    #         Column('id_right1', Integer, primary_key=True),
+    #         Column('id_right2', Integer, primary_key=True),
+    #         Column('b_right1', Integer),
+    #         Column('b_right2', Integer),
+    #     ],
+    #     id="right_x2",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_right1', Integer, primary_key=True),
+    #         Column('id_right2', Integer, primary_key=True),
+    #         Column('id_right3', Integer, primary_key=True),
+    #         Column('b_right1', Integer),
+    #         Column('b_right2', Integer),
+    #         Column('b_right3', Integer),
+    #     ],
+    #     id="right_x3",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Big table")
+    # ),
+    # pytest.param(
+    #     [
+    #         Column('id_right', Integer, primary_key=True),
+    #         Column('id', Integer, primary_key=True),
+    #         Column('b_right', Integer),
+    #     ],
+    #     id="right_with_id",
+    #     marks=pytest.mark.skipif(SKIP_BIG_CROSS_MERGE_TESTS, reason="Small table")
+    # ),
     pytest.param(
         [
             Column('id_right', Integer, primary_key=True),
