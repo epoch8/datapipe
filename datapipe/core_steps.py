@@ -244,8 +244,16 @@ class BaseBatchTransformStep(ComputeStep):
 
         # Check that all keys are either in one input table or in all input tables
         # Currently we do not support partial primary keys
+        output_insersection = set.intersection(*map(set, [
+            [col.name for col in dt.primary_schema] for dt in self.output_dts
+        ]))
         assert all(
             v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
+        ) or (
+            len(output_insersection) > 0 and all(
+                all_input_keys_counts.get(k, 0) >= 1
+                for k in output_insersection
+            )
         )
 
         common_keys = [
