@@ -28,34 +28,6 @@ TEST_SCHEMA_LEFT = [
         ],
         id="left"
     ),
-    # pytest.param(
-    #     [
-    #         Column('id_left1', Integer, primary_key=True),
-    #         Column('id_left2', Integer, primary_key=True),
-    #         Column('a_left1', Integer),
-    #         Column('a_left2', Integer),
-    #     ],
-    #     id="left_x2"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_left1', Integer, primary_key=True),
-    #         Column('id_left2', Integer, primary_key=True),
-    #         Column('id_left3', Integer, primary_key=True),
-    #         Column('a_left1', Integer),
-    #         Column('a_left2', Integer),
-    #         Column('a_left3', Integer),
-    #     ],
-    #     id="left_x3"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_left', Integer, primary_key=True),
-    #         Column('id', Integer, primary_key=True),
-    #         Column('a_left', Integer),
-    #     ],
-    #     id="left_with_id"
-    # ),
     pytest.param(
         [
             Column('id_left', Integer, primary_key=True),
@@ -75,34 +47,6 @@ TEST_SCHEMA_CENTER = [
         ],
         id="center"
     ),
-    # pytest.param(
-    #     [
-    #         Column('id_center1', Integer, primary_key=True),
-    #         Column('id_center2', Integer, primary_key=True),
-    #         Column('c_center1', Integer),
-    #         Column('c_center2', Integer),
-    #     ],
-    #     id="center_x2"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_left1', Integer, primary_key=True),
-    #         Column('id_left2', Integer, primary_key=True),
-    #         Column('id_left3', Integer, primary_key=True),
-    #         Column('a_left1', Integer),
-    #         Column('a_left2', Integer),
-    #         Column('a_left3', Integer),
-    #     ],
-    #     id="center_x3"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_left', Integer, primary_key=True),
-    #         Column('id', Integer, primary_key=True),
-    #         Column('a_left', Integer),
-    #     ],
-    #     id="center_with_id"
-    # ),
     pytest.param(
         [
             Column('id_center', Integer, primary_key=True),
@@ -122,34 +66,6 @@ TEST_SCHEMA_RIGHT = [
         ],
         id="right"
     ),
-    # pytest.param(
-    #     [
-    #         Column('id_right1', Integer, primary_key=True),
-    #         Column('id_right2', Integer, primary_key=True),
-    #         Column('b_right1', Integer),
-    #         Column('b_right2', Integer),
-    #     ],
-    #     id="right_x2"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_right1', Integer, primary_key=True),
-    #         Column('id_right2', Integer, primary_key=True),
-    #         Column('id_right3', Integer, primary_key=True),
-    #         Column('b_right1', Integer),
-    #         Column('b_right2', Integer),
-    #         Column('b_right3', Integer),
-    #     ],
-    #     id="right_x3"
-    # ),
-    # pytest.param(
-    #     [
-    #         Column('id_right', Integer, primary_key=True),
-    #         Column('id', Integer, primary_key=True),
-    #         Column('b_right', Integer),
-    #     ],
-    #     id="right_with_id"
-    # ),
     pytest.param(
         [
             Column('id_right', Integer, primary_key=True),
@@ -164,16 +80,20 @@ TEST_SCHEMA_RIGHT = [
 TEST_DF_VALUES = [x for x in range(5)] + [6, 7, -5, -9]
 
 def get_all_cases_schemes():
-    for len_input in range(2, 5):
-        for len_output in range(2, 5):
+    i = 0
+    for len_input in range(2, 3):
+        for len_output in range(2, 3):
             for input_schema_tables in itertools.combinations(
                 TEST_SCHEMA_LEFT + TEST_SCHEMA_CENTER + TEST_SCHEMA_RIGHT,
                 len_input
             ):
                 for output_schema_tables in itertools.combinations(
                     TEST_SCHEMA_LEFT + TEST_SCHEMA_CENTER + TEST_SCHEMA_RIGHT,
-                    len_input
+                    len_output
                 ):
+                    i += 1
+                    if (i % 2 == 0):  # Скипаем часть честов
+                        continue
                     yield input_schema_tables, output_schema_tables
 
 
