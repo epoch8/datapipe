@@ -135,8 +135,8 @@ def cross_merge_func(df_left: pd.DataFrame, df_right: pd.DataFrame):
         df = pd.merge(df_left, df_right, how='cross')
     return df
 
-looked_total_id = set()
 def get_all_cases():
+    looked_total_id = set()
     for left_schema_param in TEST_SCHEMA_LEFT:
         for right_schema_param in TEST_SCHEMA_RIGHT:
             left_schema = left_schema_param.values[0]

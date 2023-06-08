@@ -105,10 +105,10 @@ TEST_SCHEMA_CENTER = [
     # ),
     pytest.param(
         [
-            Column('id_left', Integer, primary_key=True),
+            Column('id_center', Integer, primary_key=True),
             Column('id1', Integer, primary_key=True),
             Column('id2', Integer, primary_key=True),
-            Column('a_left', Integer),
+            Column('c_center', Integer),
         ],
         id="center_with_id_x2"
     )
@@ -207,8 +207,8 @@ def cross_merge_func(
     ]
 
 
-looked_total_id = set()
 def get_all_cases():
+    looked_total_id = set()
     for input_schema_tables_params, output_schema_tables_params in get_all_cases_schemes():
         input_schema_tables = [
             input_schema_tables_param.values[0]
@@ -270,7 +270,7 @@ def get_all_cases():
                         input_intersection_idxs,
                         transform_keys
                     ],
-                    id=f"inputs-[{input_id}]-outputs-[{output_id}]-trasnforms-keys-[{id_transform_keys}]"
+                    id=total_id
                 )
 
 @parametrize("test_case",list(get_all_cases()))
