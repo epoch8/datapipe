@@ -364,8 +364,6 @@ class BaseBatchTransformStep(ComputeStep):
                 )
             )
         )
-        print("====")
-        print(sql)
         return (self.transform_keys, sql)
 
     def get_changed_idx_count(
