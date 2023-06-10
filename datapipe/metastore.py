@@ -7,7 +7,7 @@ from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
 from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 from datapipe.run_config import RunConfig
@@ -470,6 +470,7 @@ class MetaTable:
 TRANSFORM_META_SCHEMA = [
     Column("process_ts", Float),  # Время последней успешной обработки
     Column("is_success", Boolean),  # Успешно ли обработана строка
+    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
     Column("error", String),  # Текст ошибки
 ]
 
@@ -498,6 +499,34 @@ class TransformMetaTable:
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
+    def insert_rows(
+        self,
+        idx: IndexDF,
+    ) -> None:
+        """
+        Создает строки в таблице метаданных для указанных индексов. Если строки
+        уже существуют - не делает ничего.
+        """
+
+        idx = cast(IndexDF, idx[self.primary_keys])
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+
+        self.dbconn.con.execute(sql)
+
     def mark_rows_processed_success(
         self,
         idx: IndexDF,
@@ -511,6 +540,7 @@ class TransformMetaTable:
                 {
                     "process_ts": process_ts,
                     "is_success": True,
+                    "priority": 0,
                     "error": None,
                     **idx_dict,  # type: ignore
                 }
@@ -544,6 +574,7 @@ class TransformMetaTable:
                 {
                     "process_ts": process_ts,
                     "is_success": False,
+                    "priority": 0,
                     "error": error,
                     **idx_dict,  # type: ignore
                 }
@@ -558,6 +589,29 @@ class TransformMetaTable:
                 "is_success": False,
                 "error": error,
             },
+        )
+
+        # execute
+        self.dbconn.con.execute(sql)
+
+    def mark_all_rows_unprocessed(
+        self,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        update_sql = (
+            update(self.sql_table)
+            .values(
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "error": None,
+                }
+            )
+            .where(self.sql_table.c.is_success == True)
+        )
+
+        sql = sql_apply_runconfig_filter(
+            update_sql, self.sql_table, self.primary_keys, run_config
         )
 
         # execute

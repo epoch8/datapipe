@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-import tqdm
+from tqdm_loggable.auto import tqdm
 from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
@@ -122,6 +122,7 @@ class ComputeStep:
     def get_full_process_ids(
         self,
         ds: DataStore,
+        chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
@@ -262,14 +263,14 @@ class ComputeStep:
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
-        (idx_count, idx_gen) = self.get_full_process_ids(ds, run_config)
+        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
 
         logger.info(f"Batches to process {idx_count}")
 
         if idx_count is not None and idx_count == 0:
             return
 
-        for idx in tqdm.tqdm(idx_gen, total=idx_count):
+        for idx in tqdm(idx_gen, total=idx_count):
             self.process_batch(
                 ds=ds,
                 idx=idx,
@@ -298,7 +299,7 @@ class ComputeStep:
 
         res_changelist = ChangeList()
 
-        for idx in tqdm.tqdm(idx_gen, total=idx_count):
+        for idx in tqdm(idx_gen, total=idx_count):
             changes = self.process_batch(
                 ds=ds,
                 idx=idx,

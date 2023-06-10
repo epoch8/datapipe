@@ -17,7 +17,7 @@ from typing import (
 )
 
 import pandas as pd
-import tqdm
+from tqdm_loggable.auto import tqdm
 from opentelemetry import trace
 from sqlalchemy import alias, and_, column, func, literal, or_, select
 
@@ -329,9 +329,11 @@ class BaseBatchTransformStep(ComputeStep):
 
         tr_tbl = self.meta_table.sql_table
         out = (
-            select(*[column(k) for k in self.transform_keys] + [tr_tbl.c.process_ts])
+            select(
+                *[column(k) for k in self.transform_keys]
+                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            )
             .select_from(tr_tbl)
-            .where(tr_tbl.c.is_success == True)  # noqa
             .group_by(*[column(k) for k in self.transform_keys])
             .cte(name="transform")
         )
@@ -353,10 +355,17 @@ class BaseBatchTransformStep(ComputeStep):
             )
             .where(
                 or_(
-                    inp.c.update_ts > out.c.process_ts,
-                    inp.c.update_ts == None,  # noqa
+                    and_(
+                        out.c.is_success == True,  # noqa
+                        inp.c.update_ts > out.c.process_ts,
+                    ),
+                    out.c.is_success != True,  # noqa
                     out.c.process_ts == None,  # noqa
                 )
+            )
+            .order_by(
+                out.c.priority.desc().nullslast(),
+                *[column(k) for k in self.transform_keys],
             )
         )
 
@@ -380,6 +389,7 @@ class BaseBatchTransformStep(ComputeStep):
     def get_full_process_ids(
         self,
         ds: DataStore,
+        chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
@@ -390,6 +400,8 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
+
+        chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.input_dts) == 0:
@@ -416,14 +428,14 @@ class BaseBatchTransformStep(ComputeStep):
 
             def alter_res_df():
                 for df in pd.read_sql_query(
-                    u1, con=ds.meta_dbconn.con, chunksize=self.chunk_size
+                    u1, con=ds.meta_dbconn.con, chunksize=chunk_size
                 ):
                     for k, v in extra_filters.items():
                         df[k] = v
 
                     yield df
 
-            return math.ceil(idx_count / self.chunk_size), alter_res_df()
+            return math.ceil(idx_count / chunk_size), alter_res_df()
 
     def get_change_list_process_ids(
         self,
@@ -481,6 +493,15 @@ class BaseBatchTransformStep(ComputeStep):
             error=str(e),
             run_config=run_config,
         )
+
+    def fill_metadata(self, ds: DataStore) -> None:
+        idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
+
+        for idx in tqdm(idx_gen, total=idx_len):
+            self.meta_table.insert_rows(idx)
+
+    def reset_metadata(self, ds: DataStore) -> None:
+        self.meta_table.mark_all_rows_unprocessed()
 
 
 @dataclass
@@ -722,7 +743,7 @@ def update_external_table(
 ) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(
+    for ps_df in tqdm(
         table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
     ):
         (
