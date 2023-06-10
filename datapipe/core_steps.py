@@ -495,7 +495,7 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
     def fill_metadata(self, ds: DataStore) -> None:
-        idx_len, idx_gen = self.get_full_process_ids(ds, chunk_size=1000)
+        idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
 
         for idx in tqdm(idx_gen, total=idx_len):
             self.meta_table.insert_rows(idx)

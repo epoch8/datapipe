@@ -122,6 +122,7 @@ class ComputeStep:
     def get_full_process_ids(
         self,
         ds: DataStore,
+        chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
@@ -262,7 +263,7 @@ class ComputeStep:
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
-        (idx_count, idx_gen) = self.get_full_process_ids(ds, run_config)
+        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
 
         logger.info(f"Batches to process {idx_count}")
 
