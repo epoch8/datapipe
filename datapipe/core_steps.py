@@ -389,6 +389,7 @@ class BaseBatchTransformStep(ComputeStep):
     def get_full_process_ids(
         self,
         ds: DataStore,
+        chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
@@ -399,6 +400,8 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
+
+        chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.input_dts) == 0:
@@ -425,14 +428,14 @@ class BaseBatchTransformStep(ComputeStep):
 
             def alter_res_df():
                 for df in pd.read_sql_query(
-                    u1, con=ds.meta_dbconn.con, chunksize=self.chunk_size
+                    u1, con=ds.meta_dbconn.con, chunksize=chunk_size
                 ):
                     for k, v in extra_filters.items():
                         df[k] = v
 
                     yield df
 
-            return math.ceil(idx_count / self.chunk_size), alter_res_df()
+            return math.ceil(idx_count / chunk_size), alter_res_df()
 
     def get_change_list_process_ids(
         self,
@@ -490,6 +493,12 @@ class BaseBatchTransformStep(ComputeStep):
             error=str(e),
             run_config=run_config,
         )
+
+    def fill_metadata(self, ds: DataStore) -> None:
+        idx_len, idx_gen = self.get_full_process_ids(ds, chunk_size=1000)
+
+        for idx in tqdm(idx_gen, total=idx_len):
+            self.meta_table.insert_rows(idx)
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta_table.mark_all_rows_unprocessed()

@@ -387,15 +387,28 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int) -> None:
                 idx_gen = None
                 cnt = 0
         if idx_gen is not None and cnt is not None:
-            print(f"Chunk {cnt}/{idx_count} ended")
+            rprint(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1
         else:
             if not loop:
                 break
             else:
-                print(f"All chunks ended, sleeping {loop_delay}s...")
+                rprint(f"All chunks ended, sleeping {loop_delay}s...")
                 time.sleep(loop_delay)
                 print("\n\n")
+
+
+@step.command()
+@click.pass_context
+def fill_metadata(ctx: click.Context) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+
+    for step in steps_to_run:
+        if isinstance(step, BaseBatchTransformStep):
+            rprint(f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]")
+            step.fill_metadata(app.ds)
 
 
 @step.command()  # type: ignore
