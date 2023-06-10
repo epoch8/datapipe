@@ -72,6 +72,13 @@ class DataTable:
         внутри `processed_idx`, но отсутствуют в `data_df`.
         """
 
+        # In case `processed_idx` is not None, check that it contains any of
+        # relevant columns
+        if processed_idx is not None:
+            relevant_keys = set(self.primary_keys) & set(processed_idx.columns)
+            if not relevant_keys:
+                processed_idx = None
+
         # Check that all index values in `data_df` is unique
         if data_df.duplicated(self.primary_keys).any():
             raise ValueError("`data_df` index values should be unique")
