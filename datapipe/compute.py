@@ -310,6 +310,22 @@ class ComputeStep:
         return res_changelist
 
 
+    def run_idx(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: Optional[RunConfig] = None,
+    ) -> ChangeList:
+        logger.info(f"Running: {self.name}")
+        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+
+        return self.process_batch(
+            ds=ds,
+            idx=idx,
+            run_config=run_config,
+        )
+
+
 class PipelineStep(ABC):
     """
     Пайплайн описывается через PipelineStep.

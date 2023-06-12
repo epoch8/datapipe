@@ -5,6 +5,7 @@ import time
 from typing import Dict, List, Optional, cast
 
 import click
+import pandas as pd
 import rich
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -353,6 +354,21 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
             print(f"Loop ended, sleeping {loop_delay}s...")
             time.sleep(loop_delay)
             print("\n\n")
+
+
+@step.command()  # type: ignore
+@click.argument("idx", type=click.STRING)
+@click.pass_context
+def run_idx(ctx: click.Context, idx: str) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+    print(f"Running following steps: {', '.join(steps_to_run_names)}")
+
+    idx_dict = {k:v for k,v in (i.split("=") for i in idx.split(","))}
+
+    for step in steps_to_run:
+        step.run_idx(app.ds, pd.DataFrame([idx_dict]))
 
 
 @step.command()  # type: ignore

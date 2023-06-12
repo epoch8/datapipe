@@ -16,6 +16,7 @@
   all indices to process
 * Add helm chart for running regular loops in k8s as `CronJob`
 * Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
+* Add `step run-idx` CLI command
 
 # 0.12.0
 
