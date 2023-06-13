@@ -5,13 +5,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from tqdm_loggable.auto import tqdm
-from opentelemetry import trace
-
 from datapipe.datatable import DataStore, DataTable
+from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
 from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
+from opentelemetry import trace
+from tqdm_loggable.auto import tqdm
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -259,7 +259,11 @@ class ComputeStep:
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
+        executor: Optional[Executor] = None,
     ) -> None:
+        if executor is None:
+            executor = SingleThreadExecutor()
+
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
@@ -270,12 +274,13 @@ class ComputeStep:
         if idx_count is not None and idx_count == 0:
             return
 
-        for idx in tqdm(idx_gen, total=idx_count):
-            self.process_batch(
-                ds=ds,
-                idx=idx,
-                run_config=run_config,
-            )
+        executor.run_process_batch(
+            ds=ds,
+            idx_count=idx_count,
+            idx_gen=idx_gen,
+            process_fn=self.process_batch,
+            run_config=run_config,
+        )
 
         ds.event_logger.log_step_full_complete(self.name)
 
@@ -284,7 +289,11 @@ class ComputeStep:
         ds: DataStore,
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
+        executor: Optional[Executor] = None,
     ) -> ChangeList:
+        if executor is None:
+            executor = SingleThreadExecutor()
+
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
@@ -308,7 +317,6 @@ class ComputeStep:
             res_changelist.extend(changes)
 
         return res_changelist
-
 
     def run_idx(
         self,
@@ -378,7 +386,10 @@ def print_compute(steps: List[ComputeStep]) -> None:
 
 
 def run_steps(
-    ds: DataStore, steps: List[ComputeStep], run_config: Optional[RunConfig] = None
+    ds: DataStore,
+    steps: List[ComputeStep],
+    run_config: Optional[RunConfig] = None,
+    executor: Optional[Executor] = None,
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
@@ -389,7 +400,7 @@ def run_steps(
                 f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
             )
 
-        step.run_full(ds, run_config)
+        step.run_full(ds=ds, run_config=run_config, executor=executor)
 
 
 def run_pipeline(

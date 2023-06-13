@@ -7,15 +7,15 @@ from typing import Dict, List, Optional, cast
 import click
 import pandas as pd
 import rich
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.executor import Executor, MultiThreadExecutor, SingleThreadExecutor
+from datapipe.types import ChangeList, IndexDF, Labels
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
-
-from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
-from datapipe.core_steps import BaseBatchTransformStep
-from datapipe.types import ChangeList, IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -269,14 +269,22 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 @cli.group()
 @click.option("--labels", type=click.STRING, default="")
 @click.option("--name", type=click.STRING, default="")
+@click.option("--executor", type=click.STRING, default="SingleThreadExecutor")
 @click.pass_context
-def step(ctx: click.Context, labels: str, name: str):
+def step(ctx: click.Context, labels: str, name: str, executor: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     labels_dict = parse_labels(labels)
     steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
 
     ctx.obj["steps"] = steps
+
+    if executor == "SingleThreadExecutor":
+        ctx.obj["executor"] = SingleThreadExecutor()
+    elif executor == "MultiThreadExecutor":
+        ctx.obj["executor"] = MultiThreadExecutor()
+    else:
+        raise ValueError(f"Unknown executor: {executor}")
 
 
 def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
@@ -341,12 +349,15 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
 def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+
+    executor: Executor = ctx.obj["executor"]
+
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run)
+            run_steps(app.ds, steps_to_run, executor=executor)
 
         if not loop:
             break
@@ -365,7 +376,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
-    idx_dict = {k:v for k,v in (i.split("=") for i in idx.split(","))}
+    idx_dict = {k: v for k, v in (i.split("=") for i in idx.split(","))}
 
     for step in steps_to_run:
         step.run_idx(app.ds, pd.DataFrame([idx_dict]))
@@ -423,7 +434,9 @@ def fill_metadata(ctx: click.Context) -> None:
 
     for step in steps_to_run:
         if isinstance(step, BaseBatchTransformStep):
-            rprint(f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]")
+            rprint(
+                f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]"
+            )
             step.fill_metadata(app.ds)
 
 
