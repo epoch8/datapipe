@@ -78,7 +78,7 @@ class MultiThreadExecutor(Executor):
             )
             futures.append(future)
 
-        for future in tqdm(as_completed(futures)):
+        for future in tqdm(as_completed(futures), total=idx_count):
             changes = future.result()
             res_changelist.extend(changes)
 

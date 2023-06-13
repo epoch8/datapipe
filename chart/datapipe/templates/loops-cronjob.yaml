@@ -2,6 +2,7 @@
 # for each .Values.loops item, create a cronjob
 {{ $image := .Values.image }}
 {{ $resources := .Values.resources }}
+{{ $executor := .Values.executor }}
 
 {{- range .Values.loops }}
 
@@ -22,6 +23,11 @@ spec:
             command:
               - datapipe
               - step
+              {{- if .executor }}
+              - --executor={{ .executor }}
+              {{- else if $executor }}
+              - --executor={{ $executor }}
+              {{- end }}
               - --labels={{ .labels }}
               - run
             {{- if .resources }}
