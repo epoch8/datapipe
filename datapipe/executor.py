@@ -1,3 +1,4 @@
+import multiprocessing as mp
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import Iterable, Optional, Protocol
@@ -56,7 +57,10 @@ class SingleThreadExecutor(Executor):
 
 class MultiProcessExecutor(Executor):
     def __init__(self, workers: int = 4):
-        self._executor = ProcessPoolExecutor(max_workers=workers)
+        self._executor = ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=mp.get_context("spawn"),
+        )
 
     def run_process_batch(
         self,
