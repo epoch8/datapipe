@@ -23,12 +23,17 @@ spec:
             command:
               - datapipe
               - step
+              {{- if .stepArgs }}
+              {{ .stepArgs | toYaml | nindent 14 }}
+              {{- end }}
               {{- if .executor }}
               - --executor={{ .executor }}
               {{- else if $executor }}
               - --executor={{ $executor }}
               {{- end }}
+              {{- if .labels }}
               - --labels={{ .labels }}
+              {{- end }}
               - run
             {{- if .resources }}
             resources: {{ .resources | toYaml | nindent 14 }}
