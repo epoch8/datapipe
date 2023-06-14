@@ -249,11 +249,6 @@ class BaseBatchTransformStep(ComputeStep):
         ]))
         assert all(
             v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
-        ) or (
-            len(output_insersection) > 0 and all(
-                all_input_keys_counts.get(str(k), 0) >= 1
-                for k in output_insersection
-            )
         )
 
         common_keys = [
