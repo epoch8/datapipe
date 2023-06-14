@@ -3,8 +3,6 @@ import math
 from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
-from opentelemetry import trace
-
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
 from datapipe.run_config import RunConfig
@@ -18,6 +16,7 @@ from datapipe.types import (
     data_to_index,
     index_difference,
 )
+from opentelemetry import trace
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
@@ -48,9 +47,10 @@ class DataTable:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def reset_metadata(self):
-        self.meta_dbconn.con.execute(
-            self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
-        )
+        with self.meta_dbconn.con.begin() as con:
+            con.execute(
+                self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
+            )
 
     def get_size(self) -> int:
         """

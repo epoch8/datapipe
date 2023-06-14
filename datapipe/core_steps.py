@@ -388,11 +388,12 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> int:
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
-        idx_count = ds.meta_dbconn.con.execute(
-            select([func.count()]).select_from(
-                alias(sql.subquery(), name="union_select")
-            )
-        ).scalar()
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                select([func.count()]).select_from(
+                    alias(sql.subquery(), name="union_select")
+                )
+            ).scalar()
 
         return idx_count
 
@@ -437,13 +438,12 @@ class BaseBatchTransformStep(ComputeStep):
                 extra_filters = {}
 
             def alter_res_df():
-                for df in pd.read_sql_query(
-                    u1, con=ds.meta_dbconn.con, chunksize=chunk_size
-                ):
-                    for k, v in extra_filters.items():
-                        df[k] = v
+                with ds.meta_dbconn.con.begin() as con:
+                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                        for k, v in extra_filters.items():
+                            df[k] = v
 
-                    yield df
+                        yield df
 
             return math.ceil(idx_count / chunk_size), alter_res_df()
 

@@ -166,9 +166,6 @@ class TableStoreDB(TableStore):
             extend_existing=True,
         )
 
-        if create_table:
-            self.data_table.create(self.dbconn.con, checkfirst=True)
-
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema
 
@@ -211,7 +208,8 @@ class TableStoreDB(TableStore):
             sql = sql_apply_idx_filter(
                 delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
             )
-            self.dbconn.con.execute(sql)
+            with self.dbconn.con.begin() as con:
+                con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
@@ -220,17 +218,18 @@ class TableStoreDB(TableStore):
         self.delete_rows(data_to_index(df, self.primary_keys))
         logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
-        for chunk_df in self._chunk_idx_df(df):
-            chunk_df.to_sql(
-                name=self.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
-                if_exists="append",
-                index=False,
-                chunksize=1000,
-                method="multi",
-                dtype=sql_schema_to_sqltype(self.data_sql_schema),
-            )
+        with self.dbconn.con.begin() as con:
+            for chunk_df in self._chunk_idx_df(df):
+                chunk_df.to_sql(
+                    name=self.name,
+                    con=con,
+                    schema=self.dbconn.schema,
+                    if_exists="append",
+                    index=False,
+                    chunksize=1000,
+                    method="multi",
+                    dtype=sql_schema_to_sqltype(self.data_sql_schema),
+                )
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
@@ -251,18 +250,20 @@ class TableStoreDB(TableStore):
 
             res = []
 
-            for chunk_idx in self._chunk_idx_df(idx):
-                chunk_sql = sql_apply_idx_filter(
-                    sql, self.data_table, self.primary_keys, chunk_idx
-                )
-                chunk_df = pd.read_sql_query(chunk_sql, con=self.dbconn.con)
+            with self.dbconn.con.begin() as con:
+                for chunk_idx in self._chunk_idx_df(idx):
+                    chunk_sql = sql_apply_idx_filter(
+                        sql, self.data_table, self.primary_keys, chunk_idx
+                    )
+                    chunk_df = pd.read_sql_query(chunk_sql, con=con)
 
-                res.append(chunk_df)
+                    res.append(chunk_df)
 
             return pd.concat(res, ignore_index=True)
 
         else:
-            return pd.read_sql_query(sql, con=self.dbconn.con)
+            with self.dbconn.con.begin() as con:
+                return pd.read_sql_query(sql, con=con)
 
     def read_rows_meta_pseudo_df(
         self, chunksize: int = 1000, run_config: Optional[RunConfig] = None

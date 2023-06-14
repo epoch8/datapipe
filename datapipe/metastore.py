@@ -7,9 +7,6 @@ from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
-from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
-
 from datapipe.run_config import RunConfig
 from datapipe.store.database import (
     DBConn,
@@ -27,6 +24,8 @@ from datapipe.types import (
     TAnyDF,
     data_to_index,
 )
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
+from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 logger = logging.getLogger("datapipe.metastore")
 
@@ -86,9 +85,6 @@ class MetaTable:
             *self.sql_schema,
         )
 
-        if create_table:
-            self.sql_table.create(self.dbconn.con, checkfirst=True)
-
     def _chunk_size(self):
         # Magic number derived empirically. See
         # https://github.com/epoch8/datapipe/issues/178 for details.
@@ -138,21 +134,23 @@ class MetaTable:
         res = []
         sql = select(self.sql_schema)
 
-        if idx is None:
-            sql = self._build_metadata_query(sql, idx, include_deleted)
-            return cast(MetadataDF, pd.read_sql_query(sql, con=self.dbconn.con))
+        with self.dbconn.con.begin() as con:
+            if idx is None:
+                sql = self._build_metadata_query(sql, idx, include_deleted)
+                return cast(MetadataDF, pd.read_sql_query(sql, con=con))
 
-        for chunk_idx in self._chunk_idx_df(idx):
-            chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
-            res.append(pd.read_sql_query(chunk_sql, con=self.dbconn.con))
+            for chunk_idx in self._chunk_idx_df(idx):
+                chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
 
-        if len(res) > 0:
-            return cast(MetadataDF, pd.concat(res))
-        else:
-            return cast(
-                MetadataDF,
-                pd.DataFrame(columns=[column.name for column in self.sql_schema]),
-            )
+                res.append(pd.read_sql_query(chunk_sql, con=con))
+
+            if len(res) > 0:
+                return cast(MetadataDF, pd.concat(res))
+            else:
+                return cast(
+                    MetadataDF,
+                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),
+                )
 
     def get_metadata_size(
         self, idx: Optional[IndexDF] = None, include_deleted: bool = False
@@ -167,8 +165,9 @@ class MetaTable:
         sql = select([func.count()]).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
-        res = self.dbconn.con.execute(sql).fetchone()
-        return res[0]
+        with self.dbconn.con.begin() as con:
+            res = con.execute(sql).fetchone()
+            return res[0]
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
         meta_keys = self.primary_keys + list(self.meta_keys.values())
@@ -235,20 +234,22 @@ class MetaTable:
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
-        res_df: DataDF = pd.read_sql_query(
-            sql,
-            con=self.dbconn.con,
-        )
+        with self.dbconn.con.begin() as con:
+            res_df: DataDF = pd.read_sql_query(
+                sql,
+                con=con,
+            )
 
         return data_to_index(res_df, self.primary_keys)
 
     def get_table_debug_info(self) -> TableDebugInfo:
-        return TableDebugInfo(
-            name=self.name,
-            size=self.dbconn.con.execute(
-                select([func.count()]).select_from(self.sql_table)
-            ).fetchone()[0],
-        )
+        with self.dbconn.con.begin() as con:
+            return TableDebugInfo(
+                name=self.name,
+                size=con.execute(
+                    select([func.count()]).select_from(self.sql_table)
+                ).fetchone()[0],
+            )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
     # FIXME поправить возвращаемые структуры данных, _meta_df должны содержать только _meta колонки
@@ -324,16 +325,17 @@ class MetaTable:
         if len(df) > 0:
             logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
-            df.to_sql(
-                name=self.sql_table.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
-                if_exists="append",
-                index=False,
-                chunksize=1000,
-                method="multi",
-                dtype=sql_schema_to_sqltype(self.sql_schema),
-            )
+            with self.dbconn.con.begin() as con:
+                df.to_sql(
+                    name=self.sql_table.name,
+                    con=con,
+                    schema=self.dbconn.schema,
+                    if_exists="append",
+                    index=False,
+                    chunksize=1000,
+                    method="multi",
+                    dtype=sql_schema_to_sqltype(self.sql_schema),
+                )
 
     def _delete_rows(self, df: MetadataDF) -> None:
         if len(df) == 0:
@@ -363,7 +365,8 @@ class MetaTable:
                     )
                 )
 
-            self.dbconn.con.execute(chunk_sql)
+            with self.dbconn.con.begin() as con:
+                con.execute(chunk_sql)
 
     def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
         if len(df) == 0:
@@ -401,6 +404,7 @@ class MetaTable:
                 values_params.append(f'({", ".join(row_values)})')
                 params.update(row_params)
 
+            # TODO сделать через sqlalchemy
             stmt = text(
                 f"""
                 UPDATE {table}
@@ -412,7 +416,8 @@ class MetaTable:
             """
             )
 
-            self.dbconn.con.execution_options(compiled_cache=None).execute(stmt, params)
+            with self.dbconn.con.execution_options(compiled_cache=None).begin() as con:
+                con.execute(stmt, params)
 
     # TODO объединить
     def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
@@ -462,10 +467,11 @@ class MetaTable:
             sql, self.sql_table, self.primary_keys, run_config
         )
 
-        return cast(
-            Iterator[IndexDF],
-            pd.read_sql_query(sql, con=self.dbconn.con, chunksize=1000),
-        )
+        with self.dbconn.con.begin() as con:
+            return cast(
+                Iterator[IndexDF],
+                list(pd.read_sql_query(sql, con=con, chunksize=1000)),
+            )
 
 
 TRANSFORM_META_SCHEMA = [
@@ -497,9 +503,6 @@ class TransformMetaTable:
             *self.sql_schema,
         )
 
-        if create_table:
-            self.sql_table.create(self.dbconn.con, checkfirst=True)
-
     def insert_rows(
         self,
         idx: IndexDF,
@@ -526,7 +529,8 @@ class TransformMetaTable:
 
         sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
-        self.dbconn.con.execute(sql)
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
     def mark_rows_processed_success(
         self,
@@ -559,7 +563,8 @@ class TransformMetaTable:
         )
 
         # execute
-        self.dbconn.con.execute(sql)
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
     def mark_rows_processed_error(
         self,
@@ -593,7 +598,8 @@ class TransformMetaTable:
         )
 
         # execute
-        self.dbconn.con.execute(sql)
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
     def mark_all_rows_unprocessed(
         self,
@@ -616,4 +622,5 @@ class TransformMetaTable:
         )
 
         # execute
-        self.dbconn.con.execute(sql)
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)

@@ -1,16 +1,13 @@
-from typing import TYPE_CHECKING, Optional
-from enum import Enum
-
 import logging
-from traceback_with_variables import format_exc
-
-from sqlalchemy.sql import func
-from sqlalchemy.sql.schema import Column, Table
-from sqlalchemy.sql.sqltypes import DateTime, Integer, String, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+from enum import Enum
+from typing import TYPE_CHECKING, Optional
 
 from datapipe.run_config import RunConfig
-
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql import func
+from sqlalchemy.sql.schema import Column, Table
+from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer, String
+from traceback_with_variables import format_exc
 
 logger = logging.getLogger("datapipe.event_logger")
 
@@ -50,10 +47,6 @@ class EventLogger:
             Column("event_payload", JSON if dbconn.con.name == "sqlite" else JSONB),
         )
 
-        if create_table:
-            self.events_table.create(self.dbconn.con, checkfirst=True)
-            self.step_events_table.create(self.dbconn.con, checkfirst=True)
-
     def log_state(
         self,
         table_name,
@@ -90,7 +83,8 @@ class EventLogger:
             },
         )
 
-        self.dbconn.con.execute(ins)
+        with self.dbconn.con.begin() as con:
+            con.execute(ins)
 
     def log_error(
         self,
@@ -125,7 +119,8 @@ class EventLogger:
             },
         )
 
-        self.dbconn.con.execute(ins)
+        with self.dbconn.con.begin() as con:
+            con.execute(ins)
 
     def log_exception(
         self,
@@ -151,4 +146,5 @@ class EventLogger:
             event=StepEventTypes.RUN_FULL_COMPLETE.value,
         )
 
-        self.dbconn.con.execute(ins)
+        with self.dbconn.con.begin() as con:
+            con.execute(ins)
