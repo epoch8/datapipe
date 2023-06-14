@@ -4,6 +4,14 @@ import math
 from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import pandas as pd
+from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+from sqlalchemy.pool import QueuePool, SingletonThreadPool
+from sqlalchemy.schema import SchemaItem
+from sqlalchemy.sql.base import Executable, SchemaEventTarget
+from sqlalchemy.sql.expression import delete, select, tuple_
+
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -14,13 +22,6 @@ from datapipe.types import (
     TAnyDF,
     data_to_index,
 )
-from opentelemetry import trace
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
-from sqlalchemy.pool import QueuePool, SingletonThreadPool
-from sqlalchemy.schema import SchemaItem
-from sqlalchemy.sql.base import Executable, SchemaEventTarget
-from sqlalchemy.sql.expression import delete, select, tuple_
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -165,6 +166,9 @@ class TableStoreDB(TableStore):
             *[copy.copy(i) for i in self.data_sql_schema],
             extend_existing=True,
         )
+
+        if create_table:
+            self.data_table.create(self.dbconn.con, checkfirst=True)
 
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema

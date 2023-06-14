@@ -2,12 +2,13 @@ import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from datapipe.run_config import RunConfig
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer, String
 from traceback_with_variables import format_exc
+
+from datapipe.run_config import RunConfig
 
 logger = logging.getLogger("datapipe.event_logger")
 
@@ -46,6 +47,10 @@ class EventLogger:
             Column("event", String(100)),
             Column("event_payload", JSON if dbconn.con.name == "sqlite" else JSONB),
         )
+
+        if create_table:
+            self.events_table.create(self.dbconn.con, checkfirst=True)
+            self.step_events_table.create(self.dbconn.con, checkfirst=True)
 
     def log_state(
         self,

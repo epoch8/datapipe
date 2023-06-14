@@ -7,6 +7,9 @@ from typing import Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
+from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
+from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
+
 from datapipe.run_config import RunConfig
 from datapipe.store.database import (
     DBConn,
@@ -24,8 +27,6 @@ from datapipe.types import (
     TAnyDF,
     data_to_index,
 )
-from sqlalchemy import Boolean, Column, Float, Integer, String, Table, func, update
-from sqlalchemy.sql.expression import and_, delete, or_, select, text, tuple_
 
 logger = logging.getLogger("datapipe.metastore")
 
@@ -84,6 +85,9 @@ class MetaTable:
             self.dbconn.sqla_metadata,
             *self.sql_schema,
         )
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     def _chunk_size(self):
         # Magic number derived empirically. See
@@ -502,6 +506,9 @@ class TransformMetaTable:
             dbconn.sqla_metadata,
             *self.sql_schema,
         )
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     def insert_rows(
         self,

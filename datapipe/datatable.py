@@ -3,6 +3,8 @@ import math
 from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
+from opentelemetry import trace
+
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
 from datapipe.run_config import RunConfig
@@ -16,7 +18,6 @@ from datapipe.types import (
     data_to_index,
     index_difference,
 )
-from opentelemetry import trace
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
