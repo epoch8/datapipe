@@ -3,8 +3,6 @@ import math
 from typing import Dict, Iterable, List, Optional, Tuple, cast
 
 import pandas as pd
-from opentelemetry import trace
-
 from datapipe.event_logger import EventLogger
 from datapipe.metastore import MetaTable
 from datapipe.run_config import RunConfig
@@ -18,6 +16,7 @@ from datapipe.types import (
     data_to_index,
     index_difference,
 )
+from opentelemetry import trace
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
@@ -100,15 +99,6 @@ class DataTable:
                         changed_meta_df,
                     ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-                self.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_df),
-                    updated_count=len(changed_df),
-                    deleted_count=0,
-                    processed_count=len(data_df),
-                    run_config=run_config,
-                )
-
                 # TODO implement transaction meckanism
                 with tracer.start_as_current_span("store data"):
                     self.table_store.insert_rows(new_df)
@@ -144,14 +134,6 @@ class DataTable:
     ) -> None:
         if len(idx) > 0:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
-            self.event_logger.log_state(
-                self.name,
-                added_count=0,
-                updated_count=0,
-                deleted_count=len(idx),
-                processed_count=len(idx),
-                run_config=run_config,
-            )
 
             self.table_store.delete_rows(idx)
             self.meta_table.mark_rows_deleted(idx, now=now)

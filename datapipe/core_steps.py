@@ -17,10 +17,6 @@ from typing import (
 )
 
 import pandas as pd
-from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select
-from tqdm_loggable.auto import tqdm
-
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
@@ -36,6 +32,9 @@ from datapipe.types import (
     TransformResult,
     data_to_index,
 )
+from opentelemetry import trace
+from sqlalchemy import alias, and_, column, func, literal, or_, select
+from tqdm_loggable.auto import tqdm
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")
@@ -689,17 +688,6 @@ def do_batch_generate(
                 if isinstance(chunk_dfs, pd.DataFrame):
                     chunk_dfs = (chunk_dfs,)
             except StopIteration:
-                if empty_generator:
-                    for k, dt_k in enumerate(output_dts):
-                        dt_k.event_logger.log_state(
-                            dt_k.name,
-                            added_count=0,
-                            updated_count=0,
-                            deleted_count=0,
-                            processed_count=0,
-                            run_config=run_config,
-                        )
-
                 break
             except Exception as e:
                 logger.exception(f"Generating failed ({func}): {str(e)}")
@@ -763,15 +751,6 @@ def update_external_table(
             new_meta_df,
             changed_meta_df,
         ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-        ds.event_logger.log_state(
-            table.name,
-            added_count=len(new_df),
-            updated_count=len(changed_df),
-            deleted_count=0,
-            processed_count=len(ps_df),
-            run_config=run_config,
-        )
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 

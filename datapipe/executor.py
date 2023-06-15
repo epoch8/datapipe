@@ -55,6 +55,37 @@ class SingleThreadExecutor(Executor):
         return res_changelist
 
 
+class MultiThreadExecutor(Executor):
+    def __init__(self, workers: int = 4):
+        self._executor = ThreadPoolExecutor(max_workers=workers)
+
+    def run_process_batch(
+        self,
+        ds: DataStore,
+        idx_count: int,
+        idx_gen: Iterable[IndexDF],
+        process_fn: ProcessFn,
+        run_config: Optional[RunConfig] = None,
+    ) -> ChangeList:
+        res_changelist = ChangeList()
+
+        futures = []
+        for idx in idx_gen:
+            future = self._executor.submit(
+                process_fn,
+                ds=ds,
+                idx=idx,
+                run_config=run_config,
+            )
+            futures.append(future)
+
+        for future in tqdm(as_completed(futures), total=idx_count):
+            changes = future.result()
+            res_changelist.extend(changes)
+
+        return res_changelist
+
+
 class MultiProcessExecutor(Executor):
     def __init__(self, workers: int = 4):
         self._executor = ProcessPoolExecutor(
