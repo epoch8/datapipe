@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 import ray
 from tqdm_loggable.auto import tqdm
@@ -22,13 +22,13 @@ class RayExecutor(Executor):
     ) -> ChangeList:
         res_changelist = ChangeList()
 
-        remote_kwargs = {}
+        remote_kwargs: Dict[str, Any] = {}
 
         if executor_config is not None:
             if executor_config.memory is not None:
                 remote_kwargs["memory"] = executor_config.memory
             if executor_config.cpu is not None:
-                remote_kwargs["cpu"] = executor_config.cpu
+                remote_kwargs["num_cpus"] = executor_config.cpu
 
         @ray.remote(**remote_kwargs)  # type: ignore
         def process_fn_remote(ds, idx, run_config):
