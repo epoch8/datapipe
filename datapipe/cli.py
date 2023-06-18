@@ -7,21 +7,18 @@ from typing import Dict, List, Optional, cast
 import click
 import pandas as pd
 import rich
-from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
-from datapipe.core_steps import BaseBatchTransformStep
-from datapipe.executor import (
-    Executor,
-    MultiProcessExecutor,
-    MultiThreadExecutor,
-    SingleThreadExecutor,
-)
-from datapipe.types import ChangeList, IndexDF, Labels
 from opentelemetry import trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
+
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.executor import Executor, SingleThreadExecutor
+from datapipe.executor.concurrent import MultiProcessExecutor, MultiThreadExecutor
+from datapipe.types import ChangeList, IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -300,6 +297,17 @@ def step(
         ctx.obj["executor"] = MultiThreadExecutor(workers=executor_threads)
     elif executor == "MultiProcessExecutor":
         ctx.obj["executor"] = MultiProcessExecutor(workers=executor_threads)
+    elif executor == "RayExecutor":
+        import ray
+
+        from datapipe.executor.ray import RayExecutor
+
+        ray_ctx = ray.init()
+
+        if hasattr(ctx, "dashboard_url"):
+            rprint(f"Dashboard URL: {ctx.dashboard_url}")
+
+        ctx.obj["executor"] = RayExecutor()
     else:
         raise ValueError(f"Unknown executor: {executor}")
 

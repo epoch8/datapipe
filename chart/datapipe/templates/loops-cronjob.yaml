@@ -17,6 +17,9 @@ spec:
     spec:
       template:
         spec:
+          ports:
+            - name: ray-dashboard-http
+              containerPort: 8265
           containers:
           - name: {{ .name }}
             image: "{{ $image.repository }}:{{ $image.tag }}"
