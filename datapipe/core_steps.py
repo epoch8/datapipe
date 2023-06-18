@@ -600,6 +600,7 @@ class BatchTransform(PipelineStep):
     kwargs: Optional[Dict[str, Any]] = None
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
+    executor_config: Optional[ExecutorConfig] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -616,6 +617,7 @@ class BatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
             )
         ]
 
@@ -632,6 +634,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -641,6 +644,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
         )
 
         self.func = func
