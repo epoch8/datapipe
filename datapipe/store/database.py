@@ -70,7 +70,7 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=QueuePool,
-                pool_size=25,
+                # pool_size=25,
             )
 
         self.sqla_metadata = MetaData(schema=schema)
