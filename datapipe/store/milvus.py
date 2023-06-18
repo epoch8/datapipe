@@ -1,17 +1,17 @@
-import pandas as pd
-
 from typing import Dict, List, Optional
+
+import pandas as pd
 from pymilvus import (
-    connections,
-    utility,
-    CollectionSchema,
     Collection,
+    CollectionSchema,
     FieldSchema,
     SearchResult,
+    connections,
+    utility,
 )
 
-from datapipe.types import DataSchema, MetaSchema, IndexDF, DataDF, data_to_index
 from datapipe.store.table_store import TableStore
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_index
 
 
 class MilvusStore(TableStore):

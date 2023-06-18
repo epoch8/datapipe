@@ -17,6 +17,10 @@ from typing import (
 )
 
 import pandas as pd
+from opentelemetry import trace
+from sqlalchemy import alias, and_, column, func, literal, or_, select
+from tqdm_loggable.auto import tqdm
+
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
@@ -32,9 +36,6 @@ from datapipe.types import (
     TransformResult,
     data_to_index,
 )
-from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select
-from tqdm_loggable.auto import tqdm
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")

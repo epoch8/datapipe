@@ -1,12 +1,12 @@
 from abc import ABC
-from datapipe.types import DataDF
 from typing import Optional
 
 import fsspec
 import pandas as pd
 
-from datapipe.store.table_store import TableDataSingleFileStore
 from datapipe.store.database import sql_schema_to_dtype
+from datapipe.store.table_store import TableDataSingleFileStore
+from datapipe.types import DataDF
 
 
 class TableStoreExcel(TableDataSingleFileStore, ABC):
