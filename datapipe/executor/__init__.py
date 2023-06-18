@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Iterable, Optional, Protocol
 
 from tqdm_loggable.auto import tqdm
@@ -18,6 +19,13 @@ class ProcessFn(Protocol):
         ...
 
 
+@dataclass
+class ExecutorConfig:
+    memory: Optional[int] = None
+    cpu: Optional[float] = None
+    gpu: Optional[int] = None
+
+
 class Executor(ABC):
     @abstractmethod
     def run_process_batch(
@@ -27,6 +35,7 @@ class Executor(ABC):
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> ChangeList:
         ...
 
@@ -39,6 +48,7 @@ class SingleThreadExecutor(Executor):
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 

@@ -23,7 +23,7 @@ from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
-from datapipe.executor import Executor
+from datapipe.executor import Executor, ExecutorConfig
 from datapipe.metastore import MetaTable, TransformMetaTable
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.store.database import sql_apply_runconfig_filter
@@ -179,8 +179,16 @@ class BaseBatchTransformStep(ComputeStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
-        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
+        ComputeStep.__init__(
+            self,
+            name=name,
+            input_dts=input_dts,
+            output_dts=output_dts,
+            labels=labels,
+            executor_config=executor_config,
+        )
 
         self.chunk_size = chunk_size
 

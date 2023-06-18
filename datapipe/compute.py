@@ -9,7 +9,7 @@ from opentelemetry import trace
 from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore, DataTable
-from datapipe.executor import Executor, SingleThreadExecutor
+from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
 from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
@@ -64,11 +64,13 @@ class ComputeStep:
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
         self._name = name
         self.input_dts = input_dts
         self.output_dts = output_dts
         self._labels = labels
+        self.executor_config = executor_config
 
     def get_name(self) -> str:
         ss = [
@@ -281,6 +283,7 @@ class ComputeStep:
             idx_gen=idx_gen,
             process_fn=self.process_batch,
             run_config=run_config,
+            executor_config=self.executor_config,
         )
 
         ds.event_logger.log_step_full_complete(self.name)

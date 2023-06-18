@@ -17,9 +17,6 @@ spec:
     spec:
       template:
         spec:
-          ports:
-            - name: ray-dashboard-http
-              containerPort: 8265
           containers:
           - name: {{ .name }}
             image: "{{ $image.repository }}:{{ $image.tag }}"
@@ -43,6 +40,9 @@ spec:
             {{- else if $resources }}
             resources: {{ $resources | toYaml | nindent 14 }}
             {{- end }}
+            ports:
+              - name: ray-dash-http
+                containerPort: 8265
           restartPolicy: OnFailure
           {{- if .nodeSelector }}
           nodeSelector: {{ .nodeSelector | toYaml | nindent 10 }}

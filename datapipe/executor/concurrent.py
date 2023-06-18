@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore
-from datapipe.executor import Executor, ProcessFn
+from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
 
@@ -24,6 +24,7 @@ class MultiProcessExecutor(Executor):
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
@@ -55,6 +56,7 @@ class MultiThreadExecutor(Executor):
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 

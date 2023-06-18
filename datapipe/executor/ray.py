@@ -4,17 +4,12 @@ import ray
 from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore
-from datapipe.executor import Executor, ProcessFn
+from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
 
 
 # Define a remote function for the process_fn
-@ray.remote
-def process_fn_remote(process_fn, ds, idx, run_config):
-    return process_fn(ds, idx, run_config)
-
-
 class RayExecutor(Executor):
     def run_process_batch(
         self,
@@ -23,13 +18,24 @@ class RayExecutor(Executor):
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
+
+        remote_kwargs = {}
+
+        if executor_config is not None:
+            if executor_config.memory is not None:
+                remote_kwargs["memory"] = executor_config.memory
+
+        @ray.remote(**remote_kwargs)  # type: ignore
+        def process_fn_remote(ds, idx, run_config):
+            return process_fn(ds, idx, run_config)
 
         # Submit tasks to remote functions using Ray
         futures = []
         for idx in idx_gen:
-            future = process_fn_remote.remote(process_fn, ds, idx, run_config)
+            future = process_fn_remote.remote(ds, idx, run_config)
             futures.append(future)
 
         # Generator to collect results, so tqdm can show progress
@@ -38,7 +44,7 @@ class RayExecutor(Executor):
             while len(ready) > 0:
                 for result in ray.get(ready):
                     yield result
-                ready, remaining = ray.wait(futures, timeout=None)
+                ready, futures = ray.wait(futures, timeout=None)
 
         for result in tqdm(_results(futures), total=len(futures)):
             res_changelist.extend(result)
