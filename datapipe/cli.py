@@ -295,8 +295,7 @@ def step(
 
         from datapipe.executor.ray import RayExecutor
 
-        # Disable object store memory, because we don't need it
-        ray_ctx = ray.init(object_store_memory=100 * 1024 * 1024)
+        ray_ctx = ray.init()
 
         if hasattr(ctx, "dashboard_url"):
             rprint(f"Dashboard URL: {ctx.dashboard_url}")
