@@ -17,7 +17,6 @@ from rich import print as rprint
 from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
 from datapipe.core_steps import BaseBatchTransformStep
 from datapipe.executor import Executor, SingleThreadExecutor
-from datapipe.executor.concurrent import MultiProcessExecutor, MultiThreadExecutor
 from datapipe.types import ChangeList, IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
@@ -275,14 +274,12 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 @click.option("--labels", type=click.STRING, default="")
 @click.option("--name", type=click.STRING, default="")
 @click.option("--executor", type=click.STRING, default="SingleThreadExecutor")
-@click.option("--executor-threads", type=click.INT, default=4)
 @click.pass_context
 def step(
     ctx: click.Context,
     labels: str,
     name: str,
     executor: str,
-    executor_threads: int,
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
@@ -293,10 +290,6 @@ def step(
 
     if executor == "SingleThreadExecutor":
         ctx.obj["executor"] = SingleThreadExecutor()
-    elif executor == "MultiThreadExecutor":
-        ctx.obj["executor"] = MultiThreadExecutor(workers=executor_threads)
-    elif executor == "MultiProcessExecutor":
-        ctx.obj["executor"] = MultiProcessExecutor(workers=executor_threads)
     elif executor == "RayExecutor":
         import ray
 
