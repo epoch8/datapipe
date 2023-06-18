@@ -18,6 +18,9 @@
 * Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
 * Add `step run-idx` CLI command
 
+* Executors: `datapipe.executor.SingleThreadExecutor`,
+  `datapipe.executor.ray.RayExecutor`
+
 # 0.12.0
 
 ## Breaking changes
