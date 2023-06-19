@@ -2,6 +2,7 @@
 # for each .Values.loops item, create a cronjob
 {{ $image := .Values.image }}
 {{ $resources := .Values.resources }}
+{{ $executor := .Values.executor }}
 
 {{- range .Values.loops }}
 
@@ -22,13 +23,26 @@ spec:
             command:
               - datapipe
               - step
+              {{- if .stepArgs }}
+              {{ .stepArgs | toYaml | nindent 14 }}
+              {{- end }}
+              {{- if .executor }}
+              - --executor={{ .executor }}
+              {{- else if $executor }}
+              - --executor={{ $executor }}
+              {{- end }}
+              {{- if .labels }}
               - --labels={{ .labels }}
+              {{- end }}
               - run
             {{- if .resources }}
             resources: {{ .resources | toYaml | nindent 14 }}
             {{- else if $resources }}
             resources: {{ $resources | toYaml | nindent 14 }}
             {{- end }}
+            ports:
+              - name: ray-dash-http
+                containerPort: 8265
           restartPolicy: OnFailure
           {{- if .nodeSelector }}
           nodeSelector: {{ .nodeSelector | toYaml | nindent 10 }}

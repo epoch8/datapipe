@@ -5,9 +5,8 @@ from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import pandas as pd
 from opentelemetry import trace
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
-from sqlalchemy.pool import SingletonThreadPool
+from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import Executable, SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select, tuple_
@@ -55,6 +54,11 @@ class DBConn:
             from sqlalchemy.dialects.sqlite import insert
 
             self.insert = insert
+
+            self.con = create_engine(
+                connstr,
+                poolclass=SingletonThreadPool,
+            )
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
@@ -63,12 +67,11 @@ class DBConn:
 
             self.insert = insert
 
-        self.con = create_engine(
-            connstr,
-            poolclass=SingletonThreadPool,
-        )
-
-        SQLAlchemyInstrumentor().instrument(engine=self.con)
+            self.con = create_engine(
+                connstr,
+                poolclass=QueuePool,
+                # pool_size=25,
+            )
 
         self.sqla_metadata = MetaData(schema=schema)
 
@@ -207,7 +210,8 @@ class TableStoreDB(TableStore):
             sql = sql_apply_idx_filter(
                 delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
             )
-            self.dbconn.con.execute(sql)
+            with self.dbconn.con.begin() as con:
+                con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
@@ -216,17 +220,18 @@ class TableStoreDB(TableStore):
         self.delete_rows(data_to_index(df, self.primary_keys))
         logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
-        for chunk_df in self._chunk_idx_df(df):
-            chunk_df.to_sql(
-                name=self.name,
-                con=self.dbconn.con,
-                schema=self.dbconn.schema,
-                if_exists="append",
-                index=False,
-                chunksize=1000,
-                method="multi",
-                dtype=sql_schema_to_sqltype(self.data_sql_schema),
-            )
+        with self.dbconn.con.begin() as con:
+            for chunk_df in self._chunk_idx_df(df):
+                chunk_df.to_sql(
+                    name=self.name,
+                    con=con,
+                    schema=self.dbconn.schema,
+                    if_exists="append",
+                    index=False,
+                    chunksize=1000,
+                    method="multi",
+                    dtype=sql_schema_to_sqltype(self.data_sql_schema),
+                )
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
@@ -247,18 +252,20 @@ class TableStoreDB(TableStore):
 
             res = []
 
-            for chunk_idx in self._chunk_idx_df(idx):
-                chunk_sql = sql_apply_idx_filter(
-                    sql, self.data_table, self.primary_keys, chunk_idx
-                )
-                chunk_df = pd.read_sql_query(chunk_sql, con=self.dbconn.con)
+            with self.dbconn.con.begin() as con:
+                for chunk_idx in self._chunk_idx_df(idx):
+                    chunk_sql = sql_apply_idx_filter(
+                        sql, self.data_table, self.primary_keys, chunk_idx
+                    )
+                    chunk_df = pd.read_sql_query(chunk_sql, con=con)
 
-                res.append(chunk_df)
+                    res.append(chunk_df)
 
             return pd.concat(res, ignore_index=True)
 
         else:
-            return pd.read_sql_query(sql, con=self.dbconn.con)
+            with self.dbconn.con.begin() as con:
+                return pd.read_sql_query(sql, con=con)
 
     def read_rows_meta_pseudo_df(
         self, chunksize: int = 1000, run_config: Optional[RunConfig] = None

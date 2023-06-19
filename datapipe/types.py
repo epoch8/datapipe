@@ -1,15 +1,7 @@
 from __future__ import annotations  # NOQA
 
 from dataclasses import dataclass, field
-from typing import (
-    Dict,
-    List,
-    NewType,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import Dict, List, NewType, Tuple, TypeVar, Union, cast
 
 import pandas as pd
 from sqlalchemy import Column
@@ -36,7 +28,9 @@ TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
 @dataclass
 class ChangeList:
-    changes: Dict[str, IndexDF] = field(default_factory=lambda: cast(Dict[str, IndexDF], {}))
+    changes: Dict[str, IndexDF] = field(
+        default_factory=lambda: cast(Dict[str, IndexDF], {})
+    )
 
     def append(self, table_name: str, idx: IndexDF) -> None:
         if table_name in self.changes:
@@ -46,7 +40,9 @@ class ChangeList:
             if self_cols != other_cols:
                 raise ValueError(f"Different IndexDF for table {table_name}")
 
-            self.changes[table_name] = cast(IndexDF, pd.concat([self.changes[table_name], idx], axis="index"))
+            self.changes[table_name] = cast(
+                IndexDF, pd.concat([self.changes[table_name], idx], axis="index")
+            )
         else:
             self.changes[table_name] = idx
 
@@ -84,7 +80,9 @@ def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
 
 
 def index_intersection(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:
-    assert sorted(list(idx1_df.columns.tolist())) == sorted(list(idx2_df.columns.tolist()))
+    assert sorted(list(idx1_df.columns.tolist())) == sorted(
+        list(idx2_df.columns.tolist())
+    )
     cols = idx1_df.columns.to_list()
 
     idx1_idx = idx1_df.set_index(cols).index
