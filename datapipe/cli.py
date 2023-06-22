@@ -501,6 +501,9 @@ def migrate_transform_tables(ctx: click.Context) -> None:
     batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
     for batch_transform in batch_transforms_steps:
         print(f"Checking '{batch_transform.get_name()}': ", end="")
+        if "cross_merge_dfs_only_on_test_subset" not in batch_transform.get_name():
+            print("Skipping")
+            continue
         size = batch_transform.meta_table.get_metadata_size()
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
@@ -527,12 +530,13 @@ def migrate_transform_tables(ctx: click.Context) -> None:
             )
             prev_tbl = tbl
         insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
-            batch_transform.transform_keys + ["process_ts", "is_success", "error"],
+            batch_transform.transform_keys + ["process_ts", "is_success", "error", "priority"],
             select(
                 *[sql.c[k] for k in batch_transform.transform_keys],
                 sql.c["process_ts"],
                 literal(True),
-                literal(None)
+                literal(None),
+                literal(0)
             )
         )
         app.ds.meta_dbconn.con.execute(insert_stmt)

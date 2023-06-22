@@ -1,3 +1,4 @@
+import copy
 import itertools
 import logging
 import math
@@ -180,6 +181,7 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[LabelDict] = None
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -204,6 +206,7 @@ class BaseBatchTransformStep(ComputeStep):
             primary_schema=self.transform_schema,
             create_table=ds.create_meta_table,
         )
+        self.filters = filters
 
     @classmethod
     def compute_transform_schema(
@@ -392,11 +395,25 @@ class BaseBatchTransformStep(ComputeStep):
         )
         return (self.transform_keys, sql)
 
+    def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
+        if self.filters is None:
+            return run_config
+        else:
+            if run_config is None:
+                return RunConfig(filters=self.filters)
+            else:
+                run_config = copy.deepcopy(run_config)
+                filters = copy.deepcopy(self.filters)
+                filters.update(run_config.filters)
+                run_config.filters = filters
+                return run_config
+
     def get_changed_idx_count(
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
+        run_config = self._apply_filters_to_run_config(run_config)
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
@@ -422,7 +439,7 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
-
+        run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
@@ -464,6 +481,7 @@ class BaseBatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config = self._apply_filters_to_run_config(run_config)
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -490,6 +508,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
+        run_config = self._apply_filters_to_run_config(run_config)
         res = super().store_batch_result(ds, idx, output_dfs, process_ts, run_config)
 
         self.meta_table.mark_rows_processed_success(
@@ -506,6 +525,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
+        run_config = self._apply_filters_to_run_config(run_config)
         super().store_batch_err(ds, idx, e, process_ts, run_config)
 
         self.meta_table.mark_rows_processed_error(
@@ -603,6 +623,7 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
+    filters: Optional[LabelDict] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -620,6 +641,7 @@ class BatchTransform(PipelineStep):
                 chunk_size=self.chunk_size,
                 labels=self.labels,
                 executor_config=self.executor_config,
+                filters=self.filters
             )
         ]
 
@@ -637,6 +659,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[LabelDict] = None
     ) -> None:
         super().__init__(
             ds=ds,
@@ -647,6 +670,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             chunk_size=chunk_size,
             labels=labels,
             executor_config=executor_config,
+            filters=filters
         )
 
         self.func = func
