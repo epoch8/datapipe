@@ -7,14 +7,16 @@ from typing import Dict, List, Optional, cast
 import click
 import pandas as pd
 import rich
-from datapipe_app import DatapipeApp
 from opentelemetry import trace
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
-from datapipe.compute import ComputeStep, run_steps, run_steps_changelist
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.types import ChangeList, IndexDF, Labels
 from datapipe.core_steps import BaseBatchTransformStep
 from sqlalchemy import insert, literal
@@ -127,6 +129,8 @@ def cli(
         TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"}))
     )
 
+    SQLAlchemyInstrumentor().instrument()
+
     if trace_stdout:
         processor = BatchSpanProcessor(ConsoleSpanExporter())
         trace.get_tracer_provider().add_span_processor(processor)  # type: ignore
@@ -179,16 +183,6 @@ def list(ctx: click.Context) -> None:
         print(table)
 
 
-@table.command()
-@click.argument("table")
-@click.pass_context
-def reset_metadata(ctx: click.Context, table: str) -> None:
-    app: DatapipeApp = ctx.obj["pipeline"]
-
-    dt = app.catalog.get_datatable(app.ds, table)
-    dt.reset_metadata()
-
-
 @cli.command()
 @click.pass_context
 def run(ctx: click.Context) -> None:
@@ -227,7 +221,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
         lints.LintDataWOMeta(),
     ]
 
-    tables_from_catalog = app.catalog.catalog.keys()
+    tables_from_catalog = list(app.catalog.catalog.keys())
     print(f"Pipeline contains {len(tables_from_catalog)} tables")
 
     if tables == "*":
@@ -282,14 +276,36 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 @cli.group()
 @click.option("--labels", type=click.STRING, default="")
 @click.option("--name", type=click.STRING, default="")
+@click.option("--executor", type=click.STRING, default="SingleThreadExecutor")
 @click.pass_context
-def step(ctx: click.Context, labels: str, name: str):
+def step(
+    ctx: click.Context,
+    labels: str,
+    name: str,
+    executor: str,
+) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     labels_dict = parse_labels(labels)
     steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
 
     ctx.obj["steps"] = steps
+
+    if executor == "SingleThreadExecutor":
+        ctx.obj["executor"] = SingleThreadExecutor()
+    elif executor == "RayExecutor":
+        import ray
+
+        from datapipe.executor.ray import RayExecutor
+
+        ray_ctx = ray.init()
+
+        if hasattr(ctx, "dashboard_url"):
+            rprint(f"Dashboard URL: {ctx.dashboard_url}")
+
+        ctx.obj["executor"] = RayExecutor()
+    else:
+        raise ValueError(f"Unknown executor: {executor}")
 
 
 def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
@@ -329,15 +345,13 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
         if status:
             if len(step.input_dts) > 0:
                 try:
-                    changed_idx_count = app.ds.get_changed_idx_count(
-                        inputs=step.input_dts,
-                        outputs=step.output_dts,
-                    )
+                    if isinstance(step, BaseBatchTransformStep):
+                        changed_idx_count = step.get_changed_idx_count(ds=app.ds)
 
-                    if changed_idx_count > 0:
-                        extra_args[
-                            "changed_idx_count"
-                        ] = f"[red]{changed_idx_count}[/red]"
+                        if changed_idx_count > 0:
+                            extra_args[
+                                "changed_idx_count"
+                            ] = f"[red]{changed_idx_count}[/red]"
 
                 except NotImplementedError:
                     # Currently we do not support empty join_keys
@@ -356,12 +370,15 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
 def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+
+    executor: Executor = ctx.obj["executor"]
+
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run)
+            run_steps(app.ds, steps_to_run, executor=executor)
 
         if not loop:
             break
@@ -372,33 +389,44 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
 
 
 @step.command()  # type: ignore
+@click.argument("idx", type=click.STRING)
+@click.pass_context
+def run_idx(ctx: click.Context, idx: str) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+    print(f"Running following steps: {', '.join(steps_to_run_names)}")
+
+    idx_dict = {k: v for k, v in (i.split("=") for i in idx.split(","))}
+
+    for step in steps_to_run:
+        step.run_idx(ds=app.ds, idx=cast(IndexDF, pd.DataFrame([idx_dict])))
+
+
+@step.command()  # type: ignore
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option(
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
 @click.pass_context
-@click.option("--chunk-size", type=click.INT, default=1000)
-def run_changelist(
-    ctx: click.Context, loop: bool, loop_delay: int, chunk_size: int
-) -> None:
+def run_changelist(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
-    print(
-        f"Running following steps: {', '.join(steps_to_run_names)} with {chunk_size=}"
-    )
+
+    print(f"Running following steps: {', '.join(steps_to_run_names)}")
+
     idx_gen, cnt = None, None
     while True:
         if len(steps_to_run) > 0:
+            step = steps_to_run[0]
+            assert isinstance(step, BaseBatchTransformStep)
+
             if idx_gen is None:
-                idx_count, idx_gen = app.ds.get_full_process_ids(
-                    inputs=steps_to_run[0].input_dts,
-                    outputs=steps_to_run[0].output_dts,
-                    chunk_size=chunk_size,
-                )
+                idx_count, idx_gen = step.get_full_process_ids(app.ds)
                 cnt = 0
             try:
-                idx = next(idx_gen)
+                idx = next(idx_gen)  # type: ignore
                 cl = ChangeList()
                 for input_dt in steps_to_run[0].input_dts:
                     cl.append(input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx)))
@@ -407,15 +435,43 @@ def run_changelist(
                 idx_gen = None
                 cnt = 0
         if idx_gen is not None and cnt is not None:
-            print(f"Chunk {cnt}/{idx_count} ended")
+            rprint(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1
         else:
             if not loop:
                 break
             else:
-                print(f"All chunks ended, sleeping {loop_delay}s...")
+                rprint(f"All chunks ended, sleeping {loop_delay}s...")
                 time.sleep(loop_delay)
                 print("\n\n")
+
+
+@step.command()
+@click.pass_context
+def fill_metadata(ctx: click.Context) -> None:
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+
+    for step in steps_to_run:
+        if isinstance(step, BaseBatchTransformStep):
+            rprint(
+                f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]"
+            )
+            step.fill_metadata(app.ds)
+
+
+@step.command()  # type: ignore
+@click.pass_context
+def reset_metadata(ctx: click.Context) -> None:  # noqa
+    app: DatapipeApp = ctx.obj["pipeline"]
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+    print(f"Resetting following steps: {', '.join(steps_to_run_names)}")
+
+    for step in steps_to_run:
+        if isinstance(step, BaseBatchTransformStep):
+            step.reset_metadata(app.ds)
 
 
 for entry_point in metadata.entry_points().get("datapipe.cli", []):
@@ -435,7 +491,7 @@ def reset_transform_metadata(ctx: click.Context, transform: str) -> None:
     batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
     transform_names = [step.get_name() for step in batch_transforms_steps]
     transform_step = batch_transforms_steps[transform_names.index(transform)]
-    transform_step.meta_table.reset_metadata()
+    transform_step.meta_table.mark_all_rows_unprocessed()
 
 
 @table.command()

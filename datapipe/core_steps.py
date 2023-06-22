@@ -17,12 +17,13 @@ from typing import (
 )
 
 import pandas as pd
-import tqdm
 from opentelemetry import trace
 from sqlalchemy import alias, and_, column, func, literal, or_, select
+from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
+from datapipe.executor import Executor, ExecutorConfig
 from datapipe.metastore import MetaTable, TransformMetaTable
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.store.database import sql_apply_runconfig_filter
@@ -116,7 +117,12 @@ class DatatableTransformStep(ComputeStep):
         self.kwargs = kwargs or {}
         self.check_for_changes = check_for_changes
 
-    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
+    def run_full(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+        executor: Optional[Executor] = None,
+    ) -> None:
         logger.info(f"Running: {self.name}")
 
         # TODO implement "watermark" system for tracking computation status in DatatableTransform
@@ -173,8 +179,16 @@ class BaseBatchTransformStep(ComputeStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
-        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
+        ComputeStep.__init__(
+            self,
+            name=name,
+            input_dts=input_dts,
+            output_dts=output_dts,
+            labels=labels,
+            executor_config=executor_config,
+        )
 
         self.chunk_size = chunk_size
 
@@ -337,9 +351,11 @@ class BaseBatchTransformStep(ComputeStep):
 
         tr_tbl = self.meta_table.sql_table
         out = (
-            select(*[column(k) for k in self.transform_keys] + [tr_tbl.c.process_ts])
+            select(
+                *[column(k) for k in self.transform_keys]
+                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            )
             .select_from(tr_tbl)
-            .where(tr_tbl.c.is_success == True)  # noqa
             .group_by(*[column(k) for k in self.transform_keys])
             .cte(name="transform")
         )
@@ -361,10 +377,17 @@ class BaseBatchTransformStep(ComputeStep):
             )
             .where(
                 or_(
-                    inp.c.update_ts > out.c.process_ts,
-                    inp.c.update_ts == None,  # noqa
+                    and_(
+                        out.c.is_success == True,  # noqa
+                        inp.c.update_ts > out.c.process_ts,
+                    ),
+                    out.c.is_success != True,  # noqa
                     out.c.process_ts == None,  # noqa
                 )
+            )
+            .order_by(
+                out.c.priority.desc().nullslast(),
+                *[column(k) for k in self.transform_keys],
             )
         )
         return (self.transform_keys, sql)
@@ -376,17 +399,19 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> int:
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
-        idx_count = ds.meta_dbconn.con.execute(
-            select([func.count()]).select_from(
-                alias(sql.subquery(), name="union_select")
-            )
-        ).scalar()
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                select([func.count()]).select_from(
+                    alias(sql.subquery(), name="union_select")
+                )
+            ).scalar()
 
         return idx_count
 
     def get_full_process_ids(
         self,
         ds: DataStore,
+        chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
@@ -397,6 +422,8 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
+
+        chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.input_dts) == 0:
@@ -422,15 +449,14 @@ class BaseBatchTransformStep(ComputeStep):
                 extra_filters = {}
 
             def alter_res_df():
-                for df in pd.read_sql_query(
-                    u1, con=ds.meta_dbconn.con, chunksize=self.chunk_size
-                ):
-                    for k, v in extra_filters.items():
-                        df[k] = v
+                with ds.meta_dbconn.con.begin() as con:
+                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                        for k, v in extra_filters.items():
+                            df[k] = v
 
-                    yield df
+                        yield df
 
-            return math.ceil(idx_count / self.chunk_size), alter_res_df()
+            return math.ceil(idx_count / chunk_size), alter_res_df()
 
     def get_change_list_process_ids(
         self,
@@ -488,6 +514,15 @@ class BaseBatchTransformStep(ComputeStep):
             error=str(e),
             run_config=run_config,
         )
+
+    def fill_metadata(self, ds: DataStore) -> None:
+        idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
+
+        for idx in tqdm(idx_gen, total=idx_len):
+            self.meta_table.insert_rows(idx)
+
+    def reset_metadata(self, ds: DataStore) -> None:
+        self.meta_table.mark_all_rows_unprocessed()
 
 
 @dataclass
@@ -567,6 +602,7 @@ class BatchTransform(PipelineStep):
     kwargs: Optional[Dict[str, Any]] = None
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
+    executor_config: Optional[ExecutorConfig] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -583,6 +619,7 @@ class BatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
             )
         ]
 
@@ -599,6 +636,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -608,6 +646,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
         )
 
         self.func = func
@@ -664,17 +703,6 @@ def do_batch_generate(
                 if isinstance(chunk_dfs, pd.DataFrame):
                     chunk_dfs = (chunk_dfs,)
             except StopIteration:
-                if empty_generator:
-                    for k, dt_k in enumerate(output_dts):
-                        dt_k.event_logger.log_state(
-                            dt_k.name,
-                            added_count=0,
-                            updated_count=0,
-                            deleted_count=0,
-                            processed_count=0,
-                            run_config=run_config,
-                        )
-
                 break
             except Exception as e:
                 logger.exception(f"Generating failed ({func}): {str(e)}")
@@ -729,7 +757,7 @@ def update_external_table(
 ) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(
+    for ps_df in tqdm(
         table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
     ):
         (
@@ -738,15 +766,6 @@ def update_external_table(
             new_meta_df,
             changed_meta_df,
         ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-        ds.event_logger.log_state(
-            table.name,
-            added_count=len(new_df),
-            updated_count=len(changed_df),
-            deleted_count=0,
-            processed_count=len(ps_df),
-            run_config=run_config,
-        )
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 

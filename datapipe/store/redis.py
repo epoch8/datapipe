@@ -26,7 +26,6 @@ class RedisStore(TableStore):
     def __init__(
         self, connection: Union[Redis, str], name: str, data_sql_schema: List[Column]
     ) -> None:
-
         if isinstance(connection, str):
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:

@@ -48,9 +48,10 @@ class DataTable:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
     def reset_metadata(self):
-        self.meta_dbconn.con.execute(
-            self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
-        )
+        with self.meta_dbconn.con.begin() as con:
+            con.execute(
+                self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
+            )
 
     def get_size(self) -> int:
         """
@@ -99,15 +100,6 @@ class DataTable:
                         changed_meta_df,
                     ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
 
-                self.event_logger.log_state(
-                    self.name,
-                    added_count=len(new_df),
-                    updated_count=len(changed_df),
-                    deleted_count=0,
-                    processed_count=len(data_df),
-                    run_config=run_config,
-                )
-
                 # TODO implement transaction meckanism
                 with tracer.start_as_current_span("store data"):
                     self.table_store.insert_rows(new_df)
@@ -143,14 +135,6 @@ class DataTable:
     ) -> None:
         if len(idx) > 0:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
-            self.event_logger.log_state(
-                self.name,
-                added_count=0,
-                updated_count=0,
-                deleted_count=len(idx),
-                processed_count=len(idx),
-                run_config=run_config,
-            )
 
             self.table_store.delete_rows(idx)
             self.meta_table.mark_rows_deleted(idx, now=now)

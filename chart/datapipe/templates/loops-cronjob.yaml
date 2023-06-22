@@ -1,0 +1,67 @@
+# CronJob template
+# for each .Values.loops item, create a cronjob
+{{ $image := .Values.image }}
+{{ $resources := .Values.resources }}
+{{ $executor := .Values.executor }}
+
+{{- range .Values.loops }}
+
+apiVersion: batch/v1
+kind: CronJob
+metadata: 
+  name: {{ .name }}
+spec:
+  schedule: "{{ .schedule }}"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: {{ .name }}
+            image: "{{ $image.repository }}:{{ $image.tag }}"
+            command:
+              - datapipe
+              - step
+              {{- if .stepArgs }}
+              {{ .stepArgs | toYaml | nindent 14 }}
+              {{- end }}
+              {{- if .executor }}
+              - --executor={{ .executor }}
+              {{- else if $executor }}
+              - --executor={{ $executor }}
+              {{- end }}
+              {{- if .labels }}
+              - --labels={{ .labels }}
+              {{- end }}
+              - run
+            {{- if .resources }}
+            resources: {{ .resources | toYaml | nindent 14 }}
+            {{- else if $resources }}
+            resources: {{ $resources | toYaml | nindent 14 }}
+            {{- end }}
+            ports:
+              - name: ray-dash-http
+                containerPort: 8265
+          restartPolicy: OnFailure
+          {{- if .nodeSelector }}
+          nodeSelector: {{ .nodeSelector | toYaml | nindent 10 }}
+          {{- end }}
+          {{- if .tolerations }}
+          tolerations: {{ .tolerations | toYaml | nindent 10 }}
+          {{- end }}
+          {{- if .affinity }}
+          affinity: {{ .affinity | toYaml | nindent 10 }}
+          {{- end }}
+          {{- if .serviceAccountName }}
+          serviceAccountName: {{ .serviceAccountName }}
+          {{- end }}
+          {{- if .securityContext }}
+          securityContext: {{ .securityContext | toYaml | nindent 10 }}
+          {{- end }}
+          {{- if .imagePullSecrets }}
+          imagePullSecrets: {{ .imagePullSecrets | toYaml | nindent 10 }}
+          {{- end }}
+
+--- 
+{{- end }}

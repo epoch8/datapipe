@@ -7,6 +7,19 @@
   `BaseBatchTransformStep`
 * Add `transform_keys` to `*BatchTransform`
 * Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
+* Add column `priority` to transform meta table, sort work by priority
+
+## New features
+
+* Add `step reset-metadata` CLI command
+* Add `step fill-metadata` CLI command that populates transform meta-table with
+  all indices to process
+* Add helm chart for running regular loops in k8s as `CronJob`
+* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
+* Add `step run-idx` CLI command
+
+* Executors: `datapipe.executor.SingleThreadExecutor`,
+  `datapipe.executor.ray.RayExecutor`
 
 # 0.12.0
 
