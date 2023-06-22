@@ -445,8 +445,9 @@ def migrate_transform_tables(ctx: click.Context) -> None:
     batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
     for batch_transform in batch_transforms_steps:
         print(f"Checking '{batch_transform.get_name()}': ", end="")
-        if batch_transform.meta_table.get_metadata_size():
-            print("Skipping -- size of metadata is greater 0")
+        size = batch_transform.meta_table.get_metadata_size()
+        if size > 0:
+            print(f"Skipping -- size of metadata is greater 0: {size=}")
             continue
         if app.ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
             greatest_func = func.max
