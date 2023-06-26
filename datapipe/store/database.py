@@ -223,14 +223,17 @@ class TableStoreDB(TableStore):
             df.to_dict(orient="records")
         )
 
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                col.name: insert_sql.excluded[col.name]
-                for col in self.data_sql_schema
-                if not col.primary_key
-            },
-        )
+        if any(not col.primary_key for col in self.data_sql_schema):
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.primary_keys,
+                set_={
+                    col.name: insert_sql.excluded[col.name]
+                    for col in self.data_sql_schema
+                    if not col.primary_key
+                },
+            )
+        else:
+            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
         with self.dbconn.con.begin() as con:
             con.execute(sql)
