@@ -30,14 +30,15 @@ class RayExecutor(Executor):
             if executor_config.cpu is not None:
                 remote_kwargs["num_cpus"] = executor_config.cpu
 
-        @ray.remote(**remote_kwargs)  # type: ignore
-        def process_fn_remote(ds, idx, run_config):
-            return process_fn(ds, idx, run_config)
+        if remote_kwargs:
+            process_fn_remote = ray.remote(**remote_kwargs)(process_fn)
+        else:
+            process_fn_remote = ray.remote(process_fn)
 
         # Submit tasks to remote functions using Ray
         futures = []
         for idx in idx_gen:
-            future = process_fn_remote.remote(ds, idx, run_config)
+            future = process_fn_remote.remote(ds, idx, run_config)  # type: ignore
             futures.append(future)
 
         # Generator to collect results, so tqdm can show progress
