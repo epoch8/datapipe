@@ -106,8 +106,9 @@ class DataTable:
                     self.table_store.update_rows(changed_df)
 
                 with tracer.start_as_current_span("store metadata"):
-                    self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-                    self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+                    self.meta_table.update_rows(
+                        cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+                    )
 
                     changes.append(data_to_index(new_df, self.primary_keys))
                     changes.append(data_to_index(changed_df, self.primary_keys))

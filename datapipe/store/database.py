@@ -217,21 +217,23 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
-        self.delete_rows(data_to_index(df, self.primary_keys))
         logger.debug(f"Inserting {len(df)} rows into {self.name} data")
 
+        insert_sql = self.dbconn.insert(self.data_table).values(
+            df.to_dict(orient="records")
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                col.name: insert_sql.excluded[col.name]
+                for col in self.data_sql_schema
+                if not col.primary_key
+            },
+        )
+
         with self.dbconn.con.begin() as con:
-            for chunk_df in self._chunk_idx_df(df):
-                chunk_df.to_sql(
-                    name=self.name,
-                    con=con,
-                    schema=self.dbconn.schema,
-                    if_exists="append",
-                    index=False,
-                    chunksize=1000,
-                    method="multi",
-                    dtype=sql_schema_to_sqltype(self.data_sql_schema),
-                )
+            con.execute(sql)
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)

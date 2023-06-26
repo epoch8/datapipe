@@ -325,6 +325,9 @@ class TableStoreFiledir(TableStore):
             with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
+    def update_rows(self, df: DataDF) -> None:
+        return self.insert_rows(df)
+
     def _read_rows_fast(
         self,
         idx: IndexDF,

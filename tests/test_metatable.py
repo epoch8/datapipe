@@ -1,6 +1,8 @@
-from typing import cast, List
-import pandas as pd
+from typing import List, cast
 
+import pandas as pd
+import pytest
+from pytest_cases import parametrize, parametrize_with_cases
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
@@ -8,8 +10,6 @@ from datapipe.metastore import MetaTable
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
-import pytest
-from pytest_cases import parametrize_with_cases, parametrize
 from .util import assert_df_equal
 
 
@@ -52,7 +52,10 @@ class CasesTestDF:
     def case_multi_idx(self, N):
         return (
             ["id1", "id2"],
-            [Column("id1", Integer, primary_key=True), Column("id2", Integer, primary_key=True)],
+            [
+                Column("id1", Integer, primary_key=True),
+                Column("id2", Integer, primary_key=True),
+            ],
             [],
             cast(
                 DataDF,
@@ -66,7 +69,10 @@ class CasesTestDF:
     def case_multi_idx_with_meta(self, N):
         return (
             ["id1", "id2"],
-            [Column("id1", Integer, primary_key=True), Column("id2", Integer, primary_key=True)],
+            [
+                Column("id1", Integer, primary_key=True),
+                Column("id2", Integer, primary_key=True),
+            ],
             [
                 Column("item_id", Integer, MetaKey()),
                 Column("product_id", Integer, MetaKey()),
@@ -74,15 +80,29 @@ class CasesTestDF:
             cast(
                 DataDF,
                 pd.DataFrame(
-                    {"id1": range(N), "id2": range(N), "item_id": range(N), "product_id": range(N), "a": range(N)},
+                    {
+                        "id1": range(N),
+                        "id2": range(N),
+                        "item_id": range(N),
+                        "product_id": range(N),
+                        "a": range(N),
+                    },
                 ),
             ),
         )
 
 
-@parametrize_with_cases("index_cols,primary_schema,meta_schema,test_df", cases=CasesTestDF, import_fixtures=True)
+@parametrize_with_cases(
+    "index_cols,primary_schema,meta_schema,test_df",
+    cases=CasesTestDF,
+    import_fixtures=True,
+)
 def test_insert_rows(
-    dbconn: DBConn, index_cols: List[str], primary_schema: DataSchema, meta_schema: MetaSchema, test_df: DataDF
+    dbconn: DBConn,
+    index_cols: List[str],
+    primary_schema: DataSchema,
+    meta_schema: MetaSchema,
+    test_df: DataDF,
 ):
     mt = MetaTable(
         name="test",
@@ -93,7 +113,9 @@ def test_insert_rows(
     )
     keys = list(set(mt.primary_keys) | set(mt.meta_keys.keys()))
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(
+        test_df
+    )
     assert_df_equal(new_df, test_df, index_cols=index_cols)
     assert len(new_df) == len(test_df)
     assert len(new_meta_df) == len(test_df)
@@ -103,8 +125,8 @@ def test_insert_rows(
     assert_df_equal(new_meta_df[index_cols], new_df[index_cols], index_cols=index_cols)
     assert_df_equal(new_meta_df[keys], new_df[keys], index_cols=index_cols)
 
-    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
-    mt.update_meta_for_store_chunk(changed_meta_df=changed_meta_df)
+    mt.update_rows(df=new_meta_df)
+    mt.update_rows(df=changed_meta_df)
 
     meta_df = mt.get_metadata()
 
@@ -114,9 +136,17 @@ def test_insert_rows(
     assert not meta_df["hash"].isna().any()
 
 
-@parametrize_with_cases("index_cols,primary_schema,meta_schema,test_df", cases=CasesTestDF, import_fixtures=True)
+@parametrize_with_cases(
+    "index_cols,primary_schema,meta_schema,test_df",
+    cases=CasesTestDF,
+    import_fixtures=True,
+)
 def test_get_metadata(
-    dbconn: DBConn, index_cols: List[str], primary_schema: DataSchema, meta_schema: MetaSchema, test_df: DataDF
+    dbconn: DBConn,
+    index_cols: List[str],
+    primary_schema: DataSchema,
+    meta_schema: MetaSchema,
+    test_df: DataDF,
 ):
     mt = MetaTable(
         name="test",
@@ -126,13 +156,23 @@ def test_get_metadata(
         create_table=True,
     )
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
-    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(
+        test_df
+    )
+    mt.update_rows(df=new_meta_df)
 
     part_df = test_df.iloc[0:2]
     part_idx = part_df[index_cols]
     keys = list(set(mt.primary_keys) | set(mt.meta_keys.keys()))
 
-    assert_df_equal(mt.get_metadata(cast(IndexDF, part_idx))[index_cols], part_idx, index_cols=index_cols)
+    assert_df_equal(
+        mt.get_metadata(cast(IndexDF, part_idx))[index_cols],
+        part_idx,
+        index_cols=index_cols,
+    )
 
-    assert_df_equal(mt.get_metadata(cast(IndexDF, part_idx))[keys], part_df[keys], index_cols=index_cols)
+    assert_df_equal(
+        mt.get_metadata(cast(IndexDF, part_idx))[keys],
+        part_df[keys],
+        index_cols=index_cols,
+    )

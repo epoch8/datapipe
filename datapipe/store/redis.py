@@ -52,10 +52,6 @@ class RedisStore(TableStore):
         redis_pipe.execute()
 
     def update_rows(self, df: DataDF) -> None:
-        # удаляем существующие ключи
-        if df.empty:
-            df = pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
-        self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
     def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
