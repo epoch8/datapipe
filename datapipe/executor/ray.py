@@ -9,7 +9,6 @@ from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
 
 
-# Define a remote function for the process_fn
 class RayExecutor(Executor):
     def run_process_batch(
         self,
@@ -31,14 +30,21 @@ class RayExecutor(Executor):
                 remote_kwargs["num_cpus"] = executor_config.cpu
 
         if remote_kwargs:
-            process_fn_remote = ray.remote(**remote_kwargs)(process_fn)
+
+            @ray.remote(**remote_kwargs)
+            def process_fn_remote(ds, idx, run_config):
+                return process_fn(ds, idx, run_config)
+
         else:
-            process_fn_remote = ray.remote(process_fn)
+
+            @ray.remote
+            def process_fn_remote(ds, idx, run_config):
+                return process_fn(ds, idx, run_config)
 
         # Submit tasks to remote functions using Ray
         futures = []
         for idx in idx_gen:
-            future = process_fn_remote.remote(ds, idx, run_config)  # type: ignore
+            future = process_fn_remote.remote(ds, idx, run_config)
             futures.append(future)
 
         # Generator to collect results, so tqdm can show progress
