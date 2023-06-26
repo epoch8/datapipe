@@ -496,14 +496,14 @@ def reset_transform_metadata(ctx: click.Context, transform: str) -> None:
 
 @table.command()
 @click.pass_context
-def migrate_transform_tables(ctx: click.Context) -> None:
+@click.option("--name", type=click.STRING, default="")
+@click.option("--labels", type=click.STRING, default="")
+def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
-    batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
+    labels_dict = parse_labels(labels)
+    batch_transforms_steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
     for batch_transform in batch_transforms_steps:
         print(f"Checking '{batch_transform.get_name()}': ", end="")
-        if "cross_merge_dfs_only_on_test_subset" not in batch_transform.get_name():
-            print("Skipping")
-            continue
         size = batch_transform.meta_table.get_metadata_size()
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
