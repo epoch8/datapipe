@@ -3,6 +3,7 @@ import itertools
 import logging
 import math
 import time
+import inspect
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -181,7 +182,8 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[LabelDict] = None
+        filters: Optional[LabelDict] = None,
+        order_by: Optional[List[str]] = None
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -207,6 +209,7 @@ class BaseBatchTransformStep(ComputeStep):
             create_table=ds.create_meta_table,
         )
         self.filters = filters
+        self.order_by = order_by
 
     @classmethod
     def compute_transform_schema(
@@ -251,6 +254,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
+        order_by: Optional[List[str]] = None
     ) -> Tuple[Iterable[str], select]:
         if len(self.transform_keys) == 0:
             raise NotImplementedError()
@@ -264,7 +268,6 @@ class BaseBatchTransformStep(ComputeStep):
         output_insersection = set.intersection(*map(set, [
             [col.name for col in dt.primary_schema] for dt in self.output_dts
         ]))
-        print(f"{all_input_keys_counts=}")
         # assert all(
         #     v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
         # )
@@ -389,11 +392,23 @@ class BaseBatchTransformStep(ComputeStep):
                     out.c.process_ts == None,  # noqa
                 )
             )
-            .order_by(
-                out.c.priority.desc().nullslast(),
-                *[column(k) for k in self.transform_keys],
-            )
         )
+        if order_by is None:
+            sql = (
+                sql
+                .order_by(
+                    out.c.priority.desc().nullslast(),
+                    *[column(k) for k in self.transform_keys],
+                )
+            )
+        else:
+            sql = (
+                sql
+                .order_by(
+                    *[column(k) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                )
+            )
         return (self.transform_keys, sql)
 
     def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
@@ -430,7 +445,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         chunk_size: Optional[int] = None,
-        run_config: Optional[RunConfig] = None,
+        run_config: Optional[RunConfig] = None
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
         Метод для получения перечня индексов для обработки.
@@ -455,6 +470,7 @@ class BaseBatchTransformStep(ComputeStep):
             join_keys, u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
+                order_by=self.order_by
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
@@ -625,6 +641,7 @@ class BatchTransform(PipelineStep):
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
     filters: Optional[LabelDict] = None
+    order_by: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -642,7 +659,8 @@ class BatchTransform(PipelineStep):
                 chunk_size=self.chunk_size,
                 labels=self.labels,
                 executor_config=self.executor_config,
-                filters=self.filters
+                filters=self.filters,
+                order_by=self.order_by
             )
         ]
 
@@ -660,7 +678,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[LabelDict] = None
+        filters: Optional[LabelDict] = None,
+        order_by: Optional[List[str]] = None
     ) -> None:
         super().__init__(
             ds=ds,
@@ -671,7 +690,8 @@ class BatchTransformStep(BaseBatchTransformStep):
             chunk_size=chunk_size,
             labels=labels,
             executor_config=executor_config,
-            filters=filters
+            filters=filters,
+            order_by=order_by
         )
 
         self.func = func
@@ -684,7 +704,14 @@ class BatchTransformStep(BaseBatchTransformStep):
         input_dfs: List[DataDF],
         run_config: Optional[RunConfig] = None,
     ) -> TransformResult:
-        return self.func(*input_dfs, **self.kwargs or {})
+        parameters = inspect.signature(self.func).parameters
+        kwargs = {
+            **({"ds": ds} if "ds" in parameters else {}),
+            **({"idx": idx} if "idx" in parameters else {}),
+            **({"run_config": run_config} if "run_config" in parameters else {}),
+            **(self.kwargs or {})
+        }
+        return self.func(*input_dfs, **kwargs)
 
 
 def do_batch_generate(
