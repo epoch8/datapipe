@@ -20,7 +20,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select
+from sqlalchemy import alias, and_, column, func, literal, or_, select, desc
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
@@ -405,7 +405,7 @@ class BaseBatchTransformStep(ComputeStep):
             sql = (
                 sql
                 .order_by(
-                    *[column(k) for k in order_by],
+                    desc(*[column(k) for k in order_by]),
                     out.c.priority.desc().nullslast(),
                 )
             )
