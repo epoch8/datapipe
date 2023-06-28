@@ -19,7 +19,7 @@ from typing import (
 import pandas as pd
 import tqdm
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select
+from sqlalchemy import Column, alias, and_, column, func, literal, or_, select
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
@@ -29,11 +29,13 @@ from datapipe.store.database import sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
+    DataSchema,
     IndexDF,
     Labels,
     MetaSchema,
     TransformResult,
     data_to_index,
+    get_tables_that_have_different_intersections
 )
 
 logger = logging.getLogger("datapipe.core_steps")
@@ -244,17 +246,14 @@ class BaseBatchTransformStep(ComputeStep):
 
         # Check that all keys are either in one input table or in all input tables
         # Currently we do not support partial primary keys
-        output_insersection = set.intersection(*map(set, [
-            [col.name for col in dt.primary_schema] for dt in self.output_dts
-        ]))
-        assert all(
-            v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
-        ) or (
-            len(output_insersection) > 0 and all(
-                all_input_keys_counts.get(str(k), 0) >= 1
-                for k in output_insersection
-            )
+        tables_that_have_different_intersections = get_tables_that_have_different_intersections(
+            [dt.primary_schema for dt in self.input_dts],
+            [dt.name for dt in self.input_dts]
         )
+        if len(tables_that_have_different_intersections) > 0:
+            raise NotImplementedError(
+                "Different pairwise intersection of columns in inputs tables is not supported yet."
+            )
 
         common_keys = [
             k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
