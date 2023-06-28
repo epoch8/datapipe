@@ -610,10 +610,7 @@ class TransformMetaTable:
 
     def get_metadata_size(self) -> int:
         """
-        Получить количество строк метаданных.
-
-        idx - опциональный фильтр по целевым строкам
-        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
+        Получить количество строк метаданных трансформации.
         """
 
         sql = select([func.count()]).select_from(self.sql_table)
