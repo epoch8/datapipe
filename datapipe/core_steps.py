@@ -15,6 +15,7 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
+    Union,
     cast,
 )
 
@@ -182,7 +183,7 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[LabelDict] = None,
+        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
         order_by: Optional[List[str]] = None
     ) -> None:
         ComputeStep.__init__(
@@ -415,11 +416,16 @@ class BaseBatchTransformStep(ComputeStep):
         if self.filters is None:
             return run_config
         else:
+            if isinstance(self.filters, LabelDict):
+                filters = self.filters
+            elif isinstance(self.filters, Callable[[], LabelDict]):
+                filters = self.filters()
+
             if run_config is None:
-                return RunConfig(filters=self.filters)
+                return RunConfig(filters=filters)
             else:
                 run_config = copy.deepcopy(run_config)
-                filters = copy.deepcopy(self.filters)
+                filters = copy.deepcopy(filters)
                 filters.update(run_config.filters)
                 run_config.filters = filters
                 return run_config
@@ -640,7 +646,7 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[LabelDict] = None
+    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
     order_by: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
@@ -678,7 +684,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[LabelDict] = None,
+        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
         order_by: Optional[List[str]] = None
     ) -> None:
         super().__init__(

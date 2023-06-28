@@ -503,7 +503,9 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     labels_dict = parse_labels(labels)
     batch_transforms_steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
     for batch_transform in batch_transforms_steps:
-        print(f"Checking '{batch_transform.get_name()}': ", end="")
+        if not isinstance(batch_transform, BaseBatchTransformStep):
+            continue
+        print(f"Checking '{batch_transform.get_name()}': ")
         size = batch_transform.meta_table.get_metadata_size()
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
@@ -540,4 +542,4 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
             )
         )
         app.ds.meta_dbconn.con.execute(insert_stmt)
-        rprint("[green] ok[/green]")
+        rprint("  [green] ok[/green]")
