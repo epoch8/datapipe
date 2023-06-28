@@ -21,13 +21,8 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-<<<<<<< HEAD
 from sqlalchemy import alias, and_, column, func, literal, or_, select, desc
 from tqdm_loggable.auto import tqdm
-=======
-from sqlalchemy import Column, alias, and_, column, func, literal, or_, select
->>>>>>> add-equivalence-functions
-
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
