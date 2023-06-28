@@ -419,9 +419,9 @@ class BaseBatchTransformStep(ComputeStep):
         if self.filters is None:
             return run_config
         else:
-            if isinstance(self.filters, LabelDict):
+            if isinstance(self.filters, dict):
                 filters = self.filters
-            elif isinstance(self.filters, Callable[[], LabelDict]):
+            elif isinstance(self.filters, Callable):
                 filters = self.filters()
 
             if run_config is None:
