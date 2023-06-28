@@ -69,7 +69,7 @@ class MilvusStore(TableStore):
             self.collection.release()
             self._collection_loaded = False
 
-    def insert_rows(self, df: DataDF) -> None:
+    def _insert_rows(self, df: DataDF) -> None:
         if len(df) == 0:
             return
 
@@ -81,9 +81,13 @@ class MilvusStore(TableStore):
             self.collection.release()
             self._collection_loaded = False
 
+    def insert_rows(self, df: DataDF) -> None:
+        self.delete_rows(data_to_index(df, [self.pk_field]))
+        self._insert_rows(df)
+
     def update_rows(self, df: DataDF) -> None:
         self.delete_rows(data_to_index(df, [self.pk_field]))
-        self.insert_rows(df)
+        self._insert_rows(df)
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         if not idx:
