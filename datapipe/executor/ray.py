@@ -9,7 +9,6 @@ from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
 
 
-# Define a remote function for the process_fn
 class RayExecutor(Executor):
     def run_process_batch(
         self,
@@ -30,9 +29,17 @@ class RayExecutor(Executor):
             if executor_config.cpu is not None:
                 remote_kwargs["num_cpus"] = executor_config.cpu
 
-        @ray.remote(**remote_kwargs)  # type: ignore
-        def process_fn_remote(ds, idx, run_config):
-            return process_fn(ds, idx, run_config)
+        if remote_kwargs:
+
+            @ray.remote(**remote_kwargs)
+            def process_fn_remote(ds, idx, run_config):
+                return process_fn(ds, idx, run_config)
+
+        else:
+
+            @ray.remote
+            def process_fn_remote(ds, idx, run_config):
+                return process_fn(ds, idx, run_config)
 
         # Submit tasks to remote functions using Ray
         futures = []
