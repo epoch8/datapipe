@@ -1,7 +1,7 @@
 from __future__ import annotations  # NOQA
 
 from dataclasses import dataclass, field
-from typing import Dict, List, NewType, Tuple, TypeVar, Union, cast
+from typing import Dict, List, NewType, Tuple, TypeVar, Union, cast, Set
 import itertools
 import pandas as pd
 from sqlalchemy import Column

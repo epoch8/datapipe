@@ -434,7 +434,7 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             if isinstance(self.filters, dict):
                 filters = self.filters
-            elif isinstance(self.filters, Callable):
+            elif isinstance(self.filters, Callable):  # type: ignore
                 filters = self.filters()
 
             if run_config is None:

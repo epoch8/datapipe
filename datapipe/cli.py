@@ -408,8 +408,9 @@ def run_idx(ctx: click.Context, idx: str) -> None:
 @click.option(
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
+@click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
 @click.pass_context
-def run_changelist(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: Optional[int] = None) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
@@ -423,7 +424,7 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int) -> None:
             assert isinstance(step, BaseBatchTransformStep)
 
             if idx_gen is None:
-                idx_count, idx_gen = step.get_full_process_ids(app.ds)
+                idx_count, idx_gen = step.get_full_process_ids(app.ds, chunk_size=chunk_size)
                 cnt = 0
             try:
                 idx = next(idx_gen)  # type: ignore
