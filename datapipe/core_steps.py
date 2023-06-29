@@ -197,7 +197,6 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         self.chunk_size = chunk_size
-
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             [i.meta_table for i in input_dts],
             [i.meta_table for i in output_dts],
@@ -527,19 +526,21 @@ class BaseBatchTransformStep(ComputeStep):
             for inp in self.input_dts:
                 if inp.name in change_list.changes:
                     idx = change_list.changes[inp.name]
-
-                    _, sql = self._build_changed_idx_sql(
-                        ds=ds,
-                        filters_idx=idx,
-                        run_config=run_config,
-                    )
-                    with ds.meta_dbconn.con.begin() as con:
-                        table_changes_df = pd.read_sql_query(
-                            sql,
-                            con=con,
+                    if any([key not in idx.columns for key in self.transform_keys]):
+                        _, sql = self._build_changed_idx_sql(
+                            ds=ds,
+                            filters_idx=idx,
+                            run_config=run_config,
                         )
+                        with ds.meta_dbconn.con.begin() as con:
+                            table_changes_df = pd.read_sql_query(
+                                sql,
+                                con=con,
+                            )
 
-                    changes.append(table_changes_df)
+                        changes.append(table_changes_df)
+                    else:
+                        changes.append(data_to_index(idx, self.transform_keys))
 
             idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
             idx = IndexDF(idx_df[self.transform_keys])

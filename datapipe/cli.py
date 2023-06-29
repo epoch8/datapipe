@@ -429,8 +429,19 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
             try:
                 idx = next(idx_gen)  # type: ignore
                 cl = ChangeList()
-                for input_dt in steps_to_run[0].input_dts:
-                    cl.append(input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx)))
+                take_all_idxs = False
+                if all(
+                    [
+                        key not in input_dt.primary_keys for key in step.transform_keys
+                        for input_dt in steps_to_run[0].input_dts
+                    ]
+                ):
+                    take_all_idxs = True
+
+                for input_dt in step.input_dts:
+                    if not take_all_idxs and any([key in input_dt.primary_keys for key in step.transform_keys]):
+                        cl.append(input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx)))
+
                 run_steps_changelist(app.ds, steps_to_run, cl)
             except StopIteration:
                 idx_gen = None
