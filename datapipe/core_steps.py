@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select, desc
+from sqlalchemy import alias, and_, column, func, literal, or_, select, desc, tuple_
 from tqdm_loggable.auto import tqdm
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
@@ -255,8 +255,9 @@ class BaseBatchTransformStep(ComputeStep):
     def _build_changed_idx_sql(
         self,
         ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-        order_by: Optional[List[str]] = None
+        filters_idx: Optional[IndexDF] = None,
+        order_by: Optional[List[str]] = None,
+        run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Tuple[Iterable[str], select]:
         if len(self.transform_keys) == 0:
             raise NotImplementedError()
@@ -301,6 +302,18 @@ class BaseBatchTransformStep(ComputeStep):
                 .select_from(tbl)
                 .group_by(*key_cols)
             )
+
+            if filters_idx is not None:
+                applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
+                if len(applicable_filter_keys) > 0:
+                    sql = sql.where(
+                        tuple_(*[column(i) for i in applicable_filter_keys]).in_(
+                            [
+                                tuple_(*[r[k] for k in applicable_filter_keys])
+                                for r in filters_idx.to_dict(orient="records")
+                            ]
+                        )
+                    )
 
             sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
@@ -515,7 +528,18 @@ class BaseBatchTransformStep(ComputeStep):
                 if inp.name in change_list.changes:
                     idx = change_list.changes[inp.name]
 
-                    changes.append(data_to_index(idx, self.transform_keys))
+                    _, sql = self._build_changed_idx_sql(
+                        ds=ds,
+                        filters_idx=idx,
+                        run_config=run_config,
+                    )
+                    with ds.meta_dbconn.con.begin() as con:
+                        table_changes_df = pd.read_sql_query(
+                            sql,
+                            con=con,
+                        )
+
+                    changes.append(table_changes_df)
 
             idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
             idx = IndexDF(idx_df[self.transform_keys])
