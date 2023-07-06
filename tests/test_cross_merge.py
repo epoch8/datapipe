@@ -174,12 +174,16 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipel
         tbl_left_x_right,
         cross_step,
     ) = ds_catalog_pipeline_tbls
-    # Чистый пайплайн на первой табличке
+    # Добавляем 1ую табличку, вторая таблица пустая
     df_idx_left = tbl_left.store_chunk(TEST_DF_LEFT)
     changelist = ChangeList()
     changelist.append("tbl_left", df_idx_left)
     run_steps_changelist(ds, [cross_step], changelist)
-    # Чистый пайплайн на второй табличке
+    changelist = ChangeList()
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
+
+    # Добавляем 2ую табличку
     df_idx_right = tbl_right.store_chunk(TEST_DF_RIGHT)
     changelist = ChangeList()
     changelist.append("tbl_right", df_idx_right)
@@ -187,6 +191,9 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipel
     assert_datatable_equal(
         tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
     )
+    changelist = ChangeList()
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
 
 
 def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
