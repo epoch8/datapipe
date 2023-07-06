@@ -191,8 +191,8 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
     tbl2.store_chunk(df2, now=0)
 
     def update_df(df1: pd.DataFrame, df2: pd.DataFrame):
-        df1 = df1.set_index("item_id")
-        df2 = df2.set_index("item_id")
+        df1 = df1.set_index(["item_id", "pipeline_id"])
+        df2 = df2.set_index(["item_id", "pipeline_id"])
 
         df1.update(df2)
 
@@ -208,9 +208,9 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
     step.run_full(ds)
 
-    df_res = TEST_DF1_1.copy()
-
-    df_res.update(df2)
+    df_res = TEST_DF1_1.copy().set_index(["item_id", "pipeline_id"])
+    df_res.update(df2.set_index(["item_id", "pipeline_id"]))
+    df_res = df_res.reset_index()
 
     assert_datatable_equal(tbl2, df_res)
 

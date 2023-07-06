@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline, run_steps, run_steps_changelist
+from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_pipeline, run_steps, run_steps_changelist
 from datapipe.core_steps import BatchGenerate, BatchTransform, BatchTransformStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import DBConn, TableStoreDB
@@ -163,6 +163,47 @@ def test_cross_merge_scenary_clear_changelist(ds_catalog_pipeline_tbls):
     assert_datatable_equal(
         tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
     )
+
+
+def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipeline_tbls):
+    (
+        ds,
+        catalog,
+        tbl_left,
+        tbl_right,
+        tbl_left_x_right,
+        cross_step,
+    ) = ds_catalog_pipeline_tbls
+    # Добавляем 1ую табличку, вторая таблица пустая
+    df_idx_left = tbl_left.store_chunk(TEST_DF_LEFT)
+    changelist = ChangeList()
+    changelist.append("tbl_left", df_idx_left)
+    run_steps_changelist(ds, [cross_step], changelist)
+    changelist = ChangeList()
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
+
+    # Добавляем 2ую табличку
+    df_idx_right = tbl_right.store_chunk(TEST_DF_RIGHT)
+    changelist = ChangeList()
+    changelist.append("tbl_right", df_idx_right)
+    run_steps_changelist(ds, [cross_step], changelist)
+    assert_datatable_equal(
+        tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
+    )
+    changelist = ChangeList()
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
+
+    changelist = ChangeList()
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
+
+    changelist = ChangeList()
+    changelist.append("tbl_left", TEST_DF_LEFT_FINAL)  # смесь реальных и пустых индексов
+    changelist.append("tbl_right", TEST_DF_RIGHT_FINAL)  # смесь реальных и пустых индексов
+    run_steps_changelist(ds, [cross_step], changelist)
 
 
 def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
