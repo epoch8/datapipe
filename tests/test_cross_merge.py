@@ -195,6 +195,11 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipel
     changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
+    changelist = ChangeList()
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    run_steps_changelist(ds, [cross_step], changelist)
+
 
 def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
     (
