@@ -180,7 +180,7 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipel
     changelist.append("tbl_left", df_idx_left)
     run_steps_changelist(ds, [cross_step], changelist)
     # Чистый пайплайн на второй табличке
-    df_idx_right = tbl_left.store_chunk(TEST_DF_RIGHT)
+    df_idx_right = tbl_right.store_chunk(TEST_DF_RIGHT)
     changelist = ChangeList()
     changelist.append("tbl_right", df_idx_right)
     run_steps_changelist(ds, [cross_step], changelist)
