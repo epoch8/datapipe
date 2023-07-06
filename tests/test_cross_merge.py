@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline, run_steps, run_steps_changelist
+from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_pipeline, run_steps, run_steps_changelist
 from datapipe.core_steps import BatchGenerate, BatchTransform, BatchTransformStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import DBConn, TableStoreDB
@@ -159,6 +159,30 @@ def test_cross_merge_scenary_clear_changelist(ds_catalog_pipeline_tbls):
     run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
     changelist = ChangeList()
     changelist.append("tbl_left", idx=tbl_left.get_data())
+    run_steps_changelist(ds, [cross_step], changelist)
+    assert_datatable_equal(
+        tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
+    )
+
+
+def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipeline_tbls):
+    (
+        ds,
+        catalog,
+        tbl_left,
+        tbl_right,
+        tbl_left_x_right,
+        cross_step,
+    ) = ds_catalog_pipeline_tbls
+    # Чистый пайплайн на первой табличке
+    df_idx_left = tbl_left.store_chunk(TEST_DF_LEFT)
+    changelist = ChangeList()
+    changelist.append("tbl_left", df_idx_left)
+    run_steps_changelist(ds, [cross_step], changelist)
+    # Чистый пайплайн на второй табличке
+    df_idx_right = tbl_left.store_chunk(TEST_DF_RIGHT)
+    changelist = ChangeList()
+    changelist.append("tbl_right", df_idx_right)
     run_steps_changelist(ds, [cross_step], changelist)
     assert_datatable_equal(
         tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
