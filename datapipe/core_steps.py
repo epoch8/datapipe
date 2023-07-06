@@ -275,6 +275,23 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             greatest_func = func.greatest
 
+        def _apply_filters_idx(sql, keys, filters_idx):
+            if filters_idx is None:
+                return sql
+
+            applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
+            if len(applicable_filter_keys) > 0:
+                sql = sql.where(
+                    tuple_(*[column(i) for i in applicable_filter_keys]).in_(
+                        [
+                            tuple_(*[r[k] for k in applicable_filter_keys])
+                            for r in filters_idx.to_dict(orient="records")
+                        ]
+                    )
+                )
+
+            return sql
+
         def _make_agg_cte(
             dt: DataTable, agg_fun, agg_col: str
         ) -> Tuple[List[str], Any]:
@@ -289,17 +306,7 @@ class BaseBatchTransformStep(ComputeStep):
                 .group_by(*key_cols)
             )
 
-            if filters_idx is not None:
-                applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
-                if len(applicable_filter_keys) > 0:
-                    sql = sql.where(
-                        tuple_(*[column(i) for i in applicable_filter_keys]).in_(
-                            [
-                                tuple_(*[r[k] for k in applicable_filter_keys])
-                                for r in filters_idx.to_dict(orient="records")
-                            ]
-                        )
-                    )
+            sql = _apply_filters_idx(sql, keys, filters_idx)
 
             sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
 
@@ -367,8 +374,11 @@ class BaseBatchTransformStep(ComputeStep):
             )
             .select_from(tr_tbl)
             .group_by(*[column(k) for k in self.transform_keys])
-            .cte(name="transform")
         )
+
+        out = _apply_filters_idx(out, self.transform_keys, filters_idx)
+
+        out = out.cte(name="transform")
 
         sql = (
             select(
