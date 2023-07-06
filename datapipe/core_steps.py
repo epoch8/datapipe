@@ -343,7 +343,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
-                    sql = sql.outerjoin(
+                    sql = sql.join(
                         cte,
                         onclause=and_(
                             *[
@@ -354,10 +354,9 @@ class BaseBatchTransformStep(ComputeStep):
                         full=True,
                     )
                 else:
-                    sql = sql.outerjoin(
+                    sql = sql.join(
                         cte,
                         onclause=literal(True),
-                        full=True,
                     )
 
             return sql.cte(name=f"all__{agg_col}")
