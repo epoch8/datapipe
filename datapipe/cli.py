@@ -86,7 +86,7 @@ def filter_steps_by_labels_and_name(
     return res
 
 
-@click.group()
+@click.group()  # type: ignore
 @click.option("--debug", is_flag=True, help="Log debug output")
 @click.option("--debug-sql", is_flag=True, help="Log SQL queries VERY VERBOSE")
 @click.option("--trace-stdout", is_flag=True, help="Log traces to console")
@@ -167,7 +167,7 @@ def cli(
         ctx.obj["pipeline"] = load_pipeline(pipeline)
 
 
-@cli.group()
+@cli.group()  # type: ignore
 def table():
     pass
 
@@ -181,7 +181,7 @@ def list(ctx: click.Context) -> None:
         print(table)
 
 
-@table.command()
+@table.command()  # type: ignore
 @click.argument("table")
 @click.pass_context
 def reset_metadata(ctx: click.Context, table: str) -> None:
@@ -191,7 +191,7 @@ def reset_metadata(ctx: click.Context, table: str) -> None:
     dt.reset_metadata()
 
 
-@cli.command()
+@cli.command()  # type: ignore
 @click.pass_context
 def run(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
@@ -202,8 +202,8 @@ def run(ctx: click.Context) -> None:
         run_steps(app.ds, app.steps)
 
 
-@cli.group()
-def db():
+@cli.group()  # type: ignore
+def db() -> None:
     pass
 
 
@@ -215,7 +215,7 @@ def create_all(ctx: click.Context) -> None:
     app.ds.meta_dbconn.sqla_metadata.create_all(app.ds.meta_dbconn.con)
 
 
-@cli.command()
+@cli.command()  # type: ignore
 @click.option("--tables", type=click.STRING, default="*")
 @click.option("--fix", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
@@ -281,11 +281,11 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
             print()
 
 
-@cli.group()
+@cli.group()  # type: ignore
 @click.option("--labels", type=click.STRING, default="")
 @click.option("--name", type=click.STRING, default="")
 @click.pass_context
-def step(ctx: click.Context, labels: str, name: str):
+def step(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     labels_dict = parse_labels(labels)

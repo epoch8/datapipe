@@ -35,7 +35,7 @@ class QdrantStore(TableStore):
         self.embedding_field = embedding_field
         self.collection_params = collection_params
         self.inited = False
-        self.client: QdrantClient = None
+        self.client: Optional[QdrantClient] = None
 
         pk_columns = [column for column in self.schema if column.primary_key]
 
@@ -77,6 +77,7 @@ class QdrantStore(TableStore):
         if len(df) == 0:
             return
 
+        assert self.client is not None
         self.client.upsert(
             self.name,
             rest.Batch(
@@ -96,6 +97,7 @@ class QdrantStore(TableStore):
         if len(idx) == 0:
             return
 
+        assert self.client is not None
         self.client.delete(
             self.name,
             rest.PointIdsList(
@@ -110,6 +112,7 @@ class QdrantStore(TableStore):
         if not idx:
             raise Exception("Qrand doesn't support full store reading")
 
+        assert self.client is not None
         response = self.client.http.points_api.get_points(
             self.name,
             point_request=rest.PointRequest(
@@ -121,8 +124,11 @@ class QdrantStore(TableStore):
 
         records = []
 
+        assert response.result is not None
         for point in response.result:
             record = point.payload
+            assert record is not None
+
             record[self.embedding_field] = point.vector
 
             records.append(record)
@@ -147,7 +153,7 @@ class QdrantShardedStore(TableStore):
         self.collection_params = collection_params
 
         self.inited_collections: set = set()
-        self.client: QdrantClient = None
+        self.client: Optional[QdrantClient] = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
         self.paylods_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
@@ -206,6 +212,8 @@ class QdrantShardedStore(TableStore):
             name = self.__get_collection_name(name_values)
 
             self.__check_init(name)
+
+            assert self.client is not None
             self.client.upsert(
                 name,
                 rest.Batch(
@@ -225,6 +233,7 @@ class QdrantShardedStore(TableStore):
 
             self.__check_init(name)
 
+            assert self.client is not None
             self.client.delete(
                 name,
                 rest.PointIdsList(
@@ -244,6 +253,7 @@ class QdrantShardedStore(TableStore):
 
             self.__check_init(name)
 
+            assert self.client is not None
             response = self.client.http.points_api.get_points(
                 name,
                 point_request=rest.PointRequest(
@@ -253,8 +263,11 @@ class QdrantShardedStore(TableStore):
                 )
             )
 
+            assert response.result is not None
             for point in response.result:
                 record = point.payload
+
+                assert record is not None
                 record[self.embedding_field] = point.vector
 
                 records.append(record)
