@@ -147,7 +147,7 @@ class TableStoreFiledir(TableStore):
         1. Явный - в конструктор передается `primary_schema`, которая должна
            содержать все поля, упоминаемые в `filename_pattern`
         2. Неявный - `primary_schema` = `None`, тогда все поля получают
-           дефолтный тип `String(100)`
+           дефолтный тип `String`
 
         Args:
 
@@ -242,7 +242,7 @@ class TableStoreFiledir(TableStore):
             self.primary_schema = primary_schema
         else:
             self.primary_schema = [
-                Column(attrname, String(100), primary_key=True)
+                Column(attrname, String, primary_key=True)
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
