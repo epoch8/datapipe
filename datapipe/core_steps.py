@@ -1,8 +1,9 @@
-from dataclasses import dataclass
 import logging
 import time
+from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -10,18 +11,13 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
-    Callable,
     cast,
 )
 
 import tqdm
 from opentelemetry import trace
 
-from datapipe.compute import (
-    Catalog,
-    ComputeStep,
-    PipelineStep,
-)
+from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
@@ -84,7 +80,7 @@ class DatatableTransform(PipelineStep):
                 func=self.func,
                 kwargs=self.kwargs,
                 check_for_changes=self.check_for_changes,
-                labels=self.labels
+                labels=self.labels,
             )
         ]
 
@@ -404,7 +400,6 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[
     now = time.time()
 
     for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
-
         (
             new_df,
             changed_df,
@@ -444,8 +439,8 @@ class UpdateExternalTable(PipelineStep):
     def __init__(
         self,
         output: str,
-        labels: Optional[Labels] = None,        
-        ) -> None:
+        labels: Optional[Labels] = None,
+    ) -> None:
         self.output_table_name = output
         self.labels = labels
 
