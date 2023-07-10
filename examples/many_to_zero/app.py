@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 import pandas as pd
 
@@ -8,8 +8,8 @@ from sqlalchemy.sql.schema import Column
 from datapipe_app import DatapipeApp
 
 from datapipe.datatable import DataStore, DataTable
-from datapipe.compute import Pipeline, Catalog, Table, DatatableTransform
-from datapipe.core_steps import BatchGenerate
+from datapipe.compute import Pipeline, Catalog, Table
+from datapipe.core_steps import BatchGenerate, DatatableTransform
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
@@ -48,6 +48,7 @@ def count(
     ds: DataStore,
     input_dts: List[DataTable],
     output_dts: List[DataTable],
+    kwargs: Dict,
     run_config: RunConfig = None,
 ) -> None:
     assert len(input_dts) == 1
@@ -73,6 +74,7 @@ pipeline = Pipeline(
             count,
             inputs=["input"],
             outputs=["result"],
+            check_for_changes=False
         ),
     ]
 )

@@ -221,6 +221,11 @@ class MetaTable:
         sql = select(self.sql_schema)
 
         if idx is not None:
+            if len(idx.index) == 0:
+                # Empty index -> empty result
+                return cast(IndexDF, pd.DataFrame(
+                    columns=[column.name for column in self.sql_schema]
+                ))
             idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
 
             if not idx_cols:
@@ -231,7 +236,7 @@ class MetaTable:
             # FIXME поправить на сравнение кортежей
             for _, row in idx.iterrows():
                 and_params = [
-                    self.sql_table.c[key] == self._get_sql_param(row[key])
+                    self.sql_table.c[key] == self._get_sql_param(row[key])  # type: ignore
                     for key in idx_cols
                     if key in self.primary_keys
                 ]
@@ -295,7 +300,7 @@ class MetaTable:
         new_idx = merged_df["hash"].isna() | merged_df["delete_ts"].notnull()
 
         # Ищем новые записи
-        new_df = data_df.loc[new_idx.values, data_cols]    # type: ignore
+        new_df = data_df.loc[new_idx.values, data_cols]  # type: ignore
 
         # Создаем мета данные для новых записей
         new_meta_data_df = merged_df.loc[merged_df["hash"].isna().values, data_cols]  # type: ignore

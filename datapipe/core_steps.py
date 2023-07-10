@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import logging
 import time
 from typing import (
@@ -7,8 +8,8 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Tuple,
-    Union,
     Callable,
     cast,
 )
@@ -19,165 +20,132 @@ from opentelemetry import trace
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    DatatableTransformStep,
     PipelineStep,
-    DatatableTransformFunc,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataDF, IndexDF
+from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
 
 logger = logging.getLogger("datapipe.core_steps")
 tracer = trace.get_tracer("datapipe.core_steps")
 
 
-BatchTransformFunc = Callable[..., Union[DataDF, List[DataDF], Tuple[DataDF, ...]]]
+class DatatableTransformFunc(Protocol):
+    __name__: str
+
+    def __call__(
+        self,
+        ds: DataStore,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        run_config: Optional[RunConfig],
+        # Возможно, лучше передавать как переменную, а не  **
+        **kwargs,
+    ) -> None:
+        ...
 
 
-def do_batch_transform(
-    func: BatchTransformFunc,
-    ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    idx_gen: Iterable[IndexDF],
-    idx_count: Optional[int] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
-    run_config: Optional[RunConfig] = None,
-) -> Iterator[ChangeList]:
-    """
-    Множественная инкрементальная обработка `input_dts' на основе изменяющихся индексов
-    """
+# TODO подумать, может быть мы хотим дать возможность возвращать итератор TransformResult
+class DatatableBatchTransformFunc(Protocol):
+    __name__: str
 
-    logger.info(f"Batches to process {idx_count}")
-
-    if idx_count is not None and idx_count == 0:
-        # Nothing to process
-        return [ChangeList()]
-
-    for idx in tqdm.tqdm(idx_gen, total=idx_count):
-        with tracer.start_as_current_span("process batch"):
-            logger.debug(f"Idx to process: {idx.to_records()}")
-
-            with tracer.start_as_current_span("get input data"):
-                try:
-                    input_dfs = [inp.get_data(idx) for inp in input_dts]
-                except Exception as e:
-                    logger.error(f"Get input data failed: {str(e)}")
-                    ds.event_logger.log_exception(
-                        e,
-                        run_config=RunConfig.add_labels(
-                            run_config, {"idx": idx.to_dict(orient="records")}
-                        ),
-                    )
-
-                    continue
-
-            changes = ChangeList()
-
-            if sum(len(j) for j in input_dfs) > 0:
-                with tracer.start_as_current_span("run transform"):
-                    try:
-                        chunks_df = func(*input_dfs, **kwargs or {})
-                    except Exception as e:
-                        logger.error(f"Transform failed ({func.__name__}): {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
-                        )
-
-                        continue
-
-                if isinstance(chunks_df, (list, tuple)):
-                    assert len(chunks_df) == len(output_dts)
-                else:
-                    assert len(output_dts) == 1
-                    chunks_df = [chunks_df]
-
-                with tracer.start_as_current_span("store output batch"):
-                    try:
-                        for k, res_dt in enumerate(output_dts):
-                            # Берем k-ое значение функции для k-ой таблички
-                            # Добавляем результат в результирующие чанки
-                            change_idx = res_dt.store_chunk(
-                                data_df=chunks_df[k],
-                                processed_idx=idx,
-                                run_config=run_config,
-                            )
-
-                            changes.append(res_dt.name, change_idx)
-                    except Exception as e:
-                        logger.error(f"Store output batch failed: {str(e)}")
-                        ds.event_logger.log_exception(
-                            e,
-                            run_config=RunConfig.add_labels(
-                                run_config, {"idx": idx.to_dict(orient="records")}
-                            ),
-                        )
-
-                        continue
-
-            else:
-                with tracer.start_as_current_span("delete missing data from output"):
-                    for k, res_dt in enumerate(output_dts):
-                        del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                        res_dt.delete_by_idx(del_idx, run_config=run_config)
-
-                        changes.append(res_dt.name, del_idx)
-
-            yield changes
+    def __call__(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        input_dts: List[DataTable],
+        run_config: Optional[RunConfig] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> TransformResult:
+        ...
 
 
-def do_full_batch_transform(
-    func: BatchTransformFunc,
-    ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    kwargs: Optional[Dict[str, Any]] = None,
-    chunk_size: int = 1000,
-    run_config: Optional[RunConfig] = None,
-) -> None:
-    with tracer.start_as_current_span("compute ids to process"):
-        idx_count, idx_gen = ds.get_full_process_ids(
-            inputs=input_dts,
-            outputs=output_dts,
-            chunk_size=chunk_size,
-            run_config=run_config,
-        )
+# TODO подумать, может быть мы хотим дать возможность возвращать итератор TransformResult
+BatchTransformFunc = Callable[..., TransformResult]
 
-    gen = do_batch_transform(
-        func,
-        kwargs=kwargs,
-        ds=ds,
-        idx_count=idx_count,
-        idx_gen=idx_gen,
-        input_dts=input_dts,
-        output_dts=output_dts,
-        run_config=run_config,
-    )
-
-    for changes in gen:
-        pass
+BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
 
 
-class BatchTransform(PipelineStep):
+@dataclass
+class DatatableTransform(PipelineStep):
+    func: DatatableTransformFunc
+    inputs: List[str]
+    outputs: List[str]
+    check_for_changes: bool = True
+    kwargs: Optional[Dict[str, Any]] = None
+    labels: Optional[Labels] = None
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List["ComputeStep"]:
+        return [
+            DatatableTransformStep(
+                name=self.func.__name__,
+                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
+                output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
+                func=self.func,
+                kwargs=self.kwargs,
+                check_for_changes=self.check_for_changes,
+                labels=self.labels
+            )
+        ]
+
+
+class DatatableTransformStep(ComputeStep):
     def __init__(
         self,
-        func: BatchTransformFunc,
-        inputs: List[str],
-        outputs: List[str],
-        chunk_size: int = 1000,
-        kwargs: Optional[Dict[str, Any]] = None,
-        labels: Optional[Dict[str, str]] = None,
-    ):
+        name: str,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        func: DatatableTransformFunc,
+        kwargs: Optional[Dict] = None,
+        check_for_changes: bool = True,
+        labels: Optional[Labels] = None,
+    ) -> None:
+        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
+
         self.func = func
-        self.inputs = inputs
-        self.outputs = outputs
-        self.chunk_size = chunk_size
         self.kwargs = kwargs or {}
-        self.labels = labels
+        self.check_for_changes = check_for_changes
+
+    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
+        logger.info(f"Running: {self.name}")
+
+        if len(self.input_dts) > 0 and self.check_for_changes:
+            with tracer.start_as_current_span("check for changes"):
+                changed_idx_count = ds.get_changed_idx_count(
+                    inputs=self.input_dts,
+                    outputs=self.output_dts,
+                    run_config=run_config,
+                )
+
+                if changed_idx_count == 0:
+                    logger.debug(f"Skipping {self.get_name()} execution - nothing to compute")
+
+                    return
+
+        run_config = RunConfig.add_labels(run_config, {"step_name": self.get_name()})
+
+        with tracer.start_as_current_span(f"Run {self.func}"):
+            try:
+                self.func(
+                    ds=ds,
+                    input_dts=self.input_dts,
+                    output_dts=self.output_dts,
+                    run_config=run_config,
+                    kwargs=self.kwargs,
+                )
+            except Exception as e:
+                logger.error(f"Datatable transform ({self.func}) run failed: {str(e)}")
+                ds.event_logger.log_exception(e, run_config=run_config)
+
+
+@dataclass
+class BatchTransform(PipelineStep):
+    func: BatchTransformFunc
+    inputs: List[str]
+    outputs: List[str]
+    chunk_size: int = 1000
+    kwargs: Optional[Dict[str, Any]] = None
+    labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -200,101 +168,149 @@ class BatchTransformStep(ComputeStep):
     def __init__(
         self,
         name: str,
+        func: BatchTransformFunc,
         input_dts: List[DataTable],
         output_dts: List[DataTable],
-        func: BatchTransformFunc,
         kwargs: Optional[Dict[str, Any]] = None,
         chunk_size: int = 1000,
-        labels: Optional[Dict[str, str]] = None,
+        labels: Optional[Labels] = None,
     ) -> None:
-        ComputeStep.__init__(self, name=name, labels=labels)
-
-        self.input_dts = input_dts
-        self.output_dts = output_dts
+        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
 
         self.func = func
         self.kwargs = kwargs or {}
         self.chunk_size = chunk_size
 
-    def get_input_dts(self) -> List[DataTable]:
-        return self.input_dts
-
-    def get_output_dts(self) -> List[DataTable]:
-        return self.output_dts
-
-    def run_full(self, ds: DataStore, run_config: Optional[RunConfig] = None) -> None:
-        logger.info(f"Running: {self.name}")
-
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
-
-        with tracer.start_as_current_span("Get ids to process"):
-            idx_count, idx_gen = ds.get_full_process_ids(
+    def get_full_process_ids(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_full_process_ids(
                 inputs=self.input_dts,
                 outputs=self.output_dts,
                 chunk_size=self.chunk_size,
                 run_config=run_config,
             )
 
-        gen = do_batch_transform(
-            self.func,
-            ds=ds,
-            idx_count=idx_count,
-            idx_gen=idx_gen,
-            input_dts=self.input_dts,
-            output_dts=self.output_dts,
-            run_config=run_config,
-            kwargs=self.kwargs,
-        )
-
-        for changes in gen:
-            pass
-
-        ds.event_logger.log_step_full_complete(self.name)
-
-    def run_changelist(
+    def get_change_list_process_ids(
         self,
         ds: DataStore,
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
-    ) -> ChangeList:
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_change_list_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                change_list=change_list,
+                chunk_size=self.chunk_size,
+                run_config=run_config,
+            )
 
-        idx_count, idx_gen = ds.get_change_list_process_ids(
-            inputs=self.input_dts,
-            outputs=self.output_dts,
-            change_list=change_list,
-            chunk_size=self.chunk_size,
-            run_config=run_config,
-        )
+    def process_batch_dfs(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        input_dfs: List[DataDF],
+        run_config: Optional[RunConfig] = None,
+    ) -> TransformResult:
+        return self.func(*input_dfs, **self.kwargs or {})
 
-        gen = do_batch_transform(
-            self.func,
+
+@dataclass
+class DatatableBatchTransform(PipelineStep):
+    func: DatatableBatchTransformFunc
+    inputs: List[str]
+    outputs: List[str]
+    chunk_size: int = 1000
+    kwargs: Optional[Dict] = None
+    labels: Optional[Labels] = None
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
+        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+
+        return [
+            DatatableBatchTransformStep(
+                f"{self.func.__name__}",
+                func=self.func,
+                input_dts=input_dts,
+                output_dts=output_dts,
+                kwargs=self.kwargs,
+                chunk_size=self.chunk_size,
+                labels=self.labels,
+            )
+        ]
+
+
+class DatatableBatchTransformStep(ComputeStep):
+    def __init__(
+        self,
+        name: str,
+        func: DatatableBatchTransformFunc,
+        input_dts: List[DataTable],
+        output_dts: List[DataTable],
+        kwargs: Optional[Dict] = None,
+        chunk_size: int = 1000,
+        labels: Optional[Labels] = None,
+    ) -> None:
+        super().__init__(name, input_dts, output_dts, labels)
+
+        self.func = func
+        self.kwargs = kwargs
+        self.chunk_size = chunk_size
+
+    def get_full_process_ids(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_full_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                chunk_size=self.chunk_size,
+                run_config=run_config,
+            )
+
+    def get_change_list_process_ids(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            return ds.get_change_list_process_ids(
+                inputs=self.input_dts,
+                outputs=self.output_dts,
+                change_list=change_list,
+                chunk_size=self.chunk_size,
+                run_config=run_config,
+            )
+
+    def process_batch_dts(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: Optional[RunConfig] = None,
+    ) -> Optional[TransformResult]:
+        return self.func(
             ds=ds,
+            idx=idx,
             input_dts=self.input_dts,
-            output_dts=self.output_dts,
-            idx_count=idx_count,
-            idx_gen=idx_gen,
             run_config=run_config,
             kwargs=self.kwargs,
         )
-
-        res_changelist = ChangeList()
-
-        for changes in gen:
-            res_changelist.extend(changes)
-
-        return res_changelist
-
-
-BatchGenerateFunc = Callable[..., Iterator[Union[DataDF, Tuple[DataDF, ...]]]]
 
 
 def do_batch_generate(
     func: BatchGenerateFunc,
     ds: DataStore,
     output_dts: List[DataTable],
-    kwargs: Optional[Dict[str, Any]] = None,
     run_config: Optional[RunConfig] = None,
+    kwargs: Optional[Dict] = None,
 ) -> None:
     import inspect
 
@@ -308,9 +324,7 @@ def do_batch_generate(
     now = time.time()
     empty_generator = True
 
-    assert inspect.isgeneratorfunction(
-        func
-    ), "Starting v0.8.0 proc_func should be a generator"
+    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
     with tracer.start_as_current_span("init generator"):
         try:
@@ -360,39 +374,23 @@ def do_batch_generate(
             dt_k.delete_stale_by_process_ts(now, run_config=run_config)
 
 
+@dataclass
 class BatchGenerate(PipelineStep):
-    def __init__(
-        self,
-        func: BatchGenerateFunc,
-        outputs: List[str],
-        kwargs: Optional[Dict] = None,
-        labels: Optional[Dict[str, str]] = None,
-    ):
-        self.func = func
-        self.outputs = outputs
-        self.kwargs = kwargs
-        self.labels = labels
+    func: BatchGenerateFunc
+    outputs: List[str]
+    kwargs: Optional[Dict] = None
+    labels: Optional[Labels] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(
-            ds: DataStore,
-            input_dts: List[DataTable],
-            output_dts: List[DataTable],
-            run_config: Optional[RunConfig],
-            **kwargs,
-        ):
-            return do_batch_generate(
-                func=self.func,
-                kwargs=kwargs,
-                ds=ds,
-                output_dts=output_dts,
-                run_config=run_config,
-            )
-
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
-                func=cast(DatatableTransformFunc, transform_func),
+                func=cast(
+                    DatatableTransformFunc,
+                    lambda ds, input_dts, output_dts, run_config, kwargs: do_batch_generate(
+                        func=self.func, ds=ds, output_dts=output_dts, run_config=run_config, kwargs=kwargs
+                    ),
+                ),
                 input_dts=[],
                 output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
                 check_for_changes=False,
@@ -402,14 +400,10 @@ class BatchGenerate(PipelineStep):
         ]
 
 
-def update_external_table(
-    ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None
-) -> None:
+def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
     now = time.time()
 
-    for ps_df in tqdm.tqdm(
-        table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
-    ):
+    for ps_df in tqdm.tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
 
         (
             new_df,

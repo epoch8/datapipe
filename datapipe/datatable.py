@@ -227,6 +227,9 @@ class DataStore:
         out_keys = [set(out.primary_keys) for out in outputs]
         join_keys = list(set.intersection(*inp_keys, *out_keys))
 
+        if len(join_keys) == 0:
+            raise NotImplementedError()
+
         if self.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
             greatest_func = func.max
         else:

@@ -43,5 +43,8 @@
             "label": "Backlog",
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
+    ],
+    "black-formatter.args": [
+        "-l 120"
     ]
 }
