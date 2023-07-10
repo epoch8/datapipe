@@ -9,6 +9,7 @@
 ## New features
 
 * Add `datapipe.store.qdrant.QdrantStore`
+* Add `DatatableBatchTransform` pipeline step
 
 ## Refactorings
 
