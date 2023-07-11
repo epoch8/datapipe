@@ -17,11 +17,12 @@ from typing import (
     Tuple,
     Union,
     cast,
+    Literal
 )
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select, desc, tuple_
+from sqlalchemy import alias, and_, column, func, literal, or_, select, desc, tuple_, asc
 from tqdm_loggable.auto import tqdm
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
@@ -185,7 +186,8 @@ class BaseBatchTransformStep(ComputeStep):
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
         filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
-        order_by: Optional[List[str]] = None
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -211,6 +213,7 @@ class BaseBatchTransformStep(ComputeStep):
         )
         self.filters = filters
         self.order_by = order_by
+        self.order = order
 
     @classmethod
     def compute_transform_schema(
@@ -256,6 +259,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         filters_idx: Optional[IndexDF] = None,
         order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
         run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Tuple[Iterable[str], select]:
         if len(self.transform_keys) == 0:
@@ -427,13 +431,22 @@ class BaseBatchTransformStep(ComputeStep):
                 )
             )
         else:
-            sql = (
-                sql
-                .order_by(
-                    desc(*[column(k) for k in order_by]),
-                    out.c.priority.desc().nullslast(),
+            if order == "asc":
+                sql = (
+                    sql
+                    .order_by(
+                        desc(*[column(k) for k in order_by]),
+                        out.c.priority.desc().nullslast(),
+                    )
                 )
-            )
+            elif order == "asc":
+                sql = (
+                    sql
+                    .order_by(
+                        asc(*[column(k) for k in order_by]),
+                        out.c.priority.desc().nullslast(),
+                    )
+                )                
         return (self.transform_keys, sql)
 
     def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
@@ -500,7 +513,8 @@ class BaseBatchTransformStep(ComputeStep):
             join_keys, u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
-                order_by=self.order_by
+                order_by=self.order_by,
+                order=self.order
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
@@ -685,6 +699,7 @@ class BatchTransform(PipelineStep):
     executor_config: Optional[ExecutorConfig] = None
     filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
     order_by: Optional[List[str]] = None
+    order: Literal["asc", "desc"] = "asc"
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -703,7 +718,8 @@ class BatchTransform(PipelineStep):
                 labels=self.labels,
                 executor_config=self.executor_config,
                 filters=self.filters,
-                order_by=self.order_by
+                order_by=self.order_by,
+                order=self.order
             )
         ]
 
@@ -722,7 +738,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
         filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
-        order_by: Optional[List[str]] = None
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         super().__init__(
             ds=ds,
@@ -734,7 +751,8 @@ class BatchTransformStep(BaseBatchTransformStep):
             labels=labels,
             executor_config=executor_config,
             filters=filters,
-            order_by=order_by
+            order_by=order_by,
+            order=order
         )
 
         self.func = func
