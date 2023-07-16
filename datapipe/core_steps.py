@@ -431,7 +431,7 @@ class BaseBatchTransformStep(ComputeStep):
                 )
             )
         else:
-            if order == "asc":
+            if order == "desc":
                 sql = (
                     sql
                     .order_by(
@@ -446,7 +446,7 @@ class BaseBatchTransformStep(ComputeStep):
                         asc(*[column(k) for k in order_by]),
                         out.c.priority.desc().nullslast(),
                     )
-                )                
+                )
         return (self.transform_keys, sql)
 
     def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
