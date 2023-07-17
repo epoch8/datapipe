@@ -215,6 +215,18 @@ class BaseBatchTransformStep(ComputeStep):
         self.order_by = order_by
         self.order = order
 
+        # Check that all keys are either in one input table or in all input tables
+        # Currently we do not support partial primary keys
+        tables_that_have_different_intersections = get_tables_that_have_different_intersections(
+            [dt.primary_schema for dt in self.input_dts],
+            [dt.name for dt in self.input_dts]
+        )
+        if len(tables_that_have_different_intersections) > 0:
+            raise NotImplementedError(
+                f"{self.get_name()}: Different pairwise intersection of columns in inputs tables is not supported yet."
+                f"{tables_that_have_different_intersections}"
+            )
+
     @classmethod
     def compute_transform_schema(
         cls,
@@ -268,17 +280,6 @@ class BaseBatchTransformStep(ComputeStep):
         all_input_keys_counts: Dict[str, int] = {}
         for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
-
-        # Check that all keys are either in one input table or in all input tables
-        # Currently we do not support partial primary keys
-        tables_that_have_different_intersections = get_tables_that_have_different_intersections(
-            [dt.primary_schema for dt in self.input_dts],
-            [dt.name for dt in self.input_dts]
-        )
-        if len(tables_that_have_different_intersections) > 0:
-            raise NotImplementedError(
-                "Different pairwise intersection of columns in inputs tables is not supported yet."
-            )
 
         common_keys = [
             k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
