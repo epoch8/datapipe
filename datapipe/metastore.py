@@ -545,7 +545,7 @@ class TransformMetaTable:
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        idx = cast(IndexDF, idx[self.primary_keys])
+        idx = cast(IndexDF, idx[self.primary_keys].drop_duplicates())  # FIXME: сделать в основном запросе distinct
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -580,7 +580,7 @@ class TransformMetaTable:
         error: str,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        idx = cast(IndexDF, idx[self.primary_keys])
+        idx = cast(IndexDF, idx[self.primary_keys].drop_duplicates())  # FIXME: сделать в основном запросе distinct
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
