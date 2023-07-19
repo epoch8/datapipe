@@ -130,3 +130,48 @@ jobs:
           POSTGRES_PORT: 5432
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+
+  test-examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          # - "3.8"
+          # - "3.9"
+          - "3.10"
+        example:
+          - datatable_batch_transform
+          - image_resize
+          - many_to_zero
+          - model_inference
+          - one_to_many_pipeline
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Setup poetry
+        run: |
+          pip install poetry==1.2.1
+      
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: /home/runner/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
+
+      - name: Test example
+        run: |
+          cd examples/${{ matrix.example }}
+          datapipe db create-all
+          datapipe run

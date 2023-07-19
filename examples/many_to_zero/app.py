@@ -1,11 +1,10 @@
 from typing import Dict, List, Optional
 
 import pandas as pd
-from datapipe_app import DatapipeApp
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.core_steps import BatchGenerate, DatatableTransform
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig

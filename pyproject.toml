@@ -50,7 +50,6 @@ rich = "^13.3.2"
 sphinx = {version = ">=4.5,<6.0", optional = true}
 myst-parser = {version = ">=0.17.2,<1.1.0", optional = true}
 
-polars = {version = "^0.18.0", optional = true, extras = ["pyarrow", "pandas", "numpy"]}
 ray = {version = "^2.5.0", optional = true, extras = ["default"]}
 
 [tool.poetry.extras]
@@ -61,7 +60,6 @@ milvus = ["pymilvus"]
 gcsfs = ["gcsfs"]
 s3fs = ["s3fs"]
 redis = ["redis"]
-polars = ["polars"]
 qdrant = ["qdrant-client"]
 ray = ["ray"]
 

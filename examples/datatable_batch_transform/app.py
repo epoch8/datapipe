@@ -2,16 +2,16 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from datapipe.compute import Catalog, Pipeline, Table
+from sqlalchemy import Integer
+from sqlalchemy.sql import functions, select
+from sqlalchemy.sql.schema import Column
+
+from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.core_steps import BatchGenerate, DatatableBatchTransform
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import IndexDF
-from datapipe_app import DatapipeApp
-from sqlalchemy import Integer
-from sqlalchemy.sql import functions, select
-from sqlalchemy.sql.schema import Column
 
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 
