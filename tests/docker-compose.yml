@@ -16,4 +16,4 @@ services:
   quadrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
+      - 6333:6333
