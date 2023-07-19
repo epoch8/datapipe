@@ -114,7 +114,7 @@ class QdrantStore(TableStore):
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         self.__check_init()
 
-        if not idx:
+        if idx is None:
             raise Exception("Qrand doesn't support full store reading")
 
         assert self.client is not None
