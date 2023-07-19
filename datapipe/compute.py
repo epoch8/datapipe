@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from opentelemetry import trace
-from tqdm import tqdm
+from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
