@@ -764,6 +764,29 @@ class BatchTransformStep(BaseBatchTransformStep):
 
         self.func = func
         self.kwargs = kwargs
+        self.parameters = inspect.signature(self.func).parameters
+
+    def process_batch_dts(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: Optional[RunConfig] = None,
+    ) -> Optional[TransformResult]:
+        with tracer.start_as_current_span("get input data"):
+            input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
+
+        if "idx" not in self.parameters and sum(len(j) for j in input_dfs) == 0:
+            return None
+
+        with tracer.start_as_current_span("run transform"):
+            output_dfs = self.process_batch_dfs(
+                ds=ds,
+                idx=idx,
+                input_dfs=input_dfs,
+                run_config=run_config,
+            )
+
+        return output_dfs
 
     def process_batch_dfs(
         self,
@@ -772,11 +795,10 @@ class BatchTransformStep(BaseBatchTransformStep):
         input_dfs: List[DataDF],
         run_config: Optional[RunConfig] = None,
     ) -> TransformResult:
-        parameters = inspect.signature(self.func).parameters
         kwargs = {
-            **({"ds": ds} if "ds" in parameters else {}),
-            **({"idx": idx} if "idx" in parameters else {}),
-            **({"run_config": run_config} if "run_config" in parameters else {}),
+            **({"ds": ds} if "ds" in self.parameters else {}),
+            **({"idx": idx} if "idx" in self.parameters else {}),
+            **({"run_config": run_config} if "run_config" in self.parameters else {}),
             **(self.kwargs or {}),
         }
         return self.func(*input_dfs, **kwargs)
