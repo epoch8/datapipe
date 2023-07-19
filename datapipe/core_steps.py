@@ -19,7 +19,7 @@ from typing import (
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import alias, and_, column, func, literal, or_, select, tuple_
-from tqdm import tqdm
+from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
