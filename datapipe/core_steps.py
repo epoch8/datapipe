@@ -1,3 +1,5 @@
+import copy
+import inspect
 import itertools
 import logging
 import math
@@ -10,15 +12,28 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Protocol,
     Tuple,
+    Union,
     cast,
 )
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select, tuple_
+from sqlalchemy import (
+    alias,
+    and_,
+    asc,
+    column,
+    desc,
+    func,
+    literal,
+    or_,
+    select,
+    tuple_,
+)
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
@@ -35,6 +50,7 @@ from datapipe.types import (
     MetaSchema,
     TransformResult,
     data_to_index,
+    get_tables_that_have_different_intersections,
 )
 
 logger = logging.getLogger("datapipe.core_steps")
@@ -180,6 +196,9 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -191,7 +210,6 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         self.chunk_size = chunk_size
-
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             [i.meta_table for i in input_dts],
             [i.meta_table for i in output_dts],
@@ -204,6 +222,23 @@ class BaseBatchTransformStep(ComputeStep):
             primary_schema=self.transform_schema,
             create_table=ds.create_meta_table,
         )
+        self.filters = filters
+        self.order_by = order_by
+        self.order = order
+
+        # Check that all keys are either in one input table or in all input tables
+        # Currently we do not support partial primary keys
+        tables_that_have_different_intersections = (
+            get_tables_that_have_different_intersections(
+                [dt.primary_schema for dt in self.input_dts],
+                [dt.name for dt in self.input_dts],
+            )
+        )
+        if len(tables_that_have_different_intersections) > 0:
+            raise NotImplementedError(
+                f"{self.get_name()}: Different pairwise intersection of columns in inputs tables is not supported yet."
+                f"{tables_that_have_different_intersections}"
+            )
 
     @classmethod
     def compute_transform_schema(
@@ -248,6 +283,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         filters_idx: Optional[IndexDF] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
         run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Tuple[Iterable[str], select]:
         if len(self.transform_keys) == 0:
@@ -256,12 +293,6 @@ class BaseBatchTransformStep(ComputeStep):
         all_input_keys_counts: Dict[str, int] = {}
         for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
-
-        # Check that all keys are either in one input table or in all input tables
-        # Currently we do not support partial primary keys
-        assert all(
-            v == 1 or v == len(self.input_dts) for k, v in all_input_keys_counts.items()
-        )
 
         common_keys = [
             k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
@@ -404,19 +435,51 @@ class BaseBatchTransformStep(ComputeStep):
                     out.c.process_ts == None,  # noqa
                 )
             )
-            .order_by(
+        )
+        if order_by is None:
+            sql = sql.order_by(
                 out.c.priority.desc().nullslast(),
                 *[column(k) for k in self.transform_keys],
             )
-        )
-
+        else:
+            if order == "desc":
+                sql = sql.order_by(
+                    desc(*[column(k) for k in order_by]),
+                    out.c.priority.desc().nullslast(),
+                )
+            elif order == "asc":
+                sql = sql.order_by(
+                    asc(*[column(k) for k in order_by]),
+                    out.c.priority.desc().nullslast(),
+                )
         return (self.transform_keys, sql)
+
+    def _apply_filters_to_run_config(
+        self, run_config: Optional[RunConfig] = None
+    ) -> Optional[RunConfig]:
+        if self.filters is None:
+            return run_config
+        else:
+            if isinstance(self.filters, dict):
+                filters = self.filters
+            elif isinstance(self.filters, Callable):  # type: ignore
+                filters = self.filters()
+
+            if run_config is None:
+                return RunConfig(filters=filters)
+            else:
+                run_config = copy.deepcopy(run_config)
+                filters = copy.deepcopy(filters)
+                filters.update(run_config.filters)
+                run_config.filters = filters
+                return run_config
 
     def get_changed_idx_count(
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
+        run_config = self._apply_filters_to_run_config(run_config)
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
@@ -442,7 +505,7 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
-
+        run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
@@ -457,6 +520,8 @@ class BaseBatchTransformStep(ComputeStep):
             join_keys, u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
+                order_by=self.order_by,
+                order=self.order,
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
@@ -484,25 +549,28 @@ class BaseBatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config = self._apply_filters_to_run_config(run_config)
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
             for inp in self.input_dts:
                 if inp.name in change_list.changes:
                     idx = change_list.changes[inp.name]
-
-                    _, sql = self._build_changed_idx_sql(
-                        ds=ds,
-                        filters_idx=idx,
-                        run_config=run_config,
-                    )
-                    with ds.meta_dbconn.con.begin() as con:
-                        table_changes_df = pd.read_sql_query(
-                            sql,
-                            con=con,
+                    if any([key not in idx.columns for key in self.transform_keys]):
+                        _, sql = self._build_changed_idx_sql(
+                            ds=ds,
+                            filters_idx=idx,
+                            run_config=run_config,
                         )
+                        with ds.meta_dbconn.con.begin() as con:
+                            table_changes_df = pd.read_sql_query(
+                                sql,
+                                con=con,
+                            )
 
-                    changes.append(table_changes_df)
+                        changes.append(table_changes_df)
+                    else:
+                        changes.append(data_to_index(idx, self.transform_keys))
 
             idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
             idx = IndexDF(idx_df[self.transform_keys])
@@ -521,6 +589,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
+        run_config = self._apply_filters_to_run_config(run_config)
         res = super().store_batch_result(ds, idx, output_dfs, process_ts, run_config)
 
         self.meta_table.mark_rows_processed_success(
@@ -537,6 +606,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
+        run_config = self._apply_filters_to_run_config(run_config)
         super().store_batch_err(ds, idx, e, process_ts, run_config)
 
         self.meta_table.mark_rows_processed_error(
@@ -634,6 +704,9 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
+    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    order_by: Optional[List[str]] = None
+    order: Literal["asc", "desc"] = "asc"
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -651,6 +724,9 @@ class BatchTransform(PipelineStep):
                 chunk_size=self.chunk_size,
                 labels=self.labels,
                 executor_config=self.executor_config,
+                filters=self.filters,
+                order_by=self.order_by,
+                order=self.order,
             )
         ]
 
@@ -668,6 +744,9 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         super().__init__(
             ds=ds,
@@ -678,6 +757,9 @@ class BatchTransformStep(BaseBatchTransformStep):
             chunk_size=chunk_size,
             labels=labels,
             executor_config=executor_config,
+            filters=filters,
+            order_by=order_by,
+            order=order,
         )
 
         self.func = func
@@ -690,7 +772,14 @@ class BatchTransformStep(BaseBatchTransformStep):
         input_dfs: List[DataDF],
         run_config: Optional[RunConfig] = None,
     ) -> TransformResult:
-        return self.func(*input_dfs, **self.kwargs or {})
+        parameters = inspect.signature(self.func).parameters
+        kwargs = {
+            **({"ds": ds} if "ds" in parameters else {}),
+            **({"idx": idx} if "idx" in parameters else {}),
+            **({"run_config": run_config} if "run_config" in parameters else {}),
+            **(self.kwargs or {}),
+        }
+        return self.func(*input_dfs, **kwargs)
 
 
 def do_batch_generate(

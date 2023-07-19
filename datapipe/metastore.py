@@ -545,7 +545,9 @@ class TransformMetaTable:
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        idx = cast(IndexDF, idx[self.primary_keys])
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -580,7 +582,9 @@ class TransformMetaTable:
         error: str,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        idx = cast(IndexDF, idx[self.primary_keys])
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -607,6 +611,15 @@ class TransformMetaTable:
         # execute
         with self.dbconn.con.begin() as con:
             con.execute(sql)
+
+    def get_metadata_size(self) -> int:
+        """
+        Получить количество строк метаданных трансформации.
+        """
+
+        sql = select([func.count()]).select_from(self.sql_table)
+        res = self.dbconn.con.execute(sql).fetchone()
+        return res[0]
 
     def mark_all_rows_unprocessed(
         self,

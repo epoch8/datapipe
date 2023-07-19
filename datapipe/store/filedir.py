@@ -138,6 +138,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
+        fsspec_kwargs: Dict[str, Any] = {},
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -146,7 +147,7 @@ class TableStoreFiledir(TableStore):
         1. Явный - в конструктор передается `primary_schema`, которая должна
            содержать все поля, упоминаемые в `filename_pattern`
         2. Неявный - `primary_schema` = `None`, тогда все поля получают
-           дефолтный тип `String(100)`
+           дефолтный тип `String`
 
         Args:
 
@@ -173,10 +174,19 @@ class TableStoreFiledir(TableStore):
         множественных расширений файлов вида (jpg|png|mp4)
 
         enable_rm -- если True, включить удаление файлов
+
+        fsspec_kwargs -- kwargs для fsspec
         """
 
+        self.fsspec_kwargs = fsspec_kwargs
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
-        self.filesystem = fsspec.filesystem(self.protocol)
+        if "protocol" in self.fsspec_kwargs:
+            self.protocol = self.fsspec_kwargs["protocol"]
+            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
+        else:
+            self.filesystem = fsspec.filesystem(
+                protocol=self.protocol, **self.fsspec_kwargs
+            )
 
         if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
@@ -185,7 +195,10 @@ class TableStoreFiledir(TableStore):
         else:
             filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
-            self.protocol_str = f"{self.protocol}://"
+            if self.protocol in ["gdrivefs"]:
+                self.protocol_str = ""
+            else:
+                self.protocol_str = f"{self.protocol}://"
 
         self.filename_patterns = _pattern_to_patterns_or(filename_pattern)
         self.attrnames = _pattern_to_attrnames(filename_pattern)
@@ -231,7 +244,7 @@ class TableStoreFiledir(TableStore):
             self.primary_schema = primary_schema
         else:
             self.primary_schema = [
-                Column(attrname, String(100), primary_key=True)
+                Column(attrname, String, primary_key=True)
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
@@ -368,7 +381,7 @@ class TableStoreFiledir(TableStore):
         def _iterate_files():
             if idx is None:
                 for file_open in fsspec.open_files(
-                    self.filename_glob, f"r{adapter.mode}"
+                    self.filename_glob, f"r{adapter.mode}", **self.fsspec_kwargs
                 ):
                     yield file_open
             else:
@@ -380,7 +393,7 @@ class TableStoreFiledir(TableStore):
                     found_files = [
                         file_open
                         for file_open in fsspec.open_files(
-                            filepaths, f"r{adapter.mode}"
+                            filepaths, f"r{adapter.mode}", **self.fsspec_kwargs
                         )
                         if self.filesystem.exists(file_open.path)
                     ]
@@ -437,7 +450,7 @@ class TableStoreFiledir(TableStore):
     ) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
-        files = fsspec.open_files(self.filename_glob)
+        files = fsspec.open_files(self.filename_glob, **self.fsspec_kwargs)
 
         ids: Dict[str, List[str]] = {attrname: [] for attrname in self.attrnames}
         ukeys = []

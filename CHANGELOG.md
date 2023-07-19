@@ -1,6 +1,8 @@
 # WIP 0.13.0
 
-## Major changes
+## Changes
+
+### Core
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
   meta table that tracks status of each transformation
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
@@ -8,18 +10,26 @@
 * Add `transform_keys` to `*BatchTransform`
 * Move changed idx computation out of `DataStore` to `BaseBatchTransformStep`
 * Add column `priority` to transform meta table, sort work by priority
+* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
+* `TableStoreFiledir` constructor accepts new argument `fsspec_kwargs`
+* Add `filters`, `order_by`, `order` arguments to `*BatchTransformStep`
+* Add magic injection of `ds`, `idx`, `run_config` to transform function via
+  parameters introspection
 
-## New features
-
+### CLI
 * Add `step reset-metadata` CLI command
 * Add `step fill-metadata` CLI command that populates transform meta-table with
   all indices to process
-* Add helm chart for running regular loops in k8s as `CronJob`
-* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
 * Add `step run-idx` CLI command
+* CLI `step run_changelist` command accepts new argument `--chunk-size`
+* New CLI command `table migrate_transform_tables` for `0.13` migration
 
+### Execution
 * Executors: `datapipe.executor.SingleThreadExecutor`,
   `datapipe.executor.ray.RayExecutor`
+
+### Deployment
+* Add helm chart for running regular loops in k8s as `CronJob`
 
 ## Bugfixes
 
