@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.0-alpha.1"
+version = "0.13.0-alpha.2"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
@@ -26,7 +26,6 @@ Pillow = "^9.0.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.4.2"
 
-tqdm-loggable = {git="https://github.com/epoch8/tqdm-loggable.git", branch="master"}
 traceback-with-variables = "^2.0.4"
 
 pymilvus = {version="^2.0.2", optional=true}

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Optional, Protocol
 
-from tqdm_loggable.auto import tqdm
+from tqdm import tqdm
 
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig

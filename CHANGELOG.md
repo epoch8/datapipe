@@ -15,7 +15,6 @@
 * Add `step fill-metadata` CLI command that populates transform meta-table with
   all indices to process
 * Add helm chart for running regular loops in k8s as `CronJob`
-* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
 * Add `step run-idx` CLI command
 
 * Executors: `datapipe.executor.SingleThreadExecutor`,
