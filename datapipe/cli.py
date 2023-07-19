@@ -13,14 +13,13 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
+from sqlalchemy import insert, literal
+from sqlalchemy.sql import and_, func, select
 
 from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
 from datapipe.core_steps import BaseBatchTransformStep
 from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.types import ChangeList, IndexDF, Labels
-from datapipe.core_steps import BaseBatchTransformStep
-from sqlalchemy import insert, literal
-from sqlalchemy.sql import select, and_, func
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -410,7 +409,9 @@ def run_idx(ctx: click.Context, idx: str) -> None:
 )
 @click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
 @click.pass_context
-def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: Optional[int] = None) -> None:
+def run_changelist(
+    ctx: click.Context, loop: bool, loop_delay: int, chunk_size: Optional[int] = None
+) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
@@ -424,7 +425,9 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
             assert isinstance(step, BaseBatchTransformStep)
 
             if idx_gen is None:
-                idx_count, idx_gen = step.get_full_process_ids(app.ds, chunk_size=chunk_size)
+                idx_count, idx_gen = step.get_full_process_ids(
+                    app.ds, chunk_size=chunk_size
+                )
                 cnt = 0
             try:
                 idx = next(idx_gen)  # type: ignore
@@ -432,15 +435,20 @@ def run_changelist(ctx: click.Context, loop: bool, loop_delay: int, chunk_size: 
                 take_all_idxs = False
                 if all(
                     [
-                        key not in input_dt.primary_keys for key in step.transform_keys
+                        key not in input_dt.primary_keys
+                        for key in step.transform_keys
                         for input_dt in steps_to_run[0].input_dts
                     ]
                 ):
                     take_all_idxs = True
 
                 for input_dt in step.input_dts:
-                    if not take_all_idxs and any([key in input_dt.primary_keys for key in step.transform_keys]):
-                        cl.append(input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx)))
+                    if not take_all_idxs and any(
+                        [key in input_dt.primary_keys for key in step.transform_keys]
+                    ):
+                        cl.append(
+                            input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx))
+                        )
 
                 run_steps_changelist(app.ds, steps_to_run, cl)
             except StopIteration:
@@ -496,24 +504,15 @@ def main():
 
 
 @table.command()
-@click.argument("transform")
-@click.pass_context
-def reset_transform_metadata(ctx: click.Context, transform: str) -> None:
-    app: DatapipeApp = ctx.obj["pipeline"]
-    batch_transforms_steps = [step for step in app.steps if isinstance(step, BaseBatchTransformStep)]
-    transform_names = [step.get_name() for step in batch_transforms_steps]
-    transform_step = batch_transforms_steps[transform_names.index(transform)]
-    transform_step.meta_table.mark_all_rows_unprocessed()
-
-
-@table.command()
 @click.pass_context
 @click.option("--name", type=click.STRING, default="")
 @click.option("--labels", type=click.STRING, default="")
 def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     labels_dict = parse_labels(labels)
-    batch_transforms_steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
+    batch_transforms_steps = filter_steps_by_labels_and_name(
+        app, labels=labels_dict, name_prefix=name
+    )
     for batch_transform in batch_transforms_steps:
         if not isinstance(batch_transform, BaseBatchTransformStep):
             continue
@@ -526,12 +525,17 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
             greatest_func = func.max
         else:
             greatest_func = func.greatest
-        output_tbls = [output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts]
+        output_tbls = [
+            output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts
+        ]
         sql = (
             select(
                 *[output_tbls[0].c[k] for k in batch_transform.transform_keys],
-                greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls]).label("process_ts")
-            ).distinct()
+                greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls]).label(
+                    "process_ts"
+                ),
+            )
+            .distinct()
             .select_from(output_tbls[0])
             .where(and_(*[tbl.c.delete_ts.is_(None) for tbl in output_tbls]))
         )
@@ -539,19 +543,22 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
         for tbl in output_tbls[1:]:
             sql = sql.outerjoin(
                 tbl,
-                and_(*[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]),
-                full=True
+                and_(
+                    *[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]
+                ),
+                full=True,
             )
             prev_tbl = tbl
         insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
-            batch_transform.transform_keys + ["process_ts", "is_success", "error", "priority"],
+            batch_transform.transform_keys
+            + ["process_ts", "is_success", "error", "priority"],
             select(
                 *[sql.c[k] for k in batch_transform.transform_keys],
                 sql.c["process_ts"],
                 literal(True),
                 literal(None),
-                literal(0)
-            )
+                literal(0),
+            ),
         )
         app.ds.meta_dbconn.con.execute(insert_stmt)
         rprint("  [green] ok[/green]")

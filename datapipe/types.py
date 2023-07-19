@@ -1,8 +1,9 @@
 from __future__ import annotations  # NOQA
 
-from dataclasses import dataclass, field
-from typing import Dict, List, NewType, Tuple, TypeVar, Union, cast, Set
 import itertools
+from dataclasses import dataclass, field
+from typing import Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
+
 import pandas as pd
 from sqlalchemy import Column
 
@@ -129,22 +130,28 @@ def get_tables_that_have_different_intersections(
     schemas: List[DataSchema], table_names: List[str]
 ) -> List[TableWithDiffentPairsIntersection]:
     """
-        Вычисляет таблицы, которые имеют разные попарные пересечения с другими таблицами.
+    Вычисляет таблицы, которые имеют разные попарные пересечения с другими таблицами.
     """
-    pairwise_primary_intersections_in_tables = get_pairwise_primary_intersections_in_tables(
-        schemas, table_names
+    pairwise_primary_intersections_in_tables = (
+        get_pairwise_primary_intersections_in_tables(schemas, table_names)
     )
-    tables_that_have_different_intersections: List[TableWithDiffentPairsIntersection] = []
+    tables_that_have_different_intersections: List[
+        TableWithDiffentPairsIntersection
+    ] = []
     for table_name in table_names:
         # Проверяем, что у этой таблички должно быть непустым пересечение всех непустых пар
         non_empty_sets_intersection = None
         pairs = []
         for table_name1, table_name2 in pairwise_primary_intersections_in_tables:
             if table_name1 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[table_name, table_name2]
+                pair_intersection = pairwise_primary_intersections_in_tables[
+                    table_name, table_name2
+                ]
                 pairs.append((table_name, table_name2))
             elif table_name2 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[table_name1, table_name]
+                pair_intersection = pairwise_primary_intersections_in_tables[
+                    table_name1, table_name
+                ]
                 pairs.append((table_name1, table_name))
             else:
                 continue
@@ -152,20 +159,31 @@ def get_tables_that_have_different_intersections(
                 if non_empty_sets_intersection is None:
                     non_empty_sets_intersection = pair_intersection
                 else:
-                    non_empty_sets_intersection = non_empty_sets_intersection.intersection(pair_intersection)
-        if non_empty_sets_intersection is not None and len(non_empty_sets_intersection) == 0:
+                    non_empty_sets_intersection = (
+                        non_empty_sets_intersection.intersection(pair_intersection)
+                    )
+        if (
+            non_empty_sets_intersection is not None
+            and len(non_empty_sets_intersection) == 0
+        ):
             tables_that_have_different_intersections.append(
                 TableWithDiffentPairsIntersection(
                     table_name=table_name,
                     pairs_intersection=[
                         PairIntersection(
-                            table_name=(table_name1 if table_name1 != table_name else table_name2),
+                            table_name=(
+                                table_name1
+                                if table_name1 != table_name
+                                else table_name2
+                            ),
                             idxs_intersection=sorted(
-                                pairwise_primary_intersections_in_tables[(table_name1, table_name2)]
-                            )
+                                pairwise_primary_intersections_in_tables[
+                                    (table_name1, table_name2)
+                                ]
+                            ),
                         )
                         for table_name1, table_name2 in pairs
-                    ]
+                    ],
                 )
             )
     return tables_that_have_different_intersections
@@ -181,10 +199,10 @@ def get_all_equivalence_tables(
     schemas: List[DataSchema], table_names: List[str]
 ) -> List[EquivalenceTables]:
     """
-        Вычисляет классы эквивалетностей таблицы, максимально имеющих общие индексы
+    Вычисляет классы эквивалетностей таблицы, максимально имеющих общие индексы
     """
-    pairwise_primary_intersections_in_tables = get_pairwise_primary_intersections_in_tables(
-        schemas, table_names
+    pairwise_primary_intersections_in_tables = (
+        get_pairwise_primary_intersections_in_tables(schemas, table_names)
     )
     all_equalience_tables: List[EquivalenceTables] = []
     for table_name in table_names:
@@ -193,10 +211,14 @@ def get_all_equivalence_tables(
         pairs = []
         for table_name1, table_name2 in pairwise_primary_intersections_in_tables:
             if table_name1 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[table_name, table_name2]
+                pair_intersection = pairwise_primary_intersections_in_tables[
+                    table_name, table_name2
+                ]
                 pairs.append((table_name, table_name2))
             elif table_name2 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[table_name1, table_name]
+                pair_intersection = pairwise_primary_intersections_in_tables[
+                    table_name1, table_name
+                ]
                 pairs.append((table_name1, table_name))
             else:
                 continue
@@ -204,19 +226,28 @@ def get_all_equivalence_tables(
                 if non_empty_sets_intersection is None:
                     non_empty_sets_intersection = pair_intersection
                 else:
-                    non_empty_sets_intersection = non_empty_sets_intersection.intersection(pair_intersection)
+                    non_empty_sets_intersection = (
+                        non_empty_sets_intersection.intersection(pair_intersection)
+                    )
         if non_empty_sets_intersection is None:
-            idxs = [x.name for x in schemas[table_names.index(table_name)] if x.primary_key]
+            idxs = [
+                x.name for x in schemas[table_names.index(table_name)] if x.primary_key
+            ]
             all_equalience_tables.append(
                 EquivalenceTables(table_names=[table_name], idxs=sorted(idxs))
             )
-        if non_empty_sets_intersection is not None and len(non_empty_sets_intersection) > 0:
+        if (
+            non_empty_sets_intersection is not None
+            and len(non_empty_sets_intersection) > 0
+        ):
             have_idxs = False
             for tables_with_idxs in all_equalience_tables:
                 for idx in non_empty_sets_intersection:
                     if idx in tables_with_idxs.idxs:
                         tables_with_idxs.idxs = sorted(
-                            set(tables_with_idxs.idxs).intersection(non_empty_sets_intersection)
+                            set(tables_with_idxs.idxs).intersection(
+                                non_empty_sets_intersection
+                            )
                         )
                         tables_with_idxs.table_names.append(table_name)
                         have_idxs = True
@@ -224,9 +255,15 @@ def get_all_equivalence_tables(
                     break
             if not have_idxs:
                 all_equalience_tables.append(
-                    EquivalenceTables(table_names=[table_name], idxs=sorted(non_empty_sets_intersection))
+                    EquivalenceTables(
+                        table_names=[table_name],
+                        idxs=sorted(non_empty_sets_intersection),
+                    )
                 )
-        if non_empty_sets_intersection is not None and len(non_empty_sets_intersection) == 0:
+        if (
+            non_empty_sets_intersection is not None
+            and len(non_empty_sets_intersection) == 0
+        ):
             raise ValueError(f"Table {table_name} has bad intersection with tables.")
 
     return all_equalience_tables

@@ -138,7 +138,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
-        fsspec_kwargs: Dict[str, Any] = {}
+        fsspec_kwargs: Dict[str, Any] = {},
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -184,7 +184,9 @@ class TableStoreFiledir(TableStore):
             self.protocol = self.fsspec_kwargs["protocol"]
             self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
         else:
-            self.filesystem = fsspec.filesystem(protocol=self.protocol, **self.fsspec_kwargs)
+            self.filesystem = fsspec.filesystem(
+                protocol=self.protocol, **self.fsspec_kwargs
+            )
 
         if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
@@ -379,8 +381,7 @@ class TableStoreFiledir(TableStore):
         def _iterate_files():
             if idx is None:
                 for file_open in fsspec.open_files(
-                    self.filename_glob, f"r{adapter.mode}",
-                    **self.fsspec_kwargs
+                    self.filename_glob, f"r{adapter.mode}", **self.fsspec_kwargs
                 ):
                     yield file_open
             else:
@@ -392,8 +393,7 @@ class TableStoreFiledir(TableStore):
                     found_files = [
                         file_open
                         for file_open in fsspec.open_files(
-                            filepaths, f"r{adapter.mode}",
-                            **self.fsspec_kwargs
+                            filepaths, f"r{adapter.mode}", **self.fsspec_kwargs
                         )
                         if self.filesystem.exists(file_open.path)
                     ]

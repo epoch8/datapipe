@@ -1,6 +1,5 @@
 import logging
-import math
-from typing import Dict, Iterable, List, Optional, Tuple, cast
+from typing import Dict, Optional, cast
 
 import pandas as pd
 from opentelemetry import trace
@@ -10,14 +9,7 @@ from datapipe.metastore import MetaTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
-from datapipe.types import (
-    ChangeList,
-    DataDF,
-    IndexDF,
-    MetadataDF,
-    data_to_index,
-    index_difference,
-)
+from datapipe.types import DataDF, IndexDF, MetadataDF, data_to_index, index_difference
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")

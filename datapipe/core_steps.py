@@ -1,9 +1,9 @@
 import copy
+import inspect
 import itertools
 import logging
 import math
 import time
-import inspect
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -12,18 +12,30 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Protocol,
     Tuple,
     Union,
     cast,
-    Literal
 )
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, and_, column, func, literal, or_, select, desc, tuple_, asc
+from sqlalchemy import (
+    alias,
+    and_,
+    asc,
+    column,
+    desc,
+    func,
+    literal,
+    or_,
+    select,
+    tuple_,
+)
 from tqdm_loggable.auto import tqdm
+
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
@@ -33,13 +45,12 @@ from datapipe.store.database import sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
-    DataSchema,
     IndexDF,
     Labels,
     MetaSchema,
     TransformResult,
     data_to_index,
-    get_tables_that_have_different_intersections
+    get_tables_that_have_different_intersections,
 )
 
 logger = logging.getLogger("datapipe.core_steps")
@@ -217,9 +228,11 @@ class BaseBatchTransformStep(ComputeStep):
 
         # Check that all keys are either in one input table or in all input tables
         # Currently we do not support partial primary keys
-        tables_that_have_different_intersections = get_tables_that_have_different_intersections(
-            [dt.primary_schema for dt in self.input_dts],
-            [dt.name for dt in self.input_dts]
+        tables_that_have_different_intersections = (
+            get_tables_that_have_different_intersections(
+                [dt.primary_schema for dt in self.input_dts],
+                [dt.name for dt in self.input_dts],
+            )
         )
         if len(tables_that_have_different_intersections) > 0:
             raise NotImplementedError(
@@ -424,33 +437,26 @@ class BaseBatchTransformStep(ComputeStep):
             )
         )
         if order_by is None:
-            sql = (
-                sql
-                .order_by(
-                    out.c.priority.desc().nullslast(),
-                    *[column(k) for k in self.transform_keys],
-                )
+            sql = sql.order_by(
+                out.c.priority.desc().nullslast(),
+                *[column(k) for k in self.transform_keys],
             )
         else:
             if order == "desc":
-                sql = (
-                    sql
-                    .order_by(
-                        desc(*[column(k) for k in order_by]),
-                        out.c.priority.desc().nullslast(),
-                    )
+                sql = sql.order_by(
+                    desc(*[column(k) for k in order_by]),
+                    out.c.priority.desc().nullslast(),
                 )
             elif order == "asc":
-                sql = (
-                    sql
-                    .order_by(
-                        asc(*[column(k) for k in order_by]),
-                        out.c.priority.desc().nullslast(),
-                    )
+                sql = sql.order_by(
+                    asc(*[column(k) for k in order_by]),
+                    out.c.priority.desc().nullslast(),
                 )
         return (self.transform_keys, sql)
 
-    def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
+    def _apply_filters_to_run_config(
+        self, run_config: Optional[RunConfig] = None
+    ) -> Optional[RunConfig]:
         if self.filters is None:
             return run_config
         else:
@@ -489,7 +495,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         chunk_size: Optional[int] = None,
-        run_config: Optional[RunConfig] = None
+        run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         """
         Метод для получения перечня индексов для обработки.
@@ -515,7 +521,7 @@ class BaseBatchTransformStep(ComputeStep):
                 ds=ds,
                 run_config=run_config,
                 order_by=self.order_by,
-                order=self.order
+                order=self.order,
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
@@ -720,7 +726,7 @@ class BatchTransform(PipelineStep):
                 executor_config=self.executor_config,
                 filters=self.filters,
                 order_by=self.order_by,
-                order=self.order
+                order=self.order,
             )
         ]
 
@@ -753,7 +759,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             executor_config=executor_config,
             filters=filters,
             order_by=order_by,
-            order=order
+            order=order,
         )
 
         self.func = func
@@ -771,7 +777,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             **({"ds": ds} if "ds" in parameters else {}),
             **({"idx": idx} if "idx" in parameters else {}),
             **({"run_config": run_config} if "run_config" in parameters else {}),
-            **(self.kwargs or {})
+            **(self.kwargs or {}),
         }
         return self.func(*input_dfs, **kwargs)
 
