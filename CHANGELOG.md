@@ -21,6 +21,10 @@
 * Executors: `datapipe.executor.SingleThreadExecutor`,
   `datapipe.executor.ray.RayExecutor`
 
+## Bugfixes
+
+* Fix `QdrantStore.read_rows` when no idx is specified
+
 # 0.12.0
 
 ## Breaking changes
