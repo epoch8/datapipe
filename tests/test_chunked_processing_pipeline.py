@@ -13,6 +13,7 @@ from datapipe.compute import (
     Table,
     build_compute,
     run_changelist,
+    run_steps_changelist,
     run_steps,
 )
 from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
@@ -20,7 +21,7 @@ from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.types import ChangeList, data_to_index
+from datapipe.types import ChangeList, data_to_index, IndexDF
 
 from .util import assert_datatable_equal, assert_df_equal
 
@@ -402,3 +403,119 @@ def test_run_changelist_with_datatable_transform(dbconn):
     changelist = ChangeList.create("inp", changeIdx)
     catalog.get_datatable(ds, "inp").store_chunk(TEST_DF, now=0)
     run_changelist(ds, catalog, pipeline, changelist)
+
+
+def test_magic_inject_variables(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "inp": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "inp_data",
+                    TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+            "out": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "out_data",
+                    TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+        }
+    )
+    transform_count = {"value": 0}
+
+    def transform(df, idx, ds, run_config, transform_count):
+        transform_count["value"] += 1
+        assert isinstance(idx, pd.DataFrame)
+        assert isinstance(ds, DataStore)
+        assert isinstance(run_config, RunConfig)
+        return df
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                transform,
+                inputs=["inp"],
+                outputs=["out"],
+                chunk_size=CHUNK_SIZE,
+                kwargs=dict(transform_count=transform_count)
+            ),
+        ]
+    )
+
+    dt_input = catalog.get_datatable(ds, "inp")
+    dt_input.store_chunk(TEST_DF)
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
+
+    dt_out = catalog.get_datatable(ds, "out")
+    assert_datatable_equal(dt_out, TEST_DF)
+
+    dt_input.delete_by_idx(dt_input.get_metadata())
+
+    run_steps(ds, steps, RunConfig())
+    assert transform_count["value"] == 2
+
+
+def test_magic_inject_variables_changelist(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "inp": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "inp_data",
+                    TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+            "out": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "out_data",
+                    TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+        }
+    )
+    transform_count = {"value": 0}
+
+    def transform(df, idx, ds, run_config, transform_count):
+        transform_count["value"] += 1
+        assert isinstance(idx, pd.DataFrame)
+        assert isinstance(ds, DataStore)
+        assert isinstance(run_config, RunConfig)
+        return df
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                transform,
+                inputs=["inp"],
+                outputs=["out"],
+                chunk_size=CHUNK_SIZE,
+                kwargs=dict(transform_count=transform_count)
+            ),
+        ]
+    )
+
+    dt_input = catalog.get_datatable(ds, "inp")
+    change_idx = dt_input.store_chunk(TEST_DF)
+    steps = build_compute(ds, catalog, pipeline)
+    changelist = ChangeList.create("inp", change_idx)
+    run_steps_changelist(ds, steps, changelist, RunConfig())
+
+    dt_out = catalog.get_datatable(ds, "out")
+    assert_datatable_equal(dt_out, TEST_DF)
+
+    change_idx = dt_input.get_metadata()
+    dt_input.delete_by_idx(dt_input.get_metadata())
+    changelist = ChangeList.create("inp", change_idx)
+    run_steps_changelist(ds, steps, changelist, RunConfig())
+    assert transform_count["value"] == 2
