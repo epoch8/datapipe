@@ -405,7 +405,7 @@ def test_run_changelist_with_datatable_transform(dbconn):
     run_changelist(ds, catalog, pipeline, changelist)
 
 
-def test_magic_inject_variables(dbconn):
+def test_magic_injection_variables(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog(
         {
@@ -430,10 +430,10 @@ def test_magic_inject_variables(dbconn):
     transform_count = {"value": 0}
 
     def transform(df, idx, ds, run_config, transform_count):
-        transform_count["value"] += 1
         assert isinstance(idx, pd.DataFrame)
         assert isinstance(ds, DataStore)
         assert isinstance(run_config, RunConfig)
+        transform_count["value"] += 1
         return df
 
     pipeline = Pipeline(
@@ -462,7 +462,7 @@ def test_magic_inject_variables(dbconn):
     assert transform_count["value"] == 2
 
 
-def test_magic_inject_variables_changelist(dbconn):
+def test_magic_injection_variables_changelist(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog(
         {
@@ -487,10 +487,10 @@ def test_magic_inject_variables_changelist(dbconn):
     transform_count = {"value": 0}
 
     def transform(df, idx, ds, run_config, transform_count):
-        transform_count["value"] += 1
         assert isinstance(idx, pd.DataFrame)
         assert isinstance(ds, DataStore)
         assert isinstance(run_config, RunConfig)
+        transform_count["value"] += 1
         return df
 
     pipeline = Pipeline(
