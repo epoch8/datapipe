@@ -38,6 +38,7 @@
 # 0.13.0-alpha.6
 
 * Move batch functions to `BaseBatchTransformStep`
+* fix index_difference index assert
 
 # 0.12.0
 
