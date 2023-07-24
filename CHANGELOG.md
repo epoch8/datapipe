@@ -40,6 +40,23 @@
 * Move batch functions to `BaseBatchTransformStep`
 * fix index_difference index assert
 
+# 0.13.0-alpha.5
+
+* Allow passing empty dfs when idx is passed to func
+
+# 0.13.0-alpha.4
+
+* `TableStoreFiledir` constructor accepts new argument `fsspec_kwargs`
+* Add `filters`, `order_by`, `order` arguments to `*BatchTransformStep`
+* Add magic injection of `ds`, `idx`, `run_config` to transform function via
+  parameters introspection
+* CLI `step run_changelist` command accepts new argument `--chunk-size`
+* New CLI command `table migrate_transform_tables` for `0.13` migration
+
+# 0.13.0-alpha.3
+
+* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
+
 # 0.12.0
 
 ## Breaking changes
