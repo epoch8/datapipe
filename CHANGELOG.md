@@ -35,6 +35,10 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# 0.13.0-alpha.6
+
+* Move batch functions to `BaseBatchTransformStep`
+
 # 0.12.0
 
 ## Breaking changes
