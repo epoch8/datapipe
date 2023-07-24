@@ -138,155 +138,13 @@ class ComputeStep:
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
-    def get_batch_input_dfs(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> List[DataDF]:
-        return [inp.get_data(idx) for inp in self.input_dts]
-
-    def process_batch_dfs(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        input_dfs: List[DataDF],
-        run_config: Optional[RunConfig] = None,
-    ) -> TransformResult:
-        raise NotImplementedError()
-
-    def process_batch_dts(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> Optional[TransformResult]:
-        with tracer.start_as_current_span("get input data"):
-            input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
-
-        if sum(len(j) for j in input_dfs) == 0:
-            return None
-
-        with tracer.start_as_current_span("run transform"):
-            output_dfs = self.process_batch_dfs(
-                ds=ds,
-                idx=idx,
-                input_dfs=input_dfs,
-                run_config=run_config,
-            )
-
-        return output_dfs
-
-    def store_batch_result(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        output_dfs: Optional[TransformResult],
-        process_ts: float,
-        run_config: Optional[RunConfig] = None,
-    ) -> ChangeList:
-        changes = ChangeList()
-
-        if output_dfs is not None:
-            with tracer.start_as_current_span("store output batch"):
-                if isinstance(output_dfs, (list, tuple)):
-                    assert len(output_dfs) == len(self.output_dts)
-                else:
-                    assert len(self.output_dts) == 1
-                    output_dfs = [output_dfs]
-
-                for k, res_dt in enumerate(self.output_dts):
-                    # Берем k-ое значение функции для k-ой таблички
-                    # Добавляем результат в результирующие чанки
-                    change_idx = res_dt.store_chunk(
-                        data_df=output_dfs[k],
-                        processed_idx=idx,
-                        now=process_ts,
-                        run_config=run_config,
-                    )
-
-                    changes.append(res_dt.name, change_idx)
-
-        else:
-            with tracer.start_as_current_span("delete missing data from output"):
-                for k, res_dt in enumerate(self.output_dts):
-                    del_idx = res_dt.meta_table.get_existing_idx(idx)
-
-                    res_dt.delete_by_idx(del_idx, run_config=run_config)
-
-                    changes.append(res_dt.name, del_idx)
-
-        return changes
-
-    def store_batch_err(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        e: Exception,
-        process_ts: float,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        logger.error(f"Process batch failed: {str(e)}")
-        ds.event_logger.log_exception(
-            e,
-            run_config=RunConfig.add_labels(
-                run_config,
-                {"idx": idx.to_dict(orient="records"), "process_ts": process_ts},
-            ),
-        )
-
-    def process_batch(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> ChangeList:
-        with tracer.start_as_current_span("process batch"):
-            logger.debug(f"Idx to process: {idx.to_records()}")
-
-            process_ts = time.time()
-
-            try:
-                output_dfs = self.process_batch_dts(ds, idx, run_config)
-
-                return self.store_batch_result(
-                    ds, idx, output_dfs, process_ts, run_config
-                )
-
-            except Exception as e:
-                self.store_batch_err(ds, idx, e, process_ts, run_config)
-
-                return ChangeList()
-
     def run_full(
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
         executor: Optional[Executor] = None,
     ) -> None:
-        if executor is None:
-            executor = SingleThreadExecutor()
-
-        logger.info(f"Running: {self.name}")
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
-
-        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
-
-        logger.info(f"Batches to process {idx_count}")
-
-        if idx_count is not None and idx_count == 0:
-            return
-
-        executor.run_process_batch(
-            ds=ds,
-            idx_count=idx_count,
-            idx_gen=idx_gen,
-            process_fn=self.process_batch,
-            run_config=run_config,
-            executor_config=self.executor_config,
-        )
-
-        ds.event_logger.log_step_full_complete(self.name)
+        raise NotImplementedError()
 
     def run_changelist(
         self,
@@ -295,32 +153,7 @@ class ComputeStep:
         run_config: Optional[RunConfig] = None,
         executor: Optional[Executor] = None,
     ) -> ChangeList:
-        if executor is None:
-            executor = SingleThreadExecutor()
-
-        logger.info(f"Running: {self.name}")
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
-
-        (idx_count, idx_gen) = self.get_change_list_process_ids(
-            ds, change_list, run_config
-        )
-
-        logger.info(f"Batches to process {idx_count}")
-
-        if idx_count is not None and idx_count == 0:
-            return ChangeList()
-
-        res_changelist = ChangeList()
-
-        for idx in tqdm(idx_gen, total=idx_count):
-            changes = self.process_batch(
-                ds=ds,
-                idx=idx,
-                run_config=run_config,
-            )
-            res_changelist.extend(changes)
-
-        return res_changelist
+        raise NotImplementedError()
 
     def run_idx(
         self,
@@ -328,14 +161,7 @@ class ComputeStep:
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
-        logger.info(f"Running: {self.name}")
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
-
-        return self.process_batch(
-            ds=ds,
-            idx=idx,
-            run_config=run_config,
-        )
+        raise NotImplementedError()
 
 
 class PipelineStep(ABC):
@@ -435,6 +261,9 @@ def run_steps_changelist(
     changelist: ChangeList,
     run_config: Optional[RunConfig] = None,
 ) -> None:
+    # FIXME extract Batch* steps to separate module
+    from datapipe.core_steps import BaseBatchTransformStep
+
     current_changes = changelist
     next_changes = ChangeList()
     iteration = 0
@@ -453,10 +282,11 @@ def run_steps_changelist(
                         )
 
                         try:
-                            step_changes = step.run_changelist(
-                                ds, current_changes, run_config
-                            )
-                            next_changes.extend(step_changes)
+                            if isinstance(step, BaseBatchTransformStep):
+                                step_changes = step.run_changelist(
+                                    ds, current_changes, run_config
+                                )
+                                next_changes.extend(step_changes)
                         except NotImplementedError:
                             # Some steps do not implement `.run_changelist`, that's ok
                             pass
