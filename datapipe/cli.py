@@ -399,7 +399,8 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     idx_dict = {k: v for k, v in (i.split("=") for i in idx.split(","))}
 
     for step in steps_to_run:
-        step.run_idx(ds=app.ds, idx=cast(IndexDF, pd.DataFrame([idx_dict])))
+        if isinstance(step, BaseBatchTransformStep):
+            step.run_idx(ds=app.ds, idx=cast(IndexDF, pd.DataFrame([idx_dict])))
 
 
 @step.command()  # type: ignore

@@ -86,11 +86,11 @@ class DBConn:
 
 
 def sql_apply_runconfig_filter(
-    sql: Executable,
+    sql: Any,
     table: Table,
     primary_keys: List[str],
     run_config: Optional[RunConfig] = None,
-) -> Executable:
+) -> Any:
     if run_config is not None:
         for k, v in run_config.filters.items():
             if k in primary_keys:
@@ -100,11 +100,11 @@ def sql_apply_runconfig_filter(
 
 
 def sql_apply_idx_filter(
-    sql: Executable,
+    sql: Any,
     table: Table,
     primary_keys: List[str],
     idx: IndexDF,
-) -> Executable:
+) -> Any:
     if len(primary_keys) == 1:
         # Когда ключ один - сравниваем напрямую
         key = primary_keys[0]
@@ -112,7 +112,7 @@ def sql_apply_idx_filter(
 
     else:
         # Когда ключей много - сравниваем по кортежу
-        keys = tuple_(*[table.c[key] for key in primary_keys])
+        keys = tuple_(*[table.c[key] for key in primary_keys])  # type: ignore
 
         sql = sql.where(
             keys.in_(
@@ -132,10 +132,10 @@ class MetaKey(SchemaItem):
 
     def _set_parent(self, parent: SchemaEventTarget, **kw: Any) -> None:
         self.parent = parent
-        self.parent.meta_key = self
+        self.parent.meta_key = self  # type: ignore
 
         if not self.target_name:
-            self.target_name = parent.name
+            self.target_name = parent.name  # type: ignore
 
     @classmethod
     def get_property_name(cls) -> str:
