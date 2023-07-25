@@ -425,18 +425,18 @@ def run_changelist(
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    start_steps = filter_steps_by_labels_and_name(
+    start_step_objs = filter_steps_by_labels_and_name(
         app, labels=[], name_prefix=start_step
     )
-    assert len(start_steps) == 1
+    assert len(start_step_objs) == 1
 
-    start_step = start_steps[0]
-    assert isinstance(start_step, BaseBatchTransformStep)
+    start_step_obj = start_step_objs[0]
+    assert isinstance(start_step_obj, BaseBatchTransformStep)
 
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
 
-    if start_step not in steps_to_run:
-        steps_to_run = [start_step] + steps_to_run
+    if start_step_obj not in steps_to_run:
+        steps_to_run = [start_step_obj] + steps_to_run
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
 
@@ -444,7 +444,7 @@ def run_changelist(
 
     executor: Executor = ctx.obj["init_executor"]()
 
-    idx_count, idx_gen = start_step.get_full_process_ids(
+    idx_count, idx_gen = start_step_obj.get_full_process_ids(
         app.ds,
         chunk_size=chunk_size,
     )
@@ -452,7 +452,7 @@ def run_changelist(
 
     while True:
         for idx in tqdm(idx_gen, total=idx_count):
-            changes = start_step.run_idx(
+            changes = start_step_obj.run_idx(
                 ds=app.ds,
                 idx=idx,
                 executor=executor,
