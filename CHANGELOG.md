@@ -35,6 +35,17 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# 0.13.0-alpha.7
+
+* Try to setup logging in RayExecutor (fails so far)
+* Lazy initialisation of Ray to speedup things in CLI
+* Add `--start-step` parameter to `step run-changelist` CLI
+* Fix batch count in tqdm in `run_changelist`
+* Migrate `run_changelist` to executor, possible parallelisation
+* Add `name` parameter to `executor.run_process_batch` to customize task name in
+  ray dashboard
+* Limit number of in-flight Ray tasks in one `run_process_batch` to 100
+
 # 0.13.0-alpha.6
 
 * Move batch functions to `BaseBatchTransformStep`

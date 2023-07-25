@@ -260,6 +260,7 @@ def run_steps_changelist(
     steps: List[ComputeStep],
     changelist: ChangeList,
     run_config: Optional[RunConfig] = None,
+    executor: Optional[Executor] = None,
 ) -> None:
     # FIXME extract Batch* steps to separate module
     from datapipe.core_steps import BaseBatchTransformStep
@@ -281,15 +282,14 @@ def run_steps_changelist(
                             f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                         )
 
-                        try:
-                            if isinstance(step, BaseBatchTransformStep):
-                                step_changes = step.run_changelist(
-                                    ds, current_changes, run_config
-                                )
-                                next_changes.extend(step_changes)
-                        except NotImplementedError:
-                            # Some steps do not implement `.run_changelist`, that's ok
-                            pass
+                        if isinstance(step, BaseBatchTransformStep):
+                            step_changes = step.run_changelist(
+                                ds,
+                                current_changes,
+                                run_config,
+                                executor=executor,
+                            )
+                            next_changes.extend(step_changes)
 
             current_changes = next_changes
             next_changes = ChangeList()

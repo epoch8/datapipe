@@ -1,3 +1,4 @@
+from functools import wraps
 from typing import Any, Dict, Iterable, Optional
 
 import ray
@@ -12,6 +13,7 @@ from datapipe.types import ChangeList, IndexDF
 class RayExecutor(Executor):
     def run_process_batch(
         self,
+        name: str,
         ds: DataStore,
         idx_count: int,
         idx_gen: Iterable[IndexDF],
@@ -21,7 +23,9 @@ class RayExecutor(Executor):
     ) -> ChangeList:
         res_changelist = ChangeList()
 
-        remote_kwargs: Dict[str, Any] = {}
+        remote_kwargs: Dict[str, Any] = {
+            "name": name,
+        }
 
         if executor_config is not None:
             if executor_config.memory is not None:
@@ -29,33 +33,30 @@ class RayExecutor(Executor):
             if executor_config.cpu is not None:
                 remote_kwargs["num_cpus"] = executor_config.cpu
 
-        if remote_kwargs:
-
-            @ray.remote(**remote_kwargs)
-            def process_fn_remote(ds, idx, run_config):
-                return process_fn(ds, idx, run_config)
-
-        else:
-
-            @ray.remote
-            def process_fn_remote(ds, idx, run_config):
-                return process_fn(ds, idx, run_config)
-
-        # Submit tasks to remote functions using Ray
-        futures = []
-        for idx in idx_gen:
-            future = process_fn_remote.remote(ds, idx, run_config)
-            futures.append(future)
+        @ray.remote(**remote_kwargs)
+        def process_fn_remote(ds, idx, run_config):
+            return process_fn(ds, idx, run_config)
 
         # Generator to collect results, so tqdm can show progress
-        def _results(futures):
+        def _results(idx_gen):
+            # Submit tasks to remote functions using Ray
+            futures = []
+            for idx in idx_gen:
+                if len(futures) > 100:
+                    ready, futures = ray.wait(futures, timeout=None)
+                    for result in ray.get(ready):
+                        yield result
+
+                future = process_fn_remote.remote(ds, idx, run_config)
+                futures.append(future)
+
             ready, futures = ray.wait(futures, timeout=None)
             while len(ready) > 0:
                 for result in ray.get(ready):
                     yield result
                 ready, futures = ray.wait(futures, timeout=None)
 
-        for result in tqdm(_results(futures), total=len(futures)):
+        for result in tqdm(_results(idx_gen), total=idx_count):
             res_changelist.extend(result)
 
         return res_changelist

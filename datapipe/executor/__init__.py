@@ -30,6 +30,7 @@ class Executor(ABC):
     @abstractmethod
     def run_process_batch(
         self,
+        name: str,
         ds: DataStore,
         idx_count: int,
         idx_gen: Iterable[IndexDF],
@@ -43,6 +44,7 @@ class Executor(ABC):
 class SingleThreadExecutor(Executor):
     def run_process_batch(
         self,
+        name: str,
         ds: DataStore,
         idx_count: int,
         idx_gen: Iterable[IndexDF],
