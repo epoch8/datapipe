@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.0-alpha.6+brickit.1"
+version = "0.13.0-alpha.6+brickit.2"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
@@ -50,7 +50,7 @@ rich = "^13.3.2"
 sphinx = {version = ">=4.5,<6.0", optional = true}
 myst-parser = {version = ">=0.17.2,<1.1.0", optional = true}
 
-ray = {version = "^2.5.0", optional = true, extras = ["default"]}
+ray = {version = "^2.5.0", optional = true, extras = ["default", "serve"]}
 
 [tool.poetry.extras]
 

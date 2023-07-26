@@ -2,11 +2,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Optional, Protocol
 
-from tqdm_loggable.auto import tqdm
-
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
+from tqdm_loggable.auto import tqdm
 
 
 class ProcessFn(Protocol):
@@ -24,6 +23,8 @@ class ExecutorConfig:
     memory: Optional[int] = None
     cpu: Optional[float] = None
     gpu: Optional[int] = None
+
+    parallelism: int = 100
 
 
 class Executor(ABC):

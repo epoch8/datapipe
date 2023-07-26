@@ -2,12 +2,11 @@ from functools import wraps
 from typing import Any, Dict, Iterable, Optional
 
 import ray
-from tqdm_loggable.auto import tqdm
-
 from datapipe.datatable import DataStore
 from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
+from tqdm_loggable.auto import tqdm
 
 
 class RayExecutor(Executor):
@@ -33,6 +32,10 @@ class RayExecutor(Executor):
             if executor_config.cpu is not None:
                 remote_kwargs["num_cpus"] = executor_config.cpu
 
+            parallelism = executor_config.parallelism
+        else:
+            parallelism = 10
+
         @ray.remote(**remote_kwargs)
         def process_fn_remote(ds, idx, run_config):
             return process_fn(ds, idx, run_config)
@@ -42,7 +45,7 @@ class RayExecutor(Executor):
             # Submit tasks to remote functions using Ray
             futures = []
             for idx in idx_gen:
-                if len(futures) > 100:
+                if len(futures) > parallelism:
                     ready, futures = ray.wait(futures, timeout=None)
                     for result in ray.get(ready):
                         yield result
