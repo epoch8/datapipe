@@ -512,7 +512,7 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     for batch_transform in batch_transforms_steps:
         if not isinstance(batch_transform, BaseBatchTransformStep):
             continue
-        print(f"Checking '{batch_transform.get_name()}': ")
+        print(f"Migrate '{batch_transform.get_name()}': ")
         size = batch_transform.meta_table.get_metadata_size()
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
@@ -524,27 +524,53 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
         output_tbls = [
             output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts
         ]
+
+        def make_ids_cte():
+            ids_cte = (
+                select(
+                    *[func.coalesce(*[tbl.c[k] for tbl in output_tbls]).label(k) for k in batch_transform.transform_keys],
+                )
+                .distinct()
+                .select_from(output_tbls[0])
+                .where(and_(*[tbl.c.delete_ts.is_(None) for tbl in output_tbls]))
+            )
+
+            prev_tbl = output_tbls[0]
+            for tbl in output_tbls[1:]:
+                ids_cte = ids_cte.outerjoin(
+                    tbl,
+                    and_(
+                        *[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]
+                    ),
+                    full=True,
+                )
+
+            return ids_cte.cte(name="ids")
+
+        ids_cte = make_ids_cte()
+
         sql = (
             select(
-                *[output_tbls[0].c[k] for k in batch_transform.transform_keys],
-                greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls]).label(
+                *[ids_cte.c[k] for k in batch_transform.transform_keys],
+                func.max(greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls])).label(
                     "process_ts"
                 ),
             )
-            .distinct()
-            .select_from(output_tbls[0])
+            .select_from(ids_cte)
             .where(and_(*[tbl.c.delete_ts.is_(None) for tbl in output_tbls]))
         )
-        prev_tbl = output_tbls[0]
-        for tbl in output_tbls[1:]:
-            sql = sql.outerjoin(
+
+        for tbl in output_tbls:
+            sql = sql.join(
                 tbl,
                 and_(
-                    *[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]
+                    *[ids_cte.c[k] == tbl.c[k] for k in batch_transform.transform_keys]
                 ),
-                full=True,
+                isouter=True,
             )
-            prev_tbl = tbl
+        
+        sql = sql.group_by(*[ids_cte.c[k] for k in batch_transform.transform_keys])
+
         insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
             batch_transform.transform_keys
             + ["process_ts", "is_success", "error", "priority"],
