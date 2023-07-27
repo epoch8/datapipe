@@ -3,11 +3,14 @@ import os.path
 import sys
 import time
 from typing import Dict, List, Optional, cast
-from tqdm_loggable.auto import tqdm
 
 import click
 import pandas as pd
 import rich
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.executor import Executor, SingleThreadExecutor
+from datapipe.types import ChangeList, IndexDF, Labels
 from opentelemetry import trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -16,11 +19,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 from rich import print as rprint
 from sqlalchemy import insert, literal
 from sqlalchemy.sql import and_, func, select
-
-from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
-from datapipe.core_steps import BaseBatchTransformStep
-from datapipe.executor import Executor, SingleThreadExecutor
-from datapipe.types import ChangeList, IndexDF, Labels
+from tqdm_loggable.auto import tqdm
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -111,9 +110,11 @@ def cli(
     pipeline: str,
     executor: str,
 ) -> None:
-    import logging
+    ctx.ensure_object(dict)
 
     def setup_logging():
+        import logging
+
         if debug:
             datapipe_logger = logging.getLogger("datapipe")
             datapipe_logger.setLevel(logging.DEBUG)
@@ -123,6 +124,9 @@ def cli(
 
             logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
         else:
+            for logger_name in [None, "datapipe", "tqdm_loggable"]:
+                logger = logging.getLogger(logger_name)
+                logger.setLevel(logging.INFO)
             logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 
         if debug_sql:
@@ -169,26 +173,23 @@ def cli(
         )
         trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(cloud_trace_exporter))  # type: ignore
 
-    ctx.ensure_object(dict)
-    with tracer.start_as_current_span("init"):
-        ctx.obj["pipeline"] = load_pipeline(pipeline)
-
     if executor == "SingleThreadExecutor":
-        ctx.obj["init_executor"] = SingleThreadExecutor
+        ctx.obj["executor"] = SingleThreadExecutor
     elif executor == "RayExecutor":
+        import ray
+        from datapipe.executor.ray import RayExecutor
 
-        def init_ray_executor():
-            import ray
+        ray_ctx = ray.init(
+            runtime_env={"worker_process_setup_hook": setup_logging},
+            log_to_driver=False,
+        )
 
-            from datapipe.executor.ray import RayExecutor
-
-            ray_ctx = ray.init(runtime_env={"worker_process_setup_hook": setup_logging})
-
-            return RayExecutor()
-
-        ctx.obj["init_executor"] = init_ray_executor
+        ctx.obj["executor"] = RayExecutor()
     else:
         raise ValueError(f"Unknown executor: {executor}")
+
+    with tracer.start_as_current_span("init"):
+        ctx.obj["pipeline"] = load_pipeline(pipeline)
 
 
 @cli.group()
@@ -375,7 +376,7 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
 
-    executor: Executor = ctx.obj["init_executor"]()
+    executor: Executor = ctx.obj["executor"]
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
@@ -442,7 +443,7 @@ def run_changelist(
 
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
-    executor: Executor = ctx.obj["init_executor"]()
+    executor: Executor = ctx.obj["executor"]()
 
     idx_count, idx_gen = start_step_obj.get_full_process_ids(
         app.ds,
@@ -497,11 +498,6 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
     for step in steps_to_run:
         if isinstance(step, BaseBatchTransformStep):
             step.reset_metadata(app.ds)
-
-
-for entry_point in metadata.entry_points().get("datapipe.cli", []):
-    register_commands = entry_point.load()
-    register_commands(cli)
 
 
 @table.command()
@@ -565,5 +561,14 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
         rprint("  [green] ok[/green]")
 
 
+for entry_point in metadata.entry_points().get("datapipe.cli", []):
+    register_commands = entry_point.load()
+    register_commands(cli)
+
+
 def main():
     cli(auto_envvar_prefix="DATAPIPE")
+
+
+if __name__ == "__main__":
+    main()
