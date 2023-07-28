@@ -179,10 +179,7 @@ def cli(
         import ray
         from datapipe.executor.ray import RayExecutor
 
-        ray_ctx = ray.init(
-            runtime_env={"worker_process_setup_hook": setup_logging},
-            log_to_driver=False,
-        )
+        ray_ctx = ray.init()
 
         ctx.obj["executor"] = RayExecutor()
     else:
