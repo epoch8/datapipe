@@ -3,6 +3,7 @@
 ## Changes
 
 ### Core
+
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
   meta table that tracks status of each transformation
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
@@ -17,6 +18,7 @@
   parameters introspection
 
 ### CLI
+
 * Add `step reset-metadata` CLI command
 * Add `step fill-metadata` CLI command that populates transform meta-table with
   all indices to process
@@ -25,11 +27,9 @@
 * New CLI command `table migrate_transform_tables` for `0.13` migration
 
 ### Execution
+
 * Executors: `datapipe.executor.SingleThreadExecutor`,
   `datapipe.executor.ray.RayExecutor`
-
-### Deployment
-* Add helm chart for running regular loops in k8s as `CronJob`
 
 ## Bugfixes
 
