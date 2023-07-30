@@ -23,6 +23,8 @@
 * Add `step run-idx` CLI command
 * CLI `step run_changelist` command accepts new argument `--chunk-size`
 * New CLI command `table migrate_transform_tables` for `0.13` migration
+* Add `--start-step` parameter to `step run-changelist` CLI
+* Move `--executor` parameter from `datapipe step` to `datapipe` command
 
 ### Execution
 * Executors: `datapipe.executor.SingleThreadExecutor`,
@@ -39,12 +41,15 @@
 
 * Try to setup logging in RayExecutor (fails so far)
 * Lazy initialisation of Ray to speedup things in CLI
-* Add `--start-step` parameter to `step run-changelist` CLI
-* Fix batch count in tqdm in `run_changelist`
-* Migrate `run_changelist` to executor, possible parallelisation
+* Add `ExecutorConfig.parallelism` parameter
 * Add `name` parameter to `executor.run_process_batch` to customize task name in
   ray dashboard
+* Migrate `run_changelist` to executor, possible parallelisation
 * Limit number of in-flight Ray tasks in one `run_process_batch` to 100
+* Fix batch count in tqdm in `run_changelist`
+
+* Add `--start-step` parameter to `step run-changelist` CLI
+* Move `--executor` parameter from `datapipe step` to `datapipe` command
 
 # 0.13.0-alpha.6
 

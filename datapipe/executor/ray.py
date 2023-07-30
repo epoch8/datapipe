@@ -2,11 +2,12 @@ from functools import wraps
 from typing import Any, Dict, Iterable, Optional
 
 import ray
+from tqdm_loggable.auto import tqdm
+
 from datapipe.datatable import DataStore
 from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
-from tqdm_loggable.auto import tqdm
 
 
 class RayExecutor(Executor):

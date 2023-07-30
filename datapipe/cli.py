@@ -7,10 +7,6 @@ from typing import Dict, List, Optional, cast
 import click
 import pandas as pd
 import rich
-from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
-from datapipe.core_steps import BaseBatchTransformStep
-from datapipe.executor import Executor, SingleThreadExecutor
-from datapipe.types import ChangeList, IndexDF, Labels
 from opentelemetry import trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -20,6 +16,11 @@ from rich import print as rprint
 from sqlalchemy import insert, literal
 from sqlalchemy.sql import and_, func, select
 from tqdm_loggable.auto import tqdm
+
+from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.executor import Executor, SingleThreadExecutor
+from datapipe.types import ChangeList, IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -177,6 +178,7 @@ def cli(
         ctx.obj["executor"] = SingleThreadExecutor
     elif executor == "RayExecutor":
         import ray
+
         from datapipe.executor.ray import RayExecutor
 
         ray_ctx = ray.init()

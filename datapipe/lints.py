@@ -22,7 +22,10 @@ class Lint:
         if query is None:
             return (LintStatus.SKIP, None)
 
-        (cnt,) = dt.meta_table.dbconn.con.execute(query).fetchone()
+        res = dt.meta_table.dbconn.con.execute(query).fetchone()
+
+        assert res is not None and len(res) == 1
+        (cnt,) = res
 
         if cnt == 0:
             return (LintStatus.OK, None)
