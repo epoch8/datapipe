@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Tuple, cast
+from typing import Any, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
@@ -153,7 +153,7 @@ class MetaTable:
             else:
                 return cast(
                     MetadataDF,
-                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),
+                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),  # type: ignore
                 )
 
     def get_metadata_size(
@@ -171,6 +171,8 @@ class MetaTable:
 
         with self.dbconn.con.begin() as con:
             res = con.execute(sql).fetchone()
+
+            assert res is not None and len(res) == 1
             return res[0]
 
     def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
@@ -214,7 +216,7 @@ class MetaTable:
                 # Empty index -> empty result
                 return cast(
                     IndexDF,
-                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),
+                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),  # type: ignore
                 )
             idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
         else:
@@ -248,11 +250,14 @@ class MetaTable:
 
     def get_table_debug_info(self) -> TableDebugInfo:
         with self.dbconn.con.begin() as con:
+            res = con.execute(
+                select([func.count()]).select_from(self.sql_table)
+            ).fetchone()
+
+            assert res is not None and len(res) == 1
             return TableDebugInfo(
                 name=self.name,
-                size=con.execute(
-                    select([func.count()]).select_from(self.sql_table)
-                ).fetchone()[0],
+                size=res[0],
             )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
@@ -338,7 +343,7 @@ class MetaTable:
                     index=False,
                     chunksize=1000,
                     method="multi",
-                    dtype=sql_schema_to_sqltype(self.sql_schema),
+                    dtype=sql_schema_to_sqltype(self.sql_schema),  # type: ignore
                 )
 
     def _delete_rows(self, df: MetadataDF) -> None:
@@ -358,7 +363,9 @@ class MetaTable:
 
             else:
                 # Когда ключей много - сравниваем через tuple
-                keys = tuple_(*[self.sql_table.c[key] for key in self.primary_keys])
+                keys: Any = tuple_(
+                    *[self.sql_table.c[key] for key in self.primary_keys]
+                )
 
                 chunk_sql = sql.where(
                     keys.in_(
@@ -382,7 +389,7 @@ class MetaTable:
             else self.sql_table.name
         )
         values_table = f"{self.sql_table.name}_values"
-        columns = [column.name for column in self.sql_schema]
+        columns = [column.name for column in self.sql_schema]  # type: ignore
         update_columns = set(columns) - set(self.primary_keys)
 
         update_expression = ", ".join(
@@ -400,7 +407,7 @@ class MetaTable:
 
             for index, row in params_df.iterrows():
                 row_values = [
-                    f"CAST(:{column.name}_{index} AS {column.type})"
+                    f"CAST(:{column.name}_{index} AS {column.type})"  # type: ignore
                     for column in self.sql_schema
                 ]
                 row_params = {f"{key}_{index}": row[key] for key in row.keys()}
@@ -499,7 +506,7 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
+        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
 
         self.sql_table = Table(
             name,
@@ -619,6 +626,8 @@ class TransformMetaTable:
 
         sql = select([func.count()]).select_from(self.sql_table)
         res = self.dbconn.con.execute(sql).fetchone()
+
+        assert res is not None and len(res) == 1
         return res[0]
 
     def mark_all_rows_unprocessed(

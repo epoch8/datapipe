@@ -575,11 +575,13 @@ class BaseBatchTransformStep(ComputeStep):
             idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
             idx = IndexDF(idx_df[self.transform_keys])
 
+            chunk_count = math.ceil(len(idx) / self.chunk_size)
+
             def gen():
-                for i in range(math.ceil(len(idx) / self.chunk_size)):
+                for i in range(chunk_count):
                     yield idx[i * self.chunk_size : (i + 1) * self.chunk_size]
 
-            return len(idx), gen()
+            return chunk_count, gen()
 
     def store_batch_result(
         self,
@@ -745,6 +747,7 @@ class BaseBatchTransformStep(ComputeStep):
             return
 
         executor.run_process_batch(
+            name=self.name,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -765,7 +768,6 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         (idx_count, idx_gen) = self.get_change_list_process_ids(
@@ -777,24 +779,30 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        res_changelist = ChangeList()
+        logger.info(f"Running: {self.name}")
 
-        for idx in tqdm(idx_gen, total=idx_count):
-            changes = self.process_batch(
-                ds=ds,
-                idx=idx,
-                run_config=run_config,
-            )
-            res_changelist.extend(changes)
+        changes = executor.run_process_batch(
+            name=self.name,
+            ds=ds,
+            idx_count=idx_count,
+            idx_gen=idx_gen,
+            process_fn=self.process_batch,
+            run_config=run_config,
+            executor_config=self.executor_config,
+        )
 
-        return res_changelist
+        return changes
 
     def run_idx(
         self,
         ds: DataStore,
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
+        executor: Optional[Executor] = None,
     ) -> ChangeList:
+        if executor is None:
+            executor = SingleThreadExecutor()
+
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 

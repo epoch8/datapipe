@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 from rich import print as rprint
 from sqlalchemy import insert, literal
 from sqlalchemy.sql import and_, func, select
+from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
 from datapipe.core_steps import BaseBatchTransformStep
@@ -96,6 +97,7 @@ def filter_steps_by_labels_and_name(
 @click.option("--trace-jaeger-port", type=click.INT, default=14268, help="Jaeger port")
 @click.option("--trace-gcp", is_flag=True, help="Enable tracing to Google Cloud Trace")
 @click.option("--pipeline", type=click.STRING, default="app")
+@click.option("--executor", type=click.STRING, default="SingleThreadExecutor")
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -107,22 +109,31 @@ def cli(
     trace_jaeger_port: int,
     trace_gcp: bool,
     pipeline: str,
+    executor: str,
 ) -> None:
-    import logging
+    ctx.ensure_object(dict)
 
-    if debug:
-        datapipe_logger = logging.getLogger("datapipe")
-        datapipe_logger.setLevel(logging.DEBUG)
+    def setup_logging():
+        import logging
 
-        datapipe_core_steps_logger = logging.getLogger("datapipe.core_steps")
-        datapipe_core_steps_logger.setLevel(logging.DEBUG)
+        if debug:
+            datapipe_logger = logging.getLogger("datapipe")
+            datapipe_logger.setLevel(logging.DEBUG)
 
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+            datapipe_core_steps_logger = logging.getLogger("datapipe.core_steps")
+            datapipe_core_steps_logger.setLevel(logging.DEBUG)
 
-    if debug_sql:
-        logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+            logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+        else:
+            for logger_name in [None, "datapipe", "tqdm_loggable"]:
+                logger = logging.getLogger(logger_name)
+                logger.setLevel(logging.INFO)
+            logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+
+        if debug_sql:
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
+    setup_logging()
 
     trace.set_tracer_provider(
         TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"}))
@@ -163,7 +174,19 @@ def cli(
         )
         trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(cloud_trace_exporter))  # type: ignore
 
-    ctx.ensure_object(dict)
+    if executor == "SingleThreadExecutor":
+        ctx.obj["executor"] = SingleThreadExecutor
+    elif executor == "RayExecutor":
+        import ray
+
+        from datapipe.executor.ray import RayExecutor
+
+        ray_ctx = ray.init()
+
+        ctx.obj["executor"] = RayExecutor()
+    else:
+        raise ValueError(f"Unknown executor: {executor}")
+
     with tracer.start_as_current_span("init"):
         ctx.obj["pipeline"] = load_pipeline(pipeline)
 
@@ -275,36 +298,18 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 @cli.group()
 @click.option("--labels", type=click.STRING, default="")
 @click.option("--name", type=click.STRING, default="")
-@click.option("--executor", type=click.STRING, default="SingleThreadExecutor")
 @click.pass_context
 def step(
     ctx: click.Context,
     labels: str,
     name: str,
-    executor: str,
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    labels_dict = parse_labels(labels)
-    steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
+    labels_list = parse_labels(labels)
+    steps = filter_steps_by_labels_and_name(app, labels=labels_list, name_prefix=name)
 
     ctx.obj["steps"] = steps
-
-    if executor == "SingleThreadExecutor":
-        ctx.obj["executor"] = SingleThreadExecutor()
-    elif executor == "RayExecutor":
-        import ray
-
-        from datapipe.executor.ray import RayExecutor
-
-        ray_ctx = ray.init()
-
-        if hasattr(ctx, "dashboard_url"):
-            rprint(f"Dashboard URL: {ctx.dashboard_url}")
-
-        ctx.obj["executor"] = RayExecutor()
-    else:
-        raise ValueError(f"Unknown executor: {executor}")
 
 
 def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
@@ -409,62 +414,61 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
 @click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
+@click.option("--start-step", type=click.STRING)
 @click.pass_context
 def run_changelist(
-    ctx: click.Context, loop: bool, loop_delay: int, chunk_size: Optional[int] = None
+    ctx: click.Context,
+    start_step: str,
+    loop: bool,
+    loop_delay: int,
+    chunk_size: Optional[int] = None,
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
+
+    start_step_objs = filter_steps_by_labels_and_name(
+        app, labels=[], name_prefix=start_step
+    )
+    assert len(start_step_objs) == 1
+
+    start_step_obj = start_step_objs[0]
+    assert isinstance(start_step_obj, BaseBatchTransformStep)
+
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+
+    if start_step_obj not in steps_to_run:
+        steps_to_run = [start_step_obj] + steps_to_run
+
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
 
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
-    idx_gen, cnt = None, None
+    executor: Executor = ctx.obj["executor"]()
+
+    idx_count, idx_gen = start_step_obj.get_full_process_ids(
+        app.ds,
+        chunk_size=chunk_size,
+    )
+    cnt = 0
+
     while True:
-        if len(steps_to_run) > 0:
-            step = steps_to_run[0]
-            assert isinstance(step, BaseBatchTransformStep)
+        for idx in tqdm(idx_gen, total=idx_count):
+            changes = start_step_obj.run_idx(
+                ds=app.ds,
+                idx=idx,
+                executor=executor,
+            )
 
-            if idx_gen is None:
-                idx_count, idx_gen = step.get_full_process_ids(
-                    app.ds, chunk_size=chunk_size
-                )
-                cnt = 0
-            try:
-                idx = next(idx_gen)  # type: ignore
-                cl = ChangeList()
-                take_all_idxs = False
-                if all(
-                    [
-                        key not in input_dt.primary_keys
-                        for key in step.transform_keys
-                        for input_dt in steps_to_run[0].input_dts
-                    ]
-                ):
-                    take_all_idxs = True
+            run_steps_changelist(app.ds, steps_to_run, changes, executor=executor)
 
-                for input_dt in step.input_dts:
-                    if not take_all_idxs and any(
-                        [key in input_dt.primary_keys for key in step.transform_keys]
-                    ):
-                        cl.append(
-                            input_dt.name, cast(IndexDF, input_dt.get_data(idx=idx))
-                        )
-
-                run_steps_changelist(app.ds, steps_to_run, cl)
-            except StopIteration:
-                idx_gen = None
-                cnt = 0
-        if idx_gen is not None and cnt is not None:
             rprint(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1
+
+        if not loop:
+            break
         else:
-            if not loop:
-                break
-            else:
-                rprint(f"All chunks ended, sleeping {loop_delay}s...")
-                time.sleep(loop_delay)
-                print("\n\n")
+            rprint(f"All chunks ended, sleeping {loop_delay}s...")
+            time.sleep(loop_delay)
+            print("\n\n")
 
 
 @step.command()
@@ -493,15 +497,6 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
     for step in steps_to_run:
         if isinstance(step, BaseBatchTransformStep):
             step.reset_metadata(app.ds)
-
-
-for entry_point in metadata.entry_points().get("datapipe.cli", []):
-    register_commands = entry_point.load()
-    register_commands(cli)
-
-
-def main():
-    cli(auto_envvar_prefix="DATAPIPE")
 
 
 @table.command()
@@ -563,3 +558,16 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
         )
         app.ds.meta_dbconn.con.execute(insert_stmt)
         rprint("  [green] ok[/green]")
+
+
+for entry_point in metadata.entry_points().get("datapipe.cli", []):
+    register_commands = entry_point.load()
+    register_commands(cli)
+
+
+def main():
+    cli(auto_envvar_prefix="DATAPIPE")
+
+
+if __name__ == "__main__":
+    main()
