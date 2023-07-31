@@ -15,7 +15,8 @@
 * `TableStoreFiledir` constructor accepts new argument `fsspec_kwargs`
 * Add `filters`, `order_by`, `order` arguments to `*BatchTransformStep`
 * Add magic injection of `ds`, `idx`, `run_config` to transform function via
-  parameters introspection
+  parameters introspection to `BatchTransform`
+* Add magic `ds` inject into `BatchGenerate`
 
 ### CLI
 
