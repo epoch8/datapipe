@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.0-alpha.7"
+version = "0.13.0-alpha.8"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
