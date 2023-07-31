@@ -431,6 +431,7 @@ def test_magic_injection_variables(dbconn):
 
     def add_inp_table(ds: DataStore):
         assert isinstance(ds, DataStore)
+        transform_count["value"] += 1
         yield TEST_DF
 
     def transform(df, idx, ds, run_config, transform_count):
@@ -465,8 +466,8 @@ def test_magic_injection_variables(dbconn):
 
     dt_input.delete_by_idx(dt_input.get_metadata())
 
-    run_steps(ds, steps, RunConfig())
-    assert transform_count["value"] == 2
+    run_steps(ds, steps[1:], RunConfig())
+    assert transform_count["value"] == 3
 
 
 def test_magic_injection_variables_changelist(dbconn):
