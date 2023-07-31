@@ -1009,6 +1009,11 @@ def do_batch_generate(
 
     now = time.time()
     empty_generator = True
+    parameters = inspect.signature(func).parameters
+    kwargs = {
+        **({"ds": ds} if "ds" in parameters else {}),
+        **(kwargs or {}),
+    }
 
     assert inspect.isgeneratorfunction(
         func
