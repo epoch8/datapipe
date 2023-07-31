@@ -174,7 +174,7 @@ def cli(
         trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(cloud_trace_exporter))  # type: ignore
 
     if executor == "SingleThreadExecutor":
-        ctx.obj["executor"] = SingleThreadExecutor
+        ctx.obj["executor"] = SingleThreadExecutor()
     elif executor == "RayExecutor":
         import ray
 

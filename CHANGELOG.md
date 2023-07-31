@@ -39,6 +39,7 @@
 
 # 0.13.0-alpha.8
 
+* Fix SingleThreadExecutor initialization
 * Fix CLI `table migrate-transform-tables` for complex case
 * Add magic `ds` inject into `BatchGenerate`
 
