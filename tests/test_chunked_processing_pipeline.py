@@ -16,7 +16,7 @@ from datapipe.compute import (
     run_steps_changelist,
     run_steps,
 )
-from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
+from datapipe.core_steps import BatchGenerate, BatchTransform, DatatableTransform, UpdateExternalTable
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
@@ -429,6 +429,11 @@ def test_magic_injection_variables(dbconn):
     )
     transform_count = {"value": 0}
 
+    def add_inp_table(ds: DataStore):
+        assert isinstance(ds, DataStore)
+        transform_count["value"] += 1
+        yield TEST_DF
+
     def transform(df, idx, ds, run_config, transform_count):
         assert isinstance(idx, pd.DataFrame)
         assert isinstance(ds, DataStore)
@@ -438,6 +443,10 @@ def test_magic_injection_variables(dbconn):
 
     pipeline = Pipeline(
         [
+            BatchGenerate(
+                func=add_inp_table,
+                outputs=["inp"]
+            ),
             BatchTransform(
                 transform,
                 inputs=["inp"],
@@ -449,7 +458,6 @@ def test_magic_injection_variables(dbconn):
     )
 
     dt_input = catalog.get_datatable(ds, "inp")
-    dt_input.store_chunk(TEST_DF)
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 
@@ -458,8 +466,8 @@ def test_magic_injection_variables(dbconn):
 
     dt_input.delete_by_idx(dt_input.get_metadata())
 
-    run_steps(ds, steps, RunConfig())
-    assert transform_count["value"] == 2
+    run_steps(ds, steps[1:], RunConfig())
+    assert transform_count["value"] == 3
 
 
 def test_magic_injection_variables_changelist(dbconn):
