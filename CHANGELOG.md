@@ -37,6 +37,10 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# 0.13.0-alpha.8
+
+* Fix CLI `table migrate-transform-tables` for complex case
+
 # 0.13.0-alpha.7
 
 * Try to setup logging in RayExecutor (fails so far)
