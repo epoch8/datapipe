@@ -51,8 +51,7 @@ def do_batch_generate(
         try:
             iterable = func(**kwargs or {})
         except Exception as e:
-            # mypy bug: https://github.com/python/mypy/issues/10976
-            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")  # type: ignore
+            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")
             ds.event_logger.log_exception(e, run_config=run_config)
 
             raise e
