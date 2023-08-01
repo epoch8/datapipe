@@ -23,6 +23,12 @@ from typing import (
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import (
+    Boolean,
+    Column,
+    Float,
+    Integer,
+    String,
+    Table,
     alias,
     and_,
     asc,
@@ -33,18 +39,21 @@ from sqlalchemy import (
     or_,
     select,
     tuple_,
+    update,
 )
+from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.metastore import MetaTable, TransformMetaTable
+from datapipe.metastore import MetaTable
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.store.database import sql_apply_runconfig_filter
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
+    DataSchema,
     IndexDF,
     Labels,
     MetaSchema,
@@ -74,6 +83,168 @@ class DatatableBatchTransformFunc(Protocol):
 
 BatchTransformFunc = Callable[..., TransformResult]
 BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
+
+
+class TransformMetaTable:
+    def __init__(
+        self,
+        dbconn: DBConn,
+        name: str,
+        primary_schema: DataSchema,
+        create_table: bool = False,
+    ) -> None:
+        self.dbconn = dbconn
+        self.name = name
+        self.primary_schema = primary_schema
+        self.primary_keys = [i.name for i in primary_schema]
+
+        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
+
+        self.sql_table = Table(
+            name,
+            dbconn.sqla_metadata,
+            *self.sql_schema,
+        )
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    def insert_rows(
+        self,
+        idx: IndexDF,
+    ) -> None:
+        """
+        Создает строки в таблице метаданных для указанных индексов. Если строки
+        уже существуют - не делает ничего.
+        """
+
+        idx = cast(IndexDF, idx[self.primary_keys])
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_processed_success(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": True,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": True,
+                "error": None,
+            },
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_processed_error(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        error: str,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": error,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": False,
+                "error": error,
+            },
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def get_metadata_size(self) -> int:
+        """
+        Получить количество строк метаданных трансформации.
+        """
+
+        sql = select([func.count()]).select_from(self.sql_table)
+        res = self.dbconn.con.execute(sql).fetchone()
+
+        assert res is not None and len(res) == 1
+        return res[0]
+
+    def mark_all_rows_unprocessed(
+        self,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        update_sql = (
+            update(self.sql_table)
+            .values(
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "error": None,
+                }
+            )
+            .where(self.sql_table.c.is_success == True)
+        )
+
+        sql = sql_apply_runconfig_filter(
+            update_sql, self.sql_table, self.primary_keys, run_config
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
 
 class BaseBatchTransformStep(ComputeStep):
@@ -884,3 +1055,11 @@ class BatchTransform(PipelineStep):
                 order=self.order,
             )
         ]
+
+
+TRANSFORM_META_SCHEMA = [
+    Column("process_ts", Float),  # Время последней успешной обработки
+    Column("is_success", Boolean),  # Успешно ли обработана строка
+    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
+    Column("error", String),  # Текст ошибки
+]
