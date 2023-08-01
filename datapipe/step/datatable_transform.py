@@ -10,8 +10,8 @@ from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
 from datapipe.types import Labels
 
-logger = logging.getLogger("datapipe.step.batch_transform")
-tracer = trace.get_tracer("datapipe.step.batch_transform")
+logger = logging.getLogger("datapipe.step.datatable_transform")
+tracer = trace.get_tracer("datapipe.step.datatable_transform")
 
 
 class DatatableTransformFunc(Protocol):
