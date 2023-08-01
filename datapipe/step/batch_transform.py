@@ -10,7 +10,6 @@ from typing import (
     Callable,
     Dict,
     Iterable,
-    Iterator,
     List,
     Literal,
     Optional,
@@ -82,7 +81,14 @@ class DatatableBatchTransformFunc(Protocol):
 
 
 BatchTransformFunc = Callable[..., TransformResult]
-BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
+
+
+TRANSFORM_META_SCHEMA: DataSchema = [
+    Column("process_ts", Float),  # Время последней успешной обработки
+    Column("is_success", Boolean),  # Успешно ли обработана строка
+    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
+    Column("error", String),  # Текст ошибки
+]
 
 
 class TransformMetaTable:
@@ -1055,11 +1061,3 @@ class BatchTransform(PipelineStep):
                 order=self.order,
             )
         ]
-
-
-TRANSFORM_META_SCHEMA = [
-    Column("process_ts", Float),  # Время последней успешной обработки
-    Column("is_success", Boolean),  # Успешно ли обработана строка
-    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
-    Column("error", String),  # Текст ошибки
-]

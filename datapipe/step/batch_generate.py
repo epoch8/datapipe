@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Callable, Dict, Iterator, List, Optional
 
 import pandas as pd
 from opentelemetry import trace
@@ -10,15 +10,17 @@ from opentelemetry import trace
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
-from datapipe.step.batch_transform import BatchGenerateFunc
 from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, cast
+from datapipe.types import Labels, TransformResult, cast
 
 logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")
+
+
+BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
 
 
 def do_batch_generate(
