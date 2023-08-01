@@ -129,7 +129,8 @@ def ds_catalog_pipeline_tbls(
         transform_keys=["id_left", "id_right"],
     )
     ds = DataStore(dbconn, create_meta_table=True)
-    cross_step: BatchTransformStep = cross_batch_transform.build_compute(ds, catalog)[0]  # type: ignore
+    cross_step = cross_batch_transform.build_compute(ds, catalog)[0]
+    assert isinstance(cross_step, BatchTransformStep)
 
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
