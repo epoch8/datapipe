@@ -8,8 +8,9 @@ from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
-from datapipe.core_steps import BatchGenerate, BatchTransform
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 
 from .util import assert_datatable_equal, assert_df_equal

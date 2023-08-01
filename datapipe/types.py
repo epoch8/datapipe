@@ -2,7 +2,7 @@ from __future__ import annotations  # NOQA
 
 import itertools
 from dataclasses import dataclass, field
-from typing import Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
+from typing import Callable, Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
 
 import pandas as pd
 from sqlalchemy import Column
@@ -265,3 +265,10 @@ def get_all_equivalence_tables(
             raise ValueError(f"Table {table_name} has bad intersection with tables.")
 
     return all_equalience_tables
+
+
+def safe_func_name(func: Callable) -> str:
+    raw_name = func.__name__
+    if raw_name == "<lambda>":
+        return "lambda"
+    return raw_name

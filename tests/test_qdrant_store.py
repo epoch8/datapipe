@@ -2,14 +2,14 @@ from pathlib import Path
 from typing import Generator
 
 import pandas as pd
-
 from qdrant_client.models import Distance, VectorParams
 from sqlalchemy import ARRAY, Float, Integer
 from sqlalchemy.sql.schema import Column
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
-from datapipe.core_steps import BatchGenerate, BatchTransform
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.store.qdrant import CollectionParams, QdrantStore

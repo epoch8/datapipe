@@ -1,36 +1,37 @@
 # Ex-test_datatable
 
 from functools import partial
-from typing import cast
+from typing import List, cast
 
 import pandas as pd
 import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.core_steps import BatchTransformStep, do_batch_generate
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import do_batch_generate
+from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 
-TEST_SCHEMA = [
+TEST_SCHEMA: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
 ]
 
-TEST_SCHEMA_OTM = [
+TEST_SCHEMA_OTM: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", JSON),
 ]
 
-TEST_SCHEMA_OTM2 = [
+TEST_SCHEMA_OTM2: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer, primary_key=True),
 ]
 
-TEST_SCHEMA_OTM3 = [
+TEST_SCHEMA_OTM3: List[Column] = [
     Column("a", Integer, primary_key=True),
     Column("b", Integer, primary_key=True),
     Column("ids", JSON),

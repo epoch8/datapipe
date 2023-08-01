@@ -4,8 +4,8 @@ import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
-from datapipe.core_steps import BatchTransformStep
 from datapipe.metastore import MetaTable
+from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn
 from datapipe.types import MetaSchema
 

@@ -13,15 +13,18 @@ from datapipe.compute import (
     Table,
     build_compute,
     run_changelist,
-    run_steps_changelist,
     run_steps,
+    run_steps_changelist,
 )
-from datapipe.core_steps import BatchGenerate, BatchTransform, DatatableTransform, UpdateExternalTable
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
+from datapipe.step.datatable_transform import DatatableTransform
+from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.types import ChangeList, data_to_index, IndexDF
+from datapipe.types import ChangeList, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 
@@ -443,16 +446,13 @@ def test_magic_injection_variables(dbconn):
 
     pipeline = Pipeline(
         [
-            BatchGenerate(
-                func=add_inp_table,
-                outputs=["inp"]
-            ),
+            BatchGenerate(func=add_inp_table, outputs=["inp"]),
             BatchTransform(
                 transform,
                 inputs=["inp"],
                 outputs=["out"],
                 chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count)
+                kwargs=dict(transform_count=transform_count),
             ),
         ]
     )
@@ -508,7 +508,7 @@ def test_magic_injection_variables_changelist(dbconn):
                 inputs=["inp"],
                 outputs=["out"],
                 chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count)
+                kwargs=dict(transform_count=transform_count),
             ),
         ]
     )

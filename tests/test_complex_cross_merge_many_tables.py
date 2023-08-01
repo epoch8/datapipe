@@ -8,8 +8,9 @@ from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
 from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
-from datapipe.core_steps import BatchGenerate, BatchTransform
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 
 from .util import assert_datatable_equal
@@ -87,7 +88,9 @@ def get_all_cases_schemes():
                     yield input_schema_tables, output_schema_tables
 
 
-def get_primary_key_to_their_tables(schemas: List[Column], table_names: List[str]):
+def get_primary_key_to_their_tables(
+    schemas: List[List[Column]], table_names: List[str]
+):
     primary_keys = [
         set([x.name for x in schema if x.primary_key]) for schema in schemas
     ]

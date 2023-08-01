@@ -12,14 +12,10 @@ from datapipe.compute import (
     run_pipeline,
     run_steps,
 )
-from datapipe.core_steps import (
-    BatchGenerate,
-    BatchTransform,
-    BatchTransformStep,
-    UpdateExternalTable,
-    do_batch_generate,
-)
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate, do_batch_generate
+from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
+from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.filedir import PILFile, TableStoreFiledir
 
 

@@ -2,7 +2,7 @@ from rich import print as rprint
 from sqlalchemy import insert, literal
 from sqlalchemy.sql import and_, func, select
 
-from datapipe.core_steps import BaseBatchTransformStep
+from datapipe.step.batch_transform import BaseBatchTransformStep
 
 
 def migrate_transform_tables(app, steps):
