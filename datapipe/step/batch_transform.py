@@ -44,9 +44,8 @@ from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
-from datapipe.datatable import DataStore, DataTable
+from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.metastore import MetaTable
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.types import (
