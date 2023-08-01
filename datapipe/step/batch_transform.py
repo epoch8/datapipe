@@ -884,6 +884,33 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
 
+@dataclass
+class DatatableBatchTransform(PipelineStep):
+    func: DatatableBatchTransformFunc
+    inputs: List[str]
+    outputs: List[str]
+    chunk_size: int = 1000
+    kwargs: Optional[Dict] = None
+    labels: Optional[Labels] = None
+
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
+        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+
+        return [
+            DatatableBatchTransformStep(
+                ds=ds,
+                name=f"{self.func.__name__}",
+                func=self.func,
+                input_dts=input_dts,
+                output_dts=output_dts,
+                kwargs=self.kwargs,
+                chunk_size=self.chunk_size,
+                labels=self.labels,
+            )
+        ]
+
+
 class DatatableBatchTransformStep(BaseBatchTransformStep):
     def __init__(
         self,
@@ -926,28 +953,38 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 
 
 @dataclass
-class DatatableBatchTransform(PipelineStep):
-    func: DatatableBatchTransformFunc
+class BatchTransform(PipelineStep):
+    func: BatchTransformFunc
     inputs: List[str]
     outputs: List[str]
     chunk_size: int = 1000
-    kwargs: Optional[Dict] = None
+    kwargs: Optional[Dict[str, Any]] = None
+    transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
+    executor_config: Optional[ExecutorConfig] = None
+    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    order_by: Optional[List[str]] = None
+    order: Literal["asc", "desc"] = "asc"
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
         return [
-            DatatableBatchTransformStep(
+            BatchTransformStep(
                 ds=ds,
-                name=f"{self.func.__name__}",
-                func=self.func,
+                name=f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
                 input_dts=input_dts,
                 output_dts=output_dts,
+                func=self.func,
                 kwargs=self.kwargs,
+                transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
+                filters=self.filters,
+                order_by=self.order_by,
+                order=self.order,
             )
         ]
 
@@ -1023,40 +1060,3 @@ class BatchTransformStep(BaseBatchTransformStep):
             **(self.kwargs or {}),
         }
         return self.func(*input_dfs, **kwargs)
-
-
-@dataclass
-class BatchTransform(PipelineStep):
-    func: BatchTransformFunc
-    inputs: List[str]
-    outputs: List[str]
-    chunk_size: int = 1000
-    kwargs: Optional[Dict[str, Any]] = None
-    transform_keys: Optional[List[str]] = None
-    labels: Optional[Labels] = None
-    executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
-    order_by: Optional[List[str]] = None
-    order: Literal["asc", "desc"] = "asc"
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
-
-        return [
-            BatchTransformStep(
-                ds=ds,
-                name=f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
-                input_dts=input_dts,
-                output_dts=output_dts,
-                func=self.func,
-                kwargs=self.kwargs,
-                transform_keys=self.transform_keys,
-                chunk_size=self.chunk_size,
-                labels=self.labels,
-                executor_config=self.executor_config,
-                filters=self.filters,
-                order_by=self.order_by,
-                order=self.order,
-            )
-        ]
