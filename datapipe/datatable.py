@@ -337,7 +337,7 @@ class MetaTable:
         )
 
     def update_rows(self, df: MetadataDF) -> None:
-        if len(df) == 0:
+        if df.empty:
             return
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
