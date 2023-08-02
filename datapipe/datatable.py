@@ -3,13 +3,13 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
+from typing import Dict, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
 from opentelemetry import trace
 from sqlalchemy import Column, Float, Integer, Table
-from sqlalchemy.sql.expression import and_, delete, func, or_, select, text, tuple_
+from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
 from datapipe.run_config import RunConfig
@@ -18,7 +18,6 @@ from datapipe.store.database import (
     MetaKey,
     sql_apply_idx_filter,
     sql_apply_runconfig_filter,
-    sql_schema_to_sqltype,
 )
 from datapipe.store.table_store import TableStore
 from datapipe.types import (

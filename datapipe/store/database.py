@@ -36,10 +36,6 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}
 
 
-def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
-    return {i.name: i.type for i in schema}
-
-
 class DBConn:
     def __init__(self, connstr: str, schema: Optional[str] = None):
         self._init(connstr, schema)
