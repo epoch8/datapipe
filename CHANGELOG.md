@@ -41,6 +41,10 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# WIP 0.13.0-beta.2
+
+* Refactor all database writes to `insert on conflict update`
+
 # 0.13.0-beta.1
 
 * Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
