@@ -4,7 +4,7 @@ from typing import Optional
 import fsspec
 import pandas as pd
 
-from datapipe.store.database import sql_schema_to_dtype
+from datapipe.sql_util import sql_schema_to_dtype
 from datapipe.store.table_store import TableDataSingleFileStore
 from datapipe.types import DataDF
 

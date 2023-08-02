@@ -37,7 +37,6 @@ from sqlalchemy import (
     literal,
     or_,
     select,
-    tuple_,
     update,
 )
 from sqlalchemy.sql.expression import select
@@ -47,7 +46,11 @@ from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.store.database import DBConn, sql_apply_runconfig_filter
+from datapipe.sql_util import (
+    sql_apply_filters_idx_to_subquery,
+    sql_apply_runconfig_filter,
+)
+from datapipe.store.database import DBConn
 from datapipe.types import (
     ChangeList,
     DataDF,
@@ -377,43 +380,6 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             greatest_func = func.greatest
 
-        def _apply_filters_idx(sql, keys, filters_idx):
-            if filters_idx is None:
-                return sql
-
-            applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
-            if len(applicable_filter_keys) > 0:
-                sql = sql.where(
-                    tuple_(*[column(i) for i in applicable_filter_keys]).in_(
-                        [
-                            tuple_(*[r[k] for k in applicable_filter_keys])
-                            for r in filters_idx.to_dict(orient="records")
-                        ]
-                    )
-                )
-
-            return sql
-
-        def _make_agg_cte(
-            dt: DataTable, agg_fun, agg_col: str
-        ) -> Tuple[List[str], Any]:
-            tbl = dt.meta_table.sql_table
-
-            keys = [k for k in self.transform_keys if k in dt.primary_keys]
-            key_cols = [column(k) for k in keys]
-
-            sql: Any = (
-                select(*key_cols + [agg_fun(tbl.c[agg_col]).label(agg_col)])
-                .select_from(tbl)
-                .group_by(*key_cols)
-            )
-
-            sql = _apply_filters_idx(sql, keys, filters_idx)
-
-            sql = sql_apply_runconfig_filter(sql, tbl, dt.primary_keys, run_config)
-
-            return (keys, sql.cte(name=f"{tbl.name}__{agg_col}"))
-
         def _make_agg_of_agg(ctes, agg_col):
             assert len(ctes) > 0
 
@@ -435,9 +401,7 @@ class BaseBatchTransformStep(ComputeStep):
                         func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
                     )
 
-            agg = greatest_func(*[subq.c[agg_col] for (subq_keys, subq) in ctes]).label(
-                agg_col
-            )
+            agg = greatest_func(*[subq.c[agg_col] for (_, subq) in ctes]).label(agg_col)
 
             _, first_cte = ctes[0]
 
@@ -463,7 +427,14 @@ class BaseBatchTransformStep(ComputeStep):
 
             return sql.cte(name=f"all__{agg_col}")
 
-        inp_ctes = [_make_agg_cte(tbl, func.max, "update_ts") for tbl in self.input_dts]
+        inp_ctes = [
+            tbl.get_agg_cte(
+                transform_keys=self.transform_keys,
+                filters_idx=filters_idx,
+                run_config=run_config,
+            )
+            for tbl in self.input_dts
+        ]
 
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
 
@@ -477,7 +448,7 @@ class BaseBatchTransformStep(ComputeStep):
             .group_by(*[column(k) for k in self.transform_keys])
         )
 
-        out = _apply_filters_idx(out, self.transform_keys, filters_idx)
+        out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
 
         out = out.cte(name="transform")
 

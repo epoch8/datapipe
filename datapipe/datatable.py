@@ -3,22 +3,22 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
 from opentelemetry import trace
-from sqlalchemy import Column, Float, Integer, Table
+from sqlalchemy import Column, Float, Integer, Table, column
 from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
 from datapipe.run_config import RunConfig
-from datapipe.store.database import (
-    DBConn,
-    MetaKey,
-    sql_apply_idx_filter,
+from datapipe.sql_util import (
+    sql_apply_filters_idx_to_subquery,
+    sql_apply_idx_filter_to_table,
     sql_apply_runconfig_filter,
 )
+from datapipe.store.database import DBConn, MetaKey
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
     DataDF,
@@ -123,7 +123,9 @@ class MetaTable:
                 pass
 
             else:
-                sql = sql_apply_idx_filter(sql, self.sql_table, self.primary_keys, idx)
+                sql = sql_apply_idx_filter_to_table(
+                    sql, self.sql_table, self.primary_keys, idx
+                )
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
@@ -527,6 +529,40 @@ class DataTable:
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
 
             self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
+
+    def get_agg_cte(
+        self,
+        transform_keys: List[str],
+        filters_idx: Optional[IndexDF] = None,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[List[str], Any]:
+        """
+        Create a CTE that aggregates the table by transform keys and returns the
+        maximum update_ts for each group.
+
+        CTE has the following columns:
+
+        * transform keys which are present in primary keys
+        * update_ts
+
+        Returns a tuple of (keys, CTE).
+        """
+
+        tbl = self.meta_table.sql_table
+
+        keys = [k for k in transform_keys if k in self.primary_keys]
+        key_cols = [column(k) for k in keys]
+
+        sql: Any = (
+            select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
+            .select_from(tbl)
+            .group_by(*key_cols)
+        )
+
+        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
+        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+
+        return (keys, sql.cte(name=f"{tbl.name}__update"))
 
 
 class DataStore:
