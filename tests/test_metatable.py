@@ -125,8 +125,8 @@ def test_insert_rows(
     assert_df_equal(new_meta_df[index_cols], new_df[index_cols], index_cols=index_cols)
     assert_df_equal(new_meta_df[keys], new_df[keys], index_cols=index_cols)
 
-    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
-    mt.update_meta_for_store_chunk(changed_meta_df=changed_meta_df)
+    mt.update_rows(df=new_meta_df)
+    mt.update_rows(df=changed_meta_df)
 
     meta_df = mt.get_metadata()
 
@@ -159,7 +159,7 @@ def test_get_metadata(
     new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(
         test_df
     )
-    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
+    mt.update_rows(df=new_meta_df)
 
     part_df = test_df.iloc[0:2]
     part_idx = part_df[index_cols]

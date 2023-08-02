@@ -36,10 +36,6 @@ def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
     return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}
 
 
-def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
-    return {i.name: i.type for i in schema}
-
-
 class DBConn:
     def __init__(self, connstr: str, schema: Optional[str] = None):
         self._init(connstr, schema)
@@ -158,6 +154,10 @@ class TableStoreDB(TableStore):
 
         self.data_sql_schema = data_sql_schema
 
+        self.data_keys = [
+            column.name for column in self.data_sql_schema if not column.primary_key
+        ]
+
         self.data_table = Table(
             self.name,
             self.dbconn.sqla_metadata,
@@ -214,27 +214,30 @@ class TableStoreDB(TableStore):
                 con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
+        self.update_rows(df)
+
+    def update_rows(self, df: DataDF) -> None:
         if df.empty:
             return
 
-        self.delete_rows(data_to_index(df, self.primary_keys))
-        logger.debug(f"Inserting {len(df)} rows into {self.name} data")
+        insert_sql = self.dbconn.insert(self.data_table).values(
+            df.to_dict(orient="records")
+        )
+
+        if len(self.data_keys) > 0:
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.primary_keys,
+                set_={
+                    col.name: insert_sql.excluded[col.name]
+                    for col in self.data_sql_schema
+                    if not col.primary_key
+                },
+            )
+        else:
+            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
         with self.dbconn.con.begin() as con:
-            for chunk_df in self._chunk_idx_df(df):
-                chunk_df.to_sql(
-                    name=self.name,
-                    con=con,
-                    schema=self.dbconn.schema,
-                    if_exists="append",
-                    index=False,
-                    chunksize=1000,
-                    method="multi",
-                    dtype=sql_schema_to_sqltype(self.data_sql_schema),
-                )
-
-    def update_rows(self, df: DataDF) -> None:
-        self.insert_rows(df)
+            con.execute(sql)
 
     # Fix numpy types in IndexDF
     def _get_sql_param(self, param):
