@@ -17,6 +17,9 @@
 * Add magic injection of `ds`, `idx`, `run_config` to transform function via
   parameters introspection to `BatchTransform`
 * Add magic `ds` inject into `BatchGenerate`
+* Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
+  `step.datatable_transform`, `step.update_external_table`
+* Move `metatable.MetaTable` to `datatable`
 
 ### CLI
 
