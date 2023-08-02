@@ -336,118 +336,26 @@ class MetaTable:
             cast(MetadataDF, changed_meta_df[meta_cols]),
         )
 
-    def _insert_rows(self, df: MetadataDF) -> None:
-        if len(df) > 0:
-            logger.debug(f"Inserting {len(df)} rows into {self.name} data")
-
-            with self.dbconn.con.begin() as con:
-                df.to_sql(
-                    name=self.sql_table.name,
-                    con=con,
-                    schema=self.dbconn.schema,
-                    if_exists="append",
-                    index=False,
-                    chunksize=1000,
-                    method="multi",
-                    dtype=sql_schema_to_sqltype(self.sql_schema),  # type: ignore
-                )
-
-    def _delete_rows(self, df: MetadataDF) -> None:
+    def update_rows(self, df: MetadataDF) -> None:
         if len(df) == 0:
             return
 
-        idx = df[self.primary_keys]
-        sql = delete(self.sql_table)
-
-        for chunk_idx in self._chunk_idx_df(idx):
-            if len(self.primary_keys) == 1:
-                # Когда ключ один - сравниваем напрямую
-                key = self.primary_keys[0]
-                chunk_sql = sql.where(
-                    self.sql_table.c[key].in_(chunk_idx[key].to_list())
-                )
-
-            else:
-                # Когда ключей много - сравниваем через tuple
-                keys: Any = tuple_(
-                    *[self.sql_table.c[key] for key in self.primary_keys]
-                )
-
-                chunk_sql = sql.where(
-                    keys.in_(
-                        [
-                            tuple([r[key] for key in self.primary_keys])  # type: ignore
-                            for r in chunk_idx.to_dict(orient="records")
-                        ]
-                    )
-                )
-
-            with self.dbconn.con.begin() as con:
-                con.execute(chunk_sql)
-
-    def _update_existing_metadata_rows(self, df: MetadataDF) -> None:
-        if len(df) == 0:
-            return
-
-        table = (
-            f"{self.dbconn.schema}.{self.sql_table.name}"
-            if self.dbconn.schema
-            else self.sql_table.name
-        )
-        values_table = f"{self.sql_table.name}_values"
-        columns = [column.name for column in self.sql_schema]  # type: ignore
-        update_columns = set(columns) - set(self.primary_keys)
-
-        update_expression = ", ".join(
-            [f"{column}={values_table}.{column}" for column in update_columns]
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            df.to_dict(orient="records")
         )
 
-        where_expressiom = " AND ".join(
-            [f"{table}.{key} = {values_table}.{key}" for key in self.primary_keys]
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "hash": insert_sql.excluded.hash,
+                "update_ts": insert_sql.excluded.update_ts,
+                "process_ts": insert_sql.excluded.process_ts,
+                "delete_ts": insert_sql.excluded.delete_ts,
+            },
         )
 
-        for chunk_df in self._chunk_idx_df(df):
-            params_df = chunk_df.reset_index()[columns]
-            values_params = []
-            params = {}
-
-            for index, row in params_df.iterrows():
-                row_values = [
-                    f"CAST(:{column.name}_{index} AS {column.type})"  # type: ignore
-                    for column in self.sql_schema
-                ]
-                row_params = {f"{key}_{index}": row[key] for key in row.keys()}
-
-                values_params.append(f'({", ".join(row_values)})')
-                params.update(row_params)
-
-            # TODO сделать через sqlalchemy
-            stmt = text(
-                f"""
-                UPDATE {table}
-                SET {update_expression}
-                FROM (
-                    VALUES {", ".join(values_params)}
-                ) AS {values_table} ({', '.join(columns)})
-                WHERE {where_expressiom}
-            """
-            )
-
-            with self.dbconn.con.execution_options(compiled_cache=None).begin() as con:
-                con.execute(stmt, params)
-
-    # TODO объединить
-    def insert_meta_for_store_chunk(self, new_meta_df: MetadataDF) -> None:
-        if len(new_meta_df) > 0:
-            self._insert_rows(new_meta_df)
-
-    def update_meta_for_store_chunk(self, changed_meta_df: MetadataDF) -> None:
-        if len(changed_meta_df) > 0:
-            if self.dbconn.supports_update_from:
-                self._update_existing_metadata_rows(changed_meta_df)
-            else:
-                self._delete_rows(changed_meta_df)
-                self._insert_rows(changed_meta_df)
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
     def mark_rows_deleted(
         self,
@@ -465,7 +373,7 @@ class MetaTable:
             meta_df["update_ts"] = now
             meta_df["process_ts"] = now
 
-            self.update_meta_for_store_chunk(meta_df)
+            self.update_rows(meta_df)
 
     def get_stale_idx(
         self,
@@ -574,8 +482,9 @@ class DataTable:
                     self.table_store.update_rows(changed_df)
 
                 with tracer.start_as_current_span("store metadata"):
-                    self.meta_table.insert_meta_for_store_chunk(new_meta_df)
-                    self.meta_table.update_meta_for_store_chunk(changed_meta_df)
+                    self.meta_table.update_rows(
+                        cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+                    )
 
                     changes.append(data_to_index(new_df, self.primary_keys))
                     changes.append(data_to_index(changed_df, self.primary_keys))

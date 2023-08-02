@@ -2,6 +2,7 @@ import logging
 import time
 from typing import List, Optional
 
+import pandas as pd
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
@@ -11,7 +12,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, cast
+from datapipe.types import Labels, MetadataDF, cast
 
 logger = logging.getLogger("datapipe.step.update_external_table")
 
@@ -33,8 +34,9 @@ def update_external_table(
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 
-        table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-        table.meta_table.update_meta_for_store_chunk(changed_meta_df)
+        table.meta_table.update_rows(
+            cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+        )
 
     for stale_idx in table.meta_table.get_stale_idx(now, run_config=run_config):
         logger.debug(f"Deleting {len(stale_idx.index)} rows from {table.name} data")
