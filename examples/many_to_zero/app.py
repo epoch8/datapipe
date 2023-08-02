@@ -5,9 +5,10 @@ from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
-from datapipe.core_steps import BatchGenerate, DatatableTransform
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.datatable_transform import DatatableTransform
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 

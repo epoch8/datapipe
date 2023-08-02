@@ -1,8 +1,9 @@
 import pandas as pd
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
-from datapipe.core_steps import BatchTransform, UpdateExternalTable
 from datapipe.datatable import DataStore
+from datapipe.step.batch_transform import BatchTransform
+from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn
 from datapipe.store.filedir import PILFile, TableStoreFiledir
 

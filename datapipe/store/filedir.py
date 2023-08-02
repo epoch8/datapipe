@@ -248,7 +248,7 @@ class TableStoreFiledir(TableStore):
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
-            column.name: type_to_cls[type(column.type)]
+            column.name: type_to_cls[type(column.type)]  # type: ignore
             for column in self.primary_schema
         }
 

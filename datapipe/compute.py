@@ -1,18 +1,16 @@
 import hashlib
 import logging
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from opentelemetry import trace
-from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore, DataTable
-from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
+from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, DataDF, IndexDF, Labels, TransformResult
+from datapipe.types import ChangeList, IndexDF, Labels
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -263,7 +261,7 @@ def run_steps_changelist(
     executor: Optional[Executor] = None,
 ) -> None:
     # FIXME extract Batch* steps to separate module
-    from datapipe.core_steps import BaseBatchTransformStep
+    from datapipe.step.batch_transform import BaseBatchTransformStep
 
     current_changes = changelist
     next_changes = ChangeList()

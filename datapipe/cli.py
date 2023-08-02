@@ -16,9 +16,9 @@ from rich import print as rprint
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
-from datapipe.core_steps import BaseBatchTransformStep
 from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.migrations import v013 as migrations_v013
+from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.types import IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")

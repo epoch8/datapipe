@@ -10,7 +10,6 @@ from typing import (
     Callable,
     Dict,
     Iterable,
-    Iterator,
     List,
     Literal,
     Optional,
@@ -23,6 +22,12 @@ from typing import (
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import (
+    Boolean,
+    Column,
+    Float,
+    Integer,
+    String,
+    Table,
     alias,
     and_,
     asc,
@@ -33,18 +38,20 @@ from sqlalchemy import (
     or_,
     select,
     tuple_,
+    update,
 )
+from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
-from datapipe.datatable import DataStore, DataTable
+from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.metastore import MetaTable, TransformMetaTable
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.store.database import sql_apply_runconfig_filter
+from datapipe.store.database import DBConn, sql_apply_runconfig_filter
 from datapipe.types import (
     ChangeList,
     DataDF,
+    DataSchema,
     IndexDF,
     Labels,
     MetaSchema,
@@ -53,23 +60,8 @@ from datapipe.types import (
     get_tables_that_have_different_intersections,
 )
 
-logger = logging.getLogger("datapipe.core_steps")
-tracer = trace.get_tracer("datapipe.core_steps")
-
-
-class DatatableTransformFunc(Protocol):
-    __name__: str
-
-    def __call__(
-        self,
-        ds: DataStore,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        run_config: Optional[RunConfig],
-        # Возможно, лучше передавать как переменную, а не  **
-        **kwargs,
-    ) -> None:
-        ...
+logger = logging.getLogger("datapipe.step.batch_transform")
+tracer = trace.get_tracer("datapipe.step.batch_transform")
 
 
 # TODO подумать, может быть мы хотим дать возможность возвращать итератор TransformResult
@@ -87,98 +79,177 @@ class DatatableBatchTransformFunc(Protocol):
         ...
 
 
-# TODO подумать, может быть мы хотим дать возможность возвращать итератор TransformResult
 BatchTransformFunc = Callable[..., TransformResult]
 
-BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
+
+TRANSFORM_META_SCHEMA: DataSchema = [
+    Column("process_ts", Float),  # Время последней успешной обработки
+    Column("is_success", Boolean),  # Успешно ли обработана строка
+    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
+    Column("error", String),  # Текст ошибки
+]
 
 
-@dataclass
-class DatatableTransform(PipelineStep):
-    func: DatatableTransformFunc
-    inputs: List[str]
-    outputs: List[str]
-    check_for_changes: bool = True
-    kwargs: Optional[Dict[str, Any]] = None
-    labels: Optional[Labels] = None
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List["ComputeStep"]:
-        return [
-            DatatableTransformStep(
-                name=self.func.__name__,
-                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
-                output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
-                func=self.func,
-                kwargs=self.kwargs,
-                check_for_changes=self.check_for_changes,
-                labels=self.labels,
-            )
-        ]
-
-
-class DatatableTransformStep(ComputeStep):
+class TransformMetaTable:
     def __init__(
         self,
+        dbconn: DBConn,
         name: str,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        func: DatatableTransformFunc,
-        kwargs: Optional[Dict] = None,
-        check_for_changes: bool = True,
-        labels: Optional[Labels] = None,
+        primary_schema: DataSchema,
+        create_table: bool = False,
     ) -> None:
-        ComputeStep.__init__(self, name, input_dts, output_dts, labels)
+        self.dbconn = dbconn
+        self.name = name
+        self.primary_schema = primary_schema
+        self.primary_keys = [i.name for i in primary_schema]
 
-        self.func = func
-        self.kwargs = kwargs or {}
-        self.check_for_changes = check_for_changes
+        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
 
-    def run_full(
+        self.sql_table = Table(
+            name,
+            dbconn.sqla_metadata,
+            *self.sql_schema,
+        )
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    def insert_rows(
         self,
-        ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        idx: IndexDF,
     ) -> None:
-        logger.info(f"Running: {self.name}")
+        """
+        Создает строки в таблице метаданных для указанных индексов. Если строки
+        уже существуют - не делает ничего.
+        """
 
-        # TODO implement "watermark" system for tracking computation status in DatatableTransform
-        #
-        # if len(self.input_dts) > 0 and self.check_for_changes:
-        #     with tracer.start_as_current_span("check for changes"):
-        #         changed_idx_count = ds.get_changed_idx_count(
-        #             inputs=self.input_dts,
-        #             outputs=self.output_dts,
-        #             run_config=run_config,
-        #         )
+        idx = cast(IndexDF, idx[self.primary_keys])
 
-        #         if changed_idx_count == 0:
-        #             logger.debug(
-        #                 f"Skipping {self.get_name()} execution - nothing to compute"
-        #             )
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
 
-        #             return
+        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
-        run_config = RunConfig.add_labels(run_config, {"step_name": self.get_name()})
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
-        with tracer.start_as_current_span(f"Run {self.func}"):
-            try:
-                self.func(
-                    ds=ds,
-                    input_dts=self.input_dts,
-                    output_dts=self.output_dts,
-                    run_config=run_config,
-                    kwargs=self.kwargs,
-                )
-            except Exception as e:
-                logger.error(f"Datatable transform ({self.func}) run failed: {str(e)}")
-                ds.event_logger.log_exception(e, run_config=run_config)
+    def mark_rows_processed_success(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
 
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": True,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
 
-def safe_func_name(func: Callable) -> str:
-    raw_name = func.__name__
-    if raw_name == "<lambda>":
-        return "lambda"
-    return raw_name
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": True,
+                "error": None,
+            },
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_processed_error(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        error: str,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.primary_keys].drop_duplicates()
+        )  # FIXME: сделать в основном запросе distinct
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": error,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": False,
+                "error": error,
+            },
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def get_metadata_size(self) -> int:
+        """
+        Получить количество строк метаданных трансформации.
+        """
+
+        sql = select([func.count()]).select_from(self.sql_table)
+        res = self.dbconn.con.execute(sql).fetchone()
+
+        assert res is not None and len(res) == 1
+        return res[0]
+
+    def mark_all_rows_unprocessed(
+        self,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        update_sql = (
+            update(self.sql_table)
+            .values(
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "error": None,
+                }
+            )
+            .where(self.sql_table.c.is_success == True)
+        )
+
+        sql = sql_apply_runconfig_filter(
+            update_sql, self.sql_table, self.primary_keys, run_config
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
 
 
 class BaseBatchTransformStep(ComputeStep):
@@ -989,162 +1060,3 @@ class BatchTransformStep(BaseBatchTransformStep):
             **(self.kwargs or {}),
         }
         return self.func(*input_dfs, **kwargs)
-
-
-def do_batch_generate(
-    func: BatchGenerateFunc,
-    ds: DataStore,
-    output_dts: List[DataTable],
-    run_config: Optional[RunConfig] = None,
-    kwargs: Optional[Dict] = None,
-) -> None:
-    import inspect
-
-    import pandas as pd
-
-    """
-    Создание новой таблицы из результатов запуска `proc_func`.
-    Функция может быть как обычной, так и генерирующейся
-    """
-
-    now = time.time()
-    empty_generator = True
-    parameters = inspect.signature(func).parameters
-    kwargs = {
-        **({"ds": ds} if "ds" in parameters else {}),
-        **(kwargs or {}),
-    }
-
-    assert inspect.isgeneratorfunction(
-        func
-    ), "Starting v0.8.0 proc_func should be a generator"
-
-    with tracer.start_as_current_span("init generator"):
-        try:
-            iterable = func(**kwargs or {})
-        except Exception as e:
-            # mypy bug: https://github.com/python/mypy/issues/10976
-            logger.exception(f"Generating failed ({func.__name__}): {str(e)}")  # type: ignore
-            ds.event_logger.log_exception(e, run_config=run_config)
-
-            raise e
-
-    while True:
-        with tracer.start_as_current_span("get next batch"):
-            try:
-                chunk_dfs = next(iterable)
-
-                if isinstance(chunk_dfs, pd.DataFrame):
-                    chunk_dfs = (chunk_dfs,)
-            except StopIteration:
-                break
-            except Exception as e:
-                logger.exception(f"Generating failed ({func}): {str(e)}")
-                ds.event_logger.log_exception(e, run_config=run_config)
-
-                # raise e
-                return
-
-        empty_generator = False
-
-        with tracer.start_as_current_span("store results"):
-            for k, dt_k in enumerate(output_dts):
-                dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
-
-    with tracer.start_as_current_span("delete stale rows"):
-        for k, dt_k in enumerate(output_dts):
-            dt_k.delete_stale_by_process_ts(now, run_config=run_config)
-
-
-@dataclass
-class BatchGenerate(PipelineStep):
-    func: BatchGenerateFunc
-    outputs: List[str]
-    kwargs: Optional[Dict] = None
-    labels: Optional[Labels] = None
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        return [
-            DatatableTransformStep(
-                name=self.func.__name__,
-                func=cast(
-                    DatatableTransformFunc,
-                    lambda ds, input_dts, output_dts, run_config, kwargs: do_batch_generate(
-                        func=self.func,
-                        ds=ds,
-                        output_dts=output_dts,
-                        run_config=run_config,
-                        kwargs=kwargs,
-                    ),
-                ),
-                input_dts=[],
-                output_dts=[catalog.get_datatable(ds, name) for name in self.outputs],
-                check_for_changes=False,
-                kwargs=self.kwargs,
-                labels=self.labels,
-            )
-        ]
-
-
-def update_external_table(
-    ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None
-) -> None:
-    now = time.time()
-
-    for ps_df in tqdm(
-        table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
-    ):
-        (
-            new_df,
-            changed_df,
-            new_meta_df,
-            changed_meta_df,
-        ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
-
-        # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
-
-        table.meta_table.insert_meta_for_store_chunk(new_meta_df)
-        table.meta_table.update_meta_for_store_chunk(changed_meta_df)
-
-    for stale_idx in table.meta_table.get_stale_idx(now, run_config=run_config):
-        logger.debug(f"Deleting {len(stale_idx.index)} rows from {table.name} data")
-        table.event_logger.log_state(
-            table.name,
-            added_count=0,
-            updated_count=0,
-            deleted_count=len(stale_idx),
-            processed_count=len(stale_idx),
-            run_config=run_config,
-        )
-
-        table.meta_table.mark_rows_deleted(stale_idx, now=now)
-
-
-class UpdateExternalTable(PipelineStep):
-    def __init__(
-        self,
-        output: str,
-        labels: Optional[Labels] = None,
-    ) -> None:
-        self.output_table_name = output
-        self.labels = labels
-
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        def transform_func(
-            ds: DataStore,
-            input_dts: List[DataTable],
-            output_dts: List[DataTable],
-            run_config: Optional[RunConfig],
-            **kwargs,
-        ):
-            return update_external_table(ds, output_dts[0], run_config)
-
-        return [
-            DatatableTransformStep(
-                name=f"update_{self.output_table_name}",
-                func=cast(DatatableTransformFunc, transform_func),
-                input_dts=[],
-                output_dts=[catalog.get_datatable(ds, self.output_table_name)],
-                labels=self.labels,
-            )
-        ]

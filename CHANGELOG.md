@@ -38,6 +38,12 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# 0.13.0-beta.1
+
+* Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
+  `step.datatable_transform`, `step.update_external_table`
+* Move `metatable.MetaTable` to `datatable`
+
 # 0.13.0-alpha.8
 
 * Fix SingleThreadExecutor initialization
