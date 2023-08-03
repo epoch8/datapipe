@@ -1,6 +1,6 @@
-from typing import List, cast
-from datetime import timedelta
 import time
+from datetime import timedelta
+from typing import List, cast
 
 import pandas as pd
 import pytest
@@ -180,9 +180,17 @@ def test_get_metadata(
     )
 
 
-@parametrize_with_cases("index_cols,primary_schema,meta_schema,test_df", cases=CasesTestDF, import_fixtures=True)
+@parametrize_with_cases(
+    "index_cols,primary_schema,meta_schema,test_df",
+    cases=CasesTestDF,
+    import_fixtures=True,
+)
 def test_get_ids_changed_after_date_threshold(
-    dbconn: DBConn, index_cols: List[str], primary_schema: DataSchema, meta_schema: MetaSchema, test_df: DataDF
+    dbconn: DBConn,
+    index_cols: List[str],
+    primary_schema: DataSchema,
+    meta_schema: MetaSchema,
+    test_df: DataDF,
 ):
     mt = MetaTable(
         name="test",
@@ -195,10 +203,8 @@ def test_get_ids_changed_after_date_threshold(
     mt.update_rows(df=new_meta_df)
 
     date_before_insertion = time.time() - timedelta(days=1).total_seconds()
-    ids_from_date_before_insertion = mt.get_ids_changed_after_date_threshold(date_before_insertion)
-    total_len = sum(len(ids) for ids in ids_from_date_before_insertion)
+    total_len = mt.get_changed_rows_count_after_timestamp(date_before_insertion)
     assert total_len == len(test_df)
 
-    ids_from_date_after_insertion = mt.get_ids_changed_after_date_threshold(time.time())
-    total_len = sum(len(ids) for ids in ids_from_date_after_insertion)
+    total_len = mt.get_changed_rows_count_after_timestamp(time.time())
     assert total_len == 0
