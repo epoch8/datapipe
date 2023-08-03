@@ -1,4 +1,6 @@
 from typing import List, cast
+from datetime import timedelta
+import time
 
 import pandas as pd
 import pytest
@@ -176,3 +178,27 @@ def test_get_metadata(
         part_df[keys],
         index_cols=index_cols,
     )
+
+
+@parametrize_with_cases("index_cols,primary_schema,meta_schema,test_df", cases=CasesTestDF, import_fixtures=True)
+def test_get_ids_changed_after_date_threshold(
+    dbconn: DBConn, index_cols: List[str], primary_schema: DataSchema, meta_schema: MetaSchema, test_df: DataDF
+):
+    mt = MetaTable(
+        name="test",
+        dbconn=dbconn,
+        primary_schema=primary_schema,
+        meta_schema=meta_schema,
+        create_table=True,
+    )
+    _, _, new_meta_df, _ = mt.get_changes_for_store_chunk(test_df)
+    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
+
+    date_before_insertion = time.time() - timedelta(days=1).total_seconds()
+    ids_from_date_before_insertion = mt.get_ids_changed_after_date_threshold(date_before_insertion)
+    total_len = sum(len(ids) for ids in ids_from_date_before_insertion)
+    assert total_len == len(test_df)
+
+    ids_from_date_after_insertion = mt.get_ids_changed_after_date_threshold(time.time())
+    total_len = sum(len(ids) for ids in ids_from_date_after_insertion)
+    assert total_len == 0

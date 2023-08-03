@@ -399,6 +399,23 @@ class MetaTable:
                 list(pd.read_sql_query(sql, con=con, chunksize=1000)),
             )
 
+    def get_ids_changed_after_date_threshold(
+        self,
+        date_threshold: float,
+    ) -> Iterator[IndexDF]:
+        idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
+        sql = select(idx_cols).where(
+            and_(
+                self.sql_table.c.process_ts > date_threshold,
+                self.sql_table.c.delete_ts.is_(None),
+            )
+        )
+        with self.dbconn.con.begin() as con:
+            return cast(
+                Iterator[IndexDF],
+                list(pd.read_sql_query(sql, con=con, chunksize=1000)),
+            )
+
 
 class DataTable:
     def __init__(
