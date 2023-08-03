@@ -2,7 +2,7 @@ import hashlib
 import re
 import uuid
 from collections.abc import Iterable
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 from qdrant_client import QdrantClient
@@ -90,7 +90,10 @@ class QdrantStore(TableStore):
             rest.Batch(
                 ids=self.__get_ids(df),
                 vectors=df[self.embedding_field].apply(list).to_list(),
-                payloads=df[self.paylods_filelds].to_dict(orient="records"),
+                payloads=cast(
+                    List[Dict[str, Any]],
+                    df[self.paylods_filelds].to_dict(orient="records"),
+                ),
             ),
             wait=True,
         )
@@ -230,7 +233,10 @@ class QdrantShardedStore(TableStore):
                 rest.Batch(
                     ids=self.__get_ids(gdf),
                     vectors=gdf[self.embedding_field].apply(list).to_list(),
-                    payloads=gdf[self.paylods_filelds].to_dict(orient="records"),
+                    payloads=cast(
+                        List[Dict[str, Any]],
+                        df[self.paylods_filelds].to_dict(orient="records"),
+                    ),
                 ),
                 wait=True,
             )

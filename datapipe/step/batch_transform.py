@@ -60,7 +60,6 @@ from datapipe.types import (
     MetaSchema,
     TransformResult,
     data_to_index,
-    get_tables_that_have_different_intersections,
 )
 
 logger = logging.getLogger("datapipe.step.batch_transform")
@@ -299,20 +298,6 @@ class BaseBatchTransformStep(ComputeStep):
         self.filters = filters
         self.order_by = order_by
         self.order = order
-
-        # Check that all keys are either in one input table or in all input tables
-        # Currently we do not support partial primary keys
-        tables_that_have_different_intersections = (
-            get_tables_that_have_different_intersections(
-                [dt.primary_schema for dt in self.input_dts],
-                [dt.name for dt in self.input_dts],
-            )
-        )
-        if len(tables_that_have_different_intersections) > 0:
-            raise NotImplementedError(
-                f"{self.get_name()}: Different pairwise intersection of columns in inputs tables is not supported yet."
-                f"{tables_that_have_different_intersections}"
-            )
 
     @classmethod
     def compute_transform_schema(
