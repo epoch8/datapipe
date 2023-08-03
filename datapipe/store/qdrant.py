@@ -90,7 +90,7 @@ class QdrantStore(TableStore):
             rest.Batch(
                 ids=self.__get_ids(df),
                 vectors=df[self.embedding_field].apply(list).to_list(),
-                payloads=df[self.paylods_filelds].to_dict(orient="records"),
+                payloads=[{str(k): d[k] for k in d} for d in df[self.paylods_filelds].to_dict(orient="records")],
             ),
             wait=True,
         )
@@ -230,7 +230,7 @@ class QdrantShardedStore(TableStore):
                 rest.Batch(
                     ids=self.__get_ids(gdf),
                     vectors=gdf[self.embedding_field].apply(list).to_list(),
-                    payloads=gdf[self.paylods_filelds].to_dict(orient="records"),
+                    payloads=[{str(k): d[k] for k in d} for d in gdf[self.paylods_filelds].to_dict(orient="records")],
                 ),
                 wait=True,
             )
