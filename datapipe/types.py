@@ -124,69 +124,6 @@ class TableWithDiffentPairsIntersection:
     pairs_intersection: List[PairIntersection]
 
 
-def get_tables_that_have_different_intersections(
-    schemas: List[DataSchema], table_names: List[str]
-) -> List[TableWithDiffentPairsIntersection]:
-    """
-    Вычисляет таблицы, которые имеют разные попарные пересечения с другими таблицами.
-    """
-    pairwise_primary_intersections_in_tables = (
-        get_pairwise_primary_intersections_in_tables(schemas, table_names)
-    )
-    tables_that_have_different_intersections: List[
-        TableWithDiffentPairsIntersection
-    ] = []
-    for table_name in table_names:
-        # Проверяем, что у этой таблички должно быть непустым пересечение всех непустых пар
-        non_empty_sets_intersection = None
-        pairs = []
-        for table_name1, table_name2 in pairwise_primary_intersections_in_tables:
-            if table_name1 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[
-                    table_name, table_name2
-                ]
-                pairs.append((table_name, table_name2))
-            elif table_name2 == table_name:
-                pair_intersection = pairwise_primary_intersections_in_tables[
-                    table_name1, table_name
-                ]
-                pairs.append((table_name1, table_name))
-            else:
-                continue
-            if len(pair_intersection) > 0:
-                if non_empty_sets_intersection is None:
-                    non_empty_sets_intersection = pair_intersection
-                else:
-                    non_empty_sets_intersection = (
-                        non_empty_sets_intersection.intersection(pair_intersection)
-                    )
-        if (
-            non_empty_sets_intersection is not None
-            and len(non_empty_sets_intersection) == 0
-        ):
-            tables_that_have_different_intersections.append(
-                TableWithDiffentPairsIntersection(
-                    table_name=table_name,
-                    pairs_intersection=[
-                        PairIntersection(
-                            table_name=(
-                                table_name1
-                                if table_name1 != table_name
-                                else table_name2
-                            ),
-                            idxs_intersection=sorted(
-                                pairwise_primary_intersections_in_tables[
-                                    (table_name1, table_name2)
-                                ]
-                            ),
-                        )
-                        for table_name1, table_name2 in pairs
-                    ],
-                )
-            )
-    return tables_that_have_different_intersections
-
-
 @dataclass
 class EquivalenceTables:
     table_names: List[str]

@@ -44,6 +44,7 @@
 # WIP 0.13.0-beta.2
 
 * Refactor all database writes to `insert on conflict update`
+* Remove check for non-overlapping input indices because they are supported now
 
 # 0.13.0-beta.1
 
