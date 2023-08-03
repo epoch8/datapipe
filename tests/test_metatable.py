@@ -192,7 +192,7 @@ def test_get_ids_changed_after_date_threshold(
         create_table=True,
     )
     _, _, new_meta_df, _ = mt.get_changes_for_store_chunk(test_df)
-    mt.insert_meta_for_store_chunk(new_meta_df=new_meta_df)
+    mt.update_rows(df=new_meta_df)
 
     date_before_insertion = time.time() - timedelta(days=1).total_seconds()
     ids_from_date_before_insertion = mt.get_ids_changed_after_date_threshold(date_before_insertion)
