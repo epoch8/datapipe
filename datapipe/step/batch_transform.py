@@ -846,6 +846,7 @@ class DatatableBatchTransform(PipelineStep):
     inputs: List[str]
     outputs: List[str]
     chunk_size: int = 1000
+    transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
 
@@ -861,6 +862,7 @@ class DatatableBatchTransform(PipelineStep):
                 input_dts=input_dts,
                 output_dts=output_dts,
                 kwargs=self.kwargs,
+                transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
             )
