@@ -7,9 +7,10 @@ from sqlalchemy.sql import functions, select
 from sqlalchemy.sql.schema import Column
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
-from datapipe.core_steps import BatchGenerate, DatatableBatchTransform
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import DatatableBatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import IndexDF
 

@@ -13,15 +13,18 @@ from datapipe.compute import (
     Table,
     build_compute,
     run_changelist,
-    run_steps_changelist,
     run_steps,
+    run_steps_changelist,
 )
-from datapipe.core_steps import BatchTransform, DatatableTransform, UpdateExternalTable
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
+from datapipe.step.datatable_transform import DatatableTransform
+from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
-from datapipe.types import ChangeList, data_to_index, IndexDF
+from datapipe.types import ChangeList, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 
@@ -429,6 +432,11 @@ def test_magic_injection_variables(dbconn):
     )
     transform_count = {"value": 0}
 
+    def add_inp_table(ds: DataStore):
+        assert isinstance(ds, DataStore)
+        transform_count["value"] += 1
+        yield TEST_DF
+
     def transform(df, idx, ds, run_config, transform_count):
         assert isinstance(idx, pd.DataFrame)
         assert isinstance(ds, DataStore)
@@ -438,18 +446,18 @@ def test_magic_injection_variables(dbconn):
 
     pipeline = Pipeline(
         [
+            BatchGenerate(func=add_inp_table, outputs=["inp"]),
             BatchTransform(
                 transform,
                 inputs=["inp"],
                 outputs=["out"],
                 chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count)
+                kwargs=dict(transform_count=transform_count),
             ),
         ]
     )
 
     dt_input = catalog.get_datatable(ds, "inp")
-    dt_input.store_chunk(TEST_DF)
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 
@@ -458,8 +466,8 @@ def test_magic_injection_variables(dbconn):
 
     dt_input.delete_by_idx(dt_input.get_metadata())
 
-    run_steps(ds, steps, RunConfig())
-    assert transform_count["value"] == 2
+    run_steps(ds, steps[1:], RunConfig())
+    assert transform_count["value"] == 3
 
 
 def test_magic_injection_variables_changelist(dbconn):
@@ -500,7 +508,7 @@ def test_magic_injection_variables_changelist(dbconn):
                 inputs=["inp"],
                 outputs=["out"],
                 chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count)
+                kwargs=dict(transform_count=transform_count),
             ),
         ]
     )

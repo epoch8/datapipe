@@ -1,43 +1,23 @@
 import copy
 import logging
 import math
-from typing import Any, Dict, Iterator, List, Optional, Union, cast
+from typing import Any, Iterator, List, Optional, Union, cast
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+from sqlalchemy import Column, MetaData, Table, create_engine
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
-from sqlalchemy.sql.base import Executable, SchemaEventTarget
-from sqlalchemy.sql.expression import delete, select, tuple_
+from sqlalchemy.sql.base import SchemaEventTarget
+from sqlalchemy.sql.expression import delete, select
 
 from datapipe.run_config import RunConfig
+from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore
-from datapipe.types import (
-    DataDF,
-    DataSchema,
-    IndexDF,
-    MetaSchema,
-    TAnyDF,
-    data_to_index,
-)
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, TAnyDF
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
-
-
-SCHEMA_TO_DTYPE_LOOKUP = {
-    String: str,
-    Integer: int,
-}
-
-
-def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
-    return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}
-
-
-def sql_schema_to_sqltype(schema: List[Column]) -> Dict[str, Any]:
-    return {i.name: i.type for i in schema}
 
 
 class DBConn:
@@ -85,57 +65,16 @@ class DBConn:
         self._init(state["connstr"], state["schema"])
 
 
-def sql_apply_runconfig_filter(
-    sql: Executable,
-    table: Table,
-    primary_keys: List[str],
-    run_config: Optional[RunConfig] = None,
-) -> Executable:
-    if run_config is not None:
-        for k, v in run_config.filters.items():
-            if k in primary_keys:
-                sql = sql.where(table.c[k] == v)
-
-    return sql
-
-
-def sql_apply_idx_filter(
-    sql: Executable,
-    table: Table,
-    primary_keys: List[str],
-    idx: IndexDF,
-) -> Executable:
-    if len(primary_keys) == 1:
-        # Когда ключ один - сравниваем напрямую
-        key = primary_keys[0]
-        sql = sql.where(table.c[key].in_(idx[key].to_list()))
-
-    else:
-        # Когда ключей много - сравниваем по кортежу
-        keys = tuple_(*[table.c[key] for key in primary_keys])
-
-        sql = sql.where(
-            keys.in_(
-                [
-                    tuple([r[key] for key in primary_keys])  # type: ignore
-                    for r in idx.to_dict(orient="records")
-                ]
-            )
-        )
-
-    return sql
-
-
 class MetaKey(SchemaItem):
     def __init__(self, target_name: Optional[str] = None) -> None:
         self.target_name = target_name
 
     def _set_parent(self, parent: SchemaEventTarget, **kw: Any) -> None:
         self.parent = parent
-        self.parent.meta_key = self
+        self.parent.meta_key = self  # type: ignore
 
         if not self.target_name:
-            self.target_name = parent.name
+            self.target_name = parent.name  # type: ignore
 
     @classmethod
     def get_property_name(cls) -> str:
@@ -157,6 +96,10 @@ class TableStoreDB(TableStore):
         self.name = name
 
         self.data_sql_schema = data_sql_schema
+
+        self.data_keys = [
+            column.name for column in self.data_sql_schema if not column.primary_key
+        ]
 
         self.data_table = Table(
             self.name,
@@ -207,34 +150,37 @@ class TableStoreDB(TableStore):
         logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
         for chunk_idx in self._chunk_idx_df(idx):
-            sql = sql_apply_idx_filter(
+            sql = sql_apply_idx_filter_to_table(
                 delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
             )
             with self.dbconn.con.begin() as con:
                 con.execute(sql)
 
     def insert_rows(self, df: DataDF) -> None:
+        self.update_rows(df)
+
+    def update_rows(self, df: DataDF) -> None:
         if df.empty:
             return
 
-        self.delete_rows(data_to_index(df, self.primary_keys))
-        logger.debug(f"Inserting {len(df)} rows into {self.name} data")
+        insert_sql = self.dbconn.insert(self.data_table).values(
+            df.to_dict(orient="records")
+        )
+
+        if len(self.data_keys) > 0:
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.primary_keys,
+                set_={
+                    col.name: insert_sql.excluded[col.name]
+                    for col in self.data_sql_schema
+                    if not col.primary_key
+                },
+            )
+        else:
+            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
         with self.dbconn.con.begin() as con:
-            for chunk_df in self._chunk_idx_df(df):
-                chunk_df.to_sql(
-                    name=self.name,
-                    con=con,
-                    schema=self.dbconn.schema,
-                    if_exists="append",
-                    index=False,
-                    chunksize=1000,
-                    method="multi",
-                    dtype=sql_schema_to_sqltype(self.data_sql_schema),
-                )
-
-    def update_rows(self, df: DataDF) -> None:
-        self.insert_rows(df)
+            con.execute(sql)
 
     # Fix numpy types in IndexDF
     def _get_sql_param(self, param):
@@ -254,7 +200,7 @@ class TableStoreDB(TableStore):
 
             with self.dbconn.con.begin() as con:
                 for chunk_idx in self._chunk_idx_df(idx):
-                    chunk_sql = sql_apply_idx_filter(
+                    chunk_sql = sql_apply_idx_filter_to_table(
                         sql, self.data_table, self.primary_keys, chunk_idx
                     )
                     chunk_df = pd.read_sql_query(chunk_sql, con=con)

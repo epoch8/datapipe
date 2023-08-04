@@ -1,15 +1,23 @@
 from typing import Iterator, Tuple
-from datapipe.types import ChangeList
 
 import pandas as pd
 import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_pipeline, run_steps, run_steps_changelist
-from datapipe.core_steps import BatchGenerate, BatchTransform, BatchTransformStep
+from datapipe.compute import (
+    Catalog,
+    Pipeline,
+    Table,
+    run_pipeline,
+    run_steps,
+    run_steps_changelist,
+)
 from datapipe.datatable import DataStore, DataTable
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
+from datapipe.types import ChangeList
 
 from .util import assert_datatable_equal
 
@@ -121,7 +129,8 @@ def ds_catalog_pipeline_tbls(
         transform_keys=["id_left", "id_right"],
     )
     ds = DataStore(dbconn, create_meta_table=True)
-    cross_step: BatchTransformStep = cross_batch_transform.build_compute(ds, catalog)[0]  # type: ignore
+    cross_step = cross_batch_transform.build_compute(ds, catalog)[0]
+    assert isinstance(cross_step, BatchTransformStep)
 
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
@@ -165,7 +174,9 @@ def test_cross_merge_scenary_clear_changelist(ds_catalog_pipeline_tbls):
     )
 
 
-def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipeline_tbls):
+def test_cross_merge_scenary_clear_changelist_null_values_check(
+    ds_catalog_pipeline_tbls,
+):
     (
         ds,
         catalog,
@@ -192,17 +203,25 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(ds_catalog_pipel
         tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT)
     )
     changelist = ChangeList()
-    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append(
+        "tbl_right", TEST_DF_RIGHT_ADDED
+    )  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
     changelist = ChangeList()
     changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
-    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append(
+        "tbl_right", TEST_DF_RIGHT_ADDED
+    )  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
     changelist = ChangeList()
-    changelist.append("tbl_left", TEST_DF_LEFT_FINAL)  # смесь реальных и пустых индексов
-    changelist.append("tbl_right", TEST_DF_RIGHT_FINAL)  # смесь реальных и пустых индексов
+    changelist.append(
+        "tbl_left", TEST_DF_LEFT_FINAL
+    )  # смесь реальных и пустых индексов
+    changelist.append(
+        "tbl_right", TEST_DF_RIGHT_FINAL
+    )  # смесь реальных и пустых индексов
     run_steps_changelist(ds, [cross_step], changelist)
 
 

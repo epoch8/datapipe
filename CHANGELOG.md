@@ -3,6 +3,7 @@
 ## Changes
 
 ### Core
+
 * Add `datapipe.metastore.TransformMetaTable`. Now each transform gets it's own
   meta table that tracks status of each transformation
 * Generalize `BatchTransform` and `DatatableBatchTransform` through
@@ -14,26 +15,84 @@
 * `TableStoreFiledir` constructor accepts new argument `fsspec_kwargs`
 * Add `filters`, `order_by`, `order` arguments to `*BatchTransformStep`
 * Add magic injection of `ds`, `idx`, `run_config` to transform function via
-  parameters introspection
+  parameters introspection to `BatchTransform`
+* Add magic `ds` inject into `BatchGenerate`
+* Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
+  `step.datatable_transform`, `step.update_external_table`
+* Move `metatable.MetaTable` to `datatable`
 
 ### CLI
+
 * Add `step reset-metadata` CLI command
 * Add `step fill-metadata` CLI command that populates transform meta-table with
   all indices to process
 * Add `step run-idx` CLI command
 * CLI `step run_changelist` command accepts new argument `--chunk-size`
 * New CLI command `table migrate_transform_tables` for `0.13` migration
+* Add `--start-step` parameter to `step run-changelist` CLI
+* Move `--executor` parameter from `datapipe step` to `datapipe` command
 
 ### Execution
+
 * Executors: `datapipe.executor.SingleThreadExecutor`,
   `datapipe.executor.ray.RayExecutor`
-
-### Deployment
-* Add helm chart for running regular loops in k8s as `CronJob`
 
 ## Bugfixes
 
 * Fix `QdrantStore.read_rows` when no idx is specified
+
+# WIP 0.13.0-beta.2
+
+* Refactor all database writes to `insert on conflict update`
+* Remove check for non-overlapping input indices because they are supported now
+
+# 0.13.0-beta.1
+
+* Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
+  `step.datatable_transform`, `step.update_external_table`
+* Move `metatable.MetaTable` to `datatable`
+
+# 0.13.0-alpha.8
+
+* Fix SingleThreadExecutor initialization
+* Fix CLI `table migrate-transform-tables` for complex case
+* Add magic `ds` inject into `BatchGenerate`
+
+# 0.13.0-alpha.7
+
+* Try to setup logging in RayExecutor (fails so far)
+* Lazy initialisation of Ray to speedup things in CLI
+* Add `ExecutorConfig.parallelism` parameter
+* Add `name` parameter to `executor.run_process_batch` to customize task name in
+  ray dashboard
+* Migrate `run_changelist` to executor, possible parallelisation
+* Limit number of in-flight Ray tasks in one `run_process_batch` to 100
+* Fix batch count in tqdm in `run_changelist`
+
+* Add `--start-step` parameter to `step run-changelist` CLI
+* Move `--executor` parameter from `datapipe step` to `datapipe` command
+
+# 0.13.0-alpha.6
+
+* Move batch functions to `BaseBatchTransformStep`
+* fix index_difference index assert
+
+# 0.13.0-alpha.5
+
+* Allow passing empty dfs when idx is passed to func
+
+# 0.13.0-alpha.4
+
+* `TableStoreFiledir` constructor accepts new argument `fsspec_kwargs`
+* Add `filters`, `order_by`, `order` arguments to `*BatchTransformStep`
+* Add magic injection of `ds`, `idx`, `run_config` to transform function via
+  parameters introspection
+* CLI `step run_changelist` command accepts new argument `--chunk-size`
+* New CLI command `table migrate_transform_tables` for `0.13` migration
+
+# 0.13.0-alpha.3
+
+* Switch from vanilla `tqdm` to `tqdm_loggable` for better display in logs
 
 # 0.12.0
 
