@@ -47,6 +47,7 @@
 * Remove check for non-overlapping input indices because they are supported now
 * Add `transform_keys` to `DatatableBatchTransform`
 * Fix `BatchTransformStep.get_full_process_ids` ids duplication
+* Add `MetaTable.get_changed_rows_count_after_timestamp`
 
 # 0.13.0-beta.1
 
