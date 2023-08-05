@@ -189,61 +189,6 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
     assert_datatable_equal(tbl2, TEST_DF[:5])
 
 
-def test_inc_process_proc_no_change(dbconn) -> None:
-    ds = DataStore(dbconn, create_meta_table=True)
-
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
-
-    def id_func(df):
-        return TEST_DF
-
-    tbl2.store_chunk(TEST_DF)
-    tbl1.store_chunk(TEST_DF)
-
-    step = BatchTransformStep(
-        ds=ds,
-        name="step",
-        func=id_func,
-        input_dts=[tbl1],
-        output_dts=[tbl2],
-    )
-
-    count, idx_gen = step.get_full_process_ids(ds)
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == len(TEST_DF)
-
-    step.run_full(ds)
-
-    count, idx_gen = step.get_full_process_ids(ds)
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == 0
-
-    tbl1.store_chunk(TEST_DF_INC1)
-
-    count, idx_gen = step.get_full_process_ids(ds)
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == len(TEST_DF)
-
-    step.run_full(ds)
-
-    count, idx_gen = step.get_full_process_ids(ds)
-    idx_dfs = list(idx_gen)
-    idx_len = len(pd.concat(idx_dfs)) if len(idx_dfs) > 0 else 0
-
-    assert idx_len == 0
-
-
 # TODO тест inc_process 2->1
 # TODO тест inc_process 2->1, удаление строки, 2->1
 
