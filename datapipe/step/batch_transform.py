@@ -390,7 +390,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             _, first_cte = ctes[0]
 
-            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
+            sql = select(*coalesce_keys + [agg]).distinct().select_from(first_cte)
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
