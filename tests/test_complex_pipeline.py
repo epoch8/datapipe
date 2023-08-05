@@ -1,31 +1,35 @@
-from datapipe.types import IndexDF
-
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
-from datapipe.step.batch_transform import BatchTransform
 from datapipe.datatable import DataStore
+from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
+from datapipe.types import IndexDF
 
 from .util import assert_datatable_equal
 
+TEST__ITEM = pd.DataFrame(
+    {
+        "item_id": [f"item_id{i}" for i in range(10)],
+        "item__attribute": [f"item__attribute{i}" for i in range(10)],
+    }
+)
 
-TEST__ITEM = pd.DataFrame({
-    "item_id": [f"item_id{i}" for i in range(10)],
-    "item__attribute": [f"item__attribute{i}" for i in range(10)]
-})
+TEST__KEYPOINT = pd.DataFrame(
+    {
+        "keypoint_id": list(range(5)),
+        "keypoint_name": [f"keypoint_name{i}" for i in range(5)],
+    }
+)
 
-TEST__KEYPOINT = pd.DataFrame({
-    "keypoint_id": list(range(5)),
-    "keypoint_name": [f"keypoint_name{i}" for i in range(5)]
-})
-
-TEST__PIPELINE = pd.DataFrame({
-    "pipeline_id": [f"pipeline_id{i}" for i in range(3)],
-    "pipeline__attribute": [f"pipeline_attribute{i}" for i in range(3)]
-})
+TEST__PIPELINE = pd.DataFrame(
+    {
+        "pipeline_id": [f"pipeline_id{i}" for i in range(3)],
+        "pipeline__attribute": [f"pipeline_attribute{i}" for i in range(3)],
+    }
+)
 
 TEST__PREDICTION_LEFT = pd.DataFrame(
     {
@@ -43,13 +47,11 @@ TEST__PREDICTION_RIGHT = pd.DataFrame(
         "prediction__attribute": [f"prediction__attribute{i}" for i in range(5)],
     }
 )
-TEST__PREDICTION = pd.merge(
-    TEST__PREDICTION_LEFT, TEST__PREDICTION_CENTER, how='cross'
-)
-TEST__PREDICTION = pd.merge(
-    TEST__PREDICTION, TEST__PREDICTION_RIGHT, how='cross'
-)
-TEST__PREDICTION = TEST__PREDICTION[["item_id", "pipeline_id", "keypoint_name", "prediction__attribute"]]
+TEST__PREDICTION = pd.merge(TEST__PREDICTION_LEFT, TEST__PREDICTION_CENTER, how="cross")
+TEST__PREDICTION = pd.merge(TEST__PREDICTION, TEST__PREDICTION_RIGHT, how="cross")
+TEST__PREDICTION = TEST__PREDICTION[
+    ["item_id", "pipeline_id", "keypoint_name", "prediction__attribute"]
+]
 
 
 def test_complex_pipeline(dbconn):
@@ -64,7 +66,7 @@ def test_complex_pipeline(dbconn):
                         Column("item_id", String, primary_key=True),
                         Column("item__attribute", String),
                     ],
-                    True
+                    True,
                 )
             ),
             "pipeline": Table(
@@ -75,7 +77,7 @@ def test_complex_pipeline(dbconn):
                         Column("pipeline_id", String, primary_key=True),
                         Column("pipeline__attribute", String),
                     ],
-                    True
+                    True,
                 )
             ),
             "prediction": Table(
@@ -88,7 +90,7 @@ def test_complex_pipeline(dbconn):
                         Column("keypoint_name", String, primary_key=True),
                         Column("prediction__attribute", String),
                     ],
-                    True
+                    True,
                 )
             ),
             "keypoint": Table(
@@ -99,7 +101,7 @@ def test_complex_pipeline(dbconn):
                         Column("keypoint_id", Integer, primary_key=True),
                         Column("keypoint_name", String, primary_key=True),
                     ],
-                    True
+                    True,
                 )
             ),
             "output": Table(
@@ -111,18 +113,14 @@ def test_complex_pipeline(dbconn):
                         Column("pipeline_id", String, primary_key=True),
                         Column("attirbute", String),
                     ],
-                    True
+                    True,
                 )
-            )
+            ),
         }
     )
 
     def complex_function(
-        df__item,
-        df__pipeline,
-        df__prediction,
-        df__keypoint,
-        idx: IndexDF
+        df__item, df__pipeline, df__prediction, df__keypoint, idx: IndexDF
     ):
         assert idx[idx[["item_id", "pipeline_id"]].duplicated()].empty
         assert len(df__keypoint) == len(TEST__KEYPOINT)
@@ -150,8 +148,11 @@ def test_complex_pipeline(dbconn):
     ds.get_table("prediction").store_chunk(TEST__PREDICTION)
     ds.get_table("keypoint").store_chunk(TEST__KEYPOINT)
     TEST_RESULT = complex_function(
-        TEST__ITEM, TEST__PIPELINE, TEST__PREDICTION, TEST__KEYPOINT,
-        idx=pd.DataFrame(columns=["item_id", "pipeline_id"])
+        TEST__ITEM,
+        TEST__PIPELINE,
+        TEST__PREDICTION,
+        TEST__KEYPOINT,
+        idx=pd.DataFrame(columns=["item_id", "pipeline_id"]),
     )
     run_steps(ds, steps)
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)
