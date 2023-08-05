@@ -5,7 +5,7 @@ from typing import Any, Iterator, List, Optional, Union, cast
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, MetaData, Table, create_engine
+from sqlalchemy import Column, MetaData, Table, create_engine, func
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -28,12 +28,13 @@ class DBConn:
         self.connstr = connstr
         self.schema = schema
 
-        if connstr.startswith("sqlite"):
+        if connstr.startswith("sqlite") or connstr.startswith("pysqlite"):
             self.supports_update_from = False
 
             from sqlalchemy.dialects.sqlite import insert
 
             self.insert = insert
+            self.func_greatest = func.max
 
             self.con = create_engine(
                 connstr,
@@ -46,6 +47,7 @@ class DBConn:
             from sqlalchemy.dialects.postgresql import insert
 
             self.insert = insert
+            self.func_greatest = func.greatest
 
             self.con = create_engine(
                 connstr,
