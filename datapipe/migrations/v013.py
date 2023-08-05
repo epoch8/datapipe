@@ -15,10 +15,6 @@ def migrate_transform_tables(app, steps):
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
             continue
-        if app.ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
-            greatest_func = func.max
-        else:
-            greatest_func = func.greatest
         output_tbls = [
             output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts
         ]
@@ -57,7 +53,9 @@ def migrate_transform_tables(app, steps):
             select(
                 *[ids_cte.c[k] for k in batch_transform.transform_keys],
                 func.max(
-                    greatest_func(*[tbl.c["process_ts"] for tbl in output_tbls])
+                    app.ds.meta_dbconn.func_greatest(
+                        *[tbl.c["process_ts"] for tbl in output_tbls]
+                    )
                 ).label("process_ts"),
             )
             .select_from(ids_cte)
