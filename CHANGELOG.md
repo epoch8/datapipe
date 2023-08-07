@@ -41,6 +41,11 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# WIP 0.13.0-beta.3
+
+* Optimize join in batch transform when there's an input without intersecting
+  keys with transform
+
 # 0.13.0-beta.2
 
 * Refactor all database writes to `insert on conflict update`
