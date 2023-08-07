@@ -417,6 +417,8 @@ class BaseBatchTransformStep(ComputeStep):
             for tbl in self.input_dts
         ]
 
+        inp_ctes = [(keys, cte) for (keys, cte) in inp_ctes if len(keys) > 0]
+
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
 
         tr_tbl = self.meta_table.sql_table
