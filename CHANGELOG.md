@@ -41,6 +41,10 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 
+# 0.13.0-beta.3
+
+* Enable WAL mode for sqlite database by default
+
 # 0.13.0-beta.2
 
 * Refactor all database writes to `insert on conflict update`
