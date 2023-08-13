@@ -40,6 +40,10 @@ class DBConn:
                 connstr,
                 poolclass=SingletonThreadPool,
             )
+
+            # WAL mode is required for concurrent reads and writes
+            # https://www.sqlite.org/wal.html
+            self.con.execute("PRAGMA journal_mode=WAL")
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
