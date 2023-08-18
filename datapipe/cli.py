@@ -424,15 +424,17 @@ def run_changelist(
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    start_step_objs = filter_steps_by_labels_and_name(
-        app, labels=[], name_prefix=start_step
-    )
-    assert len(start_step_objs) == 1
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    if start_step is not None:
+        start_step_objs = filter_steps_by_labels_and_name(
+            app, labels=[], name_prefix=start_step
+        )
+        assert len(start_step_objs) == 1
+    else:
+        start_step_objs = [steps_to_run[0]]
 
     start_step_obj = start_step_objs[0]
     assert isinstance(start_step_obj, BaseBatchTransformStep)
-
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
 
     if start_step_obj not in steps_to_run:
         steps_to_run = [start_step_obj] + steps_to_run
