@@ -296,7 +296,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 
 @cli.group()
 @click.option("--labels", type=click.STRING, default="")
-@click.option("--name", type=click.STRING, default="")
+@click.option("--name", type=click.STRING)
 @click.pass_context
 def step(
     ctx: click.Context,
@@ -500,7 +500,7 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
 
 @table.command()
 @click.pass_context
-@click.option("--name", type=click.STRING, default="")
+@click.option("--name", type=click.STRING)
 @click.option("--labels", type=click.STRING, default="")
 def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
