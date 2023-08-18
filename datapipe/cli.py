@@ -51,8 +51,8 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     return app
 
 
-def parse_labels(labels: str) -> Labels:
-    if labels == "":
+def parse_labels(labels: Optional[str]) -> Labels:
+    if labels is None or labels == "":
         return []
 
     labels_list = []
@@ -295,7 +295,7 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 
 
 @cli.group()
-@click.option("--labels", type=click.STRING, default="")
+@click.option("--labels", type=click.STRING)
 @click.option("--name", type=click.STRING)
 @click.pass_context
 def step(
@@ -501,7 +501,7 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
 @table.command()
 @click.pass_context
 @click.option("--name", type=click.STRING)
-@click.option("--labels", type=click.STRING, default="")
+@click.option("--labels", type=click.STRING)
 def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     labels_dict = parse_labels(labels)
