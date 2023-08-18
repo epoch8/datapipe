@@ -79,7 +79,7 @@ def filter_steps_by_labels_and_name(
             if (k, v) not in step.labels:
                 break
         else:
-            if name_prefix is not None and step.name.startswith(name_prefix):
+            if name_prefix is None or step.name.startswith(name_prefix):
                 res.append(step)
 
     return res
