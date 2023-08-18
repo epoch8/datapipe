@@ -413,7 +413,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
 @click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
-@click.option("--start-step", type=click.STRING)
+@click.option("--start-step", type=click.STRING, default="")
 @click.pass_context
 def run_changelist(
     ctx: click.Context,
