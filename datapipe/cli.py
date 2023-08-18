@@ -70,7 +70,7 @@ def parse_labels(labels: str) -> Labels:
 
 
 def filter_steps_by_labels_and_name(
-    app: DatapipeApp, labels: Labels = [], name_prefix: str = ""
+    app: DatapipeApp, labels: Labels = [], name_prefix: Optional[str] = ""
 ) -> List[ComputeStep]:
     res = []
 
@@ -79,7 +79,7 @@ def filter_steps_by_labels_and_name(
             if (k, v) not in step.labels:
                 break
         else:
-            if step.name.startswith(name_prefix):
+            if name_prefix is not None and step.name.startswith(name_prefix):
                 res.append(step)
 
     return res
@@ -413,7 +413,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
 )
 @click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
-@click.option("--start-step", type=click.STRING, default="")
+@click.option("--start-step", type=click.STRING)
 @click.pass_context
 def run_changelist(
     ctx: click.Context,
