@@ -443,7 +443,7 @@ def run_changelist(
 
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
-    executor: Executor = ctx.obj["executor"]()
+    executor: Executor = ctx.obj["executor"]
 
     idx_count, idx_gen = start_step_obj.get_full_process_ids(
         app.ds,
