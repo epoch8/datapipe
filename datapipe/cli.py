@@ -70,7 +70,7 @@ def parse_labels(labels: Optional[str]) -> Labels:
 
 
 def filter_steps_by_labels_and_name(
-    app: DatapipeApp, labels: Labels = [], name_prefix: Optional[str] = ""
+    app: DatapipeApp, labels: Labels = [], name_prefix: Optional[str] = None,
 ) -> List[ComputeStep]:
     res = []
 
