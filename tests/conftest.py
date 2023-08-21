@@ -78,4 +78,4 @@ def redis_conn():
     conn = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
     if keys := conn.keys():
         conn.delete(*keys)
-    yield conn
+    yield f"redis://{redis_host}:{redis_port}"
