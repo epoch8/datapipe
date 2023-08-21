@@ -56,6 +56,8 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=QueuePool,
+                pool_pre_ping=True,
+                pool_recycle=3600,
                 # pool_size=25,
             )
 
