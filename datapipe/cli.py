@@ -51,8 +51,8 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     return app
 
 
-def parse_labels(labels: str) -> Labels:
-    if labels == "":
+def parse_labels(labels: Optional[str]) -> Labels:
+    if labels is None or labels == "":
         return []
 
     labels_list = []
@@ -70,7 +70,7 @@ def parse_labels(labels: str) -> Labels:
 
 
 def filter_steps_by_labels_and_name(
-    app: DatapipeApp, labels: Labels = [], name_prefix: str = ""
+    app: DatapipeApp, labels: Labels = [], name_prefix: Optional[str] = None,
 ) -> List[ComputeStep]:
     res = []
 
@@ -79,7 +79,7 @@ def filter_steps_by_labels_and_name(
             if (k, v) not in step.labels:
                 break
         else:
-            if step.name.startswith(name_prefix):
+            if name_prefix is None or step.name.startswith(name_prefix):
                 res.append(step)
 
     return res
@@ -295,8 +295,8 @@ def lint(ctx: click.Context, tables: str, fix: bool) -> None:
 
 
 @cli.group()
-@click.option("--labels", type=click.STRING, default="")
-@click.option("--name", type=click.STRING, default="")
+@click.option("--labels", type=click.STRING)
+@click.option("--name", type=click.STRING)
 @click.pass_context
 def step(
     ctx: click.Context,
@@ -424,15 +424,17 @@ def run_changelist(
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    start_step_objs = filter_steps_by_labels_and_name(
-        app, labels=[], name_prefix=start_step
-    )
-    assert len(start_step_objs) == 1
+    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    if start_step is not None:
+        start_step_objs = filter_steps_by_labels_and_name(
+            app, labels=[], name_prefix=start_step
+        )
+        assert len(start_step_objs) == 1
+    else:
+        start_step_objs = [steps_to_run[0]]
 
     start_step_obj = start_step_objs[0]
     assert isinstance(start_step_obj, BaseBatchTransformStep)
-
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
 
     if start_step_obj not in steps_to_run:
         steps_to_run = [start_step_obj] + steps_to_run
@@ -441,7 +443,7 @@ def run_changelist(
 
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
-    executor: Executor = ctx.obj["executor"]()
+    executor: Executor = ctx.obj["executor"]
 
     idx_count, idx_gen = start_step_obj.get_full_process_ids(
         app.ds,
@@ -500,8 +502,8 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
 
 @table.command()
 @click.pass_context
-@click.option("--name", type=click.STRING, default="")
-@click.option("--labels", type=click.STRING, default="")
+@click.option("--name", type=click.STRING)
+@click.option("--labels", type=click.STRING)
 def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     labels_dict = parse_labels(labels)
