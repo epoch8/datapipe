@@ -1,5 +1,5 @@
 import json
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import pandas as pd
 from redis.client import Redis
@@ -24,12 +24,11 @@ def _to_itertuples(df: DataDF, colnames):
 
 class RedisStore(TableStore):
     def __init__(
-        self, connection: Union[Redis, str], name: str, data_sql_schema: List[Column]
+        self, connection: str, name: str, data_sql_schema: List[Column]
     ) -> None:
-        if isinstance(connection, str):
-            self.redis_connection = Redis.from_url(connection, decode_responses=True)
-        else:
-            self.redis_connection = connection
+        self.connection = connection
+        self.redis_connection = Redis.from_url(connection, decode_responses=True)
+
         self.name = name
         self.data_sql_schema = data_sql_schema
         self.prim_keys = [
@@ -38,6 +37,21 @@ class RedisStore(TableStore):
         self.value_cols = [
             column.name for column in self.data_sql_schema if not column.primary_key
         ]
+
+    def __getstate__(self) -> Dict:
+        return {
+            "connection": self.connection,
+            "name": self.name,
+            "data_sql_schema": self.data_sql_schema,
+        }
+    
+    def __setstate__(self, state: Dict):
+        RedisStore.__init__(
+            self,
+            connection=state["connection"],
+            name=state["name"],
+            data_sql_schema=state["data_sql_schema"],
+        )
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
