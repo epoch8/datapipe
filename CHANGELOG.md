@@ -41,6 +41,7 @@
 ## Bugfixes
 
 * Fix `QdrantStore.read_rows` when no idx is specified
+* Fix `RedisStore` serialization for Ray
 
 # 0.13.0-beta.4
 
