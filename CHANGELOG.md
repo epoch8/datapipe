@@ -20,6 +20,7 @@
 * Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
   `step.datatable_transform`, `step.update_external_table`
 * Move `metatable.MetaTable` to `datatable`
+* Enable WAL mode for sqlite database by default
 
 ### CLI
 
@@ -40,11 +41,23 @@
 ## Bugfixes
 
 * Fix `QdrantStore.read_rows` when no idx is specified
+* Fix `RedisStore` serialization for Ray
 
-# WIP 0.13.0-beta.2
+# 0.13.0-beta.4
+
+* Fix `RedisStore` serialization for Ray
+
+# 0.13.0-beta.3
+
+* Enable WAL mode for sqlite database by default
+
+# 0.13.0-beta.2
 
 * Refactor all database writes to `insert on conflict update`
 * Remove check for non-overlapping input indices because they are supported now
+* Add `transform_keys` to `DatatableBatchTransform`
+* Fix `BatchTransformStep.get_full_process_ids` ids duplication
+* Add `MetaTable.get_changed_rows_count_after_timestamp`
 
 # 0.13.0-beta.1
 

@@ -360,12 +360,6 @@ class BaseBatchTransformStep(ComputeStep):
 
         common_transform_keys = [k for k in self.transform_keys if k in common_keys]
 
-        # TODO move to DBConn compatiblity layer
-        if ds.meta_dbconn.con.driver in ("sqlite", "pysqlite"):
-            greatest_func = func.max
-        else:
-            greatest_func = func.greatest
-
         def _make_agg_of_agg(ctes, agg_col):
             assert len(ctes) > 0
 
@@ -387,11 +381,13 @@ class BaseBatchTransformStep(ComputeStep):
                         func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
                     )
 
-            agg = greatest_func(*[subq.c[agg_col] for (_, subq) in ctes]).label(agg_col)
+            agg = ds.meta_dbconn.func_greatest(
+                *[subq.c[agg_col] for (_, subq) in ctes]
+            ).label(agg_col)
 
             _, first_cte = ctes[0]
 
-            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
+            sql = select(*coalesce_keys + [agg]).distinct().select_from(first_cte)
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
@@ -443,7 +439,7 @@ class BaseBatchTransformStep(ComputeStep):
                 *[
                     func.coalesce(inp.c[key], out.c[key]).label(key)
                     for key in self.transform_keys
-                ]
+                ],
             )
             .select_from(inp)
             .outerjoin(
@@ -847,6 +843,7 @@ class DatatableBatchTransform(PipelineStep):
     inputs: List[str]
     outputs: List[str]
     chunk_size: int = 1000
+    transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
 
@@ -862,6 +859,7 @@ class DatatableBatchTransform(PipelineStep):
                 input_dts=input_dts,
                 output_dts=output_dts,
                 kwargs=self.kwargs,
+                transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
             )
