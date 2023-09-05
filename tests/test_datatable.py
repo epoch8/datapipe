@@ -1,7 +1,8 @@
 import cloudpickle
 import pandas as pd
+import numpy as np
 from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import JSON, Integer
+from sqlalchemy.sql.sqltypes import JSON, Integer, DateTime
 
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
@@ -30,6 +31,12 @@ TEST_SCHEMA_OTM3 = [
     Column("ids", JSON),
 ]
 
+TEST_SCHEMA_NA_VALUES = [
+    Column("id", Integer, primary_key=True),
+    Column("a", Integer),
+    Column("b", DateTime),
+]
+
 TEST_DF = pd.DataFrame(
     {
         "id": range(10),
@@ -41,6 +48,14 @@ TEST_OTM_DF = pd.DataFrame(
     {
         "id": range(10),
         "a": [[j for j in range(i)] for i in range(10)],
+    },
+)
+
+TEST_NA_VALUES_DF = pd.DataFrame(
+    {
+        "id": pd.Series(range(10), dtype="int"),
+        "a": pd.Series([np.nan] * 10, dtype="float"),
+        "b": pd.Series([pd.NaT] * 10, dtype="datetime64[ns]"),
     },
 )
 
@@ -138,3 +153,15 @@ def test_get_size(dbconn) -> None:
     tbl.store_chunk(TEST_DF)
 
     assert tbl.get_size() == len(TEST_DF)
+
+
+def test_pandas_na_values_in_table(dbconn) -> None:
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl = ds.create_table(
+        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA_NA_VALUES, True)
+    )
+
+    tbl.store_chunk(TEST_NA_VALUES_DF)
+
+    assert tbl.get_size() == len(TEST_NA_VALUES_DF)
