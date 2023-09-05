@@ -4,6 +4,7 @@ import math
 from typing import Any, Iterator, List, Optional, Union, cast
 
 import pandas as pd
+import numpy as np
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
@@ -172,7 +173,7 @@ class TableStoreDB(TableStore):
             return
 
         insert_sql = self.dbconn.insert(self.data_table).values(
-            df.to_dict(orient="records")
+            df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
         )
 
         if len(self.data_keys) > 0:
