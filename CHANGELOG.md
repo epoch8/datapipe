@@ -1,3 +1,8 @@
+# 0.13.1
+
+* Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant
+  authentication
+
 # 0.13.0
 
 ## Changes
