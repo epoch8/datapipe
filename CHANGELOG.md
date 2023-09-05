@@ -2,6 +2,8 @@
 
 * Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant
   authentication
+* Fix `TableStoreDB.update_rows` method crashing when trying to store pandas
+  none-types
 
 # 0.13.0
 
