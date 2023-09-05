@@ -1,3 +1,7 @@
+# 0.13.1
+
+* Fix `TableStoreDB.update_rows` method crashing when trying to store pandas none-types
+
 # 0.13.0
 
 ## Changes
@@ -42,7 +46,6 @@
 
 * Fix `QdrantStore.read_rows` when no idx is specified
 * Fix `RedisStore` serialization for Ray
-* Fix `TableStoreDB.update_rows` method crashing when trying to store pandas none-types
 
 # 0.13.0-beta.4
 
