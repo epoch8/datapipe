@@ -8,8 +8,8 @@ At the moment these branches are active:
 
 * `master` - current development state, will be promoted to `0.13.x` series
   release once ready
-* `v0.12` - current stable version
-* `v0.11` - legacy stable version
+* `v0.13` - current stable version
+* `v0.11` - legacy stable version (`v0.12` was skipped due reasons)
 
 # Version compatibility
 
