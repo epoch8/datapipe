@@ -156,3 +156,114 @@ def test_complex_pipeline(dbconn):
     )
     run_steps(ds, steps)
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)
+
+
+TEST__FROZEN_DATASET = pd.DataFrame(
+    {
+        "frozen_dataset_id": [f"frozen_dataset_id{i}" for i in range(2)],
+    }
+)
+
+TEST__TRAIN_CONFIG = pd.DataFrame(
+    {
+        "train_config_id": [f"train_config_id{i}" for i in range(2)],
+        "train_config__params": [f"train_config__params{i}" for i in range(2)],
+    }
+)
+
+
+def test_complex_train_pipeline(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "frozen_dataset": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "frozen_dataset",
+                    [
+                        Column("frozen_dataset_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "train_config": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "train_config",
+                    [
+                        Column("train_config_id", String, primary_key=True),
+                        Column("train_config__params", String),
+                    ],
+                    True,
+                )
+            ),
+            "pipeline": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "pipeline",
+                    [
+                        Column("pipeline_id", String, primary_key=True),
+                        Column("pipeline__attribute", String),
+                    ],
+                    True,
+                )
+            ),
+            "pipeline__is_trained_on__frozen_dataset": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "pipeline__is_trained_on__frozen_dataset",
+                    [
+                        Column("pipeline_id", String, primary_key=True),
+                        Column("frozen_dataset_id", String, primary_key=True),
+                        Column("train_config_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+        }
+    )
+
+    def train(
+        df__frozen_dataset,
+        df__train_config,
+        df__pipeline__total,
+        df__pipeline__is_trained_on__frozen_dataset__total,
+    ):
+        assert len(df__frozen_dataset) == 1 and len(df__train_config) == 1
+        frozen_dataset_id = df__frozen_dataset.iloc[0]["frozen_dataset_id"]
+        train_config_id = df__train_config.iloc[0]["train_config_id"]
+        df__pipeline = pd.DataFrame([{
+            "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
+            "pipeline__attribute": "new_pipeline__attr"
+        }])
+        df__pipeline__is_trained_on__frozen_dataset = pd.DataFrame([{
+            "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
+            "frozen_dataset_id": frozen_dataset_id,
+            "train_config_id": train_config_id
+        }])
+        df__pipeline__total = pd.concat([df__pipeline__total, df__pipeline], ignore_index=True)
+        df__pipeline__is_trained_on__frozen_dataset__total = pd.concat(
+            [
+                df__pipeline__is_trained_on__frozen_dataset__total,
+                df__pipeline__is_trained_on__frozen_dataset
+            ], ignore_index=True
+        )
+        return df__pipeline__total, df__pipeline__is_trained_on__frozen_dataset__total
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                func=train,
+                inputs=["frozen_dataset", "train_config", "pipeline", "pipeline__is_trained_on__frozen_dataset"],
+                outputs=["pipeline", "pipeline__is_trained_on__frozen_dataset"],
+                transform_keys=["frozen_dataset_id", "train_config_id"],
+                chunk_size=1,
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET)
+    ds.get_table("train_config").store_chunk(TEST__TRAIN_CONFIG)
+    run_steps(ds, steps)
+    assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
+    assert len(ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
