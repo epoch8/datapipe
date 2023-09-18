@@ -335,7 +335,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
+            with fsspec.open(filepath, f"w{self.adapter.mode}", auto_mkdirs=True) as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(
