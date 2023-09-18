@@ -234,7 +234,9 @@ TEST_DF_SEVERAL_EXTENSIONS = pd.DataFrame(
 def tmp_several_extensions_with_json_data(tmp_dir):
     for i in range(10):
         ext = "json" if i < 5 else "txt"
-        with fsspec.open(f"{tmp_dir}/folder0/folder1/{i}.{ext}", "w") as out:
+        with fsspec.open(
+            f"{tmp_dir}/folder0/folder1/{i}.{ext}", "w", auto_mkdir=True
+        ) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
 
@@ -275,7 +277,9 @@ def test_read_json_rows_or_extensions(tmp_several_extensions_with_json_data):
 def tmp_several_extensions_and_folders_with_json_data(tmp_dir):
     for i in range(10):
         ext = "json" if i < 5 else "txt"
-        with fsspec.open(f"{tmp_dir}/folder{i%3}/{i}.{ext}", "w") as out:
+        with fsspec.open(
+            f"{tmp_dir}/folder{i%3}/{i}.{ext}", "w", auto_mkdir=True
+        ) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
 
