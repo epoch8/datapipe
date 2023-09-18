@@ -1,5 +1,6 @@
 # 0.13.2
 * Add `GPU` support for RayExecutor
+* Add Python3.11 support.
 
 # 0.13.1
 
