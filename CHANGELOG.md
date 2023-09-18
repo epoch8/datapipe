@@ -1,5 +1,6 @@
 # 0.13.2
 * Add `GPU` support for RayExecutor
+* Added parallel job for `TableStoreFiledir`
 
 # 0.13.1
 
