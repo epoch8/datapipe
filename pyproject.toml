@@ -16,7 +16,7 @@ fsspec = ">=2021.11.1"
 gcsfs = {version=">=2021.11.1", optional=true}
 s3fs = {version=">=2021.11.1", optional=true}
 
-pandas = "^1.2.0"
+pandas = ">=1.2.0"
 numpy = "^1.21.0"
 SQLAlchemy = "^1.4.25"
 psycopg2_binary = ">=2.8.4"
