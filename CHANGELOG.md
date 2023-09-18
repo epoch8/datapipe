@@ -1,6 +1,7 @@
 # 0.13.2
 
 * Add `GPU` support for RayExecutor
+* Add `auto_mkdir` to `FiledirStore`, fixes issues with local filedir
 
 # 0.13.1
 
