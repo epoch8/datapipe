@@ -1,3 +1,6 @@
+# 0.13.2
+* Add Python3.11 support.
+
 # 0.13.1
 
 * Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant
