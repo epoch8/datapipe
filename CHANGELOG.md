@@ -1,3 +1,7 @@
+# 0.13.2-post.1
+
+* Allow `pandas >= 2` and `numpy >= 1.21`
+
 # 0.13.2
 
 * Add `GPU` support for RayExecutor
