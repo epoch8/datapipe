@@ -1,3 +1,7 @@
+# WIP 0.14.0
+
+* Use transform meta table to schedule batch transform
+
 # 0.13.1
 
 * Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant

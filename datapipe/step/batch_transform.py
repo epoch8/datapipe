@@ -24,6 +24,7 @@ from opentelemetry import trace
 from sqlalchemy import (
     Boolean,
     Column,
+    Enum,
     Float,
     Integer,
     String,
@@ -520,12 +521,19 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
+        pass
+
+    def compute_full_process_ids(
+        self,
+        ds: DataStore,
+        chunk_size: Optional[int] = None,
+        run_config: Optional[RunConfig] = None,
+    ) -> Iterable[IndexDF]:
         """
         Метод для получения перечня индексов для обработки.
 
-        Returns: (idx_size, iterator<idx_df>)
+        Returns: iterator<idx_df>
 
-        - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
         run_config = self._apply_filters_to_run_config(run_config)
@@ -534,11 +542,6 @@ class BaseBatchTransformStep(ComputeStep):
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.input_dts) == 0:
                 return (0, iter([]))
-
-            idx_count = self.get_changed_idx_count(
-                ds=ds,
-                run_config=run_config,
-            )
 
             join_keys, u1 = self._build_changed_idx_sql(
                 ds=ds,
@@ -564,7 +567,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                         yield df
 
-            return math.ceil(idx_count / chunk_size), alter_res_df()
+            return alter_res_df()
 
     def get_change_list_process_ids(
         self,
