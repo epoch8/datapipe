@@ -5,15 +5,8 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
+    "python.linting.pylintEnabled": false,
     "python.linting.flake8Enabled": false,
-    "python.linting.mypyEnabled": true,
-    "python.linting.mypyArgs": [
-        "--follow-imports=silent",
-        "--ignore-missing-imports",
-        "--show-column-numbers",
-        "--no-pretty",
-        "--namespace-packages"
-    ],
     "python.formatting.provider": "none",
     "python.analysis.extraPaths": [
         "${workspaceFolder}"
@@ -46,5 +39,8 @@
             "label": "Backlog",
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
+    ],
+    "githubPullRequests.ignoredPullRequestBranches": [
+        "master"
     ],
 }

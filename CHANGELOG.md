@@ -1,6 +1,7 @@
 # 0.13.2
 * Add `GPU` support for RayExecutor
-* Add Python3.11 support.
+* Add `auto_mkdir` to `TableStoreFiledir`, fixes issues with local filedir
+* Add Python 3.11 support.
 
 # 0.13.1
 
