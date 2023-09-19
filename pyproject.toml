@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.2"
+version = "0.13.2-post.1"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
@@ -16,8 +16,8 @@ fsspec = ">=2021.11.1"
 gcsfs = {version=">=2021.11.1", optional=true}
 s3fs = {version=">=2021.11.1", optional=true}
 
-pandas = "^1.2.0"
-numpy = "^1.21.0"
+pandas = ">=1.2.0, <3.0"
+numpy = ">=1.21.0, <2.0"
 SQLAlchemy = "^1.4.25"
 psycopg2_binary = ">=2.8.4"
 cloudpickle = ">=1.6.0"
