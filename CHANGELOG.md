@@ -1,3 +1,7 @@
+# WIP
+
+* Added parallel job for `TableStoreFiledir`
+
 # 0.13.2-post.1
 
 * Allow `pandas >= 2` and `numpy >= 1.21`
