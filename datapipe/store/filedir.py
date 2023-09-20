@@ -182,17 +182,16 @@ class TableStoreFiledir(TableStore):
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
-            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs, auto_mkdir=True)
         else:
-            self.filesystem = fsspec.filesystem(
-                protocol=self.protocol, **self.fsspec_kwargs, auto_mkdir=True
-            )
+            self.fsspec_kwargs["protocol"] = self.protocol
 
         if self.protocol is None or self.protocol == "file":
+            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs, auto_mkdir=True)
             filename_pattern = str(Path(path).resolve())
             filename_pattern_for_match = filename_pattern
             self.protocol_str = "" if self.protocol is None else "file://"
         else:
+            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
             filename_pattern = str(filename_pattern)
             filename_pattern_for_match = path
             if self.protocol in ["gdrivefs"]:
