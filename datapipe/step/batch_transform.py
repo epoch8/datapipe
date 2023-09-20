@@ -152,8 +152,10 @@ class TransformMetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates()
+            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -189,8 +191,10 @@ class TransformMetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates()
+            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
