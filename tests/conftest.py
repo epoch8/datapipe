@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine
 import redis
+from sqlalchemy import create_engine
 
 from datapipe.store.database import DBConn
 
