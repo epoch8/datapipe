@@ -1,3 +1,8 @@
+# 0.13.3
+
+* Fix `TableStoreFiledir` ignoring `fsspec_kwargs`
+* Added dropna and idx check for `TransformMetaTable`
+
 # 0.13.2-post.1
 
 * Allow `pandas >= 2` and `numpy >= 1.21`
