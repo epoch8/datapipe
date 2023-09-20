@@ -182,10 +182,10 @@ class TableStoreFiledir(TableStore):
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
-            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
+            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs, auto_mkdir=True)
         else:
             self.filesystem = fsspec.filesystem(
-                protocol=self.protocol, **self.fsspec_kwargs
+                protocol=self.protocol, **self.fsspec_kwargs, auto_mkdir=True
             )
 
         if self.protocol is None or self.protocol == "file":
@@ -335,7 +335,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f"w{self.adapter.mode}", auto_mkdir=True) as f:
+            with self.filesystem.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(
