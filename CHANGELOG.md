@@ -1,3 +1,7 @@
+# 0.13.4
+
+* Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
+
 # 0.13.3
 
 * Fix `TableStoreFiledir` ignoring `fsspec_kwargs`
