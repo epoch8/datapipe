@@ -1,7 +1,7 @@
 import copy
 import logging
 import math
-from typing import Any, Iterator, List, Optional, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
 import pandas as pd
 import numpy as np
@@ -22,12 +22,19 @@ tracer = trace.get_tracer("datapipe.store.database")
 
 
 class DBConn:
-    def __init__(self, connstr: str, schema: Optional[str] = None):
-        self._init(connstr, schema)
+    def __init__(
+        self,
+        connstr: str,
+        schema: Optional[str] = None,
+        create_engine_kwargs: Optional[Dict[str, Any]] = None
+    ):
+        create_engine_kwargs = create_engine_kwargs or {}
+        self._init(connstr, schema, create_engine_kwargs)
 
-    def _init(self, connstr: str, schema: Optional[str]) -> None:
+    def _init(self, connstr: str, schema: Optional[str], create_engine_kwargs: Dict[str, Any]) -> None:
         self.connstr = connstr
         self.schema = schema
+        self.create_engine_kwargs = create_engine_kwargs
 
         if connstr.startswith("sqlite") or connstr.startswith("pysqlite"):
             self.supports_update_from = False
@@ -40,6 +47,7 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=SingletonThreadPool,
+                **create_engine_kwargs
             )
 
             # WAL mode is required for concurrent reads and writes
@@ -59,6 +67,7 @@ class DBConn:
                 poolclass=QueuePool,
                 pool_pre_ping=True,
                 pool_recycle=3600,
+                **create_engine_kwargs
                 # pool_size=25,
             )
 
@@ -68,10 +77,11 @@ class DBConn:
         return {
             "connstr": self.connstr,
             "schema": self.schema,
+            "create_engine_kwargs": self.create_engine_kwargs
         }
 
     def __setstate__(self, state):
-        self._init(state["connstr"], state["schema"])
+        self._init(state["connstr"], state["schema"], state["create_engine_kwargs"])
 
 
 class MetaKey(SchemaItem):
