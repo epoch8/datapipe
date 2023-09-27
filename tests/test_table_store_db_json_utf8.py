@@ -3,7 +3,7 @@ from datapipe.store.database import TableStoreDB
 from sqlalchemy import Column, String, JSON
 
 
-DF_TEST = pd.DataFrame({"id": [0], "data": ["тест abc предложение def"]})
+DF_TEST = pd.DataFrame({"id": [0], "data": [{"value": "тест abc предложение def"}]})
 
 
 def test_table_store_db_json_utf8(dbconn):
@@ -11,7 +11,7 @@ def test_table_store_db_json_utf8(dbconn):
         dbconn,
         "tbl",
         [
-            Column("id", String),
+            Column("id", String, primary_key=True),
             Column("data", JSON),
         ],
         create_table=True,
