@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          poetry install -E sqlite -E excel -E milvus -E gcsfs -E s3fs -E redis -E qdrant
 
       - name: Lint with flake8
         run: |
@@ -102,7 +102,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          poetry install -E sqlite -E excel -E milvus -E gcsfs -E s3fs -E redis -E qdrant
 
       - name: Test with pytest
         run: |
