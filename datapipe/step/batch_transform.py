@@ -854,6 +854,10 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
+    executor_config: Optional[ExecutorConfig] = None
+    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    order_by: Optional[List[str]] = None
+    order: Literal["asc", "desc"] = "asc"
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -870,6 +874,10 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
+                filters=self.filters,
+                order_by=self.order_by,
+                order=self.order
             )
         ]
 
@@ -886,6 +894,10 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         super().__init__(
             ds=ds,
@@ -895,6 +907,10 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
+            filters=filters,
+            order_by=order_by,
+            order=order
         )
 
         self.func = func
