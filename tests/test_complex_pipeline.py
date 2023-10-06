@@ -156,3 +156,133 @@ def test_complex_pipeline(dbconn):
     )
     run_steps(ds, steps)
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)
+
+
+TEST__FROZEN_DATASET1 = pd.DataFrame(
+    {
+        "frozen_dataset_id": ["frozen_dataset_id1"],
+    }
+)
+TEST__FROZEN_DATASET2 = pd.DataFrame(
+    {
+        "frozen_dataset_id": ["frozen_dataset_id2"],
+    }
+)
+
+TEST__FROZEN_DATASET__HAS__ITEM1 = pd.DataFrame(
+    {
+        "frozen_dataset_id": ["frozen_dataset_id1" for i in range(10)],
+        "item_id": [f"item_id{i}" for i in range(10)],
+    }
+)
+TEST__FROZEN_DATASET__HAS__ITEM2 = pd.DataFrame(
+    {
+        "frozen_dataset_id": ["frozen_dataset_id2" for i in range(20)],
+        "item_id": [f"item_id{i}" for i in range(20)],
+    }
+)
+
+
+TEST__TRAIN_CONFIG = pd.DataFrame(
+    {
+        "train_config_id": ["train_config_id1", "train_config_id2"],
+    }
+)
+
+
+def test_complex_train_pipeline(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "frozen_dataset": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "frozen_dataset",
+                    [
+                        Column("frozen_dataset_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "frozen_dataset__has__item": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "frozen_dataset__has__item",
+                    [
+                        Column("frozen_dataset_id", String, primary_key=True),
+                        Column("item_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "train_config": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "train_config",
+                    [
+                        Column("train_config_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "model": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "model",
+                    [
+                        Column("frozen_dataset_id", String, primary_key=True),
+                        Column("train_config_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+        }
+    )
+
+    def train_model(
+        df__frozen_datset,
+        df__frozen_dataset__has__item,
+        df__train_config,
+    ):
+        df__model = pd.merge(df__frozen_datset, df__train_config, how="cross")
+        # assert idx[idx[["item_id", "pipeline_id"]].duplicated()].empty
+        # assert len(df__keypoint) == len(TEST__KEYPOINT)
+        return df__model
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                func=train_model,
+                inputs=["frozen_dataset", "frozen_dataset__has__item", "train_config"],
+                outputs=["model"],
+                transform_keys=["frozen_dataset_id", "train_config_id"],
+                chunk_size=1000,
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    step = steps[0]
+    ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET1)
+    ds.get_table("frozen_dataset__has__item").store_chunk(TEST__FROZEN_DATASET__HAS__ITEM1)
+    ds.get_table("train_config").store_chunk(TEST__TRAIN_CONFIG)
+    idx_count, _ = step.get_full_process_ids(ds)
+    assert idx_count == 1
+    TEST_RESULT1 = train_model(
+        TEST__FROZEN_DATASET1,
+        TEST__FROZEN_DATASET__HAS__ITEM1,
+        TEST__TRAIN_CONFIG,
+    )
+    run_steps(ds, steps)
+    assert_datatable_equal(ds.get_table("model"), TEST_RESULT1)
+
+    ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET2)
+    ds.get_table("frozen_dataset__has__item").store_chunk(TEST__FROZEN_DATASET__HAS__ITEM2)
+    idx_count, _ = step.get_full_process_ids(ds)
+    assert idx_count == 1
+    run_steps(ds, steps)
+    TEST_RESULT2 = train_model(
+        TEST__FROZEN_DATASET2,
+        TEST__FROZEN_DATASET__HAS__ITEM2,
+        TEST__TRAIN_CONFIG,
+    )
+    assert_datatable_equal(ds.get_table("model"), pd.merge(TEST_RESULT1, TEST_RESULT2, how='outer'))
