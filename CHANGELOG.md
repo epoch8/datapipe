@@ -1,4 +1,30 @@
-# WIP 0.13.0
+# 0.13.4
+
+* Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
+
+# 0.13.3
+
+* Fix `TableStoreFiledir` ignoring `fsspec_kwargs`
+* Added dropna and idx check for `TransformMetaTable`
+
+# 0.13.2-post.1
+
+* Allow `pandas >= 2` and `numpy >= 1.21`
+
+# 0.13.2
+
+* Add `GPU` support for RayExecutor
+* Add `auto_mkdir` to `TableStoreFiledir`, fixes issues with local filedir
+* Add Python 3.11 support.
+
+# 0.13.1
+
+* Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant
+  authentication
+* Fix `TableStoreDB.update_rows` method crashing when trying to store pandas
+  none-types
+
+# 0.13.0
 
 ## Changes
 
@@ -20,6 +46,7 @@
 * Split `core_steps` into `step.batch_transform`, `step.batch_generate`,
   `step.datatable_transform`, `step.update_external_table`
 * Move `metatable.MetaTable` to `datatable`
+* Enable WAL mode for sqlite database by default
 
 ### CLI
 
@@ -40,6 +67,15 @@
 ## Bugfixes
 
 * Fix `QdrantStore.read_rows` when no idx is specified
+* Fix `RedisStore` serialization for Ray
+
+# 0.13.0-beta.4
+
+* Fix `RedisStore` serialization for Ray
+
+# 0.13.0-beta.3
+
+* Enable WAL mode for sqlite database by default
 
 # WIP 0.13.0-beta.3
 

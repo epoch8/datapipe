@@ -4,6 +4,7 @@ import math
 from typing import Any, Iterator, List, Optional, Union, cast
 
 import pandas as pd
+import numpy as np
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
@@ -40,6 +41,10 @@ class DBConn:
                 connstr,
                 poolclass=SingletonThreadPool,
             )
+
+            # WAL mode is required for concurrent reads and writes
+            # https://www.sqlite.org/wal.html
+            self.con.execute("PRAGMA journal_mode=WAL")
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
@@ -52,6 +57,8 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=QueuePool,
+                pool_pre_ping=True,
+                pool_recycle=3600,
                 # pool_size=25,
             )
 
@@ -166,7 +173,7 @@ class TableStoreDB(TableStore):
             return
 
         insert_sql = self.dbconn.insert(self.data_table).values(
-            df.to_dict(orient="records")
+            df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
         )
 
         if len(self.data_keys) > 0:

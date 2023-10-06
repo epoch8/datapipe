@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine
 import redis
+from sqlalchemy import create_engine
 
 from datapipe.store.database import DBConn
 
@@ -78,4 +78,4 @@ def redis_conn():
     conn = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
     if keys := conn.keys():
         conn.delete(*keys)
-    yield conn
+    yield f"redis://{redis_host}:{redis_port}"

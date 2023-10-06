@@ -138,7 +138,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
-        fsspec_kwargs: Dict[str, Any] = {},
+        fsspec_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -178,15 +178,17 @@ class TableStoreFiledir(TableStore):
         fsspec_kwargs -- kwargs для fsspec
         """
 
-        self.fsspec_kwargs = fsspec_kwargs
+        self.fsspec_kwargs = fsspec_kwargs or {}
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
-            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
         else:
-            self.filesystem = fsspec.filesystem(
-                protocol=self.protocol, **self.fsspec_kwargs
-            )
+            self.fsspec_kwargs["protocol"] = self.protocol
+
+        if self.protocol == "file" or self.protocol is None:
+            self.fsspec_kwargs["auto_mkdir"] = True
+
+        self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
 
         if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
@@ -335,7 +337,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
+            with self.filesystem.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(

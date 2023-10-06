@@ -18,6 +18,19 @@ class CollectionParams(rest.CreateCollection):
 
 
 class QdrantStore(TableStore):
+    """Defines a TableStore for piping data to Qdrant collection
+
+    Args:
+        name (str): name of the Qdrant collection
+        url (str): url of the Qdrant server (if using with api_key,
+        you should explicitly specify port 443, by default qdrant uses 6333)
+        schema (DataSchema): Describes data that will be stored in the Qdrant collection
+        pk_field (str): name of the primary key field in the schema, used to identify records
+        embedding_field (str): name of the field in the schema that contains the vector representation of the record
+        collection_params (CollectionParams): parameters for creating a collection in Qdrant
+        api_key (Optional[str]): api_key for Qdrant server
+    """
+
     def __init__(
         self,
         name: str,
@@ -26,6 +39,7 @@ class QdrantStore(TableStore):
         pk_field: str,
         embedding_field: str,
         collection_params: CollectionParams,
+        api_key: Optional[str] = None,
     ):
         super().__init__()
         self.name = name
@@ -36,6 +50,7 @@ class QdrantStore(TableStore):
         self.collection_params = collection_params
         self.inited = False
         self.client: Optional[QdrantClient] = None
+        self._api_key = api_key
 
         pk_columns = [column for column in self.schema if column.primary_key]
 
@@ -47,7 +62,7 @@ class QdrantStore(TableStore):
         ]
 
     def __init(self):
-        self.client = QdrantClient(url=self.url)
+        self.client = QdrantClient(url=self.url, api_key=self._api_key)
         try:
             self.client.get_collection(self.name)
         except UnexpectedResponse as e:
@@ -145,6 +160,18 @@ class QdrantStore(TableStore):
 
 
 class QdrantShardedStore(TableStore):
+    """Defines a TableStore for piping data to multiple Qdrant collections
+
+    Args:
+        name_pattern (str): name pattern of the Qdrant collections
+        url (str): url of the Qdrant server (if using with api_key,
+        you should explicitly specify port 443, by default qdrant uses 6333)
+        schema (DataSchema): Describes data that will be stored in the Qdrant collection
+        embedding_field (str): name of the field in the schema that contains the vector representation of the record
+        collection_params (CollectionParams): parameters for creating a collection in Qdrant
+        api_key (Optional[str]): api_key for Qdrant server
+    """
+
     def __init__(
         self,
         name_pattern: str,
@@ -152,6 +179,7 @@ class QdrantShardedStore(TableStore):
         schema: DataSchema,
         embedding_field: str,
         collection_params: CollectionParams,
+        api_key: Optional[str] = None,
     ):
         super().__init__()
         self.name_pattern = name_pattern
@@ -159,6 +187,7 @@ class QdrantShardedStore(TableStore):
         self.schema = schema
         self.embedding_field = embedding_field
         self.collection_params = collection_params
+        self._api_key = api_key
 
         self.inited_collections: set = set()
         self.client: Optional[QdrantClient] = None
@@ -186,7 +215,7 @@ class QdrantShardedStore(TableStore):
 
     def __check_init(self, name):
         if not self.client:
-            self.client = QdrantClient(url=self.url)
+            self.client = QdrantClient(url=self.url, api_key=self._api_key)
 
         if name not in self.inited_collections:
             self.__init_collection(name)
