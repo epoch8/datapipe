@@ -286,3 +286,227 @@ def test_complex_train_pipeline(dbconn):
         TEST__TRAIN_CONFIG,
     )
     assert_datatable_equal(ds.get_table("model"), pd.merge(TEST_RESULT1, TEST_RESULT2, how='outer'))
+
+
+TEST__ITEM_LARGE = pd.DataFrame(
+    {
+        "item_id": [f"item_id{i}" for i in range(10000)],
+        "item__attribute": [f"item__attribute{i}" for i in range(10000)],
+    }
+)
+TEST__ITEM_HAS_GROUND_TRUTH = pd.DataFrame(
+    {
+        "item_id": [f"item_id{i}" for i in range(5000)],
+    }
+)
+
+TEST__MODEL_LARGE = pd.DataFrame(
+    {
+        "model_id": [f"model_id{i}" for i in range(10)],
+        "model__attribute": [f"item__attribute{i}" for i in range(10)],
+    }
+)
+
+
+def test_complex_cross_merge_scenary_with_inner_filter(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "item": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "item",
+                    [
+                        Column("item_id", String, primary_key=True),
+                        Column("item__attribute", String),
+                    ],
+                    True,
+                )
+            ),
+            "item__has__ground_truth": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "item__has__ground_truth",
+                    [
+                        Column("item_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "model": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "model",
+                    [
+                        Column("model_id", String, primary_key=True),
+                        Column("model__attribute", String),
+                    ],
+                    True,
+                )
+            ),
+            "prediction": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "prediction",
+                    [
+                        Column("item_id", String, primary_key=True),
+                        Column("model_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+        }
+    )
+
+    def inference_model(df__item, df__item__has__ground_truth, df__model):
+        df__item = pd.merge(df__item, df__item__has__ground_truth)
+        df__prediction = pd.merge(df__item[["item_id"]], df__model[["model_id"]], how="cross")
+        return df__prediction
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                func=inference_model,
+                inputs=["item", "item__has__ground_truth", "model"],
+                outputs=["prediction"],
+                transform_keys=["item_id", "model_id"],
+                chunk_size=1000,
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    step = steps[0]
+    ds.get_table("item").store_chunk(TEST__ITEM_LARGE)
+    ds.get_table("item__has__ground_truth").store_chunk(TEST__ITEM_HAS_GROUND_TRUTH)
+    ds.get_table("model").store_chunk(TEST__MODEL_LARGE)
+    idx_count, _ = step.get_full_process_ids(ds, chunk_size=100)
+    # idx = next(idx_gen)
+    assert idx_count == len(TEST__ITEM_LARGE) * len(TEST__MODEL_LARGE) // 100
+    TEST_RESULT = inference_model(
+        df__item=TEST__ITEM_LARGE,
+        df__item__has__ground_truth=TEST__ITEM_HAS_GROUND_TRUTH,
+        df__model=TEST__MODEL_LARGE,
+    )
+    run_steps(ds, steps)
+    assert_datatable_equal(ds.get_table("prediction"), TEST_RESULT)
+
+
+TEST__MODEL = pd.DataFrame(
+    {
+        "model_id": [f"model_id{i}" for i in range(2)],
+        "model__attribute": [f"item__attribute{i}" for i in range(2)],
+    }
+)
+
+
+def test_cyclic_cross_merge(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "item": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "item",
+                    [
+                        Column("item_id", String, primary_key=True),
+                        Column("item__attribute", String),
+                    ],
+                    True,
+                )
+            ),
+            "model": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "model",
+                    [
+                        Column("model_id", String, primary_key=True),
+                        Column("model__attribute", String),
+                    ],
+                    True,
+                )
+            ),
+            "best_model": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "best_model",
+                    [
+                        Column("model_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "prediction": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "prediction",
+                    [
+                        Column("item_id", String, primary_key=True),
+                        Column("model_id", String, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+        }
+    )
+
+    def inference_best_model(
+        df__item,
+        df__model,
+        df__best_model,
+        df__prediction,
+    ):
+        df__model = pd.merge(df__model, df__best_model)
+        df__prediction_res = pd.merge(df__item[["item_id"]], df__model[["model_id"]], how="cross")
+        df__prediction = pd.merge(df__prediction_res, df__prediction, how="outer")
+        return df__model
+
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                func=inference_best_model,
+                inputs=["item", "model", "best_model", "prediction"],
+                outputs=["prediction"],
+                transform_keys=["item_id", "model_id"],
+                chunk_size=1000,
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    step = steps[0]
+    test_df__item1 = TEST__ITEM.iloc[0:5]
+    test_df__model1 = TEST__MODEL.iloc[0:1]
+    test_df__best_model1 = TEST__MODEL.iloc[0:1][["model_id"]]
+    ds.get_table("item").store_chunk(test_df__item1)
+    ds.get_table("model").store_chunk(test_df__model1)
+    ds.get_table("best_model").store_chunk(test_df__best_model1)
+    idx_count, _ = step.get_full_process_ids(ds)
+    assert idx_count > 0
+    TEST_RESULT1 = inference_best_model(
+        df__item=test_df__item1,
+        df__model=test_df__model1,
+        df__best_model=test_df__best_model1,
+        df__prediction=pd.DataFrame({}, columns=["item_id", "model_id"]),
+    )
+    run_steps(ds, steps)
+    assert_datatable_equal(ds.get_table("prediction"), TEST_RESULT1)
+
+    test_df__item2 = TEST__ITEM.iloc[5:10]
+    test_df__model2 = TEST__MODEL.iloc[1:2]
+    test_df__best_model2 = TEST__MODEL.iloc[1:2][["model_id"]]
+    ds.get_table("item").store_chunk(test_df__item2)
+    ds.get_table("model").store_chunk(test_df__model2)
+    ds.get_table("best_model").delete_by_idx(ds.get_table("best_model").get_data())
+    ds.get_table("best_model").store_chunk(test_df__best_model2)
+    idx_count, _ = step.get_full_process_ids(ds)
+    assert idx_count > 0
+    run_steps(ds, steps)
+    TEST_RESULT2 = inference_best_model(
+        df__item=pd.merge(test_df__item1, test_df__item2, how="outer"),
+        df__model=pd.merge(test_df__model1, test_df__model2, how="outer"),
+        df__best_model=test_df__best_model2,
+        df__prediction=ds.get_table("prediction").get_data(
+            idx=pd.merge(test_df__item1, test_df__item2, how="outer")
+        ),
+    )
+    TEST_RESULT = pd.merge(TEST_RESULT1, TEST_RESULT2, how="outer")
+    assert_datatable_equal(ds.get_table("prediction"), TEST_RESULT)
