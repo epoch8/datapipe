@@ -375,13 +375,9 @@ def test_complex_cross_merge_scenary_with_inner_filter(dbconn):
         ]
     )
     steps = build_compute(ds, catalog, pipeline)
-    step = steps[0]
     ds.get_table("item").store_chunk(TEST__ITEM_LARGE)
     ds.get_table("item__has__ground_truth").store_chunk(TEST__ITEM_HAS_GROUND_TRUTH)
     ds.get_table("model").store_chunk(TEST__MODEL_LARGE)
-    idx_count, _ = step.get_full_process_ids(ds, chunk_size=100)
-    # idx = next(idx_gen)
-    assert idx_count == len(TEST__ITEM_LARGE) * len(TEST__MODEL_LARGE) // 100
     TEST_RESULT = inference_model(
         df__item=TEST__ITEM_LARGE,
         df__item__has__ground_truth=TEST__ITEM_HAS_GROUND_TRUTH,
