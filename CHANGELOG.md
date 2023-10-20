@@ -1,6 +1,7 @@
 # WIP 0.13.5
 
 * Add create_engine_kwargs for `DBConn`
+* Add logging of log_step_full for `DatatableTransformStep`
 
 # 0.13.4
 
