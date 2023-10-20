@@ -82,6 +82,8 @@ class DatatableTransformStep(ComputeStep):
                     run_config=run_config,
                     kwargs=self.kwargs,
                 )
+
+                ds.event_logger.log_step_full_complete(self.name)
             except Exception as e:
                 logger.error(f"Datatable transform ({self.func}) run failed: {str(e)}")
                 ds.event_logger.log_exception(e, run_config=run_config)
