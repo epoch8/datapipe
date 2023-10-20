@@ -1,3 +1,7 @@
+# WIP 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
