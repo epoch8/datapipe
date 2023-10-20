@@ -1,3 +1,7 @@
+# WIP 0.13.5
+
+* Fix desc/asc order in batch transform when ordering by multiple columns
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
