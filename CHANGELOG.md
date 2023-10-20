@@ -1,5 +1,6 @@
 # WIP 0.13.5
 
+* Fix desc/asc order in batch transform when ordering by multiple columns
 * Add logging of log_step_full for `DatatableTransformStep`
 
 # 0.13.4
