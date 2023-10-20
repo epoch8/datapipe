@@ -1,3 +1,7 @@
+# WIP 0.13.5
+
+* Add logging of log_step_full for `DatatableTransformStep`
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
