@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, List, Dict, Optional
 
 LabelDict = Dict[str, Any]
 
@@ -10,7 +10,7 @@ class RunConfig:
     # если не пуст, то во время запуска обрабатываются только те строки,
     # которые строго соответствуют фильтру
     # (в случае, если у таблицы есть идентификатор с совпадающим именем).
-    filters: LabelDict = field(default_factory=dict)
+    filters: List[LabelDict] = field(default_factory=list)
     labels: LabelDict = field(default_factory=dict)
 
     @classmethod

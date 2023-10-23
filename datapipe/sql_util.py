@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String, Table, column, tuple_
+from sqlalchemy.sql.expression import or_
 
 from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF
@@ -63,9 +64,15 @@ def sql_apply_runconfig_filter(
     run_config: Optional[RunConfig] = None,
 ) -> Any:
     if run_config is not None:
-        for k, v in run_config.filters.items():
-            if k in primary_keys:
-                sql = sql.where(table.c[k] == v)
+        sql = sql.where(
+            or_(
+                *[
+                    table.c[k] == v
+                    for filter in run_config.filters
+                    for k, v in filter.items() if k in primary_keys
+                ]
+            )
+        )
 
     return sql
 

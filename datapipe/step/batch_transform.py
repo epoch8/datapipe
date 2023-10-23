@@ -273,7 +273,7 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
@@ -487,23 +487,35 @@ class BaseBatchTransformStep(ComputeStep):
         return (self.transform_keys, sql)
 
     def _apply_filters_to_run_config(
-        self, run_config: Optional[RunConfig] = None
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None
     ) -> Optional[RunConfig]:
         if self.filters is None:
             return run_config
         else:
-            if isinstance(self.filters, dict):
+            filters: List[LabelDict]
+            if isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
                 filters = self.filters
             elif isinstance(self.filters, Callable):  # type: ignore
-                filters = self.filters()
+                filters_func = cast(Callable[..., List[LabelDict]], self.filters)
+                parameters = inspect.signature(filters_func).parameters
+                kwargs = {
+                    **({"ds": ds} if "ds" in parameters else {}),
+                }
+                filters = filters_func(**kwargs)
+
+            if isinstance(self.filters, str):
+                dt = ds.get_table(self.filters)
+                df = dt.get_data()
+                filters = df[dt.primary_keys].to_dict(orient="records")
 
             if run_config is None:
                 return RunConfig(filters=filters)
             else:
                 run_config = copy.deepcopy(run_config)
                 filters = copy.deepcopy(filters)
-                filters.update(run_config.filters)
-                run_config.filters = filters
+                run_config.filters += filters
                 return run_config
 
     def get_changed_idx_count(
@@ -511,7 +523,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
-        run_config = self._apply_filters_to_run_config(run_config)
+        run_config = self._apply_filters_to_run_config(ds, run_config)
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
@@ -537,7 +549,7 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
-        run_config = self._apply_filters_to_run_config(run_config)
+        run_config = self._apply_filters_to_run_config(ds, run_config)
         chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
@@ -560,7 +572,10 @@ class BaseBatchTransformStep(ComputeStep):
             extra_filters: LabelDict
             if run_config is not None:
                 extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
+                    k: v
+                    for filter in run_config.filters
+                    for k, v in filter.items()
+                    if k not in join_keys
                 }
             else:
                 extra_filters = {}
@@ -581,7 +596,7 @@ class BaseBatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
-        run_config = self._apply_filters_to_run_config(run_config)
+        run_config = self._apply_filters_to_run_config(ds, run_config)
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -623,7 +638,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
-        run_config = self._apply_filters_to_run_config(run_config)
+        run_config = self._apply_filters_to_run_config(ds, run_config)
 
         changes = ChangeList()
 
@@ -670,7 +685,7 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        run_config = self._apply_filters_to_run_config(run_config)
+        run_config = self._apply_filters_to_run_config(ds, run_config)
 
         logger.error(f"Process batch failed: {str(e)}")
         ds.event_logger.log_exception(
@@ -855,7 +870,7 @@ class DatatableBatchTransform(PipelineStep):
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
@@ -895,7 +910,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
@@ -941,7 +956,7 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
@@ -981,7 +996,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
