@@ -23,13 +23,6 @@ TEST__ITEM2 = pd.DataFrame(
     }
 )
 
-TEST__KEYPOINT = pd.DataFrame(
-    {
-        "keypoint_id": list(range(5)),
-        "keypoint_name": [f"keypoint_name{i}" for i in range(5)],
-    }
-)
-
 TEST__PIPELINE = pd.DataFrame(
     {
         "pipeline_id": [f"pipeline_id{i}" for i in range(3)],
@@ -109,9 +102,9 @@ def test_check_full_step_idx_count_when_some_idxs_are_deleted(dbconn):
     )
     steps = build_compute(ds, catalog, pipeline)
     step = steps[-1]
-    for name, df in [("item", TEST__ITEM), ("item2", TEST__ITEM2), ("pipeline", TEST__PIPELINE)]:
-        for i, row in df.iterrows():
-            ds.get_table(name).store_chunk(pd.DataFrame([row]))
+    ds.get_table("item").store_chunk(TEST__ITEM)
+    ds.get_table("item2").store_chunk(TEST__ITEM2)
+    ds.get_table("pipeline").store_chunk(TEST__PIPELINE)
     ds.get_table("item").delete_by_idx(TEST__ITEM.iloc[0:5])
     ds.get_table("item2").delete_by_idx(TEST__ITEM.iloc[0:5])
     count, idx_gen = step.get_full_process_ids(ds)
