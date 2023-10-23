@@ -441,6 +441,7 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
+        out = sql_apply_runconfig_filter(out, tr_tbl, self.transform_keys, run_config)
 
         out = out.cte(name="transform")
 
