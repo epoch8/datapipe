@@ -45,7 +45,7 @@ from tqdm_loggable.auto import tqdm
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.run_config import LabelDict, RunConfig
+from datapipe.run_config import RunConfig
 from datapipe.sql_util import (
     sql_apply_filters_idx_to_subquery,
     sql_apply_runconfig_filter,
@@ -53,6 +53,8 @@ from datapipe.sql_util import (
 from datapipe.store.database import DBConn
 from datapipe.types import (
     ChangeList,
+    LabelDict,
+    Filters,
     DataDF,
     DataSchema,
     IndexDF,
@@ -273,7 +275,7 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
+        filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
@@ -508,7 +510,7 @@ class BaseBatchTransformStep(ComputeStep):
             if isinstance(self.filters, str):
                 dt = ds.get_table(self.filters)
                 df = dt.get_data()
-                filters = df[dt.primary_keys].to_dict(orient="records")
+                filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
 
             if run_config is None:
                 return RunConfig(filters=filters)
@@ -870,7 +872,7 @@ class DatatableBatchTransform(PipelineStep):
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None
+    filters: Optional[Filters] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
@@ -910,7 +912,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
+        filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
@@ -956,7 +958,7 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None
+    filters: Optional[Filters] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
@@ -996,7 +998,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[List[LabelDict], Callable[..., List[LabelDict]]]] = None,
+        filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:

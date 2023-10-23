@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional
-
-LabelDict = Dict[str, Any]
+from datapipe.types import LabelDict
 
 
 @dataclass
