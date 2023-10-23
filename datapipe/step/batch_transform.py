@@ -504,6 +504,7 @@ class BaseBatchTransformStep(ComputeStep):
                 parameters = inspect.signature(filters_func).parameters
                 kwargs = {
                     **({"ds": ds} if "ds" in parameters else {}),
+                    **({"run_config": run_config} if "run_config" in parameters else {})
                 }
                 filters = filters_func(**kwargs)
 
