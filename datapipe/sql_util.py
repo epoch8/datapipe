@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String, Table, column, tuple_
-from sqlalchemy.sql.expression import and_
+from sqlalchemy.sql.expression import and_, or_
 
 from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF
@@ -65,11 +65,15 @@ def sql_apply_runconfig_filter(
 ) -> Any:
     if run_config is not None:
         sql = sql.where(
-            and_(
+            or_(
                 *[
-                    table.c[k] == v
+                    and_(
+                        *[
+                            table.c[k] == v
+                            for k, v in filter.items() if k in primary_keys
+                        ]
+                    )
                     for filter in run_config.filters
-                    for k, v in filter.items() if k in primary_keys
                 ]
             )
         )
