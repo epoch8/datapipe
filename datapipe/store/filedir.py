@@ -63,13 +63,17 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Union[str, Image.Image] = obj["image"]
+        image_data: Any = obj["image"]
 
-        if isinstance(im, str):
-            im_binary = base64.b64decode(im.encode())
-            im = Image.open(io.BytesIO(im_binary))
+        if isinstance(image_data, Image.Image):
+            image: Image.Image = image_data
+        elif isinstance(image_data, str):
+            image_binary = base64.b64decode(image_data.encode())
+            image = Image.open(io.BytesIO(image_binary))
+        else:
+            raise Exception("Image must be a bytes string or Pillow Image object")
 
-        im.save(f, format=self.format, **self.dump_params)
+        image.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
