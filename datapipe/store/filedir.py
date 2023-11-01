@@ -1,6 +1,8 @@
+import base64
 import itertools
 import json
 import re
+import io
 from abc import ABC
 from pathlib import Path
 from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
@@ -61,7 +63,12 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj["image"]
+        im: Union[str, Image.Image] = obj["image"]
+
+        if isinstance(im, str):
+            im_binary = base64.b64decode(im.encode())
+            im = Image.open(io.BytesIO(im_binary))
+
         im.save(f, format=self.format, **self.dump_params)
 
 
