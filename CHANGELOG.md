@@ -1,3 +1,7 @@
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
 # 0.13.5
 
 * Add create_engine_kwargs for `DBConn`

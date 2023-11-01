@@ -1,6 +1,8 @@
+import base64
 import itertools
 import json
 import re
+import io
 from abc import ABC
 from pathlib import Path
 from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
@@ -61,8 +63,17 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj["image"]
-        im.save(f, format=self.format, **self.dump_params)
+        image_data: Any = obj["image"]
+
+        if isinstance(image_data, Image.Image):
+            image: Image.Image = image_data
+        elif isinstance(image_data, str):
+            image_binary = base64.b64decode(image_data.encode())
+            image = Image.open(io.BytesIO(image_binary))
+        else:
+            raise Exception("Image must be a bytes string or Pillow Image object")
+
+        image.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
