@@ -1,3 +1,7 @@
+# 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+
 # 0.13.6
 
 * Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
