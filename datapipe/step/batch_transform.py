@@ -933,7 +933,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         )
 
         self.func = func
-        self.kwargs = kwargs
+        self.kwargs = kwargs or {}
 
     def process_batch_dts(
         self,
