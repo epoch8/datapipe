@@ -2,8 +2,7 @@ import json
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
-from redis.client import Redis
-from redis.cluster import RedisCluster
+from redis import Redis, RedisCluster
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
