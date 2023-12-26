@@ -1,5 +1,5 @@
 import json
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
@@ -47,6 +47,7 @@ class RedisStore(TableStore):
         self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
     ) -> None:
         self.connection = connection
+        self.cluster_mode = cluster_mode
         self.name = name
         self.data_sql_schema = data_sql_schema
         self.prim_keys = [
@@ -79,7 +80,7 @@ class RedisStore(TableStore):
         key_rows = _to_itertuples(df, self.prim_keys)
         value_rows = _to_itertuples(df, self.value_cols)
 
-        with RedisClient(self.connection) as redis_connection:
+        with RedisClient(self.connection, self.cluster_mode) as redis_connection:
             redis_pipe = redis_connection.pipeline()
             for keys, values in zip(key_rows, value_rows):
                 redis_pipe.hset(self.name, _serialize(keys), _serialize(values))
@@ -103,7 +104,7 @@ class RedisStore(TableStore):
         keys = _to_itertuples(df_keys, self.prim_keys)
         keys_json = [_serialize(key) for key in keys]
         
-        with RedisClient(self.connection) as redis_connection:
+        with RedisClient(self.connection, self.cluster_mode) as redis_connection:
             values = redis_connection.hmget(self.name, keys_json)
 
         data = [list(key) + _deserialize(val) for key, val in zip(keys, values) if val]
@@ -119,7 +120,7 @@ class RedisStore(TableStore):
         keys = _to_itertuples(df_keys, self.prim_keys)
         keys = [_serialize(key) for key in keys]
 
-        with RedisClient(self.connection) as redis_connection:
+        with RedisClient(self.connection, self.cluster_mode) as redis_connection:
             redis_connection.hdel(self.name, *keys)
 
     def get_primary_schema(self) -> DataSchema:
