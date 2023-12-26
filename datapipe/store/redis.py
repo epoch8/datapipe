@@ -3,7 +3,7 @@ from typing import List, Optional, Union, Dict
 
 import pandas as pd
 from redis.client import Redis
-from redis.cluster import RedisCluster
+# from redis.cluster import RedisCluster
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
