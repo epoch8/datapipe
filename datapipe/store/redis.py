@@ -23,16 +23,30 @@ def _to_itertuples(df: DataDF, colnames):
     return list(df[colnames].itertuples(index=False, name=None))
 
 
+class RedisClient:
+    def __init__(self, connection: str, cluster_mode: bool):
+        self.connection = connection
+        self.cluster_mode = cluster_mode
+        self.client = None
+
+    def __enter__(self):
+        if not self.cluster_mode:
+            self.client = Redis.from_url(self.connection, decode_responses=True)
+        else:
+            self.client = RedisCluster.from_url(self.connection, decode_responses=True)
+        
+        return self.client
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.client:
+            self.client.close()
+
+
 class RedisStore(TableStore):
     def __init__(
         self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
     ) -> None:
         self.connection = connection
-        if not cluster_mode:
-            self.redis_connection = Redis.from_url(connection, decode_responses=True)
-        else:
-            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
-
         self.name = name
         self.data_sql_schema = data_sql_schema
         self.prim_keys = [
@@ -64,10 +78,12 @@ class RedisStore(TableStore):
         # get rows as Iter[Tuple]
         key_rows = _to_itertuples(df, self.prim_keys)
         value_rows = _to_itertuples(df, self.value_cols)
-        redis_pipe = self.redis_connection.pipeline()
-        for keys, values in zip(key_rows, value_rows):
-            redis_pipe.hset(self.name, _serialize(keys), _serialize(values))
-        redis_pipe.execute()
+
+        with RedisClient(self.connection) as redis_connection:
+            redis_pipe = redis_connection.pipeline()
+            for keys, values in zip(key_rows, value_rows):
+                redis_pipe.hset(self.name, _serialize(keys), _serialize(values))
+            redis_pipe.execute()
 
     def update_rows(self, df: DataDF) -> None:
         # удаляем существующие ключи
@@ -86,7 +102,10 @@ class RedisStore(TableStore):
 
         keys = _to_itertuples(df_keys, self.prim_keys)
         keys_json = [_serialize(key) for key in keys]
-        values = self.redis_connection.hmget(self.name, keys_json)
+        
+        with RedisClient(self.connection) as redis_connection:
+            values = redis_connection.hmget(self.name, keys_json)
+
         data = [list(key) + _deserialize(val) for key, val in zip(keys, values) if val]
 
         result_df = pd.DataFrame.from_records(
@@ -99,7 +118,9 @@ class RedisStore(TableStore):
             return
         keys = _to_itertuples(df_keys, self.prim_keys)
         keys = [_serialize(key) for key in keys]
-        self.redis_connection.hdel(self.name, *keys)
+
+        with RedisClient(self.connection) as redis_connection:
+            redis_connection.hdel(self.name, *keys)
 
     def get_primary_schema(self) -> DataSchema:
         return [column for column in self.data_sql_schema if column.primary_key]
