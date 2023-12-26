@@ -28,10 +28,10 @@ class RedisStore(TableStore):
         self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
     ) -> None:
         self.connection = connection
-        if not cluster_mode:
-            self.redis_connection = Redis.from_url(connection, decode_responses=True)
-        else:
-            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
+        # if not cluster_mode:
+        self.redis_connection = Redis.from_url(connection, decode_responses=True)
+        # else:
+        #     self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
 
         self.name = name
         self.data_sql_schema = data_sql_schema
