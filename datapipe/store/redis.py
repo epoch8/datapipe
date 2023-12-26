@@ -2,7 +2,7 @@ import json
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
-# from redis import Redis, RedisCluster
+from redis.client import Redis
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
@@ -30,7 +30,7 @@ class RedisClient:
 
     def __enter__(self):
         # if not self.cluster_mode:
-        #     self.client = Redis.from_url(self.connection, decode_responses=True)
+        self.client = Redis.from_url(self.connection, decode_responses=True)
         # else:
         #     self.client = RedisCluster.from_url(self.connection, decode_responses=True)
         
