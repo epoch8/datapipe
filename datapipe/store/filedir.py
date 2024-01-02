@@ -46,6 +46,23 @@ class JSONFile(ItemStoreFileAdapter):
         return json.dump(obj, f, **self.dump_params)
 
 
+class BytesFile(ItemStoreFileAdapter):
+    """
+    Uses `bytes` column
+    """
+
+    mode = "b"
+
+    def __init__(self, bytes_columns: str = "bytes"):
+        self.bytes_columns = bytes_columns
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {self.bytes_columns: f.read()}
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        f.write(obj[self.bytes_columns])
+
+
 class PILFile(ItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
