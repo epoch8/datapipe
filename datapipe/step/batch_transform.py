@@ -152,8 +152,10 @@ class TransformMetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates()
+            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -189,8 +191,10 @@ class TransformMetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates()
+            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -467,12 +471,12 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             if order == "desc":
                 sql = sql.order_by(
-                    desc(*[column(k) for k in order_by]),
+                    *[desc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
             elif order == "asc":
                 sql = sql.order_by(
-                    asc(*[column(k) for k in order_by]),
+                    *[asc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
         return (self.transform_keys, sql)

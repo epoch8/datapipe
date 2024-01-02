@@ -1,3 +1,37 @@
+# WIP 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Added `delete_stale` argument to `BatchGenerate`
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
+* Add logging of log_step_full for `DatatableTransformStep`
+
+# 0.13.4
+
+* Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
+
+# 0.13.3
+
+* Fix `TableStoreFiledir` ignoring `fsspec_kwargs`
+* Added dropna and idx check for `TransformMetaTable`
+
+# 0.13.2-post.1
+
+* Allow `pandas >= 2` and `numpy >= 1.21`
+
+# 0.13.2
+
+* Add `GPU` support for RayExecutor
+* Add `auto_mkdir` to `TableStoreFiledir`, fixes issues with local filedir
+* Add Python 3.11 support.
+
 # 0.13.1
 
 * Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant

@@ -1,6 +1,8 @@
+import base64
 import itertools
 import json
 import re
+import io
 from abc import ABC
 from pathlib import Path
 from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
@@ -44,6 +46,23 @@ class JSONFile(ItemStoreFileAdapter):
         return json.dump(obj, f, **self.dump_params)
 
 
+class BytesFile(ItemStoreFileAdapter):
+    """
+    Uses `bytes` column
+    """
+
+    mode = "b"
+
+    def __init__(self, bytes_columns: str = "bytes"):
+        self.bytes_columns = bytes_columns
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {self.bytes_columns: f.read()}
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        f.write(obj[self.bytes_columns])
+
+
 class PILFile(ItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
@@ -61,8 +80,17 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj["image"]
-        im.save(f, format=self.format, **self.dump_params)
+        image_data: Any = obj["image"]
+
+        if isinstance(image_data, Image.Image):
+            image: Image.Image = image_data
+        elif isinstance(image_data, str):
+            image_binary = base64.b64decode(image_data.encode())
+            image = Image.open(io.BytesIO(image_binary))
+        else:
+            raise Exception("Image must be a bytes string or Pillow Image object")
+
+        image.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -138,7 +166,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
-        fsspec_kwargs: Dict[str, Any] = {},
+        fsspec_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -178,15 +206,17 @@ class TableStoreFiledir(TableStore):
         fsspec_kwargs -- kwargs для fsspec
         """
 
-        self.fsspec_kwargs = fsspec_kwargs
+        self.fsspec_kwargs = fsspec_kwargs or {}
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
-            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
         else:
-            self.filesystem = fsspec.filesystem(
-                protocol=self.protocol, **self.fsspec_kwargs
-            )
+            self.fsspec_kwargs["protocol"] = self.protocol
+
+        if self.protocol == "file" or self.protocol is None:
+            self.fsspec_kwargs["auto_mkdir"] = True
+
+        self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
 
         if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
@@ -335,7 +365,7 @@ class TableStoreFiledir(TableStore):
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
+            with self.filesystem.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(

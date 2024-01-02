@@ -32,6 +32,8 @@ class RayExecutor(Executor):
                 remote_kwargs["memory"] = executor_config.memory
             if executor_config.cpu is not None:
                 remote_kwargs["num_cpus"] = executor_config.cpu
+            if executor_config.gpu is not None:
+                remote_kwargs["num_gpus"] = executor_config.gpu
 
             parallelism = executor_config.parallelism
         else:
