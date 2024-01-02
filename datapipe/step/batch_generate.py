@@ -29,7 +29,7 @@ def do_batch_generate(
     output_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict] = None,
-    delete_stale: bool = True
+    delete_stale: bool = True,
 ) -> None:
     """
     Создание новой таблицы из результатов запуска `proc_func`.

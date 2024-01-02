@@ -227,8 +227,9 @@ class TransformMetaTable:
         Получить количество строк метаданных трансформации.
         """
 
-        sql = select([func.count()]).select_from(self.sql_table)
-        res = self.dbconn.con.execute(sql).fetchone()
+        sql = select(func.count()).select_from(self.sql_table)
+        with self.dbconn.con.begin() as con:
+            res = con.execute(sql).fetchone()
 
         assert res is not None and len(res) == 1
         return res[0]

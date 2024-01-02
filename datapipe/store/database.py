@@ -1,12 +1,12 @@
 import copy
 import logging
 import math
-from typing import Any, Dict, Iterator, List, Optional, Union, cast
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union, cast
 
 import numpy as np
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, MetaData, Table, create_engine, func
+from sqlalchemy import Column, MetaData, Table, create_engine, func, text
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -41,6 +41,8 @@ class DBConn:
         self.schema = schema
         self.create_engine_kwargs = create_engine_kwargs
 
+        self.insert: Callable
+        self.func_greatest: Callable
         if connstr.startswith("sqlite") or connstr.startswith("pysqlite"):
             self.supports_update_from = False
 
@@ -57,14 +59,15 @@ class DBConn:
 
             # WAL mode is required for concurrent reads and writes
             # https://www.sqlite.org/wal.html
-            self.con.execute("PRAGMA journal_mode=WAL")
+            with self.con.begin() as con:
+                con.execute(text("PRAGMA journal_mode=WAL"))
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
 
-            from sqlalchemy.dialects.postgresql import insert
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-            self.insert = insert
+            self.insert = pg_insert
             self.func_greatest = func.greatest
 
             self.con = create_engine(

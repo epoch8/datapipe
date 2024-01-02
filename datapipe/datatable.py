@@ -8,7 +8,8 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 import pandas as pd
 from cityhash import CityHash32
 from opentelemetry import trace
-from sqlalchemy import Column, Float, Integer, Table, column
+from sqlalchemy import Column, ColumnClause, Float, Integer, Table, column
+from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
@@ -35,7 +36,7 @@ logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
 
 
-TABLE_META_SCHEMA = [
+TABLE_META_SCHEMA: List[Column] = [
     Column("hash", Integer),
     Column("create_ts", Float),  # Время создания строки
     Column("update_ts", Float),  # Время последнего изменения
@@ -81,8 +82,8 @@ class MetaTable:
             )
             self.meta_keys[target_name] = column.name
 
-        self.sql_schema = [
-            copy.copy(i) for i in primary_schema + meta_schema + TABLE_META_SCHEMA
+        self.sql_schema: List[SchemaItem] = [
+            i._copy() for i in primary_schema + meta_schema + TABLE_META_SCHEMA
         ]
 
         self.sql_table = Table(
@@ -143,7 +144,7 @@ class MetaTable:
         """
 
         res = []
-        sql = select(*self.sql_schema)
+        sql = select(*self.sql_schema)  # type: ignore
 
         with self.dbconn.con.begin() as con:
             if idx is None:
@@ -173,7 +174,7 @@ class MetaTable:
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
         """
 
-        sql = select([func.count()]).select_from(self.sql_table)
+        sql = select(func.count()).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
         with self.dbconn.con.begin() as con:
@@ -216,7 +217,7 @@ class MetaTable:
         return param.item() if hasattr(param, "item") else param
 
     def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
-        sql = select(*self.sql_schema)
+        sql = select(*self.sql_schema)  # type: ignore
 
         if idx is not None:
             if len(idx.index) == 0:
@@ -258,7 +259,7 @@ class MetaTable:
     def get_table_debug_info(self) -> TableDebugInfo:
         with self.dbconn.con.begin() as con:
             res = con.execute(
-                select([func.count()]).select_from(self.sql_table)
+                select(func.count()).select_from(self.sql_table)
             ).fetchone()
 
             assert res is not None and len(res) == 1
@@ -571,7 +572,7 @@ class DataTable:
         tbl = self.meta_table.sql_table
 
         keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols = [column(k) for k in keys]
+        key_cols: List[ColumnClause] = [column(k) for k in keys]
 
         sql: Any = (
             select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
