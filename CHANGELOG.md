@@ -6,6 +6,7 @@
 * Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
   case
 * Fix pandas warning #286
+* Fix SQLAlchemy 2.0 warnings
 
 # 0.13.6
 

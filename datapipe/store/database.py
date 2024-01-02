@@ -3,8 +3,8 @@ import logging
 import math
 from typing import Any, Dict, Iterator, List, Optional, Union, cast
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
@@ -26,12 +26,17 @@ class DBConn:
         self,
         connstr: str,
         schema: Optional[str] = None,
-        create_engine_kwargs: Optional[Dict[str, Any]] = None
+        create_engine_kwargs: Optional[Dict[str, Any]] = None,
     ):
         create_engine_kwargs = create_engine_kwargs or {}
         self._init(connstr, schema, create_engine_kwargs)
 
-    def _init(self, connstr: str, schema: Optional[str], create_engine_kwargs: Dict[str, Any]) -> None:
+    def _init(
+        self,
+        connstr: str,
+        schema: Optional[str],
+        create_engine_kwargs: Dict[str, Any],
+    ) -> None:
         self.connstr = connstr
         self.schema = schema
         self.create_engine_kwargs = create_engine_kwargs
@@ -47,7 +52,7 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=SingletonThreadPool,
-                **create_engine_kwargs
+                **create_engine_kwargs,
             )
 
             # WAL mode is required for concurrent reads and writes
@@ -77,7 +82,7 @@ class DBConn:
         return {
             "connstr": self.connstr,
             "schema": self.schema,
-            "create_engine_kwargs": self.create_engine_kwargs
+            "create_engine_kwargs": self.create_engine_kwargs,
         }
 
     def __setstate__(self, state):
@@ -206,7 +211,7 @@ class TableStoreDB(TableStore):
         return param.item() if hasattr(param, "item") else param
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
-        sql = select(self.data_table.c)
+        sql = select(*self.data_table.c)
 
         if idx is not None:
             if len(idx.index) == 0:

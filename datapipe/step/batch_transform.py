@@ -105,7 +105,7 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
+        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
 
         self.sql_table = Table(
             name,
@@ -514,7 +514,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
-                select([func.count()]).select_from(
+                select(*[func.count()]).select_from(
                     alias(sql.subquery(), name="union_select")
                 )
             ).scalar()

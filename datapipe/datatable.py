@@ -143,7 +143,7 @@ class MetaTable:
         """
 
         res = []
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)
 
         with self.dbconn.con.begin() as con:
             if idx is None:
@@ -216,7 +216,7 @@ class MetaTable:
         return param.item() if hasattr(param, "item") else param
 
     def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)
 
         if idx is not None:
             if len(idx.index) == 0:
@@ -382,7 +382,7 @@ class MetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
-        sql = select(idx_cols).where(
+        sql = select(*idx_cols).where(
             and_(
                 self.sql_table.c.process_ts < process_ts,
                 self.sql_table.c.delete_ts.is_(None),
