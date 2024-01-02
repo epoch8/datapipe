@@ -384,17 +384,17 @@ class BaseBatchTransformStep(ComputeStep):
                         func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
                     )
 
-            agg = ds.meta_dbconn.func_greatest(
-                *[subq.c[agg_col] for (_, subq) in ctes]
+            agg = func.max(
+                ds.meta_dbconn.func_greatest(*[subq.c[agg_col] for (_, subq) in ctes])
             ).label(agg_col)
 
             _, first_cte = ctes[0]
 
-            sql = select(*coalesce_keys + [agg]).distinct().select_from(first_cte)
+            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=and_(
                             *[
@@ -405,10 +405,13 @@ class BaseBatchTransformStep(ComputeStep):
                         full=True,
                     )
                 else:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=literal(True),
+                        full=True,
                     )
+
+            sql = sql.group_by(*coalesce_keys)
 
             return sql.cte(name=f"all__{agg_col}")
 

@@ -1,8 +1,9 @@
+from typing import List
 import pandas as pd
 
 from datapipe.datatable import DataTable
 from datapipe.store.table_store import TableStore
-from datapipe.types import DataDF, data_to_index
+from datapipe.types import DataDF, IndexDF, data_to_index
 
 
 def assert_idx_equal(a, b):
@@ -43,3 +44,15 @@ def assert_ts_contains(ts: TableStore, df: DataDF):
         df,
         index_cols=ts.primary_keys,
     )
+
+
+def assert_idx_no_duplicates(idx: IndexDF, index_cols: List[str]) -> bool:
+    duplicates = idx[idx[index_cols].duplicated()]
+    if len(duplicates) == 0:
+        return True
+    else:
+        idx = idx.loc[idx.index].sort_values(index_cols)
+        print('Duplicated found:')
+        print(idx)
+
+        raise AssertionError
