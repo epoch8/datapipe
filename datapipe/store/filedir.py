@@ -1,8 +1,8 @@
 import base64
+import io
 import itertools
 import json
 import re
-import io
 from abc import ABC
 from pathlib import Path
 from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
