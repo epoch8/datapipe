@@ -5,6 +5,7 @@
 * Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
 * Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
   case
+* Fix pandas warning #286
 
 # 0.13.6
 

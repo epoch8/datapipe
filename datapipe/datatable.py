@@ -504,8 +504,10 @@ class DataTable:
                         cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
                     )
 
-                    changes.append(data_to_index(new_df, self.primary_keys))
-                    changes.append(data_to_index(changed_df, self.primary_keys))
+                    if not new_df.empty:
+                        changes.append(data_to_index(new_df, self.primary_keys))
+                    if not changed_df.empty:
+                        changes.append(data_to_index(changed_df, self.primary_keys))
             else:
                 data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -518,7 +520,8 @@ class DataTable:
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-                    changes.append(deleted_idx)
+                    if not deleted_idx.empty:
+                        changes.append(deleted_idx)
 
         return cast(IndexDF, pd.concat(changes))
 
