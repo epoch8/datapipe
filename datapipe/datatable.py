@@ -173,7 +173,7 @@ class MetaTable:
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
         """
 
-        sql = select([func.count()]).select_from(self.sql_table)
+        sql = select(func.count()).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
         with self.dbconn.con.begin() as con:
