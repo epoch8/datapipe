@@ -1,3 +1,5 @@
+from typing import List
+
 import cloudpickle
 import numpy as np
 import pandas as pd
@@ -10,28 +12,28 @@ from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 
-TEST_SCHEMA: list[Column] = [
+TEST_SCHEMA: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
 ]
 
-TEST_SCHEMA_OTM: list[Column] = [
+TEST_SCHEMA_OTM: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", JSON),
 ]
 
-TEST_SCHEMA_OTM2: list[Column] = [
+TEST_SCHEMA_OTM2: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer, primary_key=True),
 ]
 
-TEST_SCHEMA_OTM3: list[Column] = [
+TEST_SCHEMA_OTM3: List[Column] = [
     Column("a", Integer, primary_key=True),
     Column("b", Integer, primary_key=True),
     Column("ids", JSON),
 ]
 
-TEST_SCHEMA_NA_VALUES: list[Column] = [
+TEST_SCHEMA_NA_VALUES: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
     Column("b", DateTime),
