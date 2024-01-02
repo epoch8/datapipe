@@ -1,7 +1,7 @@
 # WIP 0.13.7
 
 * Add `BytesFile` adapter for `TableStoreFiledir`
-* Added `delete_stale` argument to `BatchGenerate`
+* Add `delete_stale` argument to `BatchGenerate`
 * Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
 * Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
   case
