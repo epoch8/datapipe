@@ -1,4 +1,6 @@
+import base64
 import json
+import io
 
 import fsspec
 import numpy as np
@@ -144,6 +146,28 @@ def test_insert_png_rows(tmp_dir_with_img_data):
     )
 
     assert fsspec.open(f"{tmp_dir_with_img_data}/bbb.png")
+
+
+def test_insert_png_rows_from_string(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
+    )
+
+    img = Image.fromarray(np.zeros((100, 100, 3), "u8"), "RGB")
+    buffered = io.BytesIO()
+    img.save(buffered, format='PNG')
+    image_bytes = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    ts.insert_rows(
+        pd.DataFrame(
+            {
+                "id": ["ccc"],
+                "image": [image_bytes],
+            }
+        )
+    )
+
+    assert fsspec.open(f"{tmp_dir_with_img_data}/ccc.png")
 
 
 @pytest.fixture

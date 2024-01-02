@@ -471,12 +471,12 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             if order == "desc":
                 sql = sql.order_by(
-                    desc(*[column(k) for k in order_by]),
+                    *[desc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
             elif order == "asc":
                 sql = sql.order_by(
-                    asc(*[column(k) for k in order_by]),
+                    *[asc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
         return (self.transform_keys, sql)

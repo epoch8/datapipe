@@ -1,3 +1,18 @@
+# WIP 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Added `delete_stale` argument to `BatchGenerate`
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
+* Add logging of log_step_full for `DatatableTransformStep`
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
