@@ -1,7 +1,10 @@
+# WIP 0.13.7
+
+* Added `delete_stale` argument to `BatchGenerate`
+
 # 0.13.6
 
 * Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
-* Added `delete_stale` argument to `BatchGenerate`
 
 # 0.13.5
 
