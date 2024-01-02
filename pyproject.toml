@@ -22,9 +22,11 @@ SQLAlchemy = "^1.4.25 | ^2.0.24"
 psycopg2_binary = ">=2.8.4"
 cloudpickle = ">=1.6.0"
 PyYAML = ">=5.3.1"
-Pillow = "^9.0.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.4.2"
+
+# TODO 0.14: make it optional
+Pillow = "^10.0.0"
 
 epoch8-tqdm-loggable = "^0.1.4"
 traceback-with-variables = "^2.0.4"
