@@ -143,7 +143,7 @@ class MetaTable:
         """
 
         res = []
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)
 
         with self.dbconn.con.begin() as con:
             if idx is None:
@@ -216,7 +216,7 @@ class MetaTable:
         return param.item() if hasattr(param, "item") else param
 
     def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)
 
         if idx is not None:
             if len(idx.index) == 0:
@@ -382,7 +382,7 @@ class MetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
-        sql = select(idx_cols).where(
+        sql = select(*idx_cols).where(
             and_(
                 self.sql_table.c.process_ts < process_ts,
                 self.sql_table.c.delete_ts.is_(None),
@@ -504,8 +504,10 @@ class DataTable:
                         cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
                     )
 
-                    changes.append(data_to_index(new_df, self.primary_keys))
-                    changes.append(data_to_index(changed_df, self.primary_keys))
+                    if not new_df.empty:
+                        changes.append(data_to_index(new_df, self.primary_keys))
+                    if not changed_df.empty:
+                        changes.append(data_to_index(changed_df, self.primary_keys))
             else:
                 data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -518,7 +520,8 @@ class DataTable:
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-                    changes.append(deleted_idx)
+                    if not deleted_idx.empty:
+                        changes.append(deleted_idx)
 
         return cast(IndexDF, pd.concat(changes))
 
