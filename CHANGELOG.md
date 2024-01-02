@@ -1,5 +1,17 @@
-# WIP 0.13.5
+# WIP 0.13.7
 
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Added `delete_stale` argument to `BatchGenerate`
+* Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
 * Add logging of log_step_full for `DatatableTransformStep`
 
 # 0.13.4

@@ -384,13 +384,13 @@ class BaseBatchTransformStep(ComputeStep):
                         func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
                     )
 
-            agg = ds.meta_dbconn.func_greatest(
-                *[subq.c[agg_col] for (_, subq) in ctes]
+            agg = func.max(
+                ds.meta_dbconn.func_greatest(*[subq.c[agg_col] for (_, subq) in ctes])
             ).label(agg_col)
 
             _, first_cte = ctes[0]
 
-            sql = select(*coalesce_keys + [agg]).distinct().select_from(first_cte)
+            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
@@ -409,6 +409,8 @@ class BaseBatchTransformStep(ComputeStep):
                         cte,
                         onclause=literal(True),
                     )
+
+            sql = sql.group_by(*coalesce_keys)
 
             return sql.cte(name=f"all__{agg_col}")
 
@@ -471,12 +473,12 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             if order == "desc":
                 sql = sql.order_by(
-                    desc(*[column(k) for k in order_by]),
+                    *[desc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
             elif order == "asc":
                 sql = sql.order_by(
-                    asc(*[column(k) for k in order_by]),
+                    *[asc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
         return (self.transform_keys, sql)
