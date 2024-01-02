@@ -228,7 +228,7 @@ def run_steps(
                 f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
             )
 
-        step.run_full(ds=ds, run_config=run_config, executor=executor)
+            step.run_full(ds=ds, run_config=run_config, executor=executor)
 
 
 def run_pipeline(

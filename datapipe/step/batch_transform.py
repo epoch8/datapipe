@@ -394,7 +394,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=and_(
                             *[
@@ -405,9 +405,10 @@ class BaseBatchTransformStep(ComputeStep):
                         full=True,
                     )
                 else:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=literal(True),
+                        full=True,
                     )
 
             sql = sql.group_by(*coalesce_keys)

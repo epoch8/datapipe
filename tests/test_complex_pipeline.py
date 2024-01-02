@@ -232,21 +232,32 @@ def test_complex_train_pipeline(dbconn):
         assert len(df__frozen_dataset) == 1 and len(df__train_config) == 1
         frozen_dataset_id = df__frozen_dataset.iloc[0]["frozen_dataset_id"]
         train_config_id = df__train_config.iloc[0]["train_config_id"]
-        df__pipeline = pd.DataFrame([{
-            "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
-            "pipeline__attribute": "new_pipeline__attr"
-        }])
-        df__pipeline__is_trained_on__frozen_dataset = pd.DataFrame([{
-            "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
-            "frozen_dataset_id": frozen_dataset_id,
-            "train_config_id": train_config_id
-        }])
-        df__pipeline__total = pd.concat([df__pipeline__total, df__pipeline], ignore_index=True)
+        df__pipeline = pd.DataFrame(
+            [
+                {
+                    "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
+                    "pipeline__attribute": "new_pipeline__attr",
+                }
+            ]
+        )
+        df__pipeline__is_trained_on__frozen_dataset = pd.DataFrame(
+            [
+                {
+                    "pipeline_id": f"new_pipeline__{frozen_dataset_id}x{train_config_id}",
+                    "frozen_dataset_id": frozen_dataset_id,
+                    "train_config_id": train_config_id,
+                }
+            ]
+        )
+        df__pipeline__total = pd.concat(
+            [df__pipeline__total, df__pipeline], ignore_index=True
+        )
         df__pipeline__is_trained_on__frozen_dataset__total = pd.concat(
             [
                 df__pipeline__is_trained_on__frozen_dataset__total,
-                df__pipeline__is_trained_on__frozen_dataset
-            ], ignore_index=True
+                df__pipeline__is_trained_on__frozen_dataset,
+            ],
+            ignore_index=True,
         )
         return df__pipeline__total, df__pipeline__is_trained_on__frozen_dataset__total
 
@@ -254,7 +265,12 @@ def test_complex_train_pipeline(dbconn):
         [
             BatchTransform(
                 func=train,
-                inputs=["frozen_dataset", "train_config", "pipeline", "pipeline__is_trained_on__frozen_dataset"],
+                inputs=[
+                    "frozen_dataset",
+                    "train_config",
+                    "pipeline",
+                    "pipeline__is_trained_on__frozen_dataset",
+                ],
                 outputs=["pipeline", "pipeline__is_trained_on__frozen_dataset"],
                 transform_keys=["frozen_dataset_id", "train_config_id"],
                 chunk_size=1,
@@ -265,5 +281,9 @@ def test_complex_train_pipeline(dbconn):
     ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET)
     ds.get_table("train_config").store_chunk(TEST__TRAIN_CONFIG)
     run_steps(ds, steps)
-    assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
-    assert len(ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
+    assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(
+        TEST__TRAIN_CONFIG
+    )
+    assert len(
+        ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()
+    ) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
