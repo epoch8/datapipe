@@ -7,6 +7,7 @@
   case
 * Fix pandas warning #286
 * Fix SQLAlchemy 2.0 warnings
+* Enable SQLAlchemy 2.0
 
 # 0.13.6
 
