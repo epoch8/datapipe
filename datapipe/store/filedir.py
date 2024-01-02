@@ -1,3 +1,5 @@
+import base64
+import io
 import itertools
 import json
 import re
@@ -44,6 +46,23 @@ class JSONFile(ItemStoreFileAdapter):
         return json.dump(obj, f, **self.dump_params)
 
 
+class BytesFile(ItemStoreFileAdapter):
+    """
+    Uses `bytes` column
+    """
+
+    mode = "b"
+
+    def __init__(self, bytes_columns: str = "bytes"):
+        self.bytes_columns = bytes_columns
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {self.bytes_columns: f.read()}
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        f.write(obj[self.bytes_columns])
+
+
 class PILFile(ItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
@@ -61,8 +80,17 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj["image"]
-        im.save(f, format=self.format, **self.dump_params)
+        image_data: Any = obj["image"]
+
+        if isinstance(image_data, Image.Image):
+            image: Image.Image = image_data
+        elif isinstance(image_data, str):
+            image_binary = base64.b64decode(image_data.encode())
+            image = Image.open(io.BytesIO(image_binary))
+        else:
+            raise Exception("Image must be a bytes string or Pillow Image object")
+
+        image.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:

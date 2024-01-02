@@ -1,3 +1,24 @@
+# 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Add `delete_stale` argument to `BatchGenerate`
+* Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
+* Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
+  case
+* Fix pandas warning #286
+* Fix SQLAlchemy 2.0 warnings
+* Enable SQLAlchemy 2.0
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
+* Add logging of log_step_full for `DatatableTransformStep`
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")

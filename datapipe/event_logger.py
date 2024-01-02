@@ -13,7 +13,7 @@ from datapipe.run_config import RunConfig
 logger = logging.getLogger("datapipe.event_logger")
 
 if TYPE_CHECKING:
-    from datapipe.metastore import DBConn
+    from datapipe.store.database import DBConn
 
 
 class EventTypes(Enum):
