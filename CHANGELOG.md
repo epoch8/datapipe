@@ -1,5 +1,6 @@
 # WIP 0.13.7
 
+* Add `BytesFile` adapter for `TableStoreFiledir`
 * Added `delete_stale` argument to `BatchGenerate`
 
 # 0.13.6
