@@ -8,6 +8,8 @@
 * Fix pandas warning #286
 * Fix SQLAlchemy 2.0 warnings
 * Enable SQLAlchemy 2.0
+* Optimize join in batch transform when there's an input without intersecting
+  keys with transform
 
 # 0.13.6
 
@@ -97,11 +99,6 @@
 # 0.13.0-beta.3
 
 * Enable WAL mode for sqlite database by default
-
-# WIP 0.13.0-beta.3
-
-* Optimize join in batch transform when there's an input without intersecting
-  keys with transform
 
 # 0.13.0-beta.2
 
