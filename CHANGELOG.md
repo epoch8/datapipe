@@ -1,3 +1,12 @@
+# WIP 0.14.0
+
+## Breaking changes
+
+* Depends on SQLAlchemy >= 2.0.0
+* `DataTable` does not receive `meta_dbconn` argument any more
+
+* TBD Merged `meta` and `data` tables
+
 # 0.13.7
 
 * Add `BytesFile` adapter for `TableStoreFiledir`

@@ -422,13 +422,11 @@ class DataTable:
     def __init__(
         self,
         name: str,
-        meta_dbconn: DBConn,
         meta_table: MetaTable,
         table_store: TableStore,
         event_logger: EventLogger,
     ):
         self.name = name
-        self.meta_dbconn = meta_dbconn
         self.meta_table = meta_table
         self.table_store = table_store
         self.event_logger = event_logger
@@ -442,8 +440,8 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
-    def reset_metadata(self):
-        with self.meta_dbconn.con.begin() as con:
+    def reset_metadata(self, ds: "DataStore") -> None:
+        with ds.meta_dbconn.con.begin() as con:
             con.execute(
                 self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
             )
@@ -608,7 +606,6 @@ class DataStore:
 
         res = DataTable(
             name=name,
-            meta_dbconn=self.meta_dbconn,
             meta_table=MetaTable(
                 dbconn=self.meta_dbconn,
                 name=name,
