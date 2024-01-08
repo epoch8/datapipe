@@ -45,6 +45,14 @@ TABLE_META_SCHEMA: List[Column] = [
 ]
 
 
+class MetaMixin:
+    hash: int
+    create_ts: float
+    update_ts: float
+    process_ts: float
+    delete_ts: Optional[float]
+
+
 @dataclass
 class TableDebugInfo:
     name: str

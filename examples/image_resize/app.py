@@ -1,11 +1,22 @@
 import pandas as pd
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
-from datapipe.datatable import DataStore
+from datapipe.datatable import DataStore, MetaMixin
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn
 from datapipe.store.filedir import PILFile, TableStoreFiledir
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class InputImage(Base, MetaMixin):
+    __tablename__ = "input_images"
+    id: Mapped[int] = mapped_column(primary_key=True)
+
 
 catalog = Catalog(
     {
