@@ -5,6 +5,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.pandas import TableStoreJsonLine
+from tests.util import assert_df_equal
 
 
 def test_table_store_json_line_reading(tmp_dir):
@@ -71,3 +72,21 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
     assert len(catalog.get_datatable(ds, "input_data").get_data()) == 2
     assert len(catalog.get_datatable(ds, "transfomed_data").get_data()) == 2
+
+
+# In ideal world, attempt to write to non-empty file should result in a consistent
+def test_write_to_non_empty_file(tmp_dir):
+    pre_existing_df = pd.DataFrame(
+        {"id": ["0", "1", "2"], "record": ["rec1", "rec2", "rec3"]}
+    )
+    test_fname = tmp_dir / "table-pandas.json"
+    pre_existing_df.to_json(test_fname, orient="records", lines=True)
+
+    test_df = pd.DataFrame({"id": ["3", "4", "5"], "text": ["text3", "text4", "text5"]})
+
+    store = TableStoreJsonLine(filename=test_fname)
+    store.insert_rows(test_df)
+
+    df = pd.read_json(test_fname, orient="records", lines=True)
+
+    assert_df_equal(test_df, df)
