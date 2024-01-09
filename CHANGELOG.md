@@ -1,3 +1,7 @@
+# 0.13.8
+
+* Fix [#301](https://github.com/epoch8/datapipe/issues/301)
+
 # 0.13.7
 
 * Add `BytesFile` adapter for `TableStoreFiledir`
