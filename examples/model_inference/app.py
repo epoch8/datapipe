@@ -8,12 +8,12 @@ from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 
-dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
+dbconn = DBConn("sqlite:///db.sqlite")
 ds = DataStore(dbconn)
 
 
 def apply_model(input_df: pd.DataFrame, model_df: pd.DataFrame) -> pd.DataFrame:
-    merge_df = input_df.merge(model_df, on="pipeline_id")
+    merge_df = input_df.merge(model_df, on="model_id")
 
     res = []
 
@@ -26,7 +26,7 @@ def apply_model(input_df: pd.DataFrame, model_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return pd.concat(res, ignore_index=True)[
-        ["pipeline_id", "input_id", "model_id", "text"]
+        ["input_id", "model_id", "text"]
     ]
 
 
@@ -36,7 +36,7 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="input.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
+                    Column("model_id", String, primary_key=True),
                     Column("input_id", Integer, primary_key=True),
                 ],
             )
@@ -45,7 +45,6 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="models.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
                     Column("model_id", String, primary_key=True),
                 ],
             )
@@ -54,7 +53,6 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="output.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
                     Column("input_id", Integer, primary_key=True),
                     Column("model_id", String, primary_key=True),
                 ],
@@ -76,7 +74,7 @@ pipeline = Pipeline(
             apply_model,
             inputs=["input", "models"],
             outputs=["output"],
-            transform_keys=["pipeline_id", "input_id", "model_id"],
+            transform_keys=["input_id", "model_id",],
         ),
     ]
 )
