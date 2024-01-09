@@ -1,6 +1,11 @@
 # Datapipe
 
-`datapipe` is a real-time, incremental ETL library for Python applications. The library is designed for describing data processing pipelines and is capable of tracking dependencies for each record in the pipeline. This ensures that tasks within the pipeline receive only the data that has been modified, thereby improving the overall efficiency of data handling.
+`datapipe` is a real-time, incremental ETL library for Python applications.
+
+The library is designed for describing data processing pipelines and is capable
+of tracking dependencies for each record in the pipeline. This ensures that
+tasks within the pipeline receive only the data that has been modified, thereby
+improving the overall efficiency of data handling.
 
 # Development
 
