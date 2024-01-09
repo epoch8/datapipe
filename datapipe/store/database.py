@@ -249,8 +249,9 @@ class TableStoreDB(TableStore):
             sql, self.data_table, self.primary_keys, run_config
         )
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con.execution_options(stream_results=True),
-            chunksize=chunksize,
-        )
+        with self.dbconn.con.execution_options(stream_results=True).begin() as con:
+            return pd.read_sql_query(
+                sql,
+                con=con,
+                chunksize=chunksize,
+            )
