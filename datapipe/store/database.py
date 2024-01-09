@@ -241,9 +241,11 @@ class TableStoreDB(TableStore):
                 return pd.read_sql_query(sql, con=con)
 
     def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
+        self,
+        chunksize: int = 1000,
+        run_config: Optional[RunConfig] = None,
     ) -> Iterator[DataDF]:
-        sql = select(self.data_table.c)
+        sql = select(*self.data_table.c)
 
         sql = sql_apply_runconfig_filter(
             sql, self.data_table, self.primary_keys, run_config
