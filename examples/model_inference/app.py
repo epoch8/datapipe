@@ -8,7 +8,7 @@ from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 
-dbconn = DBConn("sqlite:///db.sqlite")
+dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
 ds = DataStore(dbconn)
 
 
