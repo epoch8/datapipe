@@ -1,6 +1,7 @@
-{"input_id": 1, "pipeline_id": "p1", "text": "Hello One!"}
-{"input_id": 2, "pipeline_id": "p1", "text": "Hello Two!"}
-{"input_id": 3, "pipeline_id": "p1", "text": "HeLLO trEE!"}
-{"input_id": 1, "pipeline_id": "p2", "text": "Hello One!"}
-{"input_id": 2, "pipeline_id": "p2", "text": "Hello Two!"}
-{"input_id": 3, "pipeline_id": "p2", "text": "HeLLO trEE!"}
+{"input_id": 1, "model_id": "upper", "text": "Hello One!"}
+{"input_id": 2, "model_id": "lower", "text": "Hello One!"}
+{"input_id": 3, "model_id": "upper", "text": "abc"}
+{"input_id": 4, "model_id": "lower", "text": "ABC TO LOWER"}
+{"input_id": 5, "model_id": "upper", "text": "abc"}
+{"input_id": 6, "model_id": "lower", "text": "ABC TO LOWER"}
+{"input_id": 7, "model_id": "upper2", "text": "ABC TO LOWER"}
