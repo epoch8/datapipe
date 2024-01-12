@@ -165,6 +165,19 @@ def test_delete_rows_several_suffixes(tmp_dir_with_img_data_several_suffixes):
         assert not fs.exists(f"{tmp_dir_with_img_data_several_suffixes}/{i}.jpeg")
 
 
+def test_read_png_rows_several_suffixes_read_rows_meta_pseudo_df(
+    tmp_dir_with_img_data_several_suffixes
+):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
+        adapter=PILFile("png")
+    )
+
+    rows = next(ts.read_rows_meta_pseudo_df())
+
+    assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
+
+
 def test_read_rows_without_data(tmp_dir_with_img_data):
     ts = TableStoreFiledir(
         f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"), read_data=False

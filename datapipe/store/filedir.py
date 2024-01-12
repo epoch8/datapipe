@@ -238,6 +238,7 @@ class TableStoreFiledir(TableStore):
         self.attrnames = _pattern_to_attrnames(filename_pattern)
         self.filename_glob = [_pattern_to_glob(pat) for pat in self.filename_patterns]
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
+        self.filename_match_first_suffix = _pattern_to_match(self.filename_patterns[0])
 
         # Any * and ** pattern check
         if "*" in path:
@@ -488,9 +489,11 @@ class TableStoreFiledir(TableStore):
         filepaths = []
 
         for f in files:
-            m = re.match(self.filename_match, f.path)
+            m = re.match(self.filename_match_first_suffix, f.path)
 
-            assert m is not None
+            if m is None:
+                continue
+
             for attrname in self.attrnames:
                 ids[attrname].append(m.group(attrname))
 
@@ -505,7 +508,6 @@ class TableStoreFiledir(TableStore):
                     **({"filepath": filepaths} if self.add_filepath_column else {}),
                 }
             )
-            pseudo_data_df.drop_duplicates(subset=self.attrnames, inplace=True)
 
             yield pseudo_data_df.astype(object)  # type: ignore # TODO fix typing issue
         else:
