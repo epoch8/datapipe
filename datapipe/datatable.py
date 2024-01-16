@@ -37,7 +37,7 @@ if TYPE_CHECKING:
         # works only with sqlalchemy>=2
         from sqlalchemy.sql.expression import ColumnClause
     except ImportError:
-        ColumnClause = Any
+        ColumnClause = Any  # type: ignore
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
