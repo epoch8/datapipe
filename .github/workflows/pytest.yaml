@@ -27,7 +27,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[all]" "flake8" "mypy"
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "flake8" "mypy"
 
       - name: Lint with flake8
         run: |
@@ -114,7 +114,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install "${{ matrix.pip-extra }}" ".[all]" "pytest"
+          pip install "${{ matrix.pip-extra }}" ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "pytest"
 
       - name: Test with pytest
         run: |
@@ -155,7 +155,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[all]"
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]"
 
       - name: Test example
         run: |
