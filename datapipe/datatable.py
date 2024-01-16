@@ -3,12 +3,12 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
 from opentelemetry import trace
-from sqlalchemy import Column, ColumnClause, Float, Integer, Table, column
+from sqlalchemy import Column, Float, Integer, Table, column
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.expression import and_, func, or_, select
 
@@ -31,6 +31,13 @@ from datapipe.types import (
     data_to_index,
     index_difference,
 )
+
+if TYPE_CHECKING:
+    try:
+        # works only with sqlalchemy>=2
+        from sqlalchemy.sql.expression import ColumnClause
+    except ImportError:
+        ColumnClause = Any
 
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
@@ -572,7 +579,7 @@ class DataTable:
         tbl = self.meta_table.sql_table
 
         keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols: List[ColumnClause] = [column(k) for k in keys]
+        key_cols: List["ColumnClause"] = [column(k) for k in keys]
 
         sql: Any = (
             select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
