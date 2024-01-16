@@ -1,3 +1,18 @@
+# 0.13.10
+
+* Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
+* Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+
+# 0.13.9
+
+* Adapter `PILFile` now accepts np.ndarray image
+* `TableStoreFiledir` now supports `insert_rows` and `delete_rows` in case
+  multiply suffixes in template
+
+# 0.13.8
+
+* Fix [#301](https://github.com/epoch8/datapipe/issues/301)
+
 # 0.13.7
 
 * Add `BytesFile` adapter for `TableStoreFiledir`
