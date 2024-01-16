@@ -1,7 +1,7 @@
 import copy
 import logging
 import math
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union, cast
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -81,7 +81,7 @@ class DBConn:
 
         self.sqla_metadata = MetaData(schema=schema)
 
-    def __reduce__(self) -> tuple[Any, ...]:
+    def __reduce__(self) -> Tuple[Any, ...]:
         return self.__class__, (
             self.connstr,
             self.schema,

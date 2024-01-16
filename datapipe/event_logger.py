@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
@@ -52,7 +52,7 @@ class EventLogger:
             self.events_table.create(self.dbconn.con, checkfirst=True)
             self.step_events_table.create(self.dbconn.con, checkfirst=True)
 
-    def __reduce__(self) -> tuple[Any, ...]:
+    def __reduce__(self) -> Tuple[Any, ...]:
         return self.__class__, (self.dbconn,)
 
     def log_state(

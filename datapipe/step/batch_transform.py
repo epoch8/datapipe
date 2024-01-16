@@ -116,7 +116,7 @@ class TransformMetaTable:
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
-    def __reduce__(self) -> tuple[Any, ...]:
+    def __reduce__(self) -> Tuple[Any, ...]:
         return self.__class__, (
             self.dbconn,
             self.name,
