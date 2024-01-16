@@ -1,2 +1,4 @@
 data/
 *.sqlite
+
+!openai/data.sqlite
