@@ -159,7 +159,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]"
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray]"
 
       - name: Test example
         run: |
