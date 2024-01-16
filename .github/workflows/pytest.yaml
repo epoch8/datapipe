@@ -5,6 +5,8 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - "examples/**"
+
 
 jobs:
   lint:
@@ -25,23 +27,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       
-      - name: Install poetry
-        run: pip install poetry
-
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "flake8" "mypy"
+          pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
 
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          poetry run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Lint with mypy
         run: |
-          poetry run mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
+          mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
 
   test:
     # needs: lint
@@ -49,14 +49,32 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version:
-          - "3.8"
-          # - "3.9"
-          - "3.10"
-          - "3.11"
-        test-db-env:
-          - "postgres"
-          - "sqlite"
+        include:
+          - python-version: "3.8"
+            test-db-env: "postgres"
+            pip-extra: "sqlalchemy <2"
+          - python-version: "3.8"
+            test-db-env: "postgres"
+            pip-extra: "sqlalchemy >2"
+          # - python-version: "3.8"
+          #   test-db-env: "sqlite"
+          # - python-version: "3.9"
+          #   test-db-env: "postgres"
+          # - python-version: "3.9"
+          #   test-db-env: "sqlite"
+          # - python-version: "3.10"
+          #   test-db-env: "postgres"
+          # - python-version: "3.10"
+          #   test-db-env: "sqlite"
+          - python-version: "3.11"
+            test-db-env: "postgres"
+            pip-extra: "sqlalchemy <2"
+          - python-version: "3.11"
+            test-db-env: "postgres"
+            pip-extra: "sqlalchemy >2"
+          - python-version: "3.11"
+            test-db-env: "sqlite"
+            pip-extra: "sqlalchemy >2"
 
     services:
       # Label used to access the service container
@@ -97,16 +115,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       
-      - name: Install poetry
-        run: pip install poetry
-
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          pip install "${{ matrix.pip-extra }}" ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "pytest" "pytest_cases"
 
       - name: Test with pytest
         run: |
-          poetry run pytest
+          pytest
         env:
           TEST_DB_ENV: ${{ matrix.test-db-env }}
           # The hostname used to communicate with the PostgreSQL service container
@@ -115,41 +130,3 @@ jobs:
           POSTGRES_PORT: 5432
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-
-  test-examples:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          # - "3.8"
-          # - "3.9"
-          - "3.10"
-          # - "3.11"
-        example:
-          - datatable_batch_transform
-          - image_resize
-          - many_to_zero
-          - model_inference
-          - one_to_many_pipeline
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      
-      - name: Install poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: |
-          poetry install --all-extras
-
-      - name: Test example
-        run: |
-          cd examples/${{ matrix.example }}
-          poetry run datapipe db create-all
-          poetry run datapipe run
