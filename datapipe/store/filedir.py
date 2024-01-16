@@ -90,7 +90,9 @@ class PILFile(ItemStoreFileAdapter):
             image_binary = base64.b64decode(image_data.encode())
             image = Image.open(io.BytesIO(image_binary))
         else:
-            raise Exception("Image must be a bytes string or np.array or Pillow Image object")
+            raise Exception(
+                "Image must be a bytes string or np.array or Pillow Image object"
+            )
 
         image.save(f, format=self.format, **self.dump_params)
 
@@ -200,12 +202,13 @@ class TableStoreFiledir(TableStore):
         файла
 
         readonly -- если True, отключить запись файлов; если None, то запись
-        файлов включается в случае, если нету * и ** путей в шаблоне.
-        Если есть множественные суффиксы файлов вида (jpg|png|mp4), то берется файл с первым
-        попавшимся слева направо суффиксом
+        файлов включается в случае, если нету * и ** путей в шаблоне. Если есть
+        множественные суффиксы файлов вида (jpg|png|mp4), то берется файл с
+        первым попавшимся слева направо суффиксом
 
         enable_rm -- если True, включить удаление файлов. если есть
-        множественные суффиксы файлов вида (jpg|png|mp4), то удаляется каждый из них
+        множественные суффиксы файлов вида (jpg|png|mp4), то удаляется каждый из
+        них
 
         fsspec_kwargs -- kwargs для fsspec
         """
@@ -366,7 +369,9 @@ class TableStoreFiledir(TableStore):
             assert isinstance(attrnames_series, pd.Series)
 
             idxs_values = attrnames_series.tolist()
-            filepath = self._filenames_from_idxs_values(idxs_values)[0]  # берем первый суффикс
+            filepath = self._filenames_from_idxs_values(idxs_values)[
+                0
+            ]  # берем первый суффикс
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)

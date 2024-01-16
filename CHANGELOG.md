@@ -1,7 +1,8 @@
-# ...
+# 0.13.9
 
 * Adapter `PILFile` now accepts np.ndarray image
-* `TableStoreFiledir` now supports `insert_rows` and `delete_rows` in case multiply suffixes in template
+* `TableStoreFiledir` now supports `insert_rows` and `delete_rows` in case
+  multiply suffixes in template
 
 # 0.13.8
 
