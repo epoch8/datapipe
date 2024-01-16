@@ -144,6 +144,9 @@ jobs:
           - many_to_zero
           - model_inference
           - one_to_many_pipeline
+        executor:
+          - SingleThreadExecutor
+          - RayExecutor
 
     steps:
       - uses: actions/checkout@v3
@@ -162,4 +165,4 @@ jobs:
         run: |
           cd examples/${{ matrix.example }}
           datapipe db create-all
-          datapipe run
+          datapipe --executor ${{ matrix.executor }} step run
