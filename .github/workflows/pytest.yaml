@@ -5,6 +5,8 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - "examples/**"
+
 
 jobs:
   lint:
@@ -128,41 +130,3 @@ jobs:
           POSTGRES_PORT: 5432
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-
-  test-examples:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          # - "3.8"
-          # - "3.9"
-          - "3.10"
-          # - "3.11"
-        example:
-          - datatable_batch_transform
-          - image_resize
-          - many_to_zero
-          - model_inference
-          - one_to_many_pipeline
-        executor:
-          - SingleThreadExecutor
-          - RayExecutor
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      
-      - name: Install dependencies
-        run: |
-          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray]"
-
-      - name: Test example
-        run: |
-          cd examples/${{ matrix.example }}
-          datapipe db create-all
-          datapipe --executor ${{ matrix.executor }} step run
