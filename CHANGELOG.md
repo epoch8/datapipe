@@ -1,3 +1,8 @@
+# 0.13.10
+
+* Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
+* Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+
 # 0.13.9
 
 * Adapter `PILFile` now accepts np.ndarray image
