@@ -145,6 +145,13 @@ class TableStoreDB(TableStore):
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.data_sql_schema,
+        )
+
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema
 
