@@ -27,7 +27,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[all]"
+          pip install ".[all]" "flake8" "mypy"
 
       - name: Lint with flake8
         run: |
@@ -49,10 +49,10 @@ jobs:
         include:
           - python-version: "3.8"
             test-db-env: "postgres"
-            sqla-version: "<2"
+            pip-extra: "sqlalchemy <2"
           - python-version: "3.8"
             test-db-env: "postgres"
-            sqla-version: ">2"
+            pip-extra: "sqlalchemy >2"
           # - python-version: "3.8"
           #   test-db-env: "sqlite"
           # - python-version: "3.9"
@@ -65,13 +65,13 @@ jobs:
           #   test-db-env: "sqlite"
           - python-version: "3.11"
             test-db-env: "postgres"
-            sqla-version: "<2"
+            pip-extra: "sqlalchemy <2"
           - python-version: "3.11"
             test-db-env: "postgres"
-            sqla-version: ">2"
+            pip-extra: "sqlalchemy >2"
           - python-version: "3.11"
             test-db-env: "sqlite"
-            sqla-version: ">2"
+            pip-extra: "sqlalchemy >2"
 
     services:
       # Label used to access the service container
@@ -114,7 +114,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install "sqlalchemy ${{ matrix.sqla-version }}" ".[all]"
+          pip install "${{ matrix.pip-extra }}" ".[all]" "pytest"
 
       - name: Test with pytest
         run: |
