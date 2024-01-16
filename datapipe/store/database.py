@@ -81,6 +81,13 @@ class DBConn:
 
         self.sqla_metadata = MetaData(schema=schema)
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.__class__, (
+            self.connstr,
+            self.schema,
+            self.create_engine_kwargs,
+        )
+
     def __getstate__(self):
         return {
             "connstr": self.connstr,

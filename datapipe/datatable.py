@@ -102,6 +102,15 @@ class MetaTable:
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.primary_schema,
+            self.meta_schema,
+            False,
+        )
+
     def _chunk_size(self):
         # Magic number derived empirically. See
         # https://github.com/epoch8/datapipe/issues/178 for details.
