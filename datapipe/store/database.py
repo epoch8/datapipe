@@ -1,7 +1,7 @@
 import copy
 import logging
 import math
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union, cast
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -81,6 +81,13 @@ class DBConn:
 
         self.sqla_metadata = MetaData(schema=schema)
 
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.connstr,
+            self.schema,
+            self.create_engine_kwargs,
+        )
+
     def __getstate__(self):
         return {
             "connstr": self.connstr,
@@ -137,6 +144,13 @@ class TableStoreDB(TableStore):
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
+
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.data_sql_schema,
+        )
 
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema
