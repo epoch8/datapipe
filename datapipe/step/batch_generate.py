@@ -29,7 +29,7 @@ def do_batch_generate(
     output_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict] = None,
-    delete_stale_by_process_ts: bool = True
+    delete_stale: bool = True,
 ) -> None:
     """
     Создание новой таблицы из результатов запуска `proc_func`.
@@ -79,7 +79,7 @@ def do_batch_generate(
             for k, dt_k in enumerate(output_dts):
                 dt_k.store_chunk(chunk_dfs[k], run_config=run_config)
 
-    if delete_stale_by_process_ts:
+    if delete_stale:
         with tracer.start_as_current_span("delete stale rows"):
             for k, dt_k in enumerate(output_dts):
                 dt_k.delete_stale_by_process_ts(now, run_config=run_config)
@@ -91,7 +91,7 @@ class BatchGenerate(PipelineStep):
     outputs: List[str]
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
-    delete_stale_by_process_ts: bool = True
+    delete_stale: bool = True
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return [

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.4"
+version = "0.13.10"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
@@ -18,13 +18,15 @@ s3fs = {version=">=2021.11.1", optional=true}
 
 pandas = ">=1.2.0, <3.0"
 numpy = ">=1.21.0, <2.0"
-SQLAlchemy = "^1.4.25"
+SQLAlchemy = ">=1.4.25, <3.0.0"
 psycopg2_binary = ">=2.8.4"
 cloudpickle = ">=1.6.0"
 PyYAML = ">=5.3.1"
-Pillow = "^9.0.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.4.2"
+
+# TODO 0.14: make it optional
+Pillow = "^10.0.0"
 
 epoch8-tqdm-loggable = "^0.1.4"
 traceback-with-variables = "^2.0.4"
@@ -33,7 +35,8 @@ pymilvus = {version="^2.0.2", optional=true}
 
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
-opentelemetry-instrumentation-sqlalchemy = "0.35b0"
+opentelemetry-instrumentation-sqlalchemy = "*"
+opentelemetry-exporter-gcp-trace = {version="*", optional=true}
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
@@ -62,6 +65,7 @@ s3fs = ["s3fs"]
 redis = ["redis"]
 qdrant = ["qdrant-client"]
 ray = ["ray"]
+gcp = ["opentelemetry-exporter-gcp-trace"]
 
 docs = ["sphinx", "myst-parser"]
 

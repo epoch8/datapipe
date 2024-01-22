@@ -107,7 +107,7 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i.copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
+        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
 
         self.sql_table = Table(
             name,
@@ -117,6 +117,13 @@ class TransformMetaTable:
 
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.primary_schema,
+        )
 
     def insert_rows(
         self,
@@ -229,8 +236,9 @@ class TransformMetaTable:
         Получить количество строк метаданных трансформации.
         """
 
-        sql = select([func.count()]).select_from(self.sql_table)
-        res = self.dbconn.con.execute(sql).fetchone()
+        sql = select(func.count()).select_from(self.sql_table)
+        with self.dbconn.con.begin() as con:
+            res = con.execute(sql).fetchone()
 
         assert res is not None and len(res) == 1
         return res[0]
@@ -386,17 +394,17 @@ class BaseBatchTransformStep(ComputeStep):
                         func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
                     )
 
-            agg = ds.meta_dbconn.func_greatest(
-                *[subq.c[agg_col] for (_, subq) in ctes]
+            agg = func.max(
+                ds.meta_dbconn.func_greatest(*[subq.c[agg_col] for (_, subq) in ctes])
             ).label(agg_col)
 
             _, first_cte = ctes[0]
 
-            sql = select(*coalesce_keys + [agg]).distinct().select_from(first_cte)
+            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
 
             for _, cte in ctes[1:]:
                 if len(common_transform_keys) > 0:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=and_(
                             *[
@@ -407,10 +415,13 @@ class BaseBatchTransformStep(ComputeStep):
                         full=True,
                     )
                 else:
-                    sql = sql.join(
+                    sql = sql.outerjoin(
                         cte,
                         onclause=literal(True),
+                        full=True,
                     )
+
+            sql = sql.group_by(*coalesce_keys)
 
             return sql.cte(name=f"all__{agg_col}")
 
@@ -532,7 +543,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
-                select([func.count()]).select_from(
+                select(*[func.count()]).select_from(
                     alias(sql.subquery(), name="union_select")
                 )
             ).scalar()

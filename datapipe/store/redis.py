@@ -1,5 +1,5 @@
 import json
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
@@ -44,7 +44,7 @@ class RedisStore(TableStore):
             "name": self.name,
             "data_sql_schema": self.data_sql_schema,
         }
-    
+
     def __setstate__(self, state: Dict):
         RedisStore.__init__(
             self,

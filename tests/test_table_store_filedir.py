@@ -1,4 +1,6 @@
+import base64
 import json
+import io
 
 import fsspec
 import numpy as np
@@ -97,9 +99,28 @@ def test_insert_json_rows(tmp_dir_with_json_data):
 
 @pytest.fixture
 def tmp_dir_with_img_data(tmp_dir):
-    with fsspec.open(f"{tmp_dir}/aaa.png", "wb+") as f:
-        im = Image.fromarray(np.zeros((100, 100, 3), dtype="u8"), "RGB")
-        im.save(f, format="png")
+    for i in range(10):
+        with fsspec.open(f"{tmp_dir}/{i}.png", "wb+") as f:
+            im = Image.fromarray(np.zeros((100, 100, 3), dtype="u8"), "RGB")
+            im.save(f, format="png")
+
+    yield tmp_dir
+
+
+@pytest.fixture
+def tmp_dir_with_img_data_several_suffixes(tmp_dir):
+    for i in range(10):
+        with fsspec.open(f"{tmp_dir}/{i}.png", "wb+") as f:
+            im = Image.fromarray(np.zeros((100, 100, 3), dtype="u8"), "RGB")
+            im.save(f, format="png")
+        if i in [0, 2, 3, 6]:
+            with fsspec.open(f"{tmp_dir}/{i}.jpg", "wb+") as f:
+                im = Image.fromarray(np.zeros((100, 100, 3), dtype="u8"), "RGB")
+                im.save(f, format="JPEG")
+        if i in [1, 6, 9]:
+            with fsspec.open(f"{tmp_dir}/{i}.jpeg", "wb+") as f:
+                im = Image.fromarray(np.zeros((100, 100, 3), dtype="u8"), "RGB")
+                im.save(f, format="JPEG")
 
     yield tmp_dir
 
@@ -109,11 +130,52 @@ def test_read_png_rows(tmp_dir_with_img_data):
         f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
     )
 
-    rows = ts.read_rows(pd.DataFrame({"id": ["aaa"]}))
+    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
-    assert_df_equal(rows[["id"]], pd.DataFrame({"id": ["aaa"]}))
+    assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
     assert "image" in rows.columns
+
+
+def test_read_png_rows_with_multiply_suffixes(tmp_dir_with_img_data_several_suffixes):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
+        adapter=PILFile("png")
+    )
+
+    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
+
+    assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
+
+    assert "image" in rows.columns
+
+
+def test_delete_rows_several_suffixes(tmp_dir_with_img_data_several_suffixes):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
+        adapter=PILFile("png"), enable_rm=True
+    )
+
+    ts.delete_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
+    protocol, _ = fsspec.core.split_protocol(tmp_dir_with_img_data_several_suffixes)
+    fs = fsspec.filesystem(protocol)
+    for i in range(10):
+        assert not fs.exists(f"{tmp_dir_with_img_data_several_suffixes}/{i}.png")
+        assert not fs.exists(f"{tmp_dir_with_img_data_several_suffixes}/{i}.jpg")
+        assert not fs.exists(f"{tmp_dir_with_img_data_several_suffixes}/{i}.jpeg")
+
+
+def test_read_png_rows_several_suffixes_read_rows_meta_pseudo_df(
+    tmp_dir_with_img_data_several_suffixes
+):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
+        adapter=PILFile("png")
+    )
+
+    rows = next(ts.read_rows_meta_pseudo_df())
+
+    assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
 
 def test_read_rows_without_data(tmp_dir_with_img_data):
@@ -121,7 +183,7 @@ def test_read_rows_without_data(tmp_dir_with_img_data):
         f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"), read_data=False
     )
 
-    df = pd.DataFrame({"id": ["aaa"]})
+    df = pd.DataFrame({"id": [str(i) for i in range(10)]})
     rows = ts.read_rows(df)
 
     assert_df_equal(rows, df)
@@ -143,7 +205,66 @@ def test_insert_png_rows(tmp_dir_with_img_data):
         )
     )
 
-    assert fsspec.open(f"{tmp_dir_with_img_data}/bbb.png")
+    assert fsspec.open(f"{tmp_dir_with_img_data}/bbb.png", "rb").open().read()
+
+
+def test_insert_png_rows_several_suffixes(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data}/{{id}}.(png|jpg|jpeg)", adapter=PILFile("png")
+    )
+
+    ts.insert_rows(
+        pd.DataFrame(
+            {
+                "id": ["bbb"],
+                "image": [Image.fromarray(np.zeros((100, 100, 3), "u8"), "RGB")],
+            }
+        )
+    )
+
+    assert fsspec.open(f"{tmp_dir_with_img_data}/bbb.png", "rb").open().read()
+    protocol, _ = fsspec.core.split_protocol(tmp_dir_with_img_data)
+    fs = fsspec.filesystem(protocol)
+    assert not fs.exists(f"{tmp_dir_with_img_data}/bbb.jpg")
+
+
+def test_insert_png_rows_from_numpy_array(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
+    )
+
+    ts.insert_rows(
+        pd.DataFrame(
+            {
+                "id": ["ccc"],
+                "image": [np.array((224, 224, 3), dtype=np.uint8)],
+            }
+        )
+    )
+
+    assert fsspec.open(f"{tmp_dir_with_img_data}/ccc.png", "rb").open().read()
+
+
+def test_insert_png_rows_from_string(tmp_dir_with_img_data):
+    ts = TableStoreFiledir(
+        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
+    )
+
+    img = Image.fromarray(np.zeros((100, 100, 3), "u8"), "RGB")
+    buffered = io.BytesIO()
+    img.save(buffered, format='PNG')
+    image_bytes = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    ts.insert_rows(
+        pd.DataFrame(
+            {
+                "id": ["ccc"],
+                "image": [image_bytes],
+            }
+        )
+    )
+
+    assert fsspec.open(f"{tmp_dir_with_img_data}/ccc.png", "rb").open().read()
 
 
 @pytest.fixture

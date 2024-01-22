@@ -1,8 +1,10 @@
+from typing import List
+
 import cloudpickle
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import JSON, Integer, DateTime
+from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer
 
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
@@ -10,28 +12,28 @@ from datapipe.types import IndexDF, data_to_index
 
 from .util import assert_datatable_equal, assert_df_equal
 
-TEST_SCHEMA = [
+TEST_SCHEMA: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
 ]
 
-TEST_SCHEMA_OTM = [
+TEST_SCHEMA_OTM: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", JSON),
 ]
 
-TEST_SCHEMA_OTM2 = [
+TEST_SCHEMA_OTM2: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer, primary_key=True),
 ]
 
-TEST_SCHEMA_OTM3 = [
+TEST_SCHEMA_OTM3: List[Column] = [
     Column("a", Integer, primary_key=True),
     Column("b", Integer, primary_key=True),
     Column("ids", JSON),
 ]
 
-TEST_SCHEMA_NA_VALUES = [
+TEST_SCHEMA_NA_VALUES: List[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
     Column("b", DateTime),
@@ -159,7 +161,8 @@ def test_pandas_na_values_in_table(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA_NA_VALUES, True)
+        "tbl1",
+        table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA_NA_VALUES, True),
     )
 
     tbl.store_chunk(TEST_NA_VALUES_DF)

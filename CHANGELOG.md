@@ -1,3 +1,41 @@
+# 0.13.10
+
+* Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
+* Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+
+# 0.13.9
+
+* Adapter `PILFile` now accepts np.ndarray image
+* `TableStoreFiledir` now supports `insert_rows` and `delete_rows` in case
+  multiply suffixes in template
+
+# 0.13.8
+
+* Fix [#301](https://github.com/epoch8/datapipe/issues/301)
+
+# 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Add `delete_stale` argument to `BatchGenerate`
+* Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
+* Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
+  case
+* Fix pandas warning #286
+* Fix SQLAlchemy 2.0 warnings
+* Enable SQLAlchemy 2.0
+* Optimize join in batch transform when there's an input without intersecting
+  keys with transform
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
+* Add logging of log_step_full for `DatatableTransformStep`
+
 # 0.13.4
 
 * Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
@@ -76,11 +114,6 @@
 # 0.13.0-beta.3
 
 * Enable WAL mode for sqlite database by default
-
-# WIP 0.13.0-beta.3
-
-* Optimize join in batch transform when there's an input without intersecting
-  keys with transform
 
 # 0.13.0-beta.2
 
