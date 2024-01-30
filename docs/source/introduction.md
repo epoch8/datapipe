@@ -7,4 +7,4 @@ A repository dedicated to practical examples can be found at https://github.com/
 
 This documentation is beneficial for those familiar with Python 3.8 or later. Knowledge of Sqlalchemy 1.4 or 2.0 is also recommended for a comprehensive understanding of Datapipe's functionalities.
 
-We also recommend using Poetry for dependency management.
+We also recommend using Poetry (https://python-poetry.org/) for dependency management.
