@@ -70,7 +70,8 @@ gcp = ["opentelemetry-exporter-gcp-trace"]
 docs = ["sphinx", "myst-parser"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "*"
+# TODO migrate to pytest 8.0.0+
+pytest = "7.*"
 flake8 = "*"
 mypy = "*"
 black = "*"
