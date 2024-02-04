@@ -70,7 +70,7 @@ qdrant = ["qdrant-client"]
 ray = ["ray"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 
-docs = ["sphinx", "myst-parser"]
+docs = ["sphinx", "sphinx-rtd-theme", "myst-parser"]
 
 [tool.poetry.group.dev.dependencies]
 # TODO migrate to pytest 8.0.0+
