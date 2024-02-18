@@ -73,13 +73,16 @@ gcp = ["opentelemetry-exporter-gcp-trace"]
 docs = ["sphinx", "sphinx-rtd-theme", "myst-parser"]
 
 [tool.poetry.group.dev.dependencies]
-# TODO migrate to pytest 8.0.0+
+# TODO migrate to pytest 8.0.0+ when pytest-cases will be compatible
+# https://github.com/smarie/python-pytest-cases/issues/330
 pytest = "7.*"
-flake8 = "*"
-mypy = "*"
-black = "*"
-pandas-stubs = "*"
 pytest-cases = "*"
+
+flake8 = "*"
+black = "*"
+
+mypy = "*"
+pandas-stubs = "*"
 types-setuptools = "*"
 types-redis = "*"
 types-tqdm = "*"
