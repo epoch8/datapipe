@@ -2,7 +2,7 @@ from __future__ import annotations  # NOQA
 
 import itertools
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
 
 import pandas as pd
 from sqlalchemy import Column
@@ -25,6 +25,10 @@ TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 Labels = List[Tuple[str, str]]
 
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
+
+LabelDict = Dict[str, Any]
+
+Filters = Union[str, List[LabelDict], Callable[..., List[LabelDict]]]
 
 
 @dataclass
