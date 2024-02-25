@@ -31,7 +31,7 @@ class RedisStore(TableStore):
         if not cluster_mode:
             self.redis_connection = Redis.from_url(connection, decode_responses=True)
         else:
-            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
+            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)  # type: ignore
 
         self.name = name
         self.data_sql_schema = data_sql_schema
