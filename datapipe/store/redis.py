@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
+from redis.cluster import RedisCluster
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
@@ -24,10 +25,13 @@ def _to_itertuples(df: DataDF, colnames):
 
 class RedisStore(TableStore):
     def __init__(
-        self, connection: str, name: str, data_sql_schema: List[Column]
+        self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
     ) -> None:
         self.connection = connection
-        self.redis_connection = Redis.from_url(connection, decode_responses=True)
+        if not cluster_mode:
+            self.redis_connection = Redis.from_url(connection, decode_responses=True)
+        else:
+            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
 
         self.name = name
         self.data_sql_schema = data_sql_schema
