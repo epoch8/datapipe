@@ -494,7 +494,7 @@ class TableStoreFiledir(TableStore):
         filepaths = []
 
         for f in files:
-            m = re.match(self.filename_match_first_suffix, f.path)
+            m = re.match(self.filename_match_first_suffix, f"{self.protocol_str}{f.path}")
 
             if m is None:
                 continue
