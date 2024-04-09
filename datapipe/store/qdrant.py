@@ -28,6 +28,8 @@ class QdrantStore(TableStore):
         pk_field (str): name of the primary key field in the schema, used to identify records
         embedding_field (str): name of the field in the schema that contains the vector representation of the record
         collection_params (CollectionParams): parameters for creating a collection in Qdrant
+        index_schema (dict): {field_name: field_schema} - field(s) in payload that will be used to create an index on.
+            For data types and field schema, check https://qdrant.tech/documentation/concepts/indexing/#payload-index
         api_key (Optional[str]): api_key for Qdrant server
     """
 
@@ -39,6 +41,7 @@ class QdrantStore(TableStore):
         pk_field: str,
         embedding_field: str,
         collection_params: CollectionParams,
+        index_schema: Optional[dict] = None,
         api_key: Optional[str] = None,
     ):
         super().__init__()
@@ -55,13 +58,21 @@ class QdrantStore(TableStore):
         pk_columns = [column for column in self.schema if column.primary_key]
 
         if len(pk_columns) != 1 and pk_columns[0].name != pk_field:
-            raise ValueError("Incorrect prymary key columns in schema")
+            raise ValueError("Incorrect primary key columns in schema")
 
         self.paylods_filelds = [
             column.name for column in self.schema if column.name != self.embedding_field
         ]
 
-    def __init(self):
+        self.index_field = {}
+        if index_schema:
+            # check if index field is present in schema
+            for field, field_schema in index_schema.items():
+                if field not in self.paylods_filelds:
+                    raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
+            self.index_field = index_schema
+
+    def __init_collection(self):
         self.client = QdrantClient(url=self.url, api_key=self._api_key)
         try:
             self.client.get_collection(self.name)
@@ -71,9 +82,25 @@ class QdrantStore(TableStore):
                     collection_name=self.name, create_collection=self.collection_params
                 )
 
+    def __init_indexes(self):
+        """
+        Checks on collection's payload indexes and adds them from index_field, if necessary.
+        Schema checks are not performed.
+        """
+        payload_schema = self.client.get_collection(self.name).payload_schema
+        for field, field_schema in self.index_field.items():
+            if field not in payload_schema.keys():
+                self.client.create_payload_index(
+                    collection_name=self.name,
+                    field_name=field,
+                    field_schema=field_schema
+                )
+
     def __check_init(self):
         if not self.inited:
-            self.__init()
+            self.__init_collection()
+            if self.index_field:
+                self.__init_indexes()
             self.inited = True
 
     def __get_ids(self, df):
