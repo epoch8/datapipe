@@ -60,7 +60,7 @@ class QdrantStore(TableStore):
         if len(pk_columns) != 1 and pk_columns[0].name != pk_field:
             raise ValueError("Incorrect primary key columns in schema")
 
-        self.paylods_filelds = [
+        self.payloads_filelds = [
             column.name for column in self.schema if column.name != self.embedding_field
         ]
 
@@ -68,7 +68,7 @@ class QdrantStore(TableStore):
         if index_schema:
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
-                if field not in self.paylods_filelds:
+                if field not in self.payloads_filelds:
                     raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
             self.index_field = index_schema
 
@@ -134,7 +134,7 @@ class QdrantStore(TableStore):
                 vectors=df[self.embedding_field].apply(list).to_list(),
                 payloads=cast(
                     List[Dict[str, Any]],
-                    df[self.paylods_filelds].to_dict(orient="records"),
+                    df[self.payloads_filelds].to_dict(orient="records"),
                 ),
             ),
             wait=True,
@@ -223,13 +223,13 @@ class QdrantShardedStore(TableStore):
         self.client: Optional[QdrantClient] = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
-        self.paylods_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
+        self.payloads_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
 
         self.index_field = {}
         if index_schema:
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
-                if field not in self.paylods_filelds:
+                if field not in self.payloads_filelds:
                     raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
             self.index_field = index_schema
 
@@ -317,7 +317,7 @@ class QdrantShardedStore(TableStore):
                     vectors=gdf[self.embedding_field].apply(list).to_list(),
                     payloads=cast(
                         List[Dict[str, Any]],
-                        df[self.paylods_filelds].to_dict(orient="records"),
+                        df[self.payloads_filelds].to_dict(orient="records"),
                     ),
                 ),
                 wait=True,
