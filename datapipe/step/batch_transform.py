@@ -77,14 +77,14 @@ class DatatableBatchTransformFunc(Protocol):
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
         kwargs: Optional[Dict[str, Any]] = None,
-    ) -> TransformResult:
-        ...
+    ) -> TransformResult: ...
 
 
 BatchTransformFunc = Callable[..., TransformResult]
 
 
 TRANSFORM_META_SCHEMA: DataSchema = [
+    Column("needs_recalc", Boolean),  # Требует ли пересчета
     Column("process_ts", Float),  # Время последней успешной обработки
     Column("is_success", Boolean),  # Успешно ли обработана строка
     Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
@@ -357,7 +357,7 @@ class BaseBatchTransformStep(ComputeStep):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
         run_config: Optional[RunConfig] = None,  # TODO remove
-    ) -> Tuple[Iterable[str], Any]:
+    ) -> Any:
         if len(self.transform_keys) == 0:
             raise NotImplementedError()
 
@@ -495,6 +495,43 @@ class BaseBatchTransformStep(ComputeStep):
                     *[asc(column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
+        return sql
+
+    def _build_changed_idx_sql_fast(
+        self,
+        ds: DataStore,
+        filters_idx: Optional[IndexDF] = None,
+        order_by: Optional[List[str]] = None,
+        order: Optional[Literal["asc", "desc"]] = None,
+        run_config: Optional[RunConfig] = None,  # TODO remove
+    ) -> Any:
+        tbl = self.meta_table.sql_table
+
+        sql = (
+            select(
+                *[tbl.c[key] for key in self.transform_keys],
+            )
+            .select_from(tbl)
+            .where(
+                tbl.c.needs_recalc == True,  # noqa
+            )
+        )
+        if order_by is None:
+            sql = sql.order_by(
+                tbl.c.priority.desc().nullslast(),
+                *[column(k) for k in self.transform_keys],
+            )
+        else:
+            if order == "desc":
+                sql = sql.order_by(
+                    *[desc(column(k)) for k in order_by],
+                    tbl.c.priority.desc().nullslast(),
+                )
+            elif order == "asc":
+                sql = sql.order_by(
+                    *[asc(column(k)) for k in order_by],
+                    tbl.c.priority.desc().nullslast(),
+                )
         return (self.transform_keys, sql)
 
     def _apply_filters_to_run_config(
@@ -523,7 +560,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> int:
         run_config = self._apply_filters_to_run_config(run_config)
-        _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
+        sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
@@ -560,7 +597,7 @@ class BaseBatchTransformStep(ComputeStep):
                 run_config=run_config,
             )
 
-            join_keys, u1 = self._build_changed_idx_sql(
+            u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
                 order_by=self.order_by,
@@ -571,7 +608,9 @@ class BaseBatchTransformStep(ComputeStep):
             extra_filters: LabelDict
             if run_config is not None:
                 extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
+                    k: v
+                    for k, v in run_config.filters.items()
+                    if k not in self.transform_keys
                 }
             else:
                 extra_filters = {}
@@ -930,7 +969,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
     inputs: List[str]
-    outputs: List[str]
+    outputs: Optional[List[str]] = None
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
     transform_keys: Optional[List[str]] = None
@@ -942,7 +981,10 @@ class BatchTransform(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        if self.outputs is not None:
+            output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        else:
+            output_dts = []
 
         return [
             BatchTransformStep(

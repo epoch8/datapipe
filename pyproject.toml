@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.10,<3.12"
 fsspec = ">=2021.11.1"
 
 gcsfs = {version=">=2021.11.1", optional=true}
@@ -30,7 +30,7 @@ cityhash = "^0.4.2"
 # TODO 0.14: make it optional
 Pillow = "^10.0.0"
 
-epoch8-tqdm-loggable = "^0.1.4"
+tqdm-loggable = "^0.2"
 traceback-with-variables = "^2.0.4"
 
 pymilvus = {version="^2.0.2", optional=true}
@@ -44,8 +44,8 @@ xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
 redis = {version="^4.3.4", optional=true}
 
-pysqlite3-binary = {version="^0.5.0", optional=true}
-sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true}
+pysqlite3-binary = {version="^0.5.0", optional=true, markers="sys_platform != 'darwin'"}
+sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true, markers="sys_platform != 'darwin'"}
 qdrant-client = {version="^1.1.7", optional=true}
 
 click = ">=7.1.2"

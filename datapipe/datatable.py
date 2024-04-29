@@ -13,6 +13,7 @@ from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
+from datapipe.meta import TableDebugInfo
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import (
     sql_apply_filters_idx_to_subquery,
@@ -50,12 +51,6 @@ TABLE_META_SCHEMA: List[Column] = [
     Column("process_ts", Float),  # Время последней успешной обработки
     Column("delete_ts", Float),  # Время удаления
 ]
-
-
-@dataclass
-class TableDebugInfo:
-    name: str
-    size: int
 
 
 class MetaTable:

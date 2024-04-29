@@ -2,11 +2,11 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from opentelemetry import trace
 
-from datapipe.datatable import DataStore, DataTable
+from datapipe.datatable import DataStore, DataTable, TableDebugInfo
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
