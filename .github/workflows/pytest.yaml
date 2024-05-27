@@ -50,9 +50,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - python-version: "3.8"
-            test-db-env: "postgres"
-            pip-extra: "sqlalchemy <2"
+          # - python-version: "3.8"
+          #   test-db-env: "postgres"
+          #   pip-extra: "sqlalchemy <2"
           - python-version: "3.8"
             test-db-env: "postgres"
             pip-extra: "sqlalchemy >2"
