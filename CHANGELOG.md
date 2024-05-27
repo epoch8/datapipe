@@ -2,6 +2,7 @@
 
 * Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
 * Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+* (post.1) Fix dependencies for MacOS; deprecate Python 3.8
 
 # 0.13.9
 
