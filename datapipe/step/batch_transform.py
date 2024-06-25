@@ -111,7 +111,6 @@ class TransformMetaTable:
             name,
             dbconn.sqla_metadata,
             *self.sql_schema,
-            keep_existing=True,
         )
 
         if create_table:
