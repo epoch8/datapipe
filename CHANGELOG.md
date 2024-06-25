@@ -1,3 +1,7 @@
+# 0.13.11
+
+* Remove logging to database (`datapipe_events` table) from `EventLogger`
+
 # 0.13.10
 
 * Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
