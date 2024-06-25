@@ -8,7 +8,7 @@ from datapipe.run_config import RunConfig
 logger = logging.getLogger("datapipe.event_logger")
 
 
-class EventLogger: 
+class EventLogger:
     def log_state(
         self,
         table_name,
@@ -20,7 +20,7 @@ class EventLogger:
     ):
         logger.debug(
             f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
-            f"deleted = {deleted_count}, processed_count = {deleted_count}"
+            f"deleted = {deleted_count}, processed_count = {processed_count}"
         )
 
     def log_error(
