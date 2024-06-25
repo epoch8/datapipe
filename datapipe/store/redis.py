@@ -29,7 +29,7 @@ class RedisStore(TableStore):
     ) -> None:
         self.connection = connection
         if not cluster_mode:
-            self.redis_connection = Redis.from_url(connection, decode_responses=True)
+            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(connection, decode_responses=True)
         else:
             self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
 
