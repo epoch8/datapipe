@@ -1,12 +1,12 @@
 import copy
 import logging
 import math
-from typing import Any, Iterator, List, Optional, Union, cast
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, MetaData, Table, create_engine, func
+from sqlalchemy import Column, MetaData, Table, create_engine, func, text
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -22,13 +22,27 @@ tracer = trace.get_tracer("datapipe.store.database")
 
 
 class DBConn:
-    def __init__(self, connstr: str, schema: Optional[str] = None):
-        self._init(connstr, schema)
+    def __init__(
+        self,
+        connstr: str,
+        schema: Optional[str] = None,
+        create_engine_kwargs: Optional[Dict[str, Any]] = None,
+    ):
+        create_engine_kwargs = create_engine_kwargs or {}
+        self._init(connstr, schema, create_engine_kwargs)
 
-    def _init(self, connstr: str, schema: Optional[str]) -> None:
+    def _init(
+        self,
+        connstr: str,
+        schema: Optional[str],
+        create_engine_kwargs: Dict[str, Any],
+    ) -> None:
         self.connstr = connstr
         self.schema = schema
+        self.create_engine_kwargs = create_engine_kwargs
 
+        self.insert: Callable
+        self.func_greatest: Callable
         if connstr.startswith("sqlite") or connstr.startswith("pysqlite"):
             self.supports_update_from = False
 
@@ -40,18 +54,20 @@ class DBConn:
             self.con = create_engine(
                 connstr,
                 poolclass=SingletonThreadPool,
+                **create_engine_kwargs,
             )
 
             # WAL mode is required for concurrent reads and writes
             # https://www.sqlite.org/wal.html
-            self.con.execute("PRAGMA journal_mode=WAL")
+            with self.con.begin() as con:
+                con.execute(text("PRAGMA journal_mode=WAL"))
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
 
-            from sqlalchemy.dialects.postgresql import insert
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-            self.insert = insert
+            self.insert = pg_insert
             self.func_greatest = func.greatest
 
             self.con = create_engine(
@@ -59,19 +75,28 @@ class DBConn:
                 poolclass=QueuePool,
                 pool_pre_ping=True,
                 pool_recycle=3600,
+                **create_engine_kwargs
                 # pool_size=25,
             )
 
         self.sqla_metadata = MetaData(schema=schema)
 
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.connstr,
+            self.schema,
+            self.create_engine_kwargs,
+        )
+
     def __getstate__(self):
         return {
             "connstr": self.connstr,
             "schema": self.schema,
+            "create_engine_kwargs": self.create_engine_kwargs,
         }
 
     def __setstate__(self, state):
-        self._init(state["connstr"], state["schema"])
+        self._init(state["connstr"], state["schema"], state["create_engine_kwargs"])
 
 
 class MetaKey(SchemaItem):
@@ -119,6 +144,13 @@ class TableStoreDB(TableStore):
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
+
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.data_sql_schema,
+        )
 
     def get_schema(self) -> DataSchema:
         return self.data_sql_schema
@@ -196,7 +228,7 @@ class TableStoreDB(TableStore):
         return param.item() if hasattr(param, "item") else param
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
-        sql = select(self.data_table.c)
+        sql = select(*self.data_table.c)
 
         if idx is not None:
             if len(idx.index) == 0:
@@ -223,16 +255,19 @@ class TableStoreDB(TableStore):
                 return pd.read_sql_query(sql, con=con)
 
     def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
+        self,
+        chunksize: int = 1000,
+        run_config: Optional[RunConfig] = None,
     ) -> Iterator[DataDF]:
-        sql = select(self.data_table.c)
+        sql = select(*self.data_table.c)
 
         sql = sql_apply_runconfig_filter(
             sql, self.data_table, self.primary_keys, run_config
         )
 
-        return pd.read_sql_query(
-            sql,
-            con=self.dbconn.con.execution_options(stream_results=True),
-            chunksize=chunksize,
-        )
+        with self.dbconn.con.execution_options(stream_results=True).begin() as con:
+            yield from pd.read_sql_query(
+                sql,
+                con=con,
+                chunksize=chunksize,
+            )

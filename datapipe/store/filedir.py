@@ -1,3 +1,5 @@
+import base64
+import io
 import itertools
 import json
 import re
@@ -44,6 +46,23 @@ class JSONFile(ItemStoreFileAdapter):
         return json.dump(obj, f, **self.dump_params)
 
 
+class BytesFile(ItemStoreFileAdapter):
+    """
+    Uses `bytes` column
+    """
+
+    mode = "b"
+
+    def __init__(self, bytes_columns: str = "bytes"):
+        self.bytes_columns = bytes_columns
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {self.bytes_columns: f.read()}
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        f.write(obj[self.bytes_columns])
+
+
 class PILFile(ItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
@@ -61,8 +80,21 @@ class PILFile(ItemStoreFileAdapter):
         return {"image": im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        im: Image.Image = obj["image"]
-        im.save(f, format=self.format, **self.dump_params)
+        image_data: Any = obj["image"]
+
+        if isinstance(image_data, Image.Image):
+            image: Image.Image = image_data
+        elif isinstance(image_data, np.ndarray):
+            image = Image.fromarray(image_data)
+        elif isinstance(image_data, str):
+            image_binary = base64.b64decode(image_data.encode())
+            image = Image.open(io.BytesIO(image_binary))
+        else:
+            raise Exception(
+                "Image must be a bytes string or np.array or Pillow Image object"
+            )
+
+        image.save(f, format=self.format, **self.dump_params)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -138,7 +170,7 @@ class TableStoreFiledir(TableStore):
         read_data: bool = True,
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
-        fsspec_kwargs: Dict[str, Any] = {},
+        fsspec_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -170,23 +202,28 @@ class TableStoreFiledir(TableStore):
         файла
 
         readonly -- если True, отключить запись файлов; если None, то запись
-        файлов включается в случае, если нету * и ** путей в шаблоне и нет
-        множественных расширений файлов вида (jpg|png|mp4)
+        файлов включается в случае, если нету * и ** путей в шаблоне. Если есть
+        множественные суффиксы файлов вида (jpg|png|mp4), то берется файл с
+        первым попавшимся слева направо суффиксом
 
-        enable_rm -- если True, включить удаление файлов
+        enable_rm -- если True, включить удаление файлов. если есть
+        множественные суффиксы файлов вида (jpg|png|mp4), то удаляется каждый из
+        них
 
         fsspec_kwargs -- kwargs для fsspec
         """
 
-        self.fsspec_kwargs = fsspec_kwargs
+        self.fsspec_kwargs = fsspec_kwargs or {}
         self.protocol, path = fsspec.core.split_protocol(filename_pattern)
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
-            self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
         else:
-            self.filesystem = fsspec.filesystem(
-                protocol=self.protocol, **self.fsspec_kwargs
-            )
+            self.fsspec_kwargs["protocol"] = self.protocol
+
+        if self.protocol == "file" or self.protocol is None:
+            self.fsspec_kwargs["auto_mkdir"] = True
+
+        self.filesystem = fsspec.filesystem(**self.fsspec_kwargs)
 
         if self.protocol is None or self.protocol == "file":
             filename_pattern = str(Path(path).resolve())
@@ -204,15 +241,8 @@ class TableStoreFiledir(TableStore):
         self.attrnames = _pattern_to_attrnames(filename_pattern)
         self.filename_glob = [_pattern_to_glob(pat) for pat in self.filename_patterns]
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
+        self.filename_match_first_suffix = _pattern_to_match(self.filename_patterns[0])
 
-        # Multiply extensions check
-        if len(self.filename_glob) >= 2:
-            if readonly is not None and not readonly:
-                raise ValueError(
-                    "When `readonly=False`, in filename_pattern shouldn't be several extensions."
-                )
-            elif readonly:
-                readonly = True
         # Any * and ** pattern check
         if "*" in path:
             if readonly is not None and not readonly:
@@ -270,18 +300,27 @@ class TableStoreFiledir(TableStore):
 
             attrnames = cast(List[str], attrnames_series.tolist())
 
-            _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(attrnames)[0]
-            )
-            self.filesystem.rm(path)
+            # Удаляем каждый файл с разными суффиксами, если они есть
+            for filepath in self._filenames_from_idxs_values(attrnames):
+                _, path = fsspec.core.split_protocol(filepath)
+                if self.filesystem.exists(path):
+                    self.filesystem.rm(path)
 
     def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
+        """
+        Возвращает по индексам список всевозможных путей согласно шаблону
+        Например для шаблона filedir/{id}.(jpg|png) и индекса id=0
+          ['filedir/0.jpg', 'filedir/0.png']
+        """
         return [
             re.sub(r"\{([^/]+?)\}", Replacer(idxs_values), pat)
             for pat in self.filename_patterns
         ]
 
     def _idxs_values_from_filepath(self, filepath: str) -> Dict[str, Any]:
+        """
+        По пути возвращает список индексов согласно шаблону
+        """
         _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
         assert (
@@ -330,12 +369,14 @@ class TableStoreFiledir(TableStore):
             assert isinstance(attrnames_series, pd.Series)
 
             idxs_values = attrnames_series.tolist()
-            filepath = self._filenames_from_idxs_values(idxs_values)[0]
+            filepath = self._filenames_from_idxs_values(idxs_values)[
+                0
+            ]  # берем первый суффикс
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
 
-            with fsspec.open(filepath, f"w{self.adapter.mode}") as f:
+            with self.filesystem.open(filepath, f"w{self.adapter.mode}") as f:
                 self.adapter.dump(data, f)
 
     def _read_rows_fast(
@@ -401,13 +442,9 @@ class TableStoreFiledir(TableStore):
                         raise FileNotFoundError(
                             f"No such file: {' or '.join(filepaths)}"
                         )
-                    elif len(found_files) > 1:
-                        raise ValueError(
-                            f"Some files are duplitcated as indexes in filepaths: {found_files}. "
-                            "Change the pattern or delete them."
-                        )
-                    for file_open in found_files:
-                        yield file_open
+                    # Открываем первый попавшися файл согласно суффиксу (aaa|bbb)
+                    file_open = found_files[0]
+                    yield file_open
 
         df_records = []
         for file_open in _iterate_files():
@@ -457,23 +494,16 @@ class TableStoreFiledir(TableStore):
         filepaths = []
 
         for f in files:
-            m = re.match(self.filename_match, f.path)
+            m = re.match(self.filename_match_first_suffix, f.path)
 
-            assert m is not None
+            if m is None:
+                continue
+
             for attrname in self.attrnames:
                 ids[attrname].append(m.group(attrname))
 
             ukeys.append(files.fs.ukey(f.path))
             filepaths.append(f"{self.protocol_str}{f.path}")
-
-        keys_values = [
-            (ids[attrname][i] for attrname in self.attrnames) for i in range(len(ukeys))
-        ]
-        duplicates_keys_values = list(duplicates(keys_values))
-        assert len(duplicates_keys_values) == 0, (
-            f"Some files are duplitcated as indexes in filepaths: {duplicates_keys_values}. "
-            "Change the pattern or delete them."
-        )
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(

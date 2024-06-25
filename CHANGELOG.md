@@ -1,3 +1,65 @@
+# 0.13.11
+
+* Remove logging to database (`datapipe_events` table) from `EventLogger`
+
+# 0.13.10
+
+* Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
+* Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+* (post.1) Fix dependencies for MacOS; deprecate Python 3.8
+
+# 0.13.9
+
+* Adapter `PILFile` now accepts np.ndarray image
+* `TableStoreFiledir` now supports `insert_rows` and `delete_rows` in case
+  multiply suffixes in template
+
+# 0.13.8
+
+* Fix [#301](https://github.com/epoch8/datapipe/issues/301)
+
+# 0.13.7
+
+* Add `BytesFile` adapter for `TableStoreFiledir`
+* Add `delete_stale` argument to `BatchGenerate`
+* Fix duplicated indices in `BaseBatchTransformStep.get_full_process_ids`
+* Fix empty result in `BaseBatchTransformStep.get_full_process_ids` in special
+  case
+* Fix pandas warning #286
+* Fix SQLAlchemy 2.0 warnings
+* Enable SQLAlchemy 2.0
+* Optimize join in batch transform when there's an input without intersecting
+  keys with transform
+
+# 0.13.6
+
+* Add support for base64 encoded images in `TableStoreFiledir` `PILFile` adapter
+
+# 0.13.5
+
+* Add create_engine_kwargs for `DBConn`
+* Fix desc/asc order in batch transform when ordering by multiple columns
+* Add logging of log_step_full for `DatatableTransformStep`
+
+# 0.13.4
+
+* Fix `TableStoreFiledir` usage of `auto_mkdir` (enable only for "file://")
+
+# 0.13.3
+
+* Fix `TableStoreFiledir` ignoring `fsspec_kwargs`
+* Added dropna and idx check for `TransformMetaTable`
+
+# 0.13.2-post.1
+
+* Allow `pandas >= 2` and `numpy >= 1.21`
+
+# 0.13.2
+
+* Add `GPU` support for RayExecutor
+* Add `auto_mkdir` to `TableStoreFiledir`, fixes issues with local filedir
+* Add Python 3.11 support.
+
 # 0.13.1
 
 * Add `api_key` to `QdrantStore` constructor. Now can run pipelines with Qdrant

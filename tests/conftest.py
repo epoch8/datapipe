@@ -1,11 +1,14 @@
 import os
+
+os.environ["SQLALCHEMY_WARN_20"] = "1"
+
 import tempfile
 from pathlib import Path
 
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine
 import redis
+from sqlalchemy import create_engine, text
 
 from datapipe.store.database import DBConn
 
@@ -57,15 +60,18 @@ def dbconn():
         eng = create_engine(DBCONNSTR)
 
         try:
-            eng.execute(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE")
+            with eng.begin() as conn:
+                conn.execute(text(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE"))
         except Exception:
             pass
 
-        eng.execute(f"CREATE SCHEMA {DB_TEST_SCHEMA}")
+        with eng.begin() as conn:
+            conn.execute(text(f"CREATE SCHEMA {DB_TEST_SCHEMA}"))
 
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
-        eng.execute(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE")
+        with eng.begin() as conn:
+            conn.execute(text(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE"))
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)

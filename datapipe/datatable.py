@@ -3,12 +3,13 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
 from opentelemetry import trace
 from sqlalchemy import Column, Float, Integer, Table, column
+from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
@@ -31,11 +32,18 @@ from datapipe.types import (
     index_difference,
 )
 
+if TYPE_CHECKING:
+    try:
+        # works only with sqlalchemy>=2
+        from sqlalchemy.sql.expression import ColumnClause
+    except ImportError:
+        ColumnClause = Any  # type: ignore
+
 logger = logging.getLogger("datapipe.datatable")
 tracer = trace.get_tracer("datapipe.datatable")
 
 
-TABLE_META_SCHEMA = [
+TABLE_META_SCHEMA: List[Column] = [
     Column("hash", Integer),
     Column("create_ts", Float),  # Время создания строки
     Column("update_ts", Float),  # Время последнего изменения
@@ -81,8 +89,8 @@ class MetaTable:
             )
             self.meta_keys[target_name] = column.name
 
-        self.sql_schema = [
-            copy.copy(i) for i in primary_schema + meta_schema + TABLE_META_SCHEMA
+        self.sql_schema: List[SchemaItem] = [
+            i._copy() for i in primary_schema + meta_schema + TABLE_META_SCHEMA
         ]
 
         self.sql_table = Table(
@@ -93,6 +101,15 @@ class MetaTable:
 
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    def __reduce__(self) -> Tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.primary_schema,
+            self.meta_schema,
+            False,
+        )
 
     def _chunk_size(self):
         # Magic number derived empirically. See
@@ -143,7 +160,7 @@ class MetaTable:
         """
 
         res = []
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)  # type: ignore
 
         with self.dbconn.con.begin() as con:
             if idx is None:
@@ -173,7 +190,7 @@ class MetaTable:
         include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
         """
 
-        sql = select([func.count()]).select_from(self.sql_table)
+        sql = select(func.count()).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
         with self.dbconn.con.begin() as con:
@@ -216,7 +233,7 @@ class MetaTable:
         return param.item() if hasattr(param, "item") else param
 
     def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
-        sql = select(self.sql_schema)
+        sql = select(*self.sql_schema)  # type: ignore
 
         if idx is not None:
             if len(idx.index) == 0:
@@ -258,7 +275,7 @@ class MetaTable:
     def get_table_debug_info(self) -> TableDebugInfo:
         with self.dbconn.con.begin() as con:
             res = con.execute(
-                select([func.count()]).select_from(self.sql_table)
+                select(func.count()).select_from(self.sql_table)
             ).fetchone()
 
             assert res is not None and len(res) == 1
@@ -382,7 +399,7 @@ class MetaTable:
         run_config: Optional[RunConfig] = None,
     ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
-        sql = select(idx_cols).where(
+        sql = select(*idx_cols).where(
             and_(
                 self.sql_table.c.process_ts < process_ts,
                 self.sql_table.c.delete_ts.is_(None),
@@ -504,8 +521,10 @@ class DataTable:
                         cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
                     )
 
-                    changes.append(data_to_index(new_df, self.primary_keys))
-                    changes.append(data_to_index(changed_df, self.primary_keys))
+                    if not new_df.empty:
+                        changes.append(data_to_index(new_df, self.primary_keys))
+                    if not changed_df.empty:
+                        changes.append(data_to_index(changed_df, self.primary_keys))
             else:
                 data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -518,7 +537,8 @@ class DataTable:
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
 
-                    changes.append(deleted_idx)
+                    if not deleted_idx.empty:
+                        changes.append(deleted_idx)
 
         return cast(IndexDF, pd.concat(changes))
 
@@ -568,7 +588,7 @@ class DataTable:
         tbl = self.meta_table.sql_table
 
         keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols = [column(k) for k in keys]
+        key_cols: List["ColumnClause"] = [column(k) for k in keys]
 
         sql: Any = (
             select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
@@ -589,9 +609,7 @@ class DataStore:
         create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
-        self.event_logger = EventLogger(
-            self.meta_dbconn, create_table=create_meta_table
-        )
+        self.event_logger = EventLogger()
         self.tables: Dict[str, DataTable] = {}
 
         self.create_meta_table = create_meta_table

@@ -22,7 +22,8 @@ class Lint:
         if query is None:
             return (LintStatus.SKIP, None)
 
-        res = dt.meta_table.dbconn.con.execute(query).fetchone()
+        with dt.meta_table.dbconn.con.begin() as con:
+            res = con.execute(query).fetchone()
 
         assert res is not None and len(res) == 1
         (cnt,) = res
@@ -81,7 +82,8 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
             )
         )
 
-        dt.meta_table.dbconn.con.execute(sql)
+        with dt.meta_table.dbconn.con.begin() as con:
+            con.execute(sql)
 
         return (LintStatus.OK, None)
 
@@ -101,9 +103,11 @@ class LintDataWOMeta(Lint):
             .select_from(meta_tbl)
             .where(
                 and_(
-                    meta_tbl.c[col.name] == data_tbl.c[col.name]
-                    for col in meta_tbl.columns
-                    if col.primary_key
+                    *[
+                        meta_tbl.c[col.name] == data_tbl.c[col.name]
+                        for col in meta_tbl.columns
+                        if col.primary_key
+                    ]
                 )
             )
         )
@@ -125,9 +129,11 @@ class LintDataWOMeta(Lint):
             .select_from(meta_tbl)
             .where(
                 and_(
-                    meta_tbl.c[col.name] == data_tbl.c[col.name]
-                    for col in meta_tbl.columns
-                    if col.primary_key
+                    *[
+                        meta_tbl.c[col.name] == data_tbl.c[col.name]
+                        for col in meta_tbl.columns
+                        if col.primary_key
+                    ]
                 )
             )
         )
@@ -135,7 +141,7 @@ class LintDataWOMeta(Lint):
         sql = insert(meta_tbl).from_select(
             [col.name for col in meta_tbl.columns if col.primary_key]
             + ["hash", "create_ts", "update_ts", "delete_ts"],
-            select(
+            select(  # type: ignore
                 *[data_tbl.c[col.name] for col in meta_tbl.columns if col.primary_key]
                 + [
                     literal(0).label("hash"),
@@ -148,6 +154,7 @@ class LintDataWOMeta(Lint):
             .where(not_(exists_sql.exists())),
         )
 
-        dt.meta_table.dbconn.con.execute(sql)
+        with dt.meta_table.dbconn.con.begin() as con:
+            con.execute(sql)
 
         return (LintStatus.OK, None)

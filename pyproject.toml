@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datapipe-core"
-version = "0.13.1"
+version = "0.13.11"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 readme = "README.md"
 repository = "https://github.com/epoch8/datapipe"
@@ -10,37 +10,42 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">3.8,<3.12"
 fsspec = ">=2021.11.1"
 
 gcsfs = {version=">=2021.11.1", optional=true}
 s3fs = {version=">=2021.11.1", optional=true}
 
-pandas = "^1.2.0"
-numpy = "^1.21.0"
-SQLAlchemy = "^1.4.25"
+# TODO Fix incompatibility between sqlalchemy < 2 and pandas 2.2
+pandas = ">=1.2.0, <2.2"
+
+numpy = ">=1.21.0, <2.0"
+SQLAlchemy = ">=1.4.25, <3.0.0"
 psycopg2_binary = ">=2.8.4"
 cloudpickle = ">=1.6.0"
 PyYAML = ">=5.3.1"
-Pillow = "^9.0.0"
 iteration-utilities = ">=0.11.0"
 cityhash = "^0.4.2"
 
-epoch8-tqdm-loggable = "^0.1.4"
+# TODO 0.14: make it optional
+Pillow = "^10.0.0"
+
+tqdm-loggable = "^0.2"
 traceback-with-variables = "^2.0.4"
 
 pymilvus = {version="^2.0.2", optional=true}
 
 opentelemetry-api = "^1.8.0"
 opentelemetry-sdk = "^1.8.0"
-opentelemetry-instrumentation-sqlalchemy = "0.35b0"
+opentelemetry-instrumentation-sqlalchemy = "*"
+opentelemetry-exporter-gcp-trace = {version="*", optional=true}
 
 xlrd = {version=">=2.0.1", optional=true}
 openpyxl = {version=">=3.0.7", optional=true}
 redis = {version="^4.3.4", optional=true}
 
-pysqlite3-binary = {version="^0.5.0", optional=true}
-sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true}
+pysqlite3-binary = {version="^0.5.0", optional=true, markers="sys_platform != 'darwin'"}
+sqlalchemy-pysqlite3-binary = {version="^0.0.4", optional=true, markers="sys_platform != 'darwin'"}
 qdrant-client = {version="^1.1.7", optional=true}
 
 click = ">=7.1.2"
@@ -48,6 +53,7 @@ rich = "^13.3.2"
 
 # Copypaste without thinking from https://github.com/meltano/sdk/blob/main/pyproject.toml
 sphinx = {version = ">=4.5,<6.0", optional = true}
+sphinx-rtd-theme = {version = "^2.0.0", optional = true}
 myst-parser = {version = ">=0.17.2,<1.1.0", optional = true}
 
 ray = {version = "^2.5.0", optional = true, extras = ["default"]}
@@ -62,11 +68,13 @@ s3fs = ["s3fs"]
 redis = ["redis"]
 qdrant = ["qdrant-client"]
 ray = ["ray"]
+gcp = ["opentelemetry-exporter-gcp-trace"]
 
-docs = ["sphinx", "myst-parser"]
+docs = ["sphinx", "sphinx-rtd-theme", "myst-parser"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "*"
+# TODO migrate to pytest 8.0.0+
+pytest = "7.*"
 flake8 = "*"
 mypy = "*"
 black = "*"
