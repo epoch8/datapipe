@@ -404,7 +404,10 @@ class MetaTable:
         ts: float,
     ) -> int:
         sql = select(func.count()).where(
-            self.sql_table.c.process_ts > ts,
+            and_(
+                self.sql_table.c.process_ts > ts,
+                self.sql_table.c.delete_ts.is_(None),
+            )
         )
 
         with self.dbconn.con.begin() as con:
