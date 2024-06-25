@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Tuple
+from typing import Optional
 
 from traceback_with_variables import format_exc
 
@@ -8,10 +8,7 @@ from datapipe.run_config import RunConfig
 logger = logging.getLogger("datapipe.event_logger")
 
 
-class EventLogger:
-    def __reduce__(self) -> Tuple[Any, ...]:
-        return self.__class__
-    
+class EventLogger: 
     def log_state(
         self,
         table_name,
