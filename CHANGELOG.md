@@ -1,6 +1,7 @@
 # 0.13.12
 
 * Add processing of an empty response in `QdrantStore`
+* Add optional `index_schema` to `QdrantStore`
 * Add redis cluster mode support in `RedisStore`
 
 # 0.13.11
