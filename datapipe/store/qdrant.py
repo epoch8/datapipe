@@ -146,6 +146,9 @@ class QdrantStore(TableStore):
         records = []
 
         assert response.result is not None
+        if len(response.result) == 0:
+            return pd.DataFrame(columns=[column.name for column in self.schema])
+
         for point in response.result:
             record = point.payload
 

@@ -1,3 +1,8 @@
+# 0.13.12
+
+* Add processing of an empty response in `QdrantStore`
+* Add redis cluster mode support in `RedisStore`
+
 # 0.13.11
 
 * Remove logging to database (`datapipe_events` table) from `EventLogger`
