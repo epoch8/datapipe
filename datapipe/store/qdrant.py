@@ -22,14 +22,27 @@ class QdrantStore(TableStore):
 
     Args:
         name (str): name of the Qdrant collection
-        url (str): url of the Qdrant server (if using with api_key,
-        you should explicitly specify port 443, by default qdrant uses 6333)
-        schema (DataSchema): Describes data that will be stored in the Qdrant collection
-        pk_field (str): name of the primary key field in the schema, used to identify records
-        embedding_field (str): name of the field in the schema that contains the vector representation of the record
-        collection_params (CollectionParams): parameters for creating a collection in Qdrant
-        index_schema (dict): {field_name: field_schema} - field(s) in payload that will be used to create an index on.
-            For data types and field schema, check https://qdrant.tech/documentation/concepts/indexing/#payload-index
+
+        url (str): url of the Qdrant server (if using with api_key, you should
+        explicitly specify port 443, by default qdrant uses 6333)
+
+        schema (DataSchema): Describes data that will be stored in the Qdrant
+        collection
+
+        pk_field (str): name of the primary key field in the schema, used to
+        identify records
+
+        embedding_field (str): name of the field in the schema that contains the
+        vector representation of the record
+
+        collection_params (CollectionParams): parameters for creating a
+        collection in Qdrant
+
+        index_schema (dict): {field_name: field_schema} - field(s) in payload
+        that will be used to create an index on. For data types and field
+        schema, check
+        https://qdrant.tech/documentation/concepts/indexing/#payload-index
+
         api_key (Optional[str]): api_key for Qdrant server
     """
 
@@ -69,7 +82,9 @@ class QdrantStore(TableStore):
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
                 if field not in self.payloads_filelds:
-                    raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
+                    raise ValueError(
+                        f"Index field `{field}` ({field_schema}) not found in payload schema"
+                    )
             self.index_field = index_schema
 
     def __init_collection(self):
@@ -93,7 +108,7 @@ class QdrantStore(TableStore):
                 self.client.create_payload_index(
                     collection_name=self.name,
                     field_name=field,
-                    field_schema=field_schema
+                    field_schema=field_schema,
                 )
 
     def __check_init(self):
@@ -226,14 +241,18 @@ class QdrantShardedStore(TableStore):
         self.client: Optional[QdrantClient] = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
-        self.payloads_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
+        self.payloads_filelds = [
+            column.name for column in self.schema if column.name != self.embedding_field
+        ]
 
         self.index_field = {}
         if index_schema:
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
                 if field not in self.payloads_filelds:
-                    raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
+                    raise ValueError(
+                        f"Index field `{field}` ({field_schema}) not found in payload schema"
+                    )
             self.index_field = index_schema
 
         self.name_params = re.findall(r"\{([^/]+?)\}", self.name_pattern)
@@ -264,7 +283,7 @@ class QdrantShardedStore(TableStore):
                 self.client.create_payload_index(
                     collection_name=name,
                     field_name=field,
-                    field_schema=field_schema
+                    field_schema=field_schema,
                 )
 
     def __check_init(self, name):
