@@ -590,11 +590,12 @@ class DataTable:
         keys = [k for k in transform_keys if k in self.primary_keys]
         key_cols: List["ColumnClause"] = [column(k) for k in keys]
 
-        sql: Any = (
-            select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
-            .select_from(tbl)
-            .group_by(*key_cols)
-        )
+        sql: Any = select(
+            *key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")]
+        ).select_from(tbl)
+
+        if len(key_cols) > 0:
+            sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
         sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
