@@ -1,3 +1,7 @@
+# WIP 0.13.13
+
+* Add `ComputeStep.get_status` method
+
 # 0.13.12
 
 * Add processing of an empty response in `QdrantStore`
