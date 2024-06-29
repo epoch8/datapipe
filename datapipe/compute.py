@@ -40,6 +40,13 @@ class Catalog:
         return ds.get_or_create_table(name=name, table_store=self.catalog[name].store)
 
 
+@dataclass
+class StepStatus:
+    name: str
+    total_idx_count: int
+    changed_idx_count: int
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -90,6 +97,9 @@ class ComputeStep:
     @property
     def labels(self) -> Labels:
         return self._labels if self._labels else []
+
+    def get_status(self, ds: DataStore) -> StepStatus:
+        raise NotImplementedError
 
     # TODO: move to lints
     def validate(self) -> None:

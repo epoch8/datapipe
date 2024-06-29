@@ -42,7 +42,7 @@ from sqlalchemy import (
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep
+from datapipe.compute import Catalog, ComputeStep, PipelineStep, StepStatus
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import LabelDict, RunConfig
@@ -77,8 +77,7 @@ class DatatableBatchTransformFunc(Protocol):
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
         kwargs: Optional[Dict[str, Any]] = None,
-    ) -> TransformResult:
-        ...
+    ) -> TransformResult: ...
 
 
 BatchTransformFunc = Callable[..., TransformResult]
@@ -516,6 +515,13 @@ class BaseBatchTransformStep(ComputeStep):
                 filters.update(run_config.filters)
                 run_config.filters = filters
                 return run_config
+
+    def get_status(self, ds: DataStore) -> StepStatus:
+        return StepStatus(
+            name=self.name,
+            total_idx_count=self.meta_table.get_metadata_size(),
+            changed_idx_count=self.get_changed_idx_count(ds),
+        )
 
     def get_changed_idx_count(
         self,

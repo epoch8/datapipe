@@ -348,19 +348,16 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
         extra_args = {}
 
         if status:
-            if len(step.input_dts) > 0:
-                try:
-                    if isinstance(step, BaseBatchTransformStep):
-                        changed_idx_count = step.get_changed_idx_count(ds=app.ds)
-
-                        if changed_idx_count > 0:
-                            extra_args[
-                                "changed_idx_count"
-                            ] = f"[red]{changed_idx_count}[/red]"
-
-                except NotImplementedError:
-                    # Currently we do not support empty join_keys
-                    extra_args["changed_idx_count"] = "[red]N/A[/red]"
+            try:
+                step_status = step.get_status(ds=app.ds)
+                extra_args["total_idx_count"] = str(step_status.total_idx_count)
+                extra_args["changed_idx_count"] = (
+                    f"[red]{step_status.changed_idx_count}[/red]"
+                )
+            except NotImplementedError:
+                # Currently we do not support empty join_keys
+                extra_args["total_idx_count"] = "[red]N/A[/red]"
+                extra_args["changed_idx_count"] = "[red]N/A[/red]"
 
         rprint(to_human_repr(step, extra_args=extra_args))
         rprint("")
