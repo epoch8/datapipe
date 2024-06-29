@@ -1,6 +1,7 @@
 # WIP 0.13.13
 
 * Add `ComputeStep.get_status` method
+* Remove restriction for Pandas < 2.2
 
 # 0.13.12
 
