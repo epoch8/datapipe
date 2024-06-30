@@ -68,13 +68,13 @@ jobs:
           #   test-db-env: "sqlite"
           - python-version: "3.11"
             test-db-env: "postgres"
-            pip-extra: "'sqlalchemy<2' 'pandas<2.2'"
+            pip-extra: '"sqlalchemy<2" "pandas<2.2"'
           - python-version: "3.11"
             test-db-env: "postgres"
-            pip-extra: "'sqlalchemy>2'"
+            pip-extra: '"sqlalchemy>2"'
           - python-version: "3.11"
             test-db-env: "sqlite"
-            pip-extra: "'sqlalchemy>2'"
+            pip-extra: '"sqlalchemy>2"'
 
     services:
       # Label used to access the service container
