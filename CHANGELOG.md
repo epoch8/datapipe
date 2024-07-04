@@ -1,3 +1,11 @@
+# 0.14.0
+
+## Significant changes
+
+* `DatapipeApp` becomes main entry point to work with pipeline
+* BatchTransform metadata has status "pending"/"clean"/"failed"
+* `DatapipeApp.ingest_data` updates BatchTransform metadata on write
+
 # 0.13.13
 
 * Add `ComputeStep.get_status` method
