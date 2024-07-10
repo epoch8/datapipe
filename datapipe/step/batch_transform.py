@@ -24,6 +24,7 @@ from opentelemetry import trace
 from sqlalchemy import (
     Boolean,
     Column,
+    Enum,
     Float,
     Integer,
     String,
@@ -83,14 +84,6 @@ class DatatableBatchTransformFunc(Protocol):
 BatchTransformFunc = Callable[..., TransformResult]
 
 
-TRANSFORM_META_SCHEMA: DataSchema = [
-    Column("process_ts", Float),  # Время последней успешной обработки
-    Column("is_success", Boolean),  # Успешно ли обработана строка
-    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
-    Column("error", String),  # Текст ошибки
-]
-
-
 class TransformMetaTable:
     def __init__(
         self,
@@ -104,7 +97,17 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
+        self.sql_schema = [i._copy() for i in primary_schema] + [
+            Column("update_ts", Float),  # Время последнего обновления
+            Column("process_ts", Float),  # Время последней успешной обработки
+            Column("priority", Integer),  # Приоритет обработки
+            Column(
+                "status",
+                Enum("pending", "clean", "failed", name="transform_status"),
+                index=True,
+            ),
+            Column("error", String),  # Текст ошибки
+        ]
 
         self.sql_table = Table(
             name,
@@ -151,7 +154,42 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
-    def mark_rows_processed_success(
+    def mark_rows_pending(
+        self,
+        idx: IndexDF,
+        update_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys].drop_duplicates().dropna())
+        if len(idx) == 0:
+            return
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "update_ts": update_ts,
+                    "process_ts": 0,
+                    "status": "pending",
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "update_ts": update_ts,
+                "status": "pending",
+                "error": None,
+            },
+        )
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_clean(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -167,7 +205,7 @@ class TransformMetaTable:
             [
                 {
                     "process_ts": process_ts,
-                    "is_success": True,
+                    "status": "clean",
                     "priority": 0,
                     "error": None,
                     **idx_dict,  # type: ignore
@@ -180,7 +218,7 @@ class TransformMetaTable:
             index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
-                "is_success": True,
+                "status": "clean",
                 "error": None,
             },
         )
@@ -189,7 +227,7 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
-    def mark_rows_processed_error(
+    def mark_rows_failed(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -205,8 +243,9 @@ class TransformMetaTable:
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
                 {
+                    "update_ts": 0,
                     "process_ts": process_ts,
-                    "is_success": False,
+                    "status": "failed",
                     "priority": 0,
                     "error": error,
                     **idx_dict,  # type: ignore
@@ -219,7 +258,7 @@ class TransformMetaTable:
             index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
-                "is_success": False,
+                "status": "failed",
                 "error": error,
             },
         )
@@ -227,6 +266,19 @@ class TransformMetaTable:
         # execute
         with self.dbconn.con.begin() as con:
             con.execute(sql)
+
+    def get_metadata(self) -> pd.DataFrame:
+        with self.dbconn.con.begin() as con:
+            res = con.execute(
+                select(
+                    *[self.sql_table.c[i] for i in self.sql_table.columns.keys()]
+                ).select_from(self.sql_table)
+            ).fetchall()
+
+        if len(res) == 0 or (len(res) == 1 and res[0] == ()):
+            return pd.DataFrame(columns=self.sql_table.columns.keys())
+        else:
+            return pd.DataFrame(res, columns=self.sql_table.columns.keys())
 
     def get_metadata_size(self) -> int:
         """
@@ -442,7 +494,7 @@ class BaseBatchTransformStep(ComputeStep):
         out: Any = (
             select(
                 *[column(k) for k in self.transform_keys]
-                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.status]
             )
             .select_from(tr_tbl)
             .group_by(*[column(k) for k in self.transform_keys])
@@ -470,10 +522,10 @@ class BaseBatchTransformStep(ComputeStep):
             .where(
                 or_(
                     and_(
-                        out.c.is_success == True,  # noqa
+                        out.c.status == "clean",  # noqa
                         inp.c.update_ts > out.c.process_ts,
                     ),
-                    out.c.is_success != True,  # noqa
+                    out.c.status != "clean",  # noqa
                     out.c.process_ts == None,  # noqa
                 )
             )
@@ -673,7 +725,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(
+        self.meta_table.mark_rows_clean(
             idx, process_ts=process_ts, run_config=run_config
         )
 
@@ -698,7 +750,7 @@ class BaseBatchTransformStep(ComputeStep):
             ),
         )
 
-        self.meta_table.mark_rows_processed_error(
+        self.meta_table.mark_rows_failed(
             idx,
             process_ts=process_ts,
             error=str(e),
@@ -713,6 +765,22 @@ class BaseBatchTransformStep(ComputeStep):
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta_table.mark_all_rows_unprocessed()
+
+    def notify_change_list(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        now: float | None = None,
+        run_config: RunConfig | None = None,
+    ) -> None:
+        now = now or time.time()
+
+        for idx in change_list.changes.values():
+            self.meta_table.mark_rows_pending(
+                idx,
+                update_ts=now,
+                run_config=run_config,
+            )
 
     def get_batch_input_dfs(
         self,

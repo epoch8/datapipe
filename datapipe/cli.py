@@ -175,8 +175,9 @@ def cli(
         )
         trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(cloud_trace_exporter))  # type: ignore
 
+    executor_instance: Executor
     if executor == "SingleThreadExecutor":
-        ctx.obj["executor"] = SingleThreadExecutor()
+        executor_instance = SingleThreadExecutor()
     elif executor == "RayExecutor":
         import ray
 
@@ -184,12 +185,14 @@ def cli(
 
         ray_ctx = ray.init()
 
-        ctx.obj["executor"] = RayExecutor()
+        executor_instance = RayExecutor()
     else:
         raise ValueError(f"Unknown executor: {executor}")
 
+    ctx.obj["executor"] = executor_instance
+
     with tracer.start_as_current_span("init"):
-        ctx.obj["pipeline"] = load_pipeline(pipeline)
+        ctx.obj["pipeline"] = load_pipeline(pipeline).with_executor(executor_instance)
 
 
 @cli.group()
