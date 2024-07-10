@@ -15,7 +15,7 @@ jobs:
       matrix:
         python-version:
           # - "3.8"
-          # - "3.9"
+          - "3.9"
           - "3.10"
 
     steps:
@@ -53,13 +53,14 @@ jobs:
           # - python-version: "3.8"
           #   test-db-env: "postgres"
           #   pip-extra: "sqlalchemy <2"
-          - python-version: "3.8"
-            test-db-env: "postgres"
-            pip-extra: "'sqlalchemy>2'"
+          # - python-version: "3.8"
+          #   test-db-env: "postgres"
+          #   pip-extra: "'sqlalchemy>2'"
           # - python-version: "3.8"
           #   test-db-env: "sqlite"
-          # - python-version: "3.9"
-          #   test-db-env: "postgres"
+          - python-version: "3.9"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>2"'
           # - python-version: "3.9"
           #   test-db-env: "sqlite"
           # - python-version: "3.10"
