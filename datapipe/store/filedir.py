@@ -241,7 +241,7 @@ class TableStoreFiledir(TableStore):
         self.attrnames = _pattern_to_attrnames(filename_pattern)
         self.filename_glob = [_pattern_to_glob(pat) for pat in self.filename_patterns]
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
-        self.filename_match_first_suffix = _pattern_to_match(self.filename_patterns[0])
+        self.filename_match_suffixes = [_pattern_to_match(pattern) for pattern in self.filename_patterns]
 
         # Any * and ** pattern check
         if "*" in path:
@@ -494,8 +494,10 @@ class TableStoreFiledir(TableStore):
         filepaths = []
 
         for f in files:
-            m = re.match(self.filename_match_first_suffix, f"{self.protocol_str}{f.path}")
-
+            for filemath_match_suffix in self.filename_match_suffixes:
+                m = re.match(filemath_match_suffix, f"{self.protocol_str}{f.path}")
+                if m is not None:
+                    break
             if m is None:
                 continue
 
