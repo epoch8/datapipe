@@ -105,6 +105,7 @@ class BatchGenerate(PipelineStep):
                         output_dts=output_dts,
                         run_config=run_config,
                         kwargs=kwargs,
+                        delete_stale=self.delete_stale
                     ),
                 ),
                 input_dts=[],
