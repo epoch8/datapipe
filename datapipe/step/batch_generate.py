@@ -28,8 +28,8 @@ def do_batch_generate(
     ds: DataStore,
     output_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
-    kwargs: Optional[Dict] = None,
     delete_stale: bool = True,
+    kwargs: Optional[Dict] = None,
 ) -> None:
     """
     Создание новой таблицы из результатов запуска `proc_func`.
@@ -99,13 +99,13 @@ class BatchGenerate(PipelineStep):
                 name=self.func.__name__,
                 func=cast(
                     DatatableTransformFunc,
-                    lambda ds, input_dts, output_dts, run_config, kwargs, delete_stale: do_batch_generate(
+                    lambda ds, input_dts, output_dts, run_config, kwargs: do_batch_generate(
                         func=self.func,
                         ds=ds,
                         output_dts=output_dts,
                         run_config=run_config,
+                        delete_stale=self.delete_stale,
                         kwargs=kwargs,
-                        delete_stale=delete_stale,
                     ),
                 ),
                 input_dts=[],
