@@ -99,12 +99,13 @@ class BatchGenerate(PipelineStep):
                 name=self.func.__name__,
                 func=cast(
                     DatatableTransformFunc,
-                    lambda ds, input_dts, output_dts, run_config, kwargs: do_batch_generate(
+                    lambda ds, input_dts, output_dts, run_config, kwargs, delete_stale: do_batch_generate(
                         func=self.func,
                         ds=ds,
                         output_dts=output_dts,
                         run_config=run_config,
                         kwargs=kwargs,
+                        delete_stale=delete_stale,
                     ),
                 ),
                 input_dts=[],
