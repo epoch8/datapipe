@@ -1,3 +1,7 @@
+# 0.13.14
+
+* Fix [#334](https://github.com/epoch8/datapipe/issues/334)
+
 # 0.13.13
 
 * Add `ComputeStep.get_status` method
