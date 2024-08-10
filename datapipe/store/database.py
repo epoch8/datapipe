@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func, text
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -138,7 +138,7 @@ class TableStoreDB(TableStore):
         dbconn: Union["DBConn", str],
         name: Optional[str] = None,
         data_sql_schema: Optional[List[Column]] = None,
-        orm_table: Optional[Type[DeclarativeBase]] = None,
+        orm_table: Optional[Type[DeclarativeMeta]] = None,
         create_table: bool = False,
     ) -> None:
         if isinstance(dbconn, str):
@@ -152,7 +152,8 @@ class TableStoreDB(TableStore):
                 data_sql_schema is None
             ), "data_sql_schema should be None if orm_table is provided"
 
-            self.data_table = cast(Table, orm_table.__table__)
+            orm_table__table = orm_table.__table__  # type: ignore
+            self.data_table = cast(Table, orm_table__table)
 
             self.name = self.data_table.name
 
