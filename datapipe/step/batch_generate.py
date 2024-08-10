@@ -14,7 +14,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, TransformResult, cast
+from datapipe.types import Labels, OrmTableOrName, TransformResult, cast
 
 logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")
@@ -88,7 +88,7 @@ def do_batch_generate(
 @dataclass
 class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
-    outputs: List[str]
+    outputs: List[OrmTableOrName]
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
     delete_stale: bool = True

@@ -1,24 +1,12 @@
 import copy
 import logging
 import math
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func, text
-from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -27,7 +15,7 @@ from sqlalchemy.sql.expression import delete, select
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, TAnyDF
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -139,7 +127,7 @@ class TableStoreDB(TableStore):
         name: Optional[str] = None,
         data_sql_schema: Optional[List[Column]] = None,
         create_table: bool = False,
-        orm_table: Optional[Type[DeclarativeMeta]] = None,
+        orm_table: Optional[OrmTable] = None,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)

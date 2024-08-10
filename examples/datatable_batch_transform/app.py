@@ -20,9 +20,6 @@ class Base(DeclarativeBase):
     pass
 
 
-dbconn = DBConn("sqlite+pysqlite3:///db.sqlite", sqla_metadata=Base.metadata)
-
-
 class Input(Base):
     __tablename__ = "input"
 
@@ -35,24 +32,6 @@ class Output(Base):
 
     group_id = Column(Integer, primary_key=True)
     count = Column(Integer)
-
-
-catalog = Catalog(
-    {
-        "input": Table(
-            store=TableStoreDB(
-                dbconn=dbconn,
-                orm_table=Input,
-            )
-        ),
-        "result": Table(
-            store=TableStoreDB(
-                dbconn=dbconn,
-                orm_table=Output,
-            ),
-        ),
-    }
-)
 
 
 def generate_data():
@@ -108,17 +87,18 @@ pipeline = Pipeline(
     [
         BatchGenerate(
             generate_data,
-            outputs=["input"],
+            outputs=[Input],
         ),
         DatatableBatchTransform(
             count_tbl,
-            inputs=["input"],
-            outputs=["result"],
+            inputs=[Input],
+            outputs=[Output],
         ),
     ]
 )
 
 
+dbconn = DBConn("sqlite+pysqlite3:///db.sqlite", sqla_metadata=Base.metadata)
 ds = DataStore(dbconn)
 
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds=ds, catalog=Catalog({}), pipeline=pipeline)
