@@ -157,7 +157,15 @@ class TableStoreDB(TableStore):
             self.name = self.data_table.name
 
             self.data_sql_schema = [
-                copy.copy(column) for column in self.data_table.columns
+                Column(
+                    column.name,
+                    column.type,
+                    primary_key=column.primary_key,
+                    nullable=column.nullable,
+                    unique=column.unique,
+                    *column.constraints,
+                )
+                for column in self.data_table.columns
             ]
             self.data_keys = [
                 column.name for column in self.data_sql_schema if not column.primary_key
