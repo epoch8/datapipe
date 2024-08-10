@@ -690,12 +690,16 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> None:
         run_config = self._apply_filters_to_run_config(run_config)
 
-        logger.error(f"Process batch failed: {str(e)}")
+        idx_records = idx.to_dict(orient="records")
+
+        logger.error(
+            f"Process batch in transform {self.name} on idx {idx_records} failed: {str(e)}"
+        )
         ds.event_logger.log_exception(
             e,
             run_config=RunConfig.add_labels(
                 run_config,
-                {"idx": idx.to_dict(orient="records"), "process_ts": process_ts},
+                {"idx": idx_records, "process_ts": process_ts},
             ),
         )
 
