@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 from sqlalchemy import Integer
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import functions, select
 from sqlalchemy.sql.schema import Column
 
@@ -23,15 +23,15 @@ class Base(DeclarativeBase):
 class Input(Base):
     __tablename__ = "input"
 
-    group_id = Column(Integer, primary_key=True)
-    item_id = Column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(primary_key=True)
 
 
 class Output(Base):
     __tablename__ = "output"
 
-    group_id = Column(Integer, primary_key=True)
-    count = Column(Integer)
+    group_id: Mapped[int] = mapped_column(primary_key=True)
+    count: Mapped[int]
 
 
 def generate_data():
