@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, FromClause, MetaData, Table, create_engine, func, text
+from sqlalchemy import Column, MetaData, Table, create_engine, func, text
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
