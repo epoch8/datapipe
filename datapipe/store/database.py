@@ -138,8 +138,8 @@ class TableStoreDB(TableStore):
         dbconn: Union["DBConn", str],
         name: Optional[str] = None,
         data_sql_schema: Optional[List[Column]] = None,
-        orm_table: Optional[Type[DeclarativeMeta]] = None,
         create_table: bool = False,
+        orm_table: Optional[Type[DeclarativeMeta]] = None,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
