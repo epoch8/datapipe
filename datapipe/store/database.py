@@ -1,12 +1,24 @@
 import copy
 import logging
 import math
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 
 import numpy as np
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Column, MetaData, Table, create_engine, func, text
+from sqlalchemy import Column, FromClause, MetaData, Table, create_engine, func, text
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -27,15 +39,17 @@ class DBConn:
         connstr: str,
         schema: Optional[str] = None,
         create_engine_kwargs: Optional[Dict[str, Any]] = None,
+        sqla_metadata: Optional[MetaData] = None,
     ):
         create_engine_kwargs = create_engine_kwargs or {}
-        self._init(connstr, schema, create_engine_kwargs)
+        self._init(connstr, schema, create_engine_kwargs, sqla_metadata)
 
     def _init(
         self,
         connstr: str,
         schema: Optional[str],
         create_engine_kwargs: Dict[str, Any],
+        sqla_metadata: Optional[MetaData] = None,
     ) -> None:
         self.connstr = connstr
         self.schema = schema
@@ -75,11 +89,14 @@ class DBConn:
                 poolclass=QueuePool,
                 pool_pre_ping=True,
                 pool_recycle=3600,
-                **create_engine_kwargs
+                **create_engine_kwargs,
                 # pool_size=25,
             )
 
-        self.sqla_metadata = MetaData(schema=schema)
+        if sqla_metadata is None:
+            self.sqla_metadata = MetaData(schema=schema)
+        else:
+            self.sqla_metadata = sqla_metadata
 
     def __reduce__(self) -> Tuple[Any, ...]:
         return self.__class__, (
@@ -119,28 +136,55 @@ class TableStoreDB(TableStore):
     def __init__(
         self,
         dbconn: Union["DBConn", str],
-        name: str,
-        data_sql_schema: List[Column],
+        name: Optional[str] = None,
+        data_sql_schema: Optional[List[Column]] = None,
+        orm_table: Optional[Type[DeclarativeBase]] = None,
         create_table: bool = False,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
         else:
             self.dbconn = dbconn
-        self.name = name
 
-        self.data_sql_schema = data_sql_schema
+        if orm_table is not None:
+            assert name is None, "name should be None if orm_table is provided"
+            assert (
+                data_sql_schema is None
+            ), "data_sql_schema should be None if orm_table is provided"
 
-        self.data_keys = [
-            column.name for column in self.data_sql_schema if not column.primary_key
-        ]
+            self.data_table = cast(Table, orm_table.__table__)
 
-        self.data_table = Table(
-            self.name,
-            self.dbconn.sqla_metadata,
-            *[copy.copy(i) for i in self.data_sql_schema],
-            extend_existing=True,
-        )
+            self.name = self.data_table.name
+
+            self.data_sql_schema = [
+                copy.copy(column) for column in self.data_table.columns
+            ]
+            self.data_keys = [
+                column.name for column in self.data_sql_schema if not column.primary_key
+            ]
+
+        else:
+            assert (
+                name is not None
+            ), "name should be provided if data_table is not provided"
+            assert (
+                data_sql_schema is not None
+            ), "data_sql_schema should be provided if data_table is not provided"
+
+            self.name = name
+
+            self.data_sql_schema = data_sql_schema
+
+            self.data_keys = [
+                column.name for column in self.data_sql_schema if not column.primary_key
+            ]
+
+            self.data_table = Table(
+                self.name,
+                self.dbconn.sqla_metadata,
+                *[copy.copy(i) for i in self.data_sql_schema],
+                extend_existing=True,
+            )
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)

@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlalchemy import Column, Integer, String
+import sqlalchemy as sa
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
@@ -36,8 +36,8 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="input.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("input_id", Integer, primary_key=True),
+                    sa.Column("pipeline_id", sa.String, primary_key=True),
+                    sa.Column("input_id", sa.Integer, primary_key=True),
                 ],
             )
         ),
@@ -45,8 +45,8 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="models.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("model_id", String, primary_key=True),
+                    sa.Column("pipeline_id", sa.String, primary_key=True),
+                    sa.Column("model_id", sa.String, primary_key=True),
                 ],
             )
         ),
@@ -54,9 +54,9 @@ catalog = Catalog(
             store=TableStoreJsonLine(
                 filename="output.jsonline",
                 primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("input_id", Integer, primary_key=True),
-                    Column("model_id", String, primary_key=True),
+                    sa.Column("pipeline_id", sa.String, primary_key=True),
+                    sa.Column("input_id", sa.Integer, primary_key=True),
+                    sa.Column("model_id", sa.String, primary_key=True),
                 ],
             )
         ),
