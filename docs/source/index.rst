@@ -6,8 +6,6 @@
     :hidden:
 
     introduction
-    first-steps
-    concepts
 
 .. toctree::
     :caption: Advanced Topics
@@ -17,7 +15,6 @@
     transformation-lifecycle
     sqlite
     extending-cli
-    how-merging-works
 
 .. toctree::
     :caption: Migration
@@ -26,12 +23,6 @@
 
     migration-v013-to-v014
 
-.. toctree::
-    :caption: Reference
-    :maxdepth: 2
-    :hidden:
-
-    api
 
 Index and Search
 ----------------
