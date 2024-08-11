@@ -1,16 +1,75 @@
 import pandas as pd
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, Boolean, Integer, String
+from sqlalchemy import JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
-from datapipe.store.database import DBConn, TableStoreDB
+from datapipe.store.database import DBConn
 
-dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
-# dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
-ds = DataStore(dbconn)
+
+class Base(DeclarativeBase):
+    pass
+
+
+class TestProducts(Base):
+    __tablename__ = "test_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    attributes: Mapped[dict] = mapped_column(type_=JSON)
+
+
+class TestAttrProducts(Base):
+    __tablename__ = "test_attr_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[int]
+
+
+class TestOzonProducts(Base):
+    __tablename__ = "test_ozon_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    attributes: Mapped[dict] = mapped_column(type_=JSON)
+
+
+class TestOffersProducts(Base):
+    __tablename__ = "test_offers_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    offers: Mapped[dict] = mapped_column(type_=JSON)
+
+
+class TestAllProducts(Base):
+    __tablename__ = "test_all_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    attributes_base: Mapped[dict] = mapped_column(type_=JSON)
+    attributes_new: Mapped[dict] = mapped_column(type_=JSON)
+
+
+class TestStoreProducts(Base):
+    __tablename__ = "test_store_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    attributes: Mapped[dict] = mapped_column(type_=JSON)
+    is_deleted: Mapped[bool]
+
+
+class TestFilterProducts(Base):
+    __tablename__ = "test_filter_products"
+
+    pipeline_id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(primary_key=True)
+    attributes: Mapped[dict] = mapped_column(type_=JSON)
 
 
 def generate_products():
@@ -109,9 +168,9 @@ def gen_product_store(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     merged_df = pd.merge(df1, df2, how="outer", left_on=keys, right_on=keys)
 
     merged_df["attributes"] = merged_df.apply(
-        lambda x: x["attributes_x"]
-        if pd.notna(x["attributes_x"])
-        else x["attributes_y"],
+        lambda x: (
+            x["attributes_x"] if pd.notna(x["attributes_x"]) else x["attributes_y"]
+        ),
         axis=1,
     )
     merged_df["is_deleted"] = merged_df.apply(
@@ -125,132 +184,57 @@ def filter(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["pipeline_id"] == 1]
 
 
-catalog = Catalog(
-    {
-        "test_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("attributes", JSON),
-                ],
-            )
-        ),
-        "test_attr_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_attr_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("name", String(), primary_key=True),
-                    Column("value", Integer()),
-                ],
-            )
-        ),
-        "test_ozon_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_ozon_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("attributes", JSON),
-                ],
-            )
-        ),
-        "test_offers_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_offers_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("name", String(), primary_key=True),
-                    Column("offers", JSON),
-                ],
-            )
-        ),
-        "test_all_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_all_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("attributes_base", JSON),
-                    Column("attributes_new", JSON),
-                ],
-            )
-        ),
-        "test_store_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_store_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("attributes", JSON),
-                    Column("is_deleted", Boolean()),
-                ],
-            )
-        ),
-        "test_filter_products": Table(
-            store=TableStoreDB(
-                dbconn,
-                "test_filter_products_data",
-                [
-                    Column("pipeline_id", Integer(), primary_key=True),
-                    Column("offer_id", Integer(), primary_key=True),
-                    Column("attributes", JSON),
-                ],
-            )
-        ),
-    }
-)
-
 pipeline = Pipeline(
     [
-        BatchGenerate(generate_products, outputs=["test_products"]),
+        BatchGenerate(generate_products, outputs=[TestProducts]),
         BatchTransform(
             unpack_attr,
-            inputs=["test_products"],
-            outputs=["test_attr_products"],
+            inputs=[TestProducts],
+            outputs=[TestAttrProducts],
             chunk_size=2,
         ),
         BatchTransform(
             pack_attr,
-            inputs=["test_attr_products"],
-            outputs=["test_ozon_products"],
+            inputs=[TestAttrProducts],
+            outputs=[TestOzonProducts],
             chunk_size=2,
         ),
         BatchTransform(
             pack_offers,
-            inputs=["test_attr_products"],
-            outputs=["test_offers_products"],
+            inputs=[TestAttrProducts],
+            outputs=[TestOffersProducts],
             chunk_size=2,
         ),
         BatchTransform(
             gen_product_all,
-            inputs=["test_products", "test_ozon_products"],
-            outputs=["test_all_products"],
+            inputs=[TestProducts, TestOzonProducts],
+            outputs=[TestAllProducts],
             chunk_size=2,
         ),
         BatchTransform(
             gen_product_store,
-            inputs=["test_products", "test_store_products"],
-            outputs=["test_store_products"],
+            inputs=[TestProducts, TestStoreProducts],
+            outputs=[TestStoreProducts],
             chunk_size=2,
         ),
         BatchTransform(
             filter,
-            inputs=["test_products"],
-            outputs=["test_filter_products"],
+            inputs=[TestProducts],
+            outputs=[TestFilterProducts],
             chunk_size=2,
         ),
     ]
 )
 
 
-app = DatapipeApp(ds, catalog, pipeline)
+dbconn = DBConn("sqlite+pysqlite3:///db.sqlite", sqla_metadata=Base.metadata)
+# dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
+ds = DataStore(dbconn)
+app = DatapipeApp(ds, Catalog({}), pipeline)
+
+
+if __name__ == "__main__":
+    from datapipe.compute import run_steps
+
+    ds.meta_dbconn.sqla_metadata.create_all(ds.meta_dbconn.con)
+    run_steps(app.ds, app.steps)

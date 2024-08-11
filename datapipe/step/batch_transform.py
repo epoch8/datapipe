@@ -58,7 +58,7 @@ from datapipe.types import (
     IndexDF,
     Labels,
     MetaSchema,
-    OrmTableOrName,
+    TableOrName,
     TransformResult,
     data_to_index,
 )
@@ -870,8 +870,8 @@ class BaseBatchTransformStep(ComputeStep):
 @dataclass
 class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
-    inputs: List[OrmTableOrName]
-    outputs: List[OrmTableOrName]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     chunk_size: int = 1000
     transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
@@ -940,8 +940,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 @dataclass
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
-    inputs: List[OrmTableOrName]
-    outputs: List[OrmTableOrName]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
     transform_keys: Optional[List[str]] = None

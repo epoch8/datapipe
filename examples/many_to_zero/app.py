@@ -12,25 +12,6 @@ from datapipe.step.datatable_transform import DatatableTransform
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 
-catalog = Catalog(
-    {
-        "input": Table(
-            store=TableStoreJsonLine(
-                filename="input.json",
-                primary_schema=[
-                    Column("id", Integer, primary_key=True),
-                ],
-            )
-        ),
-        "result": Table(
-            store=TableStoreJsonLine(
-                filename="result.json",
-                primary_schema=[Column("result_id", Integer, primary_key=True)],
-            )
-        ),
-    }
-)
-
 
 def generate_data():
     yield pd.DataFrame(
@@ -61,16 +42,35 @@ def count(
     )
 
 
+input_tbl = Table(
+    name="input",
+    store=TableStoreJsonLine(
+        filename="input.json",
+        primary_schema=[
+            Column("id", Integer, primary_key=True),
+        ],
+    ),
+)
+
+result_tbl = Table(
+    name="result",
+    store=TableStoreJsonLine(
+        filename="result.json",
+        primary_schema=[Column("result_id", Integer, primary_key=True)],
+    ),
+)
+
+
 pipeline = Pipeline(
     [
         BatchGenerate(
             generate_data,
-            outputs=["input"],
+            outputs=[input_tbl],
         ),
         DatatableTransform(
             count,  # type: ignore
-            inputs=["input"],
-            outputs=["result"],
+            inputs=[input_tbl],
+            outputs=[result_tbl],
             check_for_changes=False,
         ),
     ]
@@ -79,4 +79,4 @@ pipeline = Pipeline(
 
 ds = DataStore(DBConn("sqlite+pysqlite3:///db.sqlite"))
 
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds, Catalog({}), pipeline)
