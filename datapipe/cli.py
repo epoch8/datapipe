@@ -513,7 +513,7 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
-for entry_point in metadata.entry_points().get("datapipe.cli", []):
+for entry_point in metadata.entry_points(group="datapipe.cli"):
     register_commands = entry_point.load()
     register_commands(cli)
 
