@@ -197,9 +197,9 @@ def table():
     pass
 
 
-@table.command()
+@table.command(name="list")
 @click.pass_context
-def list(ctx: click.Context) -> None:
+def table_list(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     for table in sorted(app.catalog.catalog.keys()):
@@ -337,10 +337,10 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     return "\n".join(res)
 
 
-@step.command()  # type: ignore
+@step.command(name="list")  # type: ignore
 @click.option("--status", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
-def list(ctx: click.Context, status: bool) -> None:  # noqa
+def step_list(ctx: click.Context, status: bool) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps: List[ComputeStep] = ctx.obj["steps"]
 
