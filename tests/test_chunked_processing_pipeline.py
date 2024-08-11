@@ -569,7 +569,7 @@ def test_stale_records_deletion_with_batch_generate(dbconn):
                 func=add_inp_table,
                 outputs=["inp_del"],
                 delete_stale=True,  # Default behavior, deletes records that are not yielded by func
-                kwargs=dict(bg_count={"value": 0}),  # to avoid double counting
+                kwargs=dict(bg_count=bg_count),  # to avoid double counting
             ),
         ]
     )
