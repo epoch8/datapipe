@@ -1,14 +1,11 @@
-from typing import Dict, List, Optional
-
 import pandas as pd
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
-from datapipe.datatable import DataStore, DataTable
-from datapipe.run_config import RunConfig
+from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
-from datapipe.step.datatable_transform import DatatableTransform
+from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
 
@@ -23,23 +20,9 @@ def generate_data():
 
 
 def count(
-    ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    kwargs: Dict,
-    run_config: Optional[RunConfig] = None,
-) -> None:
-    assert len(input_dts) == 1
-    assert len(output_dts) == 1
-
-    input_dt = input_dts[0]
-    output_dt = output_dts[0]
-
-    output_dt.store_chunk(
-        pd.DataFrame(
-            {"result_id": [0], "count": [len(input_dt.meta_table.get_existing_idx())]}
-        )
-    )
+    input_df: pd.DataFrame,
+) -> pd.DataFrame:
+    return pd.DataFrame({"result_id": [0], "count": [len(input_df)]})
 
 
 input_tbl = Table(
@@ -67,11 +50,11 @@ pipeline = Pipeline(
             generate_data,
             outputs=[input_tbl],
         ),
-        DatatableTransform(
-            count,  # type: ignore
+        BatchTransform(
+            count,
             inputs=[input_tbl],
             outputs=[result_tbl],
-            check_for_changes=False,
+            transform_keys=[],
         ),
     ]
 )
@@ -80,3 +63,9 @@ pipeline = Pipeline(
 ds = DataStore(DBConn("sqlite+pysqlite3:///db.sqlite"))
 
 app = DatapipeApp(ds, Catalog({}), pipeline)
+
+
+if __name__ == "__main__":
+    from datapipe.compute import run_steps
+
+    run_steps(ds, app.steps, None, None)

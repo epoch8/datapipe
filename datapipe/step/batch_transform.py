@@ -164,31 +164,55 @@ class TransformMetaTable:
         if len(idx) == 0:
             return
 
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
+        if idx.empty:
+            # DataFrame считает, что он пустой, если в нем нет колонок
+            # При этом мы хотим создать строки в БД
+
+            # Мы можем обработать только случай с одной строкой
+            assert len(idx) == 1
+
+            with self.dbconn.con.begin() as con:
+                insert_sql = self.dbconn.insert(self.sql_table).values(
+                    [
+                        {
+                            "process_ts": process_ts,
+                            "is_success": True,
+                            "priority": 0,
+                            "error": None,
+                        }
+                    ]
+                )
+
+                # удалить все из таблицы
+                con.execute(self.sql_table.delete())
+                con.execute(insert_sql)
+
+        else:
+            insert_sql = self.dbconn.insert(self.sql_table).values(
+                [
+                    {
+                        "process_ts": process_ts,
+                        "is_success": True,
+                        "priority": 0,
+                        "error": None,
+                        **idx_dict,  # type: ignore
+                    }
+                    for idx_dict in idx.to_dict(orient="records")
+                ]
+            )
+
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.primary_keys,
+                set_={
                     "process_ts": process_ts,
                     "is_success": True,
-                    "priority": 0,
                     "error": None,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
+                },
+            )
 
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                "process_ts": process_ts,
-                "is_success": True,
-                "error": None,
-            },
-        )
-
-        # execute
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            # execute
+            with self.dbconn.con.begin() as con:
+                con.execute(sql)
 
     def mark_rows_processed_error(
         self,
@@ -295,6 +319,11 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         self.chunk_size = chunk_size
+
+        # Force transform_keys to be a list, otherwise Pandas will not be happy
+        if transform_keys is not None and not isinstance(transform_keys, list):
+            transform_keys = list(transform_keys)
+
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             [i.meta_table for i in input_dts],
             [i.meta_table for i in output_dts],
@@ -358,9 +387,6 @@ class BaseBatchTransformStep(ComputeStep):
         order: Literal["asc", "desc"] = "asc",
         run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Tuple[Iterable[str], Any]:
-        if len(self.transform_keys) == 0:
-            raise NotImplementedError()
-
         all_input_keys_counts: Dict[str, int] = {}
         for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
@@ -432,11 +458,6 @@ class BaseBatchTransformStep(ComputeStep):
             for tbl in self.input_dts
         ]
 
-        # Filter out ctes that do not have intersection with transform keys.
-        # These ctes do not affect the result, but may dramatically increase
-        # size of the temporary table during query execution.
-        inp_ctes = [(keys, cte) for (keys, cte) in inp_ctes if len(keys) > 0]
-
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
 
         tr_tbl = self.meta_table.sql_table
@@ -453,8 +474,22 @@ class BaseBatchTransformStep(ComputeStep):
 
         out = out.cte(name="transform")
 
+        if len(self.transform_keys) == 0:
+            join_onclause_sql: Any = literal(True)
+        elif len(self.transform_keys) == 1:
+            join_onclause_sql = (
+                inp.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
+            )
+        else:  # len(self.transform_keys) > 1:
+            join_onclause_sql = and_(
+                *[inp.c[key] == out.c[key] for key in self.transform_keys]
+            )
+
         sql = (
             select(
+                # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
+                # пустом self.transform_keys
+                literal(1).label("_datapipe_dummy"),
                 *[
                     func.coalesce(inp.c[key], out.c[key]).label(key)
                     for key in self.transform_keys
@@ -463,9 +498,7 @@ class BaseBatchTransformStep(ComputeStep):
             .select_from(inp)
             .outerjoin(
                 out,
-                onclause=and_(
-                    *[inp.c[key] == out.c[key] for key in self.transform_keys]
-                ),
+                onclause=join_onclause_sql,
                 full=True,
             )
             .where(
@@ -586,6 +619,8 @@ class BaseBatchTransformStep(ComputeStep):
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                        df = df[self.transform_keys]
+
                         for k, v in extra_filters.items():
                             df[k] = v
 
@@ -617,6 +652,7 @@ class BaseBatchTransformStep(ComputeStep):
                                 sql,
                                 con=con,
                             )
+                            table_changes_df = table_changes_df[self.transform_keys]
 
                         changes.append(table_changes_df)
                     else:
