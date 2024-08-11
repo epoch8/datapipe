@@ -3,14 +3,18 @@
 .. toctree::
     :caption: Introduction
     :maxdepth: 2
-    :hidden:
 
     introduction
 
 .. toctree::
+    :caption: Command Line Interface
+    :maxdepth: 2
+
+    cli
+
+.. toctree::
     :caption: Advanced Topics
     :maxdepth: 2
-    :hidden:
 
     transformation-lifecycle
     sqlite
@@ -19,7 +23,6 @@
 .. toctree::
     :caption: Migration
     :maxdepth: 2
-    :hidden:
 
     migration-v013-to-v014
 

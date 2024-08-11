@@ -27,5 +27,5 @@ Plugin can expect some information in `click.Context`:
 
 ## Example
 
-To see example of extending `datapipe` cli see
-[`datapipe_app.cli`](https://github.com/epoch8/datapipe-app/blob/master/datapipe_app/cli.py)
+To see example of extending `datapipe` cli see `datapipe_app.cli`:
+[https://github.com/epoch8/datapipe-app/blob/master/datapipe_app/cli.py](https://github.com/epoch8/datapipe-app/blob/master/datapipe_app/cli.py)
