@@ -1,7 +1,27 @@
+# 0.13.14
+
+* Fix [#334](https://github.com/epoch8/datapipe/issues/334)
+
+# 0.13.13
+
+* Add `ComputeStep.get_status` method
+* Remove restriction for Pandas < 2.2
+
+# 0.13.12
+
+* Add processing of an empty response in `QdrantStore`
+* Add optional `index_schema` to `QdrantStore`
+* Add redis cluster mode support in `RedisStore`
+
+# 0.13.11
+
+* Remove logging to database (`datapipe_events` table) from `EventLogger`
+
 # 0.13.10
 
 * Fix compatibility with SQLalchemy < 2 (ColumnClause in typing)
 * Fix compatibility with Ray and SQLalchemy > 2 (serialization of Table)
+* (post.1) Fix dependencies for MacOS; deprecate Python 3.8
 
 # 0.13.9
 
@@ -540,6 +560,28 @@
 Было: `DataTable(meta_store, name, data_store)`
 
 Стало: `DataTable(name, meta_store.create_meta_table(name), data_store)`
+
+# 0.5.0
+
+* Добавился прототип debug ui. Запускается с помощью команды `python script.py ui`
+
+# 0.4.0
+
+**Значимый рефакторинг**
+
+* Корневой модуль переименован `c12n_pipe` → `datapipe`
+* Реализован новый модуль `datapipe.dsl` для декларативного описания пайплайнов. 
+  Пример использования: `examples/goal_v0.4.0.py`
+* Описание пайплайна отделено от способа выполнения → есть возможность написать 
+  конвертер в другой рантайм, например Prefect
+* Переписана логика работы `MetaStore`, теперь всеми мета-таблицами `MetaStore` 
+  владеет в явном виде, а потребители информации обращаются к ним по имени
+* Реализовано хранение данных таблиц в отделяемых хранилищах (хранение в БД - один 
+  из способов)
+    * `database.TableStoreDB` - хранение данных в таблице БД
+    * `filedir.TableStoreFiledir` - хранение данных в виде папки с файлами (плюс 
+      описаны адаптеры для разных типов файлов)
+    * `pandas.TableStoreJsonLine` - хранение данных в виде одного jsonline файла
 
 # 0.2.0 (2021-02-01)
 - Add major code with Label Studio implementation
