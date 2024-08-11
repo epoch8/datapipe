@@ -77,6 +77,9 @@ jobs:
           - python-version: "3.11"
             test-db-env: "sqlite"
             pip-extra: '"sqlalchemy>2"'
+          - python-version: "3.12"
+            test-db-env: "sqlite"
+            pip-extra: '"sqlalchemy>2"'
 
     services:
       # Label used to access the service container
