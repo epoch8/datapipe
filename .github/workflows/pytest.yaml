@@ -2,10 +2,11 @@ name: Run tests
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "examples/**"
+    paths:
+      - ".github/workflows/pytest.yaml"
+      - "datapipe/**"
+      - "tests/**"
+      - "pyproject.toml"
 
 
 jobs:

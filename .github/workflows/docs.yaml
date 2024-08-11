@@ -2,6 +2,10 @@ name: Build and publish docs
 
 on:
   push:
+    paths:
+      - ".github/workflows/docs.yaml"
+      - "docs/**"
+      - "pyproject.toml"
 
 jobs:
   # Build job
