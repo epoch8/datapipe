@@ -8,7 +8,7 @@ from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
-from datapipe.types import Labels
+from datapipe.types import Labels, TableOrName
 
 logger = logging.getLogger("datapipe.step.datatable_transform")
 tracer = trace.get_tracer("datapipe.step.datatable_transform")
@@ -25,8 +25,7 @@ class DatatableTransformFunc(Protocol):
         run_config: Optional[RunConfig],
         # Возможно, лучше передавать как переменную, а не  **
         **kwargs,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class DatatableTransformStep(ComputeStep):
@@ -92,8 +91,8 @@ class DatatableTransformStep(ComputeStep):
 @dataclass
 class DatatableTransform(PipelineStep):
     func: DatatableTransformFunc
-    inputs: List[str]
-    outputs: List[str]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     check_for_changes: bool = True
     kwargs: Optional[Dict[str, Any]] = None
     labels: Optional[Labels] = None

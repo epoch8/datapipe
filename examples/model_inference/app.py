@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlalchemy import Column, Integer, String
+import sqlalchemy as sa
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
@@ -30,55 +30,56 @@ def apply_model(input_df: pd.DataFrame, model_df: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
-catalog = Catalog(
-    {
-        "input": Table(
-            store=TableStoreJsonLine(
-                filename="input.jsonline",
-                primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("input_id", Integer, primary_key=True),
-                ],
-            )
-        ),
-        "models": Table(
-            store=TableStoreJsonLine(
-                filename="models.jsonline",
-                primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("model_id", String, primary_key=True),
-                ],
-            )
-        ),
-        "output": Table(
-            store=TableStoreJsonLine(
-                filename="output.jsonline",
-                primary_schema=[
-                    Column("pipeline_id", String, primary_key=True),
-                    Column("input_id", Integer, primary_key=True),
-                    Column("model_id", String, primary_key=True),
-                ],
-            )
-        ),
-    }
+input_tbl = Table(
+    name="input",
+    store=TableStoreJsonLine(
+        filename="input.jsonline",
+        primary_schema=[
+            sa.Column("pipeline_id", sa.String, primary_key=True),
+            sa.Column("input_id", sa.Integer, primary_key=True),
+        ],
+    ),
+)
+
+models_tbl = Table(
+    name="models",
+    store=TableStoreJsonLine(
+        filename="models.jsonline",
+        primary_schema=[
+            sa.Column("pipeline_id", sa.String, primary_key=True),
+            sa.Column("model_id", sa.String, primary_key=True),
+        ],
+    ),
+)
+
+output_tbl = Table(
+    name="output",
+    store=TableStoreJsonLine(
+        filename="output.jsonline",
+        primary_schema=[
+            sa.Column("pipeline_id", sa.String, primary_key=True),
+            sa.Column("input_id", sa.Integer, primary_key=True),
+            sa.Column("model_id", sa.String, primary_key=True),
+        ],
+    ),
 )
 
 
 pipeline = Pipeline(
     [
         UpdateExternalTable(
-            output="input",
+            output=input_tbl,
         ),
         UpdateExternalTable(
-            output="models",
+            output=models_tbl,
         ),
         BatchTransform(
             apply_model,
-            inputs=["input", "models"],
-            outputs=["output"],
+            inputs=[input_tbl, models_tbl],
+            outputs=[output_tbl],
             transform_keys=["pipeline_id", "input_id", "model_id"],
         ),
     ]
 )
 
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds, Catalog({}), pipeline)

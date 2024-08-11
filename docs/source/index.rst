@@ -1,12 +1,17 @@
 .. 
 
 .. toctree::
-    :caption: Developer Guide
+    :caption: Introduction
     :maxdepth: 2
     :hidden:
 
     introduction
-    concepts
+
+.. toctree::
+    :caption: Advanced Topics
+    :maxdepth: 2
+    :hidden:
+
     transformation-lifecycle
     sqlite
     extending-cli
@@ -18,12 +23,6 @@
 
     migration-v013-to-v014
 
-.. toctree::
-    :caption: Reference
-    :maxdepth: 2
-    :hidden:
-
-    api
 
 Index and Search
 ----------------

@@ -58,6 +58,7 @@ from datapipe.types import (
     IndexDF,
     Labels,
     MetaSchema,
+    TableOrName,
     TransformResult,
     data_to_index,
 )
@@ -725,12 +726,16 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> None:
         run_config = self._apply_filters_to_run_config(run_config)
 
-        logger.error(f"Process batch failed: {str(e)}")
+        idx_records = idx.to_dict(orient="records")
+
+        logger.error(
+            f"Process batch in transform {self.name} on idx {idx_records} failed: {str(e)}"
+        )
         ds.event_logger.log_exception(
             e,
             run_config=RunConfig.add_labels(
                 run_config,
-                {"idx": idx.to_dict(orient="records"), "process_ts": process_ts},
+                {"idx": idx_records, "process_ts": process_ts},
             ),
         )
 
@@ -901,8 +906,8 @@ class BaseBatchTransformStep(ComputeStep):
 @dataclass
 class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
-    inputs: List[str]
-    outputs: List[str]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     chunk_size: int = 1000
     transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
@@ -971,8 +976,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 @dataclass
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
-    inputs: List[str]
-    outputs: List[str]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
     transform_keys: Optional[List[str]] = None

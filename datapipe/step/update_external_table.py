@@ -12,7 +12,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, MetadataDF, cast
+from datapipe.types import Labels, MetadataDF, TableOrName, cast
 
 logger = logging.getLogger("datapipe.step.update_external_table")
 
@@ -35,7 +35,10 @@ def update_external_table(
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 
         table.meta_table.update_rows(
-            cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+            cast(
+                MetadataDF,
+                pd.concat(df for df in [new_meta_df, changed_meta_df] if not df.empty),
+            ),
         )
 
     for stale_idx in table.meta_table.get_stale_idx(now, run_config=run_config):
@@ -55,7 +58,7 @@ def update_external_table(
 class UpdateExternalTable(PipelineStep):
     def __init__(
         self,
-        output: str,
+        output: TableOrName,
         labels: Optional[Labels] = None,
     ) -> None:
         self.output_table_name = output

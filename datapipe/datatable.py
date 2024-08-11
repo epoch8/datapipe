@@ -518,7 +518,16 @@ class DataTable:
 
                 with tracer.start_as_current_span("store metadata"):
                     self.meta_table.update_rows(
-                        cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+                        cast(
+                            MetadataDF,
+                            pd.concat(
+                                [
+                                    df
+                                    for df in [new_meta_df, changed_meta_df]
+                                    if not df.empty
+                                ]
+                            ),
+                        )
                     )
 
                     if not new_df.empty:

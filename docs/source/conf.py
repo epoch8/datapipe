@@ -1,10 +1,11 @@
+import datetime
 import os
 import sys
 
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = "Datapipe"
-copyright = "2023, Epoch8 Team and Contributors"
+copyright = f"{datetime.date.today().year}, Epoch8 Team and Contributors"
 author = "Epoch8 Team and Contributors"
 
 extensions = [
