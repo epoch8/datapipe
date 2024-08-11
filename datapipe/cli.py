@@ -514,13 +514,13 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
 
 
 try:
-    entry_points = metadata.entry_points(group="datapipe.cli")
+    entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
 except TypeError:
     # Compatibility with older versions of importlib.metadata (Python 3.8-3.9)
     entry_points = metadata.entry_points().get("datapipe.cli", [])  # type: ignore
 
 for entry_point in entry_points:
-    register_commands = entry_point.load()
+    register_commands = entry_point.load()  # type: ignore
     register_commands(cli)
 
 
