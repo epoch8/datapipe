@@ -1,3 +1,12 @@
+# WIP 0.14.0
+
+Changes:
+* `DatatableTansform` can become `BatchTransform` with empty indices
+* SQLAlchemy tables can be used directly without duplication in Catalog
+* `datapipe.compute.Table` can be used directly without Catalog
+
+See "Migration from v0.13 to v0.14" for more details
+
 # 0.13.14
 
 * Fix [#334](https://github.com/epoch8/datapipe/issues/334)
