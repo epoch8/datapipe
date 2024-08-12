@@ -527,3 +527,123 @@ def test_magic_injection_variables_changelist(dbconn):
     changelist = ChangeList.create("inp", change_idx)
     run_steps_changelist(ds, steps, changelist, RunConfig())
     assert transform_count["value"] == 2
+
+
+def test_stale_records_deletion_with_batch_generate(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "inp_del": Table(
+                store=TableStoreDB(
+                    dbconn=dbconn,
+                    name="inp_data_del",
+                    data_sql_schema=TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+        }
+    )
+
+    bg_count = {"value": 0}
+    bg_chunk_size = 5
+
+    def add_inp_table(ds: DataStore, bg_count):
+        assert isinstance(ds, DataStore)
+        bg_count["value"] += 1
+        yield pd.DataFrame(
+            {
+                "id": range(
+                    bg_count["value"] * bg_chunk_size,
+                    (bg_count["value"] + 1) * bg_chunk_size,
+                ),
+                "a": range(
+                    bg_count["value"] * bg_chunk_size,
+                    (bg_count["value"] + 1) * bg_chunk_size,
+                ),
+            }
+        )
+
+    pipeline = Pipeline(
+        [
+            BatchGenerate(
+                func=add_inp_table,
+                outputs=["inp_del"],
+                delete_stale=True,  # Default behavior, deletes records that are not yielded by func
+                kwargs=dict(bg_count=bg_count),  # to avoid double counting
+            ),
+        ]
+    )
+
+    steps = build_compute(ds, catalog, pipeline)
+
+    # First run
+    run_steps(ds, steps)
+
+    # Second run
+    run_steps(ds, steps)
+
+    # Check table shapes
+    df_del = catalog.get_datatable(ds, "inp_del").get_data()
+
+    assert df_del.shape[0] == bg_chunk_size
+    # additionally, check that delete_stale=True deletes previous chunks and keeps the last one
+    assert df_del.iloc[0]["id"] == bg_chunk_size * bg_count["value"]
+
+
+def test_stale_records_keep_with_batch_generate(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "inp_keep": Table(
+                store=TableStoreDB(
+                    dbconn=dbconn,
+                    name="inp_data_keep",
+                    data_sql_schema=TEST_SCHEMA,
+                    create_table=True,
+                )
+            ),
+        }
+    )
+
+    bg_count = {"value": 0}
+    bg_chunk_size = 5
+
+    def add_inp_table(ds: DataStore, bg_count):
+        assert isinstance(ds, DataStore)
+        bg_count["value"] += 1
+        yield pd.DataFrame(
+            {
+                "id": range(
+                    bg_count["value"] * bg_chunk_size,
+                    (bg_count["value"] + 1) * bg_chunk_size,
+                ),
+                "a": range(
+                    bg_count["value"] * bg_chunk_size,
+                    (bg_count["value"] + 1) * bg_chunk_size,
+                ),
+            }
+        )
+
+    pipeline = Pipeline(
+        [
+            BatchGenerate(
+                func=add_inp_table,
+                outputs=["inp_keep"],
+                delete_stale=False,  # keeps records that are not yielded by func
+                kwargs=dict(bg_count=bg_count),
+            ),
+        ]
+    )
+
+    steps = build_compute(ds, catalog, pipeline)
+
+    # First run
+    run_steps(ds, steps)
+
+    # Second run
+    run_steps(ds, steps)
+
+    # Check table shapes
+    df_keep = catalog.get_datatable(ds, "inp_keep").get_data()
+
+    assert df_keep.shape[0] == bg_count["value"] * bg_chunk_size

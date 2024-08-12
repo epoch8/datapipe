@@ -15,7 +15,7 @@ from sqlalchemy.sql.expression import delete, select
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, TAnyDF
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -27,15 +27,17 @@ class DBConn:
         connstr: str,
         schema: Optional[str] = None,
         create_engine_kwargs: Optional[Dict[str, Any]] = None,
+        sqla_metadata: Optional[MetaData] = None,
     ):
         create_engine_kwargs = create_engine_kwargs or {}
-        self._init(connstr, schema, create_engine_kwargs)
+        self._init(connstr, schema, create_engine_kwargs, sqla_metadata)
 
     def _init(
         self,
         connstr: str,
         schema: Optional[str],
         create_engine_kwargs: Dict[str, Any],
+        sqla_metadata: Optional[MetaData] = None,
     ) -> None:
         self.connstr = connstr
         self.schema = schema
@@ -75,11 +77,14 @@ class DBConn:
                 poolclass=QueuePool,
                 pool_pre_ping=True,
                 pool_recycle=3600,
-                **create_engine_kwargs
+                **create_engine_kwargs,
                 # pool_size=25,
             )
 
-        self.sqla_metadata = MetaData(schema=schema)
+        if sqla_metadata is None:
+            self.sqla_metadata = MetaData(schema=schema)
+        else:
+            self.sqla_metadata = sqla_metadata
 
     def __reduce__(self) -> Tuple[Any, ...]:
         return self.__class__, (
@@ -119,28 +124,64 @@ class TableStoreDB(TableStore):
     def __init__(
         self,
         dbconn: Union["DBConn", str],
-        name: str,
-        data_sql_schema: List[Column],
+        name: Optional[str] = None,
+        data_sql_schema: Optional[List[Column]] = None,
         create_table: bool = False,
+        orm_table: Optional[OrmTable] = None,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
         else:
             self.dbconn = dbconn
-        self.name = name
 
-        self.data_sql_schema = data_sql_schema
+        if orm_table is not None:
+            assert name is None, "name should be None if orm_table is provided"
+            assert (
+                data_sql_schema is None
+            ), "data_sql_schema should be None if orm_table is provided"
 
-        self.data_keys = [
-            column.name for column in self.data_sql_schema if not column.primary_key
-        ]
+            orm_table__table = orm_table.__table__  # type: ignore
+            self.data_table = cast(Table, orm_table__table)
 
-        self.data_table = Table(
-            self.name,
-            self.dbconn.sqla_metadata,
-            *[copy.copy(i) for i in self.data_sql_schema],
-            extend_existing=True,
-        )
+            self.name = self.data_table.name
+
+            self.data_sql_schema = [
+                Column(
+                    column.name,
+                    column.type,
+                    primary_key=column.primary_key,
+                    nullable=column.nullable,
+                    unique=column.unique,
+                    *column.constraints,
+                )
+                for column in self.data_table.columns
+            ]
+            self.data_keys = [
+                column.name for column in self.data_sql_schema if not column.primary_key
+            ]
+
+        else:
+            assert (
+                name is not None
+            ), "name should be provided if data_table is not provided"
+            assert (
+                data_sql_schema is not None
+            ), "data_sql_schema should be provided if data_table is not provided"
+
+            self.name = name
+
+            self.data_sql_schema = data_sql_schema
+
+            self.data_keys = [
+                column.name for column in self.data_sql_schema if not column.primary_key
+            ]
+
+            self.data_table = Table(
+                self.name,
+                self.dbconn.sqla_metadata,
+                *[copy.copy(i) for i in self.data_sql_schema],
+                extend_existing=True,
+            )
 
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)

@@ -198,9 +198,9 @@ def table():
     pass
 
 
-@table.command()
+@table.command(name="list")
 @click.pass_context
-def list(ctx: click.Context) -> None:
+def table_list(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     for table in sorted(app.catalog.catalog.keys()):
@@ -339,10 +339,10 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
     return "\n".join(res)
 
 
-@step.command()  # type: ignore
+@step.command(name="list")  # type: ignore
 @click.option("--status", is_flag=True, type=click.BOOL, default=False)
 @click.pass_context
-def list(ctx: click.Context, status: bool) -> None:  # noqa
+def step_list(ctx: click.Context, status: bool) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
     steps: List[ComputeStep] = ctx.obj["steps"]
 
@@ -350,19 +350,16 @@ def list(ctx: click.Context, status: bool) -> None:  # noqa
         extra_args = {}
 
         if status:
-            if len(step.input_dts) > 0:
-                try:
-                    if isinstance(step, BaseBatchTransformStep):
-                        changed_idx_count = step.get_changed_idx_count(ds=app.ds)
-
-                        if changed_idx_count > 0:
-                            extra_args[
-                                "changed_idx_count"
-                            ] = f"[red]{changed_idx_count}[/red]"
-
-                except NotImplementedError:
-                    # Currently we do not support empty join_keys
-                    extra_args["changed_idx_count"] = "[red]N/A[/red]"
+            try:
+                step_status = step.get_status(ds=app.ds)
+                extra_args["total_idx_count"] = str(step_status.total_idx_count)
+                extra_args["changed_idx_count"] = (
+                    f"[red]{step_status.changed_idx_count}[/red]"
+                )
+            except NotImplementedError:
+                # Currently we do not support empty join_keys
+                extra_args["total_idx_count"] = "[red]N/A[/red]"
+                extra_args["changed_idx_count"] = "[red]N/A[/red]"
 
         rprint(to_human_repr(step, extra_args=extra_args))
         rprint("")
@@ -519,8 +516,14 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
-for entry_point in metadata.entry_points().get("datapipe.cli", []):
-    register_commands = entry_point.load()
+try:
+    entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
+except TypeError:
+    # Compatibility with older versions of importlib.metadata (Python 3.8-3.9)
+    entry_points = metadata.entry_points().get("datapipe.cli", [])  # type: ignore
+
+for entry_point in entry_points:
+    register_commands = entry_point.load()  # type: ignore
     register_commands(cli)
 
 

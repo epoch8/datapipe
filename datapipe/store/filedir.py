@@ -153,7 +153,7 @@ def _pattern_to_match(pat: str) -> str:
 class Replacer:
     def __init__(self, values: List[str]):
         self.counter = -1
-        self.values = values
+        self.values = list(values)
 
     def __call__(self, matchobj):
         self.counter += 1

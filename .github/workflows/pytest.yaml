@@ -2,10 +2,11 @@ name: Run tests
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "examples/**"
+    paths:
+      - ".github/workflows/pytest.yaml"
+      - "datapipe/**"
+      - "tests/**"
+      - "pyproject.toml"
 
 
 jobs:
@@ -15,14 +16,14 @@ jobs:
       matrix:
         python-version:
           # - "3.8"
-          # - "3.9"
+          - "3.9"
           - "3.10"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -50,31 +51,40 @@ jobs:
     strategy:
       matrix:
         include:
-          - python-version: "3.8"
-            test-db-env: "postgres"
-            pip-extra: "sqlalchemy <2"
-          - python-version: "3.8"
-            test-db-env: "postgres"
-            pip-extra: "sqlalchemy >2"
+          # - python-version: "3.8"
+          #   test-db-env: "postgres"
+          #   pip-extra: "sqlalchemy <2"
+          # - python-version: "3.8"
+          #   test-db-env: "postgres"
+          #   pip-extra: "'sqlalchemy>2'"
           # - python-version: "3.8"
           #   test-db-env: "sqlite"
-          # - python-version: "3.9"
-          #   test-db-env: "postgres"
+
+          - python-version: "3.9"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>2"'
           # - python-version: "3.9"
           #   test-db-env: "sqlite"
+
           # - python-version: "3.10"
           #   test-db-env: "postgres"
           # - python-version: "3.10"
           #   test-db-env: "sqlite"
+
           - python-version: "3.11"
             test-db-env: "postgres"
-            pip-extra: "sqlalchemy <2"
+            pip-extra: '"sqlalchemy<2" "pandas<2.2"'
           - python-version: "3.11"
             test-db-env: "postgres"
-            pip-extra: "sqlalchemy >2"
+            pip-extra: '"sqlalchemy>2"'
           - python-version: "3.11"
             test-db-env: "sqlite"
-            pip-extra: "sqlalchemy >2"
+            pip-extra: '"sqlalchemy>2"'
+
+          - python-version: "3.12"
+            test-db-env: "postgres"
+          - python-version: "3.12"
+            test-db-env: "sqlite"
 
     services:
       # Label used to access the service container
@@ -107,17 +117,17 @@ jobs:
           - 6333:6333
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
       
       - name: Install dependencies
         run: |
-          pip install "${{ matrix.pip-extra }}" ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "pytest" "pytest_cases"
+          pip install ${{ matrix.pip-extra }} ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "pytest<8" "pytest_cases"
 
       - name: Test with pytest
         run: |

@@ -518,7 +518,16 @@ class DataTable:
 
                 with tracer.start_as_current_span("store metadata"):
                     self.meta_table.update_rows(
-                        cast(MetadataDF, pd.concat([new_meta_df, changed_meta_df]))
+                        cast(
+                            MetadataDF,
+                            pd.concat(
+                                [
+                                    df
+                                    for df in [new_meta_df, changed_meta_df]
+                                    if not df.empty
+                                ]
+                            ),
+                        )
                     )
 
                     if not new_df.empty:
@@ -590,11 +599,12 @@ class DataTable:
         keys = [k for k in transform_keys if k in self.primary_keys]
         key_cols: List["ColumnClause"] = [column(k) for k in keys]
 
-        sql: Any = (
-            select(*key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")])
-            .select_from(tbl)
-            .group_by(*key_cols)
-        )
+        sql: Any = select(
+            *key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")]
+        ).select_from(tbl)
+
+        if len(key_cols) > 0:
+            sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
         sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
@@ -609,9 +619,7 @@ class DataStore:
         create_meta_table: bool = False,
     ) -> None:
         self.meta_dbconn = meta_dbconn
-        self.event_logger = EventLogger(
-            self.meta_dbconn, create_table=create_meta_table
-        )
+        self.event_logger = EventLogger()
         self.tables: Dict[str, DataTable] = {}
 
         self.create_meta_table = create_meta_table

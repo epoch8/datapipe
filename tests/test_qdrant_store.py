@@ -3,7 +3,7 @@ from typing import Generator
 
 import pandas as pd
 from qdrant_client.models import Distance, VectorParams
-from sqlalchemy import ARRAY, Float, Integer
+from sqlalchemy import ARRAY, Float, Integer, String
 from sqlalchemy.sql.schema import Column
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
@@ -20,7 +20,9 @@ def extract_id(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def generate_data() -> Generator[pd.DataFrame, None, None]:
-    yield pd.DataFrame({"id": [1], "embedding": [[0.1]]})
+    yield pd.DataFrame(
+        {"id": [1], "embedding": [[0.1]], "str_payload": ["foo"], "int_payload": [42]}
+    )
 
 
 def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:
@@ -34,6 +36,8 @@ def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:
                     schema=[
                         Column("id", Integer, primary_key=True),
                         Column("embedding", ARRAY(Float, dimensions=1)),
+                        Column("str_payload", String),
+                        Column("int_payload", Integer),
                     ],
                     collection_params=CollectionParams(
                         vectors=VectorParams(
@@ -43,6 +47,14 @@ def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:
                     ),
                     pk_field="id",
                     embedding_field="embedding",
+                    index_schema={
+                        "str_payload": "keyword",
+                        "int_payload": {
+                            "type": "integer",
+                            "lookup": False,
+                            "range": True,
+                        },
+                    },
                 )
             ),
             "output": Table(

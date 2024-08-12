@@ -9,8 +9,9 @@ from opentelemetry import trace
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
+from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, IndexDF, Labels
+from datapipe.types import ChangeList, IndexDF, Labels, TableOrName
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -19,6 +20,7 @@ tracer = trace.get_tracer("datapipe.compute")
 @dataclass
 class Table:
     store: TableStore
+    name: Optional[str] = None
 
 
 class Catalog:
@@ -36,8 +38,53 @@ class Catalog:
         for name in self.catalog.keys():
             self.get_datatable(ds, name)
 
-    def get_datatable(self, ds: DataStore, name: str) -> DataTable:
-        return ds.get_or_create_table(name=name, table_store=self.catalog[name].store)
+    def get_datatable(self, ds: DataStore, table: TableOrName) -> DataTable:
+        if isinstance(table, str):
+            assert table in self.catalog, f"Table {table} not found in catalog"
+            return ds.get_or_create_table(
+                name=table, table_store=self.catalog[table].store
+            )
+
+        elif isinstance(table, Table):
+            assert table.name is not None, f"Table name must be specified for {table}"
+
+            if table.name not in self.catalog:
+                self.add_datatable(table.name, table)
+            else:
+                existing_table = self.catalog[table.name]
+                assert existing_table.store == table.store, (
+                    f"Table {table.name} already exists in catalog "
+                    f"with different store {existing_table.store}"
+                )
+
+            return ds.get_or_create_table(name=table.name, table_store=table.store)
+
+        else:
+            table_store = TableStoreDB(ds.meta_dbconn, orm_table=table)
+            if table_store.name not in self.catalog:
+                self.add_datatable(table_store.name, Table(store=table_store))
+            else:
+                existing_table_store = self.catalog[table_store.name].store
+                assert isinstance(existing_table_store, TableStoreDB), (
+                    f"Table {table_store.name} already exists in catalog "
+                    f"with different store {existing_table_store}"
+                )
+
+                assert existing_table_store.data_table == table.__table__, (  # type: ignore
+                    f"Table {table_store.name} already exists in catalog "
+                    f"with different orm_table {existing_table_store.data_table}"
+                )
+
+            return ds.get_or_create_table(
+                name=table_store.name, table_store=table_store
+            )
+
+
+@dataclass
+class StepStatus:
+    name: str
+    total_idx_count: int
+    changed_idx_count: int
 
 
 class ComputeStep:
@@ -90,6 +137,9 @@ class ComputeStep:
     @property
     def labels(self) -> Labels:
         return self._labels if self._labels else []
+
+    def get_status(self, ds: DataStore) -> StepStatus:
+        raise NotImplementedError
 
     # TODO: move to lints
     def validate(self) -> None:
