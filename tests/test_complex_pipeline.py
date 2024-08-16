@@ -4,11 +4,12 @@ from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF
 
-from .util import assert_datatable_equal
+from .util import assert_datatable_equal, assert_df_equal
 
 TEST__ITEM = pd.DataFrame(
     {
@@ -287,3 +288,91 @@ def test_complex_train_pipeline(dbconn):
     assert len(
         ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()
     ) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
+
+
+def test_complex_transform_with_filters(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        "tbl_image": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_image",
+                [
+                    Column("image_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        ),
+        "tbl_prediction": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_prediction",
+                [
+                    Column("image_id", Integer, primary_key=True),
+                    Column("model_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        ),
+        "tbl_output": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_output",
+                [
+                    Column("model_id", Integer, primary_key=True),
+                    Column("count", Integer),
+                ],
+                True
+            )
+        )
+    })
+
+    def gen_tbl(df):
+        yield df
+
+    test_df__image = pd.DataFrame(
+        {"image_id": [0, 1, 2, 3]}
+    )
+    test_df__prediction = pd.DataFrame({
+        "image_id": [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
+        "model_id": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    })
+
+    def count_func(df__image: pd.DataFrame, df__prediction: pd.DataFrame):
+        df__image = pd.merge(df__image, df__prediction, on=["image_id"])
+        print(f"{df__image=}")
+        print(f"{df__prediction=}")
+        df__output = df__image.groupby("model_id").agg(len).reset_index().rename(columns={"image_id": "count"})
+        print(f"{df__output=}")
+        return df__output
+
+    pipeline = Pipeline(
+        [
+            BatchGenerate(
+                func=gen_tbl,
+                outputs=["tbl_image"],
+                kwargs=dict(df=test_df__image),
+            ),
+            BatchGenerate(
+                func=gen_tbl,
+                outputs=["tbl_prediction"],
+                kwargs=dict(df=test_df__prediction),
+            ),
+            BatchTransform(
+                func=count_func,
+                inputs=["tbl_image", "tbl_prediction"],
+                outputs=["tbl_output"],
+                transform_keys=["model_id"],
+                chunk_size=6,
+                # filters=[{"image_id": 0}, {"image_id": 1}, {"image_id": 2}]
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
+    print(ds.get_table("tbl_output").get_data())
+    # assert_df_equal(
+    #     ds.get_table("tbl_output").get_data(),
+    #     count_func(test_df__image, test_df__prediction),
+    #     index_cols=["model_id"]
+    # )

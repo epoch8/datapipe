@@ -9,7 +9,6 @@ from typing import (
     Dict,
     List,
     NewType,
-    Optional,
     Set,
     Tuple,
     Type,
@@ -17,7 +16,6 @@ from typing import (
     Union,
     cast,
 )
-
 import pandas as pd
 from sqlalchemy import Column
 
@@ -44,7 +42,7 @@ Labels = List[Tuple[str, str]]
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
 LabelDict = Dict[str, Any]
-Filters = Union[str, IndexDF, List[LabelDict], Callable[..., List[LabelDict]], Callable[..., IndexDF]]
+Filters = Union[str, "DataTable", IndexDF, List[LabelDict], Callable[..., List[LabelDict]], Callable[..., IndexDF]]
 try:
     from sqlalchemy.orm import DeclarativeBase
 

@@ -542,7 +542,15 @@ class BaseBatchTransformStep(ComputeStep):
             return run_config
         else:
             filters: List[LabelDict]
-            if isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
+            if isinstance(self.filters, str):
+                dt = ds.get_table(self.filters)
+                df = dt.get_data()
+                filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
+            elif isinstance(self.filters, DataTable):
+                filters = cast(List[LabelDict], self.filters.get_data().to_dict(orient="records"))
+            elif isinstance(self.filters, pd.DataFrame):
+                filters = cast(List[LabelDict], self.filters.to_dict(orient="records"))
+            elif isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
                 filters = self.filters
             elif isinstance(self.filters, Callable):  # type: ignore
                 filters_func = cast(Callable[..., Union[List[LabelDict], IndexDF]], self.filters)
@@ -556,10 +564,6 @@ class BaseBatchTransformStep(ComputeStep):
                     filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
                 else:
                     filters = filters_res
-            elif isinstance(self.filters, str):
-                dt = ds.get_table(self.filters)
-                df = dt.get_data()
-                filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
 
             if run_config is None:
                 return RunConfig(filters=filters)
@@ -627,24 +631,25 @@ class BaseBatchTransformStep(ComputeStep):
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: LabelDict
+            extra_filters: Optional[List[str, Dict]] = None
             if run_config is not None:
-                extra_filters = {
+                extra_filters = [{
                     k: v
-                    for filter in run_config.filters
                     for k, v in filter.items()
                     if k not in join_keys
-                }
-            else:
-                extra_filters = {}
+                } for filter in run_config.filters]
 
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
 
-                        for k, v in extra_filters.items():
-                            df[k] = v
+                        if extra_filters is not None:
+                            df__extra_filters = pd.DataFrame(extra_filters)
+                            if set(df__extra_filters.columns).intersection(df.columns):
+                                df = pd.merge(df, df__extra_filters)
+                            else:
+                                df = pd.merge(df, df__extra_filters, how="cross")
 
                         yield df
 
