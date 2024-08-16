@@ -44,8 +44,7 @@ Labels = List[Tuple[str, str]]
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
 LabelDict = Dict[str, Any]
-
-Filters = Union[str, List[LabelDict], Callable[..., List[LabelDict]]]
+Filters = Union[str, IndexDF, List[LabelDict], Callable[..., List[LabelDict]], Callable[..., IndexDF]]
 try:
     from sqlalchemy.orm import DeclarativeBase
 

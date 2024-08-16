@@ -5,7 +5,7 @@ import json
 import re
 from abc import ABC
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
+from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast, Set
 
 import fsspec
 import numpy as np
@@ -492,7 +492,7 @@ class TableStoreFiledir(TableStore):
         ids: Dict[str, List[str]] = {attrname: [] for attrname in self.attrnames}
         ukeys = []
         filepaths = []
-        looked_keys = set()
+        looked_keys: Set[Any] = set()
 
         for f in files:
             for filemath_match_suffix in self.filename_match_suffixes:

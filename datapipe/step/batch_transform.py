@@ -545,15 +545,18 @@ class BaseBatchTransformStep(ComputeStep):
             if isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
                 filters = self.filters
             elif isinstance(self.filters, Callable):  # type: ignore
-                filters_func = cast(Callable[..., List[LabelDict]], self.filters)
+                filters_func = cast(Callable[..., Union[List[LabelDict], IndexDF]], self.filters)
                 parameters = inspect.signature(filters_func).parameters
                 kwargs = {
                     **({"ds": ds} if "ds" in parameters else {}),
                     **({"run_config": run_config} if "run_config" in parameters else {})
                 }
-                filters = filters_func(**kwargs)
-
-            if isinstance(self.filters, str):
+                filters_res = filters_func(**kwargs)
+                if isinstance(filters_res, pd.DataFrame):
+                    filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
+                else:
+                    filters = filters_res
+            elif isinstance(self.filters, str):
                 dt = ds.get_table(self.filters)
                 df = dt.get_data()
                 filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
