@@ -546,8 +546,6 @@ class BaseBatchTransformStep(ComputeStep):
                 dt = ds.get_table(self.filters)
                 df = dt.get_data()
                 filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
-            elif isinstance(self.filters, DataTable):
-                filters = cast(List[LabelDict], self.filters.get_data().to_dict(orient="records"))
             elif isinstance(self.filters, pd.DataFrame):
                 filters = cast(List[LabelDict], self.filters.to_dict(orient="records"))
             elif isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
