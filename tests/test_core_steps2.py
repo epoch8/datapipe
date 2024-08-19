@@ -116,7 +116,7 @@ def test_batch_transform(dbconn):
     assert all(meta_df["process_ts"] == process_ts)
 
 
-def test_batch_transform_with_filter(dbconn):
+def test_batch_transform_with_filter_in_run_config(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
@@ -146,7 +146,7 @@ def test_batch_transform_with_filter(dbconn):
     assert_datatable_equal(tbl2, TEST_DF1_1.query("pipeline_id == 0"))
 
 
-def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+def test_batch_transform_with_filter_in_run_config_not_in_transform_index(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(

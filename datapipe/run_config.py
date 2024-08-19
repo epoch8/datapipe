@@ -29,7 +29,7 @@ class RunConfig:
         if rc is not None:
             return RunConfig(
                 filters=list(
-                    pd.DataFrame(filters)
+                    pd.concat([pd.DataFrame(rc.filters), pd.DataFrame(filters)], ignore_index=True)
                     .drop_duplicates()
                     .apply(lambda row : row.dropna().to_dict(), axis=1)
                 ),

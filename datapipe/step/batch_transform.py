@@ -852,6 +852,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
         filters = self._get_filters(ds, run_config)
         run_config_with_filters = RunConfig.add_filters(run_config, filters)
+        print(f"{run_config_with_filters.filters=}")
 
         (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config_with_filters)
 
