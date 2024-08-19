@@ -629,7 +629,7 @@ class BaseBatchTransformStep(ComputeStep):
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: Optional[List[str, Dict]] = None
+            extra_filters: Optional[List[Dict[str, Any]]] = None
             if run_config is not None:
                 extra_filters = [{
                     k: v
