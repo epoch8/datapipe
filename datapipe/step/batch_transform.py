@@ -46,10 +46,7 @@ from datapipe.compute import Catalog, ComputeStep, PipelineStep, StepStatus
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import (
-    sql_apply_filters_idx_to_subquery,
-    sql_apply_runconfig_filters,
-)
+from datapipe.sql_util import sql_apply_filters_idx_to_subquery, sql_apply_runconfig_filters
 from datapipe.store.database import DBConn
 from datapipe.types import (
     ChangeList,
@@ -573,6 +570,9 @@ class BaseBatchTransformStep(ComputeStep):
                 f" Got type: {type(self.filters)}"
             )
 
+        keys = set([key for keys in filters for key in keys])
+        if not all(len(filter) == len(keys) for filter in filters):
+            raise ValueError("Size of keys in each filters must have same length")
         return filters
 
     def get_status(self, ds: DataStore) -> StepStatus:
@@ -643,7 +643,6 @@ class BaseBatchTransformStep(ComputeStep):
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
-
                         if extra_filters is not None and len(extra_filters) > 0:
                             df__extra_filters = pd.DataFrame(extra_filters)
                             if set(df__extra_filters.columns).intersection(df.columns):

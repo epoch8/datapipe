@@ -303,6 +303,17 @@ def test_complex_transform_with_filters(dbconn):
                 True
             )
         ),
+        "tbl_subset__has__image": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_subset__has__image",
+                [
+                    Column("image_id", Integer, primary_key=True),
+                    Column("subset_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        ),
         "tbl_prediction": Table(
             store=TableStoreDB(
                 dbconn,
@@ -319,6 +330,7 @@ def test_complex_transform_with_filters(dbconn):
                 dbconn,
                 "tbl_output",
                 [
+                    Column("subset_id", Integer, primary_key=True),
                     Column("model_id", Integer, primary_key=True),
                     Column("count", Integer),
                 ],
@@ -330,20 +342,26 @@ def test_complex_transform_with_filters(dbconn):
     def gen_tbl(df):
         yield df
 
-    test_df__image = pd.DataFrame(
-        {"image_id": [0, 1, 2, 3]}
-    )
+    test_df__image = pd.DataFrame({
+        "image_id": [0, 1, 2, 3]
+    })
+    test_df__subset__has__image = pd.DataFrame({
+        "image_id": [0, 1, 2, 3],
+        "subset_id": [0, 0, 1, 1]
+    })
     test_df__prediction = pd.DataFrame({
         "image_id": [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
-        "model_id": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+        "model_id": [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
     })
 
-    def count_func(df__image: pd.DataFrame, df__prediction: pd.DataFrame):
+    def count_func(
+        df__image: pd.DataFrame,
+        df__subset__has__image: pd.DataFrame,
+        df__prediction: pd.DataFrame,
+    ):
+        df__image = pd.merge(df__image, df__subset__has__image, on=["image_id"])
         df__image = pd.merge(df__image, df__prediction, on=["image_id"])
-        print(f"{df__image=}")
-        print(f"{df__prediction=}")
-        df__output = df__image.groupby("model_id").agg(len).reset_index().rename(columns={"image_id": "count"})
-        print(f"{df__output=}")
+        df__output = df__image.groupby(["subset_id", "model_id"]).agg(len).reset_index().rename(columns={"image_id": "count"})
         return df__output
 
     pipeline = Pipeline(
@@ -355,24 +373,42 @@ def test_complex_transform_with_filters(dbconn):
             ),
             BatchGenerate(
                 func=gen_tbl,
+                outputs=["tbl_subset__has__image"],
+                kwargs=dict(df=test_df__subset__has__image),
+            ),
+            BatchGenerate(
+                func=gen_tbl,
                 outputs=["tbl_prediction"],
                 kwargs=dict(df=test_df__prediction),
             ),
             BatchTransform(
                 func=count_func,
-                inputs=["tbl_image", "tbl_prediction"],
+                inputs=["tbl_image", "tbl_subset__has__image", "tbl_prediction"],
                 outputs=["tbl_output"],
-                transform_keys=["model_id"],
+                transform_keys=["subset_id", "model_id"],
                 chunk_size=6,
-                # filters=[{"image_id": 0}, {"image_id": 1}, {"image_id": 2}]
+                filters=[
+                    {"subset_id": 0, "model_id": 1},
+                    {"subset_id": 0, "model_id": 2},
+                ]
             ),
         ]
     )
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
+    test__df_output = count_func(
+        df__image=test_df__image,
+        df__subset__has__image=test_df__subset__has__image[
+            test_df__subset__has__image["subset_id"] == 0
+        ],
+        df__prediction=test_df__prediction[
+            test_df__prediction["model_id"].isin([1, 2])
+        ]
+    )
+    # print(f"{test__df_output=}")
     print(ds.get_table("tbl_output").get_data())
-    # assert_df_equal(
-    #     ds.get_table("tbl_output").get_data(),
-    #     count_func(test_df__image, test_df__prediction),
-    #     index_cols=["model_id"]
-    # )
+    assert_df_equal(
+        ds.get_table("tbl_output").get_data(),
+        test__df_output,
+        index_cols=["model_id"]
+    )

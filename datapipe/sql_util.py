@@ -64,22 +64,8 @@ def sql_apply_runconfig_filters(
     run_config: Optional[RunConfig] = None,
 ) -> Any:
     if run_config is not None:
-        applicable_filter_keys_to_records: Dict[Any, List[LabelDict]] = defaultdict(list)
-        for record in run_config.filters:
-            applicable_filter_keys = [k for k in keys if k in record]
-            if len(applicable_filter_keys) > 0:
-                applicable_filter_keys_to_records[tuple(applicable_filter_keys)].append(record)
-        for applicable_filter_keys, records in applicable_filter_keys_to_records.items():
-            sql = sql.where(
-                or_(*[
-                    tuple_(*[column(i) for i in applicable_filter_keys]).in_(
-                        [
-                            tuple_(*[r[k] for k in applicable_filter_keys])
-                            for r in records
-                        ])
-                    ]
-                )
-            )
+        filters_idx = pd.DataFrame(run_config.filters)
+        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
 
     return sql
 
