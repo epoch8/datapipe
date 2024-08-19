@@ -642,7 +642,7 @@ class BaseBatchTransformStep(ComputeStep):
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
 
-                        if extra_filters is not None:
+                        if extra_filters is not None and len(extra_filters) > 0:
                             df__extra_filters = pd.DataFrame(extra_filters)
                             if set(df__extra_filters.columns).intersection(df.columns):
                                 df = pd.merge(df, df__extra_filters)
