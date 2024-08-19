@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -5,7 +6,7 @@ from sqlalchemy import Column, Integer, String, Table, column, tuple_
 from sqlalchemy.sql.expression import and_, or_
 
 from datapipe.run_config import RunConfig
-from datapipe.types import IndexDF
+from datapipe.types import IndexDF, LabelDict
 
 
 def sql_apply_filters_idx_to_subquery(
@@ -59,24 +60,26 @@ def sql_apply_idx_filter_to_table(
 
 def sql_apply_runconfig_filter(
     sql: Any,
-    table: Table,
-    primary_keys: List[str],
+    keys: List[str],
     run_config: Optional[RunConfig] = None,
 ) -> Any:
     if run_config is not None:
-        sql = sql.where(
-            or_(
-                *[
-                    and_(
-                        *[
-                            table.c[k] == v
-                            for k, v in filter.items() if k in primary_keys
-                        ]
-                    )
-                    for filter in run_config.filters
-                ]
+        applicable_filter_keys_to_records: Dict[Any, List[LabelDict]] = defaultdict(list)
+        for record in run_config.filters:
+            applicable_filter_keys = [k for k in keys if k in record]
+            if len(applicable_filter_keys) > 0:
+                applicable_filter_keys_to_records[tuple(applicable_filter_keys)].append(record)
+        for applicable_filter_keys, records in applicable_filter_keys_to_records.items():
+            sql = sql.where(
+                or_(*[
+                    tuple_(*[column(i) for i in applicable_filter_keys]).in_(
+                        [
+                            tuple_(*[r[k] for k in applicable_filter_keys])
+                            for r in records
+                        ])
+                    ]
+                )
             )
-        )
 
     return sql
 

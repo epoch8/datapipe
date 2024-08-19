@@ -407,7 +407,7 @@ class MetaTable:
         )
 
         sql = sql_apply_runconfig_filter(
-            sql, self.sql_table, self.primary_keys, run_config
+            sql, self.primary_keys, run_config
         )
 
         with self.dbconn.con.begin() as con:
@@ -607,7 +607,7 @@ class DataTable:
             sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filter(sql, self.primary_keys, run_config)
 
         return (keys, sql.cte(name=f"{tbl.name}__update"))
 

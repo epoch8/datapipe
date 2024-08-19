@@ -303,7 +303,7 @@ class TableStoreDB(TableStore):
         sql = select(*self.data_table.c)
 
         sql = sql_apply_runconfig_filter(
-            sql, self.data_table, self.primary_keys, run_config
+            sql, self.primary_keys, run_config
         )
 
         with self.dbconn.con.execution_options(stream_results=True).begin() as con:

@@ -284,7 +284,7 @@ class TransformMetaTable:
         )
 
         sql = sql_apply_runconfig_filter(
-            update_sql, self.sql_table, self.primary_keys, run_config
+            update_sql, self.primary_keys, run_config
         )
 
         # execute
@@ -473,7 +473,7 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
-        out = sql_apply_runconfig_filter(out, tr_tbl, self.transform_keys, run_config)
+        out = sql_apply_runconfig_filter(out, self.transform_keys, run_config)
 
         out = out.cte(name="transform")
 
