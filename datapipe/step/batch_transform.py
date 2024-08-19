@@ -48,7 +48,7 @@ from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import (
     sql_apply_filters_idx_to_subquery,
-    sql_apply_runconfig_filter,
+    sql_apply_runconfig_filters,
 )
 from datapipe.store.database import DBConn
 from datapipe.types import (
@@ -283,7 +283,7 @@ class TransformMetaTable:
             .where(self.sql_table.c.is_success == True)
         )
 
-        sql = sql_apply_runconfig_filter(
+        sql = sql_apply_runconfig_filters(
             update_sql, self.primary_keys, run_config
         )
 
@@ -473,7 +473,7 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
-        out = sql_apply_runconfig_filter(out, self.transform_keys, run_config)
+        out = sql_apply_runconfig_filters(out, self.transform_keys, run_config)
 
         out = out.cte(name="transform")
 
@@ -560,8 +560,18 @@ class BaseBatchTransformStep(ComputeStep):
             filters_res = filters_func(**kwargs)
             if isinstance(filters_res, pd.DataFrame):
                 filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
-            else:
+            elif isinstance(filters_res, list) and all([isinstance(x, dict) for x in filters_res]):
                 filters = filters_res
+            else:
+                raise TypeError(
+                    "Function filters must return pd.Dataframe or list of key:values."
+                    f" Returned type: {type(filters_res)}"
+                )
+        else:
+            raise TypeError(
+                "Argument filters must be pd.Dataframe, list of key:values or function."
+                f" Got type: {type(self.filters)}"
+            )
 
         return filters
 
@@ -577,7 +587,6 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
-        filters = self._get_filters(ds, run_config)
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:

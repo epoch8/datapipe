@@ -17,7 +17,7 @@ from datapipe.run_config import RunConfig
 from datapipe.sql_util import (
     sql_apply_filters_idx_to_subquery,
     sql_apply_idx_filter_to_table,
-    sql_apply_runconfig_filter,
+    sql_apply_runconfig_filters,
 )
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.store.table_store import TableStore
@@ -406,7 +406,7 @@ class MetaTable:
             )
         )
 
-        sql = sql_apply_runconfig_filter(
+        sql = sql_apply_runconfig_filters(
             sql, self.primary_keys, run_config
         )
 
@@ -607,7 +607,7 @@ class DataTable:
             sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filters(sql, self.primary_keys, run_config)
 
         return (keys, sql.cte(name=f"{tbl.name}__update"))
 

@@ -58,7 +58,7 @@ def sql_apply_idx_filter_to_table(
     return sql
 
 
-def sql_apply_runconfig_filter(
+def sql_apply_runconfig_filters(
     sql: Any,
     keys: List[str],
     run_config: Optional[RunConfig] = None,
