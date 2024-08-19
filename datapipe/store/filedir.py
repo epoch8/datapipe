@@ -493,7 +493,6 @@ class TableStoreFiledir(TableStore):
         ukeys = []
         filepaths = []
         looked_keys: Set[Any] = set()
-
         for f in files:
             for filemath_match_suffix in self.filename_match_suffixes:
                 m = re.match(filemath_match_suffix, f"{self.protocol_str}{f.path}")
@@ -505,6 +504,7 @@ class TableStoreFiledir(TableStore):
             keys_values = tuple(m.group(attrname) for attrname in self.attrnames)
             if keys_values in looked_keys:
                 continue
+            looked_keys.add(keys_values)
 
             for attrname, key_value in zip(self.attrnames, keys_values):
                 ids[attrname].append(key_value)
