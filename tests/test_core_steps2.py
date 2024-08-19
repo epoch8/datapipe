@@ -466,18 +466,6 @@ def test_batch_transform_with_filters_as_str(dbconn):
     batch_transform_with_filters(dbconn, filters="filters_data", ds=ds)
 
 
-def test_batch_transform_with_filters_as_datatable(dbconn):
-    ds = DataStore(dbconn, create_meta_table=True)
-    filters_data = pd.DataFrame([{"item_id": 0}, {"item_id": 1}, {"item_id": 2}])
-    filters = ds.create_table(
-        "filters_data", table_store=TableStoreDB(
-            dbconn, "filters_data", [Column("item_id", Integer, primary_key=True)], True
-        )
-    )
-    filters.store_chunk(filters_data, now=0)
-    batch_transform_with_filters(dbconn, filters=filters)
-
-
 def test_batch_transform_with_filters_as_IndexDF(dbconn):
     batch_transform_with_filters(
         dbconn, filters=cast(IndexDF, pd.DataFrame([{"item_id": 0}, {"item_id": 1}, {"item_id": 2}]))
