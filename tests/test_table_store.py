@@ -472,7 +472,7 @@ def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.
     assert_ts_contains(store, test_df)
 
     # TODO проверять, что runconfig реально влияет на результирующие данные
-    pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters={"a": 1}))
+    pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters=[{"a": 1}]))
     assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
         assert isinstance(pseudo_df, DataDF)
