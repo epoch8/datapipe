@@ -35,8 +35,8 @@ input_tbl = Table(
     store=TableStoreJsonLine(
         filename="input.jsonline",
         primary_schema=[
-            sa.Column("pipeline_id", sa.String, primary_key=True),
             sa.Column("input_id", sa.Integer, primary_key=True),
+            sa.Column("pipeline_id", sa.String, primary_key=True)
         ],
     ),
 )
@@ -57,8 +57,8 @@ output_tbl = Table(
     store=TableStoreJsonLine(
         filename="output.jsonline",
         primary_schema=[
-            sa.Column("pipeline_id", sa.String, primary_key=True),
             sa.Column("input_id", sa.Integer, primary_key=True),
+            sa.Column("pipeline_id", sa.String, primary_key=True),
             sa.Column("model_id", sa.String, primary_key=True),
         ],
     ),

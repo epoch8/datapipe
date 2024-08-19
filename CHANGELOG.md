@@ -8,6 +8,8 @@ Changes:
 
 See "Migration from v0.13 to v0.14" for more details
 
+* `BatchTransform` has new argument `filters`. It's using to filter processing transform indexes using only that indexes that as indicated in `filters`. See `docs/concepts.md` for more details.
+
 # 0.13.14
 
 * Fix [#334](https://github.com/epoch8/datapipe/issues/334)

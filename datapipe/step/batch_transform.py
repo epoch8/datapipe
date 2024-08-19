@@ -533,43 +533,37 @@ class BaseBatchTransformStep(ComputeStep):
                 )
         return (self.transform_keys, sql)
 
-    def _apply_filters_to_run_config(
+    def _get_filters(
         self,
         ds: DataStore,
         run_config: Optional[RunConfig] = None
-    ) -> Optional[RunConfig]:
+    ) -> List[LabelDict]:
         if self.filters is None:
-            return run_config
-        else:
-            filters: List[LabelDict]
-            if isinstance(self.filters, str):
-                dt = ds.get_table(self.filters)
-                df = dt.get_data()
-                filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
-            elif isinstance(self.filters, pd.DataFrame):
-                filters = cast(List[LabelDict], self.filters.to_dict(orient="records"))
-            elif isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
-                filters = self.filters
-            elif isinstance(self.filters, Callable):  # type: ignore
-                filters_func = cast(Callable[..., Union[List[LabelDict], IndexDF]], self.filters)
-                parameters = inspect.signature(filters_func).parameters
-                kwargs = {
-                    **({"ds": ds} if "ds" in parameters else {}),
-                    **({"run_config": run_config} if "run_config" in parameters else {})
-                }
-                filters_res = filters_func(**kwargs)
-                if isinstance(filters_res, pd.DataFrame):
-                    filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
-                else:
-                    filters = filters_res
+            return []
 
-            if run_config is None:
-                return RunConfig(filters=filters)
+        filters: List[LabelDict]
+        if isinstance(self.filters, str):
+            dt = ds.get_table(self.filters)
+            df = dt.get_data()
+            filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
+        elif isinstance(self.filters, pd.DataFrame):
+            filters = cast(List[LabelDict], self.filters.to_dict(orient="records"))
+        elif isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
+            filters = self.filters
+        elif isinstance(self.filters, Callable):  # type: ignore
+            filters_func = cast(Callable[..., Union[List[LabelDict], IndexDF]], self.filters)
+            parameters = inspect.signature(filters_func).parameters
+            kwargs = {
+                **({"ds": ds} if "ds" in parameters else {}),
+                **({"run_config": run_config} if "run_config" in parameters else {})
+            }
+            filters_res = filters_func(**kwargs)
+            if isinstance(filters_res, pd.DataFrame):
+                filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
             else:
-                run_config = copy.deepcopy(run_config)
-                filters = copy.deepcopy(filters)
-                run_config.filters += filters
-                return run_config
+                filters = filters_res
+
+        return filters
 
     def get_status(self, ds: DataStore) -> StepStatus:
         return StepStatus(
@@ -583,7 +577,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
-        run_config = self._apply_filters_to_run_config(ds, run_config)
+        filters = self._get_filters(ds, run_config)
         _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
@@ -609,7 +603,6 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
-        run_config = self._apply_filters_to_run_config(ds, run_config)
         chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
@@ -659,7 +652,6 @@ class BaseBatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
-        run_config = self._apply_filters_to_run_config(ds, run_config)
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -702,8 +694,6 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
-        run_config = self._apply_filters_to_run_config(ds, run_config)
-
         changes = ChangeList()
 
         if output_dfs is not None:
@@ -749,8 +739,6 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        run_config = self._apply_filters_to_run_config(ds, run_config)
-
         idx_records = idx.to_dict(orient="records")
 
         logger.error(
@@ -853,8 +841,10 @@ class BaseBatchTransformStep(ComputeStep):
 
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+        filters = self._get_filters(ds, run_config)
+        run_config_with_filters = RunConfig.add_filters(run_config, filters)
 
-        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
+        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config_with_filters)
 
         logger.info(f"Batches to process {idx_count}")
 
@@ -867,7 +857,7 @@ class BaseBatchTransformStep(ComputeStep):
             idx_count=idx_count,
             idx_gen=idx_gen,
             process_fn=self.process_batch,
-            run_config=run_config,
+            run_config=run_config_with_filters,
             executor_config=self.executor_config,
         )
 
@@ -884,9 +874,11 @@ class BaseBatchTransformStep(ComputeStep):
             executor = SingleThreadExecutor()
 
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+        filters = self._get_filters(ds, run_config)
+        run_config_with_filters = RunConfig.add_filters(run_config, filters)
 
         (idx_count, idx_gen) = self.get_change_list_process_ids(
-            ds, change_list, run_config
+            ds, change_list, run_config_with_filters
         )
 
         logger.info(f"Batches to process {idx_count}")
@@ -902,7 +894,7 @@ class BaseBatchTransformStep(ComputeStep):
             idx_count=idx_count,
             idx_gen=idx_gen,
             process_fn=self.process_batch,
-            run_config=run_config,
+            run_config=run_config_with_filters,
             executor_config=self.executor_config,
         )
 

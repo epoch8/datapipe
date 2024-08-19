@@ -428,7 +428,8 @@ def batch_transform_with_filters(dbconn, filters: Filters, ds: Optional[DataStor
     products.store_chunk(PRODUCTS_DF, now=0)
     items.store_chunk(ITEMS_DF, now=0)
 
-    def update_df(products: pd.DataFrame, items: pd.DataFrame):
+    def update_df(products: pd.DataFrame, items: pd.DataFrame, run_config: RunConfig):
+        assert len(run_config.filters) == 3
         merged_df = pd.merge(items, products, on=["product_id", "pipeline_id"])
         merged_df["a"] = merged_df.apply(lambda x: x["a"] + x["b"], axis=1)
 
