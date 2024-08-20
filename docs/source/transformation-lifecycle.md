@@ -25,6 +25,6 @@ structure:
 * `store_batch_err` is called when there was an exception during batch
   processing
 
-![lifecycle](transformation_lifecycle.png)
+![lifecycle](transformation-lifecycle.png)
 
 !! Note, lifecycle of generator is different
