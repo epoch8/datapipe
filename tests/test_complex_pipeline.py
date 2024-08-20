@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
@@ -410,7 +411,7 @@ def test_complex_transform_with_filters(dbconn):
     )
 
 
-def test_complex_transform_with_filters2(dbconn):
+def complex_transform_with_filters2_by_N(dbconn, N):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog({
         "tbl_image": Table(
@@ -450,14 +451,14 @@ def test_complex_transform_with_filters2(dbconn):
         yield df
 
     test_df__image = pd.DataFrame({
-        "image_id": range(100)
+        "image_id": range(N)
     })
     test_df__model = pd.DataFrame({
         "model_id": [0, 1, 2, 3, 4]
     })
     
     def filters_images():
-        return [{"image_id": i} for i in range(50)]
+        return [{"image_id": i} for i in range(N // 2)]
 
 
     def make_prediction(
@@ -502,3 +503,11 @@ def test_complex_transform_with_filters2(dbconn):
         test__df_output,
         index_cols=["model_id"]
     )
+
+def test_complex_transform_with_filters2_N100(dbconn):
+    complex_transform_with_filters2_by_N(dbconn, N=100)
+
+
+@pytest.mark.skip(reason="big filters not supported yet")
+def test_complex_transform_with_filters2_N10000(dbconn):
+    complex_transform_with_filters2_by_N(dbconn, N=10000)
