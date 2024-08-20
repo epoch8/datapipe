@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - "master"
-      - "mdbook"
     paths:
       - ".github/workflows/docs.yaml"
       - "docs/**"
@@ -36,18 +35,18 @@ jobs:
           path: docs/book
 
   # Deployment job
-  # deploy:
-  #   environment:
-  #     name: github-pages
-  #     url: ${{steps.deployment.outputs.page_url}}
-  #   runs-on: ubuntu-latest
-  #   needs: build
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{steps.deployment.outputs.page_url}}
+    runs-on: ubuntu-latest
+    needs: build
 
-  #   permissions:
-  #     pages: write      # to deploy to Pages
-  #     id-token: write   # to verify the deployment originates from an appropriate source
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
     
-  #   steps:
-  #     - name: Deploy to GitHub Pages
-  #       id: deployment
-  #       uses: actions/deploy-pages@v4
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
