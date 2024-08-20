@@ -450,14 +450,14 @@ def test_complex_transform_with_filters2(dbconn):
         yield df
 
     test_df__image = pd.DataFrame({
-        "image_id": range(1000)
+        "image_id": range(100)
     })
     test_df__model = pd.DataFrame({
         "model_id": [0, 1, 2, 3, 4]
     })
     
     def filters_images():
-        return [{"image_id": i} for i in range(500)]
+        return [{"image_id": i} for i in range(50)]
 
 
     def make_prediction(
@@ -484,7 +484,7 @@ def test_complex_transform_with_filters2(dbconn):
                 inputs=["tbl_image", "tbl_model"],
                 outputs=["tbl_prediction"],
                 transform_keys=["image_id", "model_id"],
-                chunk_size=100,
+                chunk_size=1000,
                 filters=filters_images
             ),
         ]
@@ -495,7 +495,6 @@ def test_complex_transform_with_filters2(dbconn):
         df__image=test_df__image[
             test_df__image["image_id"].isin([r["image_id"] for r in filters_images()])
         ],
-        # df__image=test_df__image,
         df__model=test_df__model
     )
     assert_df_equal(

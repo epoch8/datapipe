@@ -647,8 +647,6 @@ class BaseBatchTransformStep(ComputeStep):
                             df__extra_filters = pd.DataFrame(extra_filters)
                             if set(df__extra_filters.columns).intersection(df.columns):
                                 df = pd.merge(df, df__extra_filters)
-                            else:
-                                df = pd.merge(df, df__extra_filters, how="cross")
 
                         yield df
 
