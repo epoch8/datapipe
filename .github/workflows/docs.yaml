@@ -16,28 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-          cache: pip
-      
-      - name: Install dependencies
-        run: |
-          pip install ".[docs]"
-
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
 
+      - name: Setup mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: '0.4.40'
+
       - name: Build docs
         run: |
-          cd docs; make html
+          cd docs; make build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3.0.1
         with:
-          path: docs/build/html
+          path: docs/book
 
   # Deployment job
   deploy:

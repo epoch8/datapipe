@@ -1,0 +1,6 @@
+[book]
+authors = ["Andrey Tatarinov"]
+language = "en"
+multilingual = false
+src = "source"
+title = "Datapipe"
