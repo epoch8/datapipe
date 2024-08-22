@@ -4,6 +4,10 @@
 
 - [Introduction](./introduction.md)
 
+# Concepts
+
+- [Concepts](./concepts.md)
+
 # Command Line Interface
 
 - [Command Line Interface](./cli.md)
