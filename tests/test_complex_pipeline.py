@@ -409,12 +409,11 @@ def complex_transform_with_many_recordings(dbconn, N: int):
     )
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
-    test__df_output = get_some_prediction_only_on_best_model(
-        df__image=test_df__image,
-        df__image__attribute=test_df__image__attribute,
-        df__prediction=test_df__prediction,
-        df__best_model=test_df__best_model
-    )
+    test__df_output = pd.DataFrame({
+        "image_id": range(N),
+        "model_id": [4] * N,
+        "result": [0] * N
+    })
     assert_df_equal(
         ds.get_table("tbl_output").get_data(),
         test__df_output,
