@@ -321,6 +321,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
                 [
                     Column("image_id", Integer, primary_key=True),
                     Column("model_id", Integer, primary_key=True),
+                    Column("prediction__attribite", Integer),
                 ],
                 True
             )
@@ -342,7 +343,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
                 [
                     Column("image_id", Integer, primary_key=True),
                     Column("model_id", Integer, primary_key=True),
-                    Column("attribute", Integer),
+                    Column("result", Integer),
                 ],
                 True
             )
@@ -361,10 +362,17 @@ def complex_transform_with_many_recordings(dbconn, N: int):
     })
     test_df__prediction = pd.DataFrame({
         "image_id": list(range(N)) * 5,
-        "model_id": [0] * N + [1] * N + [2] * N + [3] * N + [4] * N
+        "model_id": [0] * N + [1] * N + [2] * N + [3] * N + [4] * N,
+        "prediction__attribite": (
+            [1*x for x in range(N)] +  # model_id=0
+            [2*x for x in range(N)] +  # model_id=1
+            [3*x for x in range(N)] +  # model_id=2
+            [4*x for x in range(N)] +  # model_id=3
+            [5*x for x in range(N)]  # model_id=4
+        )
     })
     test_df__best_model = pd.DataFrame({
-        "model_id": [0]
+        "model_id": [4]
     })
 
     def get_some_prediction_only_on_best_model(
@@ -376,7 +384,8 @@ def complex_transform_with_many_recordings(dbconn, N: int):
         df__prediction = pd.merge(df__prediction, df__best_model, on=["model_id"])
         df__image = pd.merge(df__image, df__image__attribute, on=["image_id"])
         df__result = pd.merge(df__image, df__prediction, on=["image_id"])
-        return df__result
+        df__result["result"] = df__result["attribute"] - df__result["prediction__attribite"]
+        return df__result[["image_id", "model_id", "result"]]
 
     pipeline = Pipeline(
         [
