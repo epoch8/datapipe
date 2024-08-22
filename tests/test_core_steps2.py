@@ -146,35 +146,6 @@ def test_batch_transform_with_filter_in_run_config(dbconn):
     assert_datatable_equal(tbl2, TEST_DF1_1.query("pipeline_id == 0"))
 
 
-def test_batch_transform_with_filter_in_run_config_not_in_transform_index(dbconn):
-    ds = DataStore(dbconn, create_meta_table=True)
-
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
-
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA2, True)
-    )
-
-    tbl1.store_chunk(TEST_DF1_2, now=0)
-
-    step = BatchTransformStep(
-        ds=ds,
-        name="test",
-        func=lambda df: df[["item_id", "a"]],
-        input_dts=[tbl1],
-        output_dts=[tbl2],
-    )
-
-    step.run_full(
-        ds,
-        run_config=RunConfig(filters=[{"pipeline_id": 0}]),
-    )
-
-    assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])
-
-
 def test_batch_transform_with_dt_on_input_and_output(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -390,69 +361,80 @@ def test_batch_transform_with_entity(dbconn):
     assert_df_equal(items2.get_data(), items2_df, index_cols=["item_id", "pipeline_id"])
 
 
-PRODUCTS_DF = pd.DataFrame(
-    {
-        "product_id": list(range(2)),
-        "pipeline_id": list(range(2)),
-        "b": range(10, 12),
-    }
-)
-
-ITEMS_DF = pd.DataFrame(
-    {
-        "item_id": list(range(5)) * 2,
-        "pipeline_id": list(range(2)) * 5,
-        "product_id": list(range(2)) * 5,
-        "a": range(10),
-    }
-)
-
-
 def batch_transform_with_filters(dbconn, filters: Filters, ds: Optional[DataStore] = None):
     if ds is None:
         ds = DataStore(dbconn, create_meta_table=True)
 
-    products = ds.create_table(
-        "products",
-        table_store=TableStoreDB(dbconn, "products_data", PRODUCTS_SCHEMA, True),
+    item = ds.create_table(
+        "item",
+        table_store=TableStoreDB(
+            dbconn,
+            "item",
+            [Column("item_id", Integer, primary_key=True)],
+            True
+        ),
     )
 
-    items = ds.create_table(
-        "items", table_store=TableStoreDB(dbconn, "items_data", ITEMS_SCHEMA, True)
+    inner_item = ds.create_table(
+        "inner_item", table_store=TableStoreDB(
+            dbconn,
+            "inner_item",
+            [
+                Column("item_id", Integer, primary_key=True),
+                Column("inner_item_id", Integer, primary_key=True)
+            ],
+            True
+        )
     )
 
-    items2 = ds.create_table(
-        "items2", table_store=TableStoreDB(dbconn, "items2_data", ITEMS_SCHEMA, True)
+    output = ds.create_table(
+        "output", table_store=TableStoreDB(
+            dbconn,
+            "output",
+            [
+                Column("item_id", Integer, primary_key=True),
+                Column("inner_item_id", Integer, primary_key=True)
+            ],
+            True
+        )
     )
 
-    products.store_chunk(PRODUCTS_DF, now=0)
-    items.store_chunk(ITEMS_DF, now=0)
+    test_df__item = pd.DataFrame(
+        {
+            "item_id": list(range(10)),
+        }
+    )
 
-    def update_df(products: pd.DataFrame, items: pd.DataFrame, run_config: RunConfig):
-        assert len(run_config.filters) == 3
-        merged_df = pd.merge(items, products, on=["product_id", "pipeline_id"])
-        merged_df["a"] = merged_df.apply(lambda x: x["a"] + x["b"], axis=1)
+    test_df__inner_item = pd.DataFrame(
+        {
+            "item_id": list(range(10)) * 10,
+            "inner_item_id": list(range(100)),
+        }
+    )
+    item.store_chunk(test_df__item, now=0)
+    inner_item.store_chunk(test_df__inner_item, now=0)
 
-        return merged_df[["item_id", "pipeline_id", "product_id", "a"]]
+    def update_df(df__item: pd.DataFrame, df__inner_item: pd.DataFrame):
+        merged_df = pd.merge(df__item, df__inner_item, on=["item_id"])
+        return merged_df
 
     step = BatchTransformStep(
         ds=ds,
         name="test",
         func=update_df,
-        input_dts=[products, items],
-        output_dts=[items2],
+        input_dts=[item, inner_item],
+        output_dts=[output],
         filters=filters
     )
 
     step.run_full(ds)
 
-    merged_df = pd.merge(ITEMS_DF, PRODUCTS_DF, on=["product_id", "pipeline_id"])
-    merged_df["a"] = merged_df.apply(lambda x: x["a"] + x["b"], axis=1)
+    test_df__output = update_df(
+        df__item=test_df__item[test_df__item["item_id"].isin([0, 1, 2])],
+        df__inner_item=test_df__inner_item[test_df__inner_item["item_id"].isin([0, 1, 2])]
+    )
 
-    items2_df = merged_df[["item_id", "pipeline_id", "product_id", "a"]]
-    items2_df = items2_df[items2_df["item_id"].isin([0, 1, 2])]
-
-    assert_df_equal(items2.get_data(), items2_df, index_cols=["item_id", "pipeline_id"])
+    assert_df_equal(output.get_data(), test_df__output, index_cols=["item_id", "inner_item_id"])
 
 
 def test_batch_transform_with_filters_as_str(dbconn):

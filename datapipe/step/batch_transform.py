@@ -572,7 +572,9 @@ class BaseBatchTransformStep(ComputeStep):
 
         keys = set([key for keys in filters for key in keys])
         if not all(len(filter) == len(keys) for filter in filters):
-            raise ValueError("Size of keys in each filters must have same length")
+            raise ValueError("Size of keys from filters must have same length")
+        if not all([key in self.transform_keys for key in keys]):
+            raise ValueError(f"Keys from filters must be in transform_keys={self.transform_keys}.")
         return filters
 
     def get_status(self, ds: DataStore) -> StepStatus:
@@ -630,26 +632,10 @@ class BaseBatchTransformStep(ComputeStep):
                 order=self.order,
             )
 
-            # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: Optional[List[Dict[str, Any]]] = None
-            if run_config is not None:
-                extra_filters = [{
-                    k: v
-                    for k, v in filter.items()
-                    if k not in join_keys
-                } for filter in run_config.filters]
-
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
-                        if extra_filters is not None and len(extra_filters) > 0:
-                            df__extra_filters = pd.DataFrame(extra_filters)
-                            if set(df__extra_filters.columns).intersection(df.columns):
-                                df = pd.merge(df, df__extra_filters)
-                            else:
-                                df = pd.merge(df, df__extra_filters, how="cross")
-
                         yield df
 
             return math.ceil(idx_count / chunk_size), alter_res_df()

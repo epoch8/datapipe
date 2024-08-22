@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
@@ -343,15 +344,15 @@ def test_complex_transform_with_filters(dbconn):
         yield df
 
     test_df__image = pd.DataFrame({
-        "image_id": [0, 1, 2, 3]
+        "image_id": range(1000)
     })
     test_df__subset__has__image = pd.DataFrame({
-        "image_id": [0, 1, 2, 3],
-        "subset_id": [0, 0, 1, 1]
+        "image_id": range(1000),
+        "subset_id": [0 for _ in range(200)] + [1 for _ in range(200)] + [2 for _ in range(600)]
     })
     test_df__prediction = pd.DataFrame({
-        "image_id": [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
-        "model_id": [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
+        "image_id": list(range(1000)) + list(range(1000)),
+        "model_id": [0] * 1000 + [1] * 1000
     })
 
     def count_func(
@@ -386,10 +387,10 @@ def test_complex_transform_with_filters(dbconn):
                 inputs=["tbl_image", "tbl_subset__has__image", "tbl_prediction"],
                 outputs=["tbl_output"],
                 transform_keys=["subset_id", "model_id"],
-                chunk_size=6,
+                chunk_size=100,
                 filters=[
-                    {"subset_id": 0, "model_id": 1},
-                    {"subset_id": 0, "model_id": 2},
+                    {"subset_id": 0},
+                    {"subset_id": 1},
                 ]
             ),
         ]
@@ -399,16 +400,114 @@ def test_complex_transform_with_filters(dbconn):
     test__df_output = count_func(
         df__image=test_df__image,
         df__subset__has__image=test_df__subset__has__image[
-            test_df__subset__has__image["subset_id"] == 0
+            test_df__subset__has__image["subset_id"].isin([0, 1])
         ],
-        df__prediction=test_df__prediction[
-            test_df__prediction["model_id"].isin([1, 2])
-        ]
+        df__prediction=test_df__prediction
     )
-    # print(f"{test__df_output=}")
-    print(ds.get_table("tbl_output").get_data())
     assert_df_equal(
         ds.get_table("tbl_output").get_data(),
         test__df_output,
         index_cols=["model_id"]
     )
+
+
+def complex_transform_with_filters2_by_N(dbconn, N):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog({
+        "tbl_image": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_image",
+                [
+                    Column("image_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        ),
+        "tbl_model": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_model",
+                [
+                    Column("model_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        ),
+        "tbl_prediction": Table(
+            store=TableStoreDB(
+                dbconn,
+                "tbl_prediction",
+                [
+                    Column("image_id", Integer, primary_key=True),
+                    Column("model_id", Integer, primary_key=True),
+                ],
+                True
+            )
+        )
+    })
+
+    def gen_tbl(df):
+        yield df
+
+    test_df__image = pd.DataFrame({
+        "image_id": range(N)
+    })
+    test_df__model = pd.DataFrame({
+        "model_id": [0, 1, 2, 3, 4]
+    })
+    
+    def filters_images():
+        return [{"image_id": i} for i in range(N // 2)]
+
+
+    def make_prediction(
+        df__image: pd.DataFrame,
+        df__model: pd.DataFrame,
+    ):
+        df__prediction = pd.merge(df__image, df__model, how="cross")
+        return df__prediction
+
+    pipeline = Pipeline(
+        [
+            BatchGenerate(
+                func=gen_tbl,
+                outputs=["tbl_image"],
+                kwargs=dict(df=test_df__image),
+            ),
+            BatchGenerate(
+                func=gen_tbl,
+                outputs=["tbl_model"],
+                kwargs=dict(df=test_df__model),
+            ),
+            BatchTransform(
+                func=make_prediction,
+                inputs=["tbl_image", "tbl_model"],
+                outputs=["tbl_prediction"],
+                transform_keys=["image_id", "model_id"],
+                chunk_size=1000,
+                filters=filters_images
+            ),
+        ]
+    )
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
+    test__df_output = make_prediction(
+        df__image=test_df__image[
+            test_df__image["image_id"].isin([r["image_id"] for r in filters_images()])
+        ],
+        df__model=test_df__model
+    )
+    assert_df_equal(
+        ds.get_table("tbl_prediction").get_data(),
+        test__df_output,
+        index_cols=["model_id"]
+    )
+
+def test_complex_transform_with_filters2_N100(dbconn):
+    complex_transform_with_filters2_by_N(dbconn, N=100)
+
+
+@pytest.mark.skip(reason="big filters not supported yet")
+def test_complex_transform_with_filters2_N10000(dbconn):
+    complex_transform_with_filters2_by_N(dbconn, N=10000)
