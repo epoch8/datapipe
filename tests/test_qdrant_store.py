@@ -76,4 +76,6 @@ def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 
+    assert len(catalog.get_datatable(ds, "input").get_data()) == 1
+
     assert len(catalog.get_datatable(ds, "output").get_data()) == 1

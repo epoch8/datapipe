@@ -88,7 +88,7 @@ class StepStatus:
 
 
 @dataclass
-class JoinType:
+class ComputeJoinType:
     dt: DataTable
     join_type: Literal["inner", "full"] = "full"
 
@@ -112,7 +112,7 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: List[JoinType],
+        input_dts: List[ComputeJoinType],
         output_dts: List[DataTable],
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,

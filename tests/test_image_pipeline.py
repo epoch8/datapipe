@@ -6,7 +6,7 @@ from PIL import Image
 
 from datapipe.compute import (
     Catalog,
-    JoinType,
+    ComputeJoinType,
     Pipeline,
     Table,
     build_compute,
@@ -72,7 +72,7 @@ def test_image_datatables(dbconn, tmp_dir):
         ds=ds,
         name="resize_images",
         func=resize_images,
-        input_dts=[JoinType(dt=tbl1, join_type="full")],
+        input_dts=[ComputeJoinType(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
 
