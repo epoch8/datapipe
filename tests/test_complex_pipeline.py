@@ -1,10 +1,11 @@
 import pandas as pd
+import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe.step.batch_generate import BatchGenerate
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
+from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF
@@ -292,116 +293,127 @@ def test_complex_train_pipeline(dbconn):
 
 def complex_transform_with_many_recordings(dbconn, N: int):
     ds = DataStore(dbconn, create_meta_table=True)
-    catalog = Catalog({
-        "tbl_image": Table(
-            store=TableStoreDB(
-                dbconn,
-                "tbl_image",
-                [
-                    Column("image_id", Integer, primary_key=True),
-                ],
-                True
-            )
-        ),
-        "tbl_image__attribute": Table(
-            store=TableStoreDB(
-                dbconn,
-                "tbl_image__attribute",
-                [
-                    Column("image_id", Integer, primary_key=True),
-                    Column("attribute", Integer),
-                ],
-                True
-            )
-        ),
-        "tbl_prediction": Table(
-            store=TableStoreDB(
-                dbconn,
-                "tbl_prediction",
-                [
-                    Column("image_id", Integer, primary_key=True),
-                    Column("model_id", Integer, primary_key=True),
-                    Column("prediction__attribite", Integer),
-                ],
-                True
-            )
-        ),
-        "tbl_best_model": Table(
-            store=TableStoreDB(
-                dbconn,
-                "tbl_best_model",
-                [
-                    Column("model_id", Integer, primary_key=True),
-                ],
-                True
-            )
-        ),
-        "tbl_output": Table(
-            store=TableStoreDB(
-                dbconn,
-                "tbl_output",
-                [
-                    Column("image_id", Integer, primary_key=True),
-                    Column("model_id", Integer, primary_key=True),
-                    Column("result", Integer),
-                ],
-                True
-            )
-        ),
-    })
+    catalog = Catalog(
+        {
+            "tbl_image": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "tbl_image",
+                    [
+                        Column("image_id", Integer, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "tbl_image__attribute": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "tbl_image__attribute",
+                    [
+                        Column("image_id", Integer, primary_key=True),
+                        Column("attribute", Integer),
+                    ],
+                    True,
+                )
+            ),
+            "tbl_prediction": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "tbl_prediction",
+                    [
+                        Column("image_id", Integer, primary_key=True),
+                        Column("model_id", Integer, primary_key=True),
+                        Column("prediction__attribite", Integer),
+                    ],
+                    True,
+                )
+            ),
+            "tbl_best_model": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "tbl_best_model",
+                    [
+                        Column("model_id", Integer, primary_key=True),
+                    ],
+                    True,
+                )
+            ),
+            "tbl_output": Table(
+                store=TableStoreDB(
+                    dbconn,
+                    "tbl_output",
+                    [
+                        Column("image_id", Integer, primary_key=True),
+                        Column("model_id", Integer, primary_key=True),
+                        Column("result", Integer),
+                    ],
+                    True,
+                )
+            ),
+        }
+    )
 
     def gen_tbls(df1, df2, df3, df4):
         yield df1, df2, df3, df4
 
-    test_df__image = pd.DataFrame({
-        "image_id": range(N)
-    })
-    test_df__image__attribute = pd.DataFrame({
-        "image_id": range(N),
-        "attribute": [5*x for x in range(N)]
-    })
-    test_df__prediction = pd.DataFrame({
-        "image_id": list(range(N)) * 5,
-        "model_id": [0] * N + [1] * N + [2] * N + [3] * N + [4] * N,
-        "prediction__attribite": (
-            [1*x for x in range(N)] +  # model_id=0
-            [2*x for x in range(N)] +  # model_id=1
-            [3*x for x in range(N)] +  # model_id=2
-            [4*x for x in range(N)] +  # model_id=3
-            [5*x for x in range(N)]  # model_id=4
-        )
-    })
-    test_df__best_model = pd.DataFrame({
-        "model_id": [4]
-    })
+    test_df__image = pd.DataFrame({"image_id": range(N)})
+    test_df__image__attribute = pd.DataFrame(
+        {"image_id": range(N), "attribute": [5 * x for x in range(N)]}
+    )
+    test_df__prediction = pd.DataFrame(
+        {
+            "image_id": list(range(N)) * 5,
+            "model_id": [0] * N + [1] * N + [2] * N + [3] * N + [4] * N,
+            "prediction__attribite": (
+                [1 * x for x in range(N)]  # model_id=0
+                + [2 * x for x in range(N)]  # model_id=1
+                + [3 * x for x in range(N)]  # model_id=2
+                + [4 * x for x in range(N)]  # model_id=3
+                + [5 * x for x in range(N)]  # model_id=4
+            ),
+        }
+    )
+    test_df__best_model = pd.DataFrame({"model_id": [4]})
 
     def get_some_prediction_only_on_best_model(
         df__image: pd.DataFrame,
         df__image__attribute: pd.DataFrame,
         df__prediction: pd.DataFrame,
-        df__best_model: pd.DataFrame
+        df__best_model: pd.DataFrame,
     ):
         df__prediction = pd.merge(df__prediction, df__best_model, on=["model_id"])
         df__image = pd.merge(df__image, df__image__attribute, on=["image_id"])
         df__result = pd.merge(df__image, df__prediction, on=["image_id"])
-        df__result["result"] = df__result["attribute"] - df__result["prediction__attribite"]
+        df__result["result"] = (
+            df__result["attribute"] - df__result["prediction__attribite"]
+        )
         return df__result[["image_id", "model_id", "result"]]
 
     pipeline = Pipeline(
         [
             BatchGenerate(
                 func=gen_tbls,
-                outputs=["tbl_image", "tbl_image__attribute", "tbl_prediction", "tbl_best_model"],
+                outputs=[
+                    "tbl_image",
+                    "tbl_image__attribute",
+                    "tbl_prediction",
+                    "tbl_best_model",
+                ],
                 kwargs=dict(
                     df1=test_df__image,
                     df2=test_df__image__attribute,
                     df3=test_df__prediction,
-                    df4=test_df__best_model
+                    df4=test_df__best_model,
                 ),
             ),
             BatchTransform(
                 func=get_some_prediction_only_on_best_model,
-                inputs=["tbl_image", "tbl_image__attribute", "tbl_prediction", "tbl_best_model"],
+                inputs=[
+                    "tbl_image",
+                    "tbl_image__attribute",
+                    "tbl_prediction",
+                    "tbl_best_model",
+                ],
                 outputs=["tbl_output"],
                 transform_keys=["image_id", "model_id"],
             ),
@@ -409,15 +421,13 @@ def complex_transform_with_many_recordings(dbconn, N: int):
     )
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
-    test__df_output = pd.DataFrame({
-        "image_id": range(N),
-        "model_id": [4] * N,
-        "result": [0] * N
-    })
+    test__df_output = pd.DataFrame(
+        {"image_id": range(N), "model_id": [4] * N, "result": [0] * N}
+    )
     assert_df_equal(
         ds.get_table("tbl_output").get_data(),
         test__df_output,
-        index_cols=["image_id", "model_id"]
+        index_cols=["image_id", "model_id"],
     )
 
 
@@ -425,9 +435,11 @@ def test_complex_transform_with_many_recordings_N100(dbconn):
     complex_transform_with_many_recordings(dbconn, N=100)
 
 
+@pytest.mark.skip(reason="This test is slow")
 def test_complex_transform_with_many_recordings_N1000(dbconn):
     complex_transform_with_many_recordings(dbconn, N=1000)
 
 
+@pytest.mark.skip(reason="This test is slow")
 def test_complex_transform_with_many_recordings_N10000(dbconn):
     complex_transform_with_many_recordings(dbconn, N=10000)

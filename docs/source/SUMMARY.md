@@ -3,6 +3,8 @@
 # Introduction
 
 - [Introduction](./introduction.md)
+- TODO: Concepts
+- TODO: How merging works
 
 # Command Line Interface
 

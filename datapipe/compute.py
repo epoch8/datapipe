@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Literal, Optional, Tuple
 
 from opentelemetry import trace
 
@@ -87,6 +87,12 @@ class StepStatus:
     changed_idx_count: int
 
 
+@dataclass
+class JoinType:
+    dt: DataTable
+    join_type: Literal["inner", "full"] = "full"
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -106,7 +112,7 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[JoinType],
         output_dts: List[DataTable],
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
@@ -121,7 +127,7 @@ class ComputeStep:
         ss = [
             self.__class__.__name__,
             self._name,
-            *[i.name for i in self.input_dts],
+            *[i.dt.name for i in self.input_dts],
             *[o.name for o in self.output_dts],
         ]
 
@@ -143,7 +149,7 @@ class ComputeStep:
 
     # TODO: move to lints
     def validate(self) -> None:
-        inp_p_keys_arr = [set(inp.primary_keys) for inp in self.input_dts if inp]
+        inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
         out_p_keys_arr = [set(out.primary_keys) for out in self.output_dts if out]
 
         inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
@@ -153,7 +159,7 @@ class ComputeStep:
         key_to_column_type_inp = {
             column.name: type(column.type)
             for inp in self.input_dts
-            for column in inp.primary_schema
+            for column in inp.dt.primary_schema
             if column.name in join_keys
         }
         key_to_column_type_out = {
@@ -271,11 +277,11 @@ def run_steps(
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
-            f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+            f"{step.get_name()} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
         ):
             logger.info(
                 f"Running {step.get_name()} "
-                f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
             )
 
             step.run_full(ds=ds, run_config=run_config, executor=executor)
@@ -323,11 +329,11 @@ def run_steps_changelist(
                 for step in steps:
                     with tracer.start_as_current_span(
                         f"{step.get_name()} "
-                        f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                        f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                     ):
                         logger.info(
                             f"Running {step.get_name()} "
-                            f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                            f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                         )
 
                         if isinstance(step, BaseBatchTransformStep):

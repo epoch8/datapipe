@@ -42,7 +42,7 @@ from sqlalchemy import (
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep, StepStatus
+from datapipe.compute import Catalog, ComputeStep, JoinType, PipelineStep, StepStatus
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import LabelDict, RunConfig
@@ -299,7 +299,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[JoinType],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -325,8 +325,8 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys = list(transform_keys)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            [i.meta_table for i in input_dts],
-            [i.meta_table for i in output_dts],
+            [inp.dt.meta_table for inp in input_dts],
+            [out.meta_table for out in output_dts],
             transform_keys,
         )
 
@@ -388,7 +388,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Tuple[Iterable[str], Any]:
         all_input_keys_counts: Dict[str, int] = {}
-        for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
+        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_dts]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
         common_keys = [
@@ -450,12 +450,12 @@ class BaseBatchTransformStep(ComputeStep):
             return sql.cte(name=f"all__{agg_col}")
 
         inp_ctes = [
-            tbl.get_agg_cte(
+            inp.dt.get_agg_cte(
                 transform_keys=self.transform_keys,
                 filters_idx=filters_idx,
                 run_config=run_config,
             )
-            for tbl in self.input_dts
+            for inp in self.input_dts
         ]
 
         inp = _make_agg_of_agg(inp_ctes, "update_ts")
@@ -639,8 +639,8 @@ class BaseBatchTransformStep(ComputeStep):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
             for inp in self.input_dts:
-                if inp.name in change_list.changes:
-                    idx = change_list.changes[inp.name]
+                if inp.dt.name in change_list.changes:
+                    idx = change_list.changes[inp.dt.name]
                     if any([key not in idx.columns for key in self.transform_keys]):
                         _, sql = self._build_changed_idx_sql(
                             ds=ds,
@@ -761,7 +761,7 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
-        return [inp.get_data(idx) for inp in self.input_dts]
+        return [inp.dt.get_data(idx) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,
@@ -922,7 +922,7 @@ class DatatableBatchTransform(PipelineStep):
                 ds=ds,
                 name=f"{self.func.__name__}",
                 func=self.func,
-                input_dts=input_dts,
+                input_dts=[JoinType(dt=inp, join_type="full") for inp in input_dts],
                 output_dts=output_dts,
                 kwargs=self.kwargs,
                 transform_keys=self.transform_keys,
@@ -938,7 +938,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: DatatableBatchTransformFunc,
-        input_dts: List[DataTable],
+        input_dts: List[JoinType],
         output_dts: List[DataTable],
         kwargs: Optional[Dict] = None,
         transform_keys: Optional[List[str]] = None,
@@ -967,7 +967,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         return self.func(
             ds=ds,
             idx=idx,
-            input_dts=self.input_dts,
+            input_dts=[inp.dt for inp in self.input_dts],
             run_config=run_config,
             kwargs=self.kwargs,
         )
@@ -995,7 +995,9 @@ class BatchTransform(PipelineStep):
             BatchTransformStep(
                 ds=ds,
                 name=f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
-                input_dts=input_dts,
+                input_dts=[
+                    JoinType(dt=input_dts, join_type="full") for input_dts in input_dts
+                ],
                 output_dts=output_dts,
                 func=self.func,
                 kwargs=self.kwargs,
@@ -1016,7 +1018,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: BatchTransformFunc,
-        input_dts: List[DataTable],
+        input_dts: List[JoinType],
         output_dts: List[DataTable],
         kwargs: Optional[Dict[str, Any]] = None,
         transform_keys: Optional[List[str]] = None,
