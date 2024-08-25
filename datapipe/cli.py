@@ -322,7 +322,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
         labels = " ".join([f"[magenta]{k}={v}[/magenta]" for (k, v) in step.labels])
         res.append(f"  labels: {labels}")
 
-    if inputs_arr := [i.name for i in step.input_dts]:
+    if inputs_arr := [inp.dt.name for inp in step.input_dts]:
         inputs = ", ".join(inputs_arr)
         res.append(f"  inputs: {inputs}")
 
