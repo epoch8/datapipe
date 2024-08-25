@@ -44,7 +44,7 @@ from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     Catalog,
-    ComputeJoinType,
+    ComputeInput,
     ComputeStep,
     PipelineStep,
     StepStatus,
@@ -64,6 +64,7 @@ from datapipe.types import (
     IndexDF,
     Labels,
     MetaSchema,
+    PipelineInput,
     TableOrName,
     TransformResult,
     data_to_index,
@@ -305,7 +306,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: List[ComputeJoinType],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -928,9 +929,7 @@ class DatatableBatchTransform(PipelineStep):
                 ds=ds,
                 name=f"{self.func.__name__}",
                 func=self.func,
-                input_dts=[
-                    ComputeJoinType(dt=inp, join_type="full") for inp in input_dts
-                ],
+                input_dts=[ComputeInput(dt=inp, join_type="full") for inp in input_dts],
                 output_dts=output_dts,
                 kwargs=self.kwargs,
                 transform_keys=self.transform_keys,
@@ -946,7 +945,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: DatatableBatchTransformFunc,
-        input_dts: List[ComputeJoinType],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         kwargs: Optional[Dict] = None,
         transform_keys: Optional[List[str]] = None,
@@ -1004,7 +1003,7 @@ class BatchTransform(PipelineStep):
                 ds=ds,
                 name=f"{self.func.__name__}",
                 input_dts=[
-                    ComputeJoinType(dt=input_dts, join_type="full")
+                    ComputeInput(dt=input_dts, join_type="full")
                     for input_dts in input_dts
                 ],
                 output_dts=output_dts,
@@ -1027,7 +1026,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: BatchTransformFunc,
-        input_dts: List[ComputeJoinType],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         kwargs: Optional[Dict[str, Any]] = None,
         transform_keys: Optional[List[str]] = None,

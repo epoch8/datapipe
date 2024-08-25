@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.compute import ComputeJoinType
+from datapipe.compute import ComputeInput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import do_batch_generate
 from datapipe.step.batch_transform import BatchTransformStep
@@ -105,7 +105,7 @@ def test_inc_process_modify_values(dbconn) -> None:
         ds=ds,
         name="test",
         func=id_func,
-        input_dts=[ComputeJoinType(dt=tbl1, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
 
@@ -140,7 +140,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
         ds=ds,
         name="test",
         func=id_func,
-        input_dts=[ComputeJoinType(dt=tbl1, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
 
@@ -181,7 +181,7 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
         ds=ds,
         name="test",
         func=id_func,
-        input_dts=[ComputeJoinType(dt=tbl1, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
 
@@ -256,7 +256,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         ds=ds,
         name="step_inc",
         func=inc_func,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl1, tbl2, tbl3],
     )
 
@@ -282,7 +282,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         ds=ds,
         name="step_inc_inv",
         func=inc_func_inv,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl3, tbl2, tbl1],
     )
 
@@ -340,8 +340,8 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         name="test",
         func=inc_func,
         input_dts=[
-            ComputeJoinType(dt=tbl1, join_type="full"),
-            ComputeJoinType(dt=tbl2, join_type="full"),
+            ComputeInput(dt=tbl1, join_type="full"),
+            ComputeInput(dt=tbl2, join_type="full"),
         ],
         output_dts=[tbl],
     )
@@ -436,7 +436,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
         ds=ds,
         name="test",
         func=inc_func,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_good, tbl_bad],
     )
 
@@ -488,14 +488,14 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
         ds=ds,
         name="unpack",
         func=inc_func_unpack,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_rel],
     )
     step_pack = BatchTransformStep(
         ds=ds,
         name="pack",
         func=inc_func_pack,
-        input_dts=[ComputeJoinType(dt=tbl_rel, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
         output_dts=[tbl2],
     )
 
@@ -560,14 +560,14 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
         ds=ds,
         name="unpack",
         func=inc_func_unpack,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_rel],
     )
     step_pack = BatchTransformStep(
         ds=ds,
         name="pack",
         func=inc_func_pack,
-        input_dts=[ComputeJoinType(dt=tbl_rel, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
         output_dts=[tbl2],
     )
 
@@ -673,7 +673,7 @@ def test_error_handling(dbconn) -> None:
         ds=ds,
         name="bad",
         func=inc_func_bad,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_good],
         chunk_size=1,
     )
@@ -685,7 +685,7 @@ def test_error_handling(dbconn) -> None:
         ds=ds,
         name="good",
         func=inc_func_good,
-        input_dts=[ComputeJoinType(dt=tbl, join_type="full")],
+        input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_good],
         chunk_size=CHUNKSIZE,
     )

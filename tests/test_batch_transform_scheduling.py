@@ -3,7 +3,7 @@ from typing import List
 import pandas as pd
 from sqlalchemy import Column, Integer
 
-from datapipe.compute import ComputeJoinType
+from datapipe.compute import ComputeInput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
@@ -44,7 +44,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
         name="step",
         func=id_func,
         input_dts=[
-            ComputeJoinType(dt=tbl1, join_type="full"),
+            ComputeInput(dt=tbl1, join_type="full"),
         ],
         output_dts=[tbl2],
     )
@@ -152,9 +152,9 @@ def test_aux_input(dbconn) -> None:
         name="step",
         func=lambda items1, items2, aux: items1,
         input_dts=[
-            ComputeJoinType(dt=tbl_items1, join_type="full"),
-            ComputeJoinType(dt=tbl_items2, join_type="full"),
-            ComputeJoinType(dt=tbl_aux, join_type="full"),
+            ComputeInput(dt=tbl_items1, join_type="full"),
+            ComputeInput(dt=tbl_items2, join_type="full"),
+            ComputeInput(dt=tbl_aux, join_type="full"),
         ],
         output_dts=[tbl_out],
         transform_keys=["id"],
