@@ -8,7 +8,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Literal,
     Optional,
     Tuple,
     cast,
@@ -22,12 +21,9 @@ from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.expression import and_, func, or_, select
 
 from datapipe.event_logger import EventLogger
+from datapipe.meta.sql_meta import sql_apply_filters_idx_to_subquery
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import (
-    sql_apply_filters_idx_to_subquery,
-    sql_apply_idx_filter_to_table,
-    sql_apply_runconfig_filter,
-)
+from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.store.table_store import TableStore
 from datapipe.types import (

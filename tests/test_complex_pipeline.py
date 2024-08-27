@@ -409,10 +409,10 @@ def complex_transform_with_many_recordings(dbconn, N: int):
             BatchTransform(
                 func=get_some_prediction_only_on_best_model,
                 inputs=[
-                    "tbl_image",
-                    "tbl_image__attribute",
-                    "tbl_prediction",
-                    "tbl_best_model",
+                    "tbl_image",  # image_id
+                    "tbl_image__attribute",  # image_id, attribute
+                    "tbl_prediction",  # image_id, model_id, prediction__attribite
+                    "tbl_best_model",  # model_id
                 ],
                 outputs=["tbl_output"],
                 transform_keys=["image_id", "model_id"],

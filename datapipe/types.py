@@ -55,6 +55,19 @@ TableOrName = Union[str, OrmTable, "Table"]
 
 
 @dataclass
+class JoinSpec:
+    table: TableOrName
+
+
+@dataclass
+class Required(JoinSpec):
+    pass
+
+
+PipelineInput = Union[TableOrName, JoinSpec]
+
+
+@dataclass
 class ChangeList:
     changes: Dict[str, IndexDF] = field(
         default_factory=lambda: cast(Dict[str, IndexDF], {})
