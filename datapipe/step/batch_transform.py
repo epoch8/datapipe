@@ -21,24 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import (
-    Boolean,
-    Column,
-    Float,
-    Integer,
-    String,
-    Table,
-    alias,
-    and_,
-    asc,
-    column,
-    desc,
-    func,
-    literal,
-    or_,
-    select,
-    update,
-)
+from sqlalchemy import Boolean, Column, Float, Integer, String, alias, func, select
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -51,10 +34,8 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import make_agg_of_agg, sql_apply_filters_idx_to_subquery
+from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.sql_util import sql_apply_runconfig_filter
-from datapipe.store.database import DBConn
 from datapipe.types import (
     ChangeList,
     DataDF,
@@ -97,204 +78,6 @@ TRANSFORM_META_SCHEMA: DataSchema = [
     Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
     Column("error", String),  # Текст ошибки
 ]
-
-
-class TransformMetaTable:
-    def __init__(
-        self,
-        dbconn: DBConn,
-        name: str,
-        primary_schema: DataSchema,
-        create_table: bool = False,
-    ) -> None:
-        self.dbconn = dbconn
-        self.name = name
-        self.primary_schema = primary_schema
-        self.primary_keys = [i.name for i in primary_schema]
-
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
-
-        self.sql_table = Table(
-            name,
-            dbconn.sqla_metadata,
-            *self.sql_schema,
-        )
-
-        if create_table:
-            self.sql_table.create(self.dbconn.con, checkfirst=True)
-
-    def __reduce__(self) -> Tuple[Any, ...]:
-        return self.__class__, (
-            self.dbconn,
-            self.name,
-            self.primary_schema,
-        )
-
-    def insert_rows(
-        self,
-        idx: IndexDF,
-    ) -> None:
-        """
-        Создает строки в таблице метаданных для указанных индексов. Если строки
-        уже существуют - не делает ничего.
-        """
-
-        idx = cast(IndexDF, idx[self.primary_keys])
-
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": None,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
-
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
-
-    def mark_rows_processed_success(
-        self,
-        idx: IndexDF,
-        process_ts: float,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
-        )  # FIXME: сделать в основном запросе distinct
-        if len(idx) == 0:
-            return
-
-        if idx.empty:
-            # DataFrame считает, что он пустой, если в нем нет колонок
-            # При этом мы хотим создать строки в БД
-
-            # Мы можем обработать только случай с одной строкой
-            assert len(idx) == 1
-
-            with self.dbconn.con.begin() as con:
-                insert_sql = self.dbconn.insert(self.sql_table).values(
-                    [
-                        {
-                            "process_ts": process_ts,
-                            "is_success": True,
-                            "priority": 0,
-                            "error": None,
-                        }
-                    ]
-                )
-
-                # удалить все из таблицы
-                con.execute(self.sql_table.delete())
-                con.execute(insert_sql)
-
-        else:
-            insert_sql = self.dbconn.insert(self.sql_table).values(
-                [
-                    {
-                        "process_ts": process_ts,
-                        "is_success": True,
-                        "priority": 0,
-                        "error": None,
-                        **idx_dict,  # type: ignore
-                    }
-                    for idx_dict in idx.to_dict(orient="records")
-                ]
-            )
-
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
-                set_={
-                    "process_ts": process_ts,
-                    "is_success": True,
-                    "error": None,
-                },
-            )
-
-            # execute
-            with self.dbconn.con.begin() as con:
-                con.execute(sql)
-
-    def mark_rows_processed_error(
-        self,
-        idx: IndexDF,
-        process_ts: float,
-        error: str,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
-        )  # FIXME: сделать в основном запросе distinct
-        if len(idx) == 0:
-            return
-
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": process_ts,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": error,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                "process_ts": process_ts,
-                "is_success": False,
-                "error": error,
-            },
-        )
-
-        # execute
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
-
-    def get_metadata_size(self) -> int:
-        """
-        Получить количество строк метаданных трансформации.
-        """
-
-        sql = select(func.count()).select_from(self.sql_table)
-        with self.dbconn.con.begin() as con:
-            res = con.execute(sql).fetchone()
-
-        assert res is not None and len(res) == 1
-        return res[0]
-
-    def mark_all_rows_unprocessed(
-        self,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        update_sql = (
-            update(self.sql_table)
-            .values(
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "error": None,
-                }
-            )
-            .where(self.sql_table.c.is_success == True)
-        )
-
-        sql = sql_apply_runconfig_filter(
-            update_sql, self.sql_table, self.primary_keys, run_config
-        )
-
-        # execute
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
 
 
 class BaseBatchTransformStep(ComputeStep):
@@ -386,111 +169,6 @@ class BaseBatchTransformStep(ComputeStep):
 
         return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
 
-    def _build_changed_idx_sql(
-        self,
-        ds: DataStore,
-        filters_idx: Optional[IndexDF] = None,
-        order_by: Optional[List[str]] = None,
-        order: Literal["asc", "desc"] = "asc",
-        run_config: Optional[RunConfig] = None,  # TODO remove
-    ) -> Tuple[Iterable[str], Any]:
-        all_input_keys_counts: Dict[str, int] = {}
-        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_dts]):
-            all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
-
-        inp_ctes = [
-            inp.dt.get_agg_cte(
-                transform_keys=self.transform_keys,
-                filters_idx=filters_idx,
-                run_config=run_config,
-            )
-            for inp in self.input_dts
-        ]
-
-        common_keys = [
-            k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
-        ]
-
-        common_transform_keys = [k for k in self.transform_keys if k in common_keys]
-
-        inp = make_agg_of_agg(
-            ds=ds,
-            transform_keys=self.transform_keys,
-            common_transform_keys=common_transform_keys,
-            ctes=inp_ctes,
-            agg_col="update_ts",
-        )
-
-        tr_tbl = self.meta_table.sql_table
-        out: Any = (
-            select(
-                *[column(k) for k in self.transform_keys]
-                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
-            )
-            .select_from(tr_tbl)
-            .group_by(*[column(k) for k in self.transform_keys])
-        )
-
-        out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
-
-        out = out.cte(name="transform")
-
-        if len(self.transform_keys) == 0:
-            join_onclause_sql: Any = literal(True)
-        elif len(self.transform_keys) == 1:
-            join_onclause_sql = (
-                inp.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
-            )
-        else:  # len(self.transform_keys) > 1:
-            join_onclause_sql = and_(
-                *[inp.c[key] == out.c[key] for key in self.transform_keys]
-            )
-
-        sql = (
-            select(
-                # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
-                # пустом self.transform_keys
-                literal(1).label("_datapipe_dummy"),
-                *[
-                    func.coalesce(inp.c[key], out.c[key]).label(key)
-                    for key in self.transform_keys
-                ],
-            )
-            .select_from(inp)
-            .outerjoin(
-                out,
-                onclause=join_onclause_sql,
-                full=True,
-            )
-            .where(
-                or_(
-                    and_(
-                        out.c.is_success == True,  # noqa
-                        inp.c.update_ts > out.c.process_ts,
-                    ),
-                    out.c.is_success != True,  # noqa
-                    out.c.process_ts == None,  # noqa
-                )
-            )
-        )
-        if order_by is None:
-            sql = sql.order_by(
-                out.c.priority.desc().nullslast(),
-                *[column(k) for k in self.transform_keys],
-            )
-        else:
-            if order == "desc":
-                sql = sql.order_by(
-                    *[desc(column(k)) for k in order_by],
-                    out.c.priority.desc().nullslast(),
-                )
-            elif order == "asc":
-                sql = sql.order_by(
-                    *[asc(column(k)) for k in order_by],
-                    out.c.priority.desc().nullslast(),
-                )
-        return (self.transform_keys, sql)
-
     def _apply_filters_to_run_config(
         self, run_config: Optional[RunConfig] = None
     ) -> Optional[RunConfig]:
@@ -524,7 +202,13 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> int:
         run_config = self._apply_filters_to_run_config(run_config)
-        _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
+        _, sql = build_changed_idx_sql(
+            ds=ds,
+            meta_table=self.meta_table,
+            input_dts=self.input_dts,
+            transform_keys=self.transform_keys,
+            run_config=run_config,
+        )
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
@@ -561,8 +245,11 @@ class BaseBatchTransformStep(ComputeStep):
                 run_config=run_config,
             )
 
-            join_keys, u1 = self._build_changed_idx_sql(
+            join_keys, u1 = build_changed_idx_sql(
                 ds=ds,
+                meta_table=self.meta_table,
+                input_dts=self.input_dts,
+                transform_keys=self.transform_keys,
                 run_config=run_config,
                 order_by=self.order_by,
                 order=self.order,
@@ -603,8 +290,14 @@ class BaseBatchTransformStep(ComputeStep):
                 if inp.dt.name in change_list.changes:
                     idx = change_list.changes[inp.dt.name]
                     if any([key not in idx.columns for key in self.transform_keys]):
-                        _, sql = self._build_changed_idx_sql(
+                        # TODO пересмотреть эту логику, выглядит избыточной
+                        # (возможно, достаточно посчитать один раз для всех
+                        # input таблиц)
+                        _, sql = build_changed_idx_sql(
                             ds=ds,
+                            meta_table=self.meta_table,
+                            input_dts=self.input_dts,
+                            transform_keys=self.transform_keys,
                             filters_idx=idx,
                             run_config=run_config,
                         )
