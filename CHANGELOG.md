@@ -1,6 +1,6 @@
-# WIP 0.14.0
+# 0.14.0
 
-Changes:
+Major changes:
 * Enable Python 3.12 support
 * `DatatableTansform` can become `BatchTransform` with empty indices
 * SQLAlchemy tables can be used directly without duplication in Catalog
