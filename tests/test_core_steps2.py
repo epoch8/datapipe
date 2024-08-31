@@ -186,7 +186,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
         "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True)
     )
 
-    df2 = TEST_DF1_1.loc[range(3, 8)]
+    df2 = TEST_DF1_1.loc[3:8]
     df2["a"] = df2["a"].apply(lambda x: x + 10)
 
     tbl1.store_chunk(TEST_DF1_1, now=0)

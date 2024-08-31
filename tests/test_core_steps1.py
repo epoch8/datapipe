@@ -83,7 +83,7 @@ def test_gen_process(dbconn) -> None:
         return TEST_DF
 
     with pytest.raises(Exception):
-        do_batch_generate(func=func, ds=ds, output_dts=[tbl1])
+        do_batch_generate(func=func, ds=ds, output_dts=[tbl1])  # type: ignore
 
 
 def test_inc_process_modify_values(dbconn) -> None:

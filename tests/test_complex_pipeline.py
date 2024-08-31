@@ -1,3 +1,5 @@
+from typing import cast
+
 import pandas as pd
 import pytest
 from sqlalchemy import Column
@@ -154,7 +156,7 @@ def test_complex_pipeline(dbconn):
         TEST__PIPELINE,
         TEST__PREDICTION,
         TEST__KEYPOINT,
-        idx=pd.DataFrame(columns=["item_id", "pipeline_id"]),
+        idx=cast(IndexDF, pd.DataFrame(columns=["item_id", "pipeline_id"])),
     )
     run_steps(ds, steps)
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)
