@@ -72,14 +72,6 @@ class DatatableBatchTransformFunc(Protocol):
 BatchTransformFunc = Callable[..., TransformResult]
 
 
-TRANSFORM_META_SCHEMA: DataSchema = [
-    Column("process_ts", Float),  # Время последней успешной обработки
-    Column("is_success", Boolean),  # Успешно ли обработана строка
-    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
-    Column("error", String),  # Текст ошибки
-]
-
-
 class BaseBatchTransformStep(ComputeStep):
     """
     Abstract class for batch transform steps
