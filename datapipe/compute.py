@@ -271,7 +271,7 @@ def print_compute(steps: List[ComputeStep]) -> None:
 
 def run_steps(
     ds: DataStore,
-    steps: List[ComputeStep],
+    steps: Sequence[ComputeStep],
     run_config: Optional[RunConfig] = None,
     executor: Optional[Executor] = None,
 ) -> None:
