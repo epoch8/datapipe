@@ -313,7 +313,7 @@ def complex_transform_with_many_recordings_but_take_only_val_items(dbconn, train
                     "tbl_subset__has__image",
                     [
                         Column("image_id", Integer, primary_key=True),
-                        Column("subset_id", Integer, primary_key=True),
+                        Column("subset_id", String, primary_key=True),
                     ],
                     True,
                 )
