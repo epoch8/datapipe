@@ -2,16 +2,7 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import pandas as pd
 from cityhash import CityHash32
@@ -602,7 +593,7 @@ class DataTable:
         tbl = self.meta_table.sql_table
 
         keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols: List["ColumnClause"] = [column(k) for k in keys]
+        key_cols: List[Any] = [column(k) for k in keys]
 
         sql: Any = select(
             *key_cols + [func.max(tbl.c["update_ts"]).label("update_ts")]

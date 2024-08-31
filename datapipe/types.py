@@ -8,7 +8,6 @@ from typing import (
     Dict,
     List,
     NewType,
-    Optional,
     Set,
     Tuple,
     Type,
@@ -42,14 +41,9 @@ Labels = List[Tuple[str, str]]
 
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
-try:
-    from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm.decl_api import DeclarativeMeta
 
-    OrmTable = Type[DeclarativeBase]
-except ImportError:
-    from sqlalchemy.orm import DeclarativeMeta
-
-    OrmTable = Type[DeclarativeMeta]  # type: ignore
+OrmTable = Type[DeclarativeMeta]
 
 TableOrName = Union[str, OrmTable, "Table"]
 

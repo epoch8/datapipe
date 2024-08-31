@@ -23,12 +23,7 @@ def sql_apply_idx_filter_to_table(
         keys = tuple_(*[table.c[key] for key in primary_keys])  # type: ignore
 
         sql = sql.where(
-            keys.in_(
-                [
-                    tuple([r[key] for key in primary_keys])  # type: ignore
-                    for r in idx.to_dict(orient="records")
-                ]
-            )
+            keys.in_([tuple([r[key] for key in primary_keys]) for r in idx.to_dict(orient="records")])  # type: ignore
         )
 
     return sql
@@ -55,4 +50,4 @@ SCHEMA_TO_DTYPE_LOOKUP = {
 
 
 def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
-    return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}
+    return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}  # type: ignore

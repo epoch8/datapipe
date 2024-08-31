@@ -168,7 +168,14 @@ def cli(
         trace.get_tracer_provider().add_span_processor(span_processor)  # type: ignore
 
     if trace_gcp:
-        from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+        try:
+            from opentelemetry.exporter.cloud_trace import (  # type: ignore
+                CloudTraceSpanExporter,
+            )
+        except ImportError:
+            raise ImportError(
+                "Please install opentelemetry-exporter-cloud-trace to use GCP Trace"
+            )
 
         cloud_trace_exporter = CloudTraceSpanExporter(
             resource_regex=r".*",
@@ -206,9 +213,9 @@ def table_list(ctx: click.Context) -> None:
         print(table)
 
 
-@cli.command()
+@cli.command(name="run")
 @click.pass_context
-def run(ctx: click.Context) -> None:
+def main_run(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     with tracer.start_as_current_span("run"):
@@ -363,13 +370,13 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
         rprint("")
 
 
-@step.command()  # type: ignore
+@step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option(
     "--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds"
 )
 @click.pass_context
-def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
+def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
 
@@ -390,7 +397,7 @@ def run(ctx: click.Context, loop: bool, loop_delay: int) -> None:  # noqa
             print("\n\n")
 
 
-@step.command()  # type: ignore
+@step.command()
 @click.argument("idx", type=click.STRING)
 @click.pass_context
 def run_idx(ctx: click.Context, idx: str) -> None:
@@ -406,7 +413,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
             step.run_idx(ds=app.ds, idx=cast(IndexDF, pd.DataFrame([idx_dict])))
 
 
-@step.command()  # type: ignore
+@step.command()
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option(
     "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
@@ -486,7 +493,7 @@ def fill_metadata(ctx: click.Context) -> None:
             step.fill_metadata(app.ds)
 
 
-@step.command()  # type: ignore
+@step.command()
 @click.pass_context
 def reset_metadata(ctx: click.Context) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]

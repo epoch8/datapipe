@@ -278,8 +278,7 @@ class TableStoreFiledir(TableStore):
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
-            column.name: type_to_cls[type(column.type)]  # type: ignore
-            for column in self.primary_schema
+            column.name: type_to_cls[type(column.type)] for column in self.primary_schema  # type: ignore
         }
 
     def get_primary_schema(self) -> DataSchema:
