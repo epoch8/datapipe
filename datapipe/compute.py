@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from opentelemetry import trace
 
@@ -233,7 +233,7 @@ class PipelineStep(ABC):
 
 @dataclass
 class Pipeline:
-    steps: List[PipelineStep]
+    steps: Sequence[PipelineStep]
 
 
 class DatapipeApp:
