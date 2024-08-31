@@ -23,8 +23,7 @@ class DatatableTransformFunc(Protocol):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
-        # Возможно, лучше передавать как переменную, а не  **
-        **kwargs,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> None: ...
 
 
