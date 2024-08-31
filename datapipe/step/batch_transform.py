@@ -244,7 +244,7 @@ class BaseBatchTransformStep(ComputeStep):
                 transform_keys=self.transform_keys,
                 run_config=run_config,
                 order_by=self.order_by,
-                order=self.order,
+                order=self.order,  # type: ignore  # pylance is stupid
             )
 
             # Список ключей из фильтров, которые нужно добавить в результат
@@ -264,7 +264,7 @@ class BaseBatchTransformStep(ComputeStep):
                         for k, v in extra_filters.items():
                             df[k] = v
 
-                        yield df
+                        yield cast(IndexDF, df)
 
             return math.ceil(idx_count / chunk_size), alter_res_df()
 
@@ -311,7 +311,9 @@ class BaseBatchTransformStep(ComputeStep):
 
             def gen():
                 for i in range(chunk_count):
-                    yield idx[i * self.chunk_size : (i + 1) * self.chunk_size]
+                    yield cast(
+                        IndexDF, idx[i * self.chunk_size : (i + 1) * self.chunk_size]
+                    )
 
             return chunk_count, gen()
 
