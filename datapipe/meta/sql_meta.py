@@ -240,21 +240,10 @@ class MetaTable:
         else:
             idx_cols = []
 
-        if len(idx_cols) > 0:
-            row_queries = []
-
-            # FIXME поправить на сравнение кортежей
-            assert idx is not None
-            for _, row in idx.iterrows():
-                and_params = [
-                    self.sql_table.c[key] == self._get_sql_param(row[key])  # type: ignore
-                    for key in idx_cols
-                    if key in self.primary_keys
-                ]
-                and_query = sa.and_(*and_params)
-                row_queries.append(and_query)
-
-            sql = sql.where(sa.or_(*row_queries))
+        if len(idx_cols) > 0 and idx is not None and len(idx) > 0:
+            sql = sql_apply_idx_filter_to_table(
+                sql=sql, table=self.sql_table, primary_keys=idx_cols, idx=idx
+            )
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
