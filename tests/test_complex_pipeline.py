@@ -10,7 +10,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import IndexDF
+from datapipe.types import IndexDF, Required
 
 from .util import assert_datatable_equal, assert_df_equal
 
@@ -411,10 +411,12 @@ def complex_transform_with_many_recordings(dbconn, N: int):
             BatchTransform(
                 func=get_some_prediction_only_on_best_model,
                 inputs=[
-                    "tbl_image",  # image_id
+                    Required("tbl_image"),  # image_id
                     "tbl_image__attribute",  # image_id, attribute
-                    "tbl_prediction",  # image_id, model_id, prediction__attribite
-                    "tbl_best_model",  # model_id
+                    Required(
+                        "tbl_prediction"
+                    ),  # image_id, model_id, prediction__attribite
+                    Required("tbl_best_model"),  # model_id
                 ],
                 outputs=["tbl_output"],
                 transform_keys=["image_id", "model_id"],
@@ -437,11 +439,9 @@ def test_complex_transform_with_many_recordings_N100(dbconn):
     complex_transform_with_many_recordings(dbconn, N=100)
 
 
-@pytest.mark.skip(reason="This test is slow")
 def test_complex_transform_with_many_recordings_N1000(dbconn):
     complex_transform_with_many_recordings(dbconn, N=1000)
 
 
-@pytest.mark.skip(reason="This test is slow")
 def test_complex_transform_with_many_recordings_N10000(dbconn):
     complex_transform_with_many_recordings(dbconn, N=10000)
