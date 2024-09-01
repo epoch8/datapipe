@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
-from sqlalchemy import Column, Integer, String, Table, column, tuple_
+from sqlalchemy import Column, Integer, String, Table, tuple_
 
 from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF

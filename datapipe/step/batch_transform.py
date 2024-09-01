@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import Boolean, Column, Float, Integer, String, alias, func, select
+from sqlalchemy import alias, func, select
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -39,7 +39,6 @@ from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
     DataDF,
-    DataSchema,
     IndexDF,
     JoinSpec,
     Labels,
