@@ -777,8 +777,6 @@ def build_changed_idx_sql(
         )
         inp_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type=inp.join_type))
 
-    common_keys = [k for k, v in all_input_keys_counts.items() if v == len(input_dts)]
-
     agg_of_aggs = _make_agg_of_agg(
         ds=ds,
         transform_keys=transform_keys,
