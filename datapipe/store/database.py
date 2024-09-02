@@ -245,6 +245,7 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
+        # TODO разобраться, нужен ли этот блок кода, написать тесты на заполнение None/NULL
         insert_sql = self.dbconn.insert(self.data_table).values(
             df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
         )
