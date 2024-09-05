@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Protocol
 
 from opentelemetry import trace
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep
+from datapipe.compute import Catalog, ComputeInput, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
@@ -31,7 +31,7 @@ class DatatableTransformStep(ComputeStep):
     def __init__(
         self,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         func: DatatableTransformFunc,
         kwargs: Optional[Dict] = None,
@@ -75,7 +75,7 @@ class DatatableTransformStep(ComputeStep):
             try:
                 self.func(
                     ds=ds,
-                    input_dts=self.input_dts,
+                    input_dts=[inp.dt for inp in self.input_dts],
                     output_dts=self.output_dts,
                     run_config=run_config,
                     kwargs=self.kwargs,
@@ -100,7 +100,10 @@ class DatatableTransform(PipelineStep):
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
-                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
+                input_dts=[
+                    ComputeInput(dt=catalog.get_datatable(ds, i), join_type="full")
+                    for i in self.inputs
+                ],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
                 kwargs=self.kwargs,

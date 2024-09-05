@@ -10,7 +10,7 @@ from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast, Set
 import fsspec
 import numpy as np
 import pandas as pd
-from iteration_utilities import duplicates
+from iteration_utilities import duplicates  # type: ignore
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
@@ -278,8 +278,7 @@ class TableStoreFiledir(TableStore):
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
-            column.name: type_to_cls[type(column.type)]  # type: ignore
-            for column in self.primary_schema
+            column.name: type_to_cls[type(column.type)] for column in self.primary_schema  # type: ignore
         }
 
     def get_primary_schema(self) -> DataSchema:
@@ -427,7 +426,8 @@ class TableStoreFiledir(TableStore):
                     yield file_open
             else:
                 filepaths_extenstions = [
-                    self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])
+                    # TODO fix typing
+                    self._filenames_from_idxs_values(idx.loc[row_idx, self.attrnames])  # type: ignore
                     for row_idx in idx.index
                 ]
                 for filepaths in filepaths_extenstions:
@@ -509,7 +509,7 @@ class TableStoreFiledir(TableStore):
             for attrname, key_value in zip(self.attrnames, keys_values):
                 ids[attrname].append(key_value)
 
-            ukeys.append(files.fs.ukey(f.path))
+            ukeys.append(files.fs.ukey(f.path))  # type: ignore
             filepaths.append(f"{self.protocol_str}{f.path}")
 
         if len(ids) > 0:

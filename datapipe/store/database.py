@@ -245,6 +245,7 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
+        # TODO разобраться, нужен ли этот блок кода, написать тесты на заполнение None/NULL
         insert_sql = self.dbconn.insert(self.data_table).values(
             df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
         )
@@ -303,7 +304,7 @@ class TableStoreDB(TableStore):
         sql = select(*self.data_table.c)
 
         sql = sql_apply_runconfig_filters(
-            sql, self.primary_keys, run_config
+            sql, self.data_table, self.primary_keys, run_config
         )
 
         with self.dbconn.con.execution_options(stream_results=True).begin() as con:

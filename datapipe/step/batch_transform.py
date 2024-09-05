@@ -21,42 +21,34 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import (
-    Boolean,
-    Column,
-    Float,
-    Integer,
-    String,
-    Table,
-    alias,
-    and_,
-    asc,
-    column,
-    desc,
-    func,
-    literal,
-    or_,
-    select,
-    update,
-)
+from sqlalchemy import alias, func, select
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep, StepStatus
+from datapipe.compute import (
+    Catalog,
+    ComputeInput,
+    ComputeStep,
+    PipelineStep,
+    StepStatus,
+)
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import sql_apply_filters_idx_to_subquery, sql_apply_runconfig_filters
 from datapipe.store.database import DBConn
+from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
+from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
     LabelDict,
     Filters,
     DataDF,
-    DataSchema,
     IndexDF,
+    JoinSpec,
     Labels,
     MetaSchema,
+    PipelineInput,
+    Required,
     TableOrName,
     TransformResult,
     data_to_index,
@@ -83,212 +75,6 @@ class DatatableBatchTransformFunc(Protocol):
 BatchTransformFunc = Callable[..., TransformResult]
 
 
-TRANSFORM_META_SCHEMA: DataSchema = [
-    Column("process_ts", Float),  # Время последней успешной обработки
-    Column("is_success", Boolean),  # Успешно ли обработана строка
-    Column("priority", Integer),  # Приоритет обработки (чем больше, тем выше)
-    Column("error", String),  # Текст ошибки
-]
-
-
-class TransformMetaTable:
-    def __init__(
-        self,
-        dbconn: DBConn,
-        name: str,
-        primary_schema: DataSchema,
-        create_table: bool = False,
-    ) -> None:
-        self.dbconn = dbconn
-        self.name = name
-        self.primary_schema = primary_schema
-        self.primary_keys = [i.name for i in primary_schema]
-
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]  # type: ignore
-
-        self.sql_table = Table(
-            name,
-            dbconn.sqla_metadata,
-            *self.sql_schema,
-        )
-
-        if create_table:
-            self.sql_table.create(self.dbconn.con, checkfirst=True)
-
-    def __reduce__(self) -> Tuple[Any, ...]:
-        return self.__class__, (
-            self.dbconn,
-            self.name,
-            self.primary_schema,
-        )
-
-    def insert_rows(
-        self,
-        idx: IndexDF,
-    ) -> None:
-        """
-        Создает строки в таблице метаданных для указанных индексов. Если строки
-        уже существуют - не делает ничего.
-        """
-
-        idx = cast(IndexDF, idx[self.primary_keys])
-
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": None,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
-
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
-
-    def mark_rows_processed_success(
-        self,
-        idx: IndexDF,
-        process_ts: float,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
-        )  # FIXME: сделать в основном запросе distinct
-        if len(idx) == 0:
-            return
-
-        if idx.empty:
-            # DataFrame считает, что он пустой, если в нем нет колонок
-            # При этом мы хотим создать строки в БД
-
-            # Мы можем обработать только случай с одной строкой
-            assert len(idx) == 1
-
-            with self.dbconn.con.begin() as con:
-                insert_sql = self.dbconn.insert(self.sql_table).values(
-                    [
-                        {
-                            "process_ts": process_ts,
-                            "is_success": True,
-                            "priority": 0,
-                            "error": None,
-                        }
-                    ]
-                )
-
-                # удалить все из таблицы
-                con.execute(self.sql_table.delete())
-                con.execute(insert_sql)
-
-        else:
-            insert_sql = self.dbconn.insert(self.sql_table).values(
-                [
-                    {
-                        "process_ts": process_ts,
-                        "is_success": True,
-                        "priority": 0,
-                        "error": None,
-                        **idx_dict,  # type: ignore
-                    }
-                    for idx_dict in idx.to_dict(orient="records")
-                ]
-            )
-
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
-                set_={
-                    "process_ts": process_ts,
-                    "is_success": True,
-                    "error": None,
-                },
-            )
-
-            # execute
-            with self.dbconn.con.begin() as con:
-                con.execute(sql)
-
-    def mark_rows_processed_error(
-        self,
-        idx: IndexDF,
-        process_ts: float,
-        error: str,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
-        )  # FIXME: сделать в основном запросе distinct
-        if len(idx) == 0:
-            return
-
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": process_ts,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": error,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                "process_ts": process_ts,
-                "is_success": False,
-                "error": error,
-            },
-        )
-
-        # execute
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
-
-    def get_metadata_size(self) -> int:
-        """
-        Получить количество строк метаданных трансформации.
-        """
-
-        sql = select(func.count()).select_from(self.sql_table)
-        with self.dbconn.con.begin() as con:
-            res = con.execute(sql).fetchone()
-
-        assert res is not None and len(res) == 1
-        return res[0]
-
-    def mark_all_rows_unprocessed(
-        self,
-        run_config: Optional[RunConfig] = None,
-    ) -> None:
-        update_sql = (
-            update(self.sql_table)
-            .values(
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "error": None,
-                }
-            )
-            .where(self.sql_table.c.is_success == True)
-        )
-
-        sql = sql_apply_runconfig_filters(
-            update_sql, self.primary_keys, run_config
-        )
-
-        # execute
-        with self.dbconn.con.begin() as con:
-            con.execute(sql)
-
-
 class BaseBatchTransformStep(ComputeStep):
     """
     Abstract class for batch transform steps
@@ -298,7 +84,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -324,8 +110,8 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys = list(transform_keys)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            [i.meta_table for i in input_dts],
-            [i.meta_table for i in output_dts],
+            [inp.dt.meta_table for inp in input_dts],
+            [out.meta_table for out in output_dts],
             transform_keys,
         )
 
@@ -377,158 +163,6 @@ class BaseBatchTransformStep(ComputeStep):
         assert len(inp_out_p_keys) > 0
 
         return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
-
-    def _build_changed_idx_sql(
-        self,
-        ds: DataStore,
-        filters_idx: Optional[IndexDF] = None,
-        order_by: Optional[List[str]] = None,
-        order: Literal["asc", "desc"] = "asc",
-        run_config: Optional[RunConfig] = None,  # TODO remove
-    ) -> Tuple[Iterable[str], Any]:
-        all_input_keys_counts: Dict[str, int] = {}
-        for col in itertools.chain(*[dt.primary_schema for dt in self.input_dts]):
-            all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
-
-        common_keys = [
-            k for k, v in all_input_keys_counts.items() if v == len(self.input_dts)
-        ]
-
-        common_transform_keys = [k for k in self.transform_keys if k in common_keys]
-
-        def _make_agg_of_agg(ctes, agg_col):
-            assert len(ctes) > 0
-
-            if len(ctes) == 1:
-                return ctes[0][1]
-
-            coalesce_keys = []
-
-            for key in self.transform_keys:
-                ctes_with_key = [subq for (subq_keys, subq) in ctes if key in subq_keys]
-
-                if len(ctes_with_key) == 0:
-                    raise ValueError(f"Key {key} not found in any of the input tables")
-
-                if len(ctes_with_key) == 1:
-                    coalesce_keys.append(ctes_with_key[0].c[key])
-                else:
-                    coalesce_keys.append(
-                        func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
-                    )
-
-            agg = func.max(
-                ds.meta_dbconn.func_greatest(*[subq.c[agg_col] for (_, subq) in ctes])
-            ).label(agg_col)
-
-            _, first_cte = ctes[0]
-
-            sql = select(*coalesce_keys + [agg]).select_from(first_cte)
-
-            for _, cte in ctes[1:]:
-                if len(common_transform_keys) > 0:
-                    sql = sql.outerjoin(
-                        cte,
-                        onclause=and_(
-                            *[
-                                first_cte.c[key] == cte.c[key]
-                                for key in common_transform_keys
-                            ]
-                        ),
-                        full=True,
-                    )
-                else:
-                    sql = sql.outerjoin(
-                        cte,
-                        onclause=literal(True),
-                        full=True,
-                    )
-
-            sql = sql.group_by(*coalesce_keys)
-
-            return sql.cte(name=f"all__{agg_col}")
-
-        inp_ctes = [
-            tbl.get_agg_cte(
-                transform_keys=self.transform_keys,
-                filters_idx=filters_idx,
-                run_config=run_config,
-            )
-            for tbl in self.input_dts
-        ]
-
-        inp = _make_agg_of_agg(inp_ctes, "update_ts")
-
-        tr_tbl = self.meta_table.sql_table
-        out: Any = (
-            select(
-                *[column(k) for k in self.transform_keys]
-                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
-            )
-            .select_from(tr_tbl)
-            .group_by(*[column(k) for k in self.transform_keys])
-        )
-
-        out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
-        out = sql_apply_runconfig_filters(out, self.transform_keys, run_config)
-
-        out = out.cte(name="transform")
-
-        if len(self.transform_keys) == 0:
-            join_onclause_sql: Any = literal(True)
-        elif len(self.transform_keys) == 1:
-            join_onclause_sql = (
-                inp.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
-            )
-        else:  # len(self.transform_keys) > 1:
-            join_onclause_sql = and_(
-                *[inp.c[key] == out.c[key] for key in self.transform_keys]
-            )
-
-        sql = (
-            select(
-                # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
-                # пустом self.transform_keys
-                literal(1).label("_datapipe_dummy"),
-                *[
-                    func.coalesce(inp.c[key], out.c[key]).label(key)
-                    for key in self.transform_keys
-                ],
-            )
-            .select_from(inp)
-            .outerjoin(
-                out,
-                onclause=join_onclause_sql,
-                full=True,
-            )
-            .where(
-                or_(
-                    and_(
-                        out.c.is_success == True,  # noqa
-                        inp.c.update_ts > out.c.process_ts,
-                    ),
-                    out.c.is_success != True,  # noqa
-                    out.c.process_ts == None,  # noqa
-                )
-            )
-        )
-        if order_by is None:
-            sql = sql.order_by(
-                out.c.priority.desc().nullslast(),
-                *[column(k) for k in self.transform_keys],
-            )
-        else:
-            if order == "desc":
-                sql = sql.order_by(
-                    *[desc(column(k)) for k in order_by],
-                    out.c.priority.desc().nullslast(),
-                )
-            elif order == "asc":
-                sql = sql.order_by(
-                    *[asc(column(k)) for k in order_by],
-                    out.c.priority.desc().nullslast(),
-                )
-        return (self.transform_keys, sql)
 
     def _get_filters(
         self,
@@ -589,7 +223,13 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
-        _, sql = self._build_changed_idx_sql(ds, run_config=run_config)
+        _, sql = build_changed_idx_sql(
+            ds=ds,
+            meta_table=self.meta_table,
+            input_dts=self.input_dts,
+            transform_keys=self.transform_keys,
+            run_config=run_config,
+        )
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
@@ -625,11 +265,14 @@ class BaseBatchTransformStep(ComputeStep):
                 run_config=run_config,
             )
 
-            join_keys, u1 = self._build_changed_idx_sql(
+            join_keys, u1 = build_changed_idx_sql(
                 ds=ds,
+                meta_table=self.meta_table,
+                input_dts=self.input_dts,
+                transform_keys=self.transform_keys,
                 run_config=run_config,
                 order_by=self.order_by,
-                order=self.order,
+                order=self.order,  # type: ignore  # pylance is stupid
             )
 
             def alter_res_df():
@@ -650,11 +293,17 @@ class BaseBatchTransformStep(ComputeStep):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
             for inp in self.input_dts:
-                if inp.name in change_list.changes:
-                    idx = change_list.changes[inp.name]
+                if inp.dt.name in change_list.changes:
+                    idx = change_list.changes[inp.dt.name]
                     if any([key not in idx.columns for key in self.transform_keys]):
-                        _, sql = self._build_changed_idx_sql(
+                        # TODO пересмотреть эту логику, выглядит избыточной
+                        # (возможно, достаточно посчитать один раз для всех
+                        # input таблиц)
+                        _, sql = build_changed_idx_sql(
                             ds=ds,
+                            meta_table=self.meta_table,
+                            input_dts=self.input_dts,
+                            transform_keys=self.transform_keys,
                             filters_idx=idx,
                             run_config=run_config,
                         )
@@ -676,7 +325,9 @@ class BaseBatchTransformStep(ComputeStep):
 
             def gen():
                 for i in range(chunk_count):
-                    yield idx[i * self.chunk_size : (i + 1) * self.chunk_size]
+                    yield cast(
+                        IndexDF, idx[i * self.chunk_size : (i + 1) * self.chunk_size]
+                    )
 
             return chunk_count, gen()
 
@@ -768,7 +419,7 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
-        return [inp.get_data(idx) for inp in self.input_dts]
+        return [inp.dt.get_data(idx) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,
@@ -937,7 +588,7 @@ class DatatableBatchTransform(PipelineStep):
                 ds=ds,
                 name=f"{self.func.__name__}",
                 func=self.func,
-                input_dts=input_dts,
+                input_dts=[ComputeInput(dt=inp, join_type="full") for inp in input_dts],
                 output_dts=output_dts,
                 kwargs=self.kwargs,
                 transform_keys=self.transform_keys,
@@ -957,7 +608,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: DatatableBatchTransformFunc,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         kwargs: Optional[Dict] = None,
         transform_keys: Optional[List[str]] = None,
@@ -994,7 +645,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         return self.func(
             ds=ds,
             idx=idx,
-            input_dts=self.input_dts,
+            input_dts=[inp.dt for inp in self.input_dts],
             run_config=run_config,
             kwargs=self.kwargs,
         )
@@ -1003,7 +654,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 @dataclass
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
-    inputs: List[TableOrName]
+    inputs: List[PipelineInput]
     outputs: List[TableOrName]
     chunk_size: int = 1000
     kwargs: Optional[Dict[str, Any]] = None
@@ -1014,14 +665,34 @@ class BatchTransform(PipelineStep):
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
+    def pipeline_input_to_compute_input(
+        self, ds: DataStore, catalog: Catalog, input: PipelineInput
+    ) -> ComputeInput:
+        if isinstance(input, Required):
+            return ComputeInput(
+                dt=catalog.get_datatable(ds, input.table),
+                join_type="inner",
+            )
+        elif isinstance(input, JoinSpec):
+            # This should not happen, but just in case
+            return ComputeInput(
+                dt=catalog.get_datatable(ds, input.table),
+                join_type="full",
+            )
+        else:
+            return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
+
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
+        input_dts = [
+            self.pipeline_input_to_compute_input(ds, catalog, input)
+            for input in self.inputs
+        ]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
         return [
             BatchTransformStep(
                 ds=ds,
-                name=f"{self.func.__name__}",  # type: ignore # mypy bug: https://github.com/python/mypy/issues/10976
+                name=f"{self.func.__name__}",
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=self.func,
@@ -1043,7 +714,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: BatchTransformFunc,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         kwargs: Optional[Dict[str, Any]] = None,
         transform_keys: Optional[List[str]] = None,

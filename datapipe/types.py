@@ -43,16 +43,25 @@ TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
 LabelDict = Dict[str, Any]
 Filters = Union[str, IndexDF, List[LabelDict], Callable[..., List[LabelDict]], Callable[..., IndexDF]]
-try:
-    from sqlalchemy.orm import DeclarativeBase
 
-    OrmTable = Type[DeclarativeBase]
-except ImportError:
-    from sqlalchemy.orm import DeclarativeMeta
+from sqlalchemy.orm.decl_api import DeclarativeMeta
 
-    OrmTable = Type[DeclarativeMeta]  # type: ignore
+OrmTable = Type[DeclarativeMeta]
 
 TableOrName = Union[str, OrmTable, "Table"]
+
+
+@dataclass
+class JoinSpec:
+    table: TableOrName
+
+
+@dataclass
+class Required(JoinSpec):
+    pass
+
+
+PipelineInput = Union[TableOrName, JoinSpec]
 
 
 @dataclass

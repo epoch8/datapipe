@@ -1,6 +1,11 @@
-# WIP 0.14.0
+# WIP 0.14.1
 
-Changes:
+* Refactor metadata handling into `datapipe.meta` submodule
+* Add `Required` qualifier for `inputs`
+
+# 0.14.0
+
+Major changes:
 * Enable Python 3.12 support
 * `DatatableTansform` can become `BatchTransform` with empty indices
 * SQLAlchemy tables can be used directly without duplication in Catalog
