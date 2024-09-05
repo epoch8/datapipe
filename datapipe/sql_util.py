@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 from sqlalchemy import Column, Integer, String, Table, column, tuple_
@@ -43,8 +43,9 @@ def sql_apply_runconfig_filters(
 ) -> Any:
     if run_config is not None:
         filters_idx = pd.DataFrame(run_config.filters)
-        keys = [key for key in table.c if key in keys]
-        sql = sql_apply_idx_filter_to_table(sql, table, keys, filters_idx)
+        primary_keys = [key for key in keys if key in table.c]
+        if len(filters_idx) > 0 and len(keys) > 0:
+            sql = sql_apply_idx_filter_to_table(sql, table, primary_keys, cast(IndexDF, filters_idx))
 
     return sql
 

@@ -389,8 +389,8 @@ class MetaTable:
             )
         )
 
-        sql = sql_apply_runconfig_filters_to_subquery(
-            sql, self.primary_keys, run_config
+        sql = sql_apply_runconfig_filters(
+            sql, self.sql_table, self.primary_keys, run_config
         )
 
         with self.dbconn.con.begin() as con:
@@ -649,8 +649,8 @@ class TransformMetaTable:
             .where(self.sql_table.c.is_success == True)
         )
 
-        sql = sql_apply_runconfig_filters_to_subquery(
-            update_sql, self.primary_keys, run_config
+        sql = sql_apply_runconfig_filters(
+            update_sql, self.sql_table, self.primary_keys, run_config
         )
 
         # execute
