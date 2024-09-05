@@ -458,7 +458,7 @@ def batch_transform_with_filters(dbconn, filters: Filters, ds: Optional[DataStor
         ds=ds,
         name="test",
         func=update_df,
-        input_dts=[item, inner_item],
+        input_dts=[ComputeInput(dt=item, join_type="full"), ComputeInput(dt=inner_item, join_type="full")],
         output_dts=[output],
         filters=filters
     )
