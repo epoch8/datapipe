@@ -275,10 +275,20 @@ class BaseBatchTransformStep(ComputeStep):
                 order=self.order,  # type: ignore  # pylance is stupid
             )
 
+            if run_config is not None:
+                extra_filters = pd.DataFrame(run_config.filters)
+            else:
+                extra_filters = None
+
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
+                        if extra_filters is not None:
+                            if len(set(df.columns).intersection(extra_filters.columns)) > 0:
+                                df = pd.merge(df, extra_filters)
+                            else:
+                                df = pd.merge(df, extra_filters, how="cross")
                         yield df
 
             return math.ceil(idx_count / chunk_size), alter_res_df()

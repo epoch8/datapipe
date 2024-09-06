@@ -170,7 +170,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
     step.run_full(
         ds,
-        run_config=RunConfig(filters={"pipeline_id": 0}),
+        run_config=RunConfig(filters=[{"pipeline_id": 0}]),
     )
 
     assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])

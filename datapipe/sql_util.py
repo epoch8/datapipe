@@ -43,8 +43,8 @@ def sql_apply_runconfig_filters(
 ) -> Any:
     if run_config is not None:
         filters_idx = pd.DataFrame(run_config.filters)
-        primary_keys = [key for key in keys if key in table.c]
-        if len(filters_idx) > 0 and len(keys) > 0:
+        primary_keys = [key for key in keys if key in table.c and key in filters_idx.columns]
+        if len(filters_idx) > 0 and len(primary_keys) > 0:
             sql = sql_apply_idx_filter_to_table(sql, table, primary_keys, cast(IndexDF, filters_idx))
 
     return sql
