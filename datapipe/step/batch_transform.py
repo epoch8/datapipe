@@ -284,7 +284,7 @@ class BaseBatchTransformStep(ComputeStep):
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
-                        if extra_filters is not None:
+                        if extra_filters is not None and len(extra_filters) > 0:
                             if len(set(df.columns).intersection(extra_filters.columns)) > 0:
                                 df = pd.merge(df, extra_filters)
                             else:
