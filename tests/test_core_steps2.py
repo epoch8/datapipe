@@ -147,7 +147,7 @@ def test_batch_transform_with_filter_in_run_config(dbconn):
     assert_datatable_equal(tbl2, TEST_DF1_1.query("pipeline_id == 0"))
 
 
-def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+def test_batch_transform_with_filter_in_run_config_not_in_transform_index(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
@@ -171,6 +171,35 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
     step.run_full(
         ds,
         run_config=RunConfig(filters=[{"pipeline_id": 0}]),
+    )
+
+    assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])
+
+
+def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl1 = ds.create_table(
+        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
+    )
+
+    tbl2 = ds.create_table(
+        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA2, True)
+    )
+
+    tbl1.store_chunk(TEST_DF1_2, now=0)
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test",
+        func=lambda df: df[["item_id", "a"]],
+        input_dts=[ComputeInput(dt=tbl1, join_type="full")],
+        output_dts=[tbl2],
+        filters=[{"pipeline_id": 0}]
+    )
+
+    step.run_full(
+        ds,
     )
 
     assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])

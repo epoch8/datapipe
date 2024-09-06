@@ -207,8 +207,6 @@ class BaseBatchTransformStep(ComputeStep):
         keys = set([key for keys in filters for key in keys])
         if not all(len(filter) == len(keys) for filter in filters):
             raise ValueError("Size of keys from filters must have same length")
-        if not all([key in self.transform_keys for key in keys]):
-            raise ValueError(f"Keys from filters must be in transform_keys={self.transform_keys}.")
         return filters
 
     def get_status(self, ds: DataStore) -> StepStatus:

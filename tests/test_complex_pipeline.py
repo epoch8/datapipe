@@ -458,10 +458,9 @@ def complex_transform_with_filters2_by_N(dbconn, N):
     test_df__model = pd.DataFrame({
         "model_id": [0, 1, 2, 3, 4]
     })
-    
+
     def filters_images():
         return [{"image_id": i} for i in range(N // 2)]
-
 
     def make_prediction(
         df__image: pd.DataFrame,
