@@ -5,6 +5,7 @@ import time
 from typing import Dict, List, Optional, cast
 
 import click
+from datapipe.run_config import RunConfig
 import pandas as pd
 import rich
 from opentelemetry import trace
@@ -318,6 +319,7 @@ def step(
     steps = filter_steps_by_labels_and_name(app, labels=labels_list, name_prefix=name)
 
     ctx.obj["steps"] = steps
+    ctx.obj["labels"] = labels_list
 
 
 def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
@@ -379,6 +381,7 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    run_config = RunConfig(labels={k: v for k, v in ctx.obj["labels"]})
 
     executor: Executor = ctx.obj["executor"]
 
@@ -387,7 +390,7 @@ def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run, executor=executor)
+            run_steps(app.ds, steps_to_run, run_config=run_config, executor=executor)
 
         if not loop:
             break

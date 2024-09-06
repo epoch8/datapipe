@@ -34,10 +34,14 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
+from datapipe.run_config import RunConfig
+from datapipe.store.database import DBConn
 from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
+    LabelDict,
+    Filters,
     DataDF,
     IndexDF,
     JoinSpec,
@@ -86,7 +90,7 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
@@ -160,25 +164,50 @@ class BaseBatchTransformStep(ComputeStep):
 
         return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
 
-    def _apply_filters_to_run_config(
-        self, run_config: Optional[RunConfig] = None
-    ) -> Optional[RunConfig]:
+    def _get_filters(
+        self,
+        ds: DataStore,
+        run_config: Optional[RunConfig] = None
+    ) -> List[LabelDict]:
         if self.filters is None:
-            return run_config
-        else:
-            if isinstance(self.filters, dict):
-                filters = self.filters
-            elif isinstance(self.filters, Callable):  # type: ignore
-                filters = self.filters()
+            return []
 
-            if run_config is None:
-                return RunConfig(filters=filters)
+        filters: List[LabelDict]
+        if isinstance(self.filters, str):
+            dt = ds.get_table(self.filters)
+            df = dt.get_data()
+            filters = cast(List[LabelDict], df[dt.primary_keys].to_dict(orient="records"))
+        elif isinstance(self.filters, pd.DataFrame):
+            filters = cast(List[LabelDict], self.filters.to_dict(orient="records"))
+        elif isinstance(self.filters, list) and all([isinstance(x, dict) for x in self.filters]):
+            filters = self.filters
+        elif isinstance(self.filters, Callable):  # type: ignore
+            filters_func = cast(Callable[..., Union[List[LabelDict], IndexDF]], self.filters)
+            parameters = inspect.signature(filters_func).parameters
+            kwargs = {
+                **({"ds": ds} if "ds" in parameters else {}),
+                **({"run_config": run_config} if "run_config" in parameters else {})
+            }
+            filters_res = filters_func(**kwargs)
+            if isinstance(filters_res, pd.DataFrame):
+                filters = cast(List[LabelDict], filters_res.to_dict(orient="records"))
+            elif isinstance(filters_res, list) and all([isinstance(x, dict) for x in filters_res]):
+                filters = filters_res
             else:
-                run_config = copy.deepcopy(run_config)
-                filters = copy.deepcopy(filters)
-                filters.update(run_config.filters)
-                run_config.filters = filters
-                return run_config
+                raise TypeError(
+                    "Function filters must return pd.Dataframe or list of key:values."
+                    f" Returned type: {type(filters_res)}"
+                )
+        else:
+            raise TypeError(
+                "Argument filters must be pd.Dataframe, list of key:values or function."
+                f" Got type: {type(self.filters)}"
+            )
+
+        keys = set([key for keys in filters for key in keys])
+        if not all(len(filter) == len(keys) for filter in filters):
+            raise ValueError("Size of keys from filters must have same length")
+        return filters
 
     def get_status(self, ds: DataStore) -> StepStatus:
         return StepStatus(
@@ -192,7 +221,6 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: Optional[RunConfig] = None,
     ) -> int:
-        run_config = self._apply_filters_to_run_config(run_config)
         _, sql = build_changed_idx_sql(
             ds=ds,
             meta_table=self.meta_table,
@@ -224,7 +252,6 @@ class BaseBatchTransformStep(ComputeStep):
         - idx_size - количество индексов требующих обработки
         - idx_df - датафрейм без колонок с данными, только индексная колонка
         """
-        run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
 
         with tracer.start_as_current_span("compute ids to process"):
@@ -246,24 +273,21 @@ class BaseBatchTransformStep(ComputeStep):
                 order=self.order,  # type: ignore  # pylance is stupid
             )
 
-            # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: LabelDict
             if run_config is not None:
-                extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
-                }
+                extra_filters = pd.DataFrame(run_config.filters)
             else:
-                extra_filters = {}
+                extra_filters = None
 
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         df = df[self.transform_keys]
-
-                        for k, v in extra_filters.items():
-                            df[k] = v
-
-                        yield cast(IndexDF, df)
+                        if extra_filters is not None and len(extra_filters) > 0:
+                            if len(set(df.columns).intersection(extra_filters.columns)) > 0:
+                                df = pd.merge(df, extra_filters)
+                            else:
+                                df = pd.merge(df, extra_filters, how="cross")
+                        yield df
 
             return math.ceil(idx_count / chunk_size), alter_res_df()
 
@@ -273,7 +297,6 @@ class BaseBatchTransformStep(ComputeStep):
         change_list: ChangeList,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
-        run_config = self._apply_filters_to_run_config(run_config)
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -324,8 +347,6 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
-        run_config = self._apply_filters_to_run_config(run_config)
-
         changes = ChangeList()
 
         if output_dfs is not None:
@@ -371,8 +392,6 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        run_config = self._apply_filters_to_run_config(run_config)
-
         idx_records = idx.to_dict(orient="records")
 
         logger.error(
@@ -475,8 +494,10 @@ class BaseBatchTransformStep(ComputeStep):
 
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+        filters = self._get_filters(ds, run_config)
+        run_config_with_filters = RunConfig.add_filters(run_config, filters)
 
-        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
+        (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config_with_filters)
 
         logger.info(f"Batches to process {idx_count}")
 
@@ -489,7 +510,7 @@ class BaseBatchTransformStep(ComputeStep):
             idx_count=idx_count,
             idx_gen=idx_gen,
             process_fn=self.process_batch,
-            run_config=run_config,
+            run_config=run_config_with_filters,
             executor_config=self.executor_config,
         )
 
@@ -506,9 +527,11 @@ class BaseBatchTransformStep(ComputeStep):
             executor = SingleThreadExecutor()
 
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
+        filters = self._get_filters(ds, run_config)
+        run_config_with_filters = RunConfig.add_filters(run_config, filters)
 
         (idx_count, idx_gen) = self.get_change_list_process_ids(
-            ds, change_list, run_config
+            ds, change_list, run_config_with_filters
         )
 
         logger.info(f"Batches to process {idx_count}")
@@ -524,7 +547,7 @@ class BaseBatchTransformStep(ComputeStep):
             idx_count=idx_count,
             idx_gen=idx_gen,
             process_fn=self.process_batch,
-            run_config=run_config,
+            run_config=run_config_with_filters,
             executor_config=self.executor_config,
         )
 
@@ -559,6 +582,10 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
+    executor_config: Optional[ExecutorConfig] = None
+    filters: Optional[Filters] = None
+    order_by: Optional[List[str]] = None
+    order: Literal["asc", "desc"] = "asc"
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -575,6 +602,10 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
+                filters=self.filters,
+                order_by=self.order_by,
+                order=self.order
             )
         ]
 
@@ -591,6 +622,10 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        executor_config: Optional[ExecutorConfig] = None,
+        filters: Optional[Filters] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
     ) -> None:
         super().__init__(
             ds=ds,
@@ -600,10 +635,14 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
+            filters=filters,
+            order_by=order_by,
+            order=order
         )
 
         self.func = func
-        self.kwargs = kwargs
+        self.kwargs = kwargs or {}
 
     def process_batch_dts(
         self,
@@ -630,7 +669,7 @@ class BatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
+    filters: Optional[Filters] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
@@ -690,7 +729,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+        filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:

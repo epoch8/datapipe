@@ -25,6 +25,8 @@ jobs:
           - many_to_zero
           - model_inference
           - one_to_many_pipeline
+          - batch_transform_with_filters/simple-example
+          - batch_transform_with_filters/filters-as-function
         executor:
           - SingleThreadExecutor
           - RayExecutor
