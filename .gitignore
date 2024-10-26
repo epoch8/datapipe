@@ -10,3 +10,4 @@ dist/
 test_data/
 
 poetry.lock
+client_secrets.json
