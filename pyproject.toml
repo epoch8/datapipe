@@ -52,6 +52,10 @@ click = ">=7.1.2"
 rich = "^13.3.2"
 
 ray = { version = "^2.5.0", optional = true, extras = ["default"] }
+google = "^3.0.0"
+google-auth = "^2.35.0"
+google-cloud-bigquery = "^3.26.0"
+pyarrow = "^17.0.0"
 
 [tool.poetry.extras]
 
