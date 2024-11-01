@@ -41,4 +41,7 @@ df = pd.DataFrame(
 print(df)
 
 
-table_store_bq.insert_rows(df)
+# table_store_bq.insert_rows(df)
+
+df =  table_store_bq.read_rows()
+print(df)

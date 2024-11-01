@@ -76,7 +76,7 @@ class BQClient:
 class TableStoreBQ(TableStore):
     def __init__(
         self,
-        bq_client: str,
+        bq_client: bigquery.Client,
         name: str,
         data_sql_schema: List[Column],
         dataset_id: str,
@@ -85,14 +85,33 @@ class TableStoreBQ(TableStore):
         self.bq_client = bq_client
         self.name = name
         self.data_sql_schema = data_sql_schema
-        self.prim_keys = [
+
+        dataset_ref = self.bq_client.dataset(dataset_id)
+        table_ref = dataset_ref.table(str(table_id))
+
+        if not is_dataset_exists(self.bq_client, dataset_ref):
+            self.bq_client.create_dataset(dataset_ref)
+
+        prim_keys = [
             column for column in self.data_sql_schema if column.primary_key
         ]
-        self.value_cols = [
+        value_cols = [
             column for column in self.data_sql_schema if not column.primary_key
         ]
-        self.dataset_id = dataset_id
-        self.table_id = table_id
+
+        schema_prim_keys = [bigquery.SchemaField(column.name, SCHEMA_MAPPING.get(f"{column.type}", "STRING"), mode="REQUIRED") for column in prim_keys]
+        schema_value_cols = [bigquery.SchemaField(column.name, SCHEMA_MAPPING.get(f"{column.type}", "STRING"), mode="NULLABLE") for column in value_cols]
+
+        self.table = bigquery.Table(
+            table_ref=table_ref,
+            schema=schema_prim_keys+schema_value_cols
+        )
+        
+        self.table.clustering_fields = [column.name for column in self.data_sql_schema if column.primary_key][0:4]
+        self.table = self.bq_client.create_table(self.table, exists_ok=True)
+
+        self.job_config = bigquery.LoadJobConfig()
+        self.job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
 
 
     def get_primary_schema(self) -> DataSchema:
@@ -113,46 +132,32 @@ class TableStoreBQ(TableStore):
 
 
     def delete_rows(self, idx: IndexDF) -> None:
-        raise NotImplementedError
+        dml = f"DELETE FROM `{self.table.project}`.`{self.table.dataset_id}`.`{self.table.table_id}` WHERE TRUE;"
+        self.bq_client.query(dml)
 
 
     def insert_rows(self, df: DataDF) -> None:
-        dataset_ref = self.bq_client.dataset(self.dataset_id)
-        table_ref = dataset_ref.table(str(self.table_id))
-
-        if not is_dataset_exists(self.bq_client, dataset_ref):
-            self.bq_client.create_dataset(dataset_ref)
-
-        schema_prim_keys = [bigquery.SchemaField(column.name, SCHEMA_MAPPING.get(f"{column.type}", "STRING"), mode="REQUIRED") for column in self.prim_keys]
-        schema_value_cols = [bigquery.SchemaField(column.name, SCHEMA_MAPPING.get(f"{column.type}", "STRING"), mode="NULLABLE") for column in self.value_cols]
-
-        table = bigquery.Table(
-            table_ref=table_ref,
-            schema=schema_prim_keys+schema_value_cols
-        )
-        
-        table.clustering_fields = [column.name for column in self.data_sql_schema if column.primary_key][0:4]
-        table = self.bq_client.create_table(table, exists_ok=True)
-
-        job_config = bigquery.LoadJobConfig()
-        job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
-
         self.bq_client.load_table_from_dataframe(
             df,
-            table,
-            job_config=job_config,
+            self.table,
+            job_config=self.job_config,
         ).result()
 
 
     def update_rows(self, df: DataDF) -> None:
         if df.empty:
             return
+
         self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
-        raise NotImplementedError
+        sql = f"SELECT * FROM `{self.table.project}`.`{self.table.dataset_id}`.`{self.table.table_id}`;"
+        result = self.bq_client.query_and_wait(sql)
+        df = result.to_dataframe()
+
+        return df
 
 
     def read_rows_meta_pseudo_df(
