@@ -234,7 +234,7 @@ class MetaTable:
                 # Empty index -> empty result
                 return cast(
                     IndexDF,
-                    pd.DataFrame(columns=[column.name for column in self.sql_schema]),  # type: ignore
+                    pd.DataFrame(columns=self.primary_keys),  # type: ignore
                 )
             idx_cols = list(set(idx.columns.tolist()) & set(self.primary_keys))
         else:
