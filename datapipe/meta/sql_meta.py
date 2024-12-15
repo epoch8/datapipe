@@ -452,14 +452,6 @@ class MetaTable:
         return (keys, sql.cte(name=f"{tbl.name}__update"))
 
 
-TRANSFORM_META_SCHEMA: DataSchema = [
-    sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
-    sa.Column("is_success", sa.Boolean),  # Успешно ли обработана строка
-    sa.Column("priority", sa.Integer),  # Приоритет обработки (чем больше, тем выше)
-    sa.Column("error", sa.String),  # Текст ошибки
-]
-
-
 class TransformMetaTable:
     def __init__(
         self,
@@ -473,7 +465,17 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
+        self.sql_schema = [i._copy() for i in primary_schema] + [
+            sa.Column("update_ts", sa.Float),  # Время последнего обновления
+            sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
+            sa.Column("priority", sa.Integer),  # Приоритет обработки
+            sa.Column(
+                "status",
+                sa.Enum("pending", "clean", "failed", name="transform_status"),
+                index=True,
+            ),
+            sa.Column("error", sa.String),  # Текст ошибки
+        ]
 
         self.sql_table = sa.Table(
             name,
@@ -506,7 +508,7 @@ class TransformMetaTable:
             [
                 {
                     "process_ts": 0,
-                    "is_success": False,
+                    "status": "pending",
                     "priority": 0,
                     "error": None,
                     **idx_dict,  # type: ignore
@@ -520,7 +522,42 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
-    def mark_rows_processed_success(
+    def mark_rows_pending(
+        self,
+        idx: IndexDF,
+        update_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys].drop_duplicates().dropna())
+        if len(idx) == 0:
+            return
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "update_ts": update_ts,
+                    "process_ts": 0,
+                    "status": "pending",
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "update_ts": update_ts,
+                "status": "pending",
+                "error": None,
+            },
+        )
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_clean(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -544,7 +581,7 @@ class TransformMetaTable:
                     [
                         {
                             "process_ts": process_ts,
-                            "is_success": True,
+                            "status": "clean",
                             "priority": 0,
                             "error": None,
                         }
@@ -560,7 +597,7 @@ class TransformMetaTable:
                 [
                     {
                         "process_ts": process_ts,
-                        "is_success": True,
+                        "status": "clean",
                         "priority": 0,
                         "error": None,
                         **idx_dict,  # type: ignore
@@ -573,7 +610,7 @@ class TransformMetaTable:
                 index_elements=self.primary_keys,
                 set_={
                     "process_ts": process_ts,
-                    "is_success": True,
+                    "status": "clean",
                     "error": None,
                 },
             )
@@ -582,7 +619,7 @@ class TransformMetaTable:
             with self.dbconn.con.begin() as con:
                 con.execute(sql)
 
-    def mark_rows_processed_error(
+    def mark_rows_failed(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -598,8 +635,9 @@ class TransformMetaTable:
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
                 {
+                    "update_ts": 0,
                     "process_ts": process_ts,
-                    "is_success": False,
+                    "status": "failed",
                     "priority": 0,
                     "error": error,
                     **idx_dict,  # type: ignore
@@ -612,7 +650,7 @@ class TransformMetaTable:
             index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
-                "is_success": False,
+                "status": "failed",
                 "error": error,
             },
         )
@@ -637,16 +675,12 @@ class TransformMetaTable:
         self,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        update_sql = (
-            sa.update(self.sql_table)
-            .values(
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "error": None,
-                }
-            )
-            .where(self.sql_table.c.is_success == True)
+        update_sql = sa.update(self.sql_table).values(
+            {
+                "process_ts": 0,
+                "status": "pending",
+                "error": None,
+            }
         )
 
         sql = sql_apply_runconfig_filter(
@@ -788,7 +822,7 @@ def build_changed_idx_sql(
     out: Any = (
         sa.select(
             *[sa.column(k) for k in transform_keys]
-            + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.status]
         )
         .select_from(tr_tbl)
         .group_by(*[sa.column(k) for k in transform_keys])
@@ -826,10 +860,10 @@ def build_changed_idx_sql(
         .where(
             sa.or_(
                 sa.and_(
-                    out.c.is_success == True,  # noqa
+                    out.c.status == "clean",  # noqa
                     agg_of_aggs.c.update_ts > out.c.process_ts,
                 ),
-                out.c.is_success != True,  # noqa
+                out.c.status != "clean",  # noqa
                 out.c.process_ts == None,  # noqa
             )
         )

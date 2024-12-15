@@ -271,7 +271,7 @@ class DatapipeApp:
         return [
             step
             for step in self.steps
-            if table_name in [i.name for i in step.input_dts]
+            if table_name in [i.dt.name for i in step.input_dts]
         ]
 
     def producers(self, table_name: str) -> List[ComputeStep]:
