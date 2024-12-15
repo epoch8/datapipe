@@ -2,10 +2,25 @@ from __future__ import annotations  # NOQA
 
 import itertools
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, NewType, Set, Tuple, TypeVar, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    NewType,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import pandas as pd
 from sqlalchemy import Column
+
+if TYPE_CHECKING:
+    from datapipe.compute import Table
 
 DataSchema = List[Column]
 MetaSchema = List[Column]
@@ -25,6 +40,25 @@ TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 Labels = List[Tuple[str, str]]
 
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
+
+from sqlalchemy.orm.decl_api import DeclarativeMeta
+
+OrmTable = Type[DeclarativeMeta]
+
+TableOrName = Union[str, OrmTable, "Table"]
+
+
+@dataclass
+class JoinSpec:
+    table: TableOrName
+
+
+@dataclass
+class Required(JoinSpec):
+    pass
+
+
+PipelineInput = Union[TableOrName, JoinSpec]
 
 
 @dataclass

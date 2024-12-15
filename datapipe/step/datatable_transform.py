@@ -4,11 +4,11 @@ from typing import Any, Dict, List, Optional, Protocol
 
 from opentelemetry import trace
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep
+from datapipe.compute import Catalog, ComputeInput, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
-from datapipe.types import Labels
+from datapipe.types import Labels, TableOrName
 
 logger = logging.getLogger("datapipe.step.datatable_transform")
 tracer = trace.get_tracer("datapipe.step.datatable_transform")
@@ -23,17 +23,15 @@ class DatatableTransformFunc(Protocol):
         input_dts: List[DataTable],
         output_dts: List[DataTable],
         run_config: Optional[RunConfig],
-        # Возможно, лучше передавать как переменную, а не  **
-        **kwargs,
-    ) -> None:
-        ...
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None: ...
 
 
 class DatatableTransformStep(ComputeStep):
     def __init__(
         self,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         func: DatatableTransformFunc,
         kwargs: Optional[Dict] = None,
@@ -77,7 +75,7 @@ class DatatableTransformStep(ComputeStep):
             try:
                 self.func(
                     ds=ds,
-                    input_dts=self.input_dts,
+                    input_dts=[inp.dt for inp in self.input_dts],
                     output_dts=self.output_dts,
                     run_config=run_config,
                     kwargs=self.kwargs,
@@ -92,8 +90,8 @@ class DatatableTransformStep(ComputeStep):
 @dataclass
 class DatatableTransform(PipelineStep):
     func: DatatableTransformFunc
-    inputs: List[str]
-    outputs: List[str]
+    inputs: List[TableOrName]
+    outputs: List[TableOrName]
     check_for_changes: bool = True
     kwargs: Optional[Dict[str, Any]] = None
     labels: Optional[Labels] = None
@@ -102,7 +100,10 @@ class DatatableTransform(PipelineStep):
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
-                input_dts=[catalog.get_datatable(ds, i) for i in self.inputs],
+                input_dts=[
+                    ComputeInput(dt=catalog.get_datatable(ds, i), join_type="full")
+                    for i in self.inputs
+                ],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
                 kwargs=self.kwargs,

@@ -1,10 +1,29 @@
-# 0.14.0
+# WIP Next major release
 
 ## Significant changes
 
 * `DatapipeApp` becomes main entry point to work with pipeline
 * BatchTransform metadata has status "pending"/"clean"/"failed"
 * `DatapipeApp.ingest_data` updates BatchTransform metadata on write
+
+# WIP 0.14.1
+
+* Refactor metadata handling into `datapipe.meta` submodule
+* Add `Required` qualifier for `inputs`
+
+# 0.14.0
+
+Major changes:
+* Enable Python 3.12 support
+* `DatatableTansform` can become `BatchTransform` with empty indices
+* SQLAlchemy tables can be used directly without duplication in Catalog
+* `datapipe.compute.Table` can be used directly without Catalog
+
+See "Migration from v0.13 to v0.14" for more details
+
+# 0.13.14
+
+* Fix [#334](https://github.com/epoch8/datapipe/issues/334)
 
 # 0.13.13
 
@@ -564,6 +583,28 @@
 Было: `DataTable(meta_store, name, data_store)`
 
 Стало: `DataTable(name, meta_store.create_meta_table(name), data_store)`
+
+# 0.5.0
+
+* Добавился прототип debug ui. Запускается с помощью команды `python script.py ui`
+
+# 0.4.0
+
+**Значимый рефакторинг**
+
+* Корневой модуль переименован `c12n_pipe` → `datapipe`
+* Реализован новый модуль `datapipe.dsl` для декларативного описания пайплайнов. 
+  Пример использования: `examples/goal_v0.4.0.py`
+* Описание пайплайна отделено от способа выполнения → есть возможность написать 
+  конвертер в другой рантайм, например Prefect
+* Переписана логика работы `MetaStore`, теперь всеми мета-таблицами `MetaStore` 
+  владеет в явном виде, а потребители информации обращаются к ним по имени
+* Реализовано хранение данных таблиц в отделяемых хранилищах (хранение в БД - один 
+  из способов)
+    * `database.TableStoreDB` - хранение данных в таблице БД
+    * `filedir.TableStoreFiledir` - хранение данных в виде папки с файлами (плюс 
+      описаны адаптеры для разных типов файлов)
+    * `pandas.TableStoreJsonLine` - хранение данных в виде одного jsonline файла
 
 # 0.2.0 (2021-02-01)
 - Add major code with Label Studio implementation

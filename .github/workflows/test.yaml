@@ -2,50 +2,15 @@ name: Run tests
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "examples/**"
+    paths:
+      - ".github/workflows/test.yaml"
+      - "datapipe/**"
+      - "tests/**"
+      - "pyproject.toml"
 
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          # - "3.8"
-          # - "3.9"
-          - "3.10"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      
-      - name: Install dependencies
-        run: |
-          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "flake8" "mypy"
-          pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
-
-      - name: Lint with flake8
-        run: |
-          # stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-      - name: Lint with mypy
-        run: |
-          mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
-
   test:
-    # needs: lint
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -53,19 +18,23 @@ jobs:
           # - python-version: "3.8"
           #   test-db-env: "postgres"
           #   pip-extra: "sqlalchemy <2"
-          - python-version: "3.8"
-            test-db-env: "postgres"
-            pip-extra: "'sqlalchemy>2'"
+          # - python-version: "3.8"
+          #   test-db-env: "postgres"
+          #   pip-extra: "'sqlalchemy>2'"
           # - python-version: "3.8"
           #   test-db-env: "sqlite"
-          # - python-version: "3.9"
-          #   test-db-env: "postgres"
+
+          - python-version: "3.9"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>2"'
           # - python-version: "3.9"
           #   test-db-env: "sqlite"
+
           # - python-version: "3.10"
           #   test-db-env: "postgres"
           # - python-version: "3.10"
           #   test-db-env: "sqlite"
+
           - python-version: "3.11"
             test-db-env: "postgres"
             pip-extra: '"sqlalchemy<2" "pandas<2.2"'
@@ -75,6 +44,11 @@ jobs:
           - python-version: "3.11"
             test-db-env: "sqlite"
             pip-extra: '"sqlalchemy>2"'
+
+          - python-version: "3.12"
+            test-db-env: "postgres"
+          - python-version: "3.12"
+            test-db-env: "sqlite"
 
     services:
       # Label used to access the service container

@@ -2,10 +2,11 @@ name: Test examples
 
 on:
   push:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "tests/**"
+    paths:
+      - ".github/workflows/test_examples.yaml"
+      - "examples/**"
+      - "datapipe/**"
+      - "pyproject.toml"
 
 jobs:
   test-examples:
@@ -14,9 +15,10 @@ jobs:
       matrix:
         python-version:
           # - "3.8"
-          # - "3.9"
+          - "3.9"
           - "3.10"
           # - "3.11"
+          - "3.12"
         example:
           - datatable_batch_transform
           - image_resize

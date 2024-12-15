@@ -14,7 +14,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, TransformResult, cast
+from datapipe.types import Labels, TableOrName, TransformResult, cast
 
 logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")
@@ -28,8 +28,8 @@ def do_batch_generate(
     ds: DataStore,
     output_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
-    kwargs: Optional[Dict] = None,
     delete_stale: bool = True,
+    kwargs: Optional[Dict] = None,
 ) -> None:
     """
     Создание новой таблицы из результатов запуска `proc_func`.
@@ -88,7 +88,7 @@ def do_batch_generate(
 @dataclass
 class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
-    outputs: List[str]
+    outputs: List[TableOrName]
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
     delete_stale: bool = True
@@ -104,6 +104,7 @@ class BatchGenerate(PipelineStep):
                         ds=ds,
                         output_dts=output_dts,
                         run_config=run_config,
+                        delete_stale=self.delete_stale,
                         kwargs=kwargs,
                     ),
                 ),

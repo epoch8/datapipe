@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 from sqlalchemy import Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import functions, select
 from sqlalchemy.sql.schema import Column
 
@@ -14,33 +15,23 @@ from datapipe.step.batch_transform import DatatableBatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import IndexDF
 
-dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
+
+class Base(DeclarativeBase):
+    pass
 
 
-catalog = Catalog(
-    {
-        "input": Table(
-            store=TableStoreDB(
-                dbconn=dbconn,
-                name="input",
-                data_sql_schema=[
-                    Column("group_id", Integer, primary_key=True),
-                    Column("item_id", Integer, primary_key=True),
-                ],
-            )
-        ),
-        "result": Table(
-            store=TableStoreDB(
-                dbconn=dbconn,
-                name="output",
-                data_sql_schema=[
-                    Column("group_id", Integer, primary_key=True),
-                    Column("count", Integer),
-                ],
-            )
-        ),
-    }
-)
+class Input(Base):
+    __tablename__ = "input"
+
+    group_id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class Output(Base):
+    __tablename__ = "output"
+
+    group_id: Mapped[int] = mapped_column(primary_key=True)
+    count: Mapped[int]
 
 
 def generate_data():
@@ -96,17 +87,18 @@ pipeline = Pipeline(
     [
         BatchGenerate(
             generate_data,
-            outputs=["input"],
+            outputs=[Input],
         ),
         DatatableBatchTransform(
             count_tbl,
-            inputs=["input"],
-            outputs=["result"],
+            inputs=[Input],
+            outputs=[Output],
         ),
     ]
 )
 
 
+dbconn = DBConn("sqlite+pysqlite3:///db.sqlite", sqla_metadata=Base.metadata)
 ds = DataStore(dbconn)
 
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds=ds, catalog=Catalog({}), pipeline=pipeline)

@@ -3,7 +3,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 import pandas as pd
 from opentelemetry import trace
@@ -11,8 +11,9 @@ from opentelemetry import trace
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
+from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, IndexDF, Labels
+from datapipe.types import ChangeList, IndexDF, Labels, TableOrName
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -21,6 +22,7 @@ tracer = trace.get_tracer("datapipe.compute")
 @dataclass
 class Table:
     store: TableStore
+    name: Optional[str] = None
 
 
 class Catalog:
@@ -38,8 +40,46 @@ class Catalog:
         for name in self.catalog.keys():
             self.get_datatable(ds, name)
 
-    def get_datatable(self, ds: DataStore, name: str) -> DataTable:
-        return ds.get_or_create_table(name=name, table_store=self.catalog[name].store)
+    def get_datatable(self, ds: DataStore, table: TableOrName) -> DataTable:
+        if isinstance(table, str):
+            assert table in self.catalog, f"Table {table} not found in catalog"
+            return ds.get_or_create_table(
+                name=table, table_store=self.catalog[table].store
+            )
+
+        elif isinstance(table, Table):
+            assert table.name is not None, f"Table name must be specified for {table}"
+
+            if table.name not in self.catalog:
+                self.add_datatable(table.name, table)
+            else:
+                existing_table = self.catalog[table.name]
+                assert existing_table.store == table.store, (
+                    f"Table {table.name} already exists in catalog "
+                    f"with different store {existing_table.store}"
+                )
+
+            return ds.get_or_create_table(name=table.name, table_store=table.store)
+
+        else:
+            table_store = TableStoreDB(ds.meta_dbconn, orm_table=table)
+            if table_store.name not in self.catalog:
+                self.add_datatable(table_store.name, Table(store=table_store))
+            else:
+                existing_table_store = self.catalog[table_store.name].store
+                assert isinstance(existing_table_store, TableStoreDB), (
+                    f"Table {table_store.name} already exists in catalog "
+                    f"with different store {existing_table_store}"
+                )
+
+                assert existing_table_store.data_table == table.__table__, (  # type: ignore
+                    f"Table {table_store.name} already exists in catalog "
+                    f"with different orm_table {existing_table_store.data_table}"
+                )
+
+            return ds.get_or_create_table(
+                name=table_store.name, table_store=table_store
+            )
 
 
 @dataclass
@@ -47,6 +87,12 @@ class StepStatus:
     name: str
     total_idx_count: int
     changed_idx_count: int
+
+
+@dataclass
+class ComputeInput:
+    dt: DataTable
+    join_type: Literal["inner", "full"] = "full"
 
 
 class ComputeStep:
@@ -68,7 +114,7 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: List[DataTable],
+        input_dts: List[ComputeInput],
         output_dts: List[DataTable],
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
@@ -83,7 +129,7 @@ class ComputeStep:
         ss = [
             self.__class__.__name__,
             self._name,
-            *[i.name for i in self.input_dts],
+            *[i.dt.name for i in self.input_dts],
             *[o.name for o in self.output_dts],
         ]
 
@@ -105,7 +151,7 @@ class ComputeStep:
 
     # TODO: move to lints
     def validate(self) -> None:
-        inp_p_keys_arr = [set(inp.primary_keys) for inp in self.input_dts if inp]
+        inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
         out_p_keys_arr = [set(out.primary_keys) for out in self.output_dts if out]
 
         inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
@@ -115,7 +161,7 @@ class ComputeStep:
         key_to_column_type_inp = {
             column.name: type(column.type)
             for inp in self.input_dts
-            for column in inp.primary_schema
+            for column in inp.dt.primary_schema
             if column.name in join_keys
         }
         key_to_column_type_out = {
@@ -198,7 +244,7 @@ class PipelineStep(ABC):
 
 @dataclass
 class Pipeline:
-    steps: List[PipelineStep]
+    steps: Sequence[PipelineStep]
 
 
 class DatapipeApp:
@@ -289,17 +335,17 @@ def print_compute(steps: List[ComputeStep]) -> None:
 
 def run_steps(
     ds: DataStore,
-    steps: List[ComputeStep],
+    steps: Sequence[ComputeStep],
     run_config: Optional[RunConfig] = None,
     executor: Optional[Executor] = None,
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
-            f"{step.get_name()} {[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+            f"{step.get_name()} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
         ):
             logger.info(
                 f"Running {step.get_name()} "
-                f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
             )
 
             step.run_full(ds=ds, run_config=run_config, executor=executor)
@@ -347,11 +393,11 @@ def run_steps_changelist(
                 for step in steps:
                     with tracer.start_as_current_span(
                         f"{step.get_name()} "
-                        f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                        f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                     ):
                         logger.info(
                             f"Running {step.get_name()} "
-                            f"{[i.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                            f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                         )
 
                         if isinstance(step, BaseBatchTransformStep):
