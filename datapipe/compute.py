@@ -253,7 +253,7 @@ class DatapipeApp:
         ds: DataStore,
         catalog: Catalog,
         pipeline: Pipeline,
-        executor: Executor | None = None,
+        executor: Optional[Executor] = None,
     ):
         self.ds = ds
         self.catalog = catalog
@@ -285,7 +285,7 @@ class DatapipeApp:
         self,
         table_name: str,
         data_df: pd.DataFrame,
-        now: float | None = None,
+        now: Optional[float] = None,
     ) -> ChangeList:
         table = self.ds.get_table(table_name)
         now = now or time.time()

@@ -406,8 +406,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         change_list: ChangeList,
-        now: float | None = None,
-        run_config: RunConfig | None = None,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
     ) -> None:
         now = now or time.time()
 
