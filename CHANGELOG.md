@@ -1,4 +1,4 @@
-# WIP 0.14.1
+# 0.14.1
 
 * Refactor metadata handling into `datapipe.meta` submodule
 * Add `Required` qualifier for `inputs`
