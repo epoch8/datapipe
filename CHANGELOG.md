@@ -1,4 +1,4 @@
-# WIP Next major release
+# WIP
 
 ## Significant changes
 
@@ -6,7 +6,7 @@
 * BatchTransform metadata has status "pending"/"clean"/"failed"
 * `DatapipeApp.ingest_data` updates BatchTransform metadata on write
 
-# WIP 0.14.1
+# 0.14.1
 
 * Refactor metadata handling into `datapipe.meta` submodule
 * Add `Required` qualifier for `inputs`
