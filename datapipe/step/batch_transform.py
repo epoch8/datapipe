@@ -357,7 +357,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(
+        self.meta_table.mark_rows_clean(
             idx, process_ts=process_ts, run_config=run_config
         )
 
@@ -386,7 +386,7 @@ class BaseBatchTransformStep(ComputeStep):
             ),
         )
 
-        self.meta_table.mark_rows_processed_error(
+        self.meta_table.mark_rows_failed(
             idx,
             process_ts=process_ts,
             error=str(e),
@@ -401,6 +401,22 @@ class BaseBatchTransformStep(ComputeStep):
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta_table.mark_all_rows_unprocessed()
+
+    def notify_change_list(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        now = now or time.time()
+
+        for idx in change_list.changes.values():
+            self.meta_table.mark_rows_pending(
+                idx,
+                update_ts=now,
+                run_config=run_config,
+            )
 
     def get_batch_input_dfs(
         self,
