@@ -154,11 +154,4 @@ def test_transform_meta_updates_on_datatable_write(
         now=1000,
     )
 
-    # assert assert_df_equal(
-    #     step.meta_table.get_metadata()[["id", "update_ts", "status"]],
-    #     pd.DataFrame(
-    #         [
-    #             {"id": 1, "update_ts": 1000, "status": "pending"},
-    #         ]
-    #     ),
-    # )
+    assert step.meta_table.get_changed_idx_count() == 1
