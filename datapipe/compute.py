@@ -1,9 +1,11 @@
 import hashlib
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
+import pandas as pd
 from opentelemetry import trace
 
 from datapipe.datatable import DataStore, DataTable
@@ -192,6 +194,15 @@ class ComputeStep:
     ) -> Tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
+    def notify_change_list(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        pass
+
     def run_full(
         self,
         ds: DataStore,
@@ -237,12 +248,65 @@ class Pipeline:
 
 
 class DatapipeApp:
-    def __init__(self, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+    def __init__(
+        self,
+        ds: DataStore,
+        catalog: Catalog,
+        pipeline: Pipeline,
+        executor: Optional[Executor] = None,
+    ):
         self.ds = ds
         self.catalog = catalog
         self.pipeline = pipeline
+        self.executor = executor
 
         self.steps = build_compute(ds, catalog, pipeline)
+
+    def with_executor(self, executor: Executor) -> "DatapipeApp":
+        self.executor = executor
+
+        return self
+
+    def consumers(self, table_name: str) -> List[ComputeStep]:
+        return [
+            step
+            for step in self.steps
+            if table_name in [i.dt.name for i in step.input_dts]
+        ]
+
+    def producers(self, table_name: str) -> List[ComputeStep]:
+        return [
+            step
+            for step in self.steps
+            if table_name in [o.name for o in step.output_dts]
+        ]
+
+    def ingest_data(
+        self,
+        table_name: str,
+        data_df: pd.DataFrame,
+        now: Optional[float] = None,
+    ) -> ChangeList:
+        table = self.ds.get_table(table_name)
+        now = now or time.time()
+        changes = table.store_chunk(data_df, now=now)
+
+        change_list = ChangeList({table_name: changes})
+
+        for step in self.consumers(table_name):
+            step.notify_change_list(self.ds, change_list, now=now)
+
+        return change_list
+
+    def ingest_and_process_data(self, table_name: str, data_df: pd.DataFrame) -> None:
+        cl = self.ingest_data(table_name, data_df)
+
+        run_steps_changelist(
+            self.ds,
+            self.steps,
+            cl,
+            executor=self.executor,
+        )
 
 
 def build_compute(

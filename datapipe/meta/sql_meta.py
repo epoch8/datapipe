@@ -2,6 +2,7 @@ import itertools
 import math
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -18,6 +19,7 @@ from typing import (
 import cityhash
 import pandas as pd
 import sqlalchemy as sa
+from opentelemetry import trace
 
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
@@ -35,6 +37,9 @@ from datapipe.types import (
 if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
     from datapipe.datatable import DataStore
+
+
+tracer = trace.get_tracer("datapipe.meta.sql_meta")
 
 
 TABLE_META_SCHEMA: List[sa.Column] = [
@@ -452,12 +457,10 @@ class MetaTable:
         return (keys, sql.cte(name=f"{tbl.name}__update"))
 
 
-TRANSFORM_META_SCHEMA: DataSchema = [
-    sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
-    sa.Column("is_success", sa.Boolean),  # Успешно ли обработана строка
-    sa.Column("priority", sa.Integer),  # Приоритет обработки (чем больше, тем выше)
-    sa.Column("error", sa.String),  # Текст ошибки
-]
+class TransformStatus(Enum):
+    PENDING = "pending"
+    CLEAN = "clean"
+    FAILED = "failed"
 
 
 class TransformMetaTable:
@@ -473,7 +476,17 @@ class TransformMetaTable:
         self.primary_schema = primary_schema
         self.primary_keys = [i.name for i in primary_schema]
 
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
+        self.sql_schema = [i._copy() for i in primary_schema] + [
+            sa.Column("update_ts", sa.Float),  # Время последнего обновления
+            sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
+            sa.Column("priority", sa.Integer),  # Приоритет обработки
+            sa.Column(
+                "status",
+                sa.Enum(TransformStatus, name="transform_status"),
+                index=True,
+            ),
+            sa.Column("error", sa.String),  # Текст ошибки
+        ]
 
         self.sql_table = sa.Table(
             name,
@@ -506,7 +519,7 @@ class TransformMetaTable:
             [
                 {
                     "process_ts": 0,
-                    "is_success": False,
+                    "status": TransformStatus.PENDING.value,
                     "priority": 0,
                     "error": None,
                     **idx_dict,  # type: ignore
@@ -520,7 +533,42 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
-    def mark_rows_processed_success(
+    def mark_rows_pending(
+        self,
+        idx: IndexDF,
+        update_ts: float,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        idx = cast(IndexDF, idx[self.primary_keys].drop_duplicates().dropna())
+        if len(idx) == 0:
+            return
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "update_ts": update_ts,
+                    "process_ts": 0,
+                    "status": TransformStatus.PENDING.value,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.primary_keys,
+            set_={
+                "update_ts": update_ts,
+                "status": TransformStatus.PENDING.value,
+                "error": None,
+            },
+        )
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_clean(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -544,7 +592,7 @@ class TransformMetaTable:
                     [
                         {
                             "process_ts": process_ts,
-                            "is_success": True,
+                            "status": TransformStatus.CLEAN.value,
                             "priority": 0,
                             "error": None,
                         }
@@ -560,7 +608,7 @@ class TransformMetaTable:
                 [
                     {
                         "process_ts": process_ts,
-                        "is_success": True,
+                        "status": TransformStatus.CLEAN.value,
                         "priority": 0,
                         "error": None,
                         **idx_dict,  # type: ignore
@@ -573,7 +621,7 @@ class TransformMetaTable:
                 index_elements=self.primary_keys,
                 set_={
                     "process_ts": process_ts,
-                    "is_success": True,
+                    "status": TransformStatus.CLEAN.value,
                     "error": None,
                 },
             )
@@ -582,7 +630,7 @@ class TransformMetaTable:
             with self.dbconn.con.begin() as con:
                 con.execute(sql)
 
-    def mark_rows_processed_error(
+    def mark_rows_failed(
         self,
         idx: IndexDF,
         process_ts: float,
@@ -598,8 +646,9 @@ class TransformMetaTable:
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
                 {
+                    "update_ts": 0,
                     "process_ts": process_ts,
-                    "is_success": False,
+                    "status": TransformStatus.FAILED.value,
                     "priority": 0,
                     "error": error,
                     **idx_dict,  # type: ignore
@@ -612,7 +661,7 @@ class TransformMetaTable:
             index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
-                "is_success": False,
+                "status": TransformStatus.FAILED.value,
                 "error": error,
             },
         )
@@ -637,16 +686,12 @@ class TransformMetaTable:
         self,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        update_sql = (
-            sa.update(self.sql_table)
-            .values(
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "error": None,
-                }
-            )
-            .where(self.sql_table.c.is_success == True)
+        update_sql = sa.update(self.sql_table).values(
+            {
+                "process_ts": 0,
+                "status": TransformStatus.PENDING.value,
+                "error": None,
+            }
         )
 
         sql = sql_apply_runconfig_filter(
@@ -656,6 +701,84 @@ class TransformMetaTable:
         # execute
         with self.dbconn.con.begin() as con:
             con.execute(sql)
+
+    def _build_changed_idx_sql(
+        self,
+        run_config: Optional[RunConfig] = None,
+    ) -> Any:
+        sql = (
+            sa.select(sa.func.count())
+            .select_from(self.sql_table)
+            .where(
+                self.sql_table.c.status != TransformStatus.CLEAN.value,
+            )
+        )
+
+        sql = sql_apply_runconfig_filter(
+            sql, self.sql_table, self.primary_keys, run_config
+        )
+
+        return sql
+
+    def get_changed_idx_count(self, run_config: Optional[RunConfig] = None) -> int:
+        sql = self._build_changed_idx_sql(run_config=run_config)
+
+        with self.dbconn.con.begin() as con:
+            res = con.execute(sql).scalar()
+
+            return cast(int, res)
+
+    def get_full_process_ids(
+        self,
+        chunk_size: int,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        """
+        Метод для получения перечня индексов для обработки.
+
+        Returns: (idx_size, iterator<idx_df>)
+
+        - idx_size - количество индексов требующих обработки
+        - idx_df - датафрейм без колонок с данными, только индексная колонка
+        """
+
+        # if len(self.input_dts) == 0:
+        #     return (0, iter([]))
+
+        idx_count = self.get_changed_idx_count(run_config=run_config)
+
+        sql = self._build_changed_idx_sql(run_config=run_config)
+
+        # join_keys, u1 = build_changed_idx_sql(
+        #     ds=ds,
+        #     meta_table=self.meta_table,
+        #     input_dts=self.input_dts,
+        #     transform_keys=self.transform_keys,
+        #     run_config=run_config,
+        #     order_by=self.order_by,
+        #     order=self.order,  # type: ignore  # pylance is stupid
+        # )
+
+        # Список ключей из фильтров, которые нужно добавить в результат
+        # extra_filters: LabelDict
+        # if run_config is not None:
+        #     extra_filters = {
+        #         k: v for k, v in run_config.filters.items() if k not in join_keys
+        #     }
+        # else:
+        #     extra_filters = {}
+
+        def alter_res_df():
+            with self.dbconn.con.begin() as con:
+                for df in pd.read_sql_query(sql, con=con, chunksize=chunk_size):
+                    df = df[self.transform_keys]
+
+                    # for k, v in extra_filters.items():
+                    #     df[k] = v
+
+                    yield cast(IndexDF, df)
+
+        return math.ceil(idx_count / chunk_size), alter_res_df()
 
 
 def sql_apply_filters_idx_to_subquery(
@@ -788,7 +911,7 @@ def build_changed_idx_sql(
     out: Any = (
         sa.select(
             *[sa.column(k) for k in transform_keys]
-            + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.status]
         )
         .select_from(tr_tbl)
         .group_by(*[sa.column(k) for k in transform_keys])
@@ -826,11 +949,11 @@ def build_changed_idx_sql(
         .where(
             sa.or_(
                 sa.and_(
-                    out.c.is_success == True,  # noqa
+                    out.c.status == TransformStatus.CLEAN.value,
                     agg_of_aggs.c.update_ts > out.c.process_ts,
                 ),
-                out.c.is_success != True,  # noqa
-                out.c.process_ts == None,  # noqa
+                out.c.status != TransformStatus.CLEAN.value,
+                out.c.process_ts == None,
             )
         )
     )

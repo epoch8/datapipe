@@ -21,8 +21,6 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func, select
-from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
@@ -193,22 +191,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> int:
         run_config = self._apply_filters_to_run_config(run_config)
-        _, sql = build_changed_idx_sql(
-            ds=ds,
-            meta_table=self.meta_table,
-            input_dts=self.input_dts,
-            transform_keys=self.transform_keys,
-            run_config=run_config,
-        )
-
-        with ds.meta_dbconn.con.begin() as con:
-            idx_count = con.execute(
-                select(*[func.count()]).select_from(
-                    alias(sql.subquery(), name="union_select")
-                )
-            ).scalar()
-
-        return cast(int, idx_count)
+        return self.meta_table.get_changed_idx_count(run_config=run_config)
 
     def get_full_process_ids(
         self,
@@ -216,56 +199,12 @@ class BaseBatchTransformStep(ComputeStep):
         chunk_size: Optional[int] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
-        """
-        Метод для получения перечня индексов для обработки.
-
-        Returns: (idx_size, iterator<idx_df>)
-
-        - idx_size - количество индексов требующих обработки
-        - idx_df - датафрейм без колонок с данными, только индексная колонка
-        """
-        run_config = self._apply_filters_to_run_config(run_config)
-        chunk_size = chunk_size or self.chunk_size
-
         with tracer.start_as_current_span("compute ids to process"):
-            if len(self.input_dts) == 0:
-                return (0, iter([]))
-
-            idx_count = self.get_changed_idx_count(
-                ds=ds,
+            run_config = self._apply_filters_to_run_config(run_config)
+            return self.meta_table.get_full_process_ids(
+                chunk_size=chunk_size or self.chunk_size,
                 run_config=run_config,
             )
-
-            join_keys, u1 = build_changed_idx_sql(
-                ds=ds,
-                meta_table=self.meta_table,
-                input_dts=self.input_dts,
-                transform_keys=self.transform_keys,
-                run_config=run_config,
-                order_by=self.order_by,
-                order=self.order,  # type: ignore  # pylance is stupid
-            )
-
-            # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: LabelDict
-            if run_config is not None:
-                extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
-                }
-            else:
-                extra_filters = {}
-
-            def alter_res_df():
-                with ds.meta_dbconn.con.begin() as con:
-                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
-                        df = df[self.transform_keys]
-
-                        for k, v in extra_filters.items():
-                            df[k] = v
-
-                        yield cast(IndexDF, df)
-
-            return math.ceil(idx_count / chunk_size), alter_res_df()
 
     def get_change_list_process_ids(
         self,
@@ -357,7 +296,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(
+        self.meta_table.mark_rows_clean(
             idx, process_ts=process_ts, run_config=run_config
         )
 
@@ -386,7 +325,7 @@ class BaseBatchTransformStep(ComputeStep):
             ),
         )
 
-        self.meta_table.mark_rows_processed_error(
+        self.meta_table.mark_rows_failed(
             idx,
             process_ts=process_ts,
             error=str(e),
@@ -401,6 +340,22 @@ class BaseBatchTransformStep(ComputeStep):
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta_table.mark_all_rows_unprocessed()
+
+    def notify_change_list(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        now: Optional[float] = None,
+        run_config: Optional[RunConfig] = None,
+    ) -> None:
+        now = now or time.time()
+
+        for idx in change_list.changes.values():
+            self.meta_table.mark_rows_pending(
+                idx,
+                update_ts=now,
+                run_config=run_config,
+            )
 
     def get_batch_input_dfs(
         self,

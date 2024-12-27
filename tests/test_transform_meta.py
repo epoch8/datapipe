@@ -1,13 +1,16 @@
 from typing import List
 
+import pandas as pd
 import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
-from datapipe.datatable import MetaTable
-from datapipe.step.batch_transform import BatchTransformStep
-from datapipe.store.database import DBConn
+from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.datatable import DataStore, MetaTable
+from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
+from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import MetaSchema
+from tests.util import assert_df_equal
 
 
 def make_mt(name, dbconn, schema_keys) -> MetaTable:
@@ -103,3 +106,52 @@ def test_compute_transform_schema_fail(
         BatchTransformStep.compute_transform_schema(
             inp_mts, out_mts, transform_keys=transform_keys
         )
+
+
+TEST_SCHEMA: List[Column] = [
+    Column("id", Integer, primary_key=True),
+    Column("a", Integer),
+]
+
+
+def noop_func(df):
+    return []
+
+
+def test_transform_meta_updates_on_datatable_write(
+    dbconn: DBConn,
+):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    app = DatapipeApp(
+        ds=ds,
+        catalog=Catalog(
+            {
+                "tbl": Table(store=TableStoreDB(dbconn, "tbl", TEST_SCHEMA, True)),
+            }
+        ),
+        pipeline=Pipeline(
+            [
+                BatchTransform(
+                    func=noop_func,
+                    inputs=["tbl"],
+                    outputs=[],
+                )
+            ]
+        ),
+    )
+
+    step = app.steps[0]
+    assert isinstance(step, BatchTransformStep)
+
+    app.ingest_data(
+        "tbl",
+        pd.DataFrame.from_records(
+            [
+                {"id": 1, "a": 1},
+            ]
+        ),
+        now=1000,
+    )
+
+    assert step.meta_table.get_changed_idx_count() == 1
