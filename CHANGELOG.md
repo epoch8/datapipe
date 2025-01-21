@@ -1,3 +1,7 @@
+# WIP
+
+* Convert dependency management to UV
+
 # 0.14.1
 
 * Refactor metadata handling into `datapipe.meta` submodule
