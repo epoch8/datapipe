@@ -47,10 +47,12 @@ class DBConn:
         self.func_greatest: Callable
         if connstr.startswith("sqlite") or connstr.startswith("pysqlite"):
             self.supports_update_from = False
+            self.supports_on_conflict_do_update = True
+            self.supports_on_duplicate_key_update = False
 
-            from sqlalchemy.dialects.sqlite import insert
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-            self.insert = insert
+            self.insert = sqlite_insert
             self.func_greatest = func.max
 
             self.con = create_engine(
@@ -63,9 +65,30 @@ class DBConn:
             # https://www.sqlite.org/wal.html
             with self.con.begin() as con:
                 con.execute(text("PRAGMA journal_mode=WAL"))
+        elif connstr.startswith("mysql"):
+            self.supports_update_from = False
+            self.supports_on_conflict_do_update = False
+            self.supports_on_duplicate_key_update = True
+
+            from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+            self.insert = mysql_insert
+            self.func_greatest = func.greatest
+
+            self.con = create_engine(
+                connstr,
+                poolclass=QueuePool,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                echo=True,
+                **create_engine_kwargs,
+                # pool_size=25,
+            )
         else:
             # Assume relatively new Postgres
             self.supports_update_from = True
+            self.supports_on_conflict_do_update = True
+            self.supports_on_duplicate_key_update = False
 
             from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -250,17 +273,32 @@ class TableStoreDB(TableStore):
             df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
         )
 
+        assert (
+            self.dbconn.supports_on_conflict_do_update
+            or self.dbconn.supports_on_duplicate_key_update
+        )
+
         if len(self.data_keys) > 0:
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
-                set_={
-                    col.name: insert_sql.excluded[col.name]
-                    for col in self.data_sql_schema
-                    if not col.primary_key
-                },
-            )
+            if self.dbconn.supports_on_conflict_do_update:
+                sql = insert_sql.on_conflict_do_update(
+                    index_elements=self.primary_keys,
+                    set_={
+                        col.name: insert_sql.excluded[col.name]
+                        for col in self.data_sql_schema
+                        if not col.primary_key
+                    },
+                )
+            elif self.dbconn.supports_on_duplicate_key_update:
+                sql = insert_sql.on_duplicate_key_update(
+                    [(key, insert_sql.inserted[key]) for key in self.data_keys]
+                )
         else:
-            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+            if self.dbconn.supports_on_conflict_do_update:
+                sql = insert_sql.on_conflict_do_nothing(
+                    index_elements=self.primary_keys
+                )
+            else:
+                raise NotImplementedError()
 
         with self.dbconn.con.begin() as con:
             con.execute(sql)

@@ -21,7 +21,7 @@ class CasesTestDF:
         return (
             ["id"],
             [
-                Column("id", Integer, primary_key=True),
+                Column("id", Integer, primary_key=True, autoincrement=False),
             ],
             [],
             cast(
@@ -37,7 +37,7 @@ class CasesTestDF:
         return (
             ["id"],
             [
-                Column("id", Integer, primary_key=True),
+                Column("id", Integer, primary_key=True, autoincrement=False),
             ],
             [
                 Column("item_id", Integer, MetaKey()),
@@ -55,8 +55,8 @@ class CasesTestDF:
         return (
             ["id1", "id2"],
             [
-                Column("id1", Integer, primary_key=True),
-                Column("id2", Integer, primary_key=True),
+                Column("id1", Integer, primary_key=True, autoincrement=False),
+                Column("id2", Integer, primary_key=True, autoincrement=False),
             ],
             [],
             cast(
@@ -72,8 +72,8 @@ class CasesTestDF:
         return (
             ["id1", "id2"],
             [
-                Column("id1", Integer, primary_key=True),
-                Column("id2", Integer, primary_key=True),
+                Column("id1", Integer, primary_key=True, autoincrement=False),
+                Column("id2", Integer, primary_key=True, autoincrement=False),
             ],
             [
                 Column("item_id", Integer, MetaKey()),

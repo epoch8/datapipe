@@ -345,15 +345,28 @@ class MetaTable:
             df.to_dict(orient="records")
         )
 
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                "hash": insert_sql.excluded.hash,
-                "update_ts": insert_sql.excluded.update_ts,
-                "process_ts": insert_sql.excluded.process_ts,
-                "delete_ts": insert_sql.excluded.delete_ts,
-            },
+        assert (
+            self.dbconn.supports_on_conflict_do_update
+            or self.dbconn.supports_on_duplicate_key_update
         )
+
+        if self.dbconn.supports_on_conflict_do_update:
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.primary_keys,
+                set_={
+                    "hash": insert_sql.excluded.hash,
+                    "update_ts": insert_sql.excluded.update_ts,
+                    "process_ts": insert_sql.excluded.process_ts,
+                    "delete_ts": insert_sql.excluded.delete_ts,
+                },
+            )
+        else:
+            sql = insert_sql.on_duplicate_key_update(
+                [
+                    (key, insert_sql.inserted[key])
+                    for key in ["hash", "update_ts", "process_ts", "delete_ts"]
+                ]
+            )
 
         with self.dbconn.con.begin() as con:
             con.execute(sql)
@@ -456,7 +469,7 @@ TRANSFORM_META_SCHEMA: DataSchema = [
     sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
     sa.Column("is_success", sa.Boolean),  # Успешно ли обработана строка
     sa.Column("priority", sa.Integer),  # Приоритет обработки (чем больше, тем выше)
-    sa.Column("error", sa.String),  # Текст ошибки
+    sa.Column("error", sa.String(1000)),  # Текст ошибки
 ]
 
 

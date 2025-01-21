@@ -13,28 +13,28 @@ from datapipe.types import IndexDF, data_to_index
 from .util import assert_datatable_equal, assert_df_equal
 
 TEST_SCHEMA: List[Column] = [
-    Column("id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("a", Integer),
 ]
 
 TEST_SCHEMA_OTM: List[Column] = [
-    Column("id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("a", JSON),
 ]
 
 TEST_SCHEMA_OTM2: List[Column] = [
-    Column("id", Integer, primary_key=True),
-    Column("a", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("a", Integer, primary_key=True, autoincrement=False),
 ]
 
 TEST_SCHEMA_OTM3: List[Column] = [
-    Column("a", Integer, primary_key=True),
-    Column("b", Integer, primary_key=True),
+    Column("a", Integer, primary_key=True, autoincrement=False),
+    Column("b", Integer, primary_key=True, autoincrement=False),
     Column("ids", JSON),
 ]
 
 TEST_SCHEMA_NA_VALUES: List[Column] = [
-    Column("id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("a", Integer),
     Column("b", DateTime),
 ]

@@ -37,4 +37,20 @@
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
     ],
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "local_mysql",
+            "database": "datapipe",
+            "username": "datapipe",
+            "password": "datapipe"
+        }
+    ],
 }

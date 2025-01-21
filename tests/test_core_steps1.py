@@ -18,23 +18,23 @@ from datapipe.types import IndexDF, data_to_index
 from .util import assert_datatable_equal, assert_df_equal
 
 TEST_SCHEMA: List[Column] = [
-    Column("id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("a", Integer),
 ]
 
 TEST_SCHEMA_OTM: List[Column] = [
-    Column("id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("a", JSON),
 ]
 
 TEST_SCHEMA_OTM2: List[Column] = [
-    Column("id", Integer, primary_key=True),
-    Column("a", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("a", Integer, primary_key=True, autoincrement=False),
 ]
 
 TEST_SCHEMA_OTM3: List[Column] = [
-    Column("a", Integer, primary_key=True),
-    Column("b", Integer, primary_key=True),
+    Column("a", Integer, primary_key=True, autoincrement=False),
+    Column("b", Integer, primary_key=True, autoincrement=False),
     Column("ids", JSON),
 ]
 
@@ -78,6 +78,14 @@ def test_gen_process(dbconn) -> None:
     do_batch_generate(func=gen, ds=ds, output_dts=[tbl1])
 
     assert_datatable_equal(tbl1, TEST_DF)
+
+
+def test_gen_process_raises(dbconn) -> None:
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl1 = ds.create_table(
+        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
+    )
 
     def func():
         return TEST_DF
@@ -312,7 +320,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
             dbconn,
             "tbl_data",
             [
-                Column("id", Integer, primary_key=True),
+                Column("id", Integer, primary_key=True, autoincrement=False),
                 Column("a_first", Integer),
                 Column("a_second", Integer),
             ],

@@ -50,6 +50,17 @@ def dbconn():
     if os.environ.get("TEST_DB_ENV") == "sqlite":
         DBCONNSTR = "sqlite+pysqlite3:///:memory:"
         DB_TEST_SCHEMA = None
+    if os.environ.get("TEST_DB_ENV") == "mysql":
+        DBCONNSTR = "mysql://datapipe:datapipe@127.0.0.1:3306/datapipe"
+        DB_TEST_SCHEMA = None
+
+        eng = create_engine(DBCONNSTR)
+
+        # Clean Mysql database: drop all tables
+        with eng.begin() as conn:
+            conn.execute(text("DROP DATABASE IF EXISTS datapipe"))
+            conn.execute(text("CREATE DATABASE datapipe"))
+
     else:
         pg_host = os.getenv("POSTGRES_HOST", "localhost")
         pg_port = os.getenv("POSTGRES_PORT", "5432")
