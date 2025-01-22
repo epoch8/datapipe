@@ -1,8 +1,6 @@
 import copy
 import inspect
-import itertools
 import logging
-import math
 import time
 from dataclasses import dataclass
 from typing import (
@@ -16,13 +14,9 @@ from typing import (
     Protocol,
     Tuple,
     Union,
-    cast,
 )
 
-import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func, select
-from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
@@ -32,9 +26,9 @@ from datapipe.compute import (
     PipelineStep,
     StepStatus,
 )
-from datapipe.datatable import DataStore, DataTable, MetaTable
+from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
+from datapipe.meta.planner import TransformPlanner
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -42,12 +36,10 @@ from datapipe.types import (
     IndexDF,
     JoinSpec,
     Labels,
-    MetaSchema,
     PipelineInput,
     Required,
     TableOrName,
     TransformResult,
-    data_to_index,
 )
 
 logger = logging.getLogger("datapipe.step.batch_transform")
@@ -105,60 +97,17 @@ class BaseBatchTransformStep(ComputeStep):
         if transform_keys is not None and not isinstance(transform_keys, list):
             transform_keys = list(transform_keys)
 
-        self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            [inp.dt.meta_table for inp in input_dts],
-            [out.meta_table for out in output_dts],
-            transform_keys,
-        )
-
-        self.meta_table = TransformMetaTable(
-            dbconn=ds.meta_dbconn,
-            name=f"{self.get_name()}_meta",
-            primary_schema=self.transform_schema,
-            create_table=ds.create_meta_table,
-        )
         self.filters = filters
         self.order_by = order_by
         self.order = order
 
-    @classmethod
-    def compute_transform_schema(
-        cls,
-        input_mts: List[MetaTable],
-        output_mts: List[MetaTable],
-        transform_keys: Optional[List[str]],
-    ) -> Tuple[List[str], MetaSchema]:
-        # Hacky way to collect all the primary keys into a single set. Possible
-        # problem that is not handled here is that theres a possibility that the
-        # same key is defined differently in different input tables.
-        all_keys = {
-            col.name: col
-            for col in itertools.chain(
-                *(
-                    [dt.primary_schema for dt in input_mts]
-                    + [dt.primary_schema for dt in output_mts]
-                )
-            )
-        }
-
-        if transform_keys is not None:
-            return (transform_keys, [all_keys[k] for k in transform_keys])
-
-        assert len(input_mts) > 0
-
-        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in input_mts])
-        assert len(inp_p_keys) > 0
-
-        if len(output_mts) == 0:
-            return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
-
-        out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
-        assert len(out_p_keys) > 0
-
-        inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
-        assert len(inp_out_p_keys) > 0
-
-        return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
+        self.planner = TransformPlanner(
+            ds=ds,
+            step_name=self.get_name(),
+            transform_keys=transform_keys,
+            inputs=input_dts,
+            output_dts=output_dts,
+        )
 
     def _apply_filters_to_run_config(
         self, run_config: Optional[RunConfig] = None
@@ -181,11 +130,7 @@ class BaseBatchTransformStep(ComputeStep):
                 return run_config
 
     def get_status(self, ds: DataStore) -> StepStatus:
-        return StepStatus(
-            name=self.name,
-            total_idx_count=self.meta_table.get_metadata_size(),
-            changed_idx_count=self.get_changed_idx_count(ds),
-        )
+        return self.planner.get_status(ds)
 
     def get_changed_idx_count(
         self,
@@ -193,22 +138,8 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> int:
         run_config = self._apply_filters_to_run_config(run_config)
-        _, sql = build_changed_idx_sql(
-            ds=ds,
-            meta_table=self.meta_table,
-            input_dts=self.input_dts,
-            transform_keys=self.transform_keys,
-            run_config=run_config,
-        )
 
-        with ds.meta_dbconn.con.begin() as con:
-            idx_count = con.execute(
-                select(*[func.count()]).select_from(
-                    alias(sql.subquery(), name="union_select")
-                )
-            ).scalar()
-
-        return cast(int, idx_count)
+        return self.planner.get_changed_idx_count(ds, run_config)
 
     def get_full_process_ids(
         self,
@@ -227,45 +158,13 @@ class BaseBatchTransformStep(ComputeStep):
         run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
 
-        with tracer.start_as_current_span("compute ids to process"):
-            if len(self.input_dts) == 0:
-                return (0, iter([]))
-
-            idx_count = self.get_changed_idx_count(
-                ds=ds,
-                run_config=run_config,
-            )
-
-            join_keys, u1 = build_changed_idx_sql(
-                ds=ds,
-                meta_table=self.meta_table,
-                input_dts=self.input_dts,
-                transform_keys=self.transform_keys,
-                run_config=run_config,
-                order_by=self.order_by,
-                order=self.order,  # type: ignore  # pylance is stupid
-            )
-
-            # Список ключей из фильтров, которые нужно добавить в результат
-            extra_filters: LabelDict
-            if run_config is not None:
-                extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
-                }
-            else:
-                extra_filters = {}
-
-            def alter_res_df():
-                with ds.meta_dbconn.con.begin() as con:
-                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
-                        df = df[self.transform_keys]
-
-                        for k, v in extra_filters.items():
-                            df[k] = v
-
-                        yield cast(IndexDF, df)
-
-            return math.ceil(idx_count / chunk_size), alter_res_df()
+        return self.planner.get_full_process_ids(
+            ds=ds,
+            chunk_size=chunk_size,
+            order_by=self.order_by,
+            order=self.order,
+            run_config=run_config,
+        )
 
     def get_change_list_process_ids(
         self,
@@ -274,47 +173,13 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
-        with tracer.start_as_current_span("compute ids to process"):
-            changes = [pd.DataFrame(columns=self.transform_keys)]
 
-            for inp in self.input_dts:
-                if inp.dt.name in change_list.changes:
-                    idx = change_list.changes[inp.dt.name]
-                    if any([key not in idx.columns for key in self.transform_keys]):
-                        # TODO пересмотреть эту логику, выглядит избыточной
-                        # (возможно, достаточно посчитать один раз для всех
-                        # input таблиц)
-                        _, sql = build_changed_idx_sql(
-                            ds=ds,
-                            meta_table=self.meta_table,
-                            input_dts=self.input_dts,
-                            transform_keys=self.transform_keys,
-                            filters_idx=idx,
-                            run_config=run_config,
-                        )
-                        with ds.meta_dbconn.con.begin() as con:
-                            table_changes_df = pd.read_sql_query(
-                                sql,
-                                con=con,
-                            )
-                            table_changes_df = table_changes_df[self.transform_keys]
-
-                        changes.append(table_changes_df)
-                    else:
-                        changes.append(data_to_index(idx, self.transform_keys))
-
-            idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
-            idx = IndexDF(idx_df[self.transform_keys])
-
-            chunk_count = math.ceil(len(idx) / self.chunk_size)
-
-            def gen():
-                for i in range(chunk_count):
-                    yield cast(
-                        IndexDF, idx[i * self.chunk_size : (i + 1) * self.chunk_size]
-                    )
-
-            return chunk_count, gen()
+        return self.planner.get_change_list_process_ids(
+            ds=ds,
+            change_list=change_list,
+            chunk_size=self.chunk_size,
+            run_config=run_config,
+        )
 
     def store_batch_result(
         self,
@@ -357,9 +222,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(
-            idx, process_ts=process_ts, run_config=run_config
-        )
+        self.planner.mark_processed_success(idx, process_ts, run_config)
 
         return changes
 
@@ -386,21 +249,7 @@ class BaseBatchTransformStep(ComputeStep):
             ),
         )
 
-        self.meta_table.mark_rows_processed_error(
-            idx,
-            process_ts=process_ts,
-            error=str(e),
-            run_config=run_config,
-        )
-
-    def fill_metadata(self, ds: DataStore) -> None:
-        idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
-
-        for idx in tqdm(idx_gen, total=idx_len):
-            self.meta_table.insert_rows(idx)
-
-    def reset_metadata(self, ds: DataStore) -> None:
-        self.meta_table.mark_all_rows_unprocessed()
+        self.planner.mark_processed_error(idx, process_ts, str(e), run_config)
 
     def get_batch_input_dfs(
         self,

@@ -5,7 +5,7 @@ from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
 from datapipe.datatable import MetaTable
-from datapipe.step.batch_transform import BatchTransformStep
+from datapipe.meta.planner import TransformPlanner
 from datapipe.store.database import DBConn
 from datapipe.types import MetaSchema
 
@@ -78,7 +78,7 @@ def test_compute_transform_schema_success(
         make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)
     ]
 
-    _, sch = BatchTransformStep.compute_transform_schema(
+    _, sch = TransformPlanner.compute_transform_schema(
         inp_mts, out_mts, transform_keys=transform_keys
     )
 
@@ -100,6 +100,6 @@ def test_compute_transform_schema_fail(
     ]
 
     with pytest.raises(AssertionError):
-        BatchTransformStep.compute_transform_schema(
+        TransformPlanner.compute_transform_schema(
             inp_mts, out_mts, transform_keys=transform_keys
         )
