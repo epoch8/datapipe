@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
@@ -23,15 +23,30 @@ def _to_itertuples(df: DataDF, colnames):
     return list(df[colnames].itertuples(index=False, name=None))
 
 
+def _parse_cluster_hosts(hosts):
+    nodes = []
+    for host in hosts.split(","):
+        host, port = host.split(":")
+        nodes.append(ClusterNode(host, port))
+    return nodes
+
+
 class RedisStore(TableStore):
     def __init__(
-        self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
+        self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False, password: str = None,
     ) -> None:
         self.connection = connection
         if not cluster_mode:
             self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(connection, decode_responses=True)
         else:
-            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
+            if "," in connection:
+                self.redis_connection = RedisCluster(
+                    startup_nodes=_parse_cluster_hosts(connection.removeprefix("redis://")),
+                    password=password,
+                    decode_responses=True
+                )
+            else:
+                self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
 
         self.name = name
         self.data_sql_schema = data_sql_schema
