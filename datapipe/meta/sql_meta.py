@@ -646,7 +646,7 @@ class TransformMetaTable:
                     "error": None,
                 }
             )
-            .where(self.sql_table.c.is_success == True)
+            .where(self.sql_table.c.is_success == True)  # noqa: E712
         )
 
         sql = sql_apply_runconfig_filter(
