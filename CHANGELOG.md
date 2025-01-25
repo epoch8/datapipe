@@ -1,6 +1,7 @@
 # WIP
 
 * Convert dependency management to UV
+* Fix `datapipe.types.OrmTable` type
 
 # 0.14.1
 
