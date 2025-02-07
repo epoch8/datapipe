@@ -74,10 +74,10 @@ class ElasticStore(TableStore):
 
         actions = []
         for row in df.to_dict(orient="records"):  # type: ignore
-            row: t.Dict[str, t.Any] = {key: row[key] for key in self.value_key_columns + self.primary_key_columns}
-            row_id = get_elastic_id([row[key] for key in self.primary_key_columns])
-            row = remap_dict_keys(row, self.key_name_remapping)
-            actions.append({"_index": self.index, "_source": row, "_id": row_id})
+            row_data: t.Dict[str, t.Any] = {key: row[key] for key in self.value_key_columns + self.primary_key_columns}
+            row_id = get_elastic_id([row_data[key] for key in self.primary_key_columns])
+            row_data = remap_dict_keys(row_data, self.key_name_remapping)
+            actions.append({"_index": self.index, "_source": row_data, "_id": row_id})
 
         helpers.bulk(client=self.es_client, actions=actions, refresh=True)
 
@@ -89,9 +89,9 @@ class ElasticStore(TableStore):
 
         key_rows = _to_itertuples(idx, self.primary_key_columns)
         rows_ids = [get_elastic_id(row) for row in key_rows]
-        data = self.es_client.mget(index=self.index, body={"ids": rows_ids}, source=True)  # type: ignore
-        data = [remap_dict_keys(item["_source"], self.key_name_remapping) for item in data["docs"]]
-        return pd.DataFrame(data)
+        data = self.es_client.mget(index=self.index, body={"ids": rows_ids}, source=True)
+        result = [remap_dict_keys(item["_source"], self.key_name_remapping) for item in data["docs"]]
+        return pd.DataFrame(result)
 
     def delete_rows(self, idx: IndexDF) -> None:
         if idx.empty:
