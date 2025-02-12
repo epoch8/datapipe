@@ -112,7 +112,7 @@ class ElasticStore(TableStore):
             self.primary_key_column_rename.format(pk=primary_key): f"{primary_key}"
             for primary_key in self.primary_key_columns
         }}
-        result = [remap_dict_keys(item["_source"], remapping_with_primary_keys) for item in data]
+        result = [remap_dict_keys(item["_source"], remapping_with_primary_keys) for item in data] # type: ignore
         if result:
             return pd.DataFrame(result)
         else:
