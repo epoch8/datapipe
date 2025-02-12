@@ -29,7 +29,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "flake8" "mypy"
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "flake8" "mypy"
           pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
 
       - name: Lint with flake8
