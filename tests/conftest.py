@@ -1,7 +1,10 @@
 import os
 
+from elasticsearch import Elasticsearch
+
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
+import random
 import tempfile
 from pathlib import Path
 
@@ -85,3 +88,26 @@ def redis_conn():
     if keys := conn.keys():
         conn.delete(*keys)
     yield f"redis://{redis_host}:{redis_port}"
+
+
+@pytest.fixture(scope="function")
+def elastic_conn():
+    elastic_host = os.getenv("ELASTIC_HOST", "localhost")
+    elastic_port = os.getenv("ELASTIC_PORT", "9200")
+    es_kwargs = {"hosts": [f"http://{elastic_host}:{elastic_port}"]}
+
+    # elastic is bad at concurrent modification access to the same index
+    test_index = f"test_index_{random.randint(0, 2347682)}"
+
+    conn = Elasticsearch(**es_kwargs)
+    if not conn.indices.exists(index=test_index):
+        conn.indices.create(index=test_index)
+
+    if int(conn.cat.count(
+        index=test_index, format="json"
+    )[0]["count"]) > 0:
+        conn.delete_by_query(index=test_index, query={"match_all": {}})
+
+    yield {"es_kwargs": es_kwargs, "index": test_index}
+
+    conn.indices.delete(index=test_index)

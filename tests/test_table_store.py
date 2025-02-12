@@ -7,6 +7,7 @@ from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
+from datapipe.store.elastic import ElasticStore
 from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
 from datapipe.store.redis import RedisStore
@@ -278,6 +279,30 @@ class CasesTableStore:
         tags=[
             "supports_delete",
             "supports_read_all_rows",
+            "supports_get_schema",
+            "supports_read_meta_pseudo_df"
+        ]
+    )
+    @parametrize("df,schema", DATA_PARAMS)
+    def case_elastic(self, elastic_conn, df, schema):
+        return (
+            ElasticStore(
+                elastic_conn["index"],
+                schema
+                + [
+                    Column("name", String(100)),
+                    Column("price", Integer),
+                ],
+                elastic_conn["es_kwargs"],
+                {}
+            ),
+            df,
+        )
+
+    @case(
+        tags=[
+            "supports_delete",
+            "supports_read_all_rows",
             "supports_read_nonexistent_rows",
             "supports_read_meta_pseudo_df",
         ]
@@ -467,6 +492,7 @@ def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame
 
 @parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_meta_pseudo_df")
 def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.DataFrame) -> None:
+    print('test df', test_df)
     store.insert_rows(test_df)
 
     assert_ts_contains(store, test_df)
