@@ -4,6 +4,7 @@ import typing as t
 from typing import Any, Dict, Iterator, Optional
 
 import pandas as pd
+from elastic_transport import ObjectApiResponse
 from elasticsearch import Elasticsearch, helpers
 from sqlalchemy import Column
 
@@ -135,6 +136,7 @@ class ElasticStore(TableStore):
         else:
             query = {"match_all": {}}
 
+        data_resp: ObjectApiResponse[Any] | None
         data_resp = self.es_client.search(
             query=query,
             sort=["_doc"],
@@ -144,7 +146,7 @@ class ElasticStore(TableStore):
             },
             size=chunksize
         )
-        if len(data_resp["hits"]["hits"]) == 0:
+        if data_resp and len(data_resp["hits"]["hits"]) == 0:
             data_resp = None
             yield pd.DataFrame(columns=self.primary_key_columns)
 
