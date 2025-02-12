@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import typing as t
-from typing import Optional, Iterator
+from typing import Any, Dict, Optional, Iterator
 
 import pandas as pd
 
@@ -130,7 +130,7 @@ class ElasticStore(TableStore):
 
         if run_config:
             # run_config is not taken into account now
-            query = {"match_all": {}}
+            query: Dict[str, Dict[Any, Any]] = {"match_all": {}}
         else:
             query = {"match_all": {}}
 
