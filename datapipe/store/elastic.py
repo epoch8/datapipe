@@ -131,7 +131,7 @@ class ElasticStore(TableStore):
         query: dict
         if run_config:
             # run_config is not taken into account now
-            query: Dict[str, Dict[Any, Any]] = {"match_all": {}}
+            query = {"match_all": {}}
         else:
             query = {"match_all": {}}
 
