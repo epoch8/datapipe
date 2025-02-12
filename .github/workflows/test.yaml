@@ -83,10 +83,16 @@ jobs:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.11.4
         env:
           discovery.type: single-node
+          ES_JAVA_OPTS: -Xms4g -Xmx4g
+          xpack.security.enabled: false
+          xpack.security.http.ssl.enabled: false
+          node.name: node
+          cluster.name: cluster
+          http.cors.enabled: true
         options: >-
           --health-cmd "curl http://localhost:9200/_cluster/health"
           --health-interval 10s
-          --health-timeout 5s
+          --health-timeout 20s
           --health-retries 10
         ports:
           - 9200:9200
