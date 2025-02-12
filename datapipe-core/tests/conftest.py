@@ -11,9 +11,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import redis
-from sqlalchemy import create_engine, text
-
 from datapipe.store.database import DBConn
+from sqlalchemy import create_engine, text
 
 
 @pytest.fixture

@@ -1,0 +1,71 @@
+[project]
+name = "datapipe-core"
+version = "0.14.2-dev.1"
+description = "`datapipe` is a realtime incremental ETL library for Python application"
+authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
+readme = "README.md"
+
+requires-python = ">=3.9,<3.13"
+dependencies = [
+    "fsspec>=2021.11.1",
+    "pandas>=1.2.0",
+    "numpy>=1.21.0, <2.0",
+    "SQLAlchemy>=2.0.0, <3.0.0",
+    "psycopg2_binary>=2.8.4",
+    "cloudpickle>=1.6.0",
+    "PyYAML>=5.3.1",
+    "iteration-utilities>=0.11.0",
+    "cityhash>=0.4.2,<0.5",
+    "Pillow>=10.0.0,<11",
+    "tqdm-loggable>=0.2,<0.3",
+    "traceback-with-variables>=2.0.4,<3",
+    "opentelemetry-api>=1.8.0,<2",
+    "opentelemetry-sdk>=1.8.0,<2",
+    "opentelemetry-instrumentation-sqlalchemy",
+    "click>=7.1.2",
+    "rich>=13.3.2,<14",
+    "types-tqdm>=4.67.0.20241221",
+]
+
+[project.optional-dependencies]
+sqlite = [
+    "pysqlite3-binary>=0.5.0,<0.6 ; sys_platform != 'darwin'",
+    "sqlalchemy-pysqlite3-binary>=0.0.4,<0.0.5 ; sys_platform != 'darwin'",
+]
+excel = ["xlrd>=2.0.1", "openpyxl>=3.0.7"]
+milvus = ["pymilvus>=2.0.2,<3"]
+gcsfs = ["gcsfs>=2021.11.1"]
+s3fs = ["s3fs>=2021.11.1"]
+redis = ["redis>=4.3.4,<5"]
+qdrant = ["qdrant-client>=1.1.7,<2"]
+ray = ["ray[default]>=2.5.0,<3"]
+gcp = ["opentelemetry-exporter-gcp-trace"]
+elastic = ["elasticsearch>=8.17.1"]
+
+[project.urls]
+Repository = "https://github.com/epoch8/datapipe"
+
+[project.scripts]
+datapipe = "datapipe.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cases",
+    "pandas-stubs",
+    "types-setuptools",
+    "types-redis",
+    "types-tqdm",
+    "types-pillow",
+    "types-PyYAML",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["datapipe", "datapipe/py.typed"]
+
+[tool.hatch.build.targets.wheel]
+include = ["datapipe", "datapipe/py.typed"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
