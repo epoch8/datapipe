@@ -1,7 +1,6 @@
 import base64
 import hashlib
-import typing as t
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional, TypedDict
 
 import pandas as pd
 from elastic_transport import ObjectApiResponse
@@ -14,7 +13,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
 
-def get_elastic_id(keys: t.Iterable[t.Any], length: int = 20) -> str:
+def get_elastic_id(keys: Iterable[Any], length: int = 20) -> str:
     concatenated_keys = "".join([str(key) for key in keys])
     needed_bytes = length * 3 // 4
     hash_object = hashlib.sha256(concatenated_keys.encode("utf-8"))
@@ -27,24 +26,24 @@ def _to_itertuples(df: DataDF, colnames):
     return list(df[colnames].itertuples(index=False, name=None))
 
 
-def remap_dict_keys(data: t.Dict[str, t.Any], key_name_remapping: t.Dict[str, str]) -> t.Dict[str, t.Any]:
+def remap_dict_keys(data: Dict[str, Any], key_name_remapping: Dict[str, str]) -> Dict[str, Any]:
     return {key_name_remapping.get(key, key): value for key, value in data.items()}
 
 
-class ElasticStoreState(t.TypedDict):
+class ElasticStoreState(TypedDict):
     index: str
-    data_sql_schema: t.List[Column]
-    es_kwargs: t.Dict[str, t.Any]
-    key_name_remapping: t.Optional[t.Dict[str, str]]
+    data_sql_schema: List[Column]
+    es_kwargs: Dict[str, Any]
+    key_name_remapping: Optional[Dict[str, str]]
 
 
 class ElasticStore(TableStore):
     def __init__(
         self,
         index: str,
-        data_sql_schema: t.List[Column],
-        es_kwargs: t.Dict[str, t.Any],
-        key_name_remapping: t.Optional[t.Dict[str, str]] = None,
+        data_sql_schema: List[Column],
+        es_kwargs: Dict[str, Any],
+        key_name_remapping: Optional[Dict[str, str]] = None,
     ) -> None:
         self.index = index
         self.data_sql_schema = data_sql_schema
@@ -82,7 +81,7 @@ class ElasticStore(TableStore):
             # I need to retrieve data in chunks and restore the ids
             # here ids are hashed, so I need to store the original ide values in _source
             # since I cannot store the _id in source (ES will not validate request), I rename these fields
-            row_data: t.Dict[str, t.Any] = {key: row[key] for key in self.value_key_columns}
+            row_data: Dict[str, Any] = {key: row[key] for key in self.value_key_columns}
             row_id = get_elastic_id([row[key] for key in self.primary_key_columns])
             row_data = remap_dict_keys(row_data, self.key_name_remapping)
             row_data.update({
@@ -93,7 +92,7 @@ class ElasticStore(TableStore):
 
         helpers.bulk(client=self.es_client, actions=actions, refresh=True)
 
-    def read_rows(self, idx: t.Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         if idx is not None:
             if idx.empty:
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
