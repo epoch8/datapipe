@@ -26,7 +26,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
 from datapipe.types import ChangeList, data_to_index
 
-from .util import assert_datatable_equal, assert_df_equal
+from datapipe.store.tests.util import assert_datatable_equal, assert_df_equal
 
 CHUNK_SIZE = 100
 CHUNK_SIZE_SMALL = 3

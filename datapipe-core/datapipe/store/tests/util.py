@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, cast
 import pandas as pd
 
 from datapipe.datatable import DataTable
@@ -51,7 +51,7 @@ def assert_idx_no_duplicates(idx: IndexDF, index_cols: List[str]) -> bool:
     if len(duplicates) == 0:
         return True
     else:
-        idx = idx.loc[idx.index].sort_values(index_cols)
+        idx = cast(IndexDF, idx.loc[idx.index].sort_values(index_cols))
         print('Duplicated found:')
         print(idx)
 

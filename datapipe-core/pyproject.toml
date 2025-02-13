@@ -24,7 +24,6 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
     "rich>=13.3.2,<14",
-    "types-tqdm>=4.67.0.20241221",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +39,6 @@ redis = ["redis>=4.3.4,<5"]
 qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
-elastic = ["elasticsearch>=8.17.1"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -58,6 +56,7 @@ dev = [
     "types-tqdm",
     "types-pillow",
     "types-PyYAML",
+    "types-tqdm>=4.67.0.20241221",
 ]
 
 [tool.hatch.build.targets.sdist]

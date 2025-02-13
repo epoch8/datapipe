@@ -8,7 +8,7 @@ from datapipe.run_config import RunConfig
 from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn, TableStoreDB
 
-from .util import assert_df_equal
+from datapipe.store.tests.util import assert_df_equal
 
 
 def test_external_table_updater_filter(dbconn: DBConn):

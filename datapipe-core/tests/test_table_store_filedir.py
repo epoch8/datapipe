@@ -10,7 +10,7 @@ from PIL import Image
 
 from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
 
-from .util import assert_df_equal, assert_ts_contains
+from datapipe.store.tests.util import assert_df_equal, assert_ts_contains
 
 TEST_DF = pd.DataFrame(
     {

@@ -3,15 +3,18 @@ name = "datapipe"
 version = "0.1.0"
 requires-python = ">=3.9,<3.13"
 dependencies = [
-    "datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,ray,gcp,elastic]",
+    "datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,ray,gcp]",
+    "datapipe-store-elastic",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-store-elastic = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "datapipe-core", "datapipe-store-elastic",
+    "datapipe-core", 
+    "datapipe-store-elastic",
 ]
 
 [dependency-groups]

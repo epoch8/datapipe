@@ -1,0 +1,10 @@
+[project]
+name = "datapipe-store-elastic"
+version = "0.1.0"
+description = "Elasticsearch store for `datapipe`"
+readme = "README.md"
+requires-python = ">=3.9, <3.13"
+dependencies = [
+    "datapipe-core>=0.14.2-dev.1",
+    "elasticsearch>=8.17.1",
+]

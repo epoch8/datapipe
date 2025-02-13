@@ -1,6 +1,6 @@
 import cloudpickle
 
-from datapipe.store.elastic import ElasticStore
+from datapipe_store_elastic import ElasticStore
 
 
 def test_cloudpickle() -> None:

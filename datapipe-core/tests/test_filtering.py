@@ -9,7 +9,7 @@ from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 
-from .util import assert_datatable_equal
+from datapipe.store.tests.util import assert_datatable_equal
 
 TEST_SCHEMA = [
     Column("id1", Integer, primary_key=True),

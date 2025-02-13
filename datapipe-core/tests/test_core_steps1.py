@@ -15,7 +15,7 @@ from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, data_to_index
 
-from .util import assert_datatable_equal, assert_df_equal
+from datapipe.store.tests.util import assert_datatable_equal, assert_df_equal
 
 TEST_SCHEMA: List[Column] = [
     Column("id", Integer, primary_key=True),

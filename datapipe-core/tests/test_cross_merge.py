@@ -19,7 +19,7 @@ from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import ChangeList
 
-from .util import assert_datatable_equal
+from datapipe.store.tests.util import assert_datatable_equal
 
 TEST_SCHEMA_LEFT = [
     Column("id_left", Integer, primary_key=True),

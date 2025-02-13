@@ -7,7 +7,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 
-from .util import assert_datatable_equal, assert_idx_no_duplicates
+from datapipe.store.tests.util import assert_datatable_equal, assert_idx_no_duplicates
 
 TEST__ITEM = pd.DataFrame(
     {
