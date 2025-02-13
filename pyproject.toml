@@ -63,6 +63,9 @@ dev = [
     "types-PyYAML",
 ]
 
+[tool.ruff]
+line-length = 120
+
 [tool.hatch.build.targets.sdist]
 include = ["datapipe", "datapipe/py.typed"]
 

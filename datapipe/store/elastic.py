@@ -84,10 +84,9 @@ class ElasticStore(TableStore):
             row_data: Dict[str, Any] = {key: row[key] for key in self.value_key_columns}
             row_id = get_elastic_id([row[key] for key in self.primary_key_columns])
             row_data = remap_dict_keys(row_data, self.key_name_remapping)
-            row_data.update({
-                self.primary_key_column_rename.format(pk=key): row[key]
-                for key in self.primary_key_columns
-            })
+            row_data.update(
+                {self.primary_key_column_rename.format(pk=key): row[key] for key in self.primary_key_columns}
+            )
             actions.append({"_index": self.index, "_source": row_data, "_id": row_id})
 
         helpers.bulk(client=self.es_client, actions=actions, refresh=True)
@@ -107,11 +106,17 @@ class ElasticStore(TableStore):
             data = self.es_client.search(index=self.index, query={"match_all": {}}, size=10000)
             data = data["hits"]["hits"]
 
-        remapping_with_primary_keys = {**self.key_name_remapping, **{
-            self.primary_key_column_rename.format(pk=primary_key): f"{primary_key}"
-            for primary_key in self.primary_key_columns
-        }}
-        result = [remap_dict_keys(item["_source"], remapping_with_primary_keys) for item in data] # type: ignore
+        remapping_with_primary_keys = {
+            **self.key_name_remapping,
+            **{
+                self.primary_key_column_rename.format(pk=primary_key): f"{primary_key}"
+                for primary_key in self.primary_key_columns
+            },
+        }
+        result = [
+            remap_dict_keys(item["_source"], remapping_with_primary_keys)  # type: ignore
+            for item in data
+        ]
         if result:
             return pd.DataFrame(result)
         else:
@@ -120,13 +125,10 @@ class ElasticStore(TableStore):
     def read_rows_meta_pseudo_df(
         self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
     ) -> Iterator[DataDF]:
-        pit_timeout = '5m'
+        pit_timeout = "5m"
 
-        pit_resp = self.es_client.open_point_in_time(
-            index=self.index,
-            keep_alive=pit_timeout
-        )
-        pit_id = pit_resp['id']
+        pit_resp = self.es_client.open_point_in_time(index=self.index, keep_alive=pit_timeout)
+        pit_id = pit_resp["id"]
 
         query: dict
         if run_config:
@@ -139,11 +141,8 @@ class ElasticStore(TableStore):
         data_resp = self.es_client.search(
             query=query,
             sort=["_doc"],
-            pit={
-                "id": pit_id,
-                "keep_alive": pit_timeout
-            },
-            size=chunksize
+            pit={"id": pit_id, "keep_alive": pit_timeout},
+            size=chunksize,
         )
         if data_resp and len(data_resp["hits"]["hits"]) == 0:
             data_resp = None
@@ -153,10 +152,13 @@ class ElasticStore(TableStore):
             data = data_resp["hits"]["hits"]
             last_search_result = data[-1]["sort"]
 
-            remapping_with_primary_keys = {**self.key_name_remapping, **{
-                self.primary_key_column_rename.format(pk=primary_key): f"{primary_key}"
-                for primary_key in self.primary_key_columns
-            }}
+            remapping_with_primary_keys = {
+                **self.key_name_remapping,
+                **{
+                    self.primary_key_column_rename.format(pk=primary_key): f"{primary_key}"
+                    for primary_key in self.primary_key_columns
+                },
+            }
             result = [remap_dict_keys(item["_source"], remapping_with_primary_keys) for item in data]
             yield pd.DataFrame(result)
 
@@ -164,17 +166,13 @@ class ElasticStore(TableStore):
                 query=query,
                 search_after=last_search_result,
                 sort=["_doc"],
-                pit={
-                    "id": pit_id,
-                    "keep_alive": pit_timeout
-                },
-                size=chunksize
+                pit={"id": pit_id, "keep_alive": pit_timeout},
+                size=chunksize,
             )
             if len(data_resp["hits"]["hits"]) == 0:
                 data_resp = None
 
         self.es_client.close_point_in_time(id=pit_id)
-
 
     def delete_rows(self, idx: IndexDF) -> None:
         if idx.empty:

@@ -103,9 +103,7 @@ def elastic_conn():
     if not conn.indices.exists(index=test_index):
         conn.indices.create(index=test_index)
 
-    if int(conn.cat.count(
-        index=test_index, format="json"
-    )[0]["count"]) > 0:
+    if int(conn.cat.count(index=test_index, format="json")[0]["count"]) > 0:
         conn.delete_by_query(index=test_index, query={"match_all": {}})
 
     yield {"es_kwargs": es_kwargs, "index": test_index}

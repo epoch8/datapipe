@@ -280,7 +280,7 @@ class CasesTableStore:
             "supports_delete",
             "supports_read_all_rows",
             "supports_get_schema",
-            "supports_read_meta_pseudo_df"
+            "supports_read_meta_pseudo_df",
         ]
     )
     @parametrize("df,schema", DATA_PARAMS)
@@ -294,7 +294,7 @@ class CasesTableStore:
                     Column("price", Integer),
                 ],
                 elastic_conn["es_kwargs"],
-                {}
+                {},
             ),
             df,
         )
@@ -492,7 +492,6 @@ def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame
 
 @parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_meta_pseudo_df")
 def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.DataFrame) -> None:
-    print('test df', test_df)
     store.insert_rows(test_df)
 
     assert_ts_contains(store, test_df)

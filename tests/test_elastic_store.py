@@ -7,7 +7,7 @@ def test_cloudpickle() -> None:
     store = ElasticStore(
         index="test_index",
         data_sql_schema=[],
-        es_kwargs={"hosts": ["http://localhost:9200"]}
+        es_kwargs={"hosts": ["http://localhost:9200"]},
     )
     ser = cloudpickle.dumps(store)
 
