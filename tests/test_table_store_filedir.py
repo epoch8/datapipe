@@ -1,6 +1,6 @@
 import base64
-import json
 import io
+import json
 
 import fsspec
 import numpy as np
@@ -9,8 +9,7 @@ import pytest
 from PIL import Image
 
 from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
-
-from .util import assert_df_equal, assert_ts_contains
+from datapipe.tests.util import assert_df_equal, assert_ts_contains
 
 TEST_DF = pd.DataFrame(
     {

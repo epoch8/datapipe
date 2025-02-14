@@ -6,8 +6,7 @@ from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-
-from .util import assert_datatable_equal, assert_idx_no_duplicates
+from datapipe.tests.util import assert_datatable_equal, assert_idx_no_duplicates
 
 TEST__ITEM = pd.DataFrame(
     {

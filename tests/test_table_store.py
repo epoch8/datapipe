@@ -11,9 +11,8 @@ from datapipe.store.filedir import JSONFile, TableStoreFiledir
 from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
 from datapipe.store.redis import RedisStore
 from datapipe.store.table_store import TableStore
+from datapipe.tests.util import assert_df_equal, assert_ts_contains
 from datapipe.types import DataDF, IndexDF, data_to_index
-
-from .util import assert_df_equal, assert_ts_contains
 
 DATA_PARAMS = [
     pytest.param(
