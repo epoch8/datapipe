@@ -35,6 +35,7 @@ class ElasticStoreState(TypedDict):
     data_sql_schema: List[Column]
     es_kwargs: Dict[str, Any]
     key_name_remapping: Optional[Dict[str, str]]
+    mapping: Optional[dict]
 
 
 class ElasticStore(TableStore):
@@ -44,6 +45,7 @@ class ElasticStore(TableStore):
         data_sql_schema: List[Column],
         es_kwargs: Dict[str, Any],
         key_name_remapping: Optional[Dict[str, str]] = None,
+        mapping: Optional[dict] = None
     ) -> None:
         self.index = index
         self.data_sql_schema = data_sql_schema
@@ -51,6 +53,7 @@ class ElasticStore(TableStore):
         self.primary_key_columns = [column.name for column in self.data_sql_schema if column.primary_key]
         self.value_key_columns = [column.name for column in self.data_sql_schema if not column.primary_key]
         self.primary_key_column_rename = "field_{pk}_original_f5d3"
+        self.mapping = mapping
 
         self.es_kwargs = es_kwargs
         self.es_client = Elasticsearch(**es_kwargs)
@@ -60,6 +63,7 @@ class ElasticStore(TableStore):
             "index": self.index,
             "data_sql_schema": self.data_sql_schema,
             "es_kwargs": self.es_kwargs,
+            "mapping": self.mapping,
             "key_name_remapping": self.key_name_remapping,
         }
 
@@ -70,11 +74,17 @@ class ElasticStore(TableStore):
             data_sql_schema=state["data_sql_schema"],
             es_kwargs=state["es_kwargs"],
             key_name_remapping=state["key_name_remapping"],
+            mapping=state["mapping"]
         )
 
     def insert_rows(self, df: DataDF) -> None:
         if df.empty:
             return
+
+        # previously index was implicitly created by the bulk api call, now explicit with mapping
+        index_exists = self.es_client.indices.exists(index=self.index)
+        if not index_exists:
+            self.es_client.indices.create(index=self.index, body=self.mapping)
 
         actions = []
         for row in df.to_dict(orient="records"):  # type: ignore
