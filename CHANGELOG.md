@@ -2,6 +2,8 @@
 
 * Convert dependency management to UV
 * Fix `datapipe.types.OrmTable` type
+* Add `TableStore.caps` to introspect what features does specific table store
+  supports
 
 # 0.14.1
 

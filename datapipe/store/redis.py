@@ -7,7 +7,7 @@ from redis.cluster import RedisCluster
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_index
 
 
@@ -24,14 +24,30 @@ def _to_itertuples(df: DataDF, colnames):
 
 
 class RedisStore(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=False,
+        supports_read_all_rows=False,
+        supports_read_nonexistent_rows=True,
+        supports_read_meta_pseudo_df=False,
+    )
+
     def __init__(
-        self, connection: str, name: str, data_sql_schema: List[Column], cluster_mode: bool = False
+        self,
+        connection: str,
+        name: str,
+        data_sql_schema: List[Column],
+        cluster_mode: bool = False,
     ) -> None:
         self.connection = connection
         if not cluster_mode:
-            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(connection, decode_responses=True)
+            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(
+                connection, decode_responses=True
+            )
         else:
-            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
+            self.redis_connection = RedisCluster.from_url(
+                connection, decode_responses=True
+            )
 
         self.name = name
         self.data_sql_schema = data_sql_schema

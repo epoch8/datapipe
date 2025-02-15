@@ -317,8 +317,11 @@ class CasesTableStore:
         )
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_get_schema")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_get_schema(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_get_schema:
+        raise pytest.skip("Store does not support get_schema")
+
     store.get_schema()
 
 
@@ -329,15 +332,20 @@ def test_write_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert_ts_contains(store, test_df)
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_all_rows")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_write_read_full_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_read_all_rows:
+        raise pytest.skip("Store does not support read_all_rows")
+
     store.insert_rows(test_df)
 
     assert_df_equal(store.read_rows(), test_df, index_cols=store.primary_keys)
 
 
 @parametrize_with_cases("store,test_df", cases=CasesTableStore)
-def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+def test_insert_identical_rows_twice_and_read_rows(
+    store: TableStore, test_df: pd.DataFrame
+) -> None:
     store.insert_rows(test_df)
 
     test_df_mod = test_df.copy()
@@ -348,8 +356,11 @@ def test_insert_identical_rows_twice_and_read_rows(store: TableStore, test_df: p
     assert_ts_contains(store, test_df_mod)
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_nonexistent_rows")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_read_non_existent_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_read_nonexistent_rows:
+        raise pytest.skip("Store does not support read_nonexistent_rows")
+
     test_df_to_store = test_df.drop(range(1, 5))
 
     store.insert_rows(test_df_to_store)
@@ -372,8 +383,11 @@ def test_read_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
     df_result[store.primary_keys]  # Empty df must have primary keys columns
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_all_rows")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_insert_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_read_all_rows:
+        raise pytest.skip("Store does not support read_all_rows")
+
     df_empty = pd.DataFrame()
     store.insert_rows(df_empty)
 
@@ -382,8 +396,11 @@ def test_insert_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
     df_result[store.primary_keys]  # Empty df must have primary keys columns
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_all_rows")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_update_empty_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_read_all_rows:
+        raise pytest.skip("Store does not support read_all_rows")
+
     df_empty = pd.DataFrame()
     store.update_rows(df_empty)
 
@@ -420,12 +437,14 @@ def test_full_update_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     assert_ts_contains(store, test_df_mod)
 
 
-@parametrize_with_cases(
-    "store,test_df",
-    cases=CasesTableStore,
-    has_tag=["supports_delete", "supports_read_all_rows"],
-)
+# TODO add test which does not require read_all_rows support
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_delete:
+        raise pytest.skip("Store does not support delete")
+    if not store.caps.supports_read_all_rows:
+        raise pytest.skip("Store does not support read_all_rows")
+
     store.insert_rows(test_df)
 
     assert_df_equal(
@@ -443,8 +462,11 @@ def test_delete_rows(store: TableStore, test_df: pd.DataFrame) -> None:
     )
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_meta_pseudo_df")
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
 def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
+    if not store.caps.supports_read_meta_pseudo_df:
+        raise pytest.skip("Store does not support read_meta_pseudo_df")
+
     store.insert_rows(test_df)
 
     assert_ts_contains(store, test_df)
@@ -455,8 +477,13 @@ def test_read_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> N
     assert isinstance(next(pseudo_df_iter), DataDF)
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_meta_pseudo_df")
-def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame) -> None:
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
+def test_read_empty_rows_meta_pseudo_df(
+    store: TableStore, test_df: pd.DataFrame
+) -> None:
+    if not store.caps.supports_read_meta_pseudo_df:
+        raise pytest.skip("Store does not support read_meta_pseudo_df")
+
     pseudo_df_iter = store.read_rows_meta_pseudo_df()
     assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
@@ -464,14 +491,21 @@ def test_read_empty_rows_meta_pseudo_df(store: TableStore, test_df: pd.DataFrame
         pseudo_df[store.primary_keys]  # Empty df must have primary keys columns
 
 
-@parametrize_with_cases("store,test_df", cases=CasesTableStore, has_tag="supports_read_meta_pseudo_df")
-def test_read_rows_meta_pseudo_df_with_runconfig(store: TableStore, test_df: pd.DataFrame) -> None:
+@parametrize_with_cases("store,test_df", cases=CasesTableStore)
+def test_read_rows_meta_pseudo_df_with_runconfig(
+    store: TableStore, test_df: pd.DataFrame
+) -> None:
+    if not store.caps.supports_read_meta_pseudo_df:
+        raise pytest.skip("Store does not support read_meta_pseudo_df")
+
     store.insert_rows(test_df)
 
     assert_ts_contains(store, test_df)
 
     # TODO проверять, что runconfig реально влияет на результирующие данные
-    pseudo_df_iter = store.read_rows_meta_pseudo_df(run_config=RunConfig(filters={"a": 1}))
+    pseudo_df_iter = store.read_rows_meta_pseudo_df(
+        run_config=RunConfig(filters={"a": 1})
+    )
     assert isinstance(pseudo_df_iter, Iterable)
     for pseudo_df in pseudo_df_iter:
         assert isinstance(pseudo_df, DataDF)
