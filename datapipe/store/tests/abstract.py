@@ -1,7 +1,7 @@
 # This is copy of concept of reusable test classes from `fsspec`
 # https://github.com/fsspec/filesystem_spec/tree/master/fsspec/tests/abstract
 
-from typing import Callable
+from typing import Callable, cast
 
 import cloudpickle
 import pandas as pd
@@ -11,7 +11,7 @@ from sqlalchemy import Column, String
 from datapipe.store.table_store import TableStore
 from datapipe.store.tests.stubs import DATA_PARAMS
 from datapipe.tests.util import assert_df_equal, assert_ts_contains
-from datapipe.types import DataSchema, data_to_index
+from datapipe.types import DataSchema, IndexDF, data_to_index
 
 TableStoreMaker = Callable[[DataSchema], TableStore]
 
@@ -125,7 +125,7 @@ class AbstractBaseStoreTests:
 
         df_empty = pd.DataFrame()
 
-        df_result = store.read_rows(data_to_index(df_empty, store.primary_keys))
+        df_result = store.read_rows(cast(IndexDF, df_empty))
         assert df_result.empty
         assert all(col in df_result.columns for col in store.primary_keys)
 
