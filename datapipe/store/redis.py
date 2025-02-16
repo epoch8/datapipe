@@ -28,7 +28,7 @@ class RedisStore(TableStore):
         supports_delete=True,
         supports_get_schema=False,
         supports_read_all_rows=False,
-        supports_read_nonexistent_rows=True,
+        supports_read_nonexistent_rows=False,  # TODO check
         supports_read_meta_pseudo_df=False,
     )
 

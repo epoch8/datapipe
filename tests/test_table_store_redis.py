@@ -1,25 +1,18 @@
 import pytest
-from sqlalchemy import Column, String
 
 from datapipe.store.redis import RedisStore
-from datapipe.store.tests.abstract import (
-    AbstractBaseStoreFixtures,
-    AbstractBaseStoreTests,
-)
+from datapipe.store.tests.abstract import AbstractBaseStoreTests
+from datapipe.types import DataSchema
 
 
-class RedisStoreFixtures(AbstractBaseStoreFixtures):
+class TestRedisStore(AbstractBaseStoreTests):
     @pytest.fixture
-    def store(self):
-        return RedisStore(
-            connection="redis://localhost",
-            name="test",
-            data_sql_schema=[
-                Column("id", String(), primary_key=True),
-                Column("data", String()),
-            ],
-        )
+    def store_maker(self):
+        def make_redis_store(data_schema: DataSchema):
+            return RedisStore(
+                connection="redis://localhost",
+                name="test",
+                data_sql_schema=data_schema,
+            )
 
-
-class TestBaseRedisStore(AbstractBaseStoreTests, RedisStoreFixtures):
-    pass
+        return make_redis_store
