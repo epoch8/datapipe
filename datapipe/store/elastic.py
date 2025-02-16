@@ -60,7 +60,7 @@ class ElasticStore(TableStore):
         self.key_name_remapping = key_name_remapping or {}
         self.primary_key_columns = [column.name for column in self.data_sql_schema if column.primary_key]
         self.value_key_columns = [column.name for column in self.data_sql_schema if not column.primary_key]
-        self.primary_key_column_rename = "field_{pk}_original_f5d3"
+        self.primary_key_column_rename = "_dtp_orig_{pk}"
         self.mapping = mapping
 
         self.es_kwargs = es_kwargs
