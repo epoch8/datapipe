@@ -21,6 +21,7 @@
 - [Lifecycle of a ComputeStep](./transformation-lifecycle.md)
 - [Using with SQLite](./sqlite.md)
 - [Extending CLI](./extending-cli.md)
+- [Developing TableStore](./developing-table-store.md)
 
 # Migration
 
