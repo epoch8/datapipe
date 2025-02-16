@@ -11,7 +11,7 @@ from sqlalchemy import Column, String
 from datapipe.store.table_store import TableStore
 from datapipe.store.tests.stubs import DATA_PARAMS
 from datapipe.tests.util import assert_df_equal, assert_ts_contains
-from datapipe.types import DataSchema
+from datapipe.types import DataSchema, data_to_index
 
 TableStoreMaker = Callable[[DataSchema], TableStore]
 
@@ -108,7 +108,7 @@ class AbstractBaseStoreTests:
         store.insert_rows(test_df_to_store)
 
         assert_df_equal(
-            store.read_rows(data_df),
+            store.read_rows(data_to_index(data_df, store.primary_keys)),
             test_df_to_store,
             index_cols=store.primary_keys,
         )
@@ -125,7 +125,7 @@ class AbstractBaseStoreTests:
 
         df_empty = pd.DataFrame()
 
-        df_result = store.read_rows(df_empty)
+        df_result = store.read_rows(data_to_index(df_empty, store.primary_keys))
         assert df_result.empty
         assert all(col in df_result.columns for col in store.primary_keys)
 
