@@ -9,7 +9,7 @@ from sqlalchemy import Column
 
 from datapipe.run_config import RunConfig
 from datapipe.store.database import MetaKey
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
 
@@ -39,13 +39,21 @@ class ElasticStoreState(TypedDict):
 
 
 class ElasticStore(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_read_all_rows=True,
+        supports_get_schema=True,
+        supports_read_meta_pseudo_df=True,
+        supports_read_nonexistent_rows=False,
+    )
+
     def __init__(
         self,
         index: str,
         data_sql_schema: List[Column],
         es_kwargs: Dict[str, Any],
         key_name_remapping: Optional[Dict[str, str]] = None,
-        mapping: Optional[dict] = None
+        mapping: Optional[dict] = None,
     ) -> None:
         self.index = index
         self.data_sql_schema = data_sql_schema
@@ -74,7 +82,7 @@ class ElasticStore(TableStore):
             data_sql_schema=state["data_sql_schema"],
             es_kwargs=state["es_kwargs"],
             key_name_remapping=state["key_name_remapping"],
-            mapping=state["mapping"]
+            mapping=state["mapping"],
         )
 
     def insert_rows(self, df: DataDF) -> None:

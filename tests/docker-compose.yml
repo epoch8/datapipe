@@ -22,3 +22,11 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.4
     ports:
       - 9200:9200
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: -Xms4g -Xmx4g
+      xpack.security.enabled: false
+      xpack.security.http.ssl.enabled: false
+      node.name: node
+      cluster.name: cluster
+      http.cors.enabled: true
