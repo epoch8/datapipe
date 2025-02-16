@@ -1,4 +1,5 @@
 from abc import ABC
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
 
@@ -9,7 +10,18 @@ from datapipe.run_config import RunConfig
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_index
 
 
+@dataclass
+class TableStoreCaps:
+    supports_delete: bool
+    supports_get_schema: bool
+    supports_read_all_rows: bool
+    supports_read_nonexistent_rows: bool
+    supports_read_meta_pseudo_df: bool
+
+
 class TableStore(ABC):
+    caps: TableStoreCaps
+
     def get_primary_schema(self) -> DataSchema:
         raise NotImplementedError
 
@@ -46,6 +58,14 @@ class TableStore(ABC):
 
 
 class TableDataSingleFileStore(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=False,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=True,
+        supports_read_meta_pseudo_df=True,
+    )
+
     def __init__(
         self,
         filename: Union[Path, str, None] = None,

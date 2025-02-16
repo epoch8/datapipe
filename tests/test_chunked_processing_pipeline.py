@@ -24,9 +24,8 @@ from datapipe.step.datatable_transform import DatatableTransform
 from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.tests.util import assert_datatable_equal, assert_df_equal
 from datapipe.types import ChangeList, data_to_index
-
-from .util import assert_datatable_equal, assert_df_equal
 
 CHUNK_SIZE = 100
 CHUNK_SIZE_SMALL = 3

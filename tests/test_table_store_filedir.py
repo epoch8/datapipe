@@ -1,16 +1,18 @@
 import base64
-import json
 import io
+import json
 
 import fsspec
 import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
+from sqlalchemy import Column, Integer, String
 
 from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
-
-from .util import assert_df_equal, assert_ts_contains
+from datapipe.store.tests.abstract import AbstractBaseStoreTests
+from datapipe.tests.util import assert_df_equal, assert_ts_contains
+from datapipe.types import DataSchema
 
 TEST_DF = pd.DataFrame(
     {
@@ -24,6 +26,108 @@ TEST_JSONS = {
     "aaa": {"a": 1, "b": 10},
     "bbb": {"a": 2, "b": 20},
 }
+
+FILEDIR_DATA_PARAMS = [
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id1": [f"id_{i}" for i in range(100)],
+                "id2": [f"id_{i}" for i in range(100)],
+                "id3": [f"id__{i}" for i in range(100)],
+                "id4": [f"id___{i}" for i in range(100)],
+                "id5": [f"id_{i}_" for i in range(100)],
+                "name": [f"Product {i}" for i in range(100)],
+                "price": [1000 + i for i in range(100)],
+            }
+        ),
+        "{id1}______{id2}______{id3}______{id4}______{id5}.json",
+        [
+            Column("id1", String(100)),
+            Column("id2", String(100)),
+            Column("id3", String(100)),
+            Column("id4", String(100)),
+            Column("id5", String(100)),
+        ],
+        id="multi_ids2",
+    ),
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id1": [f"id_{i}" for i in range(100)],
+                "id2": [f"id_{i}" for i in range(100, 200)],
+                "id3": [f"id_{i}" for i in range(150, 250)],
+                "name": [f"Product {i}" for i in range(100)],
+                "price": [1000 + i for i in range(100)],
+            }
+        ),
+        "{id2}__{id1}__{id3}.json",
+        [
+            Column("id1", String(100)),
+            Column("id2", String(100)),
+            Column("id3", String(100)),
+        ],
+        id="multi_ids_check_commutativity",
+    ),
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id1": [i for i in range(100)],
+                "id2": [i for i in range(100, 200)],
+                "id3": [str(i) for i in range(150, 250)],
+                "name": [f"Product {i}" for i in range(100)],
+                "price": [1000 + i for i in range(100)],
+            }
+        ),
+        "{id2}__{id1}__{id3}.json",
+        [
+            Column("id1", Integer),
+            Column("id2", Integer),
+            Column("id3", String(100)),
+        ],
+        id="columns_types",
+    ),
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id1": [i for i in range(100)],
+                "id2": [str(i) for i in range(100, 200)],
+                "id3": [i for i in range(100, 200)],
+                "id4": [str(i) for i in range(100, 200)],
+                "name": [f"Product {i}" for i in range(100)],
+                "price": [1000 + i for i in range(100)],
+            }
+        ),
+        "{id1}/{id2}/{id3}/{id4}.json",
+        [
+            Column("id1", Integer),
+            Column("id2", String(100)),
+            Column("id3", Integer),
+            Column("id4", String(100)),
+        ],
+        id="multi_ids_slash2",
+    ),
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id": [
+                    "json",
+                    "json.",
+                    "AAjson",
+                    "AAAjsonBB.j",
+                    "assdjson.json",
+                    "jsonjson.jsonasdad.fdsds.json",
+                ],
+                "name": [f"Product {i}" for i in range(6)],
+                "price": [1000 + i for i in range(6)],
+            }
+        ),
+        "{id}.json",
+        [
+            Column("id", String(100)),
+        ],
+        id="complex_values",
+    ),
+]
 
 
 @pytest.fixture
@@ -140,7 +244,7 @@ def test_read_png_rows(tmp_dir_with_img_data):
 def test_read_png_rows_with_multiply_suffixes(tmp_dir_with_img_data_several_suffixes):
     ts = TableStoreFiledir(
         f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
-        adapter=PILFile("png")
+        adapter=PILFile("png"),
     )
 
     rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
@@ -153,7 +257,8 @@ def test_read_png_rows_with_multiply_suffixes(tmp_dir_with_img_data_several_suff
 def test_delete_rows_several_suffixes(tmp_dir_with_img_data_several_suffixes):
     ts = TableStoreFiledir(
         f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
-        adapter=PILFile("png"), enable_rm=True
+        adapter=PILFile("png"),
+        enable_rm=True,
     )
 
     ts.delete_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
@@ -166,11 +271,11 @@ def test_delete_rows_several_suffixes(tmp_dir_with_img_data_several_suffixes):
 
 
 def test_read_png_rows_several_suffixes_read_rows_meta_pseudo_df(
-    tmp_dir_with_img_data_several_suffixes
+    tmp_dir_with_img_data_several_suffixes,
 ):
     ts = TableStoreFiledir(
         f"{tmp_dir_with_img_data_several_suffixes}/{{id}}.(png|jpg|jpeg)",
-        adapter=PILFile("png")
+        adapter=PILFile("png"),
     )
 
     rows = next(ts.read_rows_meta_pseudo_df())
@@ -252,7 +357,7 @@ def test_insert_png_rows_from_string(tmp_dir_with_img_data):
 
     img = Image.fromarray(np.zeros((100, 100, 3), "u8"), "RGB")
     buffered = io.BytesIO()
-    img.save(buffered, format='PNG')
+    img.save(buffered, format="PNG")
     image_bytes = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     ts.insert_rows(
@@ -330,13 +435,13 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         add_filepath_column=True,
     )
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH = TEST_DF_FOLDER_RECURSIVELY.copy()
-    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH[
-        "filepath"
-    ] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(
-        lambda idx: (
-            f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
-            if idx in ["0", "1", "2"]
-            else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
+    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["filepath"] = (
+        TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(
+            lambda idx: (
+                f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
+                if idx in ["0", "1", "2"]
+                else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
+            )
         )
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)
@@ -399,7 +504,7 @@ def tmp_several_extensions_and_folders_with_json_data(tmp_dir):
     for i in range(10):
         ext = "json" if i < 5 else "txt"
         with fsspec.open(
-            f"{tmp_dir}/folder{i%3}/{i}.{ext}", "w", auto_mkdir=True
+            f"{tmp_dir}/folder{i % 3}/{i}.{ext}", "w", auto_mkdir=True
         ) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
@@ -411,3 +516,42 @@ def test_read_json_rows_or_folders(tmp_several_extensions_and_folders_with_json_
         adapter=JSONFile(),
     )
     assert_ts_contains(ts, TEST_DF_SEVERAL_EXTENSIONS)
+
+
+class TestTableStoreFiledir(AbstractBaseStoreTests):
+    @pytest.fixture
+    def store_maker(self, tmp_dir):
+        def make_db_store(data_schema):
+            primary_schema = [col for col in data_schema if col.primary_key]
+
+            fn_template = (
+                "__".join([f"{{{col.name}}}" for col in primary_schema]) + ".json"
+            )
+
+            return TableStoreFiledir(
+                tmp_dir / fn_template,
+                adapter=JSONFile(),
+                primary_schema=primary_schema,
+                enable_rm=True,
+            )
+
+        return make_db_store
+
+
+@pytest.mark.parametrize("data_df,fn_template,primary_schema", FILEDIR_DATA_PARAMS)
+def test_write_read_rows__filedir_specific(
+    tmp_dir,
+    data_df: pd.DataFrame,
+    fn_template: str,
+    primary_schema: DataSchema,
+) -> None:
+    store = TableStoreFiledir(
+        tmp_dir / fn_template,
+        adapter=JSONFile(),
+        primary_schema=primary_schema,
+        enable_rm=True,
+    )
+
+    store.insert_rows(data_df)
+
+    assert_ts_contains(store, data_df)
