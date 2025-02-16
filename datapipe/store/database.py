@@ -14,7 +14,7 @@ from sqlalchemy.sql.expression import delete, select
 
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
 logger = logging.getLogger("datapipe.store.database")
@@ -121,6 +121,14 @@ class MetaKey(SchemaItem):
 
 
 class TableStoreDB(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=True,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=True,
+        supports_read_meta_pseudo_df=True,
+    )
+
     def __init__(
         self,
         dbconn: Union["DBConn", str],
@@ -136,9 +144,9 @@ class TableStoreDB(TableStore):
 
         if orm_table is not None:
             assert name is None, "name should be None if orm_table is provided"
-            assert (
-                data_sql_schema is None
-            ), "data_sql_schema should be None if orm_table is provided"
+            assert data_sql_schema is None, (
+                "data_sql_schema should be None if orm_table is provided"
+            )
 
             orm_table__table = orm_table.__table__  # type: ignore
             self.data_table = cast(Table, orm_table__table)
@@ -161,12 +169,12 @@ class TableStoreDB(TableStore):
             ]
 
         else:
-            assert (
-                name is not None
-            ), "name should be provided if data_table is not provided"
-            assert (
-                data_sql_schema is not None
-            ), "data_sql_schema should be provided if data_table is not provided"
+            assert name is not None, (
+                "name should be provided if data_table is not provided"
+            )
+            assert data_sql_schema is not None, (
+                "data_sql_schema should be provided if data_table is not provided"
+            )
 
             self.name = name
 

@@ -2,6 +2,11 @@
 
 * Convert dependency management to UV
 * Fix `datapipe.types.OrmTable` type
+* Add `TableStore.caps` to introspect what features does specific table store
+  supports
+* Implement abstract test suite for TableStore:
+  `datapipe.store.tests.abstract.AbstractBaseStoreTests`
+* Refactor `test_table_store` to use `AbstractBaseStoreTests`
 
 # 0.14.1
 
