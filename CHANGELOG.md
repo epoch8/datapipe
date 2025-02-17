@@ -1,5 +1,9 @@
-# WIP 0.15.0
+# WIP 0.14.2
 
+New stuff:
+* New store: `datapipe.store.elastic.ElasticStore`
+
+Internal changes:
 * Convert dependency management to UV
 * Fix `datapipe.types.OrmTable` type
 * Add `TableStore.caps` to introspect what features does specific table store

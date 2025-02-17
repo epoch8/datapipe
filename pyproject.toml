@@ -40,6 +40,7 @@ redis = ["redis>=4.3.4,<5"]
 qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
+elastic = ["elasticsearch>=8.17.1"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -61,6 +62,9 @@ dev = [
     "types-pillow",
     "types-PyYAML",
 ]
+
+[tool.ruff]
+line-length = 120
 
 [tool.hatch.build.targets.sdist]
 include = ["datapipe", "datapipe/py.typed"]

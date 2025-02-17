@@ -15,10 +15,6 @@
             "source.organizeImports": "explicit"
         },
     },
-    "isort.args": [
-        "--profile",
-        "black"
-    ],
     "githubIssues.queries": [
         {
             "label": "My Issues",

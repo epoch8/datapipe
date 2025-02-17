@@ -1,4 +1,5 @@
 .DS_Store
+.idea
 .mypy_cache/
 .pytest_cache/
 .venv/
