@@ -1,7 +1,7 @@
-# WIP 0.14.2
+# 0.14.2
 
 New stuff:
-* New store: `datapipe.store.elastic.ElasticStore`
+* New table store: `datapipe.store.elastic.ElasticStore`
 
 Internal changes:
 * Convert dependency management to UV
