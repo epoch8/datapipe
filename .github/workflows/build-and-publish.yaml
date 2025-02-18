@@ -4,10 +4,8 @@ name: Build and Publish to PYPI
 
 on:
   push:
-# on:
-#   push:
-#     tags:
-#       - 'v*'
+    tags:
+      - 'v*'
 
 jobs:
   build:
