@@ -33,7 +33,7 @@ jobs:
 
   publish-to-test-pypi:
     environment: 
-      name: test-pypi
+      name: testpypi
       url: https://test.pypi.org/project/datapipe-core/
     permissions:
       id-token: write
