@@ -35,9 +35,9 @@ jobs:
           # - python-version: "3.10"
           #   test-db-env: "sqlite"
 
-          - python-version: "3.11"
-            test-db-env: "postgres"
-            pip-extra: '"sqlalchemy<2" "pandas<2.2"'
+          # - python-version: "3.11"
+          #   test-db-env: "postgres"
+          #   pip-extra: '"sqlalchemy<2" "pandas<2.2"'
           - python-version: "3.11"
             test-db-env: "postgres"
             pip-extra: '"sqlalchemy>2"'
@@ -79,6 +79,23 @@ jobs:
         image: qdrant/qdrant:latest
         ports:
           - 6333:6333
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.4
+        env:
+          discovery.type: single-node
+          ES_JAVA_OPTS: -Xms4g -Xmx4g
+          xpack.security.enabled: false
+          xpack.security.http.ssl.enabled: false
+          node.name: node
+          cluster.name: cluster
+          http.cors.enabled: true
+        options: >-
+          --health-cmd "curl http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 20s
+          --health-retries 10
+        ports:
+          - 9200:9200
 
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +108,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ${{ matrix.pip-extra }} ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp]" "pytest<8" "pytest_cases"
+          pip install ${{ matrix.pip-extra }} ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "pytest<8" "pytest_cases"
 
       - name: Test with pytest
         run: |
@@ -104,3 +121,5 @@ jobs:
           POSTGRES_PORT: 5432
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+          ELASTIC_HOST: localhost
+          ELASTIC_PORT: 9200

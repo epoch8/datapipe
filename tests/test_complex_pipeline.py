@@ -10,9 +10,8 @@ from datapipe.datatable import DataStore, DataTable
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
+from datapipe.tests.util import assert_datatable_equal, assert_df_equal
 from datapipe.types import IndexDF, Required
-
-from .util import assert_datatable_equal, assert_df_equal
 
 TEST__ITEM = pd.DataFrame(
     {

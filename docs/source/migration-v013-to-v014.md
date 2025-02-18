@@ -4,7 +4,7 @@
 
 Previously, if you had to do whole table transformation, you had to use
 `DatatableTransform`. Now you can substitute it with `BatchTransform` which has
-zero outputs.
+empty `transform_keys`.
 
 Before:
 
