@@ -15,7 +15,7 @@ from PIL import Image
 from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
 
 
@@ -103,9 +103,9 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
     assert len(attrnames) > 0, "The scheme is not valid."
     if len(attrnames) >= 2:
         duplicates_attrnames = list(duplicates(attrnames))
-        assert (
-            len(duplicates_attrnames) == 0
-        ), f"Some keys are repeated: {duplicates_attrnames}. Rename them."
+        assert len(duplicates_attrnames) == 0, (
+            f"Some keys are repeated: {duplicates_attrnames}. Rename them."
+        )
 
     return attrnames
 
@@ -161,6 +161,14 @@ class Replacer:
 
 
 class TableStoreFiledir(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=False,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=False,
+        supports_read_meta_pseudo_df=True,
+    )
+
     def __init__(
         self,
         filename_pattern: Union[str, Path],
@@ -278,7 +286,8 @@ class TableStoreFiledir(TableStore):
                 for attrname in self.attrnames
             ]
         self.attrname_to_cls = {
-            column.name: type_to_cls[type(column.type)] for column in self.primary_schema  # type: ignore
+            column.name: type_to_cls[type(column.type)]
+            for column in self.primary_schema  # type: ignore
         }
 
     def get_primary_schema(self) -> DataSchema:
@@ -322,9 +331,9 @@ class TableStoreFiledir(TableStore):
         """
         _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
-        assert (
-            m is not None
-        ), f"Filepath {filepath} does not match the pattern {self.filename_match}"
+        assert m is not None, (
+            f"Filepath {filepath} does not match the pattern {self.filename_match}"
+        )
 
         data = {}
         for attrname in self.attrnames:

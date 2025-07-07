@@ -18,6 +18,7 @@ from typing import (
 )
 import pandas as pd
 from sqlalchemy import Column
+from sqlalchemy.orm.decl_api import DeclarativeBase
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
@@ -44,9 +45,7 @@ TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 LabelDict = Dict[str, Any]
 Filters = Union[str, IndexDF, List[LabelDict], Callable[..., List[LabelDict]], Callable[..., IndexDF]]
 
-from sqlalchemy.orm.decl_api import DeclarativeMeta
-
-OrmTable = Type[DeclarativeMeta]
+OrmTable = Type[DeclarativeBase]
 
 TableOrName = Union[str, OrmTable, "Table"]
 

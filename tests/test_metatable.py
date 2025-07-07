@@ -10,9 +10,8 @@ from sqlalchemy.sql.schema import Column
 
 from datapipe.datatable import MetaTable
 from datapipe.store.database import DBConn, MetaKey
+from datapipe.tests.util import assert_df_equal
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
-
-from .util import assert_df_equal
 
 
 class CasesTestDF:

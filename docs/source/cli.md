@@ -68,4 +68,21 @@ Runs checks on current state of database. Can detect and fix commong issues.
 
 ## `step`
 
+* `--name` is to provide a filter of steps with prefix matching of step name. Example: `datapipe step --name=my_step_name run`.
+* `--labels` is to provide a filter of steps according to its labels. Example: `datapipe step --labels=my_label_name=my_label_value run`.
+
+### `run`
+
+Run steps. Could be used with `--name` and `--labels` options to filter steps.
+
+### `list`
+
+Show steps in data pipeline. Could be used with `--name` and `--labels` options to filter steps.
+
+* `--status` adds info about indexes to process.
+
+### `reset-metadata`
+
+Mark data as unprocessed. Could be used with `--name` and `--labels` options to filter steps.
+
 ## `table`
