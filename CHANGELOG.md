@@ -1,3 +1,6 @@
+# 0.14.3
+* Added SQLAlchemy 1.4.x support
+
 # 0.14.2
 
 New stuff:

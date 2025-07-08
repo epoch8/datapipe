@@ -18,7 +18,10 @@ from typing import (
 
 import pandas as pd
 from sqlalchemy import Column
-from sqlalchemy.orm.decl_api import DeclarativeBase
+try: # SQLAlchemy 2.x
+    from sqlalchemy.orm.decl_api import DeclarativeBase
+except ImportError: # SQLAlchemy 1.x
+    from sqlalchemy.ext.declarative import declarative_base as DeclarativeBase
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
