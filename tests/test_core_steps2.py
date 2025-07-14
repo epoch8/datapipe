@@ -4,6 +4,7 @@
 # import pytest
 
 import time
+from typing import Optional, cast
 
 import pandas as pd
 from sqlalchemy import Column, String
@@ -16,7 +17,7 @@ from datapipe.step.batch_generate import do_batch_generate
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import MetaKey, TableStoreDB
 from datapipe.tests.util import assert_datatable_equal, assert_df_equal
-from datapipe.types import ChangeList, IndexDF
+from datapipe.types import ChangeList, Filters, IndexDF
 
 TEST_SCHEMA1 = [
     Column("item_id", Integer, primary_key=True),
@@ -115,7 +116,7 @@ def test_batch_transform(dbconn):
     assert all(meta_df["process_ts"] == process_ts)
 
 
-def test_batch_transform_with_filter(dbconn):
+def test_batch_transform_with_filter_in_run_config(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
@@ -138,14 +139,14 @@ def test_batch_transform_with_filter(dbconn):
     step.run_full(
         ds,
         run_config=RunConfig(
-            filters={"pipeline_id": 0},
+            filters=[{"pipeline_id": 0}],
         ),
     )
 
     assert_datatable_equal(tbl2, TEST_DF1_1.query("pipeline_id == 0"))
 
 
-def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+def test_batch_transform_with_filter_in_run_config_not_in_transform_index(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
     tbl1 = ds.create_table(
@@ -168,7 +169,36 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 
     step.run_full(
         ds,
-        run_config=RunConfig(filters={"pipeline_id": 0}),
+        run_config=RunConfig(filters=[{"pipeline_id": 0}]),
+    )
+
+    assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])
+
+
+def test_batch_transform_with_filter_not_in_transform_index(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    tbl1 = ds.create_table(
+        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
+    )
+
+    tbl2 = ds.create_table(
+        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA2, True)
+    )
+
+    tbl1.store_chunk(TEST_DF1_2, now=0)
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test",
+        func=lambda df: df[["item_id", "a"]],
+        input_dts=[ComputeInput(dt=tbl1, join_type="full")],
+        output_dts=[tbl2],
+        filters=[{"pipeline_id": 0}]
+    )
+
+    step.run_full(
+        ds,
     )
 
     assert_datatable_equal(tbl2, TEST_DF1_2.query("pipeline_id == 0")[["item_id", "a"]])
@@ -300,7 +330,7 @@ def test_gen_with_filter(dbconn):
         func=gen_func,
         ds=ds,
         output_dts=[tbl],
-        run_config=RunConfig(filters={"pipeline_id": 0}),
+        run_config=RunConfig(filters=[{"pipeline_id": 0}]),
     )
 
     assert_datatable_equal(
@@ -393,3 +423,115 @@ def test_batch_transform_with_entity(dbconn):
     items2_df = merged_df[["item_id", "pipeline_id", "product_id", "a"]]
 
     assert_df_equal(items2.get_data(), items2_df, index_cols=["item_id", "pipeline_id"])
+
+
+def batch_transform_with_filters(dbconn, filters: Filters, ds: Optional[DataStore] = None):
+    if ds is None:
+        ds = DataStore(dbconn, create_meta_table=True)
+
+    item = ds.create_table(
+        "item",
+        table_store=TableStoreDB(
+            dbconn,
+            "item",
+            [Column("item_id", Integer, primary_key=True)],
+            True
+        ),
+    )
+
+    inner_item = ds.create_table(
+        "inner_item", table_store=TableStoreDB(
+            dbconn,
+            "inner_item",
+            [
+                Column("item_id", Integer, primary_key=True),
+                Column("inner_item_id", Integer, primary_key=True)
+            ],
+            True
+        )
+    )
+
+    output = ds.create_table(
+        "output", table_store=TableStoreDB(
+            dbconn,
+            "output",
+            [
+                Column("item_id", Integer, primary_key=True),
+                Column("inner_item_id", Integer, primary_key=True)
+            ],
+            True
+        )
+    )
+
+    test_df__item = pd.DataFrame(
+        {
+            "item_id": list(range(10)),
+        }
+    )
+
+    test_df__inner_item = pd.DataFrame(
+        {
+            "item_id": list(range(10)) * 10,
+            "inner_item_id": list(range(100)),
+        }
+    )
+    item.store_chunk(test_df__item, now=0)
+    inner_item.store_chunk(test_df__inner_item, now=0)
+
+    def update_df(df__item: pd.DataFrame, df__inner_item: pd.DataFrame):
+        merged_df = pd.merge(df__item, df__inner_item, on=["item_id"])
+        return merged_df
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test",
+        func=update_df,
+        input_dts=[ComputeInput(dt=item, join_type="full"), ComputeInput(dt=inner_item, join_type="full")],
+        output_dts=[output],
+        filters=filters
+    )
+
+    step.run_full(ds)
+
+    test_df__output = update_df(
+        df__item=test_df__item[test_df__item["item_id"].isin([0, 1, 2])],
+        df__inner_item=test_df__inner_item[test_df__inner_item["item_id"].isin([0, 1, 2])]
+    )
+
+    assert_df_equal(output.get_data(), test_df__output, index_cols=["item_id", "inner_item_id"])
+
+
+def test_batch_transform_with_filters_as_str(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+    filters_data = pd.DataFrame([{"item_id": 0}, {"item_id": 1}, {"item_id": 2}])
+    filters = ds.create_table(
+        "filters_data", table_store=TableStoreDB(
+            dbconn, "filters_data", [Column("item_id", Integer, primary_key=True)], True
+        )
+    )
+    filters.store_chunk(filters_data, now=0)
+    batch_transform_with_filters(dbconn, filters="filters_data", ds=ds)
+
+
+def test_batch_transform_with_filters_as_IndexDF(dbconn):
+    batch_transform_with_filters(
+        dbconn, filters=cast(IndexDF, pd.DataFrame([{"item_id": 0}, {"item_id": 1}, {"item_id": 2}]))
+    )
+
+
+def test_batch_transform_with_filters_as_list_of_dict(dbconn):
+    batch_transform_with_filters(dbconn, filters=[{"item_id": 0}, {"item_id": 1}, {"item_id": 2}])
+
+
+def test_batch_transform_with_filters_as_callable_IndexDF(dbconn):
+    def callable(ds: DataStore, run_config: Optional[RunConfig]):
+        return cast(IndexDF, pd.DataFrame([{"item_id": 0}, {"item_id": 1}, {"item_id": 2}]))
+
+    batch_transform_with_filters(dbconn, filters=callable)
+
+
+def test_batch_transform_with_filters_as_callable_list_of_dict(dbconn):
+    def callable(ds: DataStore, run_config: Optional[RunConfig]):
+        return [{"item_id": 0}, {"item_id": 1}, {"item_id": 2}]
+
+    batch_transform_with_filters(dbconn, filters=callable)

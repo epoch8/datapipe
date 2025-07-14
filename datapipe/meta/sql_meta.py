@@ -20,7 +20,7 @@ import pandas as pd
 import sqlalchemy as sa
 
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
+from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filters
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.types import (
     DataDF,
@@ -214,7 +214,7 @@ class MetaTable:
             + [column.name for column in TABLE_META_SCHEMA]
         )
 
-    def _get_hash_for_df(self, df) -> pd.DataFrame:
+    def _get_hash_for_df(self, df) -> pd.Series:
         return df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(
                 cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True
@@ -389,7 +389,7 @@ class MetaTable:
             )
         )
 
-        sql = sql_apply_runconfig_filter(
+        sql = sql_apply_runconfig_filters(
             sql, self.sql_table, self.primary_keys, run_config
         )
 
@@ -447,7 +447,7 @@ class MetaTable:
             sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filters_to_subquery(sql, self.primary_keys, run_config)
 
         return (keys, sql.cte(name=f"{tbl.name}__update"))
 
@@ -649,7 +649,7 @@ class TransformMetaTable:
             .where(self.sql_table.c.is_success == True)  # noqa: E712
         )
 
-        sql = sql_apply_runconfig_filter(
+        sql = sql_apply_runconfig_filters(
             update_sql, self.sql_table, self.primary_keys, run_config
         )
 
@@ -676,6 +676,18 @@ def sql_apply_filters_idx_to_subquery(
                 ]
             )
         )
+
+    return sql
+
+
+def sql_apply_runconfig_filters_to_subquery(
+    sql: Any,
+    keys: List[str],
+    run_config: Optional[RunConfig] = None,
+) -> Any:
+    if run_config is not None:
+        filters_idx = pd.DataFrame(run_config.filters)
+        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
 
     return sql
 
@@ -795,6 +807,7 @@ def build_changed_idx_sql(
     )
 
     out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx)
+    out = sql_apply_runconfig_filters_to_subquery(out, transform_keys, run_config)
 
     out = out.cte(name="transform")
 

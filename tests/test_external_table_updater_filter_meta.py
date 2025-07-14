@@ -47,7 +47,7 @@ def test_external_table_updater_filter(dbconn: DBConn):
         index_cols=["composite_id_1", "composite_id_2"],
     )
 
-    config = RunConfig(filters={"composite_id_1": 2})
+    config = RunConfig(filters=[{"composite_id_1": 2}])
     run_pipeline(ds, catalog, pipeline, run_config=config)
     assert_df_equal(
         catalog.get_datatable(ds, "test").get_data(),

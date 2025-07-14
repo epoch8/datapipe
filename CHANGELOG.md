@@ -1,3 +1,6 @@
+# 0.14.3
+* Added SQLAlchemy 1.4.x support
+
 # 0.14.2
 
 New stuff:
@@ -26,6 +29,8 @@ Major changes:
 * `datapipe.compute.Table` can be used directly without Catalog
 
 See "Migration from v0.13 to v0.14" for more details
+
+* `BatchTransform` has new argument `filters`. It's using to filter processing transform indexes using only that indexes that as indicated in `filters`. See `docs/concepts.md` for more details.
 
 # 0.13.14
 

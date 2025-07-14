@@ -5,7 +5,7 @@ import json
 import re
 from abc import ABC
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
+from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast, Set
 
 import fsspec
 import numpy as np
@@ -249,7 +249,7 @@ class TableStoreFiledir(TableStore):
         self.attrnames = _pattern_to_attrnames(filename_pattern)
         self.filename_glob = [_pattern_to_glob(pat) for pat in self.filename_patterns]
         self.filename_match = _pattern_to_match(filename_pattern_for_match)
-        self.filename_match_first_suffix = _pattern_to_match(self.filename_patterns[0])
+        self.filename_match_suffixes = [_pattern_to_match(pattern) for pattern in self.filename_patterns]
 
         # Any * and ** pattern check
         if "*" in path:
@@ -501,15 +501,22 @@ class TableStoreFiledir(TableStore):
         ids: Dict[str, List[str]] = {attrname: [] for attrname in self.attrnames}
         ukeys = []
         filepaths = []
-
+        looked_keys: Set[Any] = set()
         for f in files:
-            m = re.match(self.filename_match_first_suffix, f.path)
-
+            for filemath_match_suffix in self.filename_match_suffixes:
+                m = re.match(filemath_match_suffix, f"{self.protocol_str}{f.path}")
+                if m is not None:
+                    break
             if m is None:
                 continue
 
-            for attrname in self.attrnames:
-                ids[attrname].append(m.group(attrname))
+            keys_values = tuple(m.group(attrname) for attrname in self.attrnames)
+            if keys_values in looked_keys:
+                continue
+            looked_keys.add(keys_values)
+
+            for attrname, key_value in zip(self.attrnames, keys_values):
+                ids[attrname].append(key_value)
 
             ukeys.append(files.fs.ukey(f.path))  # type: ignore
             filepaths.append(f"{self.protocol_str}{f.path}")

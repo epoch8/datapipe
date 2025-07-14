@@ -300,7 +300,7 @@ class AbstractBaseStoreTests:
 
         # TODO проверять, что runconfig реально влияет на результирующие данные
         pseudo_df_iter = store.read_rows_meta_pseudo_df(
-            run_config=RunConfig(filters={"a": 1})
+            run_config=RunConfig(filters=[{"a": 1}])
         )
         assert isinstance(pseudo_df_iter, Iterable)
         for pseudo_df in pseudo_df_iter:

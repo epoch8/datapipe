@@ -13,7 +13,7 @@ from sqlalchemy.sql.base import SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select
 
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
+from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filters
 from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
@@ -311,7 +311,7 @@ class TableStoreDB(TableStore):
     ) -> Iterator[DataDF]:
         sql = select(*self.data_table.c)
 
-        sql = sql_apply_runconfig_filter(
+        sql = sql_apply_runconfig_filters(
             sql, self.data_table, self.primary_keys, run_config
         )
 

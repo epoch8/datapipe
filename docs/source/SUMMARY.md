@@ -8,6 +8,10 @@
   - [Transform](./concepts-transform.md)
 - [How merging works](./how-merging-works.md)
 
+# Concepts
+
+- [Concepts](./concepts.md)
+
 # Command Line Interface
 
 - [Command Line Interface](./cli.md)

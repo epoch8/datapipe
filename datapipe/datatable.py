@@ -7,6 +7,11 @@ from opentelemetry import trace
 from datapipe.event_logger import EventLogger
 from datapipe.meta.sql_meta import MetaTable
 from datapipe.run_config import RunConfig
+from datapipe.sql_util import (
+    sql_apply_idx_filter_to_table,
+    sql_apply_runconfig_filters,
+)
+from datapipe.store.database import DBConn, MetaKey
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, IndexDF, MetadataDF, data_to_index, index_difference
