@@ -22,7 +22,11 @@ try: # SQLAlchemy 2.x
     from sqlalchemy.orm.decl_api import DeclarativeBase
 except ImportError: # SQLAlchemy 1.x
     from sqlalchemy.ext.declarative import declarative_base
-    DeclarativeBase = declarative_base()
+    _Base = declarative_base()
+
+    class DeclarativeBase(_Base):  # type: ignore[misc]
+        """Fallback compatible with SQLAlchemy 2.x DeclarativeBase."""
+        pass
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
