@@ -4,6 +4,7 @@ import itertools
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     List,
@@ -18,15 +19,14 @@ from typing import (
 
 import pandas as pd
 from sqlalchemy import Column
-try: # SQLAlchemy 2.x
+if TYPE_CHECKING:
     from sqlalchemy.orm.decl_api import DeclarativeBase
-except ImportError: # SQLAlchemy 1.x
-    from sqlalchemy.ext.declarative import declarative_base
-    _Base = declarative_base()
-
-    class DeclarativeBase(_Base):  # type: ignore[misc]
-        """Fallback compatible with SQLAlchemy 2.x DeclarativeBase."""
-        pass
+else:
+    try:                                        # SQLAlchemy ≥ 2.0
+        from sqlalchemy.orm.decl_api import DeclarativeBase
+    except ImportError:                         # SQLAlchemy 1.x
+        from sqlalchemy.ext.declarative import declarative_base
+        DeclarativeBase: Type[Any] = declarative_base()      # type: ignore[valid-type]
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
