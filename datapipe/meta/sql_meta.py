@@ -214,7 +214,7 @@ class MetaTable:
             + [column.name for column in TABLE_META_SCHEMA]
         )
 
-    def _get_hash_for_df(self, df) -> pd.DataFrame:
+    def _get_hash_for_df(self, df) -> pd.Series:
         return df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(
                 cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True
