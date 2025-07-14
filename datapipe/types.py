@@ -21,7 +21,8 @@ from sqlalchemy import Column
 try: # SQLAlchemy 2.x
     from sqlalchemy.orm.decl_api import DeclarativeBase
 except ImportError: # SQLAlchemy 1.x
-    from sqlalchemy.ext.declarative import declarative_base as DeclarativeBase
+    from sqlalchemy.ext.declarative import declarative_base
+    DeclarativeBase = declarative_base()
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
