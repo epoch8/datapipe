@@ -106,9 +106,18 @@ class MemgraphStore(TableStore):
         try:
             for q, p in queries:
                 cur.execute(q, p)
-            # Commit only if autocommit is disabled
             if not getattr(self._con, "autocommit", True):
                 self._con.commit()
+        finally:
+            cur.close()
+
+    def _run_query(self, cypher: str, params: Dict[str, Any]):
+        cur = self._con.cursor()
+        try:
+            cur.execute(cypher, params)
+            if not getattr(self._con, "autocommit", True):
+                self._con.commit()
+            return cur.fetchall()
         finally:
             cur.close()
 
@@ -118,45 +127,33 @@ class MemgraphStore(TableStore):
         if df.empty:
             return
 
-        queries: List[Tuple[str, Dict[str, Any]]] = []
+        if self._mode == "node":
+            for node_type, gdf in df.groupby("node_type"):   # group by label for single-label bulk queries
+                rows = [
+                    {"id": r["node_id"], "props": r.get("attributes", {}) or {}} for r in gdf.to_dict(orient="records")
+                ]
+                cypher = f"UNWIND $rows AS row\nMERGE (n:`{node_type}` {{id: row.id}})\nSET   n += row.props"
+                self._run_query(cypher, {"rows": rows})
 
-        if self._mode == "node":  # nodes
-            for row in df.to_dict(orient="records"):
-                node_id = row["node_id"]
-                node_type = row["node_type"]
-                attrs = row.get("attributes", {}) or {}
-
-                cypher = f"MERGE (n:`{node_type}` {{id: $node_id}}) SET n += $props"
-                queries.append((cypher, {"node_id": node_id, "props": attrs}))
-
-        else:  # edges
-            for row in df.to_dict(orient="records"):
-                from_id = row["from_node_id"]
-                to_id = row["to_node_id"]
-                from_type = row["from_node_type"]
-                to_type = row["to_node_type"]
-                edge_label = row["edge_label"]
-                attrs = row.get("attributes", {}) or {}
-
+        else:  # unwind edges in the same fashion
+            for keys, gdf in df.groupby(["from_node_type", "to_node_type", "edge_label"]):
+                from_type, to_type, edge_label = keys
+                rows = [
+                    {
+                        "from_id": r["from_node_id"],
+                        "to_id": r["to_node_id"],
+                        "props": r.get("attributes", {}) or {},
+                    }
+                    for r in gdf.to_dict(orient="records")
+                ]
                 cypher = (
-                    f"MERGE (from:`{from_type}` {{id: $from_id}}) "
-                    f"MERGE (to:`{to_type}` {{id: $to_id}}) "
-                    f"MERGE (from)-[r:`{edge_label}`]->(to) "
-                    f"SET r += $props"
+                    f"UNWIND $rows AS row\n"
+                    f"MERGE (from:`{from_type}` {{id: row.from_id}})\n"
+                    f"MERGE (to:`{to_type}` {{id: row.to_id}})\n"
+                    f"MERGE (from)-[r:`{edge_label}`]->(to)\n"
+                    f"SET r += row.props"
                 )
-
-                queries.append(
-                    (
-                        cypher,
-                        {
-                            "from_id": from_id,
-                            "to_id": to_id,
-                            "props": attrs,
-                        },
-                    )
-                )
-
-        self._execute_many(queries)
+                self._run_query(cypher, {"rows": rows})
 
     def update_rows(self, df: DataDF) -> None:
         self.insert_rows(df)
@@ -165,31 +162,21 @@ class MemgraphStore(TableStore):
         if idx.empty:
             return
 
-        queries: List[Tuple[str, Dict[str, Any]]] = []
-
-        if self._mode == "node":  # nodes
-            for row in idx[self._pk_columns].to_dict(orient="records"):
-                node_id = row["node_id"]
-                node_type = row["node_type"]
-
-                cypher = f"MATCH (n:`{node_type}` {{id: $node_id}}) DETACH DELETE n"
-                queries.append((cypher, {"node_id": node_id}))
-
-        else:  # edges
-            for row in idx[self._pk_columns].to_dict(orient="records"):
-                from_id = row["from_node_id"]
-                to_id = row["to_node_id"]
-                edge_label = row["edge_label"]
-                from_type = row["from_node_type"]
-                to_type = row["to_node_type"]
-
+        if self._mode == "node":
+            for node_type, gdf in idx.groupby("node_type"):
+                ids = gdf["node_id"].tolist()
+                cypher = f"UNWIND $ids AS id\nMATCH (n:`{node_type}` {{id: id}}) DETACH DELETE n"
+                self._run_query(cypher, {"ids": ids})
+        else:
+            for keys, gdf in idx.groupby(["from_node_type", "to_node_type", "edge_label"]):
+                from_type, to_type, edge_label = keys
+                rows = [{"from_id": r["from_node_id"], "to_id": r["to_node_id"]} for r in gdf.to_dict(orient="records")]
                 cypher = (
-                    f"MATCH (from:`{from_type}` {{id: $from_id}})-[r:`{edge_label}`]->"
-                    f"(to:`{to_type}` {{id: $to_id}}) DELETE r"
+                    f"UNWIND $rows AS row\n"
+                    f"MATCH (from:`{from_type}` {{id: row.from_id}})-[r:`{edge_label}`]->"
+                    f"(to:`{to_type}` {{id: row.to_id}}) DELETE r"
                 )
-                queries.append((cypher, {"from_id": from_id, "to_id": to_id}))
-
-        self._execute_many(queries)
+                self._run_query(cypher, {"rows": rows})
 
     # todo: read_rows is oversimplified for now, since MemgraphStore is intended as a sink, rather than a source.
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
