@@ -128,7 +128,7 @@ class MemgraphStore(TableStore):
             return
 
         if self._mode == "node":
-            for node_type, gdf in df.groupby("node_type"):   # group by label for single-label bulk queries
+            for node_type, gdf in df.groupby("node_type"):  # group by label for single-label bulk queries
                 rows = [
                     {"id": r["node_id"], "props": r.get("attributes", {}) or {}} for r in gdf.to_dict(orient="records")
                 ]
@@ -181,55 +181,69 @@ class MemgraphStore(TableStore):
     # todo: read_rows is oversimplified for now, since MemgraphStore is intended as a sink, rather than a source.
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         if idx is None:
-            raise NotImplementedError("MemgraphStore does not support reading full table yet. Provide an IndexDF.")
+            raise NotImplementedError("MemgraphStore does not support reading full table")
         if idx.empty:
             return pd.DataFrame(columns=self._pk_columns)
 
         records: List[Dict[str, Any]] = []
         cur = self._con.cursor()
-        try:
-            if self._mode == "node":
-                for row in idx[self._pk_columns].to_dict(orient="records"):
-                    node_id = row["node_id"]
-                    node_type = row["node_type"]
+        if self._mode == "node":
+            for row in idx[self._pk_columns].to_dict(orient="records"):
+                node_id = row["node_id"]
+                node_type = row["node_type"]
 
-                    cypher = (
-                        f"MATCH (n:`{node_type}` {{id: $node_id}}) "
-                        f"RETURN n.id AS node_id, '{node_type}' AS node_type, properties(n) AS attributes"
+                cypher = (
+                    f"UNWIND $ids AS id\n"
+                    f"MATCH (n:`{node_type}` {{id: id}})\n"
+                    f"RETURN n.id AS node_id, '{node_type}' AS node_type, properties(n) AS attributes"
+                )
+                cur.execute(
+                    cypher,
+                    {"ids": [node_id]},
+                )
+                for rec in cur.fetchall():
+                    records.append(
+                        {
+                            "node_id": rec[0],
+                            "node_type": rec[1],
+                            "attributes": cast(Dict[str, Any], rec[2]),
+                        }
                     )
-                    cur.execute(cypher, {"node_id": node_id})
-                    for rec in cur.fetchall():
-                        records.append(
-                            {
-                                "node_id": rec[0],
-                                "node_type": rec[1],
-                                "attributes": cast(Dict[str, Any], rec[2]),
-                            }
-                        )
-            else:  # edges
-                required_cols = self._pk_columns
 
-                for row in idx[required_cols].to_dict(orient="records"):
-                    q = (
-                        f"MATCH (from:`{row['from_node_type']}` {{id: $from_id}})-"
-                        f"[r:`{row['edge_label']}`]->(to:`{row['to_node_type']}` {{id: $to_id}}) "
-                        f"RETURN from.id AS from_node_id, to.id AS to_node_id, '{row['from_node_type']}' AS from_node_type, "
-                        f"'{row['to_node_type']}' AS to_node_type, '{row['edge_label']}' AS edge_label, properties(r) AS attributes"
-                    )
-                    cur.execute(q, {"from_id": row["from_node_id"], "to_id": row["to_node_id"]})
-                    for rec in cur.fetchall():
-                        records.append(
+        else:  # edges
+            required_cols = self._pk_columns
+
+            for row in idx[required_cols].to_dict(orient="records"):
+                cypher = (
+                    f"UNWIND $rows AS row\n"
+                    f"MATCH (from:`{row['from_node_type']}` {{id: row.from_id}})-"
+                    f"[r:`{row['edge_label']}`]->(to:`{row['to_node_type']}` {{id: row.to_id}})\n"
+                    f"RETURN from.id AS from_node_id, to.id AS to_node_id, '{row['from_node_type']}' AS from_node_type, "
+                    f"'{row['to_node_type']}' AS to_node_type, '{row['edge_label']}' AS edge_label, properties(r) AS attributes"
+                )
+                cur.execute(
+                    cypher,
+                    {
+                        "rows": [
                             {
-                                "from_node_id": rec[0],
-                                "to_node_id": rec[1],
-                                "from_node_type": rec[2],
-                                "to_node_type": rec[3],
-                                "edge_label": rec[4],
-                                "attributes": cast(Dict[str, Any], rec[5]),
+                                "from_id": row["from_node_id"],
+                                "to_id": row["to_node_id"],
                             }
-                        )
-        finally:
-            cur.close()
+                        ]
+                    },
+                )
+                for rec in cur.fetchall():
+                    records.append(
+                        {
+                            "from_node_id": rec[0],
+                            "to_node_id": rec[1],
+                            "from_node_type": rec[2],
+                            "to_node_type": rec[3],
+                            "edge_label": rec[4],
+                            "attributes": cast(Dict[str, Any], rec[5]),
+                        }
+                    )
+        cur.close()
 
         if records:
             return pd.DataFrame.from_records(records)
