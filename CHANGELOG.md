@@ -1,3 +1,7 @@
+# 0.14.3
+
+* New table store: `datapipe.store.memgraph.MemgraphStore`
+
 # 0.14.2
 
 New stuff:
