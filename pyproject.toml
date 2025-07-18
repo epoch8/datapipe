@@ -41,7 +41,7 @@ qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 elastic = ["elasticsearch>=8.17.1"]
-memgraph = ["pymgclient"]
+neo4j = ["neo4j"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"

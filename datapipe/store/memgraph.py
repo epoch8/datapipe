@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import pandas as pd
+from neo4j import Driver, GraphDatabase
+from neo4j.exceptions import ClientError
 from sqlalchemy import Column
-import mgclient
 
 from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
@@ -23,8 +24,10 @@ class _EdgePK:
     edge_label: str
 
 
-class MemgraphStore(TableStore):
-    """Memgraph graph database interface
+class Neo4JStore(TableStore):
+    """Neo4J graph database interface
+
+    Tested on Memgraph databases
 
     Requires two calls (two tables) - nodes and edges. Store mode is determined by edges pkeys:
     1. Node mode – primary keys (node_id, node_type).
@@ -62,13 +65,12 @@ class MemgraphStore(TableStore):
             self._mode = "edge"
         else:
             raise ValueError(
-                "Unsupported primary-key configuration for MemgraphStore. "
+                "Unsupported primary-key configuration for Neo4JStore. "
                 "Expected either (node_id, node_type) or "
                 "(from_node_id, to_node_id, edge_label)."
             )
 
-        self._con = mgclient.connect(**self.connection_kwargs)
-        self._con.autocommit = True
+        self._driver: Driver = GraphDatabase.driver(**self.connection_kwargs)
 
     def __getstate__(self) -> Dict[str, Any]:
         return {
@@ -77,7 +79,7 @@ class MemgraphStore(TableStore):
         }
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
-        MemgraphStore.__init__(
+        Neo4JStore.__init__(
             self,
             connection_kwargs=state["connection_kwargs"],
             data_sql_schema=state["data_sql_schema"],
@@ -95,31 +97,10 @@ class MemgraphStore(TableStore):
         # todo
         return []
 
-    # Data manipulation helpers
-
-    def _execute_many(self, queries: List[Tuple[str, Dict[str, Any]]]) -> None:
-        """Execute a batch of Cypher queries in a single transaction."""
-        if not queries:
-            return
-
-        cur = self._con.cursor()
-        try:
-            for q, p in queries:
-                cur.execute(q, p)
-            if not getattr(self._con, "autocommit", True):
-                self._con.commit()
-        finally:
-            cur.close()
-
     def _run_query(self, cypher: str, params: Dict[str, Any]):
-        cur = self._con.cursor()
-        try:
-            cur.execute(cypher, params)
-            if not getattr(self._con, "autocommit", True):
-                self._con.commit()
-            return cur.fetchall()
-        finally:
-            cur.close()
+        with self._driver.session() as session:
+            result = session.run(cypher, **params)
+            return [tuple(rec.values()) for rec in result]
 
     # CRUD operations
 
@@ -178,30 +159,27 @@ class MemgraphStore(TableStore):
                 )
                 self._run_query(cypher, {"rows": rows})
 
-    # todo: read_rows is oversimplified for now, since MemgraphStore is intended as a sink, rather than a source.
+    # todo: read_rows is oversimplified for now, since Neo4JStore is intended as a sink, rather than a source.
     def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         if idx is None:
-            raise NotImplementedError("MemgraphStore does not support reading full table")
+            raise NotImplementedError("Neo4JStore does not support reading full table")
         if idx.empty:
             return pd.DataFrame(columns=self._pk_columns)
 
         records: List[Dict[str, Any]] = []
-        cur = self._con.cursor()
+        session = self._driver.session()
         if self._mode == "node":
             for row in idx[self._pk_columns].to_dict(orient="records"):
                 node_id = row["node_id"]
                 node_type = row["node_type"]
 
                 cypher = (
-                    f"UNWIND $ids AS id\n"
-                    f"MATCH (n:`{node_type}` {{id: id}})\n"
+                    f"UNWIND $ids AS id "
+                    f"MATCH (n:`{node_type}` {{id: id}}) "
                     f"RETURN n.id AS node_id, '{node_type}' AS node_type, properties(n) AS attributes"
                 )
-                cur.execute(
-                    cypher,
-                    {"ids": [node_id]},
-                )
-                for rec in cur.fetchall():
+                recs = session.run(cypher, ids=[node_id])
+                for rec in recs:
                     records.append(
                         {
                             "node_id": rec[0],
@@ -215,24 +193,17 @@ class MemgraphStore(TableStore):
 
             for row in idx[required_cols].to_dict(orient="records"):
                 cypher = (
-                    f"UNWIND $rows AS row\n"
+                    f"UNWIND $rows AS row "
                     f"MATCH (from:`{row['from_node_type']}` {{id: row.from_id}})-"
-                    f"[r:`{row['edge_label']}`]->(to:`{row['to_node_type']}` {{id: row.to_id}})\n"
+                    f"[r:`{row['edge_label']}`]->(to:`{row['to_node_type']}` {{id: row.to_id}}) "
                     f"RETURN from.id AS from_node_id, to.id AS to_node_id, '{row['from_node_type']}' AS from_node_type, "
                     f"'{row['to_node_type']}' AS to_node_type, '{row['edge_label']}' AS edge_label, properties(r) AS attributes"
                 )
-                cur.execute(
+                recs = session.run(
                     cypher,
-                    {
-                        "rows": [
-                            {
-                                "from_id": row["from_node_id"],
-                                "to_id": row["to_node_id"],
-                            }
-                        ]
-                    },
+                    rows=[{"from_id": row["from_node_id"], "to_id": row["to_node_id"]}],
                 )
-                for rec in cur.fetchall():
+                for rec in recs:
                     records.append(
                         {
                             "from_node_id": rec[0],
@@ -243,7 +214,6 @@ class MemgraphStore(TableStore):
                             "attributes": cast(Dict[str, Any], rec[5]),
                         }
                     )
-        cur.close()
 
         if records:
             return pd.DataFrame.from_records(records)
