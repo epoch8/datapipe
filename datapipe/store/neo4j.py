@@ -1,10 +1,8 @@
-import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 from neo4j import Driver, GraphDatabase
-from neo4j.exceptions import ClientError
 from sqlalchemy import Column
 
 from datapipe.store.table_store import TableStore, TableStoreCaps
