@@ -65,7 +65,7 @@ class Neo4JStore(TableStore):
             raise ValueError(
                 "Unsupported primary-key configuration for Neo4JStore. "
                 "Expected either (node_id, node_type) or "
-                "(from_node_id, to_node_id, edge_label)."
+                "(from_node_id, to_node_id, from_node_type, to_node_type, edge_label)."
             )
 
         self._driver: Driver = GraphDatabase.driver(**self.connection_kwargs)
