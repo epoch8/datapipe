@@ -52,23 +52,24 @@ Repository = "https://github.com/epoch8/datapipe"
 [project.scripts]
 datapipe = "datapipe.cli:main"
 
-[dependency-groups]
-dev = [
-    "pytest==7.*",
-    "pytest-cases",
-    "flake8",
-    "black",
-    "mypy",
-    "pandas-stubs",
-    "types-setuptools",
-    "types-redis",
-    "types-tqdm",
-    "types-pillow",
-    "types-PyYAML",
-]
+[tool.poetry.group.dev.dependencies]
+pytest = "7.*"
+pytest-cases = "*"
+flake8 = "*"
+black = "*"
+mypy = "*"
+pandas-stubs = "*"
+types-setuptools = "*"
+types-redis = "*"
+types-tqdm = "*"
+types-pillow = "*"
+types-PyYAML = "*"
 
 [tool.ruff]
 line-length = 120
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.sdist]
 include = ["datapipe", "datapipe/py.typed"]
