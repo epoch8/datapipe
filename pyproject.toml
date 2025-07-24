@@ -27,6 +27,9 @@ dependencies = [
     "types-tqdm>=4.67.0.20241221",
 ]
 
+[tool.poetry]
+packages = [{ include = "datapipe" }]
+
 [project.optional-dependencies]
 sqlite = [
     "pysqlite3-binary>=0.5.0,<0.6 ; sys_platform != 'darwin'",
