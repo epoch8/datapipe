@@ -33,4 +33,7 @@
             "query": "state:open repo:${owner}/${repository} sort:created-desc no:milestone"
         },
     ],
+    "python-envs.defaultEnvManager": "ms-python.python:poetry",
+    "python-envs.defaultPackageManager": "ms-python.python:poetry",
+    "python-envs.pythonProjects": [],
 }
