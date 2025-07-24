@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.3"
+version = "0.14.2"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
@@ -27,9 +27,6 @@ dependencies = [
     "types-tqdm>=4.67.0.20241221",
 ]
 
-[tool.poetry]
-packages = [{ include = "datapipe" }]
-
 [project.optional-dependencies]
 sqlite = [
     "pysqlite3-binary>=0.5.0,<0.6 ; sys_platform != 'darwin'",
@@ -52,18 +49,20 @@ Repository = "https://github.com/epoch8/datapipe"
 [project.scripts]
 datapipe = "datapipe.cli:main"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "7.*"
-pytest-cases = "*"
-flake8 = "*"
-black = "*"
-mypy = "*"
-pandas-stubs = "*"
-types-setuptools = "*"
-types-redis = "*"
-types-tqdm = "*"
-types-pillow = "*"
-types-PyYAML = "*"
+[dependency-groups]
+dev = [
+    "pytest==7.*",
+    "pytest-cases",
+    "flake8",
+    "black",
+    "mypy",
+    "pandas-stubs",
+    "types-setuptools",
+    "types-redis",
+    "types-tqdm",
+    "types-pillow",
+    "types-PyYAML",
+]
 
 [tool.ruff]
 line-length = 120
