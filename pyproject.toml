@@ -40,7 +40,7 @@ redis = ["redis>=4.3.4,<5"]
 qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
-elastic = ["elasticsearch>=8.17.1"]
+elastic = ["elasticsearch>=8.17.1,<9"]
 neo4j = ["neo4j"]
 
 [project.urls]
