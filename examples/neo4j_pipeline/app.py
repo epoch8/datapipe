@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Generator, List
+from typing import Generator, List, cast
 
 import pandas as pd
 from sqlalchemy import JSON, Column, String
@@ -43,6 +43,7 @@ edge_table = Table(name="edge_data", store=edge_store)
 
 
 # Steps
+
 
 def gen_nodes() -> Generator[pd.DataFrame, None, None]:
     rows: List[dict] = [
@@ -135,7 +136,7 @@ def main() -> None:
     run_steps(app.ds, app.steps)
 
     # simple read
-    idx: IndexDF = pd.DataFrame({"node_id": ["N0"], "node_type": ["person"]})
+    idx: IndexDF = cast(IndexDF, pd.DataFrame({"node_id": ["N0"], "node_type": ["person"]}))
     print(node_table.store.read_rows(idx))
 
 
