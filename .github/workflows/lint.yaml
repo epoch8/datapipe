@@ -2,12 +2,12 @@ name: Run linters
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/lint.yaml"
       - "datapipe/**"
       - "pyproject.toml"
-    tags-ignore:
-      - '**'
 
 
 jobs:

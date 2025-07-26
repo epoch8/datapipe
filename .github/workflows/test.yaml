@@ -2,13 +2,13 @@ name: Run tests
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/test.yaml"
       - "datapipe/**"
       - "tests/**"
       - "pyproject.toml"
-    tags-ignore:
-      - '**'
 
 
 jobs:

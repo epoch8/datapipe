@@ -2,13 +2,13 @@ name: Test examples
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/test_examples.yaml"
       - "examples/**"
       - "datapipe/**"
       - "pyproject.toml"
-    tags-ignore:
-      - '**'
 
 jobs:
   test-examples:
