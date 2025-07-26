@@ -1,3 +1,7 @@
+# 0.14.3
+
+* New table store: `datapipe.store.neo4j.Neo4JStore` for graph databases
+
 # 0.14.2
 
 New stuff:

@@ -90,9 +90,7 @@ class PILFile(ItemStoreFileAdapter):
             image_binary = base64.b64decode(image_data.encode())
             image = Image.open(io.BytesIO(image_binary))
         else:
-            raise Exception(
-                "Image must be a bytes string or np.array or Pillow Image object"
-            )
+            raise Exception("Image must be a bytes string or np.array or Pillow Image object")
 
         image.save(f, format=self.format, **self.dump_params)
 
@@ -103,9 +101,7 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
     assert len(attrnames) > 0, "The scheme is not valid."
     if len(attrnames) >= 2:
         duplicates_attrnames = list(duplicates(attrnames))
-        assert len(duplicates_attrnames) == 0, (
-            f"Some keys are repeated: {duplicates_attrnames}. Rename them."
-        )
+        assert len(duplicates_attrnames) == 0, f"Some keys are repeated: {duplicates_attrnames}. Rename them."
 
     return attrnames
 
@@ -113,26 +109,16 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
 def _pattern_to_patterns_or(pat) -> List[str]:
     pattern_or = re.compile(r"(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))")
     # Ищем вхождения вида (aaa|bbb|ccc), в виду list of list [[aaa, bbb, ccc], [ddd, eee], ...]
-    values = [
-        list(dict.fromkeys(match.group("or")[1:-1].split("|")))
-        for match in pattern_or.finditer(pat)
-    ]
+    values = [list(dict.fromkeys(match.group("or")[1:-1].split("|"))) for match in pattern_or.finditer(pat)]
     # Всевозможные комбинации для замены [[aaa, ddd], [aaa, eee], [bbb, ddd], ...]
-    possible_combinatios_values = [
-        list(combination) for combination in itertools.product(*values)
-    ]
+    possible_combinatios_values = [list(combination) for combination in itertools.product(*values)]
     # Получаем всевозможные списки шаблонов из комбинаций
-    filename_patterns = [
-        re.sub(pattern_or, Replacer(combination), pat)
-        for combination in possible_combinatios_values
-    ]
+    filename_patterns = [re.sub(pattern_or, Replacer(combination), pat) for combination in possible_combinatios_values]
     return filename_patterns
 
 
 def _pattern_to_glob(pat: str) -> str:
-    return re.sub(
-        r"\{([^/]+?)\}", "*", pat
-    )  # Меняем все вхождения {id1}_{id2} в звездочки *_*
+    return re.sub(r"\{([^/]+?)\}", "*", pat)  # Меняем все вхождения {id1}_{id2} в звездочки *_*
 
 
 def _pattern_to_match(pat: str) -> str:
@@ -140,12 +126,8 @@ def _pattern_to_match(pat: str) -> str:
     # * -> r'[^/]+'
     # ** -> r'([^/]+/)*?[^/]+'
 
-    pat = re.sub(
-        r"\*\*?", r"([^/]+/)*[^/]+", pat
-    )  # Меняем все вхождения * и ** в произвольные символы
-    pat = re.sub(
-        r"\{([^/]+?)\}", r"(?P<\1>[^/]+?)", pat
-    )  # Меняем все вхождения вида {id} на непустые послед. символов
+    pat = re.sub(r"\*\*?", r"([^/]+/)*[^/]+", pat)  # Меняем все вхождения * и ** в произвольные символы
+    pat = re.sub(r"\{([^/]+?)\}", r"(?P<\1>[^/]+?)", pat)  # Меняем все вхождения вида {id} на непустые послед. символов
     pat = f"{pat}\\Z"  # Учитываем конец строки
     return pat
 
@@ -254,9 +236,7 @@ class TableStoreFiledir(TableStore):
         # Any * and ** pattern check
         if "*" in path:
             if readonly is not None and not readonly:
-                raise ValueError(
-                    "When `readonly=False`, in filename_pattern shouldn't be any `*` characters."
-                )
+                raise ValueError("When `readonly=False`, in filename_pattern shouldn't be any `*` characters.")
             elif readonly is None:
                 readonly = True
         elif readonly is None:
@@ -273,18 +253,10 @@ class TableStoreFiledir(TableStore):
 
         if primary_schema is not None:
             assert sorted(self.attrnames) == sorted(i.name for i in primary_schema)
-            assert all(
-                [
-                    isinstance(column.type, (String, Integer))
-                    for column in primary_schema
-                ]
-            )
+            assert all([isinstance(column.type, (String, Integer)) for column in primary_schema])
             self.primary_schema = primary_schema
         else:
-            self.primary_schema = [
-                Column(attrname, String, primary_key=True)
-                for attrname in self.attrnames
-            ]
+            self.primary_schema = [Column(attrname, String, primary_key=True) for attrname in self.attrnames]
         self.attrname_to_cls = {
             column.name: type_to_cls[type(column.type)]
             for column in self.primary_schema  # type: ignore
@@ -320,10 +292,7 @@ class TableStoreFiledir(TableStore):
         Например для шаблона filedir/{id}.(jpg|png) и индекса id=0
           ['filedir/0.jpg', 'filedir/0.png']
         """
-        return [
-            re.sub(r"\{([^/]+?)\}", Replacer(idxs_values), pat)
-            for pat in self.filename_patterns
-        ]
+        return [re.sub(r"\{([^/]+?)\}", Replacer(idxs_values), pat) for pat in self.filename_patterns]
 
     def _idxs_values_from_filepath(self, filepath: str) -> Dict[str, Any]:
         """
@@ -331,9 +300,7 @@ class TableStoreFiledir(TableStore):
         """
         _, filepath = fsspec.core.split_protocol(filepath)
         m = re.match(self.filename_match, filepath)
-        assert m is not None, (
-            f"Filepath {filepath} does not match the pattern {self.filename_match}"
-        )
+        assert m is not None, f"Filepath {filepath} does not match the pattern {self.filename_match}"
 
         data = {}
         for attrname in self.attrnames:
@@ -344,9 +311,7 @@ class TableStoreFiledir(TableStore):
     def _assert_key_values(self, filepath: str, idxs_values: List[str]):
         idx_data = self._idxs_values_from_filepath(filepath)
         idxs_values_np = np.array(idxs_values)
-        idxs_values_parsed_from_filepath = np.array(
-            [idx_data[attrname] for attrname in self.attrnames]
-        )
+        idxs_values_parsed_from_filepath = np.array([idx_data[attrname] for attrname in self.attrnames])
 
         assert len(idxs_values_np) == len(idxs_values_parsed_from_filepath) and np.all(
             idxs_values_np == idxs_values_parsed_from_filepath
@@ -357,9 +322,7 @@ class TableStoreFiledir(TableStore):
             f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}",
         )
 
-    def insert_rows(
-        self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None
-    ) -> None:
+    def insert_rows(self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None) -> None:
         if df.empty:
             return
         assert not self.readonly
@@ -369,17 +332,13 @@ class TableStoreFiledir(TableStore):
         # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени
         for row_idx, data in zip(
             df.index,
-            cast(
-                List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict("records")
-            ),
+            cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict("records")),
         ):
             attrnames_series = df.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
             idxs_values = attrnames_series.tolist()
-            filepath = self._filenames_from_idxs_values(idxs_values)[
-                0
-            ]  # берем первый суффикс
+            filepath = self._filenames_from_idxs_values(idxs_values)[0]  # берем первый суффикс
 
             # Проверяем, что значения ключей не приведут к неоднозначному результату при парсинге регулярки
             self._assert_key_values(filepath, idxs_values)
@@ -400,9 +359,7 @@ class TableStoreFiledir(TableStore):
 
             attrnames = cast(List[str], attrnames_series.tolist())
 
-            _, path = fsspec.core.split_protocol(
-                self._filenames_from_idxs_values(attrnames)[0]
-            )
+            _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames)[0])
 
             res.loc[row_idx, "filepath"] = f"{self.protocol_str}{path}"
 
@@ -419,19 +376,12 @@ class TableStoreFiledir(TableStore):
         if adapter is None:
             adapter = self.adapter
 
-        if (
-            (not read_data)
-            and (len(self.filename_patterns) == 1)
-            and (idx is not None)
-            and self.add_filepath_column
-        ):
+        if (not read_data) and (len(self.filename_patterns) == 1) and (idx is not None) and self.add_filepath_column:
             return self._read_rows_fast(idx)
 
         def _iterate_files():
             if idx is None:
-                for file_open in fsspec.open_files(
-                    self.filename_glob, f"r{adapter.mode}", **self.fsspec_kwargs
-                ):
+                for file_open in fsspec.open_files(self.filename_glob, f"r{adapter.mode}", **self.fsspec_kwargs):
                     yield file_open
             else:
                 filepaths_extenstions = [
@@ -442,15 +392,11 @@ class TableStoreFiledir(TableStore):
                 for filepaths in filepaths_extenstions:
                     found_files = [
                         file_open
-                        for file_open in fsspec.open_files(
-                            filepaths, f"r{adapter.mode}", **self.fsspec_kwargs
-                        )
+                        for file_open in fsspec.open_files(filepaths, f"r{adapter.mode}", **self.fsspec_kwargs)
                         if self.filesystem.exists(file_open.path)
                     ]
                     if len(found_files) == 0:
-                        raise FileNotFoundError(
-                            f"No such file: {' or '.join(filepaths)}"
-                        )
+                        raise FileNotFoundError(f"No such file: {' or '.join(filepaths)}")
                     # Открываем первый попавшися файл согласно суффиксу (aaa|bbb)
                     file_open = found_files[0]
                     yield file_open
@@ -463,9 +409,7 @@ class TableStoreFiledir(TableStore):
                 if read_data:
                     data = adapter.load(f)
 
-                    attrnames_in_data = [
-                        attrname for attrname in self.attrnames if attrname in data
-                    ]
+                    attrnames_in_data = [attrname for attrname in self.attrnames if attrname in data]
                     assert len(attrnames_in_data) == 0, (
                         f"Found repeated keys inside data that are already used (from scheme): "
                         f"{attrnames_in_data}. "
