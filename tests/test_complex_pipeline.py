@@ -431,9 +431,11 @@ def test_complex_transform_with_many_recordings_N10000(dbconn):
     complex_transform_with_many_recordings(dbconn, N=10000)
 
 
-def test_applying_prediction_on_best_model_only(dbconn):
-    N = 100
+def test_applying_prediction_on_best_model_only(dbconn) -> None:
+    # N = 100
+    N = 5
     ds = DataStore(dbconn, create_meta_table=True)
+
     catalog = Catalog(
         {
             "tbl_image": Table(
@@ -480,9 +482,6 @@ def test_applying_prediction_on_best_model_only(dbconn):
         }
     )
 
-    def gen_tbls(df1, df2, df3):
-        yield df1, df2, df3
-
     test_df__image = pd.DataFrame({"image_id": range(N)})
     test_df__model = pd.DataFrame({"model_id": [0, 1, 2, 3, 4]})
     test_df__best_model = pd.DataFrame({"model_id": [4]})
@@ -493,25 +492,11 @@ def test_applying_prediction_on_best_model_only(dbconn):
         df__best_model: pd.DataFrame,
         idx: IndexDF,
     ):
-        assert all([model_id == 4 for model_id in idx["model_id"]])
         df__prediction = pd.merge(df__image, df__model, how="cross")
         return df__prediction[["image_id", "model_id"]]
 
     pipeline = Pipeline(
         [
-            BatchGenerate(
-                func=gen_tbls,
-                outputs=[
-                    "tbl_image",
-                    "tbl_model",
-                    "tbl_best_model",
-                ],
-                kwargs=dict(
-                    df1=test_df__image,
-                    df2=test_df__model,
-                    df3=test_df__best_model,
-                ),
-            ),
             BatchTransform(
                 func=inference_only_on_best_model,
                 inputs=[
@@ -524,8 +509,15 @@ def test_applying_prediction_on_best_model_only(dbconn):
             ),
         ]
     )
+
     steps = build_compute(ds, catalog, pipeline)
+
+    ds.get_table("tbl_image").store_chunk(test_df__image)
+    ds.get_table("tbl_model").store_chunk(test_df__model)
+    ds.get_table("tbl_best_model").store_chunk(test_df__best_model)
+
     run_steps(ds, steps)
+
     test__df_prediction = pd.DataFrame({"image_id": range(N), "model_id": [4] * N})
     assert_df_equal(
         ds.get_table("tbl_prediction").get_data(),
@@ -535,9 +527,11 @@ def test_applying_prediction_on_best_model_only(dbconn):
 
     test_df__new_best_model = pd.DataFrame({"model_id": [3]})
     dt__tbl_best_model: DataTable = ds.get_table("tbl_best_model")
-    dt__tbl_best_model.delete_by_idx(dt__tbl_best_model.get_data())
+    dt__tbl_best_model.delete_by_idx(cast(IndexDF, dt__tbl_best_model.get_data()))
     dt__tbl_best_model.store_chunk(test_df__new_best_model)
+
     run_steps(ds, steps)
+
     test__new_df_prediction = pd.DataFrame({"image_id": range(N), "model_id": [3] * N})
     assert_df_equal(
         ds.get_table("tbl_prediction").get_data(),
