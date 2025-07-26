@@ -76,11 +76,7 @@ class MetaTable:
         meta_key_prop = MetaKey.get_property_name()
 
         for column in meta_schema:
-            target_name = (
-                column.meta_key.target_name
-                if hasattr(column, meta_key_prop)
-                else column.name
-            )
+            target_name = column.meta_key.target_name if hasattr(column, meta_key_prop) else column.name
             self.meta_keys[target_name] = column.name
 
         self.sql_schema: List[sa.schema.SchemaItem] = [
@@ -125,27 +121,21 @@ class MetaTable:
 
             yield cast(TAnyDF, chunk_idx)
 
-    def _build_metadata_query(
-        self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False
-    ):
+    def _build_metadata_query(self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False):
         if idx is not None:
             if len(self.primary_keys) == 0:
                 # Когда ключей нет - не делаем ничего
                 pass
 
             else:
-                sql = sql_apply_idx_filter_to_table(
-                    sql, self.sql_table, self.primary_keys, idx
-                )
+                sql = sql_apply_idx_filter_to_table(sql, self.sql_table, self.primary_keys, idx)
 
         if not include_deleted:
             sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
         return sql
 
-    def get_metadata(
-        self, idx: Optional[IndexDF] = None, include_deleted: bool = False
-    ) -> MetadataDF:
+    def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
         """
         Получить датафрейм с метаданными.
 
@@ -174,9 +164,7 @@ class MetaTable:
                     pd.DataFrame(columns=[column.name for column in self.sql_schema]),  # type: ignore
                 )
 
-    def get_metadata_size(
-        self, idx: Optional[IndexDF] = None, include_deleted: bool = False
-    ) -> int:
+    def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
         """
         Получить количество строк метаданных.
 
@@ -208,17 +196,11 @@ class MetaTable:
         return cast(MetadataDF, res_df)
 
     def _get_meta_data_columns(self):
-        return (
-            self.primary_keys
-            + list(self.meta_keys.values())
-            + [column.name for column in TABLE_META_SCHEMA]
-        )
+        return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in TABLE_META_SCHEMA]
 
-    def _get_hash_for_df(self, df) -> pd.DataFrame:
+    def _get_hash_for_df(self, df) -> pd.Series:
         return df.apply(lambda x: str(list(x)), axis=1).apply(
-            lambda x: int.from_bytes(
-                cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True
-            )
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
         )
 
     # Fix numpy types in Index
@@ -241,9 +223,7 @@ class MetaTable:
             idx_cols = []
 
         if len(idx_cols) > 0 and idx is not None and len(idx) > 0:
-            sql = sql_apply_idx_filter_to_table(
-                sql=sql, table=self.sql_table, primary_keys=idx_cols, idx=idx
-            )
+            sql = sql_apply_idx_filter_to_table(sql=sql, table=self.sql_table, primary_keys=idx_cols, idx=idx)
 
         sql = sql.where(self.sql_table.c.delete_ts.is_(None))
 
@@ -257,9 +237,7 @@ class MetaTable:
 
     def get_table_debug_info(self) -> TableDebugInfo:
         with self.dbconn.con.begin() as con:
-            res = con.execute(
-                sa.select(sa.func.count()).select_from(self.sql_table)
-            ).fetchone()
+            res = con.execute(sa.select(sa.func.count()).select_from(self.sql_table)).fetchone()
 
             assert res is not None and len(res) == 1
             return TableDebugInfo(
@@ -286,15 +264,15 @@ class MetaTable:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(
-            data_to_index(data_df, self.primary_keys), include_deleted=True
-        )
+        existing_meta_df = self.get_metadata(data_to_index(data_df, self.primary_keys), include_deleted=True)
         data_cols = list(data_df.columns)
         meta_cols = self._get_meta_data_columns()
 
         # Дополняем данные методанными
         merged_df = pd.merge(
-            data_df.assign(data_hash=self._get_hash_for_df(data_df)),
+            data_df.assign(
+                data_hash=self._get_hash_for_df(data_df),
+            ),
             existing_meta_df,
             how="left",
             left_on=self.primary_keys,
@@ -320,9 +298,9 @@ class MetaTable:
         changed_df = merged_df.loc[changed_idx.values, data_cols]  # type: ignore
 
         # Меняем мета данные для существующих записей
-        changed_meta_idx = (merged_df["hash"].notna()) & (
-            merged_df["hash"] != merged_df["data_hash"]
-        ) | (merged_df["delete_ts"].notnull())
+        changed_meta_idx = (merged_df["hash"].notna()) & (merged_df["hash"] != merged_df["data_hash"]) | (
+            merged_df["delete_ts"].notnull()
+        )
         changed_meta_df = merged_df.loc[merged_df["hash"].notna(), :].copy()
 
         changed_meta_df.loc[changed_meta_idx, "update_ts"] = now
@@ -341,9 +319,7 @@ class MetaTable:
         if df.empty:
             return
 
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            df.to_dict(orient="records")
-        )
+        insert_sql = self.dbconn.insert(self.sql_table).values(df.to_dict(orient="records"))
 
         sql = insert_sql.on_conflict_do_update(
             index_elements=self.primary_keys,
@@ -389,9 +365,7 @@ class MetaTable:
             )
         )
 
-        sql = sql_apply_runconfig_filter(
-            sql, self.sql_table, self.primary_keys, run_config
-        )
+        sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
 
         with self.dbconn.con.begin() as con:
             return cast(
@@ -439,9 +413,7 @@ class MetaTable:
         keys = [k for k in transform_keys if k in self.primary_keys]
         key_cols: List[Any] = [sa.column(k) for k in keys]
 
-        sql: Any = sa.select(
-            *key_cols + [sa.func.max(tbl.c["update_ts"]).label("update_ts")]
-        ).select_from(tbl)
+        sql: Any = sa.select(*key_cols + [sa.func.max(tbl.c["update_ts"]).label("update_ts")]).select_from(tbl)
 
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
@@ -649,9 +621,7 @@ class TransformMetaTable:
             .where(self.sql_table.c.is_success == True)  # noqa: E712
         )
 
-        sql = sql_apply_runconfig_filter(
-            update_sql, self.sql_table, self.primary_keys, run_config
-        )
+        sql = sql_apply_runconfig_filter(update_sql, self.sql_table, self.primary_keys, run_config)
 
         # execute
         with self.dbconn.con.begin() as con:
@@ -670,10 +640,7 @@ def sql_apply_filters_idx_to_subquery(
     if len(applicable_filter_keys) > 0:
         sql = sql.where(
             sa.tuple_(*[sa.column(i) for i in applicable_filter_keys]).in_(
-                [
-                    sa.tuple_(*[r[k] for k in applicable_filter_keys])
-                    for r in filters_idx.to_dict(orient="records")
-                ]
+                [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in filters_idx.to_dict(orient="records")]
             )
         )
 
@@ -709,13 +676,9 @@ def _make_agg_of_agg(
         if len(ctes_with_key) == 1:
             coalesce_keys.append(ctes_with_key[0].c[key])
         else:
-            coalesce_keys.append(
-                sa.func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key)
-            )
+            coalesce_keys.append(sa.func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key))
 
-    agg = sa.func.max(
-        ds.meta_dbconn.func_greatest(*[cte.cte.c[agg_col] for cte in ctes])
-    ).label(agg_col)
+    agg = sa.func.max(ds.meta_dbconn.func_greatest(*[cte.cte.c[agg_col] for cte in ctes])).label(agg_col)
 
     first_cte = ctes[0].cte
 
@@ -787,8 +750,7 @@ def build_changed_idx_sql(
     tr_tbl = meta_table.sql_table
     out: Any = (
         sa.select(
-            *[sa.column(k) for k in transform_keys]
-            + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            *[sa.column(k) for k in transform_keys] + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
         )
         .select_from(tr_tbl)
         .group_by(*[sa.column(k) for k in transform_keys])
@@ -803,19 +765,14 @@ def build_changed_idx_sql(
     elif len(transform_keys) == 1:
         join_onclause_sql = agg_of_aggs.c[transform_keys[0]] == out.c[transform_keys[0]]
     else:  # len(transform_keys) > 1:
-        join_onclause_sql = sa.and_(
-            *[agg_of_aggs.c[key] == out.c[key] for key in transform_keys]
-        )
+        join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in transform_keys])
 
     sql = (
         sa.select(
             # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
             # пустом transform_keys
             sa.literal(1).label("_datapipe_dummy"),
-            *[
-                sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key)
-                for key in transform_keys
-            ],
+            *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in transform_keys],
         )
         .select_from(agg_of_aggs)
         .outerjoin(

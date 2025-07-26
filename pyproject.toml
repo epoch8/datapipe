@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.2"
+version = "0.14.5-dev.1"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
@@ -10,7 +10,7 @@ dependencies = [
     "fsspec>=2021.11.1",
     "pandas>=1.2.0",
     "numpy>=1.21.0, <2.0",
-    "SQLAlchemy>=2.0.0, <3.0.0",
+    "SQLAlchemy>=1.4.0, <3.0.0",
     "psycopg2_binary>=2.8.4",
     "cloudpickle>=1.6.0",
     "PyYAML>=5.3.1",
@@ -24,7 +24,6 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
     "rich>=13.3.2,<14",
-    "types-tqdm>=4.67.0.20241221",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +40,7 @@ qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 elastic = ["elasticsearch>=8.17.1"]
+neo4j = ["neo4j"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -61,10 +61,14 @@ dev = [
     "types-tqdm",
     "types-pillow",
     "types-PyYAML",
+    "types-tqdm>=4.67.0.20241221",
 ]
 
 [tool.ruff]
 line-length = 120
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.sdist]
 include = ["datapipe", "datapipe/py.typed"]

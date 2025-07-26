@@ -1,3 +1,15 @@
+# WIP
+
+* Fix for getting existing idx of empy meta-table
+
+# 0.14.4
+
+* Relax SQLAlchemy requirement to allow 1.4.x support
+
+# 0.14.3
+
+* New table store: `datapipe.store.neo4j.Neo4JStore` for graph databases
+
 # 0.14.2
 
 New stuff:
