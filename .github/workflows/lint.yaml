@@ -6,6 +6,8 @@ on:
       - ".github/workflows/lint.yaml"
       - "datapipe/**"
       - "pyproject.toml"
+    tags-ignore:
+      - '**'
 
 
 jobs:
