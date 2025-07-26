@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.4"
+version = "0.14.5-dev.1"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
