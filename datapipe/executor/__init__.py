@@ -15,8 +15,7 @@ class ProcessFn(Protocol):
         ds: DataStore,
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
-    ) -> ChangeList:
-        ...
+    ) -> ChangeList: ...
 
 
 @dataclass
@@ -39,8 +38,7 @@ class Executor(ABC):
         process_fn: ProcessFn,
         run_config: Optional[RunConfig] = None,
         executor_config: Optional[ExecutorConfig] = None,
-    ) -> ChangeList:
-        ...
+    ) -> ChangeList: ...
 
 
 class SingleThreadExecutor(Executor):

@@ -114,9 +114,7 @@ def test_insert_rows(
     )
     keys = list(set(mt.primary_keys) | set(mt.meta_keys.keys()))
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(
-        test_df
-    )
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
     assert_df_equal(new_df, test_df, index_cols=index_cols)
     assert len(new_df) == len(test_df)
     assert len(new_meta_df) == len(test_df)
@@ -157,9 +155,7 @@ def test_get_metadata(
         create_table=True,
     )
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(
-        test_df
-    )
+    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
     mt.update_rows(df=new_meta_df)
 
     part_df = test_df.iloc[0:2]

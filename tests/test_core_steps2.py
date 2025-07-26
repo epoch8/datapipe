@@ -80,13 +80,9 @@ ITEMS_DF = pd.DataFrame(
 def test_batch_transform(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True))
 
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True))
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
@@ -118,13 +114,9 @@ def test_batch_transform(dbconn):
 def test_batch_transform_with_filter(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True))
 
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True))
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
@@ -148,13 +140,9 @@ def test_batch_transform_with_filter(dbconn):
 def test_batch_transform_with_filter_not_in_transform_index(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True))
 
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA2, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA2, True))
 
     tbl1.store_chunk(TEST_DF1_2, now=0)
 
@@ -177,13 +165,9 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
 def test_batch_transform_with_dt_on_input_and_output(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True))
 
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True))
 
     df2 = TEST_DF1_1.loc[3:8]
     df2["a"] = df2["a"].apply(lambda x: x + 10)
@@ -287,9 +271,7 @@ def test_batch_transform_with_fails(dbconn):
 def test_gen_with_filter(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA1, True)
-    )
+    tbl = ds.create_table("tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA1, True))
 
     tbl.store_chunk(TEST_DF1_1, now=0)
 
@@ -303,21 +285,15 @@ def test_gen_with_filter(dbconn):
         run_config=RunConfig(filters={"pipeline_id": 0}),
     )
 
-    assert_datatable_equal(
-        tbl, TEST_DF1_1.query("(pipeline_id == 0 and item_id == 0) or pipeline_id == 1")
-    )
+    assert_datatable_equal(tbl, TEST_DF1_1.query("(pipeline_id == 0 and item_id == 0) or pipeline_id == 1"))
 
 
 def test_transform_with_changelist(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA1, True))
 
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True))
 
     tbl1.store_chunk(TEST_DF1_1, now=0)
 
@@ -357,13 +333,9 @@ def test_batch_transform_with_entity(dbconn):
         table_store=TableStoreDB(dbconn, "products_data", PRODUCTS_SCHEMA, True),
     )
 
-    items = ds.create_table(
-        "items", table_store=TableStoreDB(dbconn, "items_data", ITEMS_SCHEMA, True)
-    )
+    items = ds.create_table("items", table_store=TableStoreDB(dbconn, "items_data", ITEMS_SCHEMA, True))
 
-    items2 = ds.create_table(
-        "items2", table_store=TableStoreDB(dbconn, "items2_data", ITEMS_SCHEMA, True)
-    )
+    items2 = ds.create_table("items2", table_store=TableStoreDB(dbconn, "items2_data", ITEMS_SCHEMA, True))
 
     products.store_chunk(PRODUCTS_DF, now=0)
     items.store_chunk(ITEMS_DF, now=0)

@@ -96,9 +96,7 @@ class MilvusStore(TableStore):
 
         return pd.DataFrame.from_records(result)
 
-    def vector_search(
-        self, embeddings: List, query_params: Dict, expr: str, limit: int
-    ) -> SearchResult:
+    def vector_search(self, embeddings: List, query_params: Dict, expr: str, limit: int) -> SearchResult:
         if not self._collection_loaded:
             self.collection.load()
             self._collection_loaded = True

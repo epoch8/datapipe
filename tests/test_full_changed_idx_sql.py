@@ -81,11 +81,9 @@ def test_check_full_step_idx_count_when_some_idxs_are_deleted(dbconn):
         }
     )
 
-    def complex_function(
-        df__item, df__item2, df__pipeline
-    ):
+    def complex_function(df__item, df__item2, df__pipeline):
         df__item = pd.merge(df__item, df__item2)
-        df__output = pd.merge(df__item[["item_id"]], df__pipeline[["pipeline_id"]], how='cross')
+        df__output = pd.merge(df__item[["item_id"]], df__pipeline[["pipeline_id"]], how="cross")
         return df__output[["item_id", "pipeline_id"]]
 
     pipeline = Pipeline(

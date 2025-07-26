@@ -48,9 +48,7 @@ class DataTable:
 
     def reset_metadata(self):
         with self.meta_dbconn.con.begin() as con:
-            con.execute(
-                self.meta_table.sql_table.update().values(process_ts=0, update_ts=0)
-            )
+            con.execute(self.meta_table.sql_table.update().values(process_ts=0, update_ts=0))
 
     def get_size(self) -> int:
         """
@@ -87,9 +85,7 @@ class DataTable:
 
         with tracer.start_as_current_span(f"{self.name} store_chunk"):
             if not data_df.empty:
-                logger.debug(
-                    f"Inserting chunk {len(data_df.index)} rows into {self.name}"
-                )
+                logger.debug(f"Inserting chunk {len(data_df.index)} rows into {self.name}")
 
                 with tracer.start_as_current_span("get_changes_for_store_chunk"):
                     (
@@ -108,13 +104,7 @@ class DataTable:
                     self.meta_table.update_rows(
                         cast(
                             MetadataDF,
-                            pd.concat(
-                                [
-                                    df
-                                    for df in [new_meta_df, changed_meta_df]
-                                    if not df.empty
-                                ]
-                            ),
+                            pd.concat([df for df in [new_meta_df, changed_meta_df] if not df.empty]),
                         )
                     )
 
@@ -157,9 +147,7 @@ class DataTable:
         now: Optional[float] = None,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        for deleted_df in self.meta_table.get_stale_idx(
-            process_ts, run_config=run_config
-        ):
+        for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
 
             self.delete_by_idx(deleted_idx, now=now, run_config=run_config)

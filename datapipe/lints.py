@@ -101,20 +101,10 @@ class LintDataWOMeta(Lint):
         exists_sql = (
             select(literal(1))
             .select_from(meta_tbl)
-            .where(
-                and_(
-                    *[
-                        meta_tbl.c[col.name] == data_tbl.c[col.name]
-                        for col in meta_tbl.columns
-                        if col.primary_key
-                    ]
-                )
-            )
+            .where(and_(*[meta_tbl.c[col.name] == data_tbl.c[col.name] for col in meta_tbl.columns if col.primary_key]))
         )
 
-        sql = (
-            select(func.count()).select_from(data_tbl).where(not_(exists_sql.exists()))
-        )
+        sql = select(func.count()).select_from(data_tbl).where(not_(exists_sql.exists()))
 
         return sql
 
@@ -127,20 +117,11 @@ class LintDataWOMeta(Lint):
         exists_sql = (
             select(literal(1))
             .select_from(meta_tbl)
-            .where(
-                and_(
-                    *[
-                        meta_tbl.c[col.name] == data_tbl.c[col.name]
-                        for col in meta_tbl.columns
-                        if col.primary_key
-                    ]
-                )
-            )
+            .where(and_(*[meta_tbl.c[col.name] == data_tbl.c[col.name] for col in meta_tbl.columns if col.primary_key]))
         )
 
         sql = insert(meta_tbl).from_select(
-            [col.name for col in meta_tbl.columns if col.primary_key]
-            + ["hash", "create_ts", "update_ts", "delete_ts"],
+            [col.name for col in meta_tbl.columns if col.primary_key] + ["hash", "create_ts", "update_ts", "delete_ts"],
             select(  # type: ignore
                 *[data_tbl.c[col.name] for col in meta_tbl.columns if col.primary_key]
                 + [

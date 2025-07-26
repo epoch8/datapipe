@@ -26,12 +26,8 @@ TEST_DF_INC1 = TEST_DF.assign(a=lambda df: df["a"] + 1)
 def test_inc_process_proc_no_change(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
 
     def id_func(df):
         return TEST_DF

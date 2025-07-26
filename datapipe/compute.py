@@ -41,9 +41,7 @@ class Catalog:
     def get_datatable(self, ds: DataStore, table: TableOrName) -> DataTable:
         if isinstance(table, str):
             assert table in self.catalog, f"Table {table} not found in catalog"
-            return ds.get_or_create_table(
-                name=table, table_store=self.catalog[table].store
-            )
+            return ds.get_or_create_table(name=table, table_store=self.catalog[table].store)
 
         elif isinstance(table, Table):
             assert table.name is not None, f"Table name must be specified for {table}"
@@ -53,8 +51,7 @@ class Catalog:
             else:
                 existing_table = self.catalog[table.name]
                 assert existing_table.store == table.store, (
-                    f"Table {table.name} already exists in catalog "
-                    f"with different store {existing_table.store}"
+                    f"Table {table.name} already exists in catalog with different store {existing_table.store}"
                 )
 
             return ds.get_or_create_table(name=table.name, table_store=table.store)
@@ -66,8 +63,7 @@ class Catalog:
             else:
                 existing_table_store = self.catalog[table_store.name].store
                 assert isinstance(existing_table_store, TableStoreDB), (
-                    f"Table {table_store.name} already exists in catalog "
-                    f"with different store {existing_table_store}"
+                    f"Table {table_store.name} already exists in catalog with different store {existing_table_store}"
                 )
 
                 assert existing_table_store.data_table == table.__table__, (  # type: ignore
@@ -75,9 +71,7 @@ class Catalog:
                     f"with different orm_table {existing_table_store.data_table}"
                 )
 
-            return ds.get_or_create_table(
-                name=table_store.name, table_store=table_store
-            )
+            return ds.get_or_create_table(name=table_store.name, table_store=table_store)
 
 
 @dataclass
@@ -245,9 +239,7 @@ class DatapipeApp:
         self.steps = build_compute(ds, catalog, pipeline)
 
 
-def build_compute(
-    ds: DataStore, catalog: Catalog, pipeline: Pipeline
-) -> List[ComputeStep]:
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)
 

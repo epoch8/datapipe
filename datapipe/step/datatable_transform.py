@@ -100,10 +100,7 @@ class DatatableTransform(PipelineStep):
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
-                input_dts=[
-                    ComputeInput(dt=catalog.get_datatable(ds, i), join_type="full")
-                    for i in self.inputs
-                ],
+                input_dts=[ComputeInput(dt=catalog.get_datatable(ds, i), join_type="full") for i in self.inputs],
                 output_dts=[catalog.get_datatable(ds, i) for i in self.outputs],
                 func=self.func,
                 kwargs=self.kwargs,
