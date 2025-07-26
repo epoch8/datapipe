@@ -17,14 +17,10 @@ from datapipe.types import Labels, MetadataDF, TableOrName, cast
 logger = logging.getLogger("datapipe.step.update_external_table")
 
 
-def update_external_table(
-    ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None
-) -> None:
+def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
     now = time.time()
 
-    for ps_df in tqdm(
-        table.table_store.read_rows_meta_pseudo_df(run_config=run_config)
-    ):
+    for ps_df in tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
         (
             new_df,
             changed_df,
@@ -74,12 +70,14 @@ class UpdateExternalTable(PipelineStep):
         ):
             return update_external_table(ds, output_dts[0], run_config)
 
+        output_table = catalog.get_datatable(ds, self.output_table_name)
+
         return [
             DatatableTransformStep(
-                name=f"update_{self.output_table_name}",
+                name=f"update_{output_table.name}",
                 func=cast(DatatableTransformFunc, transform_func),
                 input_dts=[],
-                output_dts=[catalog.get_datatable(ds, self.output_table_name)],
+                output_dts=[output_table],
                 labels=self.labels,
             )
         ]
