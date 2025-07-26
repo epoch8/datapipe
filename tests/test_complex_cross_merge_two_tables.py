@@ -12,8 +12,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-
-from .util import assert_datatable_equal, assert_df_equal
+from datapipe.tests.util import assert_datatable_equal, assert_df_equal
 
 TEST_SCHEMA_LEFT = [
     pytest.param(

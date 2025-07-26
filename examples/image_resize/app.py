@@ -9,7 +9,11 @@ from datapipe.store.filedir import PILFile, TableStoreFiledir
 
 input_images_tbl = Table(
     name="input_images",
-    store=TableStoreFiledir("input/{id}.jpeg", PILFile("jpg")),
+    store=TableStoreFiledir(
+        "datapipe-examples/image_resize/input/{id}.jpeg",
+        PILFile("jpg"),
+        fsspec_kwargs={"protocol": "gs"},
+    ),
 )
 
 preprocessed_images_tbl = Table(

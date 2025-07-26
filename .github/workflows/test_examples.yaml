@@ -40,7 +40,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray]"
+          pip install ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray,elastic]"
 
       - name: Test example
         run: |

@@ -1,10 +1,12 @@
 import pandas as pd
+import pytest
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
-from datapipe.store.pandas import TableStoreJsonLine
+from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
+from datapipe.store.tests.abstract import AbstractBaseStoreTests
 
 
 def test_table_store_json_line_reading(tmp_dir):
@@ -71,3 +73,21 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
     assert len(catalog.get_datatable(ds, "input_data").get_data()) == 2
     assert len(catalog.get_datatable(ds, "transfomed_data").get_data()) == 2
+
+
+class TestTableStoreJsonLine(AbstractBaseStoreTests):
+    @pytest.fixture
+    def store_maker(self, tmp_dir):
+        def make_db_store(data_schema):
+            return TableStoreJsonLine(tmp_dir / "data.json", primary_schema=data_schema)
+
+        return make_db_store
+
+
+class TestTableStoreExcel(AbstractBaseStoreTests):
+    @pytest.fixture
+    def store_maker(self, tmp_dir):
+        def make_db_store(data_schema):
+            return TableStoreExcel(tmp_dir / "data.xlsx", primary_schema=data_schema)
+
+        return make_db_store

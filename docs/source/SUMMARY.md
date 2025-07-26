@@ -4,8 +4,8 @@
 
 - [Introduction](./introduction.md)
 - [Concepts](./concepts.md)
-    - [Table](./concepts-table.md)
-    - [Transform](./concepts-transform.md)
+  - [Table](./concepts-table.md)
+  - [Transform](./concepts-transform.md)
 - [How merging works](./how-merging-works.md)
 
 # Command Line Interface
@@ -15,12 +15,20 @@
 # Reference
 
 - [BatchTransform](./reference-batchtransform.md)
+- [TableStore](./table-store.md)
+  - [Database](./table-store-db.md)
+  - [Filedir](./table-store-filedir.md)
+  - [Redis](./table-store-redis.md)
+  - [Elastic](./table-store-elastic.md)
+  - [Qdrant](./table-store-qdrant.md)
+  - [Milvus](./table-store-milvus.md)
 
 # Advanced Topics
 
 - [Lifecycle of a ComputeStep](./transformation-lifecycle.md)
 - [Using with SQLite](./sqlite.md)
 - [Extending CLI](./extending-cli.md)
+- [Developing TableStore](./developing-table-store.md)
 
 # Migration
 

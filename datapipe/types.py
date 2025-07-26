@@ -4,6 +4,7 @@ import itertools
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     List,
@@ -18,6 +19,14 @@ from typing import (
 
 import pandas as pd
 from sqlalchemy import Column
+if TYPE_CHECKING:
+    from sqlalchemy.orm.decl_api import DeclarativeBase
+else:
+    try:                                        # SQLAlchemy ≥ 2.0
+        from sqlalchemy.orm.decl_api import DeclarativeBase
+    except ImportError:                         # SQLAlchemy 1.x
+        from sqlalchemy.ext.declarative import declarative_base
+        DeclarativeBase: Type[Any] = declarative_base()      # type: ignore[valid-type]
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
@@ -41,9 +50,7 @@ Labels = List[Tuple[str, str]]
 
 TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
 
-from sqlalchemy.orm.decl_api import DeclarativeMeta
-
-OrmTable = Type[DeclarativeMeta]
+OrmTable = Type[DeclarativeBase]
 
 TableOrName = Union[str, OrmTable, "Table"]
 

@@ -1,4 +1,26 @@
-# WIP 0.14.1
+# 0.14.4
+
+* Relax SQLAlchemy requirement to allow 1.4.x support
+
+# 0.14.3
+
+* New table store: `datapipe.store.neo4j.Neo4JStore` for graph databases
+
+# 0.14.2
+
+New stuff:
+* New table store: `datapipe.store.elastic.ElasticStore`
+
+Internal changes:
+* Convert dependency management to UV
+* Fix `datapipe.types.OrmTable` type
+* Add `TableStore.caps` to introspect what features does specific table store
+  supports
+* Implement abstract test suite for TableStore:
+  `datapipe.store.tests.abstract.AbstractBaseStoreTests`
+* Refactor `test_table_store` to use `AbstractBaseStoreTests`
+
+# 0.14.1
 
 * Refactor metadata handling into `datapipe.meta` submodule
 * Add `Required` qualifier for `inputs`
