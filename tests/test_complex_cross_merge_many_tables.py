@@ -87,24 +87,16 @@ def get_all_cases_schemes():
                     yield input_schema_tables, output_schema_tables
 
 
-def get_primary_key_to_their_tables(
-    schemas: List[List[Column]], table_names: List[str]
-):
-    primary_keys = [
-        set([x.name for x in schema if x.primary_key]) for schema in schemas
-    ]
+def get_primary_key_to_their_tables(schemas: List[List[Column]], table_names: List[str]):
+    primary_keys = [set([x.name for x in schema if x.primary_key]) for schema in schemas]
     idxs = range(len(schemas))
     pairs = itertools.combinations(idxs, 2)
     nt = lambda a, b: primary_keys[a].intersection(primary_keys[b])
-    table_name1_table_name2_to_intersection_idxs = {
-        (table_names[t[0]], table_names[t[1]]): nt(*t) for t in pairs
-    }
+    table_name1_table_name2_to_intersection_idxs = {(table_names[t[0]], table_names[t[1]]): nt(*t) for t in pairs}
     return table_name1_table_name2_to_intersection_idxs
 
 
-def cross_merge_func(
-    *dfs, input_intersection_idxs: List[str], output_schema_tables: List[List[Column]]
-):
+def cross_merge_func(*dfs, input_intersection_idxs: List[str], output_schema_tables: List[List[Column]]):
     df_res = dfs[0]
     for df in dfs[1:]:
         if len(input_intersection_idxs) > 0:
@@ -113,8 +105,7 @@ def cross_merge_func(
             # TODO: добавить случай с разными попарного пересечения индексов таблиц
             df_res = pd.merge(df_res, df, how="cross")
     return [
-        df_res[[x.name for x in columns]].drop_duplicates([x.name for x in columns])
-        for columns in output_schema_tables
+        df_res[[x.name for x in columns]].drop_duplicates([x.name for x in columns]) for columns in output_schema_tables
     ]
 
 
@@ -125,47 +116,23 @@ def get_all_cases():
         output_schema_tables_params,
     ) in get_all_cases_schemes():
         input_schema_tables = [
-            input_schema_tables_param.values[0]
-            for input_schema_tables_param in input_schema_tables_params
+            input_schema_tables_param.values[0] for input_schema_tables_param in input_schema_tables_params
         ]
         output_schema_tables = [
-            output_schema_tables_param.values[0]
-            for output_schema_tables_param in output_schema_tables_params
+            output_schema_tables_param.values[0] for output_schema_tables_param in output_schema_tables_params
         ]
-        input_tables_names = [
-            f"table_input{i}" for i in range(len(input_schema_tables))
-        ]
-        output_tables_names = [
-            f"table_output{i}" for i in range(len(output_schema_tables))
-        ]
-        input_table_name1_table_name2_to_intersection_idxs = (
-            get_primary_key_to_their_tables(input_schema_tables, input_tables_names)
+        input_tables_names = [f"table_input{i}" for i in range(len(input_schema_tables))]
+        output_tables_names = [f"table_output{i}" for i in range(len(output_schema_tables))]
+        input_table_name1_table_name2_to_intersection_idxs = get_primary_key_to_their_tables(
+            input_schema_tables, input_tables_names
         )
-        input_all_columns = list(
-            set([x.name for schema in input_schema_tables for x in schema])
-        )
-        output_all_columns = list(
-            set([x.name for schema in output_schema_tables for x in schema])
-        )
-        if any(
-            [
-                output_column not in input_all_columns
-                for output_column in output_all_columns
-            ]
-        ):
+        input_all_columns = list(set([x.name for schema in input_schema_tables for x in schema]))
+        output_all_columns = list(set([x.name for schema in output_schema_tables for x in schema]))
+        if any([output_column not in input_all_columns for output_column in output_all_columns]):
             continue
-        outputs_primary_keys = [
-            [x.name for x in schema if x.primary_key] for schema in output_schema_tables
-        ]
+        outputs_primary_keys = [[x.name for x in schema if x.primary_key] for schema in output_schema_tables]
         total_output_primary_keys = list(
-            set(
-                [
-                    x.name
-                    for schema in output_schema_tables
-                    for x in schema
-                    if x.primary_key
-                ]
-            )
+            set([x.name for schema in output_schema_tables for x in schema if x.primary_key])
         )
         input_intersection_idxs = max(
             input_table_name1_table_name2_to_intersection_idxs.values(),
@@ -185,26 +152,13 @@ def get_all_cases():
             input_intersection_idxs=input_intersection_idxs,
             output_schema_tables=output_schema_tables,
         )
-        primary_keys = (
-            list(input_intersection_idxs)
-            if len(input_intersection_idxs) > 0
-            else total_output_primary_keys
-        )
+        primary_keys = list(input_intersection_idxs) if len(input_intersection_idxs) > 0 else total_output_primary_keys
         input_id = "__".join(sorted([param.id for param in input_schema_tables_params]))
-        output_id = "__".join(
-            sorted([param.id for param in output_schema_tables_params])
-        )
+        output_id = "__".join(sorted([param.id for param in output_schema_tables_params]))
         for len_transform_keys in range(1, len(primary_keys) + 1):
-            for transform_keys in itertools.combinations(
-                primary_keys, len_transform_keys
-            ):
+            for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                 if not all(
-                    all(
-                        [
-                            transform_key in output_primary_keys
-                            for transform_key in transform_keys
-                        ]
-                    )
+                    all([transform_key in output_primary_keys for transform_key in transform_keys])
                     for output_primary_keys in outputs_primary_keys
                 ):
                     # Все ключи трансформаций должны полностью входить в ключи выходных таблиц
@@ -245,20 +199,12 @@ def test_complex_cross_merge_on_many_tables(dbconn, test_case):
     catalog = Catalog(
         {
             **{
-                input_table_name: Table(
-                    store=TableStoreDB(dbconn, input_table_name, input_schema, True)
-                )
-                for input_table_name, input_schema in zip(
-                    input_tables_names, input_schema_tables
-                )
+                input_table_name: Table(store=TableStoreDB(dbconn, input_table_name, input_schema, True))
+                for input_table_name, input_schema in zip(input_tables_names, input_schema_tables)
             },
             **{
-                output_table_name: Table(
-                    store=TableStoreDB(dbconn, output_table_name, output_schema, True)
-                )
-                for output_table_name, output_schema in zip(
-                    output_tables_names, output_schema_tables
-                )
+                output_table_name: Table(store=TableStoreDB(dbconn, output_table_name, output_schema, True))
+                for output_table_name, output_schema in zip(output_tables_names, output_schema_tables)
             },
         }
     )
@@ -268,12 +214,8 @@ def test_complex_cross_merge_on_many_tables(dbconn, test_case):
 
     pipeline_case = Pipeline(
         [
-            BatchGenerate(
-                func=gen_tbl, outputs=[input_table_name], kwargs=dict(df=test_input_df)
-            )
-            for input_table_name, test_input_df in zip(
-                input_tables_names, test_input_dfs
-            )
+            BatchGenerate(func=gen_tbl, outputs=[input_table_name], kwargs=dict(df=test_input_df))
+            for input_table_name, test_input_df in zip(input_tables_names, test_input_dfs)
         ]
         + [
             BatchTransform(

@@ -25,10 +25,7 @@ def make_df():
     return pd.DataFrame(
         {
             "id": idx,
-            "image": [
-                Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), "RGB")
-                for i in idx
-            ],
+            "image": [Image.fromarray(np.random.randint(0, 256, (100, 100, 3)), "RGB") for i in idx],
         }
     )
 
@@ -47,16 +44,12 @@ def test_image_datatables(dbconn, tmp_dir):
 
     tbl1 = ds.create_table(
         "tbl1",
-        table_store=TableStoreFiledir(
-            tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")
-        ),
+        table_store=TableStoreFiledir(tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")),
     )
 
     tbl2 = ds.create_table(
         "tbl2",
-        table_store=TableStoreFiledir(
-            tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")
-        ),
+        table_store=TableStoreFiledir(tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")),
     )
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 0
@@ -85,16 +78,8 @@ def test_image_datatables(dbconn, tmp_dir):
 def test_image_pipeline(dbconn, tmp_dir):
     catalog = Catalog(
         {
-            "tbl1": Table(
-                store=TableStoreFiledir(
-                    tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png")
-                )
-            ),
-            "tbl2": Table(
-                store=TableStoreFiledir(
-                    tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png")
-                )
-            ),
+            "tbl1": Table(store=TableStoreFiledir(tmp_dir / "tbl1" / "{id}.png", adapter=PILFile("png"))),
+            "tbl2": Table(store=TableStoreFiledir(tmp_dir / "tbl2" / "{id}.png", adapter=PILFile("png"))),
         }
     )
 
@@ -127,7 +112,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     df_images = make_df()
     (tmp_dir / "tbl1").mkdir()
     for _, row in df_images[["id", "image"]].iterrows():
-        row["image"].save(tmp_dir / "tbl1" / f'{row["id"]}.png')
+        row["image"].save(tmp_dir / "tbl1" / f"{row['id']}.png")
 
     catalog = Catalog(
         {

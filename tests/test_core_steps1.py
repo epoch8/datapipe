@@ -67,9 +67,7 @@ def yield_df(data):
 def test_gen_process(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
 
     def gen():
         yield TEST_DF
@@ -88,12 +86,8 @@ def test_gen_process(dbconn) -> None:
 def test_inc_process_modify_values(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -123,12 +117,8 @@ def test_inc_process_modify_values(dbconn) -> None:
 def test_inc_process_delete_values_from_input(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
 
     def id_func(df):
         return df
@@ -148,9 +138,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
     assert_datatable_equal(tbl2, TEST_DF)
 
     ##########################
-    tbl1.store_chunk(
-        TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys)
-    )
+    tbl1.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl1.primary_keys))
 
     assert_datatable_equal(tbl1, TEST_DF[:5])
 
@@ -162,12 +150,8 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
 def test_inc_process_delete_values_from_proc(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
 
     def id_func(df):
         return df[:5]
@@ -196,18 +180,10 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
 def test_gen_process_many(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl_gen = ds.create_table(
-        "tbl_gen", table_store=TableStoreDB(dbconn, "tbl_gen_data", TEST_SCHEMA, True)
-    )
-    tbl1_gen = ds.create_table(
-        "tbl1_gen", table_store=TableStoreDB(dbconn, "tbl1_gen_data", TEST_SCHEMA, True)
-    )
-    tbl2_gen = ds.create_table(
-        "tbl2_gen", table_store=TableStoreDB(dbconn, "tbl2_gen_data", TEST_SCHEMA, True)
-    )
-    tbl3_gen = ds.create_table(
-        "tbl3_gen", table_store=TableStoreDB(dbconn, "tbl3_gen_data", TEST_SCHEMA, True)
-    )
+    tbl_gen = ds.create_table("tbl_gen", table_store=TableStoreDB(dbconn, "tbl_gen_data", TEST_SCHEMA, True))
+    tbl1_gen = ds.create_table("tbl1_gen", table_store=TableStoreDB(dbconn, "tbl1_gen_data", TEST_SCHEMA, True))
+    tbl2_gen = ds.create_table("tbl2_gen", table_store=TableStoreDB(dbconn, "tbl2_gen_data", TEST_SCHEMA, True))
+    tbl3_gen = ds.create_table("tbl3_gen", table_store=TableStoreDB(dbconn, "tbl3_gen_data", TEST_SCHEMA, True))
 
     def gen():
         yield (TEST_DF, TEST_DF_INC1, TEST_DF_INC2, TEST_DF_INC3)
@@ -227,18 +203,10 @@ def test_gen_process_many(dbconn) -> None:
 def test_inc_process_many_modify_values(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True)
-    )
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
-    tbl3 = ds.create_table(
-        "tbl3", table_store=TableStoreDB(dbconn, "tbl3_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True))
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
+    tbl3 = ds.create_table("tbl3", table_store=TableStoreDB(dbconn, "tbl3_data", TEST_SCHEMA, True))
 
     def inc_func(df):
         df1 = df.copy()
@@ -318,12 +286,8 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
             True,
         ),
     )
-    tbl1 = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True)
-    )
+    tbl1 = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA, True))
 
     def inc_func(df1, df2):
         df = pd.merge(left=df1, right=df2, on=["id"], suffixes=("_first", "_second"))
@@ -369,9 +333,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
 
     assert_df_equal(
         tbl.get_data(idx=changed_ids_df),
-        pd.DataFrame(
-            {"id": changed_ids, "a_first": [1, 5, 7], "a_second": [12, 12, 12]}
-        ),
+        pd.DataFrame({"id": changed_ids, "a_first": [1, 5, 7], "a_second": [12, 12, 12]}),
     )
 
     assert_df_equal(
@@ -391,9 +353,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
 
     assert_df_equal(
         tbl.get_data(idx=changed_ids_df),
-        pd.DataFrame(
-            {"id": changed_ids, "a_first": [21, 21, 21], "a_second": [12, 12, 12]}
-        ),
+        pd.DataFrame({"id": changed_ids, "a_first": [21, 21, 21], "a_second": [12, 12, 12]}),
     )
 
     assert_df_equal(
@@ -414,15 +374,9 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     bad_ids = [0, 1, 5, 8]
     good_ids = [2, 3, 4, 6, 7, 9]
 
-    tbl = ds.create_table(
-        "tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True)
-    )
-    tbl_good = ds.create_table(
-        "tbl_good", table_store=TableStoreDB(dbconn, "tbl_good_data", TEST_SCHEMA, True)
-    )
-    tbl_bad = ds.create_table(
-        "tbl_bad", table_store=TableStoreDB(dbconn, "tbl_bad_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True))
+    tbl_good = ds.create_table("tbl_good", table_store=TableStoreDB(dbconn, "tbl_good_data", TEST_SCHEMA, True))
+    tbl_bad = ds.create_table("tbl_bad", table_store=TableStoreDB(dbconn, "tbl_bad_data", TEST_SCHEMA, True))
 
     tbl.store_chunk(TEST_DF)
 
@@ -456,16 +410,12 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
 def test_inc_process_many_one_to_many(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA_OTM, True)
-    )
+    tbl = ds.create_table("tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA_OTM, True))
     tbl_rel = ds.create_table(
         "tbl_rel",
         table_store=TableStoreDB(dbconn, "tbl_rel_data", TEST_SCHEMA_OTM2, True),
     )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM, True))
 
     tbl.store_chunk(TEST_OTM_DF)
 
@@ -522,16 +472,12 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
 def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA_OTM, True)
-    )
+    tbl = ds.create_table("tbl", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA_OTM, True))
     tbl_rel = ds.create_table(
         "tbl_rel",
         table_store=TableStoreDB(dbconn, "tbl_rel_data", TEST_SCHEMA_OTM2, True),
     )
-    tbl2 = ds.create_table(
-        "tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM3, True)
-    )
+    tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM3, True))
 
     tbl.store_chunk(TEST_OTM_DF)
 
@@ -709,9 +655,7 @@ def test_error_handling(dbconn) -> None:
 
 def test_gen_from_empty_rows(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
-    tbl = ds.create_table(
-        "test", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("test", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True))
 
     def proc_func():
         yield pd.DataFrame.from_records({key: [] for key in tbl.primary_keys})
@@ -726,9 +670,7 @@ def test_gen_from_empty_rows(dbconn) -> None:
 
 def test_gen_from_empty_df(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
-    tbl = ds.create_table(
-        "test", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("test", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True))
 
     def proc_func():
         yield pd.DataFrame()

@@ -52,15 +52,9 @@ def test_delete_table_after_filter(dbconn):
     catalog = Catalog(
         {
             "tbl": Table(store=TableStoreDB(dbconn, "tbl", TEST_SCHEMA, True)),
-            "tbl_filter": Table(
-                store=TableStoreDB(dbconn, "tbl_filter", TEST_FILTER_SCHEMA, True)
-            ),
-            "tbl_final_id1_id2": Table(
-                store=TableStoreDB(dbconn, "tbl_final_id1_id2", TEST_SCHEMA, True)
-            ),
-            "tbl_final_id1": Table(
-                store=TableStoreDB(dbconn, "tbl_final_id1", TEST_FINAL_SCHEMA, True)
-            ),
+            "tbl_filter": Table(store=TableStoreDB(dbconn, "tbl_filter", TEST_FILTER_SCHEMA, True)),
+            "tbl_final_id1_id2": Table(store=TableStoreDB(dbconn, "tbl_final_id1_id2", TEST_SCHEMA, True)),
+            "tbl_final_id1": Table(store=TableStoreDB(dbconn, "tbl_final_id1", TEST_FINAL_SCHEMA, True)),
         }
     )
 

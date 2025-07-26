@@ -41,22 +41,14 @@ class RedisStore(TableStore):
     ) -> None:
         self.connection = connection
         if not cluster_mode:
-            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(
-                connection, decode_responses=True
-            )
+            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(connection, decode_responses=True)
         else:
-            self.redis_connection = RedisCluster.from_url(
-                connection, decode_responses=True
-            )
+            self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
 
         self.name = name
         self.data_sql_schema = data_sql_schema
-        self.prim_keys = [
-            column.name for column in self.data_sql_schema if column.primary_key
-        ]
-        self.value_cols = [
-            column.name for column in self.data_sql_schema if not column.primary_key
-        ]
+        self.prim_keys = [column.name for column in self.data_sql_schema if column.primary_key]
+        self.value_cols = [column.name for column in self.data_sql_schema if not column.primary_key]
 
     def __getstate__(self) -> Dict:
         return {
@@ -96,18 +88,14 @@ class RedisStore(TableStore):
         assert df_keys is not None
 
         if df_keys.empty:
-            return pd.DataFrame(
-                columns=[column.name for column in self.data_sql_schema]
-            )
+            return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
         keys = _to_itertuples(df_keys, self.prim_keys)
         keys_json = [_serialize(key) for key in keys]
         values = self.redis_connection.hmget(self.name, keys_json)
         data = [list(key) + _deserialize(val) for key, val in zip(keys, values) if val]
 
-        result_df = pd.DataFrame.from_records(
-            data, columns=self.prim_keys + self.value_cols
-        )
+        result_df = pd.DataFrame.from_records(data, columns=self.prim_keys + self.value_cols)
         return result_df
 
     def delete_rows(self, df_keys: IndexDF) -> None:
@@ -122,6 +110,4 @@ class RedisStore(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         meta_key_prop = MetaKey.get_property_name()
-        return [
-            column for column in self.data_sql_schema if hasattr(column, meta_key_prop)
-        ]
+        return [column for column in self.data_sql_schema if hasattr(column, meta_key_prop)]

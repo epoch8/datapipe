@@ -76,9 +76,7 @@ def yield_df(data):
 def test_cloudpickle(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        name="test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table(name="test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True))
 
     dump = cloudpickle.dumps([ds, tbl])
 
@@ -97,9 +95,7 @@ def test_cloudpickle(dbconn) -> None:
 def test_simple(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True))
 
     tbl.store_chunk(TEST_DF)
 
@@ -109,9 +105,7 @@ def test_simple(dbconn) -> None:
 def test_store_less_values(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True))
 
     tbl.store_chunk(TEST_DF)
     assert_datatable_equal(tbl, TEST_DF)
@@ -123,18 +117,14 @@ def test_store_less_values(dbconn) -> None:
 def test_store_chunk_changelist(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
 
     tbl.store_chunk(TEST_DF)
 
     upd_df = TEST_DF.copy()
 
     upd_df.loc[1, "a"] = 10
-    upd_df = pd.concat(
-        [upd_df, pd.DataFrame.from_records([{"id": 10, "a": 11}])], axis="index"
-    )
+    upd_df = pd.concat([upd_df, pd.DataFrame.from_records([{"id": 10, "a": 11}])], axis="index")
 
     proc_idx = IndexDF(upd_df[["id"]])
     idx = IndexDF(pd.DataFrame({"id": [0, 1, 10]}))
@@ -147,9 +137,7 @@ def test_store_chunk_changelist(dbconn) -> None:
 def test_get_size(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
-    tbl = ds.create_table(
-        "tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True)
-    )
+    tbl = ds.create_table("tbl1", table_store=TableStoreDB(dbconn, "tbl1_data", TEST_SCHEMA, True))
 
     tbl.store_chunk(TEST_DF)
 

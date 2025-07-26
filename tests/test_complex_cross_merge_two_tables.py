@@ -154,28 +154,18 @@ def get_all_cases(reversed: bool):
                 + right_columns_primary_keys_no_intersecting
                 + lext_x_right_columns_primary_keys_intersecting
             )
-            left_x_right_columns_nonprimary_keys = [
-                x for x in left_schema if not x.primary_key
-            ] + [x for x in right_schema if not x.primary_key]
-            left_x_right_schema = (
-                left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
-            )
-            test_df_left = pd.DataFrame(
-                {column.name: TEST_DF_LEFT_VALUES for column in left_schema}
-            )
-            test_df_right = pd.DataFrame(
-                {column.name: TEST_DF_RIGHT_VALUES for column in right_schema}
-            )
+            left_x_right_columns_nonprimary_keys = [x for x in left_schema if not x.primary_key] + [
+                x for x in right_schema if not x.primary_key
+            ]
+            left_x_right_schema = left_x_right_columns_primary_keys + left_x_right_columns_nonprimary_keys
+            test_df_left = pd.DataFrame({column.name: TEST_DF_LEFT_VALUES for column in left_schema})
+            test_df_right = pd.DataFrame({column.name: TEST_DF_RIGHT_VALUES for column in right_schema})
             test_df_left_x_right = cross_merge_func(test_df_left, test_df_right)
             primary_keys = (
-                intersecting_idxs
-                if len(intersecting_idxs) > 0
-                else [x.name for x in left_x_right_columns_primary_keys]
+                intersecting_idxs if len(intersecting_idxs) > 0 else [x.name for x in left_x_right_columns_primary_keys]
             )
             for len_transform_keys in range(1, len(primary_keys) + 1):
-                for transform_keys in itertools.combinations(
-                    primary_keys, len_transform_keys
-                ):
+                for transform_keys in itertools.combinations(primary_keys, len_transform_keys):
                     if reversed and not all(
                         transform_key in columns
                         for columns in [test_df_left.columns, test_df_right.columns]
@@ -185,7 +175,9 @@ def get_all_cases(reversed: bool):
                         continue
 
                     id_transform_keys = "__".join(sorted(transform_keys))
-                    total_id = f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]"
+                    total_id = (
+                        f"[{left_schema_param.id}__{right_schema_param.id}]-trasnforms-keys-[{id_transform_keys}]"
+                    )
                     if total_id in looked_total_id:
                         continue
                     looked_total_id.add(total_id)
@@ -220,17 +212,9 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog(
         {
-            "tbl_left": Table(
-                store=TableStoreDB(dbconn, "tbl_left", left_schema, True)
-            ),
-            "tbl_right": Table(
-                store=TableStoreDB(dbconn, "tbl_right", right_schema, True)
-            ),
-            "tbl_left_x_right": Table(
-                store=TableStoreDB(
-                    dbconn, "tbl_left_x_right", left_x_right_schema, True
-                )
-            ),
+            "tbl_left": Table(store=TableStoreDB(dbconn, "tbl_left", left_schema, True)),
+            "tbl_right": Table(store=TableStoreDB(dbconn, "tbl_right", right_schema, True)),
+            "tbl_left_x_right": Table(store=TableStoreDB(dbconn, "tbl_left_x_right", left_x_right_schema, True)),
         }
     )
 
@@ -267,9 +251,7 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
 
 
-def reverse_cross_merge_func(
-    df_left_x_right: pd.DataFrame, left_schema: List[Column], right_schema: List[Column]
-):
+def reverse_cross_merge_func(df_left_x_right: pd.DataFrame, left_schema: List[Column], right_schema: List[Column]):
     df_left = df_left_x_right[[x.name for x in left_schema]].drop_duplicates()
     df_right = df_left_x_right[[x.name for x in right_schema]].drop_duplicates()
     return df_left, df_right
@@ -290,17 +272,9 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog(
         {
-            "tbl_left_x_right": Table(
-                store=TableStoreDB(
-                    dbconn, "tbl_left_x_right", left_x_right_schema, True
-                )
-            ),
-            "tbl_left": Table(
-                store=TableStoreDB(dbconn, "tbl_left", left_schema, True)
-            ),
-            "tbl_right": Table(
-                store=TableStoreDB(dbconn, "tbl_right", right_schema, True)
-            ),
+            "tbl_left_x_right": Table(store=TableStoreDB(dbconn, "tbl_left_x_right", left_x_right_schema, True)),
+            "tbl_left": Table(store=TableStoreDB(dbconn, "tbl_left", left_schema, True)),
+            "tbl_right": Table(store=TableStoreDB(dbconn, "tbl_right", right_schema, True)),
         }
     )
 
@@ -329,18 +303,10 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
     if len(intersecting_idxs) > 0:
-        test_df_left = pd.merge(test_df_left, test_df_left_x_right)[
-            test_df_left.columns
-        ]
-        test_df_right = pd.merge(test_df_right, test_df_left_x_right)[
-            test_df_right.columns
-        ]
-    df_left, df_right = reverse_cross_merge_func(
-        test_df_left_x_right, left_schema, right_schema
-    )
-    assert_df_equal(
-        df_left, test_df_left, index_cols=[x.name for x in left_schema if x.primary_key]
-    )
+        test_df_left = pd.merge(test_df_left, test_df_left_x_right)[test_df_left.columns]
+        test_df_right = pd.merge(test_df_right, test_df_left_x_right)[test_df_right.columns]
+    df_left, df_right = reverse_cross_merge_func(test_df_left_x_right, left_schema, right_schema)
+    assert_df_equal(df_left, test_df_left, index_cols=[x.name for x in left_schema if x.primary_key])
     assert_df_equal(
         df_right,
         test_df_right,
