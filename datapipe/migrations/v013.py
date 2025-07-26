@@ -15,9 +15,7 @@ def migrate_transform_tables(app, steps):
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
             continue
-        output_tbls = [
-            output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts
-        ]
+        output_tbls = [output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts]
 
         def make_ids_cte():
             ids_cte = (
@@ -36,12 +34,7 @@ def migrate_transform_tables(app, steps):
             for tbl in output_tbls[1:]:
                 ids_cte = ids_cte.outerjoin(
                     tbl,
-                    and_(
-                        *[
-                            prev_tbl.c[k] == tbl.c[k]
-                            for k in batch_transform.transform_keys
-                        ]
-                    ),
+                    and_(*[prev_tbl.c[k] == tbl.c[k] for k in batch_transform.transform_keys]),
                     full=True,
                 )
 
@@ -52,11 +45,9 @@ def migrate_transform_tables(app, steps):
         sql = (
             select(
                 *[ids_cte.c[k] for k in batch_transform.transform_keys],
-                func.max(
-                    app.ds.meta_dbconn.func_greatest(
-                        *[tbl.c["process_ts"] for tbl in output_tbls]
-                    )
-                ).label("process_ts"),
+                func.max(app.ds.meta_dbconn.func_greatest(*[tbl.c["process_ts"] for tbl in output_tbls])).label(
+                    "process_ts"
+                ),
             )
             .select_from(ids_cte)
             .where(and_(*[tbl.c.delete_ts.is_(None) for tbl in output_tbls]))
@@ -65,17 +56,14 @@ def migrate_transform_tables(app, steps):
         for tbl in output_tbls:
             sql = sql.join(
                 tbl,
-                and_(
-                    *[ids_cte.c[k] == tbl.c[k] for k in batch_transform.transform_keys]
-                ),
+                and_(*[ids_cte.c[k] == tbl.c[k] for k in batch_transform.transform_keys]),
                 isouter=True,
             )
 
         sql = sql.group_by(*[ids_cte.c[k] for k in batch_transform.transform_keys])
 
         insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
-            batch_transform.transform_keys
-            + ["process_ts", "is_success", "error", "priority"],
+            batch_transform.transform_keys + ["process_ts", "is_success", "error", "priority"],
             select(
                 *[sql.c[k] for k in batch_transform.transform_keys],
                 sql.c["process_ts"],

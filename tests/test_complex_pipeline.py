@@ -52,9 +52,7 @@ TEST__PREDICTION_RIGHT = pd.DataFrame(
 )
 TEST__PREDICTION = pd.merge(TEST__PREDICTION_LEFT, TEST__PREDICTION_CENTER, how="cross")
 TEST__PREDICTION = pd.merge(TEST__PREDICTION, TEST__PREDICTION_RIGHT, how="cross")
-TEST__PREDICTION = TEST__PREDICTION[
-    ["item_id", "pipeline_id", "keypoint_name", "prediction__attribute"]
-]
+TEST__PREDICTION = TEST__PREDICTION[["item_id", "pipeline_id", "keypoint_name", "prediction__attribute"]]
 
 
 def test_complex_pipeline(dbconn):
@@ -122,9 +120,7 @@ def test_complex_pipeline(dbconn):
         }
     )
 
-    def complex_function(
-        df__item, df__pipeline, df__prediction, df__keypoint, idx: IndexDF
-    ):
+    def complex_function(df__item, df__pipeline, df__prediction, df__keypoint, idx: IndexDF):
         assert idx[idx[["item_id", "pipeline_id"]].duplicated()].empty
         assert len(df__keypoint) == len(TEST__KEYPOINT)
         df__output = pd.merge(df__item, df__prediction, on=["item_id"])
@@ -252,9 +248,7 @@ def test_complex_train_pipeline(dbconn):
                 }
             ]
         )
-        df__pipeline__total = pd.concat(
-            [df__pipeline__total, df__pipeline], ignore_index=True
-        )
+        df__pipeline__total = pd.concat([df__pipeline__total, df__pipeline], ignore_index=True)
         df__pipeline__is_trained_on__frozen_dataset__total = pd.concat(
             [
                 df__pipeline__is_trained_on__frozen_dataset__total,
@@ -284,12 +278,10 @@ def test_complex_train_pipeline(dbconn):
     ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET)
     ds.get_table("train_config").store_chunk(TEST__TRAIN_CONFIG)
     run_steps(ds, steps)
-    assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(
+    assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
+    assert len(ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()) == len(TEST__FROZEN_DATASET) * len(
         TEST__TRAIN_CONFIG
     )
-    assert len(
-        ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()
-    ) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
 
 
 def complex_transform_with_many_recordings(dbconn, N: int):
@@ -358,9 +350,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
         yield df1, df2, df3, df4
 
     test_df__image = pd.DataFrame({"image_id": range(N)})
-    test_df__image__attribute = pd.DataFrame(
-        {"image_id": range(N), "attribute": [5 * x for x in range(N)]}
-    )
+    test_df__image__attribute = pd.DataFrame({"image_id": range(N), "attribute": [5 * x for x in range(N)]})
     test_df__prediction = pd.DataFrame(
         {
             "image_id": list(range(N)) * 5,
@@ -385,9 +375,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
         df__prediction = pd.merge(df__prediction, df__best_model, on=["model_id"])
         df__image = pd.merge(df__image, df__image__attribute, on=["image_id"])
         df__result = pd.merge(df__image, df__prediction, on=["image_id"])
-        df__result["result"] = (
-            df__result["attribute"] - df__result["prediction__attribite"]
-        )
+        df__result["result"] = df__result["attribute"] - df__result["prediction__attribite"]
         return df__result[["image_id", "model_id", "result"]]
 
     pipeline = Pipeline(
@@ -412,9 +400,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
                 inputs=[
                     Required("tbl_image"),  # image_id
                     "tbl_image__attribute",  # image_id, attribute
-                    Required(
-                        "tbl_prediction"
-                    ),  # image_id, model_id, prediction__attribite
+                    Required("tbl_prediction"),  # image_id, model_id, prediction__attribite
                     Required("tbl_best_model"),  # model_id
                 ],
                 outputs=["tbl_output"],
@@ -424,9 +410,7 @@ def complex_transform_with_many_recordings(dbconn, N: int):
     )
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
-    test__df_output = pd.DataFrame(
-        {"image_id": range(N), "model_id": [4] * N, "result": [0] * N}
-    )
+    test__df_output = pd.DataFrame({"image_id": range(N), "model_id": [4] * N, "result": [0] * N})
     assert_df_equal(
         ds.get_table("tbl_output").get_data(),
         test__df_output,

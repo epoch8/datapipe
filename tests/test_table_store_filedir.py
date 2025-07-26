@@ -140,9 +140,7 @@ def tmp_dir_with_json_data(tmp_dir):
 
 def get_test_df_filepath(test_df, tmp_dir_):
     test_df_filepath = test_df.copy()
-    test_df_filepath["filepath"] = test_df_filepath["id"].map(
-        lambda idx: f"{tmp_dir_}/{idx}.json"
-    )
+    test_df_filepath["filepath"] = test_df_filepath["id"].map(lambda idx: f"{tmp_dir_}/{idx}.json")
     return test_df_filepath
 
 
@@ -156,15 +154,11 @@ def test_read_json_rows(tmp_dir_with_json_data):
         adapter=JSONFile(),
         add_filepath_column=True,
     )
-    assert_ts_contains(
-        ts_with_filepath, get_test_df_filepath(TEST_DF, tmp_dir_with_json_data)
-    )
+    assert_ts_contains(ts_with_filepath, get_test_df_filepath(TEST_DF, tmp_dir_with_json_data))
 
 
 def test_read_json_rows_file_fs(tmp_dir_with_json_data):
-    ts = TableStoreFiledir(
-        f"file://{tmp_dir_with_json_data}/{{id}}.json", adapter=JSONFile()
-    )
+    ts = TableStoreFiledir(f"file://{tmp_dir_with_json_data}/{{id}}.json", adapter=JSONFile())
 
     assert_ts_contains(ts, TEST_DF)
 
@@ -184,12 +178,8 @@ def test_read_json_rows_gcs_fs():
 
     assert_ts_contains(ts, TEST_DF)
 
-    ts_with_filepath = TableStoreFiledir(
-        "gs://datapipe-test/{id}.json", adapter=JSONFile(), add_filepath_column=True
-    )
-    assert_ts_contains(
-        ts_with_filepath, get_test_df_filepath(TEST_DF, "gs://datapipe-test")
-    )
+    ts_with_filepath = TableStoreFiledir("gs://datapipe-test/{id}.json", adapter=JSONFile(), add_filepath_column=True)
+    assert_ts_contains(ts_with_filepath, get_test_df_filepath(TEST_DF, "gs://datapipe-test"))
 
 
 def test_insert_json_rows(tmp_dir_with_json_data):
@@ -230,9 +220,7 @@ def tmp_dir_with_img_data_several_suffixes(tmp_dir):
 
 
 def test_read_png_rows(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"))
 
     rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
@@ -284,9 +272,7 @@ def test_read_png_rows_several_suffixes_read_rows_meta_pseudo_df(
 
 
 def test_read_rows_without_data(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"), read_data=False
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"), read_data=False)
 
     df = pd.DataFrame({"id": [str(i) for i in range(10)]})
     rows = ts.read_rows(df)
@@ -297,9 +283,7 @@ def test_read_rows_without_data(tmp_dir_with_img_data):
 
 
 def test_insert_png_rows(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"))
 
     ts.insert_rows(
         pd.DataFrame(
@@ -314,9 +298,7 @@ def test_insert_png_rows(tmp_dir_with_img_data):
 
 
 def test_insert_png_rows_several_suffixes(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.(png|jpg|jpeg)", adapter=PILFile("png")
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.(png|jpg|jpeg)", adapter=PILFile("png"))
 
     ts.insert_rows(
         pd.DataFrame(
@@ -334,9 +316,7 @@ def test_insert_png_rows_several_suffixes(tmp_dir_with_img_data):
 
 
 def test_insert_png_rows_from_numpy_array(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"))
 
     ts.insert_rows(
         pd.DataFrame(
@@ -351,9 +331,7 @@ def test_insert_png_rows_from_numpy_array(tmp_dir_with_img_data):
 
 
 def test_insert_png_rows_from_string(tmp_dir_with_img_data):
-    ts = TableStoreFiledir(
-        f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png")
-    )
+    ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"))
 
     img = Image.fromarray(np.zeros((100, 100, 3), "u8"), "RGB")
     buffered = io.BytesIO()
@@ -376,9 +354,7 @@ def test_insert_png_rows_from_string(tmp_dir_with_img_data):
 def tmp_several_dirs_with_json_data(tmp_dir):
     for i in range(3):
         for j in range(3):
-            with fsspec.open(
-                f"{tmp_dir}/folder{i}/folder{j}/{i}{j}.json", "w", auto_mkdir=True
-            ) as out:
+            with fsspec.open(f"{tmp_dir}/folder{i}/folder{j}/{i}{j}.json", "w", auto_mkdir=True) as out:
                 out.write(f'{{"a": {i}, "b": {j}}}')
         with fsspec.open(f"{tmp_dir}/folder{i}/{i}.json", "w", auto_mkdir=True) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
@@ -395,9 +371,7 @@ TEST_DF_FOLDER0 = pd.DataFrame(
 
 
 def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
-    ts = TableStoreFiledir(
-        f"{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json", adapter=JSONFile()
-    )
+    ts = TableStoreFiledir(f"{tmp_several_dirs_with_json_data}/folder0/*/{{id}}.json", adapter=JSONFile())
     assert_ts_contains(ts, TEST_DF_FOLDER0)
 
     ts_with_filepath = TableStoreFiledir(
@@ -407,9 +381,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH["filepath"] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
-        lambda idx: (
-            f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
-        )
+        lambda idx: (f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json")
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER0_WITH_FILEPATH)
 
@@ -424,9 +396,7 @@ TEST_DF_FOLDER_RECURSIVELY = pd.DataFrame(
 
 
 def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
-    ts = TableStoreFiledir(
-        f"{tmp_several_dirs_with_json_data}/**/{{id}}.json", adapter=JSONFile()
-    )
+    ts = TableStoreFiledir(f"{tmp_several_dirs_with_json_data}/**/{{id}}.json", adapter=JSONFile())
     assert_ts_contains(ts, TEST_DF_FOLDER_RECURSIVELY)
 
     ts_with_filepath = TableStoreFiledir(
@@ -435,13 +405,11 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         add_filepath_column=True,
     )
     TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH = TEST_DF_FOLDER_RECURSIVELY.copy()
-    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["filepath"] = (
-        TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(
-            lambda idx: (
-                f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
-                if idx in ["0", "1", "2"]
-                else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
-            )
+    TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["filepath"] = TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH["id"].map(
+        lambda idx: (
+            f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
+            if idx in ["0", "1", "2"]
+            else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
         )
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)
@@ -460,9 +428,7 @@ TEST_DF_SEVERAL_EXTENSIONS = pd.DataFrame(
 def tmp_several_extensions_with_json_data(tmp_dir):
     for i in range(10):
         ext = "json" if i < 5 else "txt"
-        with fsspec.open(
-            f"{tmp_dir}/folder0/folder1/{i}.{ext}", "w", auto_mkdir=True
-        ) as out:
+        with fsspec.open(f"{tmp_dir}/folder0/folder1/{i}.{ext}", "w", auto_mkdir=True) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
 
@@ -503,9 +469,7 @@ def test_read_json_rows_or_extensions(tmp_several_extensions_with_json_data):
 def tmp_several_extensions_and_folders_with_json_data(tmp_dir):
     for i in range(10):
         ext = "json" if i < 5 else "txt"
-        with fsspec.open(
-            f"{tmp_dir}/folder{i % 3}/{i}.{ext}", "w", auto_mkdir=True
-        ) as out:
+        with fsspec.open(f"{tmp_dir}/folder{i % 3}/{i}.{ext}", "w", auto_mkdir=True) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
     yield tmp_dir
 
@@ -524,9 +488,7 @@ class TestTableStoreFiledir(AbstractBaseStoreTests):
         def make_db_store(data_schema):
             primary_schema = [col for col in data_schema if col.primary_key]
 
-            fn_template = (
-                "__".join([f"{{{col.name}}}" for col in primary_schema]) + ".json"
-            )
+            fn_template = "__".join([f"{{{col.name}}}" for col in primary_schema]) + ".json"
 
             return TableStoreFiledir(
                 tmp_dir / fn_template,

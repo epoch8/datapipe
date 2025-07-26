@@ -20,9 +20,7 @@ def extract_id(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def generate_data() -> Generator[pd.DataFrame, None, None]:
-    yield pd.DataFrame(
-        {"id": [1], "embedding": [[0.1]], "str_payload": ["foo"], "int_payload": [42]}
-    )
+    yield pd.DataFrame({"id": [1], "embedding": [[0.1]], "str_payload": ["foo"], "int_payload": [42]})
 
 
 def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:

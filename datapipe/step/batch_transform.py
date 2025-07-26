@@ -134,10 +134,7 @@ class BaseBatchTransformStep(ComputeStep):
         all_keys = {
             col.name: col
             for col in itertools.chain(
-                *(
-                    [dt.primary_schema for dt in input_mts]
-                    + [dt.primary_schema for dt in output_mts]
-                )
+                *([dt.primary_schema for dt in input_mts] + [dt.primary_schema for dt in output_mts])
             )
         }
 
@@ -160,9 +157,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
 
-    def _apply_filters_to_run_config(
-        self, run_config: Optional[RunConfig] = None
-    ) -> Optional[RunConfig]:
+    def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
         if self.filters is None:
             return run_config
         else:
@@ -203,9 +198,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
-                select(*[func.count()]).select_from(
-                    alias(sql.subquery(), name="union_select")
-                )
+                select(*[func.count()]).select_from(alias(sql.subquery(), name="union_select"))
             ).scalar()
 
         return cast(int, idx_count)
@@ -249,9 +242,7 @@ class BaseBatchTransformStep(ComputeStep):
             # Список ключей из фильтров, которые нужно добавить в результат
             extra_filters: LabelDict
             if run_config is not None:
-                extra_filters = {
-                    k: v for k, v in run_config.filters.items() if k not in join_keys
-                }
+                extra_filters = {k: v for k, v in run_config.filters.items() if k not in join_keys}
             else:
                 extra_filters = {}
 
@@ -310,9 +301,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             def gen():
                 for i in range(chunk_count):
-                    yield cast(
-                        IndexDF, idx[i * self.chunk_size : (i + 1) * self.chunk_size]
-                    )
+                    yield cast(IndexDF, idx[i * self.chunk_size : (i + 1) * self.chunk_size])
 
             return chunk_count, gen()
 
@@ -357,9 +346,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(
-            idx, process_ts=process_ts, run_config=run_config
-        )
+        self.meta_table.mark_rows_processed_success(idx, process_ts=process_ts, run_config=run_config)
 
         return changes
 
@@ -375,9 +362,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         idx_records = idx.to_dict(orient="records")
 
-        logger.error(
-            f"Process batch in transform {self.name} on idx {idx_records} failed: {str(e)}"
-        )
+        logger.error(f"Process batch in transform {self.name} on idx {idx_records} failed: {str(e)}")
         ds.event_logger.log_exception(
             e,
             run_config=RunConfig.add_labels(
@@ -455,9 +440,7 @@ class BaseBatchTransformStep(ComputeStep):
             try:
                 output_dfs = self.process_batch_dts(ds, idx, run_config)
 
-                return self.store_batch_result(
-                    ds, idx, output_dfs, process_ts, run_config
-                )
+                return self.store_batch_result(ds, idx, output_dfs, process_ts, run_config)
 
             except Exception as e:
                 self.store_batch_err(ds, idx, e, process_ts, run_config)
@@ -507,9 +490,7 @@ class BaseBatchTransformStep(ComputeStep):
 
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
-        (idx_count, idx_gen) = self.get_change_list_process_ids(
-            ds, change_list, run_config
-        )
+        (idx_count, idx_gen) = self.get_change_list_process_ids(ds, change_list, run_config)
 
         logger.info(f"Batches to process {idx_count}")
 
@@ -634,9 +615,7 @@ class BatchTransform(PipelineStep):
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
 
-    def pipeline_input_to_compute_input(
-        self, ds: DataStore, catalog: Catalog, input: PipelineInput
-    ) -> ComputeInput:
+    def pipeline_input_to_compute_input(self, ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
         if isinstance(input, Required):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
@@ -652,10 +631,7 @@ class BatchTransform(PipelineStep):
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        input_dts = [
-            self.pipeline_input_to_compute_input(ds, catalog, input)
-            for input in self.inputs
-        ]
+        input_dts = [self.pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
         return [

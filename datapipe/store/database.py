@@ -144,9 +144,7 @@ class TableStoreDB(TableStore):
 
         if orm_table is not None:
             assert name is None, "name should be None if orm_table is provided"
-            assert data_sql_schema is None, (
-                "data_sql_schema should be None if orm_table is provided"
-            )
+            assert data_sql_schema is None, "data_sql_schema should be None if orm_table is provided"
 
             orm_table__table = orm_table.__table__  # type: ignore
             self.data_table = cast(Table, orm_table__table)
@@ -164,25 +162,17 @@ class TableStoreDB(TableStore):
                 )
                 for column in self.data_table.columns
             ]
-            self.data_keys = [
-                column.name for column in self.data_sql_schema if not column.primary_key
-            ]
+            self.data_keys = [column.name for column in self.data_sql_schema if not column.primary_key]
 
         else:
-            assert name is not None, (
-                "name should be provided if data_table is not provided"
-            )
-            assert data_sql_schema is not None, (
-                "data_sql_schema should be provided if data_table is not provided"
-            )
+            assert name is not None, "name should be provided if data_table is not provided"
+            assert data_sql_schema is not None, "data_sql_schema should be provided if data_table is not provided"
 
             self.name = name
 
             self.data_sql_schema = data_sql_schema
 
-            self.data_keys = [
-                column.name for column in self.data_sql_schema if not column.primary_key
-            ]
+            self.data_keys = [column.name for column in self.data_sql_schema if not column.primary_key]
 
             self.data_table = Table(
                 self.name,
@@ -209,9 +199,7 @@ class TableStoreDB(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         meta_key_prop = MetaKey.get_property_name()
-        return [
-            column for column in self.data_sql_schema if hasattr(column, meta_key_prop)
-        ]
+        return [column for column in self.data_sql_schema if hasattr(column, meta_key_prop)]
 
     def _chunk_size(self):
         # Magic number derived empirically. See
@@ -240,9 +228,7 @@ class TableStoreDB(TableStore):
         logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
         for chunk_idx in self._chunk_idx_df(idx):
-            sql = sql_apply_idx_filter_to_table(
-                delete(self.data_table), self.data_table, self.primary_keys, chunk_idx
-            )
+            sql = sql_apply_idx_filter_to_table(delete(self.data_table), self.data_table, self.primary_keys, chunk_idx)
             with self.dbconn.con.begin() as con:
                 con.execute(sql)
 
@@ -261,11 +247,7 @@ class TableStoreDB(TableStore):
         if len(self.data_keys) > 0:
             sql = insert_sql.on_conflict_do_update(
                 index_elements=self.primary_keys,
-                set_={
-                    col.name: insert_sql.excluded[col.name]
-                    for col in self.data_sql_schema
-                    if not col.primary_key
-                },
+                set_={col.name: insert_sql.excluded[col.name] for col in self.data_sql_schema if not col.primary_key},
             )
         else:
             sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
@@ -283,17 +265,13 @@ class TableStoreDB(TableStore):
         if idx is not None:
             if len(idx.index) == 0:
                 # Empty index -> empty result
-                return pd.DataFrame(
-                    columns=[column.name for column in self.data_sql_schema]
-                )
+                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
             res = []
 
             with self.dbconn.con.begin() as con:
                 for chunk_idx in self._chunk_idx_df(idx):
-                    chunk_sql = sql_apply_idx_filter_to_table(
-                        sql, self.data_table, self.primary_keys, chunk_idx
-                    )
+                    chunk_sql = sql_apply_idx_filter_to_table(sql, self.data_table, self.primary_keys, chunk_idx)
                     chunk_df = pd.read_sql_query(chunk_sql, con=con)
 
                     res.append(chunk_df)
@@ -311,9 +289,7 @@ class TableStoreDB(TableStore):
     ) -> Iterator[DataDF]:
         sql = select(*self.data_table.c)
 
-        sql = sql_apply_runconfig_filter(
-            sql, self.data_table, self.primary_keys, run_config
-        )
+        sql = sql_apply_runconfig_filter(sql, self.data_table, self.primary_keys, run_config)
 
         with self.dbconn.con.execution_options(stream_results=True).begin() as con:
             yield from pd.read_sql_query(

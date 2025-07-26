@@ -204,9 +204,7 @@ def test_run_changelist_simple(dbconn):
 
     run_changelist(ds, catalog, pipeline, changelist)
 
-    assert_datatable_equal(
-        catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index]
-    )
+    assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
 
 
 def test_run_changelist_with_duplicate_input_keys(dbconn):
@@ -288,9 +286,7 @@ def test_run_changelist_by_chunk_size_simple(dbconn):
 
     run_changelist(ds, catalog, pipeline, changelist)
 
-    assert_datatable_equal(
-        catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index]
-    )
+    assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
 
 
 def test_run_changelist_cycle(dbconn):

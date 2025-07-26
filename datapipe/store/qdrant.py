@@ -73,18 +73,14 @@ class QdrantStore(TableStore):
         if len(pk_columns) != 1 and pk_columns[0].name != pk_field:
             raise ValueError("Incorrect primary key columns in schema")
 
-        self.payloads_filelds = [
-            column.name for column in self.schema if column.name != self.embedding_field
-        ]
+        self.payloads_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
 
         self.index_field = {}
         if index_schema:
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
                 if field not in self.payloads_filelds:
-                    raise ValueError(
-                        f"Index field `{field}` ({field_schema}) not found in payload schema"
-                    )
+                    raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
             self.index_field = index_schema
 
     def __init_collection(self):
@@ -121,11 +117,7 @@ class QdrantStore(TableStore):
     def __get_ids(self, df):
         return (
             df[self.pk_field]
-            .apply(
-                lambda x: str(
-                    uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())
-                )
-            )
+            .apply(lambda x: str(uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())))
             .to_list()
         )
 
@@ -180,9 +172,7 @@ class QdrantStore(TableStore):
         assert self.client is not None
         response = self.client.http.points_api.get_points(
             self.name,
-            point_request=rest.PointRequest(
-                ids=self.__get_ids(idx), with_payload=True, with_vector=True
-            ),
+            point_request=rest.PointRequest(ids=self.__get_ids(idx), with_payload=True, with_vector=True),
         )
 
         records = []
@@ -199,9 +189,7 @@ class QdrantStore(TableStore):
 
             records.append(record)
 
-        return pd.DataFrame.from_records(records)[
-            [column.name for column in self.schema]
-        ]
+        return pd.DataFrame.from_records(records)[[column.name for column in self.schema]]
 
 
 class QdrantShardedStore(TableStore):
@@ -241,18 +229,14 @@ class QdrantShardedStore(TableStore):
         self.client: Optional[QdrantClient] = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
-        self.payloads_filelds = [
-            column.name for column in self.schema if column.name != self.embedding_field
-        ]
+        self.payloads_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
 
         self.index_field = {}
         if index_schema:
             # check if index field is present in schema
             for field, field_schema in index_schema.items():
                 if field not in self.payloads_filelds:
-                    raise ValueError(
-                        f"Index field `{field}` ({field_schema}) not found in payload schema"
-                    )
+                    raise ValueError(f"Index field `{field}` ({field_schema}) not found in payload schema")
             self.index_field = index_schema
 
         self.name_params = re.findall(r"\{([^/]+?)\}", self.name_pattern)
@@ -298,16 +282,12 @@ class QdrantShardedStore(TableStore):
 
     def __get_ids(self, df):
         ids_values = (
-            df[self.pk_fields]
-            .apply(lambda x: "_".join([f"{i[0]}-{i[1]}" for i in x.items()]), axis=1)
-            .to_list()
+            df[self.pk_fields].apply(lambda x: "_".join([f"{i[0]}-{i[1]}" for i in x.items()]), axis=1).to_list()
         )
 
         return list(
             map(
-                lambda x: str(
-                    uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())
-                ),
+                lambda x: str(uuid.UUID(bytes=hashlib.md5(str(x).encode("utf-8")).digest())),
                 ids_values,
             )
         )
@@ -375,9 +355,7 @@ class QdrantShardedStore(TableStore):
             assert self.client is not None
             response = self.client.http.points_api.get_points(
                 name,
-                point_request=rest.PointRequest(
-                    ids=self.__get_ids(gdf), with_payload=True, with_vector=True
-                ),
+                point_request=rest.PointRequest(ids=self.__get_ids(gdf), with_payload=True, with_vector=True),
             )
 
             assert response.result is not None
@@ -389,6 +367,4 @@ class QdrantShardedStore(TableStore):
 
                 records.append(record)
 
-        return pd.DataFrame.from_records(records)[
-            [column.name for column in self.schema]
-        ]
+        return pd.DataFrame.from_records(records)[[column.name for column in self.schema]]

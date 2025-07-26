@@ -35,9 +35,7 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     elif len(pipeline_split) == 2:
         module_name, app_name = pipeline_split
     else:
-        raise Exception(
-            f"Expected PIPELINE in format 'module:app' got '{pipeline_name}'"
-        )
+        raise Exception(f"Expected PIPELINE in format 'module:app' got '{pipeline_name}'")
 
     from importlib import import_module
 
@@ -59,9 +57,7 @@ def parse_labels(labels: Optional[str]) -> Labels:
 
     for kv in labels.split(","):
         if "=" not in kv:
-            raise Exception(
-                f"Expected labels in format 'key=value,key2=value2' got '{labels}'"
-            )
+            raise Exception(f"Expected labels in format 'key=value,key2=value2' got '{labels}'")
 
         k, v = kv.split("=")
         labels_list.append((k, v))
@@ -92,9 +88,7 @@ def filter_steps_by_labels_and_name(
 @click.option("--debug-sql", is_flag=True, help="Log SQL queries VERY VERBOSE")
 @click.option("--trace-stdout", is_flag=True, help="Log traces to console")
 @click.option("--trace-jaeger", is_flag=True, help="Enable tracing to Jaeger")
-@click.option(
-    "--trace-jaeger-host", type=click.STRING, default="localhost", help="Jaeger host"
-)
+@click.option("--trace-jaeger-host", type=click.STRING, default="localhost", help="Jaeger host")
 @click.option("--trace-jaeger-port", type=click.INT, default=14268, help="Jaeger port")
 @click.option("--trace-gcp", is_flag=True, help="Enable tracing to Google Cloud Trace")
 @click.option("--pipeline", type=click.STRING, default="app")
@@ -136,9 +130,7 @@ def cli(
 
     setup_logging()
 
-    trace.set_tracer_provider(
-        TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"}))
-    )
+    trace.set_tracer_provider(TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"})))
 
     SQLAlchemyInstrumentor().instrument()
 
@@ -173,9 +165,7 @@ def cli(
                 CloudTraceSpanExporter,
             )
         except ImportError:
-            raise ImportError(
-                "Please install opentelemetry-exporter-cloud-trace to use GCP Trace"
-            )
+            raise ImportError("Please install opentelemetry-exporter-cloud-trace to use GCP Trace")
 
         cloud_trace_exporter = CloudTraceSpanExporter(
             resource_regex=r".*",
@@ -358,9 +348,7 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
             try:
                 step_status = step.get_status(ds=app.ds)
                 extra_args["total_idx_count"] = str(step_status.total_idx_count)
-                extra_args["changed_idx_count"] = (
-                    f"[red]{step_status.changed_idx_count}[/red]"
-                )
+                extra_args["changed_idx_count"] = f"[red]{step_status.changed_idx_count}[/red]"
             except NotImplementedError:
                 # Currently we do not support empty join_keys
                 extra_args["total_idx_count"] = "[red]N/A[/red]"
@@ -372,9 +360,7 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 
 @step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
-@click.option(
-    "--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds"
-)
+@click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
 @click.pass_context
 def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
@@ -415,9 +401,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
 
 @step.command()
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
-@click.option(
-    "--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds"
-)
+@click.option("--loop-delay", type=click.INT, default=1, help="Delay between loops in seconds")
 @click.option("--chunk-size", type=click.INT, default=None, help="Chunk size")
 @click.option("--start-step", type=click.STRING)
 @click.pass_context
@@ -432,9 +416,7 @@ def run_changelist(
 
     steps_to_run: List[ComputeStep] = ctx.obj["steps"]
     if start_step is not None:
-        start_step_objs = filter_steps_by_labels_and_name(
-            app, labels=[], name_prefix=start_step
-        )
+        start_step_objs = filter_steps_by_labels_and_name(app, labels=[], name_prefix=start_step)
         assert len(start_step_objs) == 1
     else:
         start_step_objs = [steps_to_run[0]]
@@ -487,9 +469,7 @@ def fill_metadata(ctx: click.Context) -> None:
 
     for step in steps_to_run:
         if isinstance(step, BaseBatchTransformStep):
-            rprint(
-                f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]"
-            )
+            rprint(f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]")
             step.fill_metadata(app.ds)
 
 
@@ -513,9 +493,7 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
 def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     labels_dict = parse_labels(labels)
-    batch_transforms_steps = filter_steps_by_labels_and_name(
-        app, labels=labels_dict, name_prefix=name
-    )
+    batch_transforms_steps = filter_steps_by_labels_and_name(app, labels=labels_dict, name_prefix=name)
 
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 

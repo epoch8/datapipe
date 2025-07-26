@@ -44,9 +44,7 @@ def do_batch_generate(
         **(kwargs or {}),
     }
 
-    assert inspect.isgeneratorfunction(
-        func
-    ), "Starting v0.8.0 proc_func should be a generator"
+    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
     with tracer.start_as_current_span("init generator"):
         try:

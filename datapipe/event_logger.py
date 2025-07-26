@@ -32,9 +32,7 @@ class EventLogger:
         run_config: Optional[RunConfig] = None,
     ) -> None:
         if run_config is not None:
-            logger.error(
-                f'Error in step {run_config.labels.get("step_name")}: {type} {message}\n{description}'
-            )
+            logger.error(f"Error in step {run_config.labels.get('step_name')}: {type} {message}\n{description}")
         else:
             logger.error(f"Error: {type} {message}\n{description}")
 

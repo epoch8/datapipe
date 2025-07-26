@@ -50,9 +50,7 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     pipeline = Pipeline(
         [
             UpdateExternalTable("input_data"),
-            BatchTransform(
-                lambda df: df, inputs=["input_data"], outputs=["transfomed_data"]
-            ),
+            BatchTransform(lambda df: df, inputs=["input_data"], outputs=["transfomed_data"]),
         ]
     )
 
