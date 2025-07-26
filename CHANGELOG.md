@@ -1,6 +1,6 @@
-# WIP
+# 0.14.4
 
-* Added SQLAlchemy 1.4.x support
+* Relax SQLAlchemy requirement to allow 1.4.x support
 
 # 0.14.3
 
