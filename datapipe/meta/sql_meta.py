@@ -186,7 +186,7 @@ class MetaTable:
         res_df = df[meta_keys]
 
         res_df = res_df.assign(
-            hash=self._get_hash_for_df(df),  # type: ignore
+            hash=self._get_hash_for_df(df),
             create_ts=now,
             update_ts=now,
             process_ts=now,
@@ -271,7 +271,7 @@ class MetaTable:
         # Дополняем данные методанными
         merged_df = pd.merge(
             data_df.assign(
-                data_hash=self._get_hash_for_df(data_df),  # type: ignore
+                data_hash=self._get_hash_for_df(data_df),
             ),
             existing_meta_df,
             how="left",
