@@ -5,7 +5,6 @@ from datapipe.store.tests.abstract import AbstractBaseStoreTests
 from datapipe.types import DataSchema
 
 
-@pytest.mark.skip(reason="ElasticStore is temporarily disabled")
 class TestElasticStore(AbstractBaseStoreTests):
     @pytest.fixture
     def store_maker(self, elastic_conn):
