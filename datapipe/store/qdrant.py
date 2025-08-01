@@ -56,6 +56,7 @@ class QdrantStore(TableStore):
         collection_params: CollectionParams,
         index_schema: Optional[dict] = None,
         api_key: Optional[str] = None,
+        force_vectors_to_ram: Optional[bool] = True,
     ):
         super().__init__()
         self.name = name
@@ -67,6 +68,7 @@ class QdrantStore(TableStore):
         self.inited = False
         self.client: Optional[QdrantClient] = None
         self._api_key = api_key
+        self.force_vectors_to_ram = force_vectors_to_ram
 
         pk_columns = [column for column in self.schema if column.primary_key]
 
@@ -89,6 +91,9 @@ class QdrantStore(TableStore):
             self.client.get_collection(self.name)
         except UnexpectedResponse as e:
             if e.status_code == 404:
+                if self.force_vectors_to_ram:
+                    self.collection_params.vectors.on_disk = False
+
                 self.client.http.collections_api.create_collection(
                     collection_name=self.name, create_collection=self.collection_params
                 )
