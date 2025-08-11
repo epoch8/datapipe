@@ -1,6 +1,7 @@
 # WIP
 
 * Fix for getting existing idx of empy meta-table
+* Add optional `force_vectors_to_ram` parameter to `QdrantStore`
 
 # 0.14.4
 
