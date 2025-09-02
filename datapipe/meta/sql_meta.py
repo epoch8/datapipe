@@ -774,6 +774,8 @@ def build_changed_idx_sql(
     filters_idx: Optional[IndexDF] = None,
     order_by: Optional[List[str]] = None,
     order: Literal["asc", "desc"] = "asc",
+    sampling_order: Literal["default", "random"] = "default",
+    sampling_random_seed: Optional[int] = None,
     run_config: Optional[RunConfig] = None,  # TODO remove
 ) -> Tuple[Iterable[str], Any]:
     all_input_keys_counts: Dict[str, int] = {}
@@ -847,20 +849,51 @@ def build_changed_idx_sql(
             )
         )
     )
-    if order_by is None:
-        sql = sql.order_by(
-            out.c.priority.desc().nullslast(),
-            *[sa.column(k) for k in transform_keys],
-        )
-    else:
-        if order == "desc":
-            sql = sql.order_by(
-                *[sa.desc(sa.column(k)) for k in order_by],
-                out.c.priority.desc().nullslast(),
+    if sampling_order == "random":
+        if sampling_random_seed is not None and len(transform_keys) > 0:
+            rand_expr = sa.func.md5(
+                sa.func.concat_ws(
+                    "|",
+                    *[sa.cast(sa.column(k), sa.String) for k in transform_keys],
+                    sa.literal(str(sampling_random_seed)),
+                )
             )
-        elif order == "asc":
+        else:
+            rand_expr = sa.func.random()
+
+        if order_by is None:
             sql = sql.order_by(
-                *[sa.asc(sa.column(k)) for k in order_by],
                 out.c.priority.desc().nullslast(),
+                rand_expr
             )
+        else:
+            if order == "desc":
+                sql = sql.order_by(
+                    *[sa.desc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                    rand_expr
+                )
+            elif order == "asc":
+                sql = sql.order_by(
+                    *[sa.asc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                    rand_expr
+                )
+    elif sampling_order == "default":
+        if order_by is None:
+            sql = sql.order_by(
+                out.c.priority.desc().nullslast(),
+                *[sa.column(k) for k in transform_keys],
+            )
+        else:
+            if order == "desc":
+                sql = sql.order_by(
+                    *[sa.desc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                )
+            elif order == "asc":
+                sql = sql.order_by(
+                    *[sa.asc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                )
     return (transform_keys, sql)

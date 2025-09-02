@@ -34,17 +34,16 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.run_config import RunConfig
-from datapipe.store.database import DBConn
 from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
 from datapipe.run_config import LabelDict, RunConfig
+from datapipe.store.database import DBConn
 from datapipe.types import (
     ChangeList,
-    LabelDict,
-    Filters,
     DataDF,
+    Filters,
     IndexDF,
     JoinSpec,
+    LabelDict,
     Labels,
     MetaSchema,
     PipelineInput,
@@ -93,6 +92,8 @@ class BaseBatchTransformStep(ComputeStep):
         filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
+        sampling_order: Literal["default", "random"] = "default",
+        sampling_random_seed: Optional[int] = None,
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -124,6 +125,8 @@ class BaseBatchTransformStep(ComputeStep):
         self.filters = filters
         self.order_by = order_by
         self.order = order
+        self.sampling_order = sampling_order
+        self.sampling_random_seed = sampling_random_seed
 
     @classmethod
     def compute_transform_schema(
@@ -271,6 +274,8 @@ class BaseBatchTransformStep(ComputeStep):
                 run_config=run_config,
                 order_by=self.order_by,
                 order=self.order,  # type: ignore  # pylance is stupid
+                sampling_order=self.sampling_order,
+                sampling_random_seed=self.sampling_random_seed,
             )
 
             if run_config is not None:
@@ -314,6 +319,10 @@ class BaseBatchTransformStep(ComputeStep):
                             transform_keys=self.transform_keys,
                             filters_idx=idx,
                             run_config=run_config,
+                            order_by=self.order_by,
+                            order=self.order,  # type: ignore  # pylance is stupid
+                            sampling_order=self.sampling_order,
+                            sampling_random_seed=self.sampling_random_seed,
                         )
                         with ds.meta_dbconn.con.begin() as con:
                             table_changes_df = pd.read_sql_query(
@@ -626,6 +635,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
+        sampling_order: Literal["default", "random"] = "default",
+        sampling_random_seed: Optional[int] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -638,7 +649,9 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             executor_config=executor_config,
             filters=filters,
             order_by=order_by,
-            order=order
+            order=order,
+            sampling_order=sampling_order,
+            sampling_random_seed=sampling_random_seed,
         )
 
         self.func = func
@@ -672,6 +685,8 @@ class BatchTransform(PipelineStep):
     filters: Optional[Filters] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
+    sampling_order: Literal["default", "random"] = "default"
+    sampling_random_seed: Optional[int] = None
 
     def pipeline_input_to_compute_input(
         self, ds: DataStore, catalog: Catalog, input: PipelineInput
@@ -712,6 +727,8 @@ class BatchTransform(PipelineStep):
                 filters=self.filters,
                 order_by=self.order_by,
                 order=self.order,
+                sampling_order=self.sampling_order,
+                sampling_random_seed=self.sampling_random_seed,
             )
         ]
 
@@ -732,6 +749,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         filters: Optional[Filters] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
+        sampling_order: Literal["default", "random"] = "default",
+        sampling_random_seed: Optional[int] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -745,6 +764,8 @@ class BatchTransformStep(BaseBatchTransformStep):
             filters=filters,
             order_by=order_by,
             order=order,
+            sampling_order=sampling_order,
+            sampling_random_seed=sampling_random_seed,
         )
 
         self.func = func
