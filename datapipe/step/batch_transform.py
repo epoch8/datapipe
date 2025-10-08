@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func, select
+from sqlalchemy import alias, func
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -34,7 +34,11 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
+from datapipe.meta.sql_meta import (
+    TransformMetaTable,
+    build_changed_idx_sql_v1,
+    build_changed_idx_sql_v2,
+)
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -89,6 +93,7 @@ class BaseBatchTransformStep(ComputeStep):
         filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
+        use_offset_optimization: bool = False,
     ) -> None:
         ComputeStep.__init__(
             self,
@@ -100,6 +105,8 @@ class BaseBatchTransformStep(ComputeStep):
         )
 
         self.chunk_size = chunk_size
+        self.ds = ds  # Сохраняем ссылку на DataStore для доступа к offset_table
+        self.use_offset_optimization = use_offset_optimization
 
         # Force transform_keys to be a list, otherwise Pandas will not be happy
         if transform_keys is not None and not isinstance(transform_keys, list):
@@ -120,6 +127,66 @@ class BaseBatchTransformStep(ComputeStep):
         self.filters = filters
         self.order_by = order_by
         self.order = order
+
+    def _build_changed_idx_sql(
+        self,
+        ds: DataStore,
+        filters_idx: Optional[IndexDF] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: Optional[RunConfig] = None,
+    ):
+        """
+        Вспомогательный метод для выбора версии build_changed_idx_sql.
+        Переключается между v1 (FULL OUTER JOIN) и v2 (offset-based) на основе флага.
+
+        Флаг можно переопределить через RunConfig.labels["use_offset_optimization"].
+        """
+        # Проверяем, есть ли переопределение в RunConfig.labels
+        use_offset = self.use_offset_optimization
+        if run_config is not None and run_config.labels is not None:
+            label_override = run_config.labels.get("use_offset_optimization")
+            if label_override is not None:
+                use_offset = bool(label_override)
+
+        method = "v2_offset" if use_offset else "v1_join"
+
+        with tracer.start_as_current_span(f"build_changed_idx_sql_{method}"):
+            start_time = time.time()
+
+            if use_offset:
+                keys, sql = build_changed_idx_sql_v2(
+                    ds=ds,
+                    meta_table=self.meta_table,
+                    input_dts=self.input_dts,
+                    transform_keys=self.transform_keys,
+                    offset_table=ds.offset_table,
+                    transformation_id=self.get_name(),
+                    filters_idx=filters_idx,
+                    order_by=order_by,
+                    order=order,
+                    run_config=run_config,
+                )
+            else:
+                keys, sql = build_changed_idx_sql_v1(
+                    ds=ds,
+                    meta_table=self.meta_table,
+                    input_dts=self.input_dts,
+                    transform_keys=self.transform_keys,
+                    filters_idx=filters_idx,
+                    order_by=order_by,
+                    order=order,
+                    run_config=run_config,
+                )
+
+            query_build_time = time.time() - start_time
+
+            # Логирование времени построения запроса
+            logger.debug(
+                f"[{self.get_name()}] Query build time ({method}): {query_build_time:.3f}s"
+            )
+
+            return keys, sql
 
     @classmethod
     def compute_transform_schema(
@@ -188,11 +255,8 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> int:
         run_config = self._apply_filters_to_run_config(run_config)
-        _, sql = build_changed_idx_sql(
+        _, sql = self._build_changed_idx_sql(
             ds=ds,
-            meta_table=self.meta_table,
-            input_dts=self.input_dts,
-            transform_keys=self.transform_keys,
             run_config=run_config,
         )
 
@@ -229,11 +293,8 @@ class BaseBatchTransformStep(ComputeStep):
                 run_config=run_config,
             )
 
-            join_keys, u1 = build_changed_idx_sql(
+            join_keys, u1 = self._build_changed_idx_sql(
                 ds=ds,
-                meta_table=self.meta_table,
-                input_dts=self.input_dts,
-                transform_keys=self.transform_keys,
                 run_config=run_config,
                 order_by=self.order_by,
                 order=self.order,  # type: ignore  # pylance is stupid
@@ -247,14 +308,31 @@ class BaseBatchTransformStep(ComputeStep):
                 extra_filters = {}
 
             def alter_res_df():
-                with ds.meta_dbconn.con.begin() as con:
-                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
-                        df = df[self.transform_keys]
+                # Определяем метод для логирования
+                use_offset = self.use_offset_optimization
+                if run_config is not None and run_config.labels is not None:
+                    label_override = run_config.labels.get("use_offset_optimization")
+                    if label_override is not None:
+                        use_offset = bool(label_override)
+                method = "v2_offset" if use_offset else "v1_join"
 
-                        for k, v in extra_filters.items():
-                            df[k] = v
+                with tracer.start_as_current_span(f"execute_changed_idx_sql_{method}"):
+                    start_time = time.time()
 
-                        yield cast(IndexDF, df)
+                    with ds.meta_dbconn.con.begin() as con:
+                        for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                            df = df[self.transform_keys]
+
+                            for k, v in extra_filters.items():
+                                df[k] = v
+
+                            yield cast(IndexDF, df)
+
+                    query_exec_time = time.time() - start_time
+                    logger.debug(
+                        f"[{self.get_name()}] Query execution time ({method}): {query_exec_time:.3f}s, "
+                        f"rows: {idx_count}"
+                    )
 
             return math.ceil(idx_count / chunk_size), alter_res_df()
 
@@ -275,20 +353,35 @@ class BaseBatchTransformStep(ComputeStep):
                         # TODO пересмотреть эту логику, выглядит избыточной
                         # (возможно, достаточно посчитать один раз для всех
                         # input таблиц)
-                        _, sql = build_changed_idx_sql(
+                        _, sql = self._build_changed_idx_sql(
                             ds=ds,
-                            meta_table=self.meta_table,
-                            input_dts=self.input_dts,
-                            transform_keys=self.transform_keys,
                             filters_idx=idx,
                             run_config=run_config,
                         )
-                        with ds.meta_dbconn.con.begin() as con:
-                            table_changes_df = pd.read_sql_query(
-                                sql,
-                                con=con,
+
+                        # Определяем метод для логирования
+                        use_offset = self.use_offset_optimization
+                        if run_config is not None and run_config.labels is not None:
+                            label_override = run_config.labels.get("use_offset_optimization")
+                            if label_override is not None:
+                                use_offset = bool(label_override)
+                        method = "v2_offset" if use_offset else "v1_join"
+
+                        with tracer.start_as_current_span(f"execute_changed_idx_sql_change_list_{method}"):
+                            start_time = time.time()
+
+                            with ds.meta_dbconn.con.begin() as con:
+                                table_changes_df = pd.read_sql_query(
+                                    sql,
+                                    con=con,
+                                )
+                                table_changes_df = table_changes_df[self.transform_keys]
+
+                            query_exec_time = time.time() - start_time
+                            logger.debug(
+                                f"[{self.get_name()}] Change list query execution time ({method}): "
+                                f"{query_exec_time:.3f}s, rows: {len(table_changes_df)}"
                             )
-                            table_changes_df = table_changes_df[self.transform_keys]
 
                         changes.append(table_changes_df)
                     else:
@@ -572,6 +665,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
+        use_offset_optimization: bool = False,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -581,6 +675,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            use_offset_optimization=use_offset_optimization,
         )
 
         self.func = func
@@ -669,6 +764,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
+        use_offset_optimization: bool = False,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -682,6 +778,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             filters=filters,
             order_by=order_by,
             order=order,
+            use_offset_optimization=use_offset_optimization,
         )
 
         self.func = func

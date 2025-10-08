@@ -201,3 +201,30 @@ def test_offset_table_multiple_transformations(dbconn: DBConn):
     assert offset_table.get_offset("transform1", "common_table") == 100.0
     assert offset_table.get_offset("transform2", "common_table") == 200.0
     assert offset_table.get_offset("transform3", "common_table") == 300.0
+
+
+def test_offset_table_get_offsets_for_transformation(dbconn: DBConn):
+    """Тест получения всех offset'ов для трансформации одним запросом"""
+    offset_table = TransformInputOffsetTable(dbconn, create_table=True)
+
+    # Создаем offset'ы для одной трансформации с разными входными таблицами
+    offset_table.update_offset("test_transform", "table1", 100.0)
+    offset_table.update_offset("test_transform", "table2", 200.0)
+    offset_table.update_offset("test_transform", "table3", 300.0)
+
+    # Создаем offset'ы для другой трансформации (не должны попасть в результат)
+    offset_table.update_offset("other_transform", "table1", 999.0)
+
+    # Получаем все offset'ы для test_transform одним запросом
+    offsets = offset_table.get_offsets_for_transformation("test_transform")
+
+    # Проверяем результат
+    assert offsets == {
+        "table1": 100.0,
+        "table2": 200.0,
+        "table3": 300.0,
+    }
+
+    # Проверяем для несуществующей трансформации
+    empty_offsets = offset_table.get_offsets_for_transformation("nonexistent")
+    assert empty_offsets == {}
