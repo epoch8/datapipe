@@ -808,3 +808,142 @@ def build_changed_idx_sql(
                 out.c.priority.desc().nullslast(),
             )
     return (transform_keys, sql)
+
+
+TRANSFORM_INPUT_OFFSET_SCHEMA: DataSchema = [
+    sa.Column("transformation_id", sa.String, primary_key=True),
+    sa.Column("input_table_name", sa.String, primary_key=True),
+    sa.Column("update_ts_offset", sa.Float),
+]
+
+
+class TransformInputOffsetTable:
+    """
+    Таблица для хранения offset'ов (последних обработанных update_ts) для каждой
+    входной таблицы каждой трансформации.
+
+    Используется для оптимизации поиска измененных данных: вместо FULL OUTER JOIN
+    всех входных таблиц, выбираем только записи с update_ts > offset.
+    """
+
+    def __init__(self, dbconn: DBConn, create_table: bool = False):
+        self.dbconn = dbconn
+        self.sql_table = sa.Table(
+            "transform_input_offsets",
+            dbconn.sqla_metadata,
+            *[col._copy() for col in TRANSFORM_INPUT_OFFSET_SCHEMA],
+        )
+
+        if create_table:
+            # Создать таблицу если её нет (аналогично MetaTable)
+            self.sql_table.create(dbconn.con, checkfirst=True)
+
+            # Создать индекс на transformation_id для быстрого поиска
+            idx = sa.Index(
+                "ix_transform_input_offsets_transformation_id",
+                self.sql_table.c.transformation_id,
+            )
+            idx.create(dbconn.con, checkfirst=True)
+
+    def get_offset(self, transformation_id: str, input_table_name: str) -> Optional[float]:
+        """Получить последний offset для трансформации и источника"""
+        sql = sa.select(self.sql_table.c.update_ts_offset).where(
+            sa.and_(
+                self.sql_table.c.transformation_id == transformation_id,
+                self.sql_table.c.input_table_name == input_table_name,
+            )
+        )
+        with self.dbconn.con.begin() as con:
+            result = con.execute(sql).scalar()
+        return result
+
+    def update_offset(
+        self, transformation_id: str, input_table_name: str, update_ts_offset: float
+    ) -> None:
+        """Обновить offset после успешной обработки"""
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            transformation_id=transformation_id,
+            input_table_name=input_table_name,
+            update_ts_offset=update_ts_offset,
+        )
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=["transformation_id", "input_table_name"],
+            set_={"update_ts_offset": update_ts_offset},
+        )
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def update_offsets_bulk(self, offsets: Dict[Tuple[str, str], float]) -> None:
+        """
+        Обновить несколько offset'ов за одну транзакцию
+        offsets: {(transformation_id, input_table_name): update_ts_offset}
+        """
+        if not offsets:
+            return
+
+        values = [
+            {
+                "transformation_id": trans_id,
+                "input_table_name": table_name,
+                "update_ts_offset": offset,
+            }
+            for (trans_id, table_name), offset in offsets.items()
+        ]
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(values)
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=["transformation_id", "input_table_name"],
+            set_={"update_ts_offset": insert_sql.excluded.update_ts_offset},
+        )
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def reset_offset(self, transformation_id: str, input_table_name: Optional[str] = None) -> None:
+        """Удалить offset (для полной переобработки)"""
+        sql = self.sql_table.delete().where(self.sql_table.c.transformation_id == transformation_id)
+        if input_table_name is not None:
+            sql = sql.where(self.sql_table.c.input_table_name == input_table_name)
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def get_statistics(self, transformation_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Получить статистику по offset'ам для мониторинга
+
+        Returns: [{
+            'transformation_id': str,
+            'input_table_name': str,
+            'update_ts_offset': float,
+            'offset_age_seconds': float  # time.time() - update_ts_offset
+        }]
+        """
+        sql = sa.select(
+            self.sql_table.c.transformation_id,
+            self.sql_table.c.input_table_name,
+            self.sql_table.c.update_ts_offset,
+        )
+
+        if transformation_id is not None:
+            sql = sql.where(self.sql_table.c.transformation_id == transformation_id)
+
+        with self.dbconn.con.begin() as con:
+            results = con.execute(sql).fetchall()
+
+        now = time.time()
+        return [
+            {
+                "transformation_id": row[0],
+                "input_table_name": row[1],
+                "update_ts_offset": row[2],
+                "offset_age_seconds": now - row[2] if row[2] else None,
+            }
+            for row in results
+        ]
+
+    def get_offset_count(self) -> int:
+        """Получить общее количество offset'ов в таблице"""
+        sql = sa.select(sa.func.count()).select_from(self.sql_table)
+
+        with self.dbconn.con.begin() as con:
+            return con.execute(sql).scalar()
