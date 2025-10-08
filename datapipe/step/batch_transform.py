@@ -497,7 +497,15 @@ class BaseBatchTransformStep(ComputeStep):
 
                 # Batch update всех offset'ов за одну транзакцию
                 if offsets_to_update:
-                    ds.offset_table.update_offsets_bulk(offsets_to_update)
+                    try:
+                        ds.offset_table.update_offsets_bulk(offsets_to_update)
+                    except Exception as e:
+                        # Таблица offset'ов может не существовать (create_meta_table=False)
+                        # Логируем warning но не прерываем выполнение
+                        logger.warning(
+                            f"Failed to update offsets for {self.get_name()}: {e}. "
+                            "Offset table may not exist (create_meta_table=False)"
+                        )
 
         return changes
 

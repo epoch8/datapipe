@@ -298,6 +298,63 @@ def test_offset_updated_even_when_optimization_disabled(dbconn: DBConn):
     assert offsets["disabled_opt_input"] >= now
 
 
+def test_works_without_offset_table(dbconn: DBConn):
+    """
+    Тест что код работает корректно если таблица offset'ов не создана.
+
+    Симулируем ситуацию: сначала создаем таблицу offset'ов, затем удаляем её,
+    и проверяем что код не падает при попытке использовать v2 метод и обновить offset'ы.
+    """
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    input_store = TableStoreDB(
+        dbconn,
+        "no_offset_table_input",
+        [Column("id", String, primary_key=True), Column("value", Integer)],
+        create_table=True,
+    )
+    input_dt = ds.create_table("no_offset_table_input", input_store)
+
+    output_store = TableStoreDB(
+        dbconn,
+        "no_offset_table_output",
+        [Column("id", String, primary_key=True), Column("result", Integer)],
+        create_table=True,
+    )
+    output_dt = ds.create_table("no_offset_table_output", output_store)
+
+    def transform_func(df):
+        return df.rename(columns={"value": "result"})
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="no_offset_table_transform",
+        func=transform_func,
+        input_dts=[ComputeInput(dt=input_dt, join_type="full")],
+        output_dts=[output_dt],
+        transform_keys=["id"],
+        use_offset_optimization=True,
+    )
+
+    # Добавляем данные
+    now = time.time()
+    input_dt.store_chunk(pd.DataFrame({"id": ["1", "2"], "value": [10, 20]}), now=now)
+
+    # УДАЛЯЕМ таблицу offset'ов, симулируя ситуацию когда она не создана
+    with dbconn.con.begin() as con:
+        con.execute("DROP TABLE IF EXISTS transform_input_offsets")
+
+    # Запускаем трансформацию - должна работать без ошибок
+    # v2 метод должен обработать все данные (get_offsets_for_transformation вернет {})
+    # Обновление offset'ов должно залогировать warning и продолжить работу
+    step.run_full(ds)
+
+    # Проверяем что данные обработались несмотря на отсутствие offset таблицы
+    output_data = output_dt.get_data()
+    assert len(output_data) == 2
+    assert sorted(output_data["id"].tolist()) == ["1", "2"]
+
+
 def test_offset_not_updated_on_empty_result(dbconn: DBConn):
     """
     Тест что offset НЕ обновляется если трансформация вернула пустой результат

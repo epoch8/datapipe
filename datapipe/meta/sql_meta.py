@@ -1020,15 +1020,20 @@ class TransformInputOffsetTable:
 
         Returns: {input_table_name: update_ts_offset}
         """
-        sql = sa.select(
-            self.sql_table.c.input_table_name,
-            self.sql_table.c.update_ts_offset,
-        ).where(self.sql_table.c.transformation_id == transformation_id)
+        try:
+            sql = sa.select(
+                self.sql_table.c.input_table_name,
+                self.sql_table.c.update_ts_offset,
+            ).where(self.sql_table.c.transformation_id == transformation_id)
 
-        with self.dbconn.con.begin() as con:
-            results = con.execute(sql).fetchall()
+            with self.dbconn.con.begin() as con:
+                results = con.execute(sql).fetchall()
 
-        return {row[0]: row[1] for row in results}
+            return {row[0]: row[1] for row in results}
+        except Exception:
+            # Таблица может не существовать если create_table=False
+            # Возвращаем пустой словарь - все offset'ы будут 0.0 (обработаем все данные)
+            return {}
 
     def update_offset(
         self, transformation_id: str, input_table_name: str, update_ts_offset: float
