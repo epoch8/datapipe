@@ -4,7 +4,6 @@
 import time
 
 import pandas as pd
-import pytest
 from sqlalchemy import Column, Integer, String
 
 from datapipe.compute import ComputeInput
@@ -206,10 +205,6 @@ def test_runtime_switch_multiple_runs(dbconn: DBConn):
     assert sorted(output_data["result"].tolist()) == [10, 20, 30, 40]
 
 
-@pytest.mark.xfail(
-    reason="Requires Phase 3: Automatic offset updates in run_full(). "
-    "Currently offsets are not updated automatically after successful processing."
-)
 def test_get_changed_idx_count_respects_label_override(dbconn: DBConn):
     """Тест что get_changed_idx_count также учитывает переопределение через labels"""
     ds = DataStore(dbconn, create_meta_table=True)
@@ -279,10 +274,6 @@ def test_get_changed_idx_count_respects_label_override(dbconn: DBConn):
     assert count_v1_after == 1
 
 
-@pytest.mark.xfail(
-    reason="Requires Phase 3: Automatic offset updates in run_full(). "
-    "Currently offsets are not updated automatically after successful processing."
-)
 def test_get_full_process_ids_respects_label_override(dbconn: DBConn):
     """Тест что get_full_process_ids также учитывает переопределение через labels"""
     ds = DataStore(dbconn, create_meta_table=True)

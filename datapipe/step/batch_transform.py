@@ -398,6 +398,34 @@ class BaseBatchTransformStep(ComputeStep):
 
             return chunk_count, gen()
 
+    def _get_max_update_ts_for_batch(
+        self,
+        ds: DataStore,
+        input_dt: DataTable,
+        processed_idx: IndexDF,
+    ) -> Optional[float]:
+        """
+        Получить максимальный update_ts из входной таблицы для УСПЕШНО обработанного батча.
+
+        Важно: используем processed_idx который содержит только успешно обработанные записи
+        из output_dfs (result.index), а не весь батч idx.
+        """
+        from datapipe.sql_util import sql_apply_idx_filter_to_table
+
+        if len(processed_idx) == 0:
+            return None
+
+        tbl = input_dt.meta_table.sql_table
+
+        # Построить запрос с фильтром по processed_idx (только успешно обработанные)
+        sql = select(func.max(tbl.c.update_ts))
+        sql = sql_apply_idx_filter_to_table(sql, tbl, input_dt.primary_keys, processed_idx)
+
+        with ds.meta_dbconn.con.begin() as con:
+            result = con.execute(sql).scalar()
+
+        return result
+
     def store_batch_result(
         self,
         ds: DataStore,
@@ -440,6 +468,36 @@ class BaseBatchTransformStep(ComputeStep):
                     changes.append(res_dt.name, del_idx)
 
         self.meta_table.mark_rows_processed_success(idx, process_ts=process_ts, run_config=run_config)
+
+        # НОВОЕ: Обновление offset'ов для каждой входной таблицы (Phase 3)
+        # Обновляем offset'ы всегда при успешной обработке, независимо от use_offset_optimization
+        # Это позволяет накапливать offset'ы для будущего использования
+        if output_dfs is not None:
+            # Получаем индекс успешно обработанных записей из output_dfs
+            # Используем первый output для извлечения processed_idx
+            if isinstance(output_dfs, (list, tuple)):
+                first_output = output_dfs[0]
+            else:
+                first_output = output_dfs
+
+            # Извлекаем индекс из DataFrame результата
+            if not first_output.empty:
+                processed_idx = data_to_index(first_output, self.transform_keys)
+
+                offsets_to_update = {}
+
+                for inp in self.input_dts:
+                    # Найти максимальный update_ts из УСПЕШНО обработанного батча
+                    max_update_ts = self._get_max_update_ts_for_batch(
+                        ds, inp.dt, processed_idx
+                    )
+
+                    if max_update_ts is not None:
+                        offsets_to_update[(self.get_name(), inp.dt.name)] = max_update_ts
+
+                # Batch update всех offset'ов за одну транзакцию
+                if offsets_to_update:
+                    ds.offset_table.update_offsets_bulk(offsets_to_update)
 
         return changes
 

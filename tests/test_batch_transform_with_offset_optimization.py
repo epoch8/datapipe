@@ -166,15 +166,15 @@ def test_batch_transform_offset_with_error_retry(dbconn: DBConn):
     )
     output_dt = ds.create_table("test_output3", output_store)
 
-    call_data = {"calls": []}
+    call_data = {"calls": [], "error_count": 0}
 
     def transform_func(df):
         call_data["calls"].append(sorted(df["id"].tolist()))
         # Имитируем ошибку на первом запуске для id=2
-        if len(call_data["calls"]) == 1 and "2" in df["id"].tolist():
-            # Обрабатываем только id != 2
-            result = df[df["id"] != "2"].rename(columns={"value": "result"})
-            return result
+        if call_data["error_count"] == 0 and "2" in df["id"].tolist():
+            call_data["error_count"] += 1
+            # Выбрасываем исключение чтобы запись была помечена как error
+            raise ValueError("Test error for id=2")
         return df.rename(columns={"value": "result"})
 
     step = BatchTransformStep(
@@ -185,6 +185,7 @@ def test_batch_transform_offset_with_error_retry(dbconn: DBConn):
         output_dts=[output_dt],
         transform_keys=["id"],
         use_offset_optimization=True,
+        chunk_size=1,  # Обрабатываем по одной записи чтобы ошибка была только для id=2
     )
 
     # Добавляем данные
