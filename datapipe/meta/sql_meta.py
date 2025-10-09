@@ -1,4 +1,5 @@
 import itertools
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
     from datapipe.datatable import DataStore
 
+logger = logging.getLogger("datapipe.meta.sql_meta")
 
 TABLE_META_SCHEMA: List[sa.Column] = [
     sa.Column("hash", sa.Integer),
@@ -874,11 +876,15 @@ def build_changed_idx_sql_v2(
         key_cols: List[Any] = [sa.column(k) for k in keys]
         offset = offsets[inp.dt.name]
 
-        # SELECT transform_keys FROM input_meta WHERE update_ts > offset AND delete_ts IS NULL
+        # SELECT transform_keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
+        # Включаем как обновленные, так и удаленные записи
         sql: Any = sa.select(*key_cols).select_from(tbl).where(
-            sa.and_(
+            sa.or_(
                 tbl.c.update_ts > offset,
-                tbl.c.delete_ts.is_(None)
+                sa.and_(
+                    tbl.c.delete_ts.isnot(None),
+                    tbl.c.delete_ts > offset
+                )
             )
         )
 
@@ -1125,3 +1131,70 @@ class TransformInputOffsetTable:
 
         with self.dbconn.con.begin() as con:
             return con.execute(sql).scalar()
+
+
+def initialize_offsets_from_transform_meta(
+    ds: "DataStore",  # type: ignore  # noqa: F821
+    transform_step: "BaseBatchTransformStep",  # type: ignore  # noqa: F821
+) -> Dict[str, float]:
+    """
+    Инициализировать offset'ы для существующей трансформации на основе TransformMetaTable.
+
+    Логика:
+    1. Находим MIN(process_ts) из успешно обработанных записей в TransformMetaTable
+    2. Для каждой входной таблицы находим MAX(update_ts) где update_ts <= min_process_ts
+    3. Устанавливаем эти значения как начальные offset'ы
+    4. Это гарантирует что мы не пропустим данные которые еще не были обработаны
+
+    Args:
+        ds: DataStore с мета-подключением
+        transform_step: Шаг трансформации для которого инициализируются offset'ы
+
+    Returns:
+        Dict с установленными offset'ами {input_table_name: update_ts_offset}
+    """
+    meta_tbl = transform_step.meta_table.sql_table
+
+    # Найти минимальный process_ts среди успешно обработанных записей
+    sql = sa.select(sa.func.min(meta_tbl.c.process_ts)).where(
+        meta_tbl.c.is_success == True  # noqa: E712
+    )
+
+    with ds.meta_dbconn.con.begin() as con:
+        min_process_ts = con.execute(sql).scalar()
+
+    if min_process_ts is None:
+        # Нет успешно обработанных записей → offset не устанавливаем
+        return {}
+
+    # Для каждой входной таблицы найти максимальный update_ts <= min_process_ts
+    offsets = {}
+    for inp in transform_step.input_dts:
+        input_tbl = inp.dt.meta_table.sql_table
+
+        sql = sa.select(sa.func.max(input_tbl.c.update_ts)).where(
+            sa.and_(
+                input_tbl.c.update_ts <= min_process_ts,
+                input_tbl.c.delete_ts.is_(None),
+            )
+        )
+
+        with ds.meta_dbconn.con.begin() as con:
+            max_update_ts = con.execute(sql).scalar()
+
+        if max_update_ts is not None:
+            offsets[(transform_step.get_name(), inp.dt.name)] = max_update_ts
+
+    # Установить offset'ы
+    if offsets:
+        try:
+            ds.offset_table.update_offsets_bulk(offsets)
+        except Exception as e:
+            # Таблица offset'ов может не существовать
+            logger.warning(
+                f"Failed to initialize offsets for {transform_step.get_name()}: {e}. "
+                "Offset table may not exist (create_meta_table=False)"
+            )
+            return {}
+
+    return {inp_name: offset for (_, inp_name), offset in offsets.items()}

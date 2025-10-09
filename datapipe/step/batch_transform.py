@@ -418,7 +418,14 @@ class BaseBatchTransformStep(ComputeStep):
         tbl = input_dt.meta_table.sql_table
 
         # Построить запрос с фильтром по processed_idx (только успешно обработанные)
-        sql = select(func.max(tbl.c.update_ts))
+        # Берем максимум из update_ts и delete_ts (для корректного учета удалений)
+        max_ts_expr = func.max(
+            func.greatest(
+                tbl.c.update_ts,
+                func.coalesce(tbl.c.delete_ts, 0.0)
+            )
+        )
+        sql = select(max_ts_expr)
         sql = sql_apply_idx_filter_to_table(sql, tbl, input_dt.primary_keys, processed_idx)
 
         with ds.meta_dbconn.con.begin() as con:
