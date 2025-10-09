@@ -634,23 +634,25 @@ class BatchTransform(PipelineStep):
         input_dts = [self.pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
-        return [
-            BatchTransformStep(
-                ds=ds,
-                name=f"{self.func.__name__}",
-                input_dts=input_dts,
-                output_dts=output_dts,
-                func=self.func,
-                kwargs=self.kwargs,
-                transform_keys=self.transform_keys,
-                chunk_size=self.chunk_size,
-                labels=self.labels,
-                executor_config=self.executor_config,
-                filters=self.filters,
-                order_by=self.order_by,
-                order=self.order,
-            )
-        ]
+        step = BatchTransformStep(
+            ds=ds,
+            name=f"{self.func.__name__}",
+            input_dts=input_dts,
+            output_dts=output_dts,
+            func=self.func,
+            kwargs=self.kwargs,
+            transform_keys=self.transform_keys,
+            chunk_size=self.chunk_size,
+            labels=self.labels,
+            executor_config=self.executor_config,
+            filters=self.filters,
+            order_by=self.order_by,
+            order=self.order,
+        )
+        for inp in input_dts:
+            inp.dt.add_transformations([step])
+
+        return [step]
 
 
 class BatchTransformStep(BaseBatchTransformStep):
