@@ -1042,6 +1042,19 @@ class TransformInputOffsetTable:
             # Возвращаем пустой словарь - все offset'ы будут 0.0 (обработаем все данные)
             return {}
 
+    def _build_max_offset_expression(self, insert_sql: Any) -> Any:
+        """
+        Создать выражение для атомарного выбора максимального offset.
+
+        Использует CASE WHEN для гарантии что offset только растет,
+        работает и в SQLite и в PostgreSQL.
+        """
+        return sa.case(
+            (self.sql_table.c.update_ts_offset > insert_sql.excluded.update_ts_offset,
+             self.sql_table.c.update_ts_offset),
+            else_=insert_sql.excluded.update_ts_offset
+        )
+
     def update_offset(
         self, transformation_id: str, input_table_name: str, update_ts_offset: float
     ) -> None:
@@ -1051,9 +1064,12 @@ class TransformInputOffsetTable:
             input_table_name=input_table_name,
             update_ts_offset=update_ts_offset,
         )
+
+        max_offset = self._build_max_offset_expression(insert_sql)
+
         sql = insert_sql.on_conflict_do_update(
             index_elements=["transformation_id", "input_table_name"],
-            set_={"update_ts_offset": update_ts_offset},
+            set_={"update_ts_offset": max_offset},
         )
         with self.dbconn.con.begin() as con:
             con.execute(sql)
@@ -1076,9 +1092,12 @@ class TransformInputOffsetTable:
         ]
 
         insert_sql = self.dbconn.insert(self.sql_table).values(values)
+
+        max_offset = self._build_max_offset_expression(insert_sql)
+
         sql = insert_sql.on_conflict_do_update(
             index_elements=["transformation_id", "input_table_name"],
-            set_={"update_ts_offset": insert_sql.excluded.update_ts_offset},
+            set_={"update_ts_offset": max_offset},
         )
         with self.dbconn.con.begin() as con:
             con.execute(sql)
