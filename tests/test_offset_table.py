@@ -1,5 +1,7 @@
 import time
 
+import sqlalchemy as sa
+
 from datapipe.meta.sql_meta import TransformInputOffsetTable
 from datapipe.store.database import DBConn
 
@@ -12,7 +14,9 @@ def test_offset_table_create(dbconn: DBConn):
     assert offset_table.sql_table is not None
 
     # Проверяем, что таблица существует в БД
-    assert offset_table.sql_table.exists(dbconn.con)
+    inspector = sa.inspect(dbconn.con)
+    schema = offset_table.sql_table.schema
+    assert offset_table.sql_table.name in inspector.get_table_names(schema=schema)
 
 
 def test_offset_table_get_offset_empty(dbconn: DBConn):

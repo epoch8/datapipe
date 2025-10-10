@@ -551,7 +551,7 @@ def init_offsets(ctx, step: Optional[str]):
 
         except Exception as e:
             rprint(f"[red]✗ Failed to initialize: {e}[/red]")
-            results[step_name] = None
+            results[step_name] = {}
 
     # Summary
     rprint("\n[cyan]═══ Summary ═══[/cyan]")

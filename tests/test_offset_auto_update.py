@@ -7,6 +7,7 @@
 import time
 
 import pandas as pd
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer, String
 
 from datapipe.compute import ComputeInput
@@ -342,7 +343,7 @@ def test_works_without_offset_table(dbconn: DBConn):
 
     # УДАЛЯЕМ таблицу offset'ов, симулируя ситуацию когда она не создана
     with dbconn.con.begin() as con:
-        con.execute("DROP TABLE IF EXISTS transform_input_offsets")
+        con.execute(sa.text("DROP TABLE IF EXISTS transform_input_offsets"))
 
     # Запускаем трансформацию - должна работать без ошибок
     # v2 метод должен обработать все данные (get_offsets_for_transformation вернет {})

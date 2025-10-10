@@ -7,14 +7,12 @@
 import signal
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
-import pytest
 from sqlalchemy import Column, Integer, String
 
 from datapipe.datatable import DataStore
-from datapipe.meta.sql_meta import initialize_offsets_from_transform_meta
 from datapipe.store.database import DBConn, TableStoreDB
 
 from .conftest import fast_bulk_insert
@@ -114,7 +112,7 @@ def test_performance_small_dataset(fast_data_loader, perf_pipeline_factory, dbco
     assert len(v2_data) == num_records
     pd.testing.assert_frame_equal(v1_data, v2_data)
 
-    print(f"\n=== Results ===")
+    print("\n=== Results ===")
     print(f"Records processed: {num_records:,}")
     print(f"v1 (FULL OUTER JOIN): {v1_time:.3f}s")
     print(f"v2 (offset-based): {v2_time:.3f}s")
@@ -202,7 +200,7 @@ def test_performance_large_dataset_with_timeout(
     assert len(v2_data) == num_records, f"Expected {num_records} records, got {len(v2_data)}"
 
     # Вывод результатов
-    print(f"\n=== Results ===")
+    print("\n=== Results ===")
     print(f"Records processed: {num_records:,}")
     if v1_timed_out:
         print(f"v1 (FULL OUTER JOIN): >{MAX_TIME}s (timed out)")
@@ -326,7 +324,7 @@ def test_performance_incremental_updates(
     pd.testing.assert_frame_equal(v1_data, v2_data)
 
     # Вывод результатов
-    print(f"\n=== Incremental Update Results ===")
+    print("\n=== Incremental Update Results ===")
     print(f"Total records: {total_records:,}")
     print(f"New records: {new_records:,} ({new_records/total_records*100:.1f}%)")
     print(f"v1 incremental: {v1_incr_time:.3f}s (re-processes all {total_records:,} records)")
@@ -516,7 +514,7 @@ def test_performance_scalability_analysis(
 
     # ========== Анализ масштабируемости и экстраполяция ==========
     print(f"\n{'='*70}")
-    print(f"SCALABILITY ANALYSIS & EXTRAPOLATION")
+    print("SCALABILITY ANALYSIS & EXTRAPOLATION")
     print(f"{'='*70}")
 
     print(f"\n{'Dataset Size':<15} {'v1 Time (s)':<15} {'v2 Time (s)':<15} {'Speedup':<10}")
@@ -527,7 +525,7 @@ def test_performance_scalability_analysis(
         print(f"{size:>13,}  {timeout_marker}{v1_time:>14.3f}  {v2_time:>14.3f}  {speedup:>9.1f}x")
 
     # Экстраполяция на большие размеры
-    print(f"\n--- Extrapolation to larger datasets ---")
+    print("\n--- Extrapolation to larger datasets ---")
 
     # v1: линейная экстраполяция (O(N))
     # Находим коэффициент: time = k * size
@@ -562,9 +560,9 @@ def test_performance_scalability_analysis(
         print(f"{size:>13,}  {v1_est:>17.1f}s  {v2_est:>17.3f}s  {speedup_est:>14.0f}x")
 
     print(f"\n{'='*70}")
-    print(f"CONCLUSION")
+    print("CONCLUSION")
     print(f"{'='*70}")
-    print(f"v1 complexity: O(N) - scales linearly with dataset size")
+    print("v1 complexity: O(N) - scales linearly with dataset size")
     print(f"v2 complexity: O(M) - depends only on number of changes ({new_records:,})")
-    print(f"\nFor incremental updates on large datasets (10M+), v2 is 100-1000x faster!")
+    print("\nFor incremental updates on large datasets (10M+), v2 is 100-1000x faster!")
     print(f"{'='*70}\n")

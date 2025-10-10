@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func
+from sqlalchemy import alias, case, func
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -419,14 +419,20 @@ class BaseBatchTransformStep(ComputeStep):
 
         # Построить запрос с фильтром по processed_idx (только успешно обработанные)
         # Берем максимум из update_ts и delete_ts (для корректного учета удалений)
-        max_ts_expr = func.max(
-            func.greatest(
-                tbl.c.update_ts,
-                func.coalesce(tbl.c.delete_ts, 0.0)
-            )
+        # Используем CASE WHEN вместо greatest() для совместимости с SQLite
+        max_of_both = case(
+            (tbl.c.delete_ts.isnot(None) & (tbl.c.delete_ts > tbl.c.update_ts), tbl.c.delete_ts),
+            else_=tbl.c.update_ts
         )
+        max_ts_expr = func.max(max_of_both)
         sql = select(max_ts_expr)
-        sql = sql_apply_idx_filter_to_table(sql, tbl, input_dt.primary_keys, processed_idx)
+        # Используем только те ключи, которые есть в processed_idx
+        idx_keys = list(processed_idx.columns)
+        filter_keys = [k for k in input_dt.primary_keys if k in idx_keys]
+
+        # Если нет общих ключей, не можем отфильтровать - берем максимум по всей таблице
+        if len(filter_keys) > 0:
+            sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, processed_idx)
 
         with ds.meta_dbconn.con.begin() as con:
             result = con.execute(sql).scalar()

@@ -873,12 +873,12 @@ def build_changed_idx_sql_v2(
         if len(keys) == 0:
             continue
 
-        key_cols: List[Any] = [sa.column(k) for k in keys]
+        transform_key_cols: List[Any] = [sa.column(k) for k in keys]
         offset = offsets[inp.dt.name]
 
         # SELECT transform_keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
         # Включаем как обновленные, так и удаленные записи
-        sql: Any = sa.select(*key_cols).select_from(tbl).where(
+        changed_sql: Any = sa.select(*transform_key_cols).select_from(tbl).where(
             sa.or_(
                 tbl.c.update_ts > offset,
                 sa.and_(
@@ -889,13 +889,13 @@ def build_changed_idx_sql_v2(
         )
 
         # Применить filters_idx и run_config
-        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, tbl, inp.dt.primary_keys, run_config)
+        changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys, filters_idx)
+        changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
 
-        if len(key_cols) > 0:
-            sql = sql.group_by(*key_cols)
+        if len(transform_key_cols) > 0:
+            changed_sql = changed_sql.group_by(*transform_key_cols)
 
-        changed_ctes.append(sql.cte(name=f"{inp.dt.name}_changes"))
+        changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
 
     # 3. Получить записи с ошибками из TransformMetaTable
     tr_tbl = meta_table.sql_table
@@ -920,7 +920,7 @@ def build_changed_idx_sql_v2(
     # 4. Объединить все изменения и ошибки через UNION
     if len(changed_ctes) == 0:
         # Если нет входных таблиц с изменениями, используем только ошибки
-        union_sql = sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
+        union_sql: Any = sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
     else:
         # UNION всех изменений и ошибок
         union_parts = []
@@ -944,7 +944,8 @@ def build_changed_idx_sql_v2(
     else:
         join_onclause_sql = sa.and_(*[union_cte.c[key] == tr_tbl.c[key] for key in transform_keys])
 
-    final_sql = (
+    # Используем `out` для консистентности с v1
+    out = (
         sa.select(
             sa.literal(1).label("_datapipe_dummy"),
             *[union_cte.c[k] for k in transform_keys]
@@ -954,23 +955,23 @@ def build_changed_idx_sql_v2(
     )
 
     if order_by is None:
-        final_sql = final_sql.order_by(
+        out = out.order_by(
             tr_tbl.c.priority.desc().nullslast(),
-            *[sa.column(k) for k in transform_keys],
+            *[union_cte.c[k] for k in transform_keys],
         )
     else:
         if order == "desc":
-            final_sql = final_sql.order_by(
-                *[sa.desc(sa.column(k)) for k in order_by],
+            out = out.order_by(
+                *[sa.desc(union_cte.c[k]) for k in order_by],
                 tr_tbl.c.priority.desc().nullslast(),
             )
         elif order == "asc":
-            final_sql = final_sql.order_by(
-                *[sa.asc(sa.column(k)) for k in order_by],
+            out = out.order_by(
+                *[sa.asc(union_cte.c[k]) for k in order_by],
                 tr_tbl.c.priority.desc().nullslast(),
             )
 
-    return (transform_keys, final_sql)
+    return (transform_keys, out)
 
 
 TRANSFORM_INPUT_OFFSET_SCHEMA: DataSchema = [
@@ -1130,7 +1131,8 @@ class TransformInputOffsetTable:
         sql = sa.select(sa.func.count()).select_from(self.sql_table)
 
         with self.dbconn.con.begin() as con:
-            return con.execute(sql).scalar()
+            result = con.execute(sql).scalar()
+            return result if result is not None else 0
 
 
 def initialize_offsets_from_transform_meta(
