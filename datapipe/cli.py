@@ -503,13 +503,13 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
 @click.pass_context
 def init_offsets(ctx, step: Optional[str]):
     """
-    Initialize offset table from existing TransformMetaTable data.
+    Инициализировать таблицу offset'ов из существующих данных TransformMetaTable.
 
-    This command scans existing processed data and sets initial offset values
-    to enable smooth migration to offset-based optimization (v2 method).
+    Команда сканирует уже обработанные данные и устанавливает начальные значения offset'ов,
+    чтобы обеспечить плавную миграцию на оптимизацию через offset'ы (метод v2).
 
-    If --step is specified, initializes only that step. Otherwise, initializes
-    all BatchTransformStep instances in the pipeline.
+    Если указан --step, инициализирует только этот шаг. Иначе инициализирует
+    все экземпляры BatchTransformStep в пайплайне.
     """
     from datapipe.meta.sql_meta import initialize_offsets_from_transform_meta
 
