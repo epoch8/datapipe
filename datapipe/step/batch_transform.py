@@ -128,6 +128,38 @@ class BaseBatchTransformStep(ComputeStep):
         self.order_by = order_by
         self.order = order
 
+    def _get_use_offset_optimization(self, run_config: Optional[RunConfig] = None) -> bool:
+        """
+        Определить, использовать ли оптимизацию через offset'ы.
+
+        Проверяет флаг self.use_offset_optimization с возможностью переопределения
+        через RunConfig.labels["use_offset_optimization"].
+
+        Args:
+            run_config: Конфигурация запуска, может содержать переопределение флага
+
+        Returns:
+            True если нужно использовать offset-оптимизацию, False иначе
+        """
+        use_offset = self.use_offset_optimization
+        if run_config is not None and run_config.labels is not None:
+            label_override = run_config.labels.get("use_offset_optimization")
+            if label_override is not None:
+                use_offset = bool(label_override)
+        return use_offset
+
+    def _get_optimization_method_name(self, run_config: Optional[RunConfig] = None) -> str:
+        """
+        Получить имя используемого метода оптимизации для логирования.
+
+        Args:
+            run_config: Конфигурация запуска
+
+        Returns:
+            "v2_offset" если используется оптимизация, "v1_join" иначе
+        """
+        return "v2_offset" if self._get_use_offset_optimization(run_config) else "v1_join"
+
     def _build_changed_idx_sql(
         self,
         ds: DataStore,
@@ -142,14 +174,8 @@ class BaseBatchTransformStep(ComputeStep):
 
         Флаг можно переопределить через RunConfig.labels["use_offset_optimization"].
         """
-        # Проверяем, есть ли переопределение в RunConfig.labels
-        use_offset = self.use_offset_optimization
-        if run_config is not None and run_config.labels is not None:
-            label_override = run_config.labels.get("use_offset_optimization")
-            if label_override is not None:
-                use_offset = bool(label_override)
-
-        method = "v2_offset" if use_offset else "v1_join"
+        use_offset = self._get_use_offset_optimization(run_config)
+        method = self._get_optimization_method_name(run_config)
 
         with tracer.start_as_current_span(f"build_changed_idx_sql_{method}"):
             start_time = time.time()
@@ -309,12 +335,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             def alter_res_df():
                 # Определяем метод для логирования
-                use_offset = self.use_offset_optimization
-                if run_config is not None and run_config.labels is not None:
-                    label_override = run_config.labels.get("use_offset_optimization")
-                    if label_override is not None:
-                        use_offset = bool(label_override)
-                method = "v2_offset" if use_offset else "v1_join"
+                method = self._get_optimization_method_name(run_config)
 
                 with tracer.start_as_current_span(f"execute_changed_idx_sql_{method}"):
                     start_time = time.time()
@@ -360,12 +381,7 @@ class BaseBatchTransformStep(ComputeStep):
                         )
 
                         # Определяем метод для логирования
-                        use_offset = self.use_offset_optimization
-                        if run_config is not None and run_config.labels is not None:
-                            label_override = run_config.labels.get("use_offset_optimization")
-                            if label_override is not None:
-                                use_offset = bool(label_override)
-                        method = "v2_offset" if use_offset else "v1_join"
+                        method = self._get_optimization_method_name(run_config)
 
                         with tracer.start_as_current_span(f"execute_changed_idx_sql_change_list_{method}"):
                             start_time = time.time()
