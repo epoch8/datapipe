@@ -46,7 +46,7 @@ class RedisStore(TableStore):
         name: str,
         data_sql_schema: List[Column],
         cluster_mode: bool = False,
-        password: str = None,
+        password: Optional[str] = None,
     ) -> None:
         self.connection = connection
         if not cluster_mode:
