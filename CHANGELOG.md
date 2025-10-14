@@ -1,4 +1,4 @@
-# WIP
+# 0.14.5
 
 * Fix for getting existing idx of empy meta-table
 * Add `keep_existing=True` to `TransformMetaTable` to prevent table metadata conflicts
