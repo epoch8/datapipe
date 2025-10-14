@@ -1,6 +1,8 @@
 # WIP
 
 * Fix for getting existing idx of empy meta-table
+* Add `keep_existing=True` to `TransformMetaTable` to prevent table metadata conflicts
+* Enhance `RedisStore` with multi-node cluster support and password authentication
 
 # 0.14.4
 

@@ -3,6 +3,15 @@ name: Run tests
 on:
   push:
     branches:
+      - "master"
+    paths:
+      - ".github/workflows/test.yaml"
+      - "datapipe/**"
+      - "tests/**"
+      - "pyproject.toml"
+
+  pull_request:
+    branches:
       - "**"
     paths:
       - ".github/workflows/test.yaml"
