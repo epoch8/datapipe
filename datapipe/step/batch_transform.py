@@ -81,7 +81,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: Sequence[ComputeInput | DataTable],
+        input_dts: Sequence[Union[ComputeInput, DataTable]],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -93,22 +93,19 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> None:
         # Support both old API (List[DataTable]) and new API (List[ComputeInput])
         # Convert to new API format
-        normalized_input_dts: List[ComputeInput] = []
-        input_meta_tables = []
+        compute_input_dts: List[ComputeInput] = []
         for inp in input_dts:
             if isinstance(inp, ComputeInput):
                 # New API: ComputeInput with .dt attribute
-                normalized_input_dts.append(inp)
-                input_meta_tables.append(inp.dt.meta_table)
+                compute_input_dts.append(inp)
             else:
                 # Old API: DataTable passed directly - convert to new API
-                normalized_input_dts.append(ComputeInput(dt=inp, join_type="full"))
-                input_meta_tables.append(inp.meta_table)
+                compute_input_dts.append(ComputeInput(dt=inp, join_type="full"))
 
         ComputeStep.__init__(
             self,
             name=name,
-            input_dts=normalized_input_dts,
+            input_dts=compute_input_dts,
             output_dts=output_dts,
             labels=labels,
             executor_config=executor_config,
@@ -121,7 +118,7 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys = list(transform_keys)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            input_meta_tables,
+            [inp.dt.meta_table for inp in compute_input_dts],
             [out.meta_table for out in output_dts],
             transform_keys,
         )
