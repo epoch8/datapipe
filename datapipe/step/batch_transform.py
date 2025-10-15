@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func, select
+from sqlalchemy import alias, func
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -113,7 +113,7 @@ class BaseBatchTransformStep(ComputeStep):
                 input_meta_tables.append(inp.dt.meta_table)
             else:
                 # Old API: DataTable passed directly
-                input_meta_tables.append(inp.meta_table)
+                input_meta_tables.append(cast(DataTable, inp).meta_table)  # type: ignore[arg-type]
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             input_meta_tables,

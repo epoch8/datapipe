@@ -1,6 +1,7 @@
 # WIP
 
 * Fix for getting existing idx of empy meta-table
+* Add backward compatibility for DataTable API in BatchTransformStep
 
 # 0.14.4
 
