@@ -105,8 +105,18 @@ class BaseBatchTransformStep(ComputeStep):
         if transform_keys is not None and not isinstance(transform_keys, list):
             transform_keys = list(transform_keys)
 
+        # Support both old API (List[DataTable]) and new API (List[ComputeInput])
+        input_meta_tables = []
+        for inp in input_dts:
+            if hasattr(inp, 'dt'):
+                # New API: ComputeInput with .dt attribute
+                input_meta_tables.append(inp.dt.meta_table)
+            else:
+                # Old API: DataTable passed directly
+                input_meta_tables.append(inp.meta_table)
+
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            [inp.dt.meta_table for inp in input_dts],
+            input_meta_tables,
             [out.meta_table for out in output_dts],
             transform_keys,
         )
