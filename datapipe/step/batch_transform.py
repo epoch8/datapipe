@@ -14,6 +14,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -80,7 +81,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: list[ComputeInput | DataTable],
+        input_dts: Sequence[ComputeInput | DataTable],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -90,10 +91,24 @@ class BaseBatchTransformStep(ComputeStep):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
+        # Support both old API (List[DataTable]) and new API (List[ComputeInput])
+        # Convert to new API format
+        normalized_input_dts: List[ComputeInput] = []
+        input_meta_tables = []
+        for inp in input_dts:
+            if isinstance(inp, ComputeInput):
+                # New API: ComputeInput with .dt attribute
+                normalized_input_dts.append(inp)
+                input_meta_tables.append(inp.dt.meta_table)
+            else:
+                # Old API: DataTable passed directly - convert to new API
+                normalized_input_dts.append(ComputeInput(dt=inp, join_type="full"))
+                input_meta_tables.append(inp.meta_table)
+
         ComputeStep.__init__(
             self,
             name=name,
-            input_dts=input_dts,
+            input_dts=normalized_input_dts,
             output_dts=output_dts,
             labels=labels,
             executor_config=executor_config,
@@ -104,16 +119,6 @@ class BaseBatchTransformStep(ComputeStep):
         # Force transform_keys to be a list, otherwise Pandas will not be happy
         if transform_keys is not None and not isinstance(transform_keys, list):
             transform_keys = list(transform_keys)
-
-        # Support both old API (List[DataTable]) and new API (List[ComputeInput])
-        input_meta_tables = []
-        for inp in input_dts:
-            if isinstance(inp, ComputeInput):
-                # New API: ComputeInput with .dt attribute
-                input_meta_tables.append(inp.dt.meta_table)
-            else:
-                # Old API: DataTable passed directly
-                input_meta_tables.append(inp.meta_table)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             input_meta_tables,
