@@ -80,7 +80,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: List[ComputeInput],
+        input_dts: list[ComputeInput | DataTable],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -108,7 +108,7 @@ class BaseBatchTransformStep(ComputeStep):
         # Support both old API (List[DataTable]) and new API (List[ComputeInput])
         input_meta_tables = []
         for inp in input_dts:
-            if hasattr(inp, 'dt'):
+            if isinstance(inp, ComputeInput):
                 # New API: ComputeInput with .dt attribute
                 input_meta_tables.append(inp.dt.meta_table)
             else:
