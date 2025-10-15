@@ -14,6 +14,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -84,7 +85,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: List[ComputeInput],
+        input_dts: Sequence[Union[ComputeInput, DataTable]],
         output_dts: List[DataTable],
         transform_keys: Optional[List[str]] = None,
         chunk_size: int = 1000,
@@ -95,10 +96,21 @@ class BaseBatchTransformStep(ComputeStep):
         order: Literal["asc", "desc"] = "asc",
         use_offset_optimization: bool = False,
     ) -> None:
+        # Support both old API (List[DataTable]) and new API (List[ComputeInput])
+        # Convert to new API format
+        compute_input_dts: List[ComputeInput] = []
+        for inp in input_dts:
+            if isinstance(inp, ComputeInput):
+                # New API: ComputeInput with .dt attribute
+                compute_input_dts.append(inp)
+            else:
+                # Old API: DataTable passed directly - convert to new API
+                compute_input_dts.append(ComputeInput(dt=inp, join_type="full"))
+
         ComputeStep.__init__(
             self,
             name=name,
-            input_dts=input_dts,
+            input_dts=compute_input_dts,
             output_dts=output_dts,
             labels=labels,
             executor_config=executor_config,
@@ -113,7 +125,7 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys = list(transform_keys)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
-            [inp.dt.meta_table for inp in input_dts],
+            [inp.dt.meta_table for inp in compute_input_dts],
             [out.meta_table for out in output_dts],
             transform_keys,
         )
@@ -208,9 +220,7 @@ class BaseBatchTransformStep(ComputeStep):
             query_build_time = time.time() - start_time
 
             # Логирование времени построения запроса
-            logger.debug(
-                f"[{self.get_name()}] Query build time ({method}): {query_build_time:.3f}s"
-            )
+            logger.debug(f"[{self.get_name()}] Query build time ({method}): {query_build_time:.3f}s")
 
             return keys, sql
 
@@ -437,8 +447,7 @@ class BaseBatchTransformStep(ComputeStep):
         # Берем максимум из update_ts и delete_ts (для корректного учета удалений)
         # Используем CASE WHEN вместо greatest() для совместимости с SQLite
         max_of_both = case(
-            (tbl.c.delete_ts.isnot(None) & (tbl.c.delete_ts > tbl.c.update_ts), tbl.c.delete_ts),
-            else_=tbl.c.update_ts
+            (tbl.c.delete_ts.isnot(None) & (tbl.c.delete_ts > tbl.c.update_ts), tbl.c.delete_ts), else_=tbl.c.update_ts
         )
         max_ts_expr = func.max(max_of_both)
         sql = select(max_ts_expr)
@@ -517,9 +526,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                 for inp in self.input_dts:
                     # Найти максимальный update_ts из УСПЕШНО обработанного батча
-                    max_update_ts = self._get_max_update_ts_for_batch(
-                        ds, inp.dt, processed_idx
-                    )
+                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp.dt, processed_idx)
 
                     if max_update_ts is not None:
                         offsets_to_update[(self.get_name(), inp.dt.name)] = max_update_ts
