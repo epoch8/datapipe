@@ -451,6 +451,8 @@ class TransformMetaTable:
             name,
             dbconn.sqla_metadata,
             *self.sql_schema,
+            # TODO remove in 0.15 release
+            keep_existing=True,
         )
 
         if create_table:
