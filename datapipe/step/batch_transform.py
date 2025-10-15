@@ -113,7 +113,7 @@ class BaseBatchTransformStep(ComputeStep):
                 input_meta_tables.append(inp.dt.meta_table)
             else:
                 # Old API: DataTable passed directly
-                input_meta_tables.append(cast(DataTable, inp).meta_table)  # type: ignore[arg-type]
+                input_meta_tables.append(inp.meta_table)
 
         self.transform_keys, self.transform_schema = self.compute_transform_schema(
             input_meta_tables,
