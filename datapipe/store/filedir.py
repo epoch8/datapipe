@@ -10,7 +10,6 @@ from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
 import fsspec
 import numpy as np
 import pandas as pd
-from iteration_utilities import duplicates  # type: ignore
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
@@ -93,6 +92,15 @@ class PILFile(ItemStoreFileAdapter):
             raise Exception("Image must be a bytes string or np.array or Pillow Image object")
 
         image.save(f, format=self.format, **self.dump_params)
+
+
+def duplicates(lst: List[Any]) -> Iterator[Any]:
+    seen = set()
+    for item in lst:
+        if item in seen:
+            yield item
+        else:
+            seen.add(item)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:

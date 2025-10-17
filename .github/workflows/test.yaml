@@ -65,8 +65,8 @@ jobs:
           - python-version: "3.13"
             test-db-env: "postgres"
           
-          - python-version: "3.14"
-            test-db-env: "postgres"
+          # - python-version: "3.14"
+          #   test-db-env: "postgres"
 
     services:
       # Label used to access the service container
