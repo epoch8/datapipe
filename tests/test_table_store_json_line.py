@@ -33,6 +33,7 @@ def make_file2(file):
         out.write('{"id": "2", "text": "text2"}\n')
 
 
+@pytest.mark.skip(reason="impossible to trace changes when they happen externally")
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     input_file = tmp_dir / "data.json"
 

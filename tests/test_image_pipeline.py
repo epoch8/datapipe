@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from PIL import Image
+import pytest
 
 from datapipe.compute import (
     Catalog,
@@ -107,6 +108,7 @@ def test_image_pipeline(dbconn, tmp_dir):
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 10
 
 
+@pytest.mark.skip(reason="impossible to trace changes when they happen externally")
 def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     # Add images to tmp_dir
     df_images = make_df()

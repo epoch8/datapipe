@@ -1,6 +1,7 @@
 import itertools
 import math
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
@@ -12,6 +13,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     cast,
 )
@@ -427,6 +429,7 @@ class MetaTable:
 
 TRANSFORM_META_SCHEMA: DataSchema = [
     sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
+    # FIXME remove this and adjust the queries
     sa.Column("is_success", sa.Boolean),  # Успешно ли обработана строка
     sa.Column("priority", sa.Integer),  # Приоритет обработки (чем больше, тем выше)
     sa.Column("status", sa.String), # Статус исполнения трансформации
@@ -785,29 +788,168 @@ def _make_agg_of_agg(
     return sql.cte(name=f"all__{agg_col}")
 
 
+def _split_tables_into_connected_groups(
+    input_dts: List["ComputeInput"]
+) -> Dict[Tuple[str], List["ComputeInput"]]:
+    """
+    This function calculates groups of tables that are connected with primary keys
+    """
+
+    all_input_keyset = set([])
+    all_input_keys = []
+
+    # this is simple way of determining graph connectivity among tables and keys
+    # tables are vertices, primary keys are edges
+    adjacency_keys_dict: Dict[str, Set[str]] = {}
+    for input_dt in input_dts:
+        current_keys = input_dt.dt.primary_keys
+        for key in current_keys:
+            if adjacency_keys_dict.get(key) is None:
+                adjacency_keys_dict[key] = set()
+
+            for another_key in current_keys:
+                adjacency_keys_dict[key].add(another_key)
+
+        all_input_keyset.update(input_dt.dt.primary_keys)
+        if input_dt.join_type != 'inner':
+            all_input_keys.append(tuple(sorted(input_dt.dt.primary_keys)))
+
+    max_sets: List[Set[str]] = []  # each set contains all connected keys
+    # all connected keys can be inner joined, cross join for inter-group joins
+    for key_set in adjacency_keys_dict.values():
+        found_related_set = False
+        for max_set in max_sets:
+            for key in key_set:
+                if key in max_set:
+                    max_set.update(key_set)
+                    found_related_set = True
+
+        if not found_related_set:
+            max_sets.append(key_set)
+
+    table_groups = defaultdict(list)
+    for key_clique in max_sets:
+        for input_dt in input_dts:
+            if input_dt.dt.primary_keys[0] in key_clique:
+                key_clique_tuple = tuple(sorted(key_clique))
+                if input_dt.join_type == 'inner':
+                    # all inner joins are at the tail of the list
+                    table_groups[key_clique_tuple].append(input_dt)
+                else:
+                    table_groups[key_clique_tuple].insert(0, input_dt)
+
+    return cast(dict, table_groups)
+
+
+def extract_transformation_meta(input_dts: List["ComputeInput"], transform_keys: List[str]) -> IndexDF:
+    """
+    This function takes all the input tables to the transformation
+    and creates index of rows to be created in transformation meta table
+    to initialize it if transformation was added after the input tables were already filled in
+    """
+    table_groups = _split_tables_into_connected_groups(input_dts)
+
+    # within each group join the tables how=inner by intersecting keys
+    within_group_results = {}
+    for group_key, table_group in table_groups.items():
+        first_table = table_group[0].dt
+        first_table_index = first_table.get_index_data()
+        first_table_keys = set(first_table.primary_keys)
+        for table in table_group[1:]:
+            key_intersection = list(first_table_keys.intersection(set(table.dt.primary_keys)))
+            current_table_index = table.dt.get_index_data()
+            first_table_index = pd.merge(
+                first_table_index, current_table_index, how='inner', on=key_intersection
+            )
+            first_table_keys = set(list(first_table_keys) + list(table.dt.primary_keys))
+        within_group_results[group_key] = first_table_index
+
+    # cross join as final step
+    within_group_indexes = list(within_group_results.values())
+    final_result = within_group_indexes[0]
+    for table_data in within_group_indexes[1:]:
+        final_result = pd.merge(final_result, table_data, how="cross")
+
+    # this probably can be done other way during merge without calculating full result
+    return cast(IndexDF, final_result[transform_keys].drop_duplicates())
+
+
+def _join_delta(
+    result_df: IndexDF, table_df: IndexDF, result_pkeys: Set[str], table_pkeys: Set[str],
+    result_is_required_table: bool, table_is_required_table: bool
+):
+    """
+    delta_df - this is df for changes (chunk that is stored currently) + pkeys
+    table_df - this is data from existing table + pkeys
+    result_df - this is aggregator of final result + pkeys
+    delta_is_required_table - this is flag that says that delta change is applied to Required table
+    table_is_required_table - this is flag that says that the table_df is Required table
+    """
+
+    key_intersection = list(result_pkeys.intersection(set(table_pkeys)))
+    if len(key_intersection) > 0:
+        if result_is_required_table:
+            # the difference is that delta data from required tables is not included
+            # into the results, it is only used for filtering
+            result = pd.merge(
+                result_df, table_df,
+                how="inner", on=key_intersection
+            )
+            result_pkeys_copy = result_pkeys.copy()
+            # result_keys are not changed since the result doesn't extend
+        elif table_is_required_table and table_pkeys.issubset(result_pkeys):
+            result = pd.merge(
+                result_df, table_df.drop_duplicates(),
+                how="inner", on=key_intersection
+            )
+            result_pkeys_copy = result_pkeys.copy()
+            # again result_pkeys don't change
+        else:
+            result = pd.merge(
+                result_df, table_df, how='inner', on=key_intersection
+            )
+            result_pkeys_copy = result_pkeys.copy()
+            result_pkeys_copy.update(set(table_pkeys))
+    else:
+        result = pd.merge(result_df, table_df, how='cross')
+        result_pkeys_copy = result_pkeys.copy()
+        result_pkeys_copy.update(set(table_pkeys))
+
+    return result, result_pkeys_copy
+
+
 def create_transformation_meta_for_changes(
     transformations, current_table_name, primary_keys,
     new_df, changed_df
 ):
     for transf in transformations:
-        # for each transformation independently of any other
-        all_input_tables = transf.input_dts
+        output_tables = set([dt.name for dt in transf.output_dts])
+        all_input_tables = [dt for dt in transf.input_dts if dt.dt.name not in output_tables]
+
+        table_groups = _split_tables_into_connected_groups(all_input_tables)
+        filtered_groups = {
+            key_tuple: table_group
+            for key_tuple, table_group in table_groups.items()
+            if any(transf_key in set(key_tuple) for transf_key in transf.transform_keys)
+        }
+
         current_table_is_required = any([
             dt.dt for dt in all_input_tables
             if dt.dt.name == current_table_name
                and dt.join_type == 'inner'
         ])
         remaining_tables = [
-            dt.dt for dt in all_input_tables
+            dt.dt for dt in itertools.chain(*filtered_groups.values())
             if dt.dt.name != current_table_name
         ]
         required_tables = set([
-            dt.dt.name for dt in all_input_tables
+            dt.dt.name for dt in itertools.chain(*filtered_groups.values())
             if dt.dt.name != current_table_name
                and dt.join_type == 'inner'
         ])
 
         new_result, changed_result = new_df[primary_keys], changed_df[primary_keys]
+        result_keys = set(primary_keys)
         if not set(primary_keys).issubset(set(transf.transform_keys)):
             # what happens here:
             # update to a table that participates in a join and later in aggregation
@@ -816,60 +958,34 @@ def create_transformation_meta_for_changes(
             # this is the same for both required and normal tables
             transf.meta_table.reset_all_rows()
 
-            # no need to process changed, I reset previous rows above
+            # no need to process changed_df, I reset previous rows above
             # but there can be newly added data
             # this describes interaction of transform keys and newly added data
             # with key that is missing in transform_keys
             for remaining_table in remaining_tables:
                 remaining_table_df = remaining_table.get_index_data()
-                new_result = pd.merge(new_result, remaining_table_df, how='cross')
+                new_result, result_keys = _join_delta(
+                    new_result, remaining_table_df[remaining_table.primary_keys],
+                    result_keys, set(remaining_table.primary_keys),
+                    current_table_is_required, remaining_table.name in required_tables
+                )
 
             if not new_result.empty:
                 transf.meta_table.insert_rows(new_result)
         else:
-            # join the data in python: chunk on the remaining data according to transform_keys
             for remaining_table in remaining_tables:
-                # tables are joined by the index, don't need to care about it
                 remaining_table_df = remaining_table.get_index_data()
-
-                # key intersection between current datatable and remaining table
-                key_intersection = list(
-                    set(primary_keys).intersection(set(remaining_table.primary_keys))
+                result_keys_cache = result_keys.copy()
+                new_result, result_keys = _join_delta(
+                    new_result, remaining_table_df[remaining_table.primary_keys],
+                    result_keys_cache, set(remaining_table.primary_keys),
+                    current_table_is_required, remaining_table.name in required_tables
                 )
-                if current_table_is_required:
-                    # there is inner join step to filter rows based on keys
-                    if len(key_intersection) > 0:
-                        # filtering step based on the intersection of keys, don't pollute with other keys
-                        new_filtered = pd.merge(
-                            new_df[key_intersection].drop_duplicates(), remaining_table_df,
-                            how='inner', on=key_intersection
-                        )
-                        changed_filtered = pd.merge(
-                            changed_df[key_intersection].drop_duplicates(), remaining_table_df,
-                            how='inner', on=key_intersection
-                        )
-                        new_result = pd.merge(
-                            new_result, new_filtered, how='inner', on=key_intersection
-                        )
-                        changed_result = pd.merge(
-                            changed_result, changed_filtered, how='inner', on=key_intersection
-                        )
-                    else:
-                        # no filtering, all the data is accepted
-                        new_filtered, changed_filtered = remaining_table_df, remaining_table_df
-                        new_result = pd.merge(new_result, new_filtered, how='cross')
-                        changed_result = pd.merge(changed_result, changed_filtered, how='cross')
-                elif (
-                        remaining_table.name in required_tables
-                        and set(remaining_table.primary_keys).issubset(set(primary_keys))
-                ):
-                    # I can filter by the values in the required table
-                    # otherwise no filtering and fallback to the last else more general case
-                    new_result = pd.merge(new_result, remaining_table_df, how='inner', on=key_intersection)
-                    changed_result = pd.merge(changed_result, remaining_table_df, how='inner', on=key_intersection)
-                else:
-                    new_result = pd.merge(new_result, remaining_table_df, how='cross')
-                    changed_result = pd.merge(changed_result, remaining_table_df, how='cross')
+                changed_result, _ = _join_delta(
+                    changed_result, remaining_table_df[remaining_table.primary_keys],
+                    result_keys_cache, set(remaining_table.primary_keys),
+                    current_table_is_required, remaining_table.name in required_tables
+                )
 
             if not new_result.empty:
                 transf.meta_table.insert_rows(new_result)
@@ -900,6 +1016,7 @@ def build_changed_idx_sql(
             meta_table.sql_table.c.is_success != True
         ))
     )
+    sql = sql_apply_runconfig_filter(sql, meta_table.sql_table, transform_keys, run_config)
 
     if order_by is None:
         sql = sql.order_by(

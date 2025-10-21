@@ -21,7 +21,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func, select
+from sqlalchemy import alias, func, select, inspect as sa_inspect
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -34,7 +34,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
+from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql, extract_transformation_meta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -111,15 +111,22 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys,
         )
 
+        meta_table_name = f"{self.get_name()}_meta"
+        transform_meta_table_exists = sa_inspect(ds.meta_dbconn.con).has_table(meta_table_name)
         self.meta_table = TransformMetaTable(
             dbconn=ds.meta_dbconn,
-            name=f"{self.get_name()}_meta",
+            name=meta_table_name,
             primary_schema=self.transform_schema,
             create_table=ds.create_meta_table,
         )
         self.filters = filters
         self.order_by = order_by
         self.order = order
+
+        if not transform_meta_table_exists:
+            meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
+            if not meta_index.empty:
+                self.meta_table.insert_rows(meta_index)
 
     @classmethod
     def compute_transform_schema(
@@ -634,25 +641,23 @@ class BatchTransform(PipelineStep):
         input_dts = [self.pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
-        step = BatchTransformStep(
-            ds=ds,
-            name=f"{self.func.__name__}",
-            input_dts=input_dts,
-            output_dts=output_dts,
-            func=self.func,
-            kwargs=self.kwargs,
-            transform_keys=self.transform_keys,
-            chunk_size=self.chunk_size,
-            labels=self.labels,
-            executor_config=self.executor_config,
-            filters=self.filters,
-            order_by=self.order_by,
-            order=self.order,
-        )
-        for inp in input_dts:
-            inp.dt.add_transformations([step])
-
-        return [step]
+        return [
+            BatchTransformStep(
+                ds=ds,
+                name=f"{self.func.__name__}",
+                input_dts=input_dts,
+                output_dts=output_dts,
+                func=self.func,
+                kwargs=self.kwargs,
+                transform_keys=self.transform_keys,
+                chunk_size=self.chunk_size,
+                labels=self.labels,
+                executor_config=self.executor_config,
+                filters=self.filters,
+                order_by=self.order_by,
+                order=self.order,
+            )
+        ]
 
 
 class BatchTransformStep(BaseBatchTransformStep):

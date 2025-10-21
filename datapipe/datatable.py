@@ -161,6 +161,12 @@ class DataTable:
             self.table_store.delete_rows(idx)
             self.meta_table.mark_rows_deleted(idx, now=now)
 
+            transformations = getattr(self, 'transformations', [])
+            create_transformation_meta_for_changes(
+                transformations, self.name, self.primary_keys,
+                pd.DataFrame(columns=self.primary_keys), idx
+            )
+
     def delete_stale_by_process_ts(
         self,
         process_ts: float,

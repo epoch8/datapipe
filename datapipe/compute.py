@@ -117,6 +117,9 @@ class ComputeStep:
         self._labels = labels
         self.executor_config = executor_config
 
+        for input_dt in input_dts:
+            input_dt.dt.add_transformations([self])
+
     def get_name(self) -> str:
         ss = [
             self.__class__.__name__,

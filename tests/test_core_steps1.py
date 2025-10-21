@@ -217,8 +217,6 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3["a"] += 3
         return df1, df2, df3
 
-    tbl.store_chunk(TEST_DF)
-
     step_inc = BatchTransformStep(
         ds=ds,
         name="step_inc",
@@ -227,6 +225,8 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         output_dts=[tbl1, tbl2, tbl3],
     )
 
+    tbl.store_chunk(TEST_DF)
+
     step_inc.run_full(ds)
 
     assert_datatable_equal(tbl1, TEST_DF_INC1)
@@ -234,8 +234,6 @@ def test_inc_process_many_modify_values(dbconn) -> None:
     assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
-    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
-
     def inc_func_inv(df):
         df1 = df.copy()
         df2 = df.copy()
@@ -252,6 +250,8 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl3, tbl2, tbl1],
     )
+
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
 
     step_inc_inv.run_full(ds)
 

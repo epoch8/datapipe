@@ -169,12 +169,6 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
 
     tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA1, True))
 
-    df2 = TEST_DF1_1.loc[3:8]
-    df2["a"] = df2["a"].apply(lambda x: x + 10)
-
-    tbl1.store_chunk(TEST_DF1_1, now=0)
-    tbl2.store_chunk(df2, now=0)
-
     def update_df(df1: pd.DataFrame, df2: pd.DataFrame):
         df1 = df1.set_index(["item_id", "pipeline_id"])
         df2 = df2.set_index(["item_id", "pipeline_id"])
@@ -193,6 +187,12 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
         ],
         output_dts=[tbl2],
     )
+
+    df2 = TEST_DF1_1.loc[3:8]
+    df2["a"] = df2["a"].apply(lambda x: x + 10)
+
+    tbl1.store_chunk(TEST_DF1_1, now=0)
+    tbl2.store_chunk(df2, now=0)
 
     step.run_full(ds)
 
