@@ -1,6 +1,7 @@
 # WIP: 0.14.6
 
-* Allow `DataTable` objects directly in `ComputeStep.input_dts` parameter (auto-wraps in `ComputeInput`)
+* Allow `DataTable` objects directly in `ComputeStep.input_dts` parameter
+  (auto-wraps in `ComputeInput`)
 * Add backward compatibility for DataTable API in BatchTransformStep
 * Add optional `force_vectors_to_ram` parameter to `QdrantStore`
 
