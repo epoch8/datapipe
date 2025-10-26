@@ -123,10 +123,11 @@ class BaseBatchTransformStep(ComputeStep):
         self.order_by = order_by
         self.order = order
 
-        if not transform_meta_table_exists:
-            meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
-            if not meta_index.empty:
-                self.meta_table.insert_rows(meta_index)
+        # FIXME move this to CLI command
+        # if not transform_meta_table_exists:
+        #     meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
+        #     if not meta_index.empty:
+        #         self.meta_table.insert_rows(meta_index)
 
     @classmethod
     def compute_transform_schema(
