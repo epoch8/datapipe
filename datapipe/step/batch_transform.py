@@ -588,7 +588,55 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
-        return [inp.dt.get_data(idx) for inp in self.input_dts]
+        """
+        Получить входные данные для батча с поддержкой filtered join.
+
+        Если у ComputeInput указаны join_keys, читаем только связанные записи
+        для оптимизации производительности.
+        """
+        result = []
+
+        for inp in self.input_dts:
+            if inp.join_keys:
+                # FILTERED JOIN: Читаем только связанные записи
+                # Извлекаем уникальные значения foreign keys из idx
+                filtered_idx_data = {}
+                all_keys_present = True
+
+                for idx_col, dt_col in inp.join_keys.items():
+                    if idx_col in idx.columns:
+                        # Получаем уникальные значения и создаем маппинг
+                        unique_values = idx[idx_col].unique()
+                        filtered_idx_data[dt_col] = unique_values
+                    else:
+                        # Если хотя бы одного ключа нет - используем fallback
+                        all_keys_present = False
+                        break
+
+                if all_keys_present and filtered_idx_data:
+                    # Создаем filtered_idx для чтения только нужных записей
+                    filtered_idx = IndexDF(pd.DataFrame(filtered_idx_data))
+
+                    logger.debug(
+                        f"[{self.get_name()}] Filtered join for {inp.dt.name}: "
+                        f"reading {len(filtered_idx)} records instead of full table"
+                    )
+
+                    data = inp.dt.get_data(filtered_idx)
+                else:
+                    # Fallback: если не все ключи присутствуют, читаем по idx
+                    logger.debug(
+                        f"[{self.get_name()}] Filtered join fallback for {inp.dt.name}: "
+                        f"join_keys={inp.join_keys} not found in idx columns {list(idx.columns)}"
+                    )
+                    data = inp.dt.get_data(idx)
+            else:
+                # Обычное чтение по idx
+                data = inp.dt.get_data(idx)
+
+            result.append(data)
+
+        return result
 
     def process_batch_dfs(
         self,
@@ -817,12 +865,13 @@ class BatchTransform(PipelineStep):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="inner",
+                join_keys=input.join_keys,  # Pass join_keys for filtered join
             )
         elif isinstance(input, JoinSpec):
-            # This should not happen, but just in case
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="full",
+                join_keys=input.join_keys,  # Pass join_keys for filtered join
             )
         else:
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
