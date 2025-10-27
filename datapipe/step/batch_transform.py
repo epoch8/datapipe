@@ -172,6 +172,28 @@ class BaseBatchTransformStep(ComputeStep):
         """
         return "v2_offset" if self._get_use_offset_optimization(run_config) else "v1_join"
 
+    def _get_additional_idx_columns(self) -> List[str]:
+        """
+        Собрать дополнительные колонки, необходимые для filtered join.
+
+        Возвращает список колонок из join_keys, которые нужно включить в idx
+        для работы filtered join оптимизации.
+
+        Returns:
+            Список имен колонок (без дубликатов)
+        """
+        additional_columns = []
+
+        for inp in self.input_dts:
+            if inp.join_keys:
+                # Добавляем колонки из ключей join_keys (левая часть маппинга)
+                # Например, для {"user_id": "id"} добавляем "user_id"
+                for idx_col in inp.join_keys.keys():
+                    if idx_col not in self.transform_keys and idx_col not in additional_columns:
+                        additional_columns.append(idx_col)
+
+        return additional_columns
+
     def _build_changed_idx_sql(
         self,
         ds: DataStore,
@@ -189,6 +211,9 @@ class BaseBatchTransformStep(ComputeStep):
         use_offset = self._get_use_offset_optimization(run_config)
         method = self._get_optimization_method_name(run_config)
 
+        # Получить дополнительные колонки для filtered join
+        additional_columns = self._get_additional_idx_columns()
+
         with tracer.start_as_current_span(f"build_changed_idx_sql_{method}"):
             start_time = time.time()
 
@@ -204,6 +229,7 @@ class BaseBatchTransformStep(ComputeStep):
                     order_by=order_by,
                     order=order,
                     run_config=run_config,
+                    additional_columns=additional_columns,  # Передаем дополнительные колонки
                 )
             else:
                 keys, sql = build_changed_idx_sql_v1(
@@ -215,6 +241,7 @@ class BaseBatchTransformStep(ComputeStep):
                     order_by=order_by,
                     order=order,
                     run_config=run_config,
+                    additional_columns=additional_columns,  # Передаем дополнительные колонки
                 )
 
             query_build_time = time.time() - start_time
@@ -352,7 +379,10 @@ class BaseBatchTransformStep(ComputeStep):
 
                     with ds.meta_dbconn.con.begin() as con:
                         for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
-                            df = df[self.transform_keys]
+                            # Используем join_keys (которые включают transform_keys + additional_columns)
+                            # Фильтруем только колонки, которые есть в df
+                            available_keys = [k for k in join_keys if k in df.columns]
+                            df = df[available_keys]
 
                             for k, v in extra_filters.items():
                                 df[k] = v

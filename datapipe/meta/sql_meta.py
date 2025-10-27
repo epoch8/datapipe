@@ -730,15 +730,27 @@ def build_changed_idx_sql_v1(
     order_by: Optional[List[str]] = None,
     order: Literal["asc", "desc"] = "asc",
     run_config: Optional[RunConfig] = None,  # TODO remove
+    additional_columns: Optional[List[str]] = None,
 ) -> Tuple[Iterable[str], Any]:
+    """
+    Args:
+        additional_columns: Дополнительные колонки для включения в результат (для filtered join)
+    """
+    if additional_columns is None:
+        additional_columns = []
+
+    # Полный список колонок для SELECT (transform_keys + additional_columns)
+    all_select_keys = list(transform_keys) + additional_columns
+
     all_input_keys_counts: Dict[str, int] = {}
     for col in itertools.chain(*[inp.dt.primary_schema for inp in input_dts]):
         all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
     inp_ctes = []
     for inp in input_dts:
+        # Используем all_select_keys для включения дополнительных колонок
         keys, cte = inp.dt.meta_table.get_agg_cte(
-            transform_keys=transform_keys,
+            transform_keys=all_select_keys,
             filters_idx=filters_idx,
             run_config=run_config,
         )
@@ -746,7 +758,7 @@ def build_changed_idx_sql_v1(
 
     agg_of_aggs = _make_agg_of_agg(
         ds=ds,
-        transform_keys=transform_keys,
+        transform_keys=all_select_keys,
         ctes=inp_ctes,
         agg_col="update_ts",
     )
@@ -771,12 +783,14 @@ def build_changed_idx_sql_v1(
     else:  # len(transform_keys) > 1:
         join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in transform_keys])
 
+    # Важно: Включаем все колонки (transform_keys + additional_columns)
     sql = (
         sa.select(
             # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
             # пустом transform_keys
             sa.literal(1).label("_datapipe_dummy"),
-            *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in transform_keys],
+            *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) if key in transform_keys
+              else agg_of_aggs.c[key].label(key) for key in all_select_keys if key in agg_of_aggs.c],
         )
         .select_from(agg_of_aggs)
         .outerjoin(
@@ -811,7 +825,7 @@ def build_changed_idx_sql_v1(
                 *[sa.asc(sa.column(k)) for k in order_by],
                 out.c.priority.desc().nullslast(),
             )
-    return (transform_keys, sql)
+    return (all_select_keys, sql)
 
 
 # Обратная совместимость: алиас для старой версии
@@ -851,13 +865,22 @@ def build_changed_idx_sql_v2(
     order_by: Optional[List[str]] = None,
     order: Literal["asc", "desc"] = "asc",
     run_config: Optional[RunConfig] = None,
+    additional_columns: Optional[List[str]] = None,
 ) -> Tuple[Iterable[str], Any]:
     """
     Новая версия build_changed_idx_sql, использующая offset'ы для оптимизации.
 
     Вместо FULL OUTER JOIN всех входных таблиц, выбираем только записи с
     update_ts > offset для каждой входной таблицы, затем объединяем через UNION.
+
+    Args:
+        additional_columns: Дополнительные колонки для включения в результат (для filtered join)
     """
+    if additional_columns is None:
+        additional_columns = []
+
+    # Полный список колонок для SELECT (transform_keys + additional_columns)
+    all_select_keys = list(transform_keys) + additional_columns
 
     # 1. Получить все offset'ы одним запросом для избежания N+1
     offsets = offset_table.get_offsets_for_transformation(transformation_id)
@@ -870,17 +893,18 @@ def build_changed_idx_sql_v2(
     changed_ctes = []
     for inp in input_dts:
         tbl = inp.dt.meta_table.sql_table
-        keys = [k for k in transform_keys if k in inp.dt.primary_keys]
+        # Выбираем все ключи, которые есть в этой таблице
+        keys = [k for k in all_select_keys if k in inp.dt.primary_keys]
 
         if len(keys) == 0:
             continue
 
-        transform_key_cols: List[Any] = [sa.column(k) for k in keys]
+        select_cols: List[Any] = [sa.column(k) for k in keys]
         offset = offsets[inp.dt.name]
 
-        # SELECT transform_keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
+        # SELECT keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
         # Включаем как обновленные, так и удаленные записи
-        changed_sql: Any = sa.select(*transform_key_cols).select_from(tbl).where(
+        changed_sql: Any = sa.select(*select_cols).select_from(tbl).where(
             sa.or_(
                 tbl.c.update_ts > offset,
                 sa.and_(
@@ -894,12 +918,13 @@ def build_changed_idx_sql_v2(
         changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys, filters_idx)
         changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
 
-        if len(transform_key_cols) > 0:
-            changed_sql = changed_sql.group_by(*transform_key_cols)
+        if len(select_cols) > 0:
+            changed_sql = changed_sql.group_by(*select_cols)
 
         changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
 
     # 3. Получить записи с ошибками из TransformMetaTable
+    # Важно: error_records содержат только transform_keys, не additional_columns
     tr_tbl = meta_table.sql_table
     error_records_sql: Any = sa.select(
         *[sa.column(k) for k in transform_keys]
@@ -925,9 +950,11 @@ def build_changed_idx_sql_v2(
         union_sql: Any = sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
     else:
         # UNION всех изменений и ошибок
+        # Важно: UNION должен включать все колонки из all_select_keys
         union_parts = []
         for cte in changed_ctes:
-            union_parts.append(sa.select(*[cte.c[k] for k in transform_keys if k in cte.c]).select_from(cte))
+            # Выбираем только те колонки, которые есть в CTE
+            union_parts.append(sa.select(*[cte.c[k] for k in all_select_keys if k in cte.c]).select_from(cte))
 
         union_parts.append(
             sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
@@ -947,10 +974,11 @@ def build_changed_idx_sql_v2(
         join_onclause_sql = sa.and_(*[union_cte.c[key] == tr_tbl.c[key] for key in transform_keys])
 
     # Используем `out` для консистентности с v1
+    # Важно: Включаем все колонки (transform_keys + additional_columns)
     out = (
         sa.select(
             sa.literal(1).label("_datapipe_dummy"),
-            *[union_cte.c[k] for k in transform_keys]
+            *[union_cte.c[k] for k in all_select_keys if k in union_cte.c]
         )
         .select_from(union_cte)
         .outerjoin(tr_tbl, onclause=join_onclause_sql)
@@ -973,7 +1001,7 @@ def build_changed_idx_sql_v2(
                 tr_tbl.c.priority.desc().nullslast(),
             )
 
-    return (transform_keys, out)
+    return (all_select_keys, out)
 
 
 TRANSFORM_INPUT_OFFSET_SCHEMA: DataSchema = [
