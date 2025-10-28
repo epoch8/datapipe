@@ -111,23 +111,15 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys,
         )
 
-        meta_table_name = f"{self.get_name()}_meta"
-        transform_meta_table_exists = sa_inspect(ds.meta_dbconn.con).has_table(meta_table_name)
         self.meta_table = TransformMetaTable(
             dbconn=ds.meta_dbconn,
-            name=meta_table_name,
+            name=f"{self.get_name()}_meta",
             primary_schema=self.transform_schema,
             create_table=ds.create_meta_table,
         )
         self.filters = filters
         self.order_by = order_by
         self.order = order
-
-        # FIXME move this to CLI command
-        # if not transform_meta_table_exists:
-        #     meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
-        #     if not meta_index.empty:
-        #         self.meta_table.insert_rows(meta_index)
 
     @classmethod
     def compute_transform_schema(
@@ -385,6 +377,15 @@ class BaseBatchTransformStep(ComputeStep):
             error=str(e),
             run_config=run_config,
         )
+
+    def init_metadata(self):
+        """
+        Call this method if you add a new transformation to tables
+        where there is already some saved data
+        """
+        meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
+        if not meta_index.empty:
+            self.meta_table.insert_rows(meta_index)
 
     def fill_metadata(self, ds: DataStore) -> None:
         idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)

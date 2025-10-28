@@ -118,6 +118,7 @@ class ComputeStep:
         self.executor_config = executor_config
 
         for input_dt in input_dts:
+            print('\nadding transformations for a table', input_dt)
             input_dt.dt.add_transformations([self])
 
     def get_name(self) -> str:
