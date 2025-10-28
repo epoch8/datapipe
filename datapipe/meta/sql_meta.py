@@ -1074,7 +1074,7 @@ def build_changed_idx_sql_v2(
     # Важно: error_records должен иметь все колонки из all_select_keys для UNION
     # Для additional_columns используем NULL, так как их нет в transform meta table
     tr_tbl = meta_table.sql_table
-    error_select_cols = [sa.column(k) for k in transform_keys] + [
+    error_select_cols: List[Any] = [sa.column(k) for k in transform_keys] + [
         sa.literal(None).label(k) for k in additional_columns
     ]
     error_records_sql: Any = sa.select(*error_select_cols).select_from(tr_tbl).where(
