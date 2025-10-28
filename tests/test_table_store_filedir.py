@@ -588,11 +588,12 @@ def test_write_read_rows__filedir_pandas_parquet(
     store.insert_rows(data_df)
 
     saved_df = store.read_rows(data_to_index(data_df, store.primary_keys))
-    
+
     data_df = data_df.set_index(store.primary_keys)
     saved_df = saved_df.set_index(store.primary_keys)
 
     assert_idx_equal(data_df.index, saved_df.index)
-    
-    assert data_df["data"].equals(saved_df["data"]), "Pandas DataFrame data is not equal to data in parquet"
 
+    for i, row in data_df.iterrows():
+        assert row["data"].equals(saved_df['data'][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"
+    
