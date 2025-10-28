@@ -893,42 +893,126 @@ def build_changed_idx_sql_v2(
     changed_ctes = []
     for inp in input_dts:
         tbl = inp.dt.meta_table.sql_table
-        # Выбираем все ключи, которые есть в этой таблице
-        keys = [k for k in all_select_keys if k in inp.dt.primary_keys]
 
-        if len(keys) == 0:
+        # Разделяем ключи на те, что есть в meta table, и те, что нужны из data table
+        meta_cols = [c.name for c in tbl.columns]
+        keys_in_meta = [k for k in all_select_keys if k in meta_cols]
+        keys_in_data_only = [k for k in all_select_keys if k not in meta_cols]
+
+        if len(keys_in_meta) == 0:
             continue
 
-        select_cols: List[Any] = [sa.column(k) for k in keys]
         offset = offsets[inp.dt.name]
 
-        # SELECT keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
-        # Включаем как обновленные, так и удаленные записи
-        changed_sql: Any = sa.select(*select_cols).select_from(tbl).where(
-            sa.or_(
-                tbl.c.update_ts > offset,
-                sa.and_(
-                    tbl.c.delete_ts.isnot(None),
-                    tbl.c.delete_ts > offset
+        # Если все ключи есть в meta table - используем простой запрос
+        if len(keys_in_data_only) == 0:
+            select_cols: List[Any] = [sa.column(k) for k in keys_in_meta]
+
+            # SELECT keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
+            changed_sql: Any = sa.select(*select_cols).select_from(tbl).where(
+                sa.or_(
+                    tbl.c.update_ts > offset,
+                    sa.and_(
+                        tbl.c.delete_ts.isnot(None),
+                        tbl.c.delete_ts > offset
+                    )
                 )
             )
-        )
 
-        # Применить filters_idx и run_config
-        changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys, filters_idx)
-        changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
+            # Применить filters_idx и run_config
+            changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
+            changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
 
-        if len(select_cols) > 0:
-            changed_sql = changed_sql.group_by(*select_cols)
+            if len(select_cols) > 0:
+                changed_sql = changed_sql.group_by(*select_cols)
+        else:
+            # Есть колонки только в data table - нужен JOIN с data table
+            # Проверяем что у table_store есть data_table (для TableStoreDB)
+            if not hasattr(inp.dt.table_store, 'data_table'):
+                # Fallback: если нет data_table, используем только meta keys
+                select_cols = [sa.column(k) for k in keys_in_meta]
+                changed_sql = sa.select(*select_cols).select_from(tbl).where(
+                    sa.or_(
+                        tbl.c.update_ts > offset,
+                        sa.and_(
+                            tbl.c.delete_ts.isnot(None),
+                            tbl.c.delete_ts > offset
+                        )
+                    )
+                )
+                changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
+                changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
+                if len(select_cols) > 0:
+                    changed_sql = changed_sql.group_by(*select_cols)
+            else:
+                # JOIN meta table с data table для получения дополнительных колонок
+                data_tbl = inp.dt.table_store.data_table
+
+                # Проверяем какие дополнительные колонки действительно есть в data table
+                data_cols_available = [c.name for c in data_tbl.columns]
+                keys_in_data_available = [k for k in keys_in_data_only if k in data_cols_available]
+
+                if len(keys_in_data_available) == 0:
+                    # Fallback: если нужных колонок нет в data table, используем только meta keys
+                    select_cols = [sa.column(k) for k in keys_in_meta]
+                    changed_sql = sa.select(*select_cols).select_from(tbl).where(
+                        sa.or_(
+                            tbl.c.update_ts > offset,
+                            sa.and_(
+                                tbl.c.delete_ts.isnot(None),
+                                tbl.c.delete_ts > offset
+                            )
+                        )
+                    )
+                    changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
+                    changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
+                    if len(select_cols) > 0:
+                        changed_sql = changed_sql.group_by(*select_cols)
+                    changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
+                    continue
+
+                # SELECT meta_keys, data_keys FROM meta JOIN data ON primary_keys
+                # WHERE update_ts > offset OR delete_ts > offset
+                select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
+
+                # Строим JOIN condition по primary keys
+                if len(inp.dt.primary_keys) == 1:
+                    join_condition = tbl.c[inp.dt.primary_keys[0]] == data_tbl.c[inp.dt.primary_keys[0]]
+                else:
+                    join_condition = sa.and_(*[
+                        tbl.c[pk] == data_tbl.c[pk] for pk in inp.dt.primary_keys
+                    ])
+
+                changed_sql = sa.select(*select_cols).select_from(
+                    tbl.join(data_tbl, join_condition)
+                ).where(
+                    sa.or_(
+                        tbl.c.update_ts > offset,
+                        sa.and_(
+                            tbl.c.delete_ts.isnot(None),
+                            tbl.c.delete_ts > offset
+                        )
+                    )
+                )
+
+                # Применить filters_idx и run_config
+                all_keys = keys_in_meta + keys_in_data_available
+                changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, all_keys, filters_idx)
+                changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
+
+                if len(select_cols) > 0:
+                    changed_sql = changed_sql.group_by(*select_cols)
 
         changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
 
     # 3. Получить записи с ошибками из TransformMetaTable
-    # Важно: error_records содержат только transform_keys, не additional_columns
+    # Важно: error_records должен иметь все колонки из all_select_keys для UNION
+    # Для additional_columns используем NULL, так как их нет в transform meta table
     tr_tbl = meta_table.sql_table
-    error_records_sql: Any = sa.select(
-        *[sa.column(k) for k in transform_keys]
-    ).select_from(tr_tbl).where(
+    error_select_cols = [sa.column(k) for k in transform_keys] + [
+        sa.literal(None).label(k) for k in additional_columns
+    ]
+    error_records_sql: Any = sa.select(*error_select_cols).select_from(tr_tbl).where(
         sa.or_(
             tr_tbl.c.is_success != True,  # noqa
             tr_tbl.c.process_ts.is_(None)
@@ -947,17 +1031,22 @@ def build_changed_idx_sql_v2(
     # 4. Объединить все изменения и ошибки через UNION
     if len(changed_ctes) == 0:
         # Если нет входных таблиц с изменениями, используем только ошибки
-        union_sql: Any = sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
+        union_sql: Any = sa.select(*[error_records_cte.c[k] for k in all_select_keys]).select_from(error_records_cte)
     else:
         # UNION всех изменений и ошибок
         # Важно: UNION должен включать все колонки из all_select_keys
+        # Для отсутствующих колонок используем NULL
         union_parts = []
         for cte in changed_ctes:
-            # Выбираем только те колонки, которые есть в CTE
-            union_parts.append(sa.select(*[cte.c[k] for k in all_select_keys if k in cte.c]).select_from(cte))
+            # Для каждой колонки из all_select_keys: берем из CTE если есть, иначе NULL
+            select_cols = [
+                cte.c[k] if k in cte.c else sa.literal(None).label(k)
+                for k in all_select_keys
+            ]
+            union_parts.append(sa.select(*select_cols).select_from(cte))
 
         union_parts.append(
-            sa.select(*[error_records_cte.c[k] for k in transform_keys]).select_from(error_records_cte)
+            sa.select(*[error_records_cte.c[k] for k in all_select_keys]).select_from(error_records_cte)
         )
 
         union_sql = sa.union(*union_parts)
