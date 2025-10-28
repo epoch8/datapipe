@@ -21,6 +21,7 @@ from typing import (
 import cityhash
 import pandas as pd
 import sqlalchemy as sa
+from sqlalchemy import or_
 
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
@@ -429,8 +430,6 @@ class MetaTable:
 
 TRANSFORM_META_SCHEMA: DataSchema = [
     sa.Column("process_ts", sa.Float),  # Время последней успешной обработки
-    # FIXME remove this and adjust the queries
-    sa.Column("is_success", sa.Boolean),  # Успешно ли обработана строка
     sa.Column("priority", sa.Integer),  # Приоритет обработки (чем больше, тем выше)
     sa.Column("status", sa.String), # Статус исполнения трансформации
     sa.Column("error", sa.String),  # Текст ошибки
@@ -490,7 +489,6 @@ class TransformMetaTable:
             [
                 {
                     "process_ts": 0,
-                    "is_success": False,
                     "priority": 0,
                     "error": None,
                     "status": TransformStatus.PENDING.value,
@@ -523,7 +521,6 @@ class TransformMetaTable:
             sa.update(self.sql_table)
             .values({
                 "process_ts": 0,
-                "is_success": False,
                 "status": TransformStatus.PENDING.value,
                 "error": None,
             })
@@ -542,14 +539,13 @@ class TransformMetaTable:
 
     def reset_all_rows(self) -> None:
         """
-        Difference from mark_all_rows_unprocessed is in flag is_success=True
+        Difference from mark_all_rows_unprocessed: mark_all_rows_unporocessed checks status
         Here what happens is all rows are reset to original state
         """
         update_sql = (
             sa.update(self.sql_table)
             .values({
                 "process_ts": 0,
-                "is_success": False,
                 "status": TransformStatus.PENDING.value,
                 "error": None,
             })
@@ -581,7 +577,6 @@ class TransformMetaTable:
                     [
                         {
                             "process_ts": process_ts,
-                            "is_success": True,
                             "priority": 0,
                             "status": TransformStatus.COMPLETED.value,
                             "error": None,
@@ -598,7 +593,6 @@ class TransformMetaTable:
                 [
                     {
                         "process_ts": process_ts,
-                        "is_success": True,
                         "priority": 0,
                         "status": TransformStatus.COMPLETED.value,
                         "error": None,
@@ -612,7 +606,6 @@ class TransformMetaTable:
                 index_elements=self.primary_keys,
                 set_={
                     "process_ts": process_ts,
-                    "is_success": True,
                     "status": TransformStatus.COMPLETED.value,
                     "error": None,
                 },
@@ -639,7 +632,6 @@ class TransformMetaTable:
             [
                 {
                     "process_ts": process_ts,
-                    "is_success": False,
                     "priority": 0,
                     "status": TransformStatus.ERROR.value,
                     "error": error,
@@ -653,7 +645,6 @@ class TransformMetaTable:
             index_elements=self.primary_keys,
             set_={
                 "process_ts": process_ts,
-                "is_success": False,
                 "status": TransformStatus.ERROR.value,
                 "error": error,
             },
@@ -684,12 +675,11 @@ class TransformMetaTable:
             .values(
                 {
                     "process_ts": 0,
-                    "is_success": False,
                     "status": TransformStatus.PENDING.value,
                     "error": None,
                 }
             )
-            .where(self.sql_table.c.is_success == True)  # noqa: E712
+            .where(self.sql_table.c.status == TransformStatus.COMPLETED.value)  # noqa: E712
         )
 
         sql = sql_apply_runconfig_filter(update_sql, self.sql_table, self.primary_keys, run_config)
@@ -1013,7 +1003,7 @@ def build_changed_idx_sql(
         .select_from(meta_table.sql_table)
         .where(sa.or_(
             meta_table.sql_table.c.status == TransformStatus.PENDING.value,
-            meta_table.sql_table.c.is_success != True
+            meta_table.sql_table.c.status == TransformStatus.ERROR.value
         ))
     )
     sql = sql_apply_runconfig_filter(sql, meta_table.sql_table, transform_keys, run_config)
@@ -1047,6 +1037,9 @@ def build_changed_idx_sql_deprecated(
     order: Literal["asc", "desc"] = "asc",
     run_config: Optional[RunConfig] = None,  # TODO remove
 ) -> Tuple[Iterable[str], Any]:
+    """
+    Function is not working, is_success field is removed
+    """
     all_input_keys_counts: Dict[str, int] = {}
     for col in itertools.chain(*[inp.dt.primary_schema for inp in input_dts]):
         all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
