@@ -890,7 +890,16 @@ def build_changed_idx_sql_v2(
             offsets[inp.dt.name] = 0.0
 
     # 2. Построить CTE для каждой входной таблицы с фильтром по offset
+    # Для таблиц с join_keys нужен обратный JOIN к основной таблице
     changed_ctes = []
+
+    # Сначала находим "основную" таблицу - первую без join_keys
+    primary_inp = None
+    for inp in input_dts:
+        if not inp.join_keys:
+            primary_inp = inp
+            break
+
     for inp in input_dts:
         tbl = inp.dt.meta_table.sql_table
 
@@ -904,12 +913,68 @@ def build_changed_idx_sql_v2(
 
         offset = offsets[inp.dt.name]
 
+        # ОБРАТНЫЙ JOIN для справочных таблиц с join_keys
+        # Когда изменяется справочная таблица, нужно найти все записи основной таблицы,
+        # которые на нее ссылаются
+        if inp.join_keys and primary_inp and hasattr(primary_inp.dt.table_store, 'data_table'):
+            # Справочная таблица изменилась - нужен обратный JOIN к основной
+            primary_data_tbl = primary_inp.dt.table_store.data_table
+
+            # Строим SELECT для всех колонок из all_select_keys основной таблицы
+            primary_data_cols = [c.name for c in primary_data_tbl.columns]
+            select_cols = [
+                primary_data_tbl.c[k] if k in primary_data_cols else sa.literal(None).label(k)
+                for k in all_select_keys
+            ]
+
+            # Обратный JOIN: primary_table.join_key = reference_table.id
+            # Например: posts.user_id = profiles.id
+            # inp.join_keys = {'user_id': 'id'} означает:
+            #   'user_id' - колонка в основной таблице (posts)
+            #   'id' - колонка в справочной таблице (profiles)
+            join_conditions = []
+            for primary_col, ref_col in inp.join_keys.items():
+                if primary_col in primary_data_cols and ref_col in meta_cols:
+                    join_conditions.append(primary_data_tbl.c[primary_col] == tbl.c[ref_col])
+
+            if len(join_conditions) == 0:
+                # Не можем построить JOIN - пропускаем эту таблицу
+                continue
+
+            join_condition = sa.and_(*join_conditions) if len(join_conditions) > 1 else join_conditions[0]
+
+            # SELECT primary_cols FROM reference_meta
+            # JOIN primary_data ON primary.join_key = reference.id
+            # WHERE reference.update_ts > offset
+            changed_sql = sa.select(*select_cols).select_from(
+                tbl.join(primary_data_tbl, join_condition)
+            ).where(
+                sa.or_(
+                    tbl.c.update_ts > offset,
+                    sa.and_(
+                        tbl.c.delete_ts.isnot(None),
+                        tbl.c.delete_ts > offset
+                    )
+                )
+            )
+
+            # Применить filters и group by
+            changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, all_select_keys, filters_idx)
+            # run_config фильтры применяются к справочной таблице
+            changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
+
+            if len(select_cols) > 0:
+                changed_sql = changed_sql.group_by(*select_cols)
+
+            changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
+            continue
+
         # Если все ключи есть в meta table - используем простой запрос
         if len(keys_in_data_only) == 0:
-            select_cols: List[Any] = [sa.column(k) for k in keys_in_meta]
+            select_cols = [sa.column(k) for k in keys_in_meta]
 
             # SELECT keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
-            changed_sql: Any = sa.select(*select_cols).select_from(tbl).where(
+            changed_sql = sa.select(*select_cols).select_from(tbl).where(
                 sa.or_(
                     tbl.c.update_ts > offset,
                     sa.and_(
