@@ -24,6 +24,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
     "rich>=13.3.2,<14",
+    "pyarrow[pyarrow]>=21.0.0",
 ]
 
 [project.optional-dependencies]

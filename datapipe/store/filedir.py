@@ -10,13 +10,14 @@ from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
 import fsspec
 import numpy as np
 import pandas as pd
+import cityhash
 from iteration_utilities import duplicates  # type: ignore
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore, TableStoreCaps
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, HashDF
 
 
 class ItemStoreFileAdapter(ABC):
@@ -26,6 +27,13 @@ class ItemStoreFileAdapter(ABC):
         raise NotImplementedError
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        raise NotImplementedError
+    
+
+class HashedItemStoreFileAdapter(ItemStoreFileAdapter):
+    mode: str
+
+    def hash_row(self, row: pd.Series) -> int:
         raise NotImplementedError
 
 
@@ -93,6 +101,37 @@ class PILFile(ItemStoreFileAdapter):
             raise Exception("Image must be a bytes string or np.array or Pillow Image object")
 
         image.save(f, format=self.format, **self.dump_params)
+
+
+class PandasParquetFile(HashedItemStoreFileAdapter):
+    """
+    Uses `data` column to store Pandas DataFrame in parquet file
+    """
+
+    mode = "b"
+
+    def __init__(self, pandas_column: str = "data", engine: str = "auto", compression: str = "snappy"):
+        self.pandas_column = pandas_column
+        self.engine = engine
+        self.compression = compression
+
+    def hash_row(self, row: pd.Series) -> int:
+        df = cast(pd.DataFrame, row[self.pandas_column])
+        row[self.pandas_column] = str(pd.util.hash_pandas_object(df).values)
+        hash_str = str(list(row))
+
+        print(hash_str)
+        #print(row)
+        
+        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {self.pandas_column: pd.read_parquet(f, engine=self.engine)}
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        df = cast(pd.DataFrame, obj[self.pandas_column])
+
+        df.to_parquet(f, engine=self.engine, compression=self.compression)
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -267,6 +306,20 @@ class TableStoreFiledir(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         return []
+    
+    def hash_rows(self, df: DataDF) -> HashDF:
+        if isinstance(self.adapter, HashedItemStoreFileAdapter):
+            meta_keys = self.primary_keys + self.meta_keys
+            hash_df = df[meta_keys]
+            columns = sorted(df.columns)
+            hash_df["hash"] = df.apply(
+                lambda x: self.adapter.hash_row(pd.Series(x, columns)), 
+                axis=1
+            )
+
+            return cast(HashDF, hash_df)
+        
+        return super().hash_rows(df)
 
     def delete_rows(self, idx: IndexDF) -> None:
         if not self.enable_rm:

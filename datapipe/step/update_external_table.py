@@ -22,11 +22,11 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[
 
     for ps_df in tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
         (
-            new_df,
-            changed_df,
+            new_index_df,
+            changed_index_df,
             new_meta_df,
             changed_meta_df,
-        ) = table.meta_table.get_changes_for_store_chunk(ps_df, now=now)
+        ) = table.meta_table.get_changes_for_store_chunk(table.table_store.hash_rows(ps_df), now=now)
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 

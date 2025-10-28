@@ -1,13 +1,14 @@
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Union, cast
 
+import cityhash
 import pandas as pd
 from sqlalchemy import Column, String
 
 from datapipe.run_config import RunConfig
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_index
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, HashDF, data_to_index
 
 
 @dataclass
@@ -34,6 +35,19 @@ class TableStore(ABC):
     @property
     def primary_keys(self) -> List[str]:
         return [i.name for i in self.get_primary_schema()]
+    
+    @property
+    def meta_keys(self) -> List[str]:
+        return [i.name for i in self.get_meta_schema()]
+    
+    def hash_rows(self, df: DataDF) -> HashDF:
+        meta_keys = self.primary_keys + self.meta_keys
+        hash_df = df[meta_keys]
+        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
 
     def delete_rows(self, idx: IndexDF) -> None:
         raise NotImplementedError
