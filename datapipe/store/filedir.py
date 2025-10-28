@@ -5,7 +5,7 @@ import json
 import re
 from abc import ABC
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
+from typing import IO, Any, Dict, Iterator, List, Optional, Union, Literal, Callable, cast
 
 import fsspec
 import numpy as np
@@ -110,7 +110,12 @@ class PandasParquetFile(HashedItemStoreFileAdapter):
 
     mode = "b"
 
-    def __init__(self, pandas_column: str = "data", engine: str = "auto", compression: str = "snappy"):
+    def __init__(
+        self, 
+        pandas_column: str = "data", 
+        engine: Literal['auto', 'pyarrow', 'fastparquet'] = "auto", 
+        compression: Literal['snappy', 'gzip', 'brotli', 'lz4', 'zstd'] = "snappy"
+    ):
         self.pandas_column = pandas_column
         self.engine = engine
         self.compression = compression
@@ -119,7 +124,7 @@ class PandasParquetFile(HashedItemStoreFileAdapter):
         df = cast(pd.DataFrame, row[self.pandas_column])
         row[self.pandas_column] = str(pd.util.hash_pandas_object(df).values)
         hash_str = str(list(row))
-
+    
         return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:
@@ -309,8 +314,10 @@ class TableStoreFiledir(TableStore):
             meta_keys = self.primary_keys + self.meta_keys
             hash_df = df[meta_keys]
             columns = sorted(df.columns)
+            adapter = cast(HashedItemStoreFileAdapter, self.adapter)
+
             hash_df["hash"] = df.apply(
-                lambda x: self.adapter.hash_row(pd.Series(x, columns)), 
+                lambda x: adapter.hash_row(pd.Series(x, columns)), 
                 axis=1
             )
 

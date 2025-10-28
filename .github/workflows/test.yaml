@@ -120,7 +120,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install ${{ matrix.pip-extra }} ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "pytest<8" "pytest_cases" "elasticsearch<9"
+          pip install ${{ matrix.pip-extra }} ".[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow]" "pytest<8" "pytest_cases" "elasticsearch<9"
 
       - name: Test with pytest
         run: |

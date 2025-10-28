@@ -277,7 +277,7 @@ class MetaTable:
 
         # Создаем мета данные для новых записей
         new_meta_data_df = merged_df.loc[merged_df["hash_exist"].isna().values, hash_cols]  # type: ignore
-        new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
+        new_meta_df = self._make_new_metadata_df(now, cast(HashDF, new_meta_data_df))
 
         # Ищем изменившиеся записи
         changed_idx = (
