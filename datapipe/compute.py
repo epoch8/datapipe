@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple, Union
 
 from opentelemetry import trace
 
@@ -106,20 +106,24 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: List[ComputeInput],
+        input_dts: Sequence[Union[ComputeInput, DataTable]],
         output_dts: List[DataTable],
         labels: Optional[Labels] = None,
         executor_config: Optional[ExecutorConfig] = None,
     ) -> None:
         self._name = name
-        self.input_dts = input_dts
+        # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
+        self.input_dts = [
+            inp if isinstance(inp, ComputeInput) else ComputeInput(dt=inp, join_type="full")
+            for inp in input_dts
+        ]
         self.output_dts = output_dts
         self._labels = labels
         self.executor_config = executor_config
 
         for input_dt in input_dts:
-            print('\nadding transformations for a table', input_dt)
-            input_dt.dt.add_transformations([self])
+            dt = input_dt if isinstance(input_dt, DataTable) else input_dt.dt
+            dt.add_transformations([self])
 
     def get_name(self) -> str:
         ss = [

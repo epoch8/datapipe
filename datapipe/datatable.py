@@ -127,7 +127,6 @@ class DataTable:
 
                 with tracer.start_as_current_span("store transformation metadata"):
                     transformations = getattr(self, 'transformations', [])
-                    print('transformations for data table', self, transformations)
                     create_transformation_meta_for_changes(
                         transformations, self.name, self.primary_keys,
                         new_df, changed_df
