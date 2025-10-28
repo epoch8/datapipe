@@ -243,7 +243,7 @@ class MetaTable:
         self, hash_df: HashDF, now: Optional[float] = None
     ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
         """
-        Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
+        Анализирует блок hash_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
 
         Returns tuple:
             new_index_df     - индекс данных, которые нужно добавить

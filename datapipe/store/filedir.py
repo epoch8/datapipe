@@ -120,9 +120,6 @@ class PandasParquetFile(HashedItemStoreFileAdapter):
         row[self.pandas_column] = str(pd.util.hash_pandas_object(df).values)
         hash_str = str(list(row))
 
-        print(hash_str)
-        #print(row)
-        
         return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:

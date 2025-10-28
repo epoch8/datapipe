@@ -24,7 +24,6 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
     "rich>=13.3.2,<14",
-    "pyarrow[pyarrow]>=21.0.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +41,7 @@ ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 elastic = ["elasticsearch>=8.17.1"]
 neo4j = ["neo4j"]
+pyarrow = ["pyarrow[pyarrow]>=21.0.0"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
