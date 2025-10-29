@@ -457,7 +457,7 @@ class BaseBatchTransformStep(ComputeStep):
     def _get_max_update_ts_for_batch(
         self,
         ds: DataStore,
-        input_dt: DataTable,
+        compute_input: "ComputeInput",
         processed_idx: IndexDF,
     ) -> Optional[float]:
         """
@@ -465,12 +465,16 @@ class BaseBatchTransformStep(ComputeStep):
 
         Важно: используем processed_idx который содержит только успешно обработанные записи
         из output_dfs (result.index), а не весь батч idx.
+
+        Для JoinSpec таблиц (с join_keys) используем join_keys для фильтрации вместо primary_keys.
+        Пример: profiles с join_keys={'user_id': 'id'} фильтруется по profiles.id IN (processed_idx.user_id)
         """
         from datapipe.sql_util import sql_apply_idx_filter_to_table
 
         if len(processed_idx) == 0:
             return None
 
+        input_dt = compute_input.dt
         tbl = input_dt.meta_table.sql_table
 
         # Построить запрос с фильтром по processed_idx (только успешно обработанные)
@@ -481,13 +485,39 @@ class BaseBatchTransformStep(ComputeStep):
         )
         max_ts_expr = func.max(max_of_both)
         sql = select(max_ts_expr)
-        # Используем только те ключи, которые есть в processed_idx
-        idx_keys = list(processed_idx.columns)
-        filter_keys = [k for k in input_dt.primary_keys if k in idx_keys]
 
-        # Если нет общих ключей, не можем отфильтровать - берем максимум по всей таблице
-        if len(filter_keys) > 0:
-            sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, processed_idx)
+        # Для JoinSpec таблиц используем join_keys вместо primary_keys
+        # join_keys: Dict[idx_col -> dt_col], например {'user_id': 'id'}
+        # Значит: фильтруем dt.id по значениям из processed_idx.user_id
+        if compute_input.join_keys:
+            # Для каждого join key создаём фильтр
+            # Используем только те join keys, у которых idx_col есть в processed_idx
+            idx_keys = list(processed_idx.columns)
+
+            # Создаём маппинг dt_col -> idx_col для фильтрации
+            # Пример: {'id': 'user_id'} - фильтровать dt.id по processed_idx.user_id
+            filter_mapping = {}
+            for idx_col, dt_col in compute_input.join_keys.items():
+                if idx_col in idx_keys:
+                    filter_mapping[dt_col] = idx_col
+
+            if filter_mapping:
+                # Применяем фильтр используя dt columns как ключи
+                # Но берем значения из соответствующих idx columns
+                filter_keys = list(filter_mapping.keys())
+
+                # Создаём переименованный processed_idx для sql_apply_idx_filter_to_table
+                # Например: user_id -> id чтобы фильтровать по dt.id
+                renamed_idx = processed_idx.rename(columns={v: k for k, v in filter_mapping.items()})
+                sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, renamed_idx)
+        else:
+            # Для обычных таблиц используем primary_keys
+            idx_keys = list(processed_idx.columns)
+            filter_keys = [k for k in input_dt.primary_keys if k in idx_keys]
+
+            # Если нет общих ключей, не можем отфильтровать - берем максимум по всей таблице
+            if len(filter_keys) > 0:
+                sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, processed_idx)
 
         with ds.meta_dbconn.con.begin() as con:
             result = con.execute(sql).scalar()
@@ -556,7 +586,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                 for inp in self.input_dts:
                     # Найти максимальный update_ts из УСПЕШНО обработанного батча
-                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp.dt, processed_idx)
+                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
 
                     if max_update_ts is not None:
                         offsets_to_update[(self.get_name(), inp.dt.name)] = max_update_ts
