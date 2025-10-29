@@ -455,3 +455,257 @@ def test_v1_vs_v2_results_identical(dbconn: DBConn):
     # Проверяем что добавилась новая запись
     assert len(result_v1) == 5
     assert "5" in result_v1["id"].values
+
+
+def test_three_tables_filtered_join(dbconn: DBConn):
+    """
+    Тест 4: Проверяет работу filtered join с ТРЕМЯ таблицами.
+
+    Сценарий:
+    - Основная таблица posts с post_id, user_id, category_id
+    - Справочник users с user_id
+    - Справочник categories с category_id
+    - join_keys для обоих справочников
+    - Проверяем что все три таблицы корректно джойнятся и filtered join работает
+    """
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    # Основная таблица: посты
+    posts_store = TableStoreDB(
+        dbconn,
+        "posts",
+        [
+            Column("id", String, primary_key=True),
+            Column("user_id", String),
+            Column("category_id", String),
+            Column("content", String),
+        ],
+        create_table=True,
+    )
+    posts_dt = ds.create_table("posts", posts_store)
+
+    # Справочник 1: пользователи
+    users_store = TableStoreDB(
+        dbconn,
+        "users",
+        [
+            Column("id", String, primary_key=True),
+            Column("username", String),
+        ],
+        create_table=True,
+    )
+    users_dt = ds.create_table("users", users_store)
+
+    # Справочник 2: категории
+    categories_store = TableStoreDB(
+        dbconn,
+        "categories",
+        [
+            Column("id", String, primary_key=True),
+            Column("category_name", String),
+        ],
+        create_table=True,
+    )
+    categories_dt = ds.create_table("categories", categories_store)
+
+    # Выходная таблица
+    output_store = TableStoreDB(
+        dbconn,
+        "enriched_posts",
+        [
+            Column("id", String, primary_key=True),
+            Column("content", String),
+            Column("username", String),
+            Column("category_name", String),
+        ],
+        create_table=True,
+    )
+    output_dt = ds.create_table("enriched_posts", output_store)
+
+    # Отслеживание вызовов get_data для проверки filtered join
+    users_get_data_calls = []
+    categories_get_data_calls = []
+
+    original_users_get_data = users_dt.get_data
+    original_categories_get_data = categories_dt.get_data
+
+    def tracked_users_get_data(idx=None, **kwargs):
+        if idx is not None:
+            users_get_data_calls.append({
+                "idx_columns": list(idx.columns),
+                "idx_values": sorted(idx["id"].tolist()) if "id" in idx.columns else [],
+                "idx_length": len(idx)
+            })
+        return original_users_get_data(idx=idx, **kwargs)
+
+    def tracked_categories_get_data(idx=None, **kwargs):
+        if idx is not None:
+            categories_get_data_calls.append({
+                "idx_columns": list(idx.columns),
+                "idx_values": sorted(idx["id"].tolist()) if "id" in idx.columns else [],
+                "idx_length": len(idx)
+            })
+        return original_categories_get_data(idx=idx, **kwargs)
+
+    users_dt.get_data = tracked_users_get_data  # type: ignore[method-assign]
+    categories_dt.get_data = tracked_categories_get_data  # type: ignore[method-assign]
+
+    # Функция трансформации: join всех трёх таблиц
+    def transform_func(posts_df, users_df, categories_df):
+        # Join с users
+        result = posts_df.merge(
+            users_df,
+            left_on="user_id",
+            right_on="id",
+            how="left",
+            suffixes=("", "_user")
+        )
+        # Join с categories
+        result = result.merge(
+            categories_df,
+            left_on="category_id",
+            right_on="id",
+            how="left",
+            suffixes=("", "_cat")
+        )
+        return result[["id", "content", "username", "category_name"]]
+
+    # Step с двумя filtered joins
+    # join_keys работает только с v2 (offset optimization)
+    step = BatchTransformStep(
+        ds=ds,
+        name="test_three_tables",
+        func=transform_func,
+        input_dts=[
+            ComputeInput(dt=posts_dt, join_type="full"),  # Основная таблица
+            ComputeInput(
+                dt=users_dt,
+                join_type="full",
+                join_keys={"user_id": "id"}  # Filtered join: posts.user_id -> users.id
+            ),
+            ComputeInput(
+                dt=categories_dt,
+                join_type="full",
+                join_keys={"category_id": "id"}  # Filtered join: posts.category_id -> categories.id
+            ),
+        ],
+        output_dts=[output_dt],
+        transform_keys=["id"],
+        use_offset_optimization=True,  # join_keys требует v2
+    )
+
+    # Добавляем данные
+    now = time.time()
+
+    # 3 поста от 2 пользователей в 2 категориях
+    posts_dt.store_chunk(
+        pd.DataFrame({
+            "id": ["p1", "p2", "p3"],
+            "user_id": ["u1", "u2", "u1"],
+            "category_id": ["cat1", "cat2", "cat1"],
+            "content": ["Post 1", "Post 2", "Post 3"]
+        }),
+        now=now
+    )
+
+    # 100 пользователей (но только u1, u2 используются в постах)
+    users_data = [{"id": f"u{i}", "username": f"User{i}"} for i in range(3, 100)]
+    users_data.extend([
+        {"id": "u1", "username": "Alice"},
+        {"id": "u2", "username": "Bob"},
+    ])
+    users_dt.store_chunk(pd.DataFrame(users_data), now=now)
+
+    # 50 категорий (но только cat1, cat2 используются в постах)
+    categories_data = [{"id": f"cat{i}", "category_name": f"Category {i}"} for i in range(3, 50)]
+    categories_data.extend([
+        {"id": "cat1", "category_name": "Tech"},
+        {"id": "cat2", "category_name": "News"},
+    ])
+    categories_dt.store_chunk(pd.DataFrame(categories_data), now=now)
+
+    # Запускаем трансформацию
+    step.run_full(ds)
+
+    # ПРОВЕРКА 1: Filtered join для users должен читать только u1, u2
+    assert len(users_get_data_calls) > 0, "users get_data should be called with filtered idx"
+    users_call = users_get_data_calls[0]
+    assert "id" in users_call["idx_columns"]
+    assert users_call["idx_length"] == 2, f"Should filter to 2 users, got {users_call['idx_length']}"
+    assert sorted(users_call["idx_values"]) == ["u1", "u2"], (
+        f"Should filter users to u1, u2, got {users_call['idx_values']}"
+    )
+
+    # ПРОВЕРКА 2: Filtered join для categories должен читать только cat1, cat2
+    assert len(categories_get_data_calls) > 0, "categories get_data should be called with filtered idx"
+    categories_call = categories_get_data_calls[0]
+    assert "id" in categories_call["idx_columns"]
+    assert categories_call["idx_length"] == 2, (
+        f"Should filter to 2 categories, got {categories_call['idx_length']}"
+    )
+    assert sorted(categories_call["idx_values"]) == ["cat1", "cat2"], (
+        f"Should filter categories to cat1, cat2, got {categories_call['idx_values']}"
+    )
+
+    # ПРОВЕРКА 3: Результат должен содержать правильные данные
+    output_data = output_dt.get_data().sort_values("id").reset_index(drop=True)
+    assert len(output_data) == 3
+
+    expected = pd.DataFrame({
+        "id": ["p1", "p2", "p3"],
+        "content": ["Post 1", "Post 2", "Post 3"],
+        "username": ["Alice", "Bob", "Alice"],
+        "category_name": ["Tech", "News", "Tech"]
+    })
+    pd.testing.assert_frame_equal(output_data, expected)
+
+    print("\n✅ Three tables filtered join test passed!")
+    print(f"   - Posts: 3 records")
+    print(f"   - Users: filtered from {len(users_data)} to 2 records (u1, u2)")
+    print(f"   - Categories: filtered from {len(categories_data)} to 2 records (cat1, cat2)")
+    print(f"   - Output: 3 enriched posts with correct joins")
+
+    # === ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: сравнение v1 vs v2 ===
+    # Создаём отдельную выходную таблицу для v1
+    output_v1_store = TableStoreDB(
+        dbconn,
+        "enriched_posts_v1",
+        [
+            Column("id", String, primary_key=True),
+            Column("content", String),
+            Column("username", String),
+            Column("category_name", String),
+        ],
+        create_table=True,
+    )
+    output_v1_dt = ds.create_table("enriched_posts_v1", output_v1_store)
+
+    # Step v1 БЕЗ join_keys (обычный FULL OUTER JOIN всех таблиц)
+    step_v1 = BatchTransformStep(
+        ds=ds,
+        name="test_three_tables_v1",
+        func=transform_func,
+        input_dts=[
+            ComputeInput(dt=posts_dt, join_type="full"),
+            ComputeInput(dt=users_dt, join_type="full"),  # БЕЗ join_keys
+            ComputeInput(dt=categories_dt, join_type="full"),  # БЕЗ join_keys
+        ],
+        output_dts=[output_v1_dt],
+        transform_keys=["id"],
+        use_offset_optimization=False,  # v1
+    )
+
+    # Запускаем v1
+    step_v1.run_full(ds)
+
+    # Сравниваем результаты v1 и v2
+    result_v1 = output_v1_dt.get_data().sort_values("id").reset_index(drop=True)
+    result_v2 = output_data  # Уже отсортирован
+
+    # КЛЮЧЕВАЯ ПРОВЕРКА: результаты v1 и v2 должны быть идентичны
+    pd.testing.assert_frame_equal(result_v1, result_v2)
+
+    print("\n✅ V1 vs V2 comparison PASSED!")
+    print(f"   - V1 (FULL OUTER JOIN): {len(result_v1)} rows")
+    print(f"   - V2 (offset + filtered join): {len(result_v2)} rows")
+    print(f"   - Results are identical ✓")
