@@ -5,7 +5,7 @@ import json
 import re
 from abc import ABC
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, Literal, Callable, cast
+from typing import IO, Any, Dict, Iterator, List, Optional, Union, Literal, cast
 
 import fsspec
 import numpy as np
@@ -65,7 +65,7 @@ class BytesFile(HashedItemStoreFileAdapter):
     def __init__(self, bytes_columns: str = "bytes"):
         self.bytes_columns = bytes_columns
 
-    def _get_bin_hash(self, data: List[bytes]) -> str:
+    def _get_bin_hash(self, data: bytes) -> str:
         hasher = hashlib.sha256()
         hasher.update(data)
         return hasher.hexdigest()
@@ -98,7 +98,7 @@ class PILFile(HashedItemStoreFileAdapter):
         self.dump_params = dump_params
         self.image_column = image_column
 
-    def _get_image_hash(self, image: Image):
+    def _get_image_hash(self, image: Image.Image):
         hasher = hashlib.sha256()
         hasher.update(image.tobytes())
         return hasher.hexdigest()
