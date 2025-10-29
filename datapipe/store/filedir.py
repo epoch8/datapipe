@@ -11,6 +11,7 @@ import fsspec
 import numpy as np
 import pandas as pd
 import cityhash
+import hashlib
 from iteration_utilities import duplicates  # type: ignore
 from PIL import Image
 from sqlalchemy import Column, Integer, String
@@ -54,7 +55,7 @@ class JSONFile(ItemStoreFileAdapter):
         return json.dump(obj, f, **self.dump_params)
 
 
-class BytesFile(ItemStoreFileAdapter):
+class BytesFile(HashedItemStoreFileAdapter):
     """
     Uses `bytes` column
     """
@@ -64,6 +65,20 @@ class BytesFile(ItemStoreFileAdapter):
     def __init__(self, bytes_columns: str = "bytes"):
         self.bytes_columns = bytes_columns
 
+    def _get_bin_hash(self, data: List[bytes]) -> str:
+        hasher = hashlib.sha256()
+        hasher.update(data)
+        return hasher.hexdigest()
+
+    def hash_row(self, row: pd.Series) -> int:
+        hash_data = row.copy()
+        if self.bytes_columns in hash_data:
+            hash_data[self.bytes_columns] = self._get_bin_hash(hash_data[self.bytes_columns])
+        
+        hash_str = str(list(row))
+    
+        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+
     def load(self, f: IO) -> Dict[str, Any]:
         return {self.bytes_columns: f.read()}
 
@@ -71,24 +86,39 @@ class BytesFile(ItemStoreFileAdapter):
         f.write(obj[self.bytes_columns])
 
 
-class PILFile(ItemStoreFileAdapter):
+class PILFile(HashedItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
     """
 
     mode = "b"
 
-    def __init__(self, format: str, **dump_params) -> None:
+    def __init__(self, format: str, image_column: str = "image", **dump_params) -> None:
         self.format = format
         self.dump_params = dump_params
+        self.image_column = image_column
+
+    def _get_image_hash(self, image: Image):
+        hasher = hashlib.sha256()
+        hasher.update(image.tobytes())
+        return hasher.hexdigest()
+    
+    def hash_row(self, row: pd.Series) -> int:
+        hash_data = row.copy()
+        if self.image_column in hash_data:
+            hash_data[self.image_column] = self._get_image_hash(hash_data[self.image_column])
+       
+        hash_str = str(list(row))
+    
+        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:
         im = Image.open(f)
         im.load()
-        return {"image": im}
+        return {self.image_column: im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        image_data: Any = obj["image"]
+        image_data: Any = obj[self.image_column]
 
         if isinstance(image_data, Image.Image):
             image: Image.Image = image_data
@@ -202,6 +232,7 @@ class TableStoreFiledir(TableStore):
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
         fsspec_kwargs: Optional[Dict[str, Any]] = None,
+        use_adapter_hash: bool = False
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -289,6 +320,7 @@ class TableStoreFiledir(TableStore):
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
         self.read_data = read_data
+        self.use_adapter_hash = use_adapter_hash
 
         type_to_cls = {String: str, Integer: int}
 
@@ -310,7 +342,7 @@ class TableStoreFiledir(TableStore):
         return []
     
     def hash_rows(self, df: DataDF) -> HashDF:
-        if isinstance(self.adapter, HashedItemStoreFileAdapter):
+        if self.use_adapter_hash and isinstance(self.adapter, HashedItemStoreFileAdapter):
             meta_keys = self.primary_keys + self.meta_keys
             hash_df = df[meta_keys]
             columns = sorted(df.columns)
