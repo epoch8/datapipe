@@ -13,7 +13,6 @@ import fsspec
 import numpy as np
 import pandas as pd
 from iteration_utilities import duplicates  # type: ignore
-from pandas import Series
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
