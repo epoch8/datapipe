@@ -128,7 +128,6 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
                     tmp_dir / "tbl2" / "{id}.png",
                     adapter=PILFile("png"),
                     enable_rm=True,
-                    use_adapter_hash=True
                 )
             ),
         }

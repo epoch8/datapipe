@@ -1,41 +1,38 @@
 import base64
+import hashlib
 import io
 import itertools
 import json
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, Literal, cast
+from typing import IO, Any, Dict, Iterator, List, Literal, Optional, Union, cast
 
+import cityhash
 import fsspec
 import numpy as np
 import pandas as pd
-import cityhash
-import hashlib
 from iteration_utilities import duplicates  # type: ignore
+from pandas import Series
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore, TableStoreCaps
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, HashDF
+from datapipe.types import DataDF, DataSchema, HashDF, IndexDF, MetaSchema
 
 
 class ItemStoreFileAdapter(ABC):
     mode: str
 
-    def load(self, f: IO) -> Dict[str, Any]:
-        raise NotImplementedError
+    @abstractmethod
+    def load(self, f: IO) -> Dict[str, Any]: ...
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        raise NotImplementedError
-    
+    @abstractmethod
+    def dump(self, obj: Dict[str, Any], f: IO) -> None: ...
 
-class HashedItemStoreFileAdapter(ItemStoreFileAdapter):
-    mode: str
-
-    def hash_row(self, row: pd.Series) -> int:
-        raise NotImplementedError
+    @abstractmethod
+    def hash_row(self, row: pd.Series) -> int: ...
 
 
 class JSONFile(ItemStoreFileAdapter):
@@ -54,8 +51,12 @@ class JSONFile(ItemStoreFileAdapter):
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         return json.dump(obj, f, **self.dump_params)
 
+    def hash_row(self, row: pd.Series) -> int:
+        hash_str = str(list(row))
+        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
-class BytesFile(HashedItemStoreFileAdapter):
+
+class BytesFile(ItemStoreFileAdapter):
     """
     Uses `bytes` column
     """
@@ -74,9 +75,9 @@ class BytesFile(HashedItemStoreFileAdapter):
         hash_data = row.copy()
         if self.bytes_columns in hash_data:
             hash_data[self.bytes_columns] = self._get_bin_hash(hash_data[self.bytes_columns])
-        
+
         hash_str = str(list(row))
-    
+
         return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:
@@ -86,7 +87,7 @@ class BytesFile(HashedItemStoreFileAdapter):
         f.write(obj[self.bytes_columns])
 
 
-class PILFile(HashedItemStoreFileAdapter):
+class PILFile(ItemStoreFileAdapter):
     """
     Uses `image` column with PIL.Image for save/load
     """
@@ -102,14 +103,14 @@ class PILFile(HashedItemStoreFileAdapter):
         hasher = hashlib.sha256()
         hasher.update(image.tobytes())
         return hasher.hexdigest()
-    
+
     def hash_row(self, row: pd.Series) -> int:
         hash_data = row.copy()
         if self.image_column in hash_data:
             hash_data[self.image_column] = self._get_image_hash(hash_data[self.image_column])
-       
+
         hash_str = str(list(row))
-    
+
         return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:
@@ -133,7 +134,7 @@ class PILFile(HashedItemStoreFileAdapter):
         image.save(f, format=self.format, **self.dump_params)
 
 
-class PandasParquetFile(HashedItemStoreFileAdapter):
+class PandasParquetFile(ItemStoreFileAdapter):
     """
     Uses `data` column to store Pandas DataFrame in parquet file
     """
@@ -141,10 +142,10 @@ class PandasParquetFile(HashedItemStoreFileAdapter):
     mode = "b"
 
     def __init__(
-        self, 
-        pandas_column: str = "data", 
-        engine: Literal['auto', 'pyarrow', 'fastparquet'] = "auto", 
-        compression: Literal['snappy', 'gzip', 'brotli', 'lz4', 'zstd'] = "snappy"
+        self,
+        pandas_column: str = "data",
+        engine: Literal["auto", "pyarrow", "fastparquet"] = "auto",
+        compression: Literal["snappy", "gzip", "brotli", "lz4", "zstd"] = "snappy",
     ):
         self.pandas_column = pandas_column
         self.engine = engine
@@ -154,16 +155,25 @@ class PandasParquetFile(HashedItemStoreFileAdapter):
         df = cast(pd.DataFrame, row[self.pandas_column])
         row[self.pandas_column] = str(pd.util.hash_pandas_object(df).values)
         hash_str = str(list(row))
-    
+
         return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
 
     def load(self, f: IO) -> Dict[str, Any]:
-        return {self.pandas_column: pd.read_parquet(f, engine=self.engine)}
+        return {
+            self.pandas_column: pd.read_parquet(
+                f,
+                engine=self.engine,  # type: ignore  ## pylance is wrong here
+            ),
+        }
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         df = cast(pd.DataFrame, obj[self.pandas_column])
 
-        df.to_parquet(f, engine=self.engine, compression=self.compression)
+        df.to_parquet(
+            f,
+            engine=self.engine,  # type: ignore  ## pylance is wrong here
+            compression=self.compression,  # type: ignore  ## pylance is wrong here
+        )
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -232,7 +242,6 @@ class TableStoreFiledir(TableStore):
         readonly: Optional[bool] = None,
         enable_rm: bool = False,
         fsspec_kwargs: Optional[Dict[str, Any]] = None,
-        use_adapter_hash: bool = False
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -320,7 +329,6 @@ class TableStoreFiledir(TableStore):
         self.adapter = adapter
         self.add_filepath_column = add_filepath_column
         self.read_data = read_data
-        self.use_adapter_hash = use_adapter_hash
 
         type_to_cls = {String: str, Integer: int}
 
@@ -340,22 +348,16 @@ class TableStoreFiledir(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         return []
-    
+
     def hash_rows(self, df: DataDF) -> HashDF:
-        if self.use_adapter_hash and isinstance(self.adapter, HashedItemStoreFileAdapter):
-            meta_keys = self.primary_keys + self.meta_keys
-            hash_df = df[meta_keys]
-            columns = sorted(df.columns)
-            adapter = cast(HashedItemStoreFileAdapter, self.adapter)
+        meta_keys = self.primary_keys + self.meta_keys
+        hash_df = df[meta_keys]
+        columns = sorted(df.columns)
+        adapter = cast(ItemStoreFileAdapter, self.adapter)
 
-            hash_df["hash"] = df.apply(
-                lambda x: adapter.hash_row(pd.Series(x, columns)), 
-                axis=1
-            )
+        hash_df["hash"] = df.apply(lambda x: adapter.hash_row(pd.Series(x, columns)), axis=1)
 
-            return cast(HashDF, hash_df)
-        
-        return super().hash_rows(df)
+        return cast(HashDF, hash_df)
 
     def delete_rows(self, idx: IndexDF) -> None:
         if not self.enable_rm:
