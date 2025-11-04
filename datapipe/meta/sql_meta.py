@@ -15,7 +15,6 @@ from typing import (
     cast,
 )
 
-import cityhash
 import pandas as pd
 import sqlalchemy as sa
 
@@ -25,8 +24,8 @@ from datapipe.store.database import DBConn, MetaKey
 from datapipe.types import (
     DataDF,
     DataSchema,
-    IndexDF,
     HashDF,
+    IndexDF,
     MetadataDF,
     MetaSchema,
     TAnyDF,
