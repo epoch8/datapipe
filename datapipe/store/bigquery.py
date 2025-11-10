@@ -86,6 +86,12 @@ class TableStoreBQ(TableStore):
         self.name = name
         self.data_sql_schema = data_sql_schema
 
+        # Труба оперирует партициями BQ - так наиболее эффективно и экономно.
+        # Для трубы это индекс, для BQ это партиция.
+        # IndexDF - pandas dataframe, где указаны индексы всех строк, в которых были изменения и которые нужно пересчитать.
+
+        # При инициализации TableStoreBQ можно указывать ключи кластеризации для ещё большей оптимизации.
+
         dataset_ref = self.bq_client.dataset(dataset_id)
         table_ref = dataset_ref.table(str(table_id))
 
@@ -115,6 +121,7 @@ class TableStoreBQ(TableStore):
 
 
     def get_primary_schema(self) -> DataSchema:
+        # Нужно реализовать
         raise NotImplementedError
 
 
@@ -123,6 +130,7 @@ class TableStoreBQ(TableStore):
 
 
     def get_schema(self) -> DataSchema:
+        # Нужно реализовать
         raise NotImplementedError
 
 
@@ -164,4 +172,11 @@ class TableStoreBQ(TableStore):
         self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
     ) -> Iterator[DataDF]:
         # FIXME сделать честную чанкированную реализацию во всех сторах
+
+        # Актуализация метаданных о таблице, которая может быть обновлена не только трубой - для BQ возможно пригодится.
+        # Подсчёт чек-суммы и сравнить: изменились ли данные.
+        # То есть, если таблица-источник изменилась в части некоторых партиций, то эти партиции нужно пересчитать.
+
+        # Понять, как дёшего получать информацию об изменениях в партициях.
+
         yield self.read_rows()

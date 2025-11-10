@@ -16,7 +16,7 @@ STORE_DATA_SQL_SCHEMA = [
     Column("col_3", types.BOOLEAN),
 ]
 STORE_DATASET_ID = r"datapipe_test"
-STORE_TABLE_ID = r"test"
+STORE_TABLE_ID = r"test_2"
 
 
 bq_client = BQClient(service_account_file=BQ_CREDENTIALS)
@@ -33,7 +33,7 @@ table_store_bq = TableStoreBQ(
 df = pd.DataFrame(
     data={
         "col_1": [1, 2, 3],
-        "col_2": ["a", "b", "c"],
+        "col_2": ["a", "b", "cc"],
         "col_3": [False, True, None],
     }
 )
@@ -41,7 +41,7 @@ df = pd.DataFrame(
 print(df)
 
 
-# table_store_bq.insert_rows(df)
+table_store_bq.insert_rows(df)
 
-df =  table_store_bq.read_rows()
-print(df)
+# df =  table_store_bq.read_rows()
+# print(df)
