@@ -25,7 +25,7 @@ from sqlalchemy import or_
 
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
-from datapipe.store.database import DBConn, MetaKey
+from datapipe.store.database import DBConn, MetaKey, TableStoreDB
 from datapipe.types import (
     DataDF,
     DataSchema,
@@ -38,6 +38,7 @@ from datapipe.types import (
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
+    from datapipe.step.batch_transform import BaseBatchTransformStep
     from datapipe.datatable import DataStore
 
 
@@ -466,7 +467,6 @@ class TransformMetaTable:
         )
 
         if create_table:
-            # TODO there must be an initialization for the data if new transformation added
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     def __reduce__(self) -> Tuple[Any, ...]:
@@ -505,6 +505,21 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
+    def insert_rows_by_sql(self, sql) -> None:
+        sql = sql.add_columns(
+            sa.literal(0).label("process_ts"),
+            sa.literal(0).label("priority"),
+            sa.literal(None).label("error"),
+            sa.literal(TransformStatus.PENDING.value).label("status")
+        )
+        insert_sql = self.dbconn.insert(self.sql_table).from_select(
+            sorted(self.primary_keys) + ["process_ts", "priority", "error", "status"],
+            sql
+        ).on_conflict_do_nothing(index_elements=self.primary_keys)
+
+        with self.dbconn.con.begin() as con:
+            con.execute(insert_sql)
+
     def reset_rows(self, idx: IndexDF) -> None:
         idx = cast(IndexDF, idx[self.primary_keys])
         if len(idx) == 0:
@@ -538,6 +553,19 @@ class TransformMetaTable:
 
         with self.dbconn.con.begin() as con:
             con.execute(update_sql, update_data)
+
+    def reset_rows_by_sql(self, sql) -> None:
+        primary_cols = [getattr(self.sql_table.c, col) for col in self.primary_keys]
+        update_sql = sa.update(self.sql_table).values({
+            "process_ts": 0,
+            "status": TransformStatus.PENDING.value,
+            "error": None,
+        }).where(
+            sa.tuple_(*primary_cols).in_(sql)
+        )
+
+        with self.dbconn.con.begin() as con:
+            con.execute(update_sql)
 
     def reset_all_rows(self) -> None:
         """
@@ -780,6 +808,20 @@ def _make_agg_of_agg(
     return sql.cte(name=f"all__{agg_col}")
 
 
+def _all_input_tables_from_same_sql_db(input_tables):
+    table_stores = []
+    is_all_table_store_db = True
+    for input_table in input_tables:
+        if isinstance(input_table.dt.table_store, TableStoreDB):
+            table_stores.append(input_table.dt.table_store.dbconn.connstr)
+        else:
+            is_all_table_store_db = False
+            table_stores.append(type(input_table.dt.table_store))
+
+    # all tables are from the same database and it is sql database
+    return len(set(table_stores)) == 1 and is_all_table_store_db
+
+
 def _split_tables_into_connected_groups(
     input_dts: List["ComputeInput"]
 ) -> Dict[Tuple[str], List["ComputeInput"]]:
@@ -833,39 +875,6 @@ def _split_tables_into_connected_groups(
     return cast(dict, table_groups)
 
 
-def extract_transformation_meta(input_dts: List["ComputeInput"], transform_keys: List[str]) -> IndexDF:
-    """
-    This function takes all the input tables to the transformation
-    and creates index of rows to be created in transformation meta table
-    to initialize it if transformation was added after the input tables were already filled in
-    """
-    table_groups = _split_tables_into_connected_groups(input_dts)
-
-    # within each group join the tables how=inner by intersecting keys
-    within_group_results = {}
-    for group_key, table_group in table_groups.items():
-        first_table = table_group[0].dt
-        first_table_index = first_table.get_index_data()
-        first_table_keys = set(first_table.primary_keys)
-        for table in table_group[1:]:
-            key_intersection = list(first_table_keys.intersection(set(table.dt.primary_keys)))
-            current_table_index = table.dt.get_index_data()
-            first_table_index = pd.merge(
-                first_table_index, current_table_index, how='inner', on=key_intersection
-            )
-            first_table_keys = set(list(first_table_keys) + list(table.dt.primary_keys))
-        within_group_results[group_key] = first_table_index
-
-    # cross join as final step
-    within_group_indexes = list(within_group_results.values())
-    final_result = within_group_indexes[0]
-    for table_data in within_group_indexes[1:]:
-        final_result = pd.merge(final_result, table_data, how="cross")
-
-    # this probably can be done other way during merge without calculating full result
-    return cast(IndexDF, final_result[transform_keys].drop_duplicates())
-
-
 def _join_delta(
     result_df: IndexDF, table_df: IndexDF, result_pkeys: Set[str], table_pkeys: Set[str],
     result_is_required_table: bool, table_is_required_table: bool
@@ -877,6 +886,8 @@ def _join_delta(
     delta_is_required_table - this is flag that says that delta change is applied to Required table
     table_is_required_table - this is flag that says that the table_df is Required table
     """
+    if result_df.empty:
+        return result_df, result_pkeys
 
     key_intersection = list(result_pkeys.intersection(set(table_pkeys)))
     if len(key_intersection) > 0:
@@ -910,38 +921,177 @@ def _join_delta(
     return result, result_pkeys_copy
 
 
-def create_transformation_meta_for_changes(
-    transformations, current_table_name, primary_keys,
+def _join_input_tables_in_sql(all_input_tables, transform_keys):
+    """
+    This function calculates sql query that joins all input tables
+    """
+    select_columns_dict = {}
+    for input_table in all_input_tables:
+        for key in input_table.dt.primary_keys:
+            if key in transform_keys:
+                select_columns_dict[key] = input_table.dt.table_store.data_table.c[key]
+    # sort keys because the order of selected cols here and in
+    # TransformMetaTable.insert_rows_by_sql must be the same
+    sorted_keys = sorted(select_columns_dict.keys())
+    select_columns = [select_columns_dict[key].label(key) for key in sorted_keys]
+
+    first_table = all_input_tables[0]
+    sql = sa.select(*select_columns).select_from(first_table.dt.table_store.data_table)
+    prev_tables = [first_table]
+    for table in all_input_tables[1:]:
+        onclause = []
+
+        for prev_table in prev_tables:
+            for key in table.dt.primary_keys:
+                if key in prev_table.dt.primary_keys:
+                    onclause.append(
+                        prev_table.dt.table_store.data_table.c[key] == table.dt.table_store.data_table.c[key]
+                    )
+
+        if len(onclause) > 0:
+            sql = sql.join(table.dt.table_store.data_table, onclause=sa.and_(*onclause))
+        else:
+            sql = sql.join(table.dt.table_store.data_table, onclause=sa.literal(True))
+
+    return sql
+
+
+def _calculate_changes_in_sql(
+    transf, current_table, all_input_tables, new_df, changed_df
+):
+    sql = _join_input_tables_in_sql(all_input_tables, transf.transform_keys)
+
+    primary_key_columns = [
+        current_table.dt.table_store.data_table.c[pk]
+        for pk in current_table.dt.primary_keys
+    ]
+
+    if not new_df.empty:
+        new_df_sql = sql.where(
+            sa.tuple_(*primary_key_columns).in_(
+                new_df[current_table.dt.primary_keys].values.tolist()
+            )
+        )
+        transf.meta_table.insert_rows_by_sql(new_df_sql)
+
+    if not changed_df.empty:
+        changed_df_sql = sql.where(
+            sa.tuple_(*primary_key_columns).in_(
+                changed_df[current_table.dt.primary_keys].values.tolist()
+            )
+        )
+        transf.meta_table.reset_rows_by_sql(changed_df_sql)
+
+
+def _calculate_changes_in_pandas(
+    transf, current_table_name, all_input_tables, primary_keys,
     new_df, changed_df
 ):
+    """
+    See note for extract_transformation_meta function
+    """
+    table_groups = _split_tables_into_connected_groups(all_input_tables)
+    filtered_groups = {
+        key_tuple: table_group
+        for key_tuple, table_group in table_groups.items()
+        if any(transf_key in set(key_tuple) for transf_key in transf.transform_keys)
+    }
+
+    current_table_is_required = any([
+        dt.dt for dt in all_input_tables
+        if dt.dt.name == current_table_name
+            and dt.join_type == 'inner'
+    ])
+    remaining_tables = [
+        dt.dt for dt in itertools.chain(*filtered_groups.values())
+        if dt.dt.name != current_table_name
+    ]
+    required_tables = set([
+        dt.dt.name for dt in itertools.chain(*filtered_groups.values())
+        if dt.dt.name != current_table_name
+            and dt.join_type == 'inner'
+    ])
+
+    new_result, changed_result = new_df[primary_keys], changed_df[primary_keys]
+    result_keys = set(primary_keys)
+
+    for remaining_table in remaining_tables:
+        remaining_table_df = remaining_table.get_index_data()
+        result_keys_cache = result_keys.copy()
+        new_result, result_keys = _join_delta(
+            new_result, remaining_table_df[remaining_table.primary_keys],
+            result_keys_cache, set(remaining_table.primary_keys),
+            current_table_is_required, remaining_table.name in required_tables
+        )
+        changed_result, _ = _join_delta(
+            changed_result, remaining_table_df[remaining_table.primary_keys],
+            result_keys_cache, set(remaining_table.primary_keys),
+            current_table_is_required, remaining_table.name in required_tables
+        )
+
+    if not new_result.empty:
+        transf.meta_table.insert_rows(new_result)
+    if not changed_result.empty:
+        transf.meta_table.reset_rows(changed_result)
+
+
+def _initial_transformation_meta_extract_in_pandas(
+    transf: "BaseBatchTransformStep", input_dts: List["ComputeInput"], transform_keys: List[str]
+) -> None:
+    """
+    This function takes all the input tables to the transformation
+    and creates index of rows to be created in transformation meta table
+    to initialize it if transformation was added after the input tables were already filled in
+
+    Note: (very important) This method does the join between multiple tables in some cases
+    - if tables are in the same database, then method uses in-database join
+    - if tables reside in different stores, then data is fetched to python code and joined manually
+    this can cause out-of memory errors if data is too large
+    """
+    table_groups = _split_tables_into_connected_groups(input_dts)
+
+    # within each group join the tables how=inner by intersecting keys
+    within_group_results = {}
+    for group_key, table_group in table_groups.items():
+        first_table = table_group[0].dt
+        first_table_index = first_table.get_index_data()
+        first_table_keys = set(first_table.primary_keys)
+        for table in table_group[1:]:
+            key_intersection = list(first_table_keys.intersection(set(table.dt.primary_keys)))
+            current_table_index = table.dt.get_index_data()
+            first_table_index = pd.merge(
+                first_table_index, current_table_index, how='inner', on=key_intersection
+            )
+            first_table_keys = set(list(first_table_keys) + list(table.dt.primary_keys))
+        within_group_results[group_key] = first_table_index
+
+    # cross join as final step
+    within_group_indexes = list(within_group_results.values())
+    final_result = within_group_indexes[0]
+    for table_data in within_group_indexes[1:]:
+        final_result = pd.merge(final_result, table_data, how="cross")
+
+    idx_to_write = cast(IndexDF, final_result[transform_keys].drop_duplicates())
+    transf.meta_table.insert_rows(idx_to_write)
+
+
+def _initial_transformation_meta_extract_in_sql(
+    transf: "BaseBatchTransformStep", all_input_tables, transform_keys
+) -> None:
+    sql = _join_input_tables_in_sql(all_input_tables, transform_keys)
+    transf.meta_table.insert_rows_by_sql(sql)
+
+
+def create_transformation_meta_for_changes(
+    transformations: List["BaseBatchTransformStep"], current_table_name: str, primary_keys,
+    new_df: pd.DataFrame, changed_df: pd.DataFrame
+) -> None:
     for transf in transformations:
         output_tables = set([dt.name for dt in transf.output_dts])
         all_input_tables = [dt for dt in transf.input_dts if dt.dt.name not in output_tables]
+        current_table = [dt for dt in transf.input_dts if dt.dt.name == current_table_name][0]
+        all_input_tables_from_sql_db = _all_input_tables_from_same_sql_db(all_input_tables)
 
-        table_groups = _split_tables_into_connected_groups(all_input_tables)
-        filtered_groups = {
-            key_tuple: table_group
-            for key_tuple, table_group in table_groups.items()
-            if any(transf_key in set(key_tuple) for transf_key in transf.transform_keys)
-        }
-
-        current_table_is_required = any([
-            dt.dt for dt in all_input_tables
-            if dt.dt.name == current_table_name
-               and dt.join_type == 'inner'
-        ])
-        remaining_tables = [
-            dt.dt for dt in itertools.chain(*filtered_groups.values())
-            if dt.dt.name != current_table_name
-        ]
-        required_tables = set([
-            dt.dt.name for dt in itertools.chain(*filtered_groups.values())
-            if dt.dt.name != current_table_name
-               and dt.join_type == 'inner'
-        ])
-
-        new_result, changed_result = new_df[primary_keys], changed_df[primary_keys]
-        result_keys = set(primary_keys)
         if not set(primary_keys).issubset(set(transf.transform_keys)):
             # what happens here:
             # update to a table that participates in a join and later in aggregation
@@ -949,40 +1099,25 @@ def create_transformation_meta_for_changes(
             # so I reset all the rows - this causes the aggregation to be recomputed
             # this is the same for both required and normal tables
             transf.meta_table.reset_all_rows()
+            changed_df = pd.DataFrame(columns=changed_df.columns)  # don't process it
 
-            # no need to process changed_df, I reset previous rows above
-            # but there can be newly added data
-            # this describes interaction of transform keys and newly added data
-            # with key that is missing in transform_keys
-            for remaining_table in remaining_tables:
-                remaining_table_df = remaining_table.get_index_data()
-                new_result, result_keys = _join_delta(
-                    new_result, remaining_table_df[remaining_table.primary_keys],
-                    result_keys, set(remaining_table.primary_keys),
-                    current_table_is_required, remaining_table.name in required_tables
-                )
-
-            if not new_result.empty:
-                transf.meta_table.insert_rows(new_result)
+        if all_input_tables_from_sql_db:
+            _calculate_changes_in_sql(transf, current_table, all_input_tables, new_df, changed_df)
         else:
-            for remaining_table in remaining_tables:
-                remaining_table_df = remaining_table.get_index_data()
-                result_keys_cache = result_keys.copy()
-                new_result, result_keys = _join_delta(
-                    new_result, remaining_table_df[remaining_table.primary_keys],
-                    result_keys_cache, set(remaining_table.primary_keys),
-                    current_table_is_required, remaining_table.name in required_tables
-                )
-                changed_result, _ = _join_delta(
-                    changed_result, remaining_table_df[remaining_table.primary_keys],
-                    result_keys_cache, set(remaining_table.primary_keys),
-                    current_table_is_required, remaining_table.name in required_tables
-                )
+            _calculate_changes_in_pandas(
+                transf, current_table_name, all_input_tables, primary_keys, new_df, changed_df
+            )
 
-            if not new_result.empty:
-                transf.meta_table.insert_rows(new_result)
-            if not changed_result.empty:
-                transf.meta_table.reset_rows(changed_result)
+
+def init_transformation_meta(transf: "BaseBatchTransformStep") -> None:
+    output_tables = set([dt.name for dt in transf.output_dts])
+    all_input_tables = [dt for dt in transf.input_dts if dt.dt.name not in output_tables]
+    all_input_tables_from_sql_db = _all_input_tables_from_same_sql_db(all_input_tables)
+
+    if all_input_tables_from_sql_db:
+        _initial_transformation_meta_extract_in_sql(transf, all_input_tables, transf.transform_keys)
+    else:
+        _initial_transformation_meta_extract_in_pandas(transf, all_input_tables, transf.transform_keys)
 
 
 def build_changed_idx_sql(

@@ -158,14 +158,15 @@ class DataTable:
         if len(idx) > 0:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
-            self.table_store.delete_rows(idx)
-            self.meta_table.mark_rows_deleted(idx, now=now)
-
             transformations = getattr(self, 'transformations', [])
             create_transformation_meta_for_changes(
                 transformations, self.name, self.primary_keys,
                 pd.DataFrame(columns=self.primary_keys), idx
             )
+
+            self.table_store.delete_rows(idx)
+            self.meta_table.mark_rows_deleted(idx, now=now)
+
 
     def delete_stale_by_process_ts(
         self,

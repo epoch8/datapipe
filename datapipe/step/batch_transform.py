@@ -35,7 +35,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql, extract_transformation_meta
+from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql, init_transformation_meta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -395,9 +395,7 @@ class BaseBatchTransformStep(ComputeStep):
         Call this method if you add a new transformation to tables
         where there is already some saved data
         """
-        meta_index = extract_transformation_meta(self.input_dts, self.transform_keys)
-        if not meta_index.empty:
-            self.meta_table.insert_rows(meta_index)
+        init_transformation_meta(self)
 
     def fill_metadata(self, ds: DataStore) -> None:
         idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
