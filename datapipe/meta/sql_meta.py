@@ -1079,6 +1079,7 @@ def _initial_transformation_meta_extract_in_sql(
     transf: "BaseBatchTransformStep", all_input_tables, transform_keys
 ) -> None:
     sql = _join_input_tables_in_sql(all_input_tables, transform_keys)
+    sql = sql.where(sa.text('TRUE'))
     transf.meta_table.insert_rows_by_sql(sql)
 
 
