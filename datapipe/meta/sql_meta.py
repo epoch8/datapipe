@@ -822,6 +822,10 @@ def _all_input_tables_from_same_sql_db(input_tables):
     return len(set(table_stores)) == 1 and is_all_table_store_db
 
 
+def _all_input_tables_have_meta_table(input_tables):
+    pass
+
+
 def _split_tables_into_connected_groups(
     input_dts: List["ComputeInput"]
 ) -> Dict[Tuple[str], List["ComputeInput"]]:
@@ -929,14 +933,14 @@ def _join_input_tables_in_sql(all_input_tables, transform_keys):
     for input_table in all_input_tables:
         for key in input_table.dt.primary_keys:
             if key in transform_keys:
-                select_columns_dict[key] = input_table.dt.table_store.data_table.c[key]
+                select_columns_dict[key] = input_table.dt.meta_table.sql_table.c[key]
     # sort keys because the order of selected cols here and in
     # TransformMetaTable.insert_rows_by_sql must be the same
     sorted_keys = sorted(select_columns_dict.keys())
     select_columns = [select_columns_dict[key].label(key) for key in sorted_keys]
 
     first_table = all_input_tables[0]
-    sql = sa.select(*select_columns).select_from(first_table.dt.table_store.data_table)
+    sql = sa.select(*select_columns).select_from(first_table.dt.meta_table.sql_table)
     prev_tables = [first_table]
     for table in all_input_tables[1:]:
         onclause = []
@@ -945,13 +949,13 @@ def _join_input_tables_in_sql(all_input_tables, transform_keys):
             for key in table.dt.primary_keys:
                 if key in prev_table.dt.primary_keys:
                     onclause.append(
-                        prev_table.dt.table_store.data_table.c[key] == table.dt.table_store.data_table.c[key]
+                        prev_table.dt.meta_table.sql_table.c[key] == table.dt.meta_table.sql_table.c[key]
                     )
 
         if len(onclause) > 0:
-            sql = sql.join(table.dt.table_store.data_table, onclause=sa.and_(*onclause))
+            sql = sql.join(table.dt.meta_table.sql_table, onclause=sa.and_(*onclause))
         else:
-            sql = sql.join(table.dt.table_store.data_table, onclause=sa.literal(True))
+            sql = sql.join(table.dt.meta_table.sql_table, onclause=sa.literal(True))
 
     return sql
 
@@ -962,7 +966,7 @@ def _calculate_changes_in_sql(
     sql = _join_input_tables_in_sql(all_input_tables, transf.transform_keys)
 
     primary_key_columns = [
-        current_table.dt.table_store.data_table.c[pk]
+        current_table.dt.meta_table.sql_table.c[pk]
         for pk in current_table.dt.primary_keys
     ]
 
@@ -1091,7 +1095,6 @@ def create_transformation_meta_for_changes(
         output_tables = set([dt.name for dt in transf.output_dts])
         all_input_tables = [dt for dt in transf.input_dts if dt.dt.name not in output_tables]
         current_table = [dt for dt in transf.input_dts if dt.dt.name == current_table_name][0]
-        all_input_tables_from_sql_db = _all_input_tables_from_same_sql_db(all_input_tables)
 
         if not set(primary_keys).issubset(set(transf.transform_keys)):
             # what happens here:
@@ -1102,12 +1105,7 @@ def create_transformation_meta_for_changes(
             transf.meta_table.reset_all_rows()
             changed_df = pd.DataFrame(columns=changed_df.columns)  # don't process it
 
-        if all_input_tables_from_sql_db:
-            _calculate_changes_in_sql(transf, current_table, all_input_tables, new_df, changed_df)
-        else:
-            _calculate_changes_in_pandas(
-                transf, current_table_name, all_input_tables, primary_keys, new_df, changed_df
-            )
+        _calculate_changes_in_sql(transf, current_table, all_input_tables, new_df, changed_df)
 
 
 def init_transformation_meta(transf: "BaseBatchTransformStep") -> None:
@@ -1118,6 +1116,7 @@ def init_transformation_meta(transf: "BaseBatchTransformStep") -> None:
     if all_input_tables_from_sql_db:
         _initial_transformation_meta_extract_in_sql(transf, all_input_tables, transf.transform_keys)
     else:
+        # this case is required for test_chunked_processing_pipeline.py::test_table_store_json_line_reading
         _initial_transformation_meta_extract_in_pandas(transf, all_input_tables, transf.transform_keys)
 
 
