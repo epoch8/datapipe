@@ -172,6 +172,28 @@ class BaseBatchTransformStep(ComputeStep):
         """
         return "v2_offset" if self._get_use_offset_optimization(run_config) else "v1_join"
 
+    def _get_additional_idx_columns(self) -> List[str]:
+        """
+        Собрать дополнительные колонки, необходимые для filtered join.
+
+        Возвращает список колонок из join_keys, которые нужно включить в idx
+        для работы filtered join оптимизации.
+
+        Returns:
+            Список имен колонок (без дубликатов)
+        """
+        additional_columns = []
+
+        for inp in self.input_dts:
+            if inp.join_keys:
+                # Добавляем колонки из ключей join_keys (левая часть маппинга)
+                # Например, для {"user_id": "id"} добавляем "user_id"
+                for idx_col in inp.join_keys.keys():
+                    if idx_col not in self.transform_keys and idx_col not in additional_columns:
+                        additional_columns.append(idx_col)
+
+        return additional_columns
+
     def _build_changed_idx_sql(
         self,
         ds: DataStore,
@@ -189,6 +211,9 @@ class BaseBatchTransformStep(ComputeStep):
         use_offset = self._get_use_offset_optimization(run_config)
         method = self._get_optimization_method_name(run_config)
 
+        # Получить дополнительные колонки для filtered join
+        additional_columns = self._get_additional_idx_columns()
+
         with tracer.start_as_current_span(f"build_changed_idx_sql_{method}"):
             start_time = time.time()
 
@@ -204,6 +229,7 @@ class BaseBatchTransformStep(ComputeStep):
                     order_by=order_by,
                     order=order,
                     run_config=run_config,
+                    additional_columns=additional_columns,  # Передаем дополнительные колонки
                 )
             else:
                 keys, sql = build_changed_idx_sql_v1(
@@ -215,6 +241,7 @@ class BaseBatchTransformStep(ComputeStep):
                     order_by=order_by,
                     order=order,
                     run_config=run_config,
+                    additional_columns=additional_columns,  # Передаем дополнительные колонки
                 )
 
             query_build_time = time.time() - start_time
@@ -352,7 +379,10 @@ class BaseBatchTransformStep(ComputeStep):
 
                     with ds.meta_dbconn.con.begin() as con:
                         for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
-                            df = df[self.transform_keys]
+                            # Используем join_keys (которые включают transform_keys + additional_columns)
+                            # Фильтруем только колонки, которые есть в df
+                            available_keys = [k for k in join_keys if k in df.columns]
+                            df = df[available_keys]
 
                             for k, v in extra_filters.items():
                                 df[k] = v
@@ -427,7 +457,7 @@ class BaseBatchTransformStep(ComputeStep):
     def _get_max_update_ts_for_batch(
         self,
         ds: DataStore,
-        input_dt: DataTable,
+        compute_input: "ComputeInput",
         processed_idx: IndexDF,
     ) -> Optional[float]:
         """
@@ -435,12 +465,16 @@ class BaseBatchTransformStep(ComputeStep):
 
         Важно: используем processed_idx который содержит только успешно обработанные записи
         из output_dfs (result.index), а не весь батч idx.
+
+        Для JoinSpec таблиц (с join_keys) используем join_keys для фильтрации вместо primary_keys.
+        Пример: profiles с join_keys={'user_id': 'id'} фильтруется по profiles.id IN (processed_idx.user_id)
         """
         from datapipe.sql_util import sql_apply_idx_filter_to_table
 
         if len(processed_idx) == 0:
             return None
 
+        input_dt = compute_input.dt
         tbl = input_dt.meta_table.sql_table
 
         # Построить запрос с фильтром по processed_idx (только успешно обработанные)
@@ -451,13 +485,39 @@ class BaseBatchTransformStep(ComputeStep):
         )
         max_ts_expr = func.max(max_of_both)
         sql = select(max_ts_expr)
-        # Используем только те ключи, которые есть в processed_idx
-        idx_keys = list(processed_idx.columns)
-        filter_keys = [k for k in input_dt.primary_keys if k in idx_keys]
 
-        # Если нет общих ключей, не можем отфильтровать - берем максимум по всей таблице
-        if len(filter_keys) > 0:
-            sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, processed_idx)
+        # Для JoinSpec таблиц используем join_keys вместо primary_keys
+        # join_keys: Dict[idx_col -> dt_col], например {'user_id': 'id'}
+        # Значит: фильтруем dt.id по значениям из processed_idx.user_id
+        if compute_input.join_keys:
+            # Для каждого join key создаём фильтр
+            # Используем только те join keys, у которых idx_col есть в processed_idx
+            idx_keys = list(processed_idx.columns)
+
+            # Создаём маппинг dt_col -> idx_col для фильтрации
+            # Пример: {'id': 'user_id'} - фильтровать dt.id по processed_idx.user_id
+            filter_mapping = {}
+            for idx_col, dt_col in compute_input.join_keys.items():
+                if idx_col in idx_keys:
+                    filter_mapping[dt_col] = idx_col
+
+            if filter_mapping:
+                # Применяем фильтр используя dt columns как ключи
+                # Но берем значения из соответствующих idx columns
+                filter_keys = list(filter_mapping.keys())
+
+                # Создаём переименованный processed_idx для sql_apply_idx_filter_to_table
+                # Например: user_id -> id чтобы фильтровать по dt.id
+                renamed_idx = processed_idx.rename(columns={v: k for k, v in filter_mapping.items()})
+                sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, renamed_idx)
+        else:
+            # Для обычных таблиц используем primary_keys
+            idx_keys = list(processed_idx.columns)
+            filter_keys = [k for k in input_dt.primary_keys if k in idx_keys]
+
+            # Если нет общих ключей, не можем отфильтровать - берем максимум по всей таблице
+            if len(filter_keys) > 0:
+                sql = sql_apply_idx_filter_to_table(sql, tbl, filter_keys, processed_idx)
 
         with ds.meta_dbconn.con.begin() as con:
             result = con.execute(sql).scalar()
@@ -526,7 +586,7 @@ class BaseBatchTransformStep(ComputeStep):
 
                 for inp in self.input_dts:
                     # Найти максимальный update_ts из УСПЕШНО обработанного батча
-                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp.dt, processed_idx)
+                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
 
                     if max_update_ts is not None:
                         offsets_to_update[(self.get_name(), inp.dt.name)] = max_update_ts
@@ -588,7 +648,55 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
-        return [inp.dt.get_data(idx) for inp in self.input_dts]
+        """
+        Получить входные данные для батча с поддержкой filtered join.
+
+        Если у ComputeInput указаны join_keys, читаем только связанные записи
+        для оптимизации производительности.
+        """
+        result = []
+
+        for inp in self.input_dts:
+            if inp.join_keys:
+                # FILTERED JOIN: Читаем только связанные записи
+                # Извлекаем уникальные значения foreign keys из idx
+                filtered_idx_data = {}
+                all_keys_present = True
+
+                for idx_col, dt_col in inp.join_keys.items():
+                    if idx_col in idx.columns:
+                        # Получаем уникальные значения и создаем маппинг
+                        unique_values = idx[idx_col].unique()
+                        filtered_idx_data[dt_col] = unique_values
+                    else:
+                        # Если хотя бы одного ключа нет - используем fallback
+                        all_keys_present = False
+                        break
+
+                if all_keys_present and filtered_idx_data:
+                    # Создаем filtered_idx для чтения только нужных записей
+                    filtered_idx = IndexDF(pd.DataFrame(filtered_idx_data))
+
+                    logger.debug(
+                        f"[{self.get_name()}] Filtered join for {inp.dt.name}: "
+                        f"reading {len(filtered_idx)} records instead of full table"
+                    )
+
+                    data = inp.dt.get_data(filtered_idx)
+                else:
+                    # Fallback: если не все ключи присутствуют, читаем по idx
+                    logger.debug(
+                        f"[{self.get_name()}] Filtered join fallback for {inp.dt.name}: "
+                        f"join_keys={inp.join_keys} not found in idx columns {list(idx.columns)}"
+                    )
+                    data = inp.dt.get_data(idx)
+            else:
+                # Обычное чтение по idx
+                data = inp.dt.get_data(idx)
+
+            result.append(data)
+
+        return result
 
     def process_batch_dfs(
         self,
@@ -817,12 +925,13 @@ class BatchTransform(PipelineStep):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="inner",
+                join_keys=input.join_keys,  # Pass join_keys for filtered join
             )
         elif isinstance(input, JoinSpec):
-            # This should not happen, but just in case
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="full",
+                join_keys=input.join_keys,  # Pass join_keys for filtered join
             )
         else:
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")

@@ -9,6 +9,7 @@ from typing import (
     Dict,
     List,
     NewType,
+    Optional,
     Set,
     Tuple,
     Type,
@@ -60,6 +61,9 @@ TableOrName = Union[str, OrmTable, "Table"]
 @dataclass
 class JoinSpec:
     table: TableOrName
+    # Filtered join optimization: mapping from idx columns to table columns
+    # Example: {"user_id": "id"} means filter table by table.id IN (idx.user_id)
+    join_keys: Optional[Dict[str, str]] = None
 
 
 @dataclass
