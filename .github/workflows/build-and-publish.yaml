@@ -54,6 +54,7 @@ jobs:
   publish-to-pypi:
     environment: 
       name: pypi
+      url: https://pypi.org/project/datapipe-core/
     permissions:
       id-token: write
     

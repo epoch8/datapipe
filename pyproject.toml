@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.6-alpha.2"
+version = "0.14.6-alpha.4"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
@@ -40,6 +40,7 @@ ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 elastic = ["elasticsearch>=8.17.1"]
 neo4j = ["neo4j"]
+pyarrow = ["pyarrow[pyarrow]>=21.0.0"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
