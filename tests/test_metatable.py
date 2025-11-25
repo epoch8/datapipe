@@ -11,7 +11,7 @@ from sqlalchemy.sql.schema import Column
 from datapipe.datatable import MetaTable
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.tests.util import assert_df_equal
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
+from datapipe.types import HashDF, DataSchema, IndexDF, MetaSchema, hash_to_index
 
 
 class CasesTestDF:
@@ -24,9 +24,9 @@ class CasesTestDF:
             ],
             [],
             cast(
-                DataDF,
+                HashDF,
                 pd.DataFrame(
-                    {"id": range(N), "a": range(N)},
+                    {"id": range(N), "hash": range(N)},
                 ),
             ),
         )
@@ -42,9 +42,9 @@ class CasesTestDF:
                 Column("item_id", Integer, MetaKey()),
             ],
             cast(
-                DataDF,
+                HashDF,
                 pd.DataFrame(
-                    {"id": range(N), "item_id": range(N), "a": range(N)},
+                    {"id": range(N), "item_id": range(N), "hash": range(N)},
                 ),
             ),
         )
@@ -59,9 +59,9 @@ class CasesTestDF:
             ],
             [],
             cast(
-                DataDF,
+                HashDF,
                 pd.DataFrame(
-                    {"id1": range(N), "id2": range(N), "a": range(N)},
+                    {"id1": range(N), "id2": range(N), "hash": range(N)},
                 ),
             ),
         )
@@ -79,14 +79,14 @@ class CasesTestDF:
                 Column("product_id", Integer, MetaKey()),
             ],
             cast(
-                DataDF,
+                HashDF,
                 pd.DataFrame(
                     {
                         "id1": range(N),
                         "id2": range(N),
                         "item_id": range(N),
                         "product_id": range(N),
-                        "a": range(N),
+                        "hash": range(N),
                     },
                 ),
             ),
@@ -103,7 +103,7 @@ def test_insert_rows(
     index_cols: List[str],
     primary_schema: DataSchema,
     meta_schema: MetaSchema,
-    test_df: DataDF,
+    test_df: HashDF,
 ):
     mt = MetaTable(
         name="test",
@@ -113,16 +113,16 @@ def test_insert_rows(
         create_table=True,
     )
     keys = list(set(mt.primary_keys) | set(mt.meta_keys.keys()))
+    new_index_df, changed_index_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
 
-    new_df, changed_df, new_meta_df, changed_meta_df = mt.get_changes_for_store_chunk(test_df)
-    assert_df_equal(new_df, test_df, index_cols=index_cols)
-    assert len(new_df) == len(test_df)
+    assert_df_equal(new_index_df, hash_to_index(test_df, index_cols), index_cols=index_cols)
+    assert len(new_index_df) == len(test_df)
     assert len(new_meta_df) == len(test_df)
-    assert len(changed_df) == 0
+    assert len(changed_index_df) == 0
     assert len(changed_meta_df) == 0
 
-    assert_df_equal(new_meta_df[index_cols], new_df[index_cols], index_cols=index_cols)
-    assert_df_equal(new_meta_df[keys], new_df[keys], index_cols=index_cols)
+    assert_df_equal(new_meta_df[index_cols], new_index_df, index_cols=index_cols)
+    assert_df_equal(new_meta_df[keys], test_df[keys], index_cols=index_cols)
 
     mt.update_rows(df=new_meta_df)
     mt.update_rows(df=changed_meta_df)
@@ -145,7 +145,7 @@ def test_get_metadata(
     index_cols: List[str],
     primary_schema: DataSchema,
     meta_schema: MetaSchema,
-    test_df: DataDF,
+    test_df: HashDF,
 ):
     mt = MetaTable(
         name="test",
@@ -185,7 +185,7 @@ def test_get_ids_changed_after_date_threshold(
     index_cols: List[str],
     primary_schema: DataSchema,
     meta_schema: MetaSchema,
-    test_df: DataDF,
+    test_df: HashDF,
 ):
     mt = MetaTable(
         name="test",

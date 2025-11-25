@@ -9,10 +9,10 @@ import pytest
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
-from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
+from datapipe.store.filedir import JSONFile, PILFile, PandasParquetFile, TableStoreFiledir
 from datapipe.store.tests.abstract import AbstractBaseStoreTests
-from datapipe.tests.util import assert_df_equal, assert_ts_contains
-from datapipe.types import DataSchema
+from datapipe.tests.util import assert_df_equal, assert_ts_contains, assert_idx_equal
+from datapipe.types import DataSchema, data_to_index
 
 TEST_DF = pd.DataFrame(
     {
@@ -126,6 +126,57 @@ FILEDIR_DATA_PARAMS = [
             Column("id", String(100)),
         ],
         id="complex_values",
+    ),
+]
+
+FILEDIR_PANDAS_DATA_PARAMS = [
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id": range(6),
+                "data": [
+                    pd.DataFrame(
+                        {
+                            "id": [i+j for j in range(100)],
+                            "value": [i*j for j in range(100)],
+                        }) 
+                    for i in range(6)
+                ],
+            }
+        ),
+        "{id}.parquet",
+        [
+            Column("id", Integer),
+        ],
+        id="parquet_single_id",
+    ),
+    pytest.param(
+        pd.DataFrame(
+            {
+                "id1": [f"id_{i}" for i in range(100)],
+                "id2": [f"id_{i}" for i in range(100)],
+                "id3": [f"id__{i}" for i in range(100)],
+                "id4": [f"id___{i}" for i in range(100)],
+                "id5": [f"id_{i}_" for i in range(100)],
+                "data": [
+                    pd.DataFrame(
+                        {
+                            "id": [i+j for j in range(100)],
+                            "value": [i*j for j in range(100)],
+                        }) 
+                    for i in range(100)
+                ],
+            }
+        ),
+        "{id1}______{id2}______{id3}______{id4}______{id5}.parquet",
+        [
+            Column("id1", String(100)),
+            Column("id2", String(100)),
+            Column("id3", String(100)),
+            Column("id4", String(100)),
+            Column("id5", String(100)),
+        ],
+        id="parquet_multi_ids",
     ),
 ]
 
@@ -517,3 +568,32 @@ def test_write_read_rows__filedir_specific(
     store.insert_rows(data_df)
 
     assert_ts_contains(store, data_df)
+
+
+@pytest.mark.parametrize("data_df,fn_template,primary_schema", FILEDIR_PANDAS_DATA_PARAMS)
+def test_write_read_rows__filedir_pandas_parquet(
+    tmp_dir,
+    data_df: pd.DataFrame,
+    fn_template: str,
+    primary_schema: DataSchema
+) -> None:
+    store = TableStoreFiledir(
+        tmp_dir / fn_template,
+        primary_schema=primary_schema, 
+        adapter=PandasParquetFile(
+            pandas_column="data"
+        ),
+    )
+
+    store.insert_rows(data_df)
+
+    saved_df = store.read_rows(data_to_index(data_df, store.primary_keys))
+
+    data_df = data_df.set_index(store.primary_keys)
+    saved_df = saved_df.set_index(store.primary_keys)
+
+    assert_idx_equal(data_df.index, saved_df.index)
+
+    for i, row in data_df.iterrows():
+        assert row["data"].equals(saved_df['data'][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"
+    
