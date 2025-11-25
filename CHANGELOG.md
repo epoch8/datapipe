@@ -10,6 +10,9 @@
 * Added hash_row for BytesFile and PILFile
 * Added use_adapter_hash parameter in TableStoreFiledir for backward
   compatibility
+* Support for Python 3.13 and Python 3.14
+* Support for Numpy 2.0
+* Removed dependency on `iteration-utilities`
 
 # 0.14.5
 
