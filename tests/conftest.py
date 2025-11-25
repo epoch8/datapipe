@@ -16,6 +16,26 @@ from sqlalchemy import create_engine, text
 from datapipe.store.database import DBConn
 
 
+def pytest_collection_modifyitems(config, items):
+    """
+    Исключить performance тесты из обычного test run.
+
+    Performance тесты должны запускаться отдельно: pytest tests/performance/
+    """
+    # Если явно указана директория performance в аргументах, не фильтруем
+    args_str = " ".join(config.invocation_params.args)
+    if "performance" in args_str:
+        return
+
+    # Исключить все тесты из tests/performance/ если не указано явно
+    remaining = []
+    for item in items:
+        if "performance" not in str(item.fspath):
+            remaining.append(item)
+
+    items[:] = remaining
+
+
 @pytest.fixture
 def tmp_dir():
     with tempfile.TemporaryDirectory() as d:

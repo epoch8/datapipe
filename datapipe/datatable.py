@@ -5,7 +5,7 @@ import pandas as pd
 from opentelemetry import trace
 
 from datapipe.event_logger import EventLogger
-from datapipe.meta.sql_meta import MetaTable
+from datapipe.meta.sql_meta import MetaTable, TransformInputOffsetTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
@@ -169,6 +169,9 @@ class DataStore:
         self.tables: Dict[str, DataTable] = {}
 
         self.create_meta_table = create_meta_table
+
+        # Создать таблицу offset'ов (используем тот же флаг create_meta_table)
+        self.offset_table = TransformInputOffsetTable(meta_dbconn, create_table=create_meta_table)
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
         assert name not in self.tables
