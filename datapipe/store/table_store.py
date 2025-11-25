@@ -8,7 +8,7 @@ import pandas as pd
 from sqlalchemy import Column, String
 
 from datapipe.run_config import RunConfig
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, HashDF, data_to_index
+from datapipe.types import DataDF, DataSchema, HashDF, IndexDF, MetaSchema, data_to_index
 
 
 @dataclass
@@ -35,16 +35,16 @@ class TableStore(ABC):
     @property
     def primary_keys(self) -> List[str]:
         return [i.name for i in self.get_primary_schema()]
-    
+
     @property
     def meta_keys(self) -> List[str]:
         return [i.name for i in self.get_meta_schema()]
-    
+
     @property
     def hash_keys(self) -> List[str]:
         return self.primary_keys + self.meta_keys
-    
-    def hash_rows(self, df: DataDF) -> HashDF: 
+
+    def hash_rows(self, df: DataDF) -> HashDF:
         hash_df = df[self.hash_keys]
         hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
@@ -106,14 +106,14 @@ class TableDataSingleFileStore(TableStore):
     def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
-    def read_rows(self, index_df: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
         file_df = self.load_file()
 
         if file_df is not None:
-            if index_df is not None:
-                if len(index_df):
+            if idx is not None:
+                if len(idx):
                     file_df = file_df.set_index(self.primary_keys)
-                    idx = index_df.set_index(self.primary_keys)
+                    idx = idx.set_index(self.primary_keys)
 
                     idx_to_read = file_df.index.intersection(idx.index)
 
@@ -148,12 +148,12 @@ class TableDataSingleFileStore(TableStore):
 
         self.save_file(new_df)
 
-    def delete_rows(self, index_df: IndexDF) -> None:
+    def delete_rows(self, idx: IndexDF) -> None:
         file_df = self.load_file()
 
         if file_df is not None:
             file_df = file_df.set_index(self.primary_keys)
-            idx = index_df.set_index(self.primary_keys)
+            idx = idx.set_index(self.primary_keys)
 
             new_df = file_df.loc[file_df.index.difference(idx.index)]
 
