@@ -16,7 +16,6 @@ from typing import (
     cast,
 )
 
-import cityhash
 import pandas as pd
 import sqlalchemy as sa
 
@@ -26,11 +25,13 @@ from datapipe.store.database import DBConn, MetaKey
 from datapipe.types import (
     DataDF,
     DataSchema,
+    HashDF,
     IndexDF,
     MetadataDF,
     MetaSchema,
     TAnyDF,
     data_to_index,
+    hash_to_index,
 )
 
 if TYPE_CHECKING:
@@ -183,12 +184,8 @@ class MetaTable:
             assert res is not None and len(res) == 1
             return res[0]
 
-    def _make_new_metadata_df(self, now: float, df: DataDF) -> MetadataDF:
-        meta_keys = self.primary_keys + list(self.meta_keys.values())
-        res_df = df[meta_keys]
-
-        res_df = res_df.assign(
-            hash=self._get_hash_for_df(df),
+    def _make_new_metadata_df(self, now: float, df: HashDF) -> MetadataDF:
+        res_df = df.assign(
             create_ts=now,
             update_ts=now,
             process_ts=now,
@@ -199,11 +196,6 @@ class MetaTable:
 
     def _get_meta_data_columns(self):
         return self.primary_keys + list(self.meta_keys.values()) + [column.name for column in TABLE_META_SCHEMA]
-
-    def _get_hash_for_df(self, df) -> pd.Series:
-        return df.apply(lambda x: str(list(x)), axis=1).apply(
-            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
-        )
 
     # Fix numpy types in Index
     # FIXME разобраться, что это за грязный хак
@@ -248,16 +240,15 @@ class MetaTable:
             )
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
-    # FIXME поправить возвращаемые структуры данных, _meta_df должны содержать только _meta колонки
     def get_changes_for_store_chunk(
-        self, data_df: DataDF, now: Optional[float] = None
-    ) -> Tuple[DataDF, DataDF, MetadataDF, MetadataDF]:
+        self, hash_df: HashDF, now: Optional[float] = None
+    ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
         """
-        Анализирует блок данных data_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
+        Анализирует блок hash_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
 
         Returns tuple:
-            new_data_df     - строки данных, которые нужно добавить
-            changed_data_df - строки данных, которые нужно изменить
+            new_index_df     - индекс данных, которые нужно добавить
+            changed_index_df - индекс данных, которые нужно изменить
             new_meta_df     - строки метаданных, которые нужно добавить
             changed_meta_df - строки метаданных, которые нужно изменить
         """
@@ -266,15 +257,13 @@ class MetaTable:
             now = time.time()
 
         # получить meta по чанку
-        existing_meta_df = self.get_metadata(data_to_index(data_df, self.primary_keys), include_deleted=True)
-        data_cols = list(data_df.columns)
+        existing_meta_df = self.get_metadata(hash_to_index(hash_df, self.primary_keys), include_deleted=True)
+        hash_cols = list(hash_df.columns)
         meta_cols = self._get_meta_data_columns()
 
         # Дополняем данные методанными
         merged_df = pd.merge(
-            data_df.assign(
-                data_hash=self._get_hash_for_df(data_df),
-            ),
+            hash_df,
             existing_meta_df,
             how="left",
             left_on=self.primary_keys,
@@ -282,37 +271,36 @@ class MetaTable:
             suffixes=("", "_exist"),
         )
 
-        new_idx = merged_df["hash"].isna() | merged_df["delete_ts"].notnull()
+        new_idx = merged_df["hash_exist"].isna() | merged_df["delete_ts"].notnull()
 
         # Ищем новые записи
-        new_df = data_df.loc[new_idx.values, data_cols]  # type: ignore
+        new_index_df = hash_df.loc[new_idx.values, self.primary_keys]  # type: ignore
 
         # Создаем мета данные для новых записей
-        new_meta_data_df = merged_df.loc[merged_df["hash"].isna().values, data_cols]  # type: ignore
-        new_meta_df = self._make_new_metadata_df(now, new_meta_data_df)
+        new_meta_data_df = merged_df.loc[merged_df["hash_exist"].isna().values, hash_cols]  # type: ignore
+        new_meta_df = self._make_new_metadata_df(now, cast(HashDF, new_meta_data_df))
 
         # Ищем изменившиеся записи
         changed_idx = (
-            (merged_df["hash"].notna())
+            (merged_df["hash_exist"].notna())
             & (merged_df["delete_ts"].isnull())
-            & (merged_df["hash"] != merged_df["data_hash"])
+            & (merged_df["hash_exist"] != merged_df["hash"])
         )
-        changed_df = merged_df.loc[changed_idx.values, data_cols]  # type: ignore
+        changed_index_df = merged_df.loc[changed_idx.values, self.primary_keys]  # type: ignore
 
         # Меняем мета данные для существующих записей
-        changed_meta_idx = (merged_df["hash"].notna()) & (merged_df["hash"] != merged_df["data_hash"]) | (
+        changed_meta_idx = (merged_df["hash_exist"].notna()) & (merged_df["hash_exist"] != merged_df["hash"]) | (
             merged_df["delete_ts"].notnull()
         )
-        changed_meta_df = merged_df.loc[merged_df["hash"].notna(), :].copy()
+        changed_meta_df = merged_df.loc[merged_df["hash_exist"].notna(), meta_cols].copy()
 
         changed_meta_df.loc[changed_meta_idx, "update_ts"] = now
         changed_meta_df["process_ts"] = now
         changed_meta_df["delete_ts"] = None
-        changed_meta_df["hash"] = changed_meta_df["data_hash"]
 
         return (
-            cast(DataDF, new_df),
-            cast(DataDF, changed_df),
+            cast(IndexDF, new_index_df),
+            cast(IndexDF, changed_index_df),
             cast(MetadataDF, new_meta_df),
             cast(MetadataDF, changed_meta_df[meta_cols]),
         )

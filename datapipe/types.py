@@ -40,6 +40,9 @@ MetaSchema = List[Column]
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType("IndexDF", pd.DataFrame)
 
+# Dataframe with columns (<index_cols ...>, hash)
+HashDF = NewType("HashDF", pd.DataFrame)
+
 # Dataframe with columns (<index_cols ...>, hash, create_ts, update_ts, process_ts, delete_ts)
 MetadataDF = NewType("MetadataDF", pd.DataFrame)
 
@@ -111,6 +114,10 @@ def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:
 
 def meta_to_index(meta_df: MetadataDF, primary_keys: List[str]) -> IndexDF:
     return cast(IndexDF, meta_df[primary_keys])
+
+
+def hash_to_index(hash_df: HashDF, primary_keys: List[str]) -> IndexDF:
+    return cast(IndexDF, hash_df[primary_keys])
 
 
 def index_difference(idx1_df: IndexDF, idx2_df: IndexDF) -> IndexDF:

@@ -3,10 +3,11 @@ import io
 import itertools
 import json
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Optional, Union, cast
+from typing import IO, Any, Dict, Iterator, List, Literal, Optional, Union, cast
 
+import cityhash
 import fsspec
 import numpy as np
 import pandas as pd
@@ -16,17 +17,20 @@ from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore, TableStoreCaps
-from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema
+from datapipe.types import DataDF, DataSchema, HashDF, IndexDF, MetaSchema
 
 
 class ItemStoreFileAdapter(ABC):
     mode: str
 
-    def load(self, f: IO) -> Dict[str, Any]:
-        raise NotImplementedError
+    @abstractmethod
+    def load(self, f: IO) -> Dict[str, Any]: ...
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        raise NotImplementedError
+    @abstractmethod
+    def dump(self, obj: Dict[str, Any], f: IO) -> None: ...
+
+    @abstractmethod
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF: ...
 
 
 class JSONFile(ItemStoreFileAdapter):
@@ -45,6 +49,14 @@ class JSONFile(ItemStoreFileAdapter):
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         return json.dump(obj, f, **self.dump_params)
 
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        hash_df = df[keys]
+        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
+
 
 class BytesFile(ItemStoreFileAdapter):
     """
@@ -55,6 +67,21 @@ class BytesFile(ItemStoreFileAdapter):
 
     def __init__(self, bytes_columns: str = "bytes"):
         self.bytes_columns = bytes_columns
+
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
+
+        if self.bytes_columns in df.columns:
+            data_df[self.bytes_columns] = data_df[self.bytes_columns].apply(
+                lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+            )
+
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
 
     def load(self, f: IO) -> Dict[str, Any]:
         return {self.bytes_columns: f.read()}
@@ -70,17 +97,33 @@ class PILFile(ItemStoreFileAdapter):
 
     mode = "b"
 
-    def __init__(self, format: str, **dump_params) -> None:
+    def __init__(self, format: str, image_column: str = "image", **dump_params) -> None:
         self.format = format
         self.dump_params = dump_params
+        self.image_column = image_column
+
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
+
+        if self.image_column in df.columns:
+            data_df[self.image_column] = data_df[self.image_column].apply(
+                lambda x: int.from_bytes(cityhash.CityHash32(x.tobytes()).to_bytes(4, "little"), "little", signed=True)
+            )
+
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
 
     def load(self, f: IO) -> Dict[str, Any]:
         im = Image.open(f)
         im.load()
-        return {"image": im}
+        return {self.image_column: im}
 
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        image_data: Any = obj["image"]
+        image_data: Any = obj[self.image_column]
 
         if isinstance(image_data, Image.Image):
             image: Image.Image = image_data
@@ -93,6 +136,59 @@ class PILFile(ItemStoreFileAdapter):
             raise Exception("Image must be a bytes string or np.array or Pillow Image object")
 
         image.save(f, format=self.format, **self.dump_params)
+
+
+class PandasParquetFile(ItemStoreFileAdapter):
+    """
+    Uses `data` column to store Pandas DataFrame in parquet file
+    """
+
+    mode = "b"
+
+    def __init__(
+        self,
+        pandas_column: str = "data",
+        engine: Literal["auto", "pyarrow", "fastparquet"] = "auto",
+        compression: Literal["snappy", "gzip", "brotli", "lz4", "zstd"] = "snappy",
+    ):
+        self.pandas_column = pandas_column
+        self.engine = engine
+        self.compression = compression
+    
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
+
+        if self.pandas_column in df.columns:
+            data_df[self.pandas_column] = data_df[self.pandas_column].apply(
+                lambda x: self.hash_df(cast(pd.DataFrame, x))
+            )
+
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
+
+    def hash_df(self, df: pd.DataFrame) -> str:
+        return str(pd.util.hash_pandas_object(df).values)
+
+    def load(self, f: IO) -> Dict[str, Any]:
+        return {
+            self.pandas_column: pd.read_parquet(
+                f,
+                engine=self.engine,  # type: ignore  ## pylance is wrong here
+            ),
+        }
+
+    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+        df = cast(pd.DataFrame, obj[self.pandas_column])
+
+        df.to_parquet(
+            f,
+            engine=self.engine,  # type: ignore  ## pylance is wrong here
+            compression=self.compression,  # type: ignore  ## pylance is wrong here
+        )
 
 
 def _pattern_to_attrnames(pat: str) -> List[str]:
@@ -267,6 +363,9 @@ class TableStoreFiledir(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         return []
+
+    def hash_rows(self, df: DataDF) -> HashDF:
+        return self.adapter.hash_rows(df, self.hash_keys) 
 
     def delete_rows(self, idx: IndexDF) -> None:
         if not self.enable_rm:

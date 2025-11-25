@@ -9,7 +9,7 @@ from datapipe.meta.sql_meta import MetaTable, TransformInputOffsetTable
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
-from datapipe.types import DataDF, IndexDF, MetadataDF, data_to_index, index_difference
+from datapipe.types import DataDF, IndexDF, MetadataDF, data_to_index, index_difference, index_to_data
 
 if TYPE_CHECKING:
     try:
@@ -87,13 +87,18 @@ class DataTable:
             if not data_df.empty:
                 logger.debug(f"Inserting chunk {len(data_df.index)} rows into {self.name}")
 
+                hash_df = self.table_store.hash_rows(data_df)
+
                 with tracer.start_as_current_span("get_changes_for_store_chunk"):
                     (
-                        new_df,
-                        changed_df,
+                        new_index_df,
+                        changed_index_df,
                         new_meta_df,
                         changed_meta_df,
-                    ) = self.meta_table.get_changes_for_store_chunk(data_df, now)
+                    ) = self.meta_table.get_changes_for_store_chunk(hash_df, now)
+
+                new_df = index_to_data(data_df, new_index_df)
+                changed_df = index_to_data(data_df, changed_index_df)
 
                 # TODO implement transaction meckanism
                 with tracer.start_as_current_span("store data"):
