@@ -4,6 +4,12 @@
   (auto-wraps in `ComputeInput`)
 * Add backward compatibility for DataTable API in BatchTransformStep
 * Add optional `force_vectors_to_ram` parameter to `QdrantStore`
+* Moved calculating checksum from MetaTable to TableStore
+* Added PandasParquetFile adapter for TableStoreFiledir to store pandas
+  DataFrames in parquet
+* Added hash_row for BytesFile and PILFile
+* Added use_adapter_hash parameter in TableStoreFiledir for backward
+  compatibility
 
 # 0.14.5
 
