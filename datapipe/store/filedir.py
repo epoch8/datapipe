@@ -11,7 +11,6 @@ import cityhash
 import fsspec
 import numpy as np
 import pandas as pd
-from iteration_utilities import duplicates  # type: ignore
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
@@ -138,6 +137,15 @@ class PILFile(ItemStoreFileAdapter):
         image.save(f, format=self.format, **self.dump_params)
 
 
+def duplicates(lst: List[Any]) -> Iterator[Any]:
+    seen = set()
+    for item in lst:
+        if item in seen:
+            yield item
+        else:
+            seen.add(item)
+
+
 class PandasParquetFile(ItemStoreFileAdapter):
     """
     Uses `data` column to store Pandas DataFrame in parquet file
@@ -154,7 +162,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
         self.pandas_column = pandas_column
         self.engine = engine
         self.compression = compression
-    
+
     def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
         data_df = df.copy()
         hash_df = df[keys]
@@ -365,7 +373,7 @@ class TableStoreFiledir(TableStore):
         return []
 
     def hash_rows(self, df: DataDF) -> HashDF:
-        return self.adapter.hash_rows(df, self.hash_keys) 
+        return self.adapter.hash_rows(df, self.hash_keys)
 
     def delete_rows(self, idx: IndexDF) -> None:
         if not self.enable_rm:
