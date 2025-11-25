@@ -31,7 +31,7 @@ class ItemStoreFileAdapter(ABC):
     def dump(self, obj: Dict[str, Any], f: IO) -> None: ...
 
     @abstractmethod
-    def hash_row(self, row: pd.Series) -> int: ...
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF: ...
 
 
 class JSONFile(ItemStoreFileAdapter):
@@ -50,9 +50,13 @@ class JSONFile(ItemStoreFileAdapter):
     def dump(self, obj: Dict[str, Any], f: IO) -> None:
         return json.dump(obj, f, **self.dump_params)
 
-    def hash_row(self, row: pd.Series) -> int:
-        hash_str = str(list(row))
-        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        hash_df = df[keys]
+        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
 
 
 class BytesFile(ItemStoreFileAdapter):
@@ -65,19 +69,20 @@ class BytesFile(ItemStoreFileAdapter):
     def __init__(self, bytes_columns: str = "bytes"):
         self.bytes_columns = bytes_columns
 
-    def _get_bin_hash(self, data: bytes) -> str:
-        hasher = hashlib.sha256()
-        hasher.update(data)
-        return hasher.hexdigest()
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
 
-    def hash_row(self, row: pd.Series) -> int:
-        hash_data = row.copy()
-        if self.bytes_columns in hash_data:
-            hash_data[self.bytes_columns] = self._get_bin_hash(hash_data[self.bytes_columns])
+        if self.bytes_columns in df.columns:
+            data_df[self.bytes_columns] = data_df[self.bytes_columns].apply(
+                lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+            )
 
-        hash_str = str(list(row))
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
 
-        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+        return cast(HashDF, hash_df)
 
     def load(self, f: IO) -> Dict[str, Any]:
         return {self.bytes_columns: f.read()}
@@ -98,19 +103,20 @@ class PILFile(ItemStoreFileAdapter):
         self.dump_params = dump_params
         self.image_column = image_column
 
-    def _get_image_hash(self, image: Image.Image):
-        hasher = hashlib.sha256()
-        hasher.update(image.tobytes())
-        return hasher.hexdigest()
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
 
-    def hash_row(self, row: pd.Series) -> int:
-        hash_data = row.copy()
-        if self.image_column in hash_data:
-            hash_data[self.image_column] = self._get_image_hash(hash_data[self.image_column])
+        if self.image_column in df.columns:
+            data_df[self.image_column] = data_df[self.image_column].apply(
+                lambda x: int.from_bytes(cityhash.CityHash32(x.tobytes()).to_bytes(4, "little"), "little", signed=True)
+            )
 
-        hash_str = str(list(row))
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
 
-        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+        return cast(HashDF, hash_df)
 
     def load(self, f: IO) -> Dict[str, Any]:
         im = Image.open(f)
@@ -149,13 +155,24 @@ class PandasParquetFile(ItemStoreFileAdapter):
         self.pandas_column = pandas_column
         self.engine = engine
         self.compression = compression
+    
+    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+        data_df = df.copy()
+        hash_df = df[keys]
 
-    def hash_row(self, row: pd.Series) -> int:
-        df = cast(pd.DataFrame, row[self.pandas_column])
-        row[self.pandas_column] = str(pd.util.hash_pandas_object(df).values)
-        hash_str = str(list(row))
+        if self.image_column in df.columns:
+            data_df[self.pandas_column] = data_df[self.pandas_column].apply(
+                lambda x: self.hash_df(cast(pd.DataFrame, x))
+            )
 
-        return int.from_bytes(cityhash.CityHash32(hash_str).to_bytes(4, "little"), "little", signed=True)
+        hash_df["hash"] = data_df.apply(lambda x: str(list(x)), axis=1).apply(
+            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+        )
+
+        return cast(HashDF, hash_df)
+
+    def hash_df(self, df: pd.DataFrame) -> str:
+        return str(pd.util.hash_pandas_object(df).values)
 
     def load(self, f: IO) -> Dict[str, Any]:
         return {
@@ -349,14 +366,7 @@ class TableStoreFiledir(TableStore):
         return []
 
     def hash_rows(self, df: DataDF) -> HashDF:
-        meta_keys = self.primary_keys + self.meta_keys
-        hash_df = df[meta_keys]
-        columns = sorted(df.columns)
-        adapter = cast(ItemStoreFileAdapter, self.adapter)
-
-        hash_df["hash"] = df.apply(lambda x: adapter.hash_row(pd.Series(x, columns)), axis=1)
-
-        return cast(HashDF, hash_df)
+        return self.adapter.hash_rows(df, self.hash_keys) 
 
     def delete_rows(self, idx: IndexDF) -> None:
         if not self.enable_rm:

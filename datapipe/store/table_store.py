@@ -40,9 +40,12 @@ class TableStore(ABC):
     def meta_keys(self) -> List[str]:
         return [i.name for i in self.get_meta_schema()]
     
-    def hash_rows(self, df: DataDF) -> HashDF:
-        meta_keys = self.primary_keys + self.meta_keys
-        hash_df = df[meta_keys]
+    @property
+    def hash_keys(self) -> List[str]:
+        return self.primary_keys + self.meta_keys
+    
+    def hash_rows(self, df: DataDF) -> HashDF: 
+        hash_df = df[self.hash_keys]
         hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
         )
