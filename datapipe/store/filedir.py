@@ -159,7 +159,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
         data_df = df.copy()
         hash_df = df[keys]
 
-        if self.image_column in df.columns:
+        if self.pandas_column in df.columns:
             data_df[self.pandas_column] = data_df[self.pandas_column].apply(
                 lambda x: self.hash_df(cast(pd.DataFrame, x))
             )
