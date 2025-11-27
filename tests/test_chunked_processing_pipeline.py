@@ -86,6 +86,13 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
     )
 
     steps = build_compute(ds, catalog, pipeline)
+
+    # another case with awkward initialization
+    # UpdateExternalTable is a kind of transformation step, however it has no transformation meta table
+    # this means that I cannot track input rows during that step
+    # but the next step needs those changes
+    # I cannot make next transform be aware of the previous transform
+    steps[1].init_metadata()
     run_steps(ds, steps)
 
     df_transformed = catalog.get_datatable(ds, "output_data").get_data()
@@ -94,7 +101,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
     assert len(set(df_transformed["x"].values).symmetric_difference(set(x))) == 0
 
 
-def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
+def test_transform_with_many_input_and_output_tables(dbconn):
     ds = DataStore(dbconn, create_meta_table=True)
     catalog = Catalog(
         {
@@ -147,10 +154,11 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
         ]
     )
 
+    steps = build_compute(ds, catalog, pipeline)
+
     catalog.get_datatable(ds, "inp1").store_chunk(TEST_DF)
     catalog.get_datatable(ds, "inp2").store_chunk(TEST_DF)
 
-    steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps)
 
     out1 = catalog.get_datatable(ds, "out1")

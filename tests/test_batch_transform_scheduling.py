@@ -32,9 +32,6 @@ def test_inc_process_proc_no_change(dbconn) -> None:
     def id_func(df):
         return TEST_DF
 
-    tbl2.store_chunk(TEST_DF)
-    tbl1.store_chunk(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="step",
@@ -44,6 +41,9 @@ def test_inc_process_proc_no_change(dbconn) -> None:
         ],
         output_dts=[tbl2],
     )
+
+    tbl2.store_chunk(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     count, idx_gen = step.get_full_process_ids(ds)
     idx_dfs = list(idx_gen)

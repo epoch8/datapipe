@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Generator
+import pytest
 
 import pandas as pd
 from qdrant_client.models import Distance, VectorParams

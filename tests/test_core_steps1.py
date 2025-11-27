@@ -92,8 +92,6 @@ def test_inc_process_modify_values(dbconn) -> None:
     def id_func(df):
         return df
 
-    tbl1.store_chunk(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="test",
@@ -101,7 +99,7 @@ def test_inc_process_modify_values(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
-
+    tbl1.store_chunk(TEST_DF)
     step.run_full(ds)
 
     assert_datatable_equal(tbl2, TEST_DF)
@@ -123,8 +121,6 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
     def id_func(df):
         return df
 
-    tbl1.store_chunk(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="test",
@@ -133,6 +129,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
         output_dts=[tbl2],
     )
 
+    tbl1.store_chunk(TEST_DF)
     step.run_full(ds)
 
     assert_datatable_equal(tbl2, TEST_DF)
@@ -156,10 +153,6 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
     def id_func(df):
         return df[:5]
 
-    tbl2.store_chunk(TEST_DF)
-
-    tbl1.store_chunk(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="test",
@@ -167,6 +160,8 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
         output_dts=[tbl2],
     )
+    tbl2.store_chunk(TEST_DF)
+    tbl1.store_chunk(TEST_DF)
 
     step.run_full(ds)
 
@@ -217,8 +212,6 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         df3["a"] += 3
         return df1, df2, df3
 
-    tbl.store_chunk(TEST_DF)
-
     step_inc = BatchTransformStep(
         ds=ds,
         name="step_inc",
@@ -227,6 +220,8 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         output_dts=[tbl1, tbl2, tbl3],
     )
 
+    tbl.store_chunk(TEST_DF)
+
     step_inc.run_full(ds)
 
     assert_datatable_equal(tbl1, TEST_DF_INC1)
@@ -234,8 +229,6 @@ def test_inc_process_many_modify_values(dbconn) -> None:
     assert_datatable_equal(tbl3, TEST_DF_INC3)
 
     ##########################
-    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
-
     def inc_func_inv(df):
         df1 = df.copy()
         df2 = df.copy()
@@ -252,6 +245,8 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl3, tbl2, tbl1],
     )
+    step_inc_inv.init_metadata()
+    tbl.store_chunk(TEST_DF[:5], processed_idx=data_to_index(TEST_DF, tbl.primary_keys))
 
     step_inc_inv.run_full(ds)
 
@@ -295,9 +290,6 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         df["a_second"] += 2
         return df
 
-    tbl1.store_chunk(TEST_DF)
-    tbl2.store_chunk(TEST_DF)
-
     step = BatchTransformStep(
         ds=ds,
         name="test",
@@ -308,6 +300,8 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
         ],
         output_dts=[tbl],
     )
+    tbl1.store_chunk(TEST_DF)
+    tbl2.store_chunk(TEST_DF)
 
     step.run_full(ds)
 
@@ -378,8 +372,6 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
     tbl_good = ds.create_table("tbl_good", table_store=TableStoreDB(dbconn, "tbl_good_data", TEST_SCHEMA, True))
     tbl_bad = ds.create_table("tbl_bad", table_store=TableStoreDB(dbconn, "tbl_bad_data", TEST_SCHEMA, True))
 
-    tbl.store_chunk(TEST_DF)
-
     def inc_func(df):
         df_good = df[df["id"].isin(good_ids)]
         df_bad = df[df["id"].isin(bad_ids)]
@@ -392,7 +384,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
         output_dts=[tbl_good, tbl_bad],
     )
-
+    tbl.store_chunk(TEST_DF)
     step.run_full(ds)
 
     assert_datatable_equal(tbl, TEST_DF)
@@ -416,8 +408,6 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
         table_store=TableStoreDB(dbconn, "tbl_rel_data", TEST_SCHEMA_OTM2, True),
     )
     tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM, True))
-
-    tbl.store_chunk(TEST_OTM_DF)
 
     def inc_func_unpack(df):
         res_df = df.explode("a")
@@ -447,6 +437,8 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
         output_dts=[tbl2],
     )
+
+    tbl.store_chunk(TEST_OTM_DF)
 
     step_unpack.run_full(ds)
     step_pack.run_full(ds)
@@ -478,8 +470,6 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
         table_store=TableStoreDB(dbconn, "tbl_rel_data", TEST_SCHEMA_OTM2, True),
     )
     tbl2 = ds.create_table("tbl2", table_store=TableStoreDB(dbconn, "tbl2_data", TEST_SCHEMA_OTM3, True))
-
-    tbl.store_chunk(TEST_OTM_DF)
 
     def inc_func_unpack(df):
         res_df = df.explode("a")
@@ -515,6 +505,8 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
         input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
         output_dts=[tbl2],
     )
+
+    tbl.store_chunk(TEST_OTM_DF)
 
     step_unpack.run_full(ds)
     step_pack.run_full(ds)
@@ -622,6 +614,7 @@ def test_error_handling(dbconn) -> None:
         output_dts=[tbl_good],
         chunk_size=1,
     )
+    step_bad.init_metadata()
     step_bad.run_full(ds)
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[[0, 1, 2, 4, 5]])
@@ -634,6 +627,7 @@ def test_error_handling(dbconn) -> None:
         output_dts=[tbl_good],
         chunk_size=CHUNKSIZE,
     )
+    step_good.init_metadata()
     step_good.run_full(ds)
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])

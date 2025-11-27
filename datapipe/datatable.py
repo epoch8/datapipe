@@ -5,7 +5,7 @@ import pandas as pd
 from opentelemetry import trace
 
 from datapipe.event_logger import EventLogger
-from datapipe.meta.sql_meta import MetaTable
+from datapipe.meta.sql_meta import MetaTable, create_transformation_meta_for_changes
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
@@ -46,6 +46,7 @@ class DataTable:
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
         return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
 
+
     def reset_metadata(self):
         with self.meta_dbconn.con.begin() as con:
             con.execute(self.meta_table.sql_table.update().values(process_ts=0, update_ts=0))
@@ -55,6 +56,17 @@ class DataTable:
         Get the number of non-deleted rows in the DataTable
         """
         return self.meta_table.get_metadata_size(idx=None, include_deleted=False)
+
+    def add_transformations(self, transformations):
+        if not hasattr(self, "transformations"):
+            self.transformations = []
+        self.transformations.extend(transformations)
+
+    def get_index_data(self) -> DataDF:
+        # this can be optimized with new method in table_store that reads only index values
+        # however this causes large refactoring
+        all_data = self.table_store.read_rows()
+        return all_data[self.primary_keys]
 
     def store_chunk(
         self,
@@ -117,6 +129,14 @@ class DataTable:
                         changes.append(data_to_index(new_df, self.primary_keys))
                     if not changed_df.empty:
                         changes.append(data_to_index(changed_df, self.primary_keys))
+
+                with tracer.start_as_current_span("store transformation metadata"):
+                    transformations = getattr(self, 'transformations', [])
+                    create_transformation_meta_for_changes(
+                        transformations, self.name, self.primary_keys,
+                        new_df, changed_df
+                    )
+
             else:
                 data_df = pd.DataFrame(columns=self.primary_keys)
 
@@ -143,8 +163,15 @@ class DataTable:
         if len(idx) > 0:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
+            transformations = getattr(self, 'transformations', [])
+            create_transformation_meta_for_changes(
+                transformations, self.name, self.primary_keys,
+                pd.DataFrame(columns=self.primary_keys), idx
+            )
+
             self.table_store.delete_rows(idx)
             self.meta_table.mark_rows_deleted(idx, now=now)
+
 
     def delete_stale_by_process_ts(
         self,

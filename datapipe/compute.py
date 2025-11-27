@@ -121,6 +121,10 @@ class ComputeStep:
         self._labels = labels
         self.executor_config = executor_config
 
+        for input_dt in input_dts:
+            dt = input_dt if isinstance(input_dt, DataTable) else input_dt.dt
+            dt.add_transformations([self])
+
     def get_name(self) -> str:
         ss = [
             self.__class__.__name__,

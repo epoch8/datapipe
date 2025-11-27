@@ -22,7 +22,7 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from sqlalchemy import alias, func
+from sqlalchemy import alias, func, inspect as sa_inspect
 from sqlalchemy.sql.expression import select
 from tqdm_loggable.auto import tqdm
 
@@ -35,7 +35,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable, MetaTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql
+from datapipe.meta.sql_meta import TransformMetaTable, build_changed_idx_sql, init_transformation_meta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -389,6 +389,13 @@ class BaseBatchTransformStep(ComputeStep):
             error=str(e),
             run_config=run_config,
         )
+
+    def init_metadata(self):
+        """
+        Call this method if you add a new transformation to tables
+        where there is already some saved data
+        """
+        init_transformation_meta(self)
 
     def fill_metadata(self, ds: DataStore) -> None:
         idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
