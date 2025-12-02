@@ -843,6 +843,7 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: Optional[List[str]] = None
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
+    use_offset_optimization: bool = False
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -859,6 +860,7 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                use_offset_optimization=self.use_offset_optimization,
             )
         ]
 
@@ -919,6 +921,7 @@ class BatchTransform(PipelineStep):
     filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
+    use_offset_optimization: bool = False
 
     def pipeline_input_to_compute_input(self, ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
         if isinstance(input, Required):
@@ -955,6 +958,7 @@ class BatchTransform(PipelineStep):
                 filters=self.filters,
                 order_by=self.order_by,
                 order=self.order,
+                use_offset_optimization=self.use_offset_optimization,
             )
         ]
 
