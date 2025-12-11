@@ -25,8 +25,8 @@ services:
     environment:
       discovery.type: single-node
       ES_JAVA_OPTS: -Xms4g -Xmx4g
-      xpack.security.enabled: false
-      xpack.security.http.ssl.enabled: false
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
       node.name: node
       cluster.name: cluster
-      http.cors.enabled: true
+      http.cors.enabled: "true"
