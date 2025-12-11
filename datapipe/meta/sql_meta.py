@@ -870,6 +870,11 @@ def build_changed_idx_sql_v2(
     # Полный список колонок для SELECT (transform_keys + additional_columns)
     all_select_keys = list(transform_keys) + additional_columns
 
+    # Добавляем update_ts для ORDER BY если его еще нет
+    # (нужно для правильной сортировки батчей по времени обновления)
+    if 'update_ts' not in all_select_keys:
+        all_select_keys.append('update_ts')
+
     # 1. Получить все offset'ы одним запросом для избежания N+1
     offsets = offset_table.get_offsets_for_transformation(transformation_id)
     # Для таблиц без offset используем 0.0 (обрабатываем все данные)
@@ -1062,9 +1067,19 @@ def build_changed_idx_sql_v2(
     # Важно: error_records должен иметь все колонки из all_select_keys для UNION
     # Для additional_columns используем NULL, так как их нет в transform meta table
     tr_tbl = meta_table.sql_table
-    error_select_cols: List[Any] = [sa.column(k) for k in transform_keys] + [
-        sa.literal(None).label(k) for k in additional_columns
-    ]
+    # Для error_records нужно создать колонки из all_select_keys
+    # Колонки из transform_keys берем из tr_tbl, остальные - NULL
+    error_select_cols: List[Any] = []
+    for k in all_select_keys:
+        if k in transform_keys:
+            error_select_cols.append(sa.column(k))
+        else:
+            # Для дополнительных колонок (включая update_ts) используем NULL с правильным типом
+            # update_ts это Float, остальные - String
+            if k == 'update_ts':
+                error_select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
+            else:
+                error_select_cols.append(sa.literal(None).label(k))
     error_records_sql: Any = sa.select(*error_select_cols).select_from(tr_tbl).where(
         sa.or_(
             tr_tbl.c.is_success != True,  # noqa
@@ -1127,9 +1142,13 @@ def build_changed_idx_sql_v2(
     )
 
     if order_by is None:
+        # Сортировка: сначала по update_ts (для консистентности с offset),
+        # затем по transform_keys (для детерминизма)
+        # NULLS LAST - error_records (с update_ts = NULL) обрабатываются последними
         out = out.order_by(
             tr_tbl.c.priority.desc().nullslast(),
-            *[union_cte.c[k] for k in transform_keys],
+            union_cte.c.update_ts.asc().nullslast(),  # Сортировка по времени обновления, NULL в конце
+            *[union_cte.c[k] for k in transform_keys],  # Детерминизм при одинаковых update_ts
         )
     else:
         if order == "desc":

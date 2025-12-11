@@ -101,3 +101,28 @@ if order_by is None:
 
 После исправления должен пройти:
 - ✅ `test_hypothesis_2_order_by_transform_keys_with_mixed_update_ts`
+
+## Статус исправления
+
+**✅ ИСПРАВЛЕНО** (2025-12-11)
+
+**Изменения:**
+1. Добавлен `update_ts` в `all_select_keys` (строка 873-876)
+2. Изменён ORDER BY для сортировки по `update_ts` перед `transform_keys` (строка 1150)
+3. Добавлен `.nullslast()` к `update_ts` - error_records обрабатываются последними (строка 1150)
+
+**Файлы:**
+- `datapipe/meta/sql_meta.py` - функция `build_changed_idx_sql_v2()`
+- `tests/test_offset_hypotheses.py` - убран `@pytest.mark.xfail` с теста гипотезы 2
+
+## Результаты тестов после исправления
+
+| Тест | До исправления | После исправления | Примечание |
+|------|----------------|-------------------|------------|
+| `test_hypothesis_2_*` | XFAIL | ✅ PASSED | Гипотеза 2 исправлена |
+| `test_hypothesis_1_*` | XFAIL | XFAIL | Требует отдельного исправления |
+| `test_antiregression_*` | FAILED | FAILED | Зависит от гипотезы 1 |
+| `test_production_bug_*` | XFAIL | XFAIL | Требует исправления обеих гипотез |
+| `test_hypothesis_3_*` | PASSED | ✅ PASSED | Гипотеза опровергнута |
+
+**Вывод:** Гипотеза 2 полностью исправлена. Production баг требует дополнительного исправления гипотезы 1 (строгое неравенство).

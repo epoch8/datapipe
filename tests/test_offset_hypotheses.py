@@ -176,7 +176,6 @@ def test_hypothesis_1_strict_inequality_loses_records_with_equal_update_ts(dbcon
     print(f"Обработано:    {len(final_output)}")
 
 
-@pytest.mark.xfail(reason="HYPOTHESIS 2: ORDER BY transform_keys with mixed update_ts loses records")
 def test_hypothesis_2_order_by_transform_keys_with_mixed_update_ts(dbconn: DBConn):
     """
     Тест ТОЛЬКО для гипотезы 2: ORDER BY по transform_keys, а не по update_ts.
