@@ -253,8 +253,16 @@ class MetaTable:
             changed_meta_df - строки метаданных, которые нужно изменить
         """
 
+        current_time = time.time()
         if now is None:
-            now = time.time()
+            now = current_time
+        elif now < current_time - 1.0:  # Порог 1 секунда - игнорируем микросекундные различия
+            # Предупреждение: использование timestamp из прошлого может привести к потере данных
+            # при использовании offset optimization (Hypothesis 4: delayed records)
+            logger.warning(
+                f"store_chunk called with now={now:.2f} which is {current_time - now:.2f}s in the past. "
+                f"This may cause data loss with offset optimization if offset > now."
+            )
 
         # получить meta по чанку
         existing_meta_df = self.get_metadata(hash_to_index(hash_df, self.primary_keys), include_deleted=True)

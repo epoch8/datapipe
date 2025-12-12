@@ -112,9 +112,10 @@ INSERT INTO table (id, value) VALUES (...);
 2. Edge cases (ручная вставка, NTP drift) - ответственность пользователя
 3. Добавление защиты усложнит код без реальной пользы
 
-**Если всё же необходима защита:**
-- Можно добавить валидацию: `now >= last_offset`
-- Логировать warning при `update_ts < offset`
+**✅ Реализовано (2025-12-12):**
+- Добавлен warning в `get_changes_for_store_chunk()` при вызове с `now < current_time - 1.0s`
+- Предупреждает о потенциальной потере данных с offset optimization
+- Локация: `datapipe/meta/sql_meta.py:259-265`
 
 ## Связь с другими гипотезами
 
