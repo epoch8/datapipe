@@ -923,10 +923,17 @@ def build_changed_idx_sql_v2(
 
             # Строим SELECT для всех колонок из all_select_keys основной таблицы
             primary_data_cols = [c.name for c in primary_data_tbl.columns]
-            select_cols = [
-                primary_data_tbl.c[k] if k in primary_data_cols else sa.literal(None).label(k)
-                for k in all_select_keys
-            ]
+            select_cols = []
+            for k in all_select_keys:
+                if k in primary_data_cols:
+                    select_cols.append(primary_data_tbl.c[k])
+                elif k == 'update_ts':
+                    # update_ts это Float, нужен CAST для совместимости типов в UNION
+                    select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
+                else:
+                    select_cols.append(sa.literal(None).label(k))
+            # Для GROUP BY нужны только реальные колонки, не литералы
+            group_by_cols = [primary_data_tbl.c[k] for k in all_select_keys if k in primary_data_cols]
 
             # Обратный JOIN: primary_table.join_key = reference_table.id
             # Например: posts.user_id = profiles.id
@@ -964,8 +971,8 @@ def build_changed_idx_sql_v2(
             # run_config фильтры применяются к справочной таблице
             changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
 
-            if len(select_cols) > 0:
-                changed_sql = changed_sql.group_by(*select_cols)
+            if len(group_by_cols) > 0:
+                changed_sql = changed_sql.group_by(*group_by_cols)
 
             changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
             continue
