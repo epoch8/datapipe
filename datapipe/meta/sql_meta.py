@@ -938,15 +938,15 @@ def build_changed_idx_sql_v2(
 
             # SELECT primary_cols FROM reference_meta
             # JOIN primary_data ON primary.join_key = reference.id
-            # WHERE reference.update_ts > offset
+            # WHERE reference.update_ts >= offset (используем >= вместо >)
             changed_sql = sa.select(*select_cols).select_from(
                 tbl.join(primary_data_tbl, join_condition)
             ).where(
                 sa.or_(
-                    tbl.c.update_ts > offset,
+                    tbl.c.update_ts >= offset,
                     sa.and_(
                         tbl.c.delete_ts.isnot(None),
-                        tbl.c.delete_ts > offset
+                        tbl.c.delete_ts >= offset
                     )
                 )
             )
@@ -966,13 +966,13 @@ def build_changed_idx_sql_v2(
         if len(keys_in_data_only) == 0:
             select_cols = [sa.column(k) for k in keys_in_meta]
 
-            # SELECT keys FROM input_meta WHERE update_ts > offset OR delete_ts > offset
+            # SELECT keys FROM input_meta WHERE update_ts >= offset OR delete_ts >= offset
             changed_sql = sa.select(*select_cols).select_from(tbl).where(
                 sa.or_(
-                    tbl.c.update_ts > offset,
+                    tbl.c.update_ts >= offset,
                     sa.and_(
                         tbl.c.delete_ts.isnot(None),
-                        tbl.c.delete_ts > offset
+                        tbl.c.delete_ts >= offset
                     )
                 )
             )
@@ -991,10 +991,10 @@ def build_changed_idx_sql_v2(
                 select_cols = [sa.column(k) for k in keys_in_meta]
                 changed_sql = sa.select(*select_cols).select_from(tbl).where(
                     sa.or_(
-                        tbl.c.update_ts > offset,
+                        tbl.c.update_ts >= offset,
                         sa.and_(
                             tbl.c.delete_ts.isnot(None),
-                            tbl.c.delete_ts > offset
+                            tbl.c.delete_ts >= offset
                         )
                     )
                 )
@@ -1015,10 +1015,10 @@ def build_changed_idx_sql_v2(
                     select_cols = [sa.column(k) for k in keys_in_meta]
                     changed_sql = sa.select(*select_cols).select_from(tbl).where(
                         sa.or_(
-                            tbl.c.update_ts > offset,
+                            tbl.c.update_ts >= offset,
                             sa.and_(
                                 tbl.c.delete_ts.isnot(None),
-                                tbl.c.delete_ts > offset
+                                tbl.c.delete_ts >= offset
                             )
                         )
                     )
@@ -1026,6 +1026,7 @@ def build_changed_idx_sql_v2(
                     changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
                     if len(select_cols) > 0:
                         changed_sql = changed_sql.group_by(*select_cols)
+
                     changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
                     continue
 
@@ -1045,10 +1046,10 @@ def build_changed_idx_sql_v2(
                     tbl.join(data_tbl, join_condition)
                 ).where(
                     sa.or_(
-                        tbl.c.update_ts > offset,
+                        tbl.c.update_ts >= offset,
                         sa.and_(
                             tbl.c.delete_ts.isnot(None),
-                            tbl.c.delete_ts > offset
+                            tbl.c.delete_ts >= offset
                         )
                     )
                 )
@@ -1080,6 +1081,7 @@ def build_changed_idx_sql_v2(
                 error_select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
             else:
                 error_select_cols.append(sa.literal(None).label(k))
+
     error_records_sql: Any = sa.select(*error_select_cols).select_from(tr_tbl).where(
         sa.or_(
             tr_tbl.c.is_success != True,  # noqa
@@ -1099,10 +1101,11 @@ def build_changed_idx_sql_v2(
     # 4. Объединить все изменения и ошибки через UNION
     if len(changed_ctes) == 0:
         # Если нет входных таблиц с изменениями, используем только ошибки
-        union_sql: Any = sa.select(*[error_records_cte.c[k] for k in all_select_keys]).select_from(error_records_cte)
+        union_sql: Any = sa.select(
+            *[error_records_cte.c[k] for k in all_select_keys]
+        ).select_from(error_records_cte)
     else:
         # UNION всех изменений и ошибок
-        # Важно: UNION должен включать все колонки из all_select_keys
         # Для отсутствующих колонок используем NULL
         union_parts = []
         for cte in changed_ctes:
@@ -1114,7 +1117,9 @@ def build_changed_idx_sql_v2(
             union_parts.append(sa.select(*select_cols).select_from(cte))
 
         union_parts.append(
-            sa.select(*[error_records_cte.c[k] for k in all_select_keys]).select_from(error_records_cte)
+            sa.select(
+                *[error_records_cte.c[k] for k in all_select_keys]
+            ).select_from(error_records_cte)
         )
 
         union_sql = sa.union(*union_parts)
@@ -1132,13 +1137,34 @@ def build_changed_idx_sql_v2(
 
     # Используем `out` для консистентности с v1
     # Важно: Включаем все колонки (transform_keys + additional_columns)
+
+    # Error records имеют update_ts = NULL, используем это для их идентификации
+    is_error_record = union_cte.c.update_ts.is_(None)
+
     out = (
         sa.select(
             sa.literal(1).label("_datapipe_dummy"),
-            *[union_cte.c[k] for k in all_select_keys if k in union_cte.c]
+            *[union_cte.c[k] for k in all_select_keys if k in union_cte.c],
         )
         .select_from(union_cte)
         .outerjoin(tr_tbl, onclause=join_onclause_sql)
+        .where(
+            # Фильтрация для предотвращения зацикливания при >= offset
+            # Логика аналогична v1, но с учетом error_records
+            sa.or_(
+                # Error records (update_ts IS NULL) - всегда обрабатываем
+                is_error_record,
+                # Не обработано (первый раз)
+                tr_tbl.c.process_ts.is_(None),
+                # Успешно обработано, но данные обновились после обработки
+                sa.and_(
+                    tr_tbl.c.is_success == True,  # noqa
+                    union_cte.c.update_ts > tr_tbl.c.process_ts
+                )
+                # Примечание: is_success != True НЕ проверяем, так как
+                # ошибочные записи уже включены в error_records CTE
+            )
+        )
     )
 
     if order_by is None:

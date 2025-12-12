@@ -59,7 +59,8 @@ def test_build_changed_idx_sql_v2_basic(dbconn: DBConn):
     )
 
     # Проверяем, что SQL компилируется
-    assert transform_keys == ["id"]
+    # После исправления гипотезы 2, update_ts добавляется в all_select_keys для ORDER BY
+    assert transform_keys == ["id", "update_ts"]
     assert sql is not None
 
     # Выполняем SQL и проверяем результат

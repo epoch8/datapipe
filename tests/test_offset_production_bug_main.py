@@ -168,7 +168,6 @@ def print_test_data_visualization(test_data: List[Tuple[str, str, float]], base_
 # PRODUCTION БАГ ТЕСТ
 # ============================================================================
 
-@pytest.mark.xfail(reason="PRODUCTION BUG: Strict inequality (>) in offset filter loses data")
 def test_production_bug_offset_loses_records_with_equal_update_ts(dbconn: DBConn):
     """
     🚨 ВОСПРОИЗВОДИТ PRODUCTION БАГ: 48,915 записей потеряно (60%)

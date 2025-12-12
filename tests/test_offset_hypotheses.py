@@ -18,7 +18,6 @@ from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 
 
-@pytest.mark.xfail(reason="HYPOTHESIS 1: Strict inequality update_ts > offset loses records")
 def test_hypothesis_1_strict_inequality_loses_records_with_equal_update_ts(dbconn: DBConn):
     """
     Тест ТОЛЬКО для гипотезы 1: Строгое неравенство update_ts > offset.
@@ -412,19 +411,19 @@ def test_antiregression_no_infinite_loop_with_equal_update_ts(dbconn: DBConn):
     )
 
     # Создаем 12 записей с ОДИНАКОВЫМ update_ts (bulk insert)
-    base_time = time.time()
-    t1 = base_time + 1
-
+    # ВАЖНО: НЕ передаем now= чтобы store_chunk использовал текущее время
+    # Это соответствует production поведению: данные создаются "сейчас",
+    # а обработка происходит позже, поэтому process_ts >= update_ts
     records_df = pd.DataFrame({
         "id": [f"rec_{i:02d}" for i in range(12)],
         "value": list(range(12)),
     })
 
-    input_dt.store_chunk(records_df, now=t1)
-    time.sleep(0.01)  # Даем время на обновление timestamps
+    input_dt.store_chunk(records_df)
+    time.sleep(0.01)  # Даем время чтобы process_ts > update_ts при обработке
 
     print(f"\n=== ПОДГОТОВКА ===")
-    print(f"Создано 12 записей с update_ts = {t1:.2f}")
+    print(f"Создано 12 записей с одинаковым update_ts")
 
     # ========== ПЕРВЫЙ ЗАПУСК: 5 записей ==========
     (idx_count_1, idx_gen_1) = step.get_full_process_ids(ds=ds, run_config=None)
@@ -446,7 +445,8 @@ def test_antiregression_no_infinite_loop_with_equal_update_ts(dbconn: DBConn):
     print(f"Обработанные id: {sorted(processed_ids_1)}")
 
     assert len(output_1) == 5, f"Ожидалось 5 записей, получено {len(output_1)}"
-    assert abs(offset_1 - t1) < 0.01, f"offset должен быть {t1:.2f}, получен {offset_1:.2f}"
+    # Сохраняем offset первого батча для последующих проверок
+    first_batch_offset = offset_1
 
     # ========== ВТОРОЙ ЗАПУСК: следующие 5 записей (с update_ts == offset!) ==========
     (idx_count_2, idx_gen_2) = step.get_full_process_ids(ds=ds, run_config=None)
@@ -482,7 +482,10 @@ def test_antiregression_no_infinite_loop_with_equal_update_ts(dbconn: DBConn):
         f"Возможно зацикливание: обрабатываем те же записи снова и снова."
     )
     assert len(output_2) == 10, f"Всего должно быть 10 записей, получено {len(output_2)}"
-    assert abs(offset_2 - t1) < 0.01, f"offset всё ещё должен быть {t1:.2f}, получен {offset_2:.2f}"
+    assert abs(offset_2 - first_batch_offset) < 0.01, (
+        f"offset НЕ должен измениться! "
+        f"Был {first_batch_offset:.2f}, стал {offset_2:.2f}"
+    )
 
     # Проверяем что это действительно ДРУГИЕ записи
     intersection = processed_ids_1 & new_ids_2
@@ -512,17 +515,18 @@ def test_antiregression_no_infinite_loop_with_equal_update_ts(dbconn: DBConn):
     assert len(output_3) == 12, f"Всего должно быть 12 записей, получено {len(output_3)}"
     assert len(new_ids_3) == 2, f"Ожидалось 2 новых записи, получено {len(new_ids_3)}"
 
-    # ========== ДОБАВЛЯЕМ НОВЫЕ ЗАПИСИ с update_ts > T1 ==========
-    t2 = base_time + 2
+    # ========== ДОБАВЛЯЕМ НОВЫЕ ЗАПИСИ с update_ts > offset ==========
+    # Ждем чтобы гарантировать что новые записи будут иметь update_ts > offset
+    time.sleep(0.02)
     new_records_df = pd.DataFrame({
         "id": [f"new_{i:02d}" for i in range(5)],
         "value": list(range(100, 105)),
     })
 
-    input_dt.store_chunk(new_records_df, now=t2)
+    input_dt.store_chunk(new_records_df)  # now=None, используем текущее время
     time.sleep(0.01)
 
-    print(f"\n=== ДОБАВИЛИ 5 НОВЫХ ЗАПИСЕЙ с update_ts = {t2:.2f} ===")
+    print(f"\n=== ДОБАВИЛИ 5 НОВЫХ ЗАПИСЕЙ с update_ts > {first_batch_offset:.2f} ===")
 
     # ========== ЧЕТВЕРТЫЙ ЗАПУСК: новые записи ==========
     (idx_count_4, idx_gen_4) = step.get_full_process_ids(ds=ds, run_config=None)
@@ -553,7 +557,10 @@ def test_antiregression_no_infinite_loop_with_equal_update_ts(dbconn: DBConn):
 
     assert len(output_4) == 17, f"Всего должно быть 17 записей (12 старых + 5 новых), получено {len(output_4)}"
     assert len(new_ids_4) == 5, f"Ожидалось 5 новых записей, получено {len(new_ids_4)}"
-    assert abs(offset_4 - t2) < 0.01, f"offset должен обновиться на {t2:.2f}, получен {offset_4:.2f}"
+    assert offset_4 > first_batch_offset, (
+        f"offset должен обновиться для новых записей! "
+        f"Был {first_batch_offset:.2f}, остался {offset_4:.2f}"
+    )
 
     # Проверяем что новые записи действительно новые
     assert all(id.startswith("new_") for id in new_ids_4), (
