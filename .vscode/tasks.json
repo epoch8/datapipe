@@ -6,7 +6,7 @@
         {
             "label": "mypy-whole-project",
             "type": "shell",
-            "command": "poetry run mypy -p datapipe --show-column-numbers --show-error-codes --ignore-missing-imports --namespace-packages",
+            "command": "uv run mypy -p datapipe --show-column-numbers --show-error-codes --ignore-missing-imports --namespace-packages",
             "presentation": {
                 "echo": true,
                 "reveal": "never",
