@@ -1,7 +1,6 @@
 import copy
 import inspect
 import logging
-import math
 import time
 from dataclasses import dataclass
 from typing import (
@@ -16,10 +15,8 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    cast,
 )
 
-import pandas as pd
 from opentelemetry import trace
 from tqdm_loggable.auto import tqdm
 
@@ -32,7 +29,7 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import MetaComputeInput, TransformMetaTable
+from datapipe.meta.sql_meta import MetaComputeInput, SQLTransformMeta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -44,7 +41,6 @@ from datapipe.types import (
     Required,
     TableOrName,
     TransformResult,
-    data_to_index,
 )
 
 logger = logging.getLogger("datapipe.step.batch_transform")
@@ -113,24 +109,24 @@ class BaseBatchTransformStep(ComputeStep):
         if transform_keys is not None and not isinstance(transform_keys, list):
             transform_keys = list(transform_keys)
 
-        self.meta_table = TransformMetaTable(
+        self.meta = SQLTransformMeta(
             dbconn=ds.meta_dbconn,
             name=f"{self.get_name()}_meta",
             input_mts=[
                 MetaComputeInput(
-                    table=inp.dt.meta_table,
+                    table=inp.dt.meta,
                     join_type=inp.join_type,
                 )
                 for inp in compute_input_dts
             ],
-            output_mts=[out.meta_table for out in output_dts],
+            output_mts=[out.meta for out in output_dts],
             transform_keys=transform_keys,
             order_by=order_by,
             order=order,
             create_table=ds.create_meta_table,
         )
 
-        self.transform_keys, self.transform_schema = self.meta_table.primary_keys, self.meta_table.primary_schema
+        self.transform_keys, self.transform_schema = self.meta.primary_keys, self.meta.primary_schema
 
         self.filters = filters
         self.order_by = order_by
@@ -159,17 +155,9 @@ class BaseBatchTransformStep(ComputeStep):
     def get_status(self, ds: DataStore) -> StepStatus:
         return StepStatus(
             name=self.name,
-            total_idx_count=self.meta_table.get_metadata_size(),
-            changed_idx_count=self.get_changed_idx_count(ds),
+            total_idx_count=self.meta.get_metadata_size(),
+            changed_idx_count=self.meta.get_changed_idx_count(ds),
         )
-
-    def get_changed_idx_count(
-        self,
-        ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-    ) -> int:
-        run_config = self._apply_filters_to_run_config(run_config)
-        return self.meta_table.get_changed_idx_count(ds=ds, run_config=run_config)
 
     def get_full_process_ids(
         self,
@@ -188,7 +176,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
 
-        return self.meta_table.get_full_process_ids(ds=ds, chunk_size=chunk_size, run_config=run_config)
+        return self.meta.get_full_process_ids(ds=ds, chunk_size=chunk_size, run_config=run_config)
 
     def get_change_list_process_ids(
         self,
@@ -197,7 +185,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
-        return self.meta_table.get_change_list_process_ids(
+        return self.meta.get_change_list_process_ids(
             ds=ds,
             change_list=change_list,
             chunk_size=self.chunk_size,
@@ -239,13 +227,13 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             with tracer.start_as_current_span("delete missing data from output"):
                 for k, res_dt in enumerate(self.output_dts):
-                    del_idx = res_dt.meta_table.get_existing_idx(idx)
+                    del_idx = res_dt.meta.get_existing_idx(idx)
 
                     res_dt.delete_by_idx(del_idx, run_config=run_config)
 
                     changes.append(res_dt.name, del_idx)
 
-        self.meta_table.mark_rows_processed_success(idx, process_ts=process_ts, run_config=run_config)
+        self.meta.mark_rows_processed_success(idx, process_ts=process_ts, run_config=run_config)
 
         return changes
 
@@ -270,7 +258,7 @@ class BaseBatchTransformStep(ComputeStep):
             ),
         )
 
-        self.meta_table.mark_rows_processed_error(
+        self.meta.mark_rows_processed_error(
             idx,
             process_ts=process_ts,
             error=str(e),
@@ -281,10 +269,10 @@ class BaseBatchTransformStep(ComputeStep):
         idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
 
         for idx in tqdm(idx_gen, total=idx_len):
-            self.meta_table.insert_rows(idx)
+            self.meta.insert_rows(idx)
 
     def reset_metadata(self, ds: DataStore) -> None:
-        self.meta_table.mark_all_rows_unprocessed()
+        self.meta.mark_all_rows_unprocessed()
 
     def get_batch_input_dfs(
         self,

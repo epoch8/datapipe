@@ -4,15 +4,14 @@ import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
-from datapipe.datatable import MetaTable
+from datapipe.datatable import SQLTableMeta
 from datapipe.meta.sql_meta import MetaComputeInput, compute_transform_schema
-from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn
 from datapipe.types import MetaSchema
 
 
-def make_mt(name, dbconn, schema_keys) -> MetaTable:
-    return MetaTable(
+def make_mt(name, dbconn, schema_keys) -> SQLTableMeta:
+    return SQLTableMeta(
         dbconn=dbconn,
         name=name,
         primary_schema=[Column(key, Integer(), primary_key=True) for key in schema_keys],

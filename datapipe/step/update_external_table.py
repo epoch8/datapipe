@@ -26,18 +26,18 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[
             changed_index_df,
             new_meta_df,
             changed_meta_df,
-        ) = table.meta_table.get_changes_for_store_chunk(table.table_store.hash_rows(ps_df), now=now)
+        ) = table.meta.get_changes_for_store_chunk(table.table_store.hash_rows(ps_df), now=now)
 
         # TODO switch to iterative store_chunk and table.sync_meta_by_process_ts
 
-        table.meta_table.update_rows(
+        table.meta.update_rows(
             cast(
                 MetadataDF,
                 pd.concat(df for df in [new_meta_df, changed_meta_df] if not df.empty),
             ),
         )
 
-    for stale_idx in table.meta_table.get_stale_idx(now, run_config=run_config):
+    for stale_idx in table.meta.get_stale_idx(now, run_config=run_config):
         logger.debug(f"Deleting {len(stale_idx.index)} rows from {table.name} data")
         table.event_logger.log_state(
             table.name,
@@ -48,7 +48,7 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[
             run_config=run_config,
         )
 
-        table.meta_table.mark_rows_deleted(stale_idx, now=now)
+        table.meta.mark_rows_deleted(stale_idx, now=now)
 
 
 class UpdateExternalTable(PipelineStep):

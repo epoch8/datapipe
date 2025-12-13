@@ -11,11 +11,11 @@ def migrate_transform_tables(app, steps):
             continue
 
         rprint(f"Migrate '{batch_transform.get_name()}': ")
-        size = batch_transform.meta_table.get_metadata_size()
+        size = batch_transform.meta.get_metadata_size()
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
             continue
-        output_tbls = [output_dt.meta_table.sql_table for output_dt in batch_transform.output_dts]
+        output_tbls = [output_dt.meta.sql_table for output_dt in batch_transform.output_dts]
 
         def make_ids_cte():
             ids_cte = (
@@ -62,7 +62,7 @@ def migrate_transform_tables(app, steps):
 
         sql = sql.group_by(*[ids_cte.c[k] for k in batch_transform.transform_keys])
 
-        insert_stmt = insert(batch_transform.meta_table.sql_table).from_select(
+        insert_stmt = insert(batch_transform.meta.sql_table).from_select(
             batch_transform.transform_keys + ["process_ts", "is_success", "error", "priority"],
             select(
                 *[sql.c[k] for k in batch_transform.transform_keys],

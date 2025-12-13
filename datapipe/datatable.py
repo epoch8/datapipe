@@ -5,7 +5,7 @@ import pandas as pd
 from opentelemetry import trace
 
 from datapipe.event_logger import EventLogger
-from datapipe.meta.sql_meta import MetaTable
+from datapipe.meta.sql_meta import SQLTableMeta
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
@@ -27,13 +27,13 @@ class DataTable:
         self,
         name: str,
         meta_dbconn: DBConn,
-        meta_table: MetaTable,
+        meta_table: SQLTableMeta,
         table_store: TableStore,
         event_logger: EventLogger,
     ):
         self.name = name
         self.meta_dbconn = meta_dbconn
-        self.meta_table = meta_table
+        self.meta = meta_table
         self.table_store = table_store
         self.event_logger = event_logger
 
@@ -41,20 +41,20 @@ class DataTable:
         self.primary_keys = meta_table.primary_keys
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
-        return self.meta_table.get_metadata(idx)
+        return self.meta.get_metadata(idx)
 
     def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
-        return self.table_store.read_rows(self.meta_table.get_existing_idx(idx))
+        return self.table_store.read_rows(self.meta.get_existing_idx(idx))
 
     def reset_metadata(self):
         with self.meta_dbconn.con.begin() as con:
-            con.execute(self.meta_table.sql_table.update().values(process_ts=0, update_ts=0))
+            con.execute(self.meta.sql_table.update().values(process_ts=0, update_ts=0))
 
     def get_size(self) -> int:
         """
         Get the number of non-deleted rows in the DataTable
         """
-        return self.meta_table.get_metadata_size(idx=None, include_deleted=False)
+        return self.meta.get_metadata_size(idx=None, include_deleted=False)
 
     def store_chunk(
         self,
@@ -95,7 +95,7 @@ class DataTable:
                         changed_index_df,
                         new_meta_df,
                         changed_meta_df,
-                    ) = self.meta_table.get_changes_for_store_chunk(hash_df, now)
+                    ) = self.meta.get_changes_for_store_chunk(hash_df, now)
 
                 new_df = index_to_data(data_df, new_index_df)
                 changed_df = index_to_data(data_df, changed_index_df)
@@ -106,7 +106,7 @@ class DataTable:
                     self.table_store.update_rows(changed_df)
 
                 with tracer.start_as_current_span("store metadata"):
-                    self.meta_table.update_rows(
+                    self.meta.update_rows(
                         cast(
                             MetadataDF,
                             pd.concat([df for df in [new_meta_df, changed_meta_df] if not df.empty]),
@@ -124,7 +124,7 @@ class DataTable:
                 data_idx = data_to_index(data_df, self.primary_keys)
 
                 if processed_idx is not None:
-                    existing_idx = self.meta_table.get_existing_idx(processed_idx)
+                    existing_idx = self.meta.get_existing_idx(processed_idx)
                     deleted_idx = index_difference(existing_idx, data_idx)
 
                     self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
@@ -144,7 +144,7 @@ class DataTable:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
 
             self.table_store.delete_rows(idx)
-            self.meta_table.mark_rows_deleted(idx, now=now)
+            self.meta.mark_rows_deleted(idx, now=now)
 
     def delete_stale_by_process_ts(
         self,
@@ -152,7 +152,7 @@ class DataTable:
         now: Optional[float] = None,
         run_config: Optional[RunConfig] = None,
     ) -> None:
-        for deleted_df in self.meta_table.get_stale_idx(process_ts, run_config=run_config):
+        for deleted_df in self.meta.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
 
             self.delete_by_idx(deleted_idx, now=now, run_config=run_config)
@@ -179,7 +179,7 @@ class DataStore:
         res = DataTable(
             name=name,
             meta_dbconn=self.meta_dbconn,
-            meta_table=MetaTable(
+            meta_table=SQLTableMeta(
                 dbconn=self.meta_dbconn,
                 name=name,
                 primary_schema=primary_schema,

@@ -1,5 +1,3 @@
-import time
-from datetime import timedelta
 from typing import List, cast
 
 import pandas as pd
@@ -8,7 +6,7 @@ from pytest_cases import parametrize, parametrize_with_cases
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.datatable import MetaTable
+from datapipe.datatable import SQLTableMeta
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.tests.util import assert_df_equal
 from datapipe.types import DataSchema, HashDF, IndexDF, MetaSchema, hash_to_index
@@ -105,7 +103,7 @@ def test_insert_rows(
     meta_schema: MetaSchema,
     test_df: HashDF,
 ):
-    mt = MetaTable(
+    mt = SQLTableMeta(
         name="test",
         dbconn=dbconn,
         primary_schema=primary_schema,
@@ -147,7 +145,7 @@ def test_get_metadata(
     meta_schema: MetaSchema,
     test_df: HashDF,
 ):
-    mt = MetaTable(
+    mt = SQLTableMeta(
         name="test",
         dbconn=dbconn,
         primary_schema=primary_schema,

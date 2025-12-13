@@ -58,11 +58,11 @@ class TableDebugInfo:
 
 @dataclass
 class MetaComputeInput:
-    table: "MetaTable"
+    table: "SQLTableMeta"
     join_type: Literal["inner", "full"] = "full"
 
 
-class MetaTable:
+class SQLTableMeta:
     def __init__(
         self,
         dbconn: DBConn,
@@ -412,13 +412,13 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 ]
 
 
-class TransformMetaTable:
+class SQLTransformMeta:
     def __init__(
         self,
         dbconn: DBConn,
         name: str,
         input_mts: List[MetaComputeInput],
-        output_mts: List[MetaTable],
+        output_mts: List[SQLTableMeta],
         transform_keys: Optional[List[str]],
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
@@ -910,7 +910,7 @@ def _make_agg_of_agg(
 
 def compute_transform_schema(
     input_mts: List[MetaComputeInput],
-    output_mts: List[MetaTable],
+    output_mts: List[SQLTableMeta],
     transform_keys: Optional[List[str]],
 ) -> Tuple[List[str], MetaSchema]:
     # Hacky way to collect all the primary keys into a single set. Possible
