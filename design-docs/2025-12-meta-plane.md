@@ -1,6 +1,6 @@
 Main idea: separate all metadata management to separate package so, that inteface between compute/execution-plane and meta would be relatively narrow and we could create alternative meta-plane implementation
 
-The goal of this change would be to extract all metadata manipulation into a separate package: `datapipe.meta` and define an interface
+The goal of this change would be to extract all metadata manipulation into a separate package: `datapipe.meta` and define an interface. Long term goal: enable alternative metadata management implementation without jumping all over the code. Next alternative metadata management system: Clickhouse-based
 
 What's the interface surface for meta?
 
