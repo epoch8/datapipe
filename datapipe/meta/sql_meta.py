@@ -455,7 +455,11 @@ class TransformMetaTable:
         return self.__class__, (
             self.dbconn,
             self.name,
-            self.primary_schema,
+            self.input_mts,
+            self.output_mts,
+            self.primary_keys,
+            self.order_by,
+            self.order,
         )
 
     def get_changed_idx_count(
