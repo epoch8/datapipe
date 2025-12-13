@@ -5,6 +5,7 @@ from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
 from datapipe.datatable import MetaTable
+from datapipe.meta.sql_meta import MetaComputeInput, compute_transform_schema
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn
 from datapipe.types import MetaSchema
@@ -67,10 +68,10 @@ def test_compute_transform_schema_success(
     transform_keys,
     expected_keys,
 ):
-    inp_mts = [make_mt(f"inp_{i}", dbconn, keys) for (i, keys) in enumerate(input_keys_list)]
+    inp_mts = [MetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
 
-    _, sch = BatchTransformStep.compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
+    _, sch = compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
 
     assert_schema_equals(sch, expected_keys)
 
@@ -82,8 +83,8 @@ def test_compute_transform_schema_fail(
     output_keys_list,
     transform_keys,
 ):
-    inp_mts = [make_mt(f"inp_{i}", dbconn, keys) for (i, keys) in enumerate(input_keys_list)]
+    inp_mts = [MetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
 
     with pytest.raises(AssertionError):
-        BatchTransformStep.compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
+        compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)

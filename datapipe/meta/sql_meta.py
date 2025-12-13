@@ -17,11 +17,13 @@ from typing import (
 
 import pandas as pd
 import sqlalchemy as sa
+from opentelemetry import trace
 
-from datapipe.run_config import RunConfig
+from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.types import (
+    ChangeList,
     DataDF,
     DataSchema,
     HashDF,
@@ -33,8 +35,9 @@ from datapipe.types import (
     hash_to_index,
 )
 
+tracer = trace.get_tracer("datapipe.step.batch_transform")
+
 if TYPE_CHECKING:
-    from datapipe.compute import ComputeInput
     from datapipe.datatable import DataStore
 
 
@@ -51,6 +54,12 @@ TABLE_META_SCHEMA: List[sa.Column] = [
 class TableDebugInfo:
     name: str
     size: int
+
+
+@dataclass
+class MetaComputeInput:
+    table: "MetaTable"
+    join_type: Literal["inner", "full"] = "full"
 
 
 class MetaTable:
@@ -361,23 +370,6 @@ class MetaTable:
                 list(pd.read_sql_query(sql, con=con, chunksize=1000)),
             )
 
-    def get_changed_rows_count_after_timestamp(
-        self,
-        ts: float,
-    ) -> int:
-        sql = sa.select(sa.func.count()).where(
-            sa.and_(
-                self.sql_table.c.process_ts > ts,
-                self.sql_table.c.delete_ts.is_(None),
-            )
-        )
-
-        with self.dbconn.con.begin() as con:
-            res = con.execute(sql).fetchone()
-            assert res is not None and len(res) == 1
-
-            return res[0]
-
     def get_agg_cte(
         self,
         transform_keys: List[str],
@@ -425,15 +417,25 @@ class TransformMetaTable:
         self,
         dbconn: DBConn,
         name: str,
-        primary_schema: DataSchema,
+        input_mts: List[MetaComputeInput],
+        output_mts: List[MetaTable],
+        transform_keys: Optional[List[str]],
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
         create_table: bool = False,
     ) -> None:
         self.dbconn = dbconn
         self.name = name
-        self.primary_schema = primary_schema
-        self.primary_keys = [i.name for i in primary_schema]
+        self.input_mts = input_mts
+        self.output_mts = output_mts
 
-        self.sql_schema = [i._copy() for i in primary_schema + TRANSFORM_META_SCHEMA]
+        self.primary_keys, self.primary_schema = compute_transform_schema(
+            input_mts=self.input_mts,
+            output_mts=self.output_mts,
+            transform_keys=transform_keys,
+        )
+
+        self.sql_schema = [i._copy() for i in self.primary_schema + TRANSFORM_META_SCHEMA]
 
         self.sql_table = sa.Table(
             name,
@@ -442,6 +444,9 @@ class TransformMetaTable:
             # TODO remove in 0.15 release
             keep_existing=True,
         )
+
+        self.order_by = order_by
+        self.order = order
 
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
@@ -452,6 +457,106 @@ class TransformMetaTable:
             self.name,
             self.primary_schema,
         )
+
+    def get_changed_idx_count(
+        self,
+        ds: "DataStore",
+        run_config: Optional[RunConfig] = None,
+    ) -> int:
+        _, sql = self._build_changed_idx_sql(ds=ds, run_config=run_config)
+
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                sa.select(*[sa.func.count()]).select_from(sa.alias(sql.subquery(), name="union_select"))
+            ).scalar()
+
+        return cast(int, idx_count)
+
+    def get_full_process_ids(
+        self,
+        ds: "DataStore",
+        chunk_size: int,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            if len(self.input_mts) == 0:
+                return (0, iter([]))
+
+            idx_count = self.get_changed_idx_count(
+                ds=ds,
+                run_config=run_config,
+            )
+
+            join_keys, u1 = self._build_changed_idx_sql(
+                ds=ds,
+                run_config=run_config,
+                order_by=self.order_by,
+                order=self.order,  # type: ignore
+            )
+
+            # Список ключей из фильтров, которые нужно добавить в результат
+            extra_filters: LabelDict
+            if run_config is not None:
+                extra_filters = {k: v for k, v in run_config.filters.items() if k not in join_keys}
+            else:
+                extra_filters = {}
+
+            def alter_res_df():
+                with ds.meta_dbconn.con.begin() as con:
+                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                        assert isinstance(df, pd.DataFrame)
+                        df = df[self.primary_keys]
+
+                        for k, v in extra_filters.items():
+                            df[k] = v
+
+                        yield cast(IndexDF, df)
+
+            return math.ceil(idx_count / chunk_size), alter_res_df()
+
+    def get_change_list_process_ids(
+        self,
+        ds: "DataStore",
+        change_list: ChangeList,
+        chunk_size: int,
+        run_config: Optional[RunConfig] = None,
+    ) -> Tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            changes = [pd.DataFrame(columns=self.primary_keys)]
+
+            for inp in self.input_mts:
+                if inp.table.name in change_list.changes:
+                    idx = change_list.changes[inp.table.name]
+                    if any([key not in idx.columns for key in self.primary_keys]):
+                        # TODO пересмотреть эту логику, выглядит избыточной
+                        # (возможно, достаточно посчитать один раз для всех
+                        # input таблиц)
+                        _, sql = self._build_changed_idx_sql(
+                            ds=ds,
+                            filters_idx=idx,
+                            run_config=run_config,
+                        )
+                        with ds.meta_dbconn.con.begin() as con:
+                            table_changes_df = pd.read_sql_query(
+                                sql,
+                                con=con,
+                            )
+                            table_changes_df = table_changes_df[self.primary_keys]
+
+                        changes.append(table_changes_df)
+                    else:
+                        changes.append(data_to_index(idx, self.primary_keys))
+
+            idx_df = pd.concat(changes).drop_duplicates(subset=self.primary_keys)
+            idx = IndexDF(idx_df[self.primary_keys])
+
+            chunk_count = math.ceil(len(idx) / chunk_size)
+
+            def gen():
+                for i in range(chunk_count):
+                    yield cast(IndexDF, idx[i * chunk_size : (i + 1) * chunk_size])
+
+            return chunk_count, gen()
 
     def insert_rows(
         self,
@@ -617,6 +722,97 @@ class TransformMetaTable:
         with self.dbconn.con.begin() as con:
             con.execute(sql)
 
+    def _build_changed_idx_sql(
+        self,
+        ds: "DataStore",
+        filters_idx: Optional[IndexDF] = None,
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: Optional[RunConfig] = None,  # TODO remove
+    ) -> Tuple[Iterable[str], Any]:
+        all_input_keys_counts: Dict[str, int] = {}
+        for col in itertools.chain(*[inp.table.primary_schema for inp in self.input_mts]):
+            all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
+
+        inp_ctes = []
+        for inp in self.input_mts:
+            keys, cte = inp.table.get_agg_cte(
+                transform_keys=self.primary_keys,
+                filters_idx=filters_idx,
+                run_config=run_config,
+            )
+            inp_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type=inp.join_type))
+
+        agg_of_aggs = _make_agg_of_agg(
+            ds=ds,
+            transform_keys=self.primary_keys,
+            ctes=inp_ctes,
+            agg_col="update_ts",
+        )
+
+        tr_tbl = self.sql_table
+        out: Any = (
+            sa.select(
+                *[sa.column(k) for k in self.primary_keys]
+                + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            )
+            .select_from(tr_tbl)
+            .group_by(*[sa.column(k) for k in self.primary_keys])
+        )
+
+        out = sql_apply_filters_idx_to_subquery(out, self.primary_keys, filters_idx)
+
+        out = out.cte(name="transform")
+
+        if len(self.primary_keys) == 0:
+            join_onclause_sql: Any = sa.literal(True)
+        elif len(self.primary_keys) == 1:
+            join_onclause_sql = agg_of_aggs.c[self.primary_keys[0]] == out.c[self.primary_keys[0]]
+        else:  # len(transform_keys) > 1:
+            join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in self.primary_keys])
+
+        sql = (
+            sa.select(
+                # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
+                # пустом transform_keys
+                sa.literal(1).label("_datapipe_dummy"),
+                *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in self.primary_keys],
+            )
+            .select_from(agg_of_aggs)
+            .outerjoin(
+                out,
+                onclause=join_onclause_sql,
+                full=True,
+            )
+            .where(
+                sa.or_(
+                    sa.and_(
+                        out.c.is_success == True,  # noqa
+                        agg_of_aggs.c.update_ts > out.c.process_ts,
+                    ),
+                    out.c.is_success != True,  # noqa
+                    out.c.process_ts == None,  # noqa
+                )
+            )
+        )
+        if order_by is None:
+            sql = sql.order_by(
+                out.c.priority.desc().nullslast(),
+                *[sa.column(k) for k in self.primary_keys],
+            )
+        else:
+            if order == "desc":
+                sql = sql.order_by(
+                    *[sa.desc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                )
+            elif order == "asc":
+                sql = sql.order_by(
+                    *[sa.asc(sa.column(k)) for k in order_by],
+                    out.c.priority.desc().nullslast(),
+                )
+        return (self.primary_keys, sql)
+
 
 def sql_apply_filters_idx_to_subquery(
     sql: Any,
@@ -707,94 +903,36 @@ def _make_agg_of_agg(
     return sql.cte(name=f"all__{agg_col}")
 
 
-def build_changed_idx_sql(
-    ds: "DataStore",
-    meta_table: "TransformMetaTable",
-    input_dts: List["ComputeInput"],
-    transform_keys: List[str],
-    filters_idx: Optional[IndexDF] = None,
-    order_by: Optional[List[str]] = None,
-    order: Literal["asc", "desc"] = "asc",
-    run_config: Optional[RunConfig] = None,  # TODO remove
-) -> Tuple[Iterable[str], Any]:
-    all_input_keys_counts: Dict[str, int] = {}
-    for col in itertools.chain(*[inp.dt.primary_schema for inp in input_dts]):
-        all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
-
-    inp_ctes = []
-    for inp in input_dts:
-        keys, cte = inp.dt.meta_table.get_agg_cte(
-            transform_keys=transform_keys,
-            filters_idx=filters_idx,
-            run_config=run_config,
+def compute_transform_schema(
+    input_mts: List[MetaComputeInput],
+    output_mts: List[MetaTable],
+    transform_keys: Optional[List[str]],
+) -> Tuple[List[str], MetaSchema]:
+    # Hacky way to collect all the primary keys into a single set. Possible
+    # problem that is not handled here is that theres a possibility that the
+    # same key is defined differently in different input tables.
+    all_keys = {
+        col.name: col
+        for col in itertools.chain(
+            *([inp.table.primary_schema for inp in input_mts] + [dt.primary_schema for dt in output_mts])
         )
-        inp_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type=inp.join_type))
+    }
 
-    agg_of_aggs = _make_agg_of_agg(
-        ds=ds,
-        transform_keys=transform_keys,
-        ctes=inp_ctes,
-        agg_col="update_ts",
-    )
+    if transform_keys is not None:
+        return (transform_keys, [all_keys[k] for k in transform_keys])
 
-    tr_tbl = meta_table.sql_table
-    out: Any = (
-        sa.select(
-            *[sa.column(k) for k in transform_keys] + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
-        )
-        .select_from(tr_tbl)
-        .group_by(*[sa.column(k) for k in transform_keys])
-    )
+    assert len(input_mts) > 0
 
-    out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx)
+    inp_p_keys = set.intersection(*[set(inp.table.primary_keys) for inp in input_mts])
+    assert len(inp_p_keys) > 0
 
-    out = out.cte(name="transform")
+    if len(output_mts) == 0:
+        return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
 
-    if len(transform_keys) == 0:
-        join_onclause_sql: Any = sa.literal(True)
-    elif len(transform_keys) == 1:
-        join_onclause_sql = agg_of_aggs.c[transform_keys[0]] == out.c[transform_keys[0]]
-    else:  # len(transform_keys) > 1:
-        join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in transform_keys])
+    out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
+    assert len(out_p_keys) > 0
 
-    sql = (
-        sa.select(
-            # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
-            # пустом transform_keys
-            sa.literal(1).label("_datapipe_dummy"),
-            *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in transform_keys],
-        )
-        .select_from(agg_of_aggs)
-        .outerjoin(
-            out,
-            onclause=join_onclause_sql,
-            full=True,
-        )
-        .where(
-            sa.or_(
-                sa.and_(
-                    out.c.is_success == True,  # noqa
-                    agg_of_aggs.c.update_ts > out.c.process_ts,
-                ),
-                out.c.is_success != True,  # noqa
-                out.c.process_ts == None,  # noqa
-            )
-        )
-    )
-    if order_by is None:
-        sql = sql.order_by(
-            out.c.priority.desc().nullslast(),
-            *[sa.column(k) for k in transform_keys],
-        )
-    else:
-        if order == "desc":
-            sql = sql.order_by(
-                *[sa.desc(sa.column(k)) for k in order_by],
-                out.c.priority.desc().nullslast(),
-            )
-        elif order == "asc":
-            sql = sql.order_by(
-                *[sa.asc(sa.column(k)) for k in order_by],
-                out.c.priority.desc().nullslast(),
-            )
-    return (transform_keys, sql)
+    inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
+    assert len(inp_out_p_keys) > 0
+
+    return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
