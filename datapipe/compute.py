@@ -85,6 +85,9 @@ class StepStatus:
 class ComputeInput:
     dt: DataTable
     join_type: Literal["inner", "full"] = "full"
+    # Filtered join optimization: mapping from idx columns to dt columns
+    # Example: {"user_id": "id"} means filter dt by dt.id IN (idx.user_id)
+    join_keys: Optional[Dict[str, str]] = None
 
 
 class ComputeStep:

@@ -498,6 +498,73 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
+@cli.command()
+@click.option("--step", type=click.STRING, help="Step name to initialize offsets for (optional)")
+@click.pass_context
+def init_offsets(ctx, step: Optional[str]):
+    """
+    Инициализировать таблицу offset'ов из существующих данных TransformMetaTable.
+
+    Команда сканирует уже обработанные данные и устанавливает начальные значения offset'ов,
+    чтобы обеспечить плавную миграцию на оптимизацию через offset'ы (метод v2).
+
+    Если указан --step, инициализирует только этот шаг. Иначе инициализирует
+    все экземпляры BatchTransformStep в пайплайне.
+    """
+    from datapipe.meta.sql_meta import initialize_offsets_from_transform_meta
+
+    app: DatapipeApp = ctx.obj["app"]
+
+    # Collect all BatchTransformStep instances
+    transform_steps = []
+    for compute_step in app.steps:
+        if isinstance(compute_step, BaseBatchTransformStep):
+            if step is None or compute_step.get_name() == step:
+                transform_steps.append(compute_step)
+
+    if not transform_steps:
+        if step:
+            rprint(f"[red]Step '{step}' not found or is not a BatchTransformStep[/red]")
+        else:
+            rprint("[yellow]No BatchTransformStep instances found in pipeline[/yellow]")
+        return
+
+    rprint(f"[cyan]Found {len(transform_steps)} transform step(s) to initialize[/cyan]")
+
+    # Initialize offsets for each step
+    results = {}
+    for transform_step in transform_steps:
+        step_name = transform_step.get_name()
+        rprint(f"\n[cyan]Initializing offsets for: {step_name}[/cyan]")
+
+        try:
+            offsets = initialize_offsets_from_transform_meta(app.ds, transform_step)
+
+            if offsets:
+                rprint(f"[green]✓ Initialized {len(offsets)} offset(s):[/green]")
+                for input_name, offset_value in offsets.items():
+                    rprint(f"  - {input_name}: {offset_value}")
+                results[step_name] = offsets
+            else:
+                rprint("[yellow]No offsets initialized (no processed data found)[/yellow]")
+                results[step_name] = {}
+
+        except Exception as e:
+            rprint(f"[red]✗ Failed to initialize: {e}[/red]")
+            results[step_name] = {}
+
+    # Summary
+    rprint("\n[cyan]═══ Summary ═══[/cyan]")
+    success_count = sum(1 for v in results.values() if v is not None and len(v) > 0)
+    empty_count = sum(1 for v in results.values() if v is not None and len(v) == 0)
+    failed_count = sum(1 for v in results.values() if v is None)
+
+    rprint(f"[green]Successful: {success_count}[/green]")
+    rprint(f"[yellow]Empty (no data): {empty_count}[/yellow]")
+    if failed_count > 0:
+        rprint(f"[red]Failed: {failed_count}[/red]")
+
+
 try:
     entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
 except TypeError:

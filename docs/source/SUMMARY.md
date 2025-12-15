@@ -7,6 +7,7 @@
   - [Table](./concepts-table.md)
   - [Transform](./concepts-transform.md)
 - [How merging works](./how-merging-works.md)
+- [Offset Optimization](./offset-optimization.md)
 
 # Command Line Interface
 
