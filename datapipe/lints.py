@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 from sqlalchemy import and_, func, insert, literal, not_, or_, select, update
 
 from datapipe.datatable import DataTable
+from datapipe.meta.sql_meta import SQLTableMeta
 from datapipe.store.database import TableStoreDB
 
 
@@ -17,6 +18,8 @@ class Lint:
     desc: str
 
     def check(self, dt: DataTable) -> Tuple[LintStatus, Optional[str]]:
+        assert isinstance(dt.meta, SQLTableMeta)
+
         query = self.check_query(dt)
 
         if query is None:
@@ -45,6 +48,8 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
     desc = "delete_ts is newer than update_ts or process_ts"
 
     def check_query(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         meta_tbl = dt.meta.sql_table
         sql = (
             select(func.count())
@@ -63,6 +68,8 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
         return sql
 
     def fix(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         meta_tbl = dt.meta.sql_table
 
         sql = (
@@ -92,6 +99,8 @@ class LintDataWOMeta(Lint):
     desc = "data has rows without meta"
 
     def check_query(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         if not isinstance(dt.table_store, TableStoreDB):
             return None
 
@@ -109,6 +118,8 @@ class LintDataWOMeta(Lint):
         return sql
 
     def fix(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         assert isinstance(dt.table_store, TableStoreDB)
 
         meta_tbl = dt.meta.sql_table

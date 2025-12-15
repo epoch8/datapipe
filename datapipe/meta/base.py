@@ -29,7 +29,7 @@ class MetaPlane:
         name: str,
         input_dts: Sequence["ComputeInput"],
         output_dts: Sequence["DataTable"],
-        transform_keys: List[str] | None,
+        transform_keys: Optional[List[str]] = None,
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> "TransformMeta":
