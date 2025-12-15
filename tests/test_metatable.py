@@ -6,7 +6,7 @@ from pytest_cases import parametrize, parametrize_with_cases
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.datatable import SQLTableMeta
+from datapipe.meta.sql_meta import SQLTableMeta
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.tests.util import assert_df_equal
 from datapipe.types import DataSchema, HashDF, IndexDF, MetaSchema, hash_to_index

@@ -5,7 +5,7 @@ import pandas as pd
 from opentelemetry import trace
 
 from datapipe.event_logger import EventLogger
-from datapipe.meta.sql_meta import SQLTableMeta
+from datapipe.meta.base import TableMeta
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
@@ -26,19 +26,17 @@ class DataTable:
     def __init__(
         self,
         name: str,
-        meta_dbconn: DBConn,
-        meta_table: SQLTableMeta,
+        meta: TableMeta,
         table_store: TableStore,
         event_logger: EventLogger,
     ):
         self.name = name
-        self.meta_dbconn = meta_dbconn
-        self.meta = meta_table
+        self.meta = meta
         self.table_store = table_store
         self.event_logger = event_logger
 
-        self.primary_schema = meta_table.primary_schema
-        self.primary_keys = meta_table.primary_keys
+        self.primary_schema = meta.primary_schema
+        self.primary_keys = meta.primary_keys
 
     def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
         return self.meta.get_metadata(idx)
@@ -47,8 +45,7 @@ class DataTable:
         return self.table_store.read_rows(self.meta.get_existing_idx(idx))
 
     def reset_metadata(self):
-        with self.meta_dbconn.con.begin() as con:
-            con.execute(self.meta.sql_table.update().values(process_ts=0, update_ts=0))
+        self.meta.reset_metadata()
 
     def get_size(self) -> int:
         """
@@ -164,11 +161,14 @@ class DataStore:
         meta_dbconn: DBConn,
         create_meta_table: bool = False,
     ) -> None:
+        from datapipe.meta.sql_meta import SQLMetaPlane
+
         self.meta_dbconn = meta_dbconn
         self.event_logger = EventLogger()
         self.tables: Dict[str, DataTable] = {}
 
-        self.create_meta_table = create_meta_table
+        # TODO move initialization outside
+        self.meta_plane = SQLMetaPlane(dbconn=meta_dbconn, create_meta_table=create_meta_table)
 
     def create_table(self, name: str, table_store: TableStore) -> DataTable:
         assert name not in self.tables
@@ -178,13 +178,10 @@ class DataStore:
 
         res = DataTable(
             name=name,
-            meta_dbconn=self.meta_dbconn,
-            meta_table=SQLTableMeta(
-                dbconn=self.meta_dbconn,
+            meta=self.meta_plane.create_table_meta(
                 name=name,
                 primary_schema=primary_schema,
                 meta_schema=meta_schema,
-                create_table=self.create_meta_table,
             ),
             table_store=table_store,
             event_logger=self.event_logger,

@@ -29,7 +29,6 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
-from datapipe.meta.sql_meta import MetaComputeInput, SQLTransformMeta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.types import (
     ChangeList,
@@ -109,21 +108,13 @@ class BaseBatchTransformStep(ComputeStep):
         if transform_keys is not None and not isinstance(transform_keys, list):
             transform_keys = list(transform_keys)
 
-        self.meta = SQLTransformMeta(
-            dbconn=ds.meta_dbconn,
+        self.meta = ds.meta_plane.create_transform_meta(
             name=f"{self.get_name()}_meta",
-            input_mts=[
-                MetaComputeInput(
-                    table=inp.dt.meta,
-                    join_type=inp.join_type,
-                )
-                for inp in compute_input_dts
-            ],
-            output_mts=[out.meta for out in output_dts],
+            input_dts=self.input_dts,
+            output_dts=self.output_dts,
             transform_keys=transform_keys,
             order_by=order_by,
             order=order,
-            create_table=ds.create_meta_table,
         )
 
         self.transform_keys, self.transform_schema = self.meta.primary_keys, self.meta.primary_schema

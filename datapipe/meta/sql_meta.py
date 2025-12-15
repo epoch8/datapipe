@@ -11,6 +11,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Tuple,
     cast,
 )
@@ -19,6 +20,9 @@ import pandas as pd
 import sqlalchemy as sa
 from opentelemetry import trace
 
+from datapipe.compute import ComputeInput
+from datapipe.datatable import DataTable
+from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMeta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
@@ -50,19 +54,23 @@ TABLE_META_SCHEMA: List[sa.Column] = [
 ]
 
 
-@dataclass
-class TableDebugInfo:
-    name: str
-    size: int
+class SQLTableMeta(TableMeta):
+    @classmethod
+    def create(
+        cls,
+        dbconn: DBConn,
+        name: str,
+        primary_schema: DataSchema,
+        meta_schema: MetaSchema = [],
+    ) -> "SQLTableMeta":
+        return cls(
+            dbconn=dbconn,
+            name=name,
+            primary_schema=primary_schema,
+            meta_schema=meta_schema,
+            create_table=True,
+        )
 
-
-@dataclass
-class MetaComputeInput:
-    table: "SQLTableMeta"
-    join_type: Literal["inner", "full"] = "full"
-
-
-class SQLTableMeta:
     def __init__(
         self,
         dbconn: DBConn,
@@ -146,13 +154,6 @@ class SQLTableMeta:
         return sql
 
     def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
-        """
-        Получить датафрейм с метаданными.
-
-        idx - опциональный фильтр по целевым строкам
-        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
-        """
-
         res = []
         sql = sa.select(*self.sql_schema)  # type: ignore
 
@@ -175,13 +176,6 @@ class SQLTableMeta:
                 )
 
     def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
-        """
-        Получить количество строк метаданных.
-
-        idx - опциональный фильтр по целевым строкам
-        include_deleted - флаг, возвращать ли удаленные строки, по умолчанию = False
-        """
-
         sql = sa.select(sa.func.count()).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
@@ -250,16 +244,6 @@ class SQLTableMeta:
     def get_changes_for_store_chunk(
         self, hash_df: HashDF, now: Optional[float] = None
     ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
-        """
-        Анализирует блок hash_df, выделяет строки new_ которые нужно добавить и строки changed_ которые нужно обновить
-
-        Returns tuple:
-            new_index_df     - индекс данных, которые нужно добавить
-            changed_index_df - индекс данных, которые нужно изменить
-            new_meta_df     - строки метаданных, которые нужно добавить
-            changed_meta_df - строки метаданных, которые нужно изменить
-        """
-
         if now is None:
             now = time.time()
 
@@ -412,13 +396,19 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 ]
 
 
-class SQLTransformMeta:
+@dataclass
+class SQLMetaComputeInput:
+    table: "SQLTableMeta"
+    join_type: Literal["inner", "full"] = "full"
+
+
+class SQLTransformMeta(TransformMeta):
     def __init__(
         self,
         dbconn: DBConn,
         name: str,
-        input_mts: List[MetaComputeInput],
-        output_mts: List[SQLTableMeta],
+        input_mts: Sequence[SQLMetaComputeInput],
+        output_mts: Sequence[SQLTableMeta],
         transform_keys: Optional[List[str]],
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
@@ -426,6 +416,7 @@ class SQLTransformMeta:
     ) -> None:
         self.dbconn = dbconn
         self.name = name
+
         self.input_mts = input_mts
         self.output_mts = output_mts
 
@@ -567,11 +558,6 @@ class SQLTransformMeta:
         self,
         idx: IndexDF,
     ) -> None:
-        """
-        Создает строки в таблице метаданных для указанных индексов. Если строки
-        уже существуют - не делает ничего.
-        """
-
         idx = cast(IndexDF, idx[self.primary_keys])
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
@@ -694,10 +680,6 @@ class SQLTransformMeta:
             con.execute(sql)
 
     def get_metadata_size(self) -> int:
-        """
-        Получить количество строк метаданных трансформации.
-        """
-
         sql = sa.select(sa.func.count()).select_from(self.sql_table)
         with self.dbconn.con.begin() as con:
             res = con.execute(sql).fetchone()
@@ -909,8 +891,8 @@ def _make_agg_of_agg(
 
 
 def compute_transform_schema(
-    input_mts: List[MetaComputeInput],
-    output_mts: List[SQLTableMeta],
+    input_mts: Sequence[SQLMetaComputeInput],
+    output_mts: Sequence[SQLTableMeta],
     transform_keys: Optional[List[str]],
 ) -> Tuple[List[str], MetaSchema]:
     # Hacky way to collect all the primary keys into a single set. Possible
@@ -941,3 +923,58 @@ def compute_transform_schema(
     assert len(inp_out_p_keys) > 0
 
     return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
+
+
+class SQLMetaPlane(MetaPlane):
+    def __init__(self, dbconn: DBConn, create_meta_table: bool = False) -> None:
+        self.dbconn = dbconn
+        self.create_meta_table = create_meta_table
+
+    def create_table_meta(
+        self,
+        name: str,
+        primary_schema: DataSchema,
+        meta_schema: MetaSchema = [],
+    ) -> TableMeta:
+        return SQLTableMeta(
+            dbconn=self.dbconn,
+            name=name,
+            primary_schema=primary_schema,
+            meta_schema=meta_schema,
+            create_table=self.create_meta_table,
+        )
+
+    def create_transform_meta(
+        self,
+        name: str,
+        input_dts: Sequence[ComputeInput],
+        output_dts: Sequence[DataTable],
+        transform_keys: Optional[List[str]],
+        order_by: Optional[List[str]] = None,
+        order: Literal["asc", "desc"] = "asc",
+    ) -> TransformMeta:
+        input_mts = []
+        for inp in input_dts:
+            assert isinstance(inp.dt.meta, SQLTableMeta)
+            input_mts.append(
+                SQLMetaComputeInput(
+                    table=inp.dt.meta,
+                    join_type=inp.join_type,
+                )
+            )
+
+        output_mts = []
+        for out in output_dts:
+            assert isinstance(out.meta, SQLTableMeta)
+            output_mts.append(out.meta)
+
+        return SQLTransformMeta(
+            dbconn=self.dbconn,
+            name=name,
+            input_mts=input_mts,
+            output_mts=output_mts,
+            transform_keys=transform_keys,
+            order_by=order_by,
+            order=order,
+            create_table=self.create_meta_table,
+        )

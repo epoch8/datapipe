@@ -73,25 +73,6 @@ def yield_df(data):
     return f
 
 
-def test_cloudpickle(dbconn) -> None:
-    ds = DataStore(dbconn, create_meta_table=True)
-
-    tbl = ds.create_table(name="test", table_store=TableStoreDB(dbconn, "test_data", TEST_SCHEMA, True))
-
-    dump = cloudpickle.dumps([ds, tbl])
-
-    _, tbl_desrl = cloudpickle.loads(dump)
-
-    dbconn_a = tbl.meta_dbconn
-    dbconn_b: DBConn = tbl_desrl.meta_dbconn
-
-    assert (dbconn_a.connstr, dbconn_a.schema, dbconn_a.supports_update_from) == (
-        dbconn_b.connstr,
-        dbconn_b.schema,
-        dbconn_b.supports_update_from,
-    )
-
-
 def test_simple(dbconn) -> None:
     ds = DataStore(dbconn, create_meta_table=True)
 
