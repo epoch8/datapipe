@@ -155,7 +155,7 @@ class ElasticStore(TableStore):
         else:
             query = {"match_all": {}}
 
-        data_resp: ObjectApiResponse[Any] | None
+        data_resp: Optional[ObjectApiResponse[Any]]
         data_resp = self.es_client.search(
             query=query,
             sort=["_doc"],

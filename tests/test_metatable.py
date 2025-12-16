@@ -1,5 +1,3 @@
-import time
-from datetime import timedelta
 from typing import List, cast
 
 import pandas as pd
@@ -8,10 +6,10 @@ from pytest_cases import parametrize, parametrize_with_cases
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.datatable import MetaTable
+from datapipe.meta.sql_meta import SQLTableMeta
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.tests.util import assert_df_equal
-from datapipe.types import HashDF, DataSchema, IndexDF, MetaSchema, hash_to_index
+from datapipe.types import DataSchema, HashDF, IndexDF, MetaSchema, hash_to_index
 
 
 class CasesTestDF:
@@ -105,7 +103,7 @@ def test_insert_rows(
     meta_schema: MetaSchema,
     test_df: HashDF,
 ):
-    mt = MetaTable(
+    mt = SQLTableMeta(
         name="test",
         dbconn=dbconn,
         primary_schema=primary_schema,
@@ -147,7 +145,7 @@ def test_get_metadata(
     meta_schema: MetaSchema,
     test_df: HashDF,
 ):
-    mt = MetaTable(
+    mt = SQLTableMeta(
         name="test",
         dbconn=dbconn,
         primary_schema=primary_schema,
@@ -173,33 +171,3 @@ def test_get_metadata(
         part_df[keys],
         index_cols=index_cols,
     )
-
-
-@parametrize_with_cases(
-    "index_cols,primary_schema,meta_schema,test_df",
-    cases=CasesTestDF,
-    import_fixtures=True,
-)
-def test_get_ids_changed_after_date_threshold(
-    dbconn: DBConn,
-    index_cols: List[str],
-    primary_schema: DataSchema,
-    meta_schema: MetaSchema,
-    test_df: HashDF,
-):
-    mt = MetaTable(
-        name="test",
-        dbconn=dbconn,
-        primary_schema=primary_schema,
-        meta_schema=meta_schema,
-        create_table=True,
-    )
-    _, _, new_meta_df, _ = mt.get_changes_for_store_chunk(test_df)
-    mt.update_rows(df=new_meta_df)
-
-    date_before_insertion = time.time() - timedelta(days=1).total_seconds()
-    total_len = mt.get_changed_rows_count_after_timestamp(date_before_insertion)
-    assert total_len == len(test_df)
-
-    total_len = mt.get_changed_rows_count_after_timestamp(time.time())
-    assert total_len == 0

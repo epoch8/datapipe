@@ -211,7 +211,7 @@ def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
     # Случай 1: меняется что-то слева
     # -> change должно быть равным числу изменненых строк слева помножить на полное число строк справа
     run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
-    changed_idxs = cross_step.get_changed_idx_count(ds)
+    changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT)
     run_steps(ds, [cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
@@ -230,7 +230,7 @@ def test_cross_merge_scenary_changed_right(ds_catalog_pipeline_tbls):
     # Случай 2: меняется что-то справа
     # -> change должно быть равным полному числу строк слева помножить на измененное число строк справа
     run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
-    changed_idxs = cross_step.get_changed_idx_count(ds)
+    changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
     run_steps(ds, [cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
@@ -254,7 +254,7 @@ def test_cross_merge_scenary_changed_left_and_right(ds_catalog_pipeline_tbls):
     #   плюс
     #   - измененное число строк слева помножить на измененное число строк справа
     run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
-    changed_idxs = cross_step.get_changed_idx_count(ds)
+    changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == (
         len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
         + len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED)
@@ -284,7 +284,7 @@ def test_cross_merge_scenary_changed_left_and_right_then_deleted_left_and_right(
     #   плюс
     #   - удаленное число строк слева помножить на удаленное число строк справа
     run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
-    changed_idxs = cross_step.get_changed_idx_count(ds)
+    changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == (
         len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
         + len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED)

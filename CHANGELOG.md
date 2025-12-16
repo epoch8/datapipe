@@ -1,3 +1,13 @@
+# WIP: 0.15.0
+
+* Introduced `MetaPlane`/`TableMeta`/`TransformMeta` interfaces to decouple
+  metadata management from the compute plane
+* Added SQL reference implementation (`SQLMetaPlane`, `SQLTableMeta`,
+  `SQLTransformMeta`) and rewired `DataStore`, `DataTable`, and batch transform
+  steps to consume the new meta plane API
+* Added meta-plane design doc and removed legacy `MetaTable` plumbing in lints,
+  migrations, and tests
+
 # 0.14.6
 
 * Allow `DataTable` objects directly in `ComputeStep.input_dts` parameter

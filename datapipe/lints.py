@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 from sqlalchemy import and_, func, insert, literal, not_, or_, select, update
 
 from datapipe.datatable import DataTable
+from datapipe.meta.sql_meta import SQLTableMeta
 from datapipe.store.database import TableStoreDB
 
 
@@ -17,12 +18,14 @@ class Lint:
     desc: str
 
     def check(self, dt: DataTable) -> Tuple[LintStatus, Optional[str]]:
+        assert isinstance(dt.meta, SQLTableMeta)
+
         query = self.check_query(dt)
 
         if query is None:
             return (LintStatus.SKIP, None)
 
-        with dt.meta_table.dbconn.con.begin() as con:
+        with dt.meta.dbconn.con.begin() as con:
             res = con.execute(query).fetchone()
 
         assert res is not None and len(res) == 1
@@ -45,7 +48,9 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
     desc = "delete_ts is newer than update_ts or process_ts"
 
     def check_query(self, dt: DataTable):
-        meta_tbl = dt.meta_table.sql_table
+        assert isinstance(dt.meta, SQLTableMeta)
+
+        meta_tbl = dt.meta.sql_table
         sql = (
             select(func.count())
             .select_from(meta_tbl)
@@ -63,7 +68,9 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
         return sql
 
     def fix(self, dt: DataTable):
-        meta_tbl = dt.meta_table.sql_table
+        assert isinstance(dt.meta, SQLTableMeta)
+
+        meta_tbl = dt.meta.sql_table
 
         sql = (
             update(meta_tbl)
@@ -82,7 +89,7 @@ class LintDeleteTSIsNewerThanUpdateOrProcess(Lint):
             )
         )
 
-        with dt.meta_table.dbconn.con.begin() as con:
+        with dt.meta.dbconn.con.begin() as con:
             con.execute(sql)
 
         return (LintStatus.OK, None)
@@ -92,10 +99,12 @@ class LintDataWOMeta(Lint):
     desc = "data has rows without meta"
 
     def check_query(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         if not isinstance(dt.table_store, TableStoreDB):
             return None
 
-        meta_tbl = dt.meta_table.sql_table
+        meta_tbl = dt.meta.sql_table
         data_tbl = dt.table_store.data_table
 
         exists_sql = (
@@ -109,9 +118,11 @@ class LintDataWOMeta(Lint):
         return sql
 
     def fix(self, dt: DataTable):
+        assert isinstance(dt.meta, SQLTableMeta)
+
         assert isinstance(dt.table_store, TableStoreDB)
 
-        meta_tbl = dt.meta_table.sql_table
+        meta_tbl = dt.meta.sql_table
         data_tbl = dt.table_store.data_table
 
         exists_sql = (
@@ -135,7 +146,7 @@ class LintDataWOMeta(Lint):
             .where(not_(exists_sql.exists())),
         )
 
-        with dt.meta_table.dbconn.con.begin() as con:
+        with dt.meta.dbconn.con.begin() as con:
             con.execute(sql)
 
         return (LintStatus.OK, None)
