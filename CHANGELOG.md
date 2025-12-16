@@ -1,4 +1,4 @@
-# 0.15.0
+# WIP: 0.15.0
 
 * Introduced `MetaPlane`/`TableMeta`/`TransformMeta` interfaces to decouple
   metadata management from the compute plane
