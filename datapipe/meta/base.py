@@ -82,6 +82,8 @@ class TableMeta:
 
         raise NotImplementedError()
 
+    # TODO return a dataclass, pair it with `apply_changes_from_store_chunk`
+    # TODO take processed_idx as input, compute deleted rows inside, see datatable.store_chunk
     def get_changes_for_store_chunk(
         self, hash_df: HashDF, now: Optional[float] = None
     ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
@@ -98,6 +100,7 @@ class TableMeta:
 
         raise NotImplementedError()
 
+    # TODO merge update_rows and mark_rows_deleted into apply_changes_from_store_chunk
     def update_rows(self, df: MetadataDF) -> None:
         # TODO docstring
 
