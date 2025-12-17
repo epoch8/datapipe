@@ -96,12 +96,12 @@ def test_custom_order_by_preserves_update_ts_ordering(dbconn: DBConn):
     df1 = pd.DataFrame({"id": ["rec_3"], "value": [3]})
     input_dt.store_chunk(df1, now=t1)
 
-    time.sleep(0.01)
+    time.sleep(0.1)  # Увеличена задержка для надежности в CI
     t2 = time.time()
     df2 = pd.DataFrame({"id": ["rec_2"], "value": [2]})
     input_dt.store_chunk(df2, now=t2)
 
-    time.sleep(0.01)
+    time.sleep(0.1)  # Увеличена задержка для надежности в CI
     t3 = time.time()
     df3 = pd.DataFrame({"id": ["rec_1"], "value": [1]})
     input_dt.store_chunk(df3, now=t3)

@@ -161,6 +161,10 @@ def test_offset_invariant_concurrent(dbconn: DBConn):
     - Поток 1: обработал позже, но его запись с update_ts=T1 < offset=T2
     - Результат: может быть проблема с видимостью данных
     """
+    # SQLite имеет проблемы с concurrent connections, пропускаем для SQLite
+    if "sqlite" in dbconn.connstr.lower() or "pysqlite" in dbconn.connstr.lower():
+        pytest.skip("SQLite does not support concurrent writes reliably")
+
     ds = DataStore(dbconn, create_meta_table=True)
 
     input_store = TableStoreDB(
