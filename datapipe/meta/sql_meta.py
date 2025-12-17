@@ -924,16 +924,21 @@ def build_changed_idx_sql_v2(
             # Строим SELECT для всех колонок из all_select_keys основной таблицы
             primary_data_cols = [c.name for c in primary_data_tbl.columns]
             select_cols = []
+            group_by_cols = []
             for k in all_select_keys:
                 if k in primary_data_cols:
                     select_cols.append(primary_data_tbl.c[k])
+                    group_by_cols.append(primary_data_tbl.c[k])
                 elif k == 'update_ts':
-                    # update_ts это Float, нужен CAST для совместимости типов в UNION
-                    select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
+                    # КРИТИЧНО: Берем update_ts из мета-таблицы справочника (tbl.c.update_ts),
+                    # а НЕ из primary_data_tbl. Это необходимо для корректной работы
+                    # offset-оптимизации при reverse join (join_keys).
+                    # Если использовать NULL, записи будут помечаться как error_records
+                    # и переобрабатываться на каждом запуске.
+                    select_cols.append(tbl.c.update_ts)
+                    group_by_cols.append(tbl.c.update_ts)  # Добавляем в GROUP BY
                 else:
                     select_cols.append(sa.literal(None).label(k))
-            # Для GROUP BY нужны только реальные колонки, не литералы
-            group_by_cols = [primary_data_tbl.c[k] for k in all_select_keys if k in primary_data_cols]
 
             # Обратный JOIN: primary_table.join_key = reference_table.id
             # Например: posts.user_id = profiles.id
@@ -1192,15 +1197,19 @@ def build_changed_idx_sql_v2(
             *[union_cte.c[k] for k in transform_keys],  # Детерминизм при одинаковых update_ts
         )
     else:
+        # КРИТИЧНО: При кастомном order_by всё равно нужно сортировать по update_ts ПЕРВЫМ
+        # для консистентности с offset (иначе данные могут быть пропущены)
         if order == "desc":
             out = out.order_by(
-                *[sa.desc(union_cte.c[k]) for k in order_by],
                 tr_tbl.c.priority.desc().nullslast(),
+                union_cte.c.update_ts.asc().nullslast(),  # update_ts ВСЕГДА первым
+                *[sa.desc(union_cte.c[k]) for k in order_by],
             )
         elif order == "asc":
             out = out.order_by(
-                *[sa.asc(union_cte.c[k]) for k in order_by],
                 tr_tbl.c.priority.desc().nullslast(),
+                union_cte.c.update_ts.asc().nullslast(),  # update_ts ВСЕГДА первым
+                *[sa.asc(union_cte.c[k]) for k in order_by],
             )
 
     return (all_select_keys, out)

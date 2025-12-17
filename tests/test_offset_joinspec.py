@@ -163,3 +163,130 @@ def test_offset_created_for_joinspec_tables(dbconn: DBConn):
     assert len(output_data) == 4, f"Expected 4 output rows, got {len(output_data)}"
 
     print("\n✅ SUCCESS: Offsets created and updated for both posts AND profiles (including JoinSpec table)!")
+
+
+def test_joinspec_update_ts_from_meta_table_not_null(dbconn: DBConn):
+    """
+    Проблема: Для join_keys (reverse join) update_ts подставляется как NULL
+    из primary_data_tbl, что приводит к переобработке на каждом запуске.
+
+    Сценарий:
+    1. Создать основную таблицу (posts) и справочную таблицу (profiles)
+    2. Связать через join_keys
+    3. Изменить справочную таблицу
+    4. Обработать через reverse join
+    5. Повторно запустить - выборка должна быть ПУСТОЙ (нет новых изменений)
+
+    Ожидание: update_ts должен браться из мета-таблицы справочника (tbl.c.update_ts),
+    а не подставляться как NULL из primary_data_tbl
+
+    Код исправления в sql_meta.py (строки 930-936):
+    - update_ts берется из tbl.c.update_ts вместо NULL
+    - update_ts добавлен в GROUP BY
+    """
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    # Создаем основную таблицу (posts)
+    posts_store = TableStoreDB(
+        dbconn,
+        "posts_table",
+        [
+            Column("post_id", String, primary_key=True),
+            Column("user_id", String),
+            Column("content", String),
+        ],
+        create_table=True,
+    )
+    posts_dt = ds.create_table("posts_table", posts_store)
+
+    # Создаем справочную таблицу (profiles)
+    profiles_store = TableStoreDB(
+        dbconn,
+        "profiles_table",
+        [
+            Column("id", String, primary_key=True),
+            Column("name", String),
+        ],
+        create_table=True,
+    )
+    profiles_dt = ds.create_table("profiles_table", profiles_store)
+
+    # Создаем выходную таблицу
+    output_store = TableStoreDB(
+        dbconn,
+        "enriched_posts",
+        [
+            Column("post_id", String, primary_key=True),
+            Column("user_id", String),
+            Column("content", String),
+        ],
+        create_table=True,
+    )
+    output_dt = ds.create_table("enriched_posts", output_store)
+
+    def join_func(posts_df, profiles_df):
+        # Обогащаем посты данными из profiles (хотя в этом тесте просто возвращаем posts)
+        return posts_df[["post_id", "user_id", "content"]]
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="join_test",
+        func=join_func,
+        input_dts=[
+            ComputeInput(dt=posts_dt, join_type="full"),  # Основная таблица
+            ComputeInput(
+                dt=profiles_dt,
+                join_type="full",
+                join_keys={"user_id": "id"},  # Reverse join
+            ),
+        ],
+        output_dts=[output_dt],
+        transform_keys=["post_id"],
+        use_offset_optimization=True,
+        chunk_size=10,
+    )
+
+    # 1. Создать данные в основной таблице
+    t1 = time.time()
+    posts_df = pd.DataFrame({
+        "post_id": ["post_1", "post_2"],
+        "user_id": ["user_1", "user_2"],
+        "content": ["Hello", "World"],
+    })
+    posts_dt.store_chunk(posts_df, now=t1)
+
+    # 2. Создать данные в справочной таблице
+    time.sleep(0.01)
+    t2 = time.time()
+    profiles_df = pd.DataFrame({
+        "id": ["user_1", "user_2"],
+        "name": ["Alice", "Bob"],
+    })
+    profiles_dt.store_chunk(profiles_df, now=t2)
+
+    # 3. Первый прогон - должен обработать все записи
+    step.run_full(ds)
+
+    output_data = output_dt.get_data()
+    assert len(output_data) == 2
+    assert set(output_data["post_id"]) == {"post_1", "post_2"}
+
+    # 4. Проверить offset
+    offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    assert "posts_table" in offsets
+    assert "profiles_table" in offsets
+    posts_offset = offsets["posts_table"]
+    profiles_offset = offsets["profiles_table"]
+
+    # 5. Повторный прогон - выборка должна быть ПУСТОЙ (нет новых изменений)
+    # Получаем количество батчей для обработки
+    idx_count, idx_gen = step.get_full_process_ids(ds=ds, run_config=None)
+
+    assert idx_count == 0, (
+        f"После первого успешного run_full выборка должна быть пустой. "
+        f"Получено {idx_count} батчей для обработки. "
+        f"Это указывает на то, что offset-оптимизация для JoinSpec НЕ работает: "
+        f"записи с join_keys переобрабатываются на каждом запуске из-за update_ts = NULL."
+    )
+
+    print("\n✅ SUCCESS: JoinSpec update_ts correctly taken from meta table, no reprocessing!")

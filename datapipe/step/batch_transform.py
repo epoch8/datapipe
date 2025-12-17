@@ -567,9 +567,8 @@ class BaseBatchTransformStep(ComputeStep):
 
         self.meta_table.mark_rows_processed_success(idx, process_ts=process_ts, run_config=run_config)
 
-        # НОВОЕ: Обновление offset'ов для каждой входной таблицы (Phase 3)
-        # Обновляем offset'ы всегда при успешной обработке, независимо от use_offset_optimization
-        # Это позволяет накапливать offset'ы для будущего использования
+        # Вычисляем и возвращаем offset'ы через ChangeList
+        # Это позволяет работать с RayExecutor и устраняет race conditions
         if output_dfs is not None:
             # Получаем индекс успешно обработанных записей из output_dfs
             # Используем первый output для извлечения processed_idx
@@ -582,26 +581,14 @@ class BaseBatchTransformStep(ComputeStep):
             if not first_output.empty:
                 processed_idx = data_to_index(first_output, self.transform_keys)
 
-                offsets_to_update = {}
-
                 for inp in self.input_dts:
                     # Найти максимальный update_ts из УСПЕШНО обработанного батча
                     max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
 
                     if max_update_ts is not None:
-                        offsets_to_update[(self.get_name(), inp.dt.name)] = max_update_ts
-
-                # Batch update всех offset'ов за одну транзакцию
-                if offsets_to_update:
-                    try:
-                        ds.offset_table.update_offsets_bulk(offsets_to_update)
-                    except Exception as e:
-                        # Таблица offset'ов может не существовать (create_meta_table=False)
-                        # Логируем warning но не прерываем выполнение
-                        logger.warning(
-                            f"Failed to update offsets for {self.get_name()}: {e}. "
-                            "Offset table may not exist (create_meta_table=False)"
-                        )
+                        offset_key = (self.get_name(), inp.dt.name)
+                        # Добавляем offset в ChangeList для возврата из функции
+                        changes.offsets[offset_key] = max_update_ts
 
         return changes
 
@@ -769,7 +756,8 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return
 
-        executor.run_process_batch(
+        # Получаем результат с offset'ами из executor'а
+        changes = executor.run_process_batch(
             name=self.name,
             ds=ds,
             idx_count=idx_count,
@@ -778,6 +766,25 @@ class BaseBatchTransformStep(ComputeStep):
             run_config=run_config,
             executor_config=self.executor_config,
         )
+
+        # КРИТИЧНО: Коммит offset'ов ТОЛЬКО после успешного завершения ВСЕГО run_full
+        # Offset'ы передаются через ChangeList.offsets, что работает с любым executor'ом
+        # Это обеспечивает атомарность: offset - маркер полностью обработанного прогона
+        # Предотвращает проблемы:
+        # 1. "Полудвиги" окна при падении mid-batch
+        # 2. Порчу offset'ов при вызове run_changelist (он вообще не должен трогать offset'ы)
+        # 3. Потерю offset'ов в RayExecutor (т.к. они теперь возвращаются через результат)
+        if changes.offsets:
+            try:
+                ds.offset_table.update_offsets_bulk(changes.offsets)
+                logger.info(f"Updated offsets for {self.get_name()}: {changes.offsets}")
+            except Exception as e:
+                # Таблица offset'ов может не существовать (create_meta_table=False)
+                # Логируем warning но не прерываем выполнение
+                logger.warning(
+                    f"Failed to update offsets for {self.get_name()}: {e}. "
+                    "Offset table may not exist (create_meta_table=False)"
+                )
 
         ds.event_logger.log_step_full_complete(self.name)
 

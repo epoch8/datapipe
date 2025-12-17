@@ -144,7 +144,6 @@ def test_offset_invariant_synchronous(dbconn: DBConn):
     )
 
 
-@pytest.mark.xfail(reason="Concurrent execution may violate offset invariant")
 def test_offset_invariant_concurrent(dbconn: DBConn):
     """
     Тест инварианта в асинхронном режиме (несколько подов параллельно).

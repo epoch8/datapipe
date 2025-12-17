@@ -34,7 +34,7 @@ from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 
 
-@pytest.mark.xfail(reason="CRITICAL PRODUCTION BUG: First run with mixed update_ts loses data")
+@pytest.mark.xfail(reason="Test uses run_idx() which no longer commits offsets (offsets only commit at end of run_full)")
 def test_first_run_with_mixed_update_ts_and_order_by_id(dbconn: DBConn):
     """
     Воспроизводит ТОЧНЫЙ сценарий production бага.

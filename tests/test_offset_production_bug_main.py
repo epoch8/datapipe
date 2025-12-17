@@ -170,21 +170,35 @@ def print_test_data_visualization(test_data: List[Tuple[str, str, float]], base_
 
 def test_production_bug_offset_loses_records_with_equal_update_ts(dbconn: DBConn):
     """
-    🚨 ВОСПРОИЗВОДИТ PRODUCTION БАГ: 48,915 записей потеряно (60%)
+    Тест >= неравенства в offset фильтре (исправление production бага).
 
-    Сценарий (упрощенная версия production):
-    1. Накапливается 25 записей с разными update_ts (chunk_size=10)
-    2. ПЕРВЫЙ запуск обрабатывает ТОЛЬКО первый батч (10 записей)
-    3. offset = MAX(update_ts) из этих 10 = T2
-    4. ВТОРОЙ запуск: WHERE update_ts > T2 (строгое неравенство!)
-    5. Записи с update_ts == T2 но не вошедшие в первый батч ПОТЕРЯНЫ
+    ИСХОДНЫЙ PRODUCTION БАГ (до атомарного commit):
+    - 82,000 записей накоплено, chunk_size=1000
+    - Обработан только ПЕРВЫЙ батч (частичная обработка)
+    - offset = MAX(update_ts) из батча
+    - Оставшиеся записи с update_ts == offset ПОТЕРЯНЫ (48,915 записей, 60%)
+    - Причина: WHERE update_ts > offset (строгое >) вместо >=
 
-    В production:
-    - 82,000 записей накоплено
-    - chunk_size=1000
-    - Потеряно 48,915 записей (60%)
+    ПОЧЕМУ СТАРЫЙ ТЕСТ НЕ РАБОТАЕТ:
+    С новым атомарным commit механизмом невозможно симулировать частичную
+    обработку через run_idx() - offset коммитится только после полного run_full().
 
-    Механизм тот же - строгое неравенство в фильтре offset.
+    НОВАЯ ВЕРСИЯ ТЕСТА (совместима с атомарным commit):
+    1. Загружаем 25 записей с разными update_ts
+    2. ПЕРВЫЙ run_full() обрабатывает ВСЕ записи, offset = MAX(update_ts)
+    3. Добавляем НОВЫЕ записи с update_ts == offset (критический случай!)
+    4. ВТОРОЙ run_full() должен обработать эти записи (тест >= вместо >)
+    5. Проверяем что НЕТ потерь данных
+
+    КОГДА ВОЗМОЖЕН СЦЕНАРИЙ "update_ts == offset между запусками"?
+    - Clock skew между серверами (разные системные часы)
+    - Backfill старых данных с прошлыми timestamp
+    - Delayed records из очереди с задержкой
+    - Ручное добавление записей с кастомным timestamp
+
+    СУТЬ ТЕСТА:
+    Проверяем что >= работает корректно и записи с update_ts == offset
+    обрабатываются, а не теряются (независимо от сценария возникновения).
     """
     # ========== SETUP ==========
     ds = DataStore(dbconn, create_meta_table=True)
@@ -226,14 +240,14 @@ def test_production_bug_offset_loses_records_with_equal_update_ts(dbconn: DBConn
         chunk_size=10,  # Маленький для быстрого теста (в production=1000)
     )
 
-    # ========== ПОДГОТОВКА ДАННЫХ ==========
+    # ========== ПОДГОТОВКА НАЧАЛЬНЫХ ДАННЫХ ==========
     base_time = time.time()
     test_data = prepare_test_data()
 
     # Визуализация данных
     print_test_data_visualization(test_data, base_time)
 
-    # Загружаем данные группами по timestamp
+    # Загружаем начальные данные группами по timestamp
     for record_id, label, offset in test_data:
         ts = base_time + offset
         input_dt.store_chunk(
@@ -246,20 +260,12 @@ def test_production_bug_offset_loses_records_with_equal_update_ts(dbconn: DBConn
     all_meta = input_dt.meta_table.get_metadata()
     print(f"\n✓ Всего записей загружено: {len(all_meta)}")
 
-    # ========== ПЕРВЫЙ ЗАПУСК (только 1 батч) ==========
+    # ========== ПЕРВЫЙ ЗАПУСК (обработка всех начальных записей) ==========
     print("\n" + "=" * 80)
-    print("ПЕРВЫЙ ЗАПУСК ТРАНСФОРМАЦИИ (обработка только 1 батча)")
+    print("ПЕРВЫЙ ЗАПУСК ТРАНСФОРМАЦИИ (run_full)")
     print("=" * 80)
 
-    # Имитируем отдельный запуск джобы: обрабатываем ТОЛЬКО первый батч
-    (idx_count, idx_gen) = step.get_full_process_ids(ds=ds, run_config=None)
-    print(f"Батчей доступно для обработки: {idx_count}")
-
-    # Обрабатываем ТОЛЬКО первый батч (как если бы джоба завершилась после него)
-    first_batch_idx = next(idx_gen)
-    idx_gen.close()  # Закрываем генератор, чтобы освободить соединение с БД
-    print(f"Обрабатываем первый батч, размер: {len(first_batch_idx)}")
-    step.run_idx(ds=ds, idx=first_batch_idx, run_config=None)
+    step.run_full(ds)
 
     # Проверяем offset после первого запуска
     offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
@@ -274,110 +280,116 @@ def test_production_bug_offset_loses_records_with_equal_update_ts(dbconn: DBConn
     processed_ids = sorted(output_after_first["id"].tolist())
     print(f"✓ Обработанные id: {', '.join(processed_ids[:5])}...{', '.join(processed_ids[-2:])}")
 
-    # ========== АНАЛИЗ ==========
+    # Проверяем что все начальные записи обработаны
+    assert len(output_after_first) == len(test_data), (
+        f"ОШИБКА: Первый run_full должен обработать все записи. "
+        f"Ожидалось {len(test_data)}, получено {len(output_after_first)}"
+    )
+
+    # ========== КРИТИЧЕСКИЙ СЦЕНАРИЙ: Добавляем записи с update_ts == offset ==========
     print("\n" + "=" * 80)
-    print("АНАЛИЗ: Какие записи останутся необработанными?")
+    print("КРИТИЧЕСКИЙ СЦЕНАРИЙ: Добавление записей с update_ts == offset")
     print("=" * 80)
 
-    # Проверяем что обработан только один батч
-    if len(output_after_first) >= len(test_data):
+    # Добавляем НОВЫЕ записи с timestamp РАВНЫМ offset
+    # Это воспроизводит production баг: записи с update_ts == offset должны обрабатываться!
+    critical_timestamp = offset_after_first
+    critical_records = [
+        ("rec_critical_01", 999),
+        ("rec_critical_02", 998),
+        ("rec_critical_03", 997),
+    ]
+
+    print(f"\nДобавляем {len(critical_records)} записей с update_ts == {critical_timestamp:.2f}")
+    for record_id, value in critical_records:
+        input_dt.store_chunk(
+            pd.DataFrame({"id": [record_id], "value": [value]}),
+            now=critical_timestamp
+        )
+        time.sleep(0.001)
+
+    # Проверяем что записи действительно имеют update_ts == offset
+    critical_meta = input_dt.meta_table.get_metadata(
+        pd.DataFrame({"id": [rec[0] for rec in critical_records]})
+    )
+    for idx, row in critical_meta.iterrows():
+        assert abs(row["update_ts"] - critical_timestamp) < 0.01, (
+            f"ОШИБКА В ТЕСТЕ: Запись {row['id']} должна иметь update_ts == offset"
+        )
+        print(f"  {row['id']}: update_ts={row['update_ts']:.2f} == offset={critical_timestamp:.2f}")
+
+    # ========== ВТОРОЙ ЗАПУСК (тестируем >= вместо >) ==========
+    print("\n" + "=" * 80)
+    print("ВТОРОЙ ЗАПУСК ТРАНСФОРМАЦИИ (проверка >= вместо >)")
+    print("=" * 80)
+
+    # Проверяем сколько записей будет обработано
+    changed_count = step.get_changed_idx_count(ds)
+    print(f"Записей для обработки: {changed_count}")
+
+    if changed_count == 0:
         pytest.fail(
-            f"ОШИБКА В ТЕСТЕ: Обработано {len(output_after_first)} записей, "
-            f"ожидалось ~10 (один батч). Тест не симулирует отдельные запуски."
+            f"\n🚨 КРИТИЧЕСКИЙ БАГ В OFFSET OPTIMIZATION!\n"
+            f"{'=' * 50}\n"
+            f"Добавлено {len(critical_records)} НОВЫХ записей с update_ts == offset={critical_timestamp:.2f}\n"
+            f"Но get_changed_idx_count вернул 0 - записи НЕ ВИДНЫ для обработки!\n\n"
+            f"МЕХАНИЗМ БАГА:\n"
+            f"WHERE update_ts > offset (строгое неравенство!) пропускает записи с update_ts == offset\n"
+            f"Должно быть: WHERE update_ts >= offset\n\n"
+            f"В PRODUCTION: Этот баг привел к потере 48,915 из 82,000 записей (60%)\n"
+            f"{'=' * 50}"
         )
 
-    print(f"✓ Обработан только один батч: {len(output_after_first)} из {len(test_data)} записей")
+    # NOTE: changed_count может быть > len(critical_records) потому что >= включает
+    # старые записи с update_ts == offset. Система отфильтрует их по process_ts.
+    # Главное - чтобы критические записи были видны и обработаны!
+    print(f"  (может включать старые записи с update_ts == offset, они будут отфильтрованы по process_ts)")
 
-    # Находим записи которые будут потеряны
-    all_ids = set([rec[0] for rec in test_data])
-    processed_ids_set = set(output_after_first["id"].tolist())
-    unprocessed_ids = all_ids - processed_ids_set
-
-    # Проверяем какие из необработанных записей имеют update_ts <= offset
-    lost_records = []
-    for record_id, label, offset_val in test_data:
-        if record_id in unprocessed_ids:
-            ts = base_time + offset_val
-            if ts <= offset_after_first:
-                lost_records.append((record_id, label, ts))
-
-    if lost_records:
-        print(f"\n🚨 ОБНАРУЖЕНЫ ЗАПИСИ КОТОРЫЕ БУДУТ ПОТЕРЯНЫ: {len(lost_records)}")
-        print("   Эти записи имеют update_ts <= offset, но НЕ обработаны!")
-        for record_id, label, ts in lost_records:
-            status = "==" if abs(ts - offset_after_first) < 0.01 else "<"
-            print(f"   {record_id:10} ({label}) update_ts {status} offset")
-
-    # ========== ВТОРОЙ ЗАПУСК ==========
-    print("\n" + "=" * 80)
-    print("ВТОРОЙ ЗАПУСК ТРАНСФОРМАЦИИ (имитация повторного запуска джобы)")
-    print("=" * 80)
-
-    # Получаем батчи для второго запуска (с учетом offset)
-    (idx_count_second, idx_gen_second) = step.get_full_process_ids(ds=ds, run_config=None)
-    print(f"Батчей доступно для обработки: {idx_count_second}")
-
-    if idx_count_second > 0:
-        # Обрабатываем оставшиеся батчи
-        for idx in idx_gen_second:
-            print(f"Обрабатываем батч, размер: {len(idx)}")
-            step.run_idx(ds=ds, idx=idx, run_config=None)
-        idx_gen_second.close()  # Закрываем генератор после использования
+    # Запускаем обработку
+    step.run_full(ds)
 
     # ========== ПРОВЕРКА РЕЗУЛЬТАТА ==========
+    print("\n" + "=" * 80)
+    print("ПРОВЕРКА РЕЗУЛЬТАТА")
+    print("=" * 80)
+
     final_output = output_dt.get_data()
     final_processed_ids = set(final_output["id"].tolist())
 
+    # Проверяем что все критические записи обработаны
+    all_critical_processed = all(rec[0] in final_processed_ids for rec in critical_records)
+
     print(f"\nФинальный результат:")
-    print(f"  Всего записей в input:  {len(test_data)}")
+    print(f"  Начальных записей:      {len(test_data)}")
+    print(f"  Критических записей:    {len(critical_records)}")
+    print(f"  ВСЕГО ожидается:        {len(test_data) + len(critical_records)}")
     print(f"  Обработано в output:    {len(final_output)}")
-    print(f"  ПОТЕРЯНО:               {len(all_ids) - len(final_processed_ids)}")
 
-    # КРИТИЧНАЯ ПРОВЕРКА: Все ли записи обработаны?
-    if len(final_output) < len(test_data):
-        # Находим потерянные записи
-        lost_ids = all_ids - final_processed_ids
-        lost_records_final = []
-        for record_id, label, offset_val in test_data:
-            if record_id in lost_ids:
-                lost_records_final.append((record_id, label, base_time + offset_val))
-
-        print("\n" + "=" * 80)
-        print("🚨 КРИТИЧЕСКИЙ БАГ ВОСПРОИЗВЕДЕН!")
-        print("=" * 80)
-        print(f"\nПотерянные записи ({len(lost_records_final)}):")
-        for record_id, label, ts in lost_records_final:
-            print(f"  {record_id:10} ({label}) update_ts={ts:.2f} {'==' if abs(ts - offset_after_first) < 0.01 else '<='} offset={offset_after_first:.2f}")
-
-        # Группируем по timestamp
-        by_label = {}
-        for record_id, label, ts in lost_records_final:
-            if label not in by_label:
-                by_label[label] = []
-            by_label[label].append(record_id)
-
-        print(f"\nРаспределение потерянных по временной метке:")
-        for label in sorted(by_label.keys()):
-            ids = by_label[label]
-            print(f"  {label}: {len(ids)} записей - {', '.join(ids)}")
+    if not all_critical_processed:
+        lost_critical = [rec[0] for rec in critical_records if rec[0] not in final_processed_ids]
+        print(f"\n🚨 ПОТЕРЯНЫ КРИТИЧЕСКИЕ ЗАПИСИ: {lost_critical}")
 
         pytest.fail(
             f"\n🚨 КРИТИЧЕСКИЙ БАГ В OFFSET OPTIMIZATION!\n"
             f"{'=' * 50}\n"
-            f"Всего записей:      {len(test_data)}\n"
-            f"Обработано:         {len(final_output)}\n"
-            f"ПОТЕРЯНО:           {len(lost_records_final)} ({len(lost_records_final)*100/len(test_data):.1f}%)\n"
-            f"offset после 1-го:  {offset_after_first:.2f}\n\n"
+            f"Критические записи с update_ts == offset НЕ обработаны!\n"
+            f"Потеряно: {len(lost_critical)} из {len(critical_records)}\n"
+            f"Потерянные id: {lost_critical}\n\n"
             f"МЕХАНИЗМ БАГА:\n"
-            f"1. Первый батч (10 записей) содержал записи с РАЗНЫМИ update_ts\n"
-            f"2. offset установлен на MAX(update_ts) = {offset_after_first:.2f}\n"
-            f"3. Записи с update_ts == offset НО не вошедшие в первый батч ПОТЕРЯНЫ!\n"
-            f"4. Причина: WHERE update_ts > offset (строгое >) вместо >=\n\n"
-            f"В PRODUCTION: 82,000 записей, chunk_size=1000, потеряно 48,915 (60%)\n"
+            f"WHERE update_ts > offset (строгое >) вместо >=\n"
+            f"Записи с update_ts == offset пропускаются!\n\n"
+            f"В PRODUCTION: 82,000 записей, потеряно 48,915 (60%)\n"
             f"{'=' * 50}"
         )
 
-    print("\n✅ Все записи обработаны корректно")
+    # Финальная проверка: все записи обработаны
+    expected_total = len(test_data) + len(critical_records)
+    assert len(final_output) == expected_total, (
+        f"Ожидалось {expected_total} записей, получено {len(final_output)}"
+    )
+
+    print(f"\n✅ Все записи обработаны корректно!")
+    print(f"✅ Записи с update_ts == offset обработаны (>= работает правильно)")
 
 
 if __name__ == "__main__":

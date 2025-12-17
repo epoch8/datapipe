@@ -80,6 +80,8 @@ PipelineInput = Union[TableOrName, JoinSpec]
 @dataclass
 class ChangeList:
     changes: Dict[str, IndexDF] = field(default_factory=lambda: cast(Dict[str, IndexDF], {}))
+    # Offset'ы для оптимизации: (step_name, input_table_name) -> max_update_ts
+    offsets: Dict[Tuple[str, str], float] = field(default_factory=dict)
 
     def append(self, table_name: str, idx: IndexDF) -> None:
         if table_name in self.changes:
@@ -96,6 +98,10 @@ class ChangeList:
     def extend(self, other: ChangeList):
         for key in other.changes.keys():
             self.append(key, other.changes[key])
+
+        # Объединяем offset'ы: берем максимум для каждого ключа
+        for key, offset in other.offsets.items():
+            self.offsets[key] = max(self.offsets.get(key, 0), offset)
 
     def empty(self):
         return len(self.changes.keys()) == 0
