@@ -100,8 +100,8 @@ class ChangeList:
             self.append(key, other.changes[key])
 
         # Объединяем offset'ы: берем максимум для каждого ключа
-        for key, offset in other.offsets.items():
-            self.offsets[key] = max(self.offsets.get(key, 0), offset)
+        for offset_key, offset_value in other.offsets.items():
+            self.offsets[offset_key] = max(self.offsets.get(offset_key, 0), offset_value)
 
     def empty(self):
         return len(self.changes.keys()) == 0
