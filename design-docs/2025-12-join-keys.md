@@ -48,3 +48,4 @@ without renamings, it is up to end user to interpret the data.
 * `datapipe.compute.ComputeInput` receives `join_keys` parameter
 * `datapipe.meta.sql_meta.SQLTableMeta` receives `join_keys` parameter into
   `get_agg_cte` i.e. it starts producing subquery with renamed keys
+* `DataTable.get_data` accepts `join_keys` and pass idx through TableMeta to compute ids to retrieve from DataStore
