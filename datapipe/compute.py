@@ -86,6 +86,11 @@ class ComputeInput:
     dt: DataTable
     join_type: Literal["inner", "full"] = "full"
 
+    # Alias dt column name to input index column name
+    # Example: {"table_col": "idx_col"} means filter dt by dt.table_col IN (idx.idx_col)
+    # I.e. from the join perspective table column is named "idx_col"
+    join_keys: Optional[Dict[str, str]] = None
+
 
 class ComputeStep:
     """
@@ -114,8 +119,7 @@ class ComputeStep:
         self._name = name
         # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
         self.input_dts = [
-            inp if isinstance(inp, ComputeInput) else ComputeInput(dt=inp, join_type="full")
-            for inp in input_dts
+            inp if isinstance(inp, ComputeInput) else ComputeInput(dt=inp, join_type="full") for inp in input_dts
         ]
         self.output_dts = output_dts
         self._labels = labels
