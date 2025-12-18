@@ -22,7 +22,7 @@ BatchTransform(
         User,
 
         # matches tr.sub_user_id = User.user_id
-        ComputeInput(User, join_keys={"user_id", "sub_user_id"}) 
+        JoinSpec(User, join_keys={"user_id", "sub_user_id"}) 
     ],
     outputs=[...],
 )
