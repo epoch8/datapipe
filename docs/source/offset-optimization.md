@@ -32,7 +32,7 @@
 - Инициализации офсетов из существующих метаданных
 - Сброса офсетов для полной переобработки
 
-[Подробнее →](./offset-optimization-detailed.md#1-хранение-и-управление-офсетами)
+[Подробнее →](./offset-optimization-storage.md)
 
 ### 2. Оптимизированные SQL-запросы (v1 vs v2)
 
@@ -40,7 +40,7 @@
 - **v1 (FULL OUTER JOIN)** — традиционный подход без офсетов
 - **v2 (Offset-based)** — оптимизированный подход с ранней фильтрацией по офсетам
 
-[Подробнее →](./offset-optimization-detailed.md#2-оптимизированные-sql-запросы-v1-vs-v2)
+[Подробнее →](./offset-optimization-sql-queries.md)
 
 ### 3. Reverse Join для референсных таблиц
 
@@ -48,7 +48,7 @@
 
 **Пример:** При обновлении `profiles.name` находятся все `posts` этого пользователя через `posts.profile_id = profiles.id`.
 
-[Подробнее →](./offset-optimization-detailed.md#3-reverse-join-для-референсных-таблиц)
+[Подробнее →](./offset-optimization-reverse-join.md)
 
 ### 4. Filtered Join — оптимизация чтения референсных таблиц
 
@@ -56,7 +56,7 @@
 
 **Пример:** Если обрабатываются посты 10 пользователей, из таблицы `profiles` читаются только профили этих 10 пользователей, а не все миллионы.
 
-[Подробнее →](./offset-optimization-detailed.md#4-filtered-join)
+[Подробнее →](./offset-optimization-filtered-join.md)
 
 ### 5. Стратегия фиксации офсетов
 
@@ -67,7 +67,7 @@
 
 **Планы развития:** В планах вернуть коммит офсетов после каждого батча, чтобы избежать ситуации, когда при сбое во время обработки большой таблицы приходится начинать с самого начала. При побатчевом коммите офсет будет сохраняться после каждого успешно обработанного батча, что позволит продолжить обработку с последнего завершенного батча вместо полной переобработки.
 
-[Подробнее →](./offset-optimization-detailed.md#5-стратегия-фиксации-офсетов)
+[Подробнее →](./offset-optimization-commit-strategy.md)
 
 ### 6. Инициализация офсетов
 
@@ -76,7 +76,7 @@
 2. Для каждой входной таблицы находит MAX(update_ts) где update_ts <= min_process_ts
 3. Устанавливает это значение как начальный офсет
 
-[Подробнее →](./offset-optimization-detailed.md#6-инициализация-офсетов)
+[Подробнее →](./offset-optimization-initialization.md)
 
 ## Как включить оптимизацию
 
@@ -175,10 +175,14 @@ step.run_full(ds, run_config=run_config)
 
 ## Дополнительные материалы
 
-- [Подробное описание Offset Optimization](./offset-optimization-detailed.md) — детальное описание всех фич и алгоритмов
-- [How Merging Works](./how-merging-works.md) — понимание стратегии changelist запросов
-- [BatchTransform Reference](./reference-batchtransform.md) — справочник по конфигурации трансформаций
-- [Lifecycle of a ComputeStep](./transformation-lifecycle.md) — жизненный цикл выполнения трансформации
+**Детальное описание фич:**
+- [Хранение и управление офсетами](./offset-optimization-storage.md)
+- [Оптимизированные SQL-запросы](./offset-optimization-sql-queries.md)
+- [Reverse Join](./offset-optimization-reverse-join.md)
+- [Filtered Join](./offset-optimization-filtered-join.md)
+- [Стратегия фиксации офсетов](./offset-optimization-commit-strategy.md)
+- [Инициализация офсетов](./offset-optimization-initialization.md)
+- [Метрики и мониторинг](./offset-optimization-monitoring.md)
 
 ## Тестирование
 
