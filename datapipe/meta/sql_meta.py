@@ -357,35 +357,43 @@ class SQLTableMeta(TableMeta):
     def get_agg_cte(
         self,
         transform_keys: List[str],
+        join_keys: Optional[Dict[str, str]] = None,
         filters_idx: Optional[IndexDF] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[List[str], Any]:
         """
-        Create a CTE that aggregates the table by transform keys and returns the
-        maximum update_ts for each group.
+        Create a CTE that aggregates the table by transform keys, applies
+        join_keys aliasing and returns the maximum update_ts for each group.
+
+        * `join_keys` is a mapping from table key to transform key
+        * `transform_keys` is a list of keys used in the transformation
 
         CTE has the following columns:
 
         * transform keys which are present in primary keys
         * update_ts
 
-        Returns a tuple of (keys, CTE).
+        Returns a tuple of (keys, CTE) where
+        * keys is a list of transform keys present in primary keys of this CTE
         """
 
         tbl = self.sql_table
 
-        keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols: List[Any] = [sa.column(k) for k in keys]
+        table_to_transform_key: Dict[str, str] = join_keys or {}
+        transform_to_table_key: Dict[str, str] = {v: k for k, v in table_to_transform_key.items()}
+
+        cte_transform_keys = [k for k in transform_keys if transform_to_table_key.get(k, k) in self.primary_keys]
+        key_cols: List[Any] = [sa.column(transform_to_table_key.get(k, k)).label(k) for k in cte_transform_keys]
 
         sql: Any = sa.select(*key_cols + [sa.func.max(tbl.c["update_ts"]).label("update_ts")]).select_from(tbl)
 
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
 
-        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+        sql = sql_apply_filters_idx_to_subquery(sql, cte_transform_keys, filters_idx)  # ???
+        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)  # ???
 
-        return (keys, sql.cte(name=f"{tbl.name}__update"))
+        return (cte_transform_keys, sql.cte(name=f"{tbl.name}__update"))
 
 
 TRANSFORM_META_SCHEMA: DataSchema = [
@@ -399,7 +407,8 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 @dataclass
 class SQLMetaComputeInput:
     table: "SQLTableMeta"
-    join_type: Literal["inner", "full"] = "full"
+    join_type: Literal["inner", "full"]
+    join_keys: Optional[Dict[str, str]]
 
 
 class SQLTransformMeta(TransformMeta):
@@ -725,6 +734,7 @@ class SQLTransformMeta(TransformMeta):
         for inp in self.input_mts:
             keys, cte = inp.table.get_agg_cte(
                 transform_keys=self.primary_keys,
+                join_keys=inp.join_keys,
                 filters_idx=filters_idx,
                 run_config=run_config,
             )
@@ -960,6 +970,7 @@ class SQLMetaPlane(MetaPlane):
                 SQLMetaComputeInput(
                     table=inp.dt.meta,
                     join_type=inp.join_type,
+                    join_keys=inp.join_keys,
                 )
             )
 
