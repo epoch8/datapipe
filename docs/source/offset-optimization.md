@@ -1,167 +1,226 @@
-# Offset Optimization
+# Оптимизация на основе офсетов (Offset Optimization)
 
-Offset optimization is a feature that improves performance of incremental processing by tracking the last processed timestamp (offset) for each input table in a transformation. This allows Datapipe to skip already-processed records without scanning the entire transformation metadata table.
+## Введение
 
-## How It Works
+Оптимизация на основе офсетов (offset optimization) — это функция, которая значительно повышает производительность инкрементальной обработки данных путем отслеживания временной метки последней обработки (offset) для каждой входной таблицы трансформации. Это позволяет Datapipe пропускать уже обработанные записи без полного сканирования таблицы метаданных трансформации.
 
-### Without Offset Optimization (v1)
+## Краткая концепция
 
-The traditional approach (v1) uses a FULL OUTER JOIN between input tables and transformation metadata:
+### Традиционный подход (v1)
 
-```sql
-SELECT transform_keys
-FROM input_table
-FULL OUTER JOIN transform_meta ON transform_keys
-WHERE input.update_ts > transform_meta.process_ts
-   OR transform_meta.is_success != True
-```
+Без оптимизации Datapipe использует FULL OUTER JOIN между входными таблицами и таблицей метаданных трансформации для поиска измененных записей. Этот подход корректен, но требует полного сканирования метаданных на каждом запуске, что замедляет обработку по мере роста объема обработанных данных.
 
-This approach:
-- ✅ Always correct - finds all records that need processing
-- ❌ Scans entire transformation metadata table on every run
-- ❌ Performance degrades as metadata grows
+**Сложность:** O(N), где N — размер таблицы метаданных
 
-### With Offset Optimization (v2)
+### Оптимизированный подход (v2)
 
-The optimized approach (v2) uses per-input-table offsets to filter data early:
+С включенной оптимизацией Datapipe:
+1. **Отслеживает офсеты** — для каждой входной таблицы трансформации хранится максимальная обработанная временная метка `update_ts`
+2. **Фильтрует данные рано** — применяет фильтр `WHERE update_ts >= offset` на уровне входных таблиц, используя индекс
+3. **Минимизирует сканирование** — обрабатывает только записи, измененные с момента последнего запуска
+4. **Атомарно фиксирует офсеты** — обновляет офсеты только после успешного завершения всего run_full
 
-```sql
--- For each input table, filter by offset first
-WITH input_changes AS (
-    SELECT transform_keys, update_ts
-    FROM input_table
-    WHERE update_ts >= :offset  -- Early filtering by offset
-),
-error_records AS (
-    SELECT transform_keys
-    FROM transform_meta
-    WHERE is_success != True
-)
--- Union all changes
-SELECT transform_keys, update_ts
-FROM input_changes
-UNION ALL
-SELECT transform_keys, NULL as update_ts
-FROM error_records
--- Then check process_ts to avoid reprocessing
-LEFT JOIN transform_meta ON transform_keys
-WHERE update_ts IS NULL  -- Error records
-   OR process_ts IS NULL  -- Never processed
-   OR (is_success = True AND update_ts > process_ts)  -- Updated after processing
-ORDER BY update_ts, transform_keys
-```
+**Сложность:** O(M), где M — количество записей, измененных с последнего запуска
 
-This approach:
-- ✅ Filters most records early using index on `update_ts`
-- ✅ Only scans records with `update_ts >= offset`
-- ✅ Performance stays constant regardless of metadata size
-- ⚠️ Requires careful implementation to avoid data loss
+## Основные возможности (Features)
 
-## Key Implementation Details
+### 1. Хранение и управление офсетами
 
-### 1. Inclusive Inequality (`>=` not `>`)
+**TransformInputOffsetTable** — таблица для хранения офсетов с API для:
+- Получения офсетов для трансформации
+- Атомарного обновления одного или нескольких офсетов
+- Инициализации офсетов из существующих метаданных
+- Сброса офсетов для полной переобработки
 
-The offset filter must use `>=` instead of `>`:
+[Подробнее →](./offset-optimization-detailed.md#1-хранение-и-управление-офсетами)
 
-```python
-# Correct
-WHERE update_ts >= offset
+### 2. Оптимизированные SQL-запросы (v1 vs v2)
 
-# Wrong - loses records with update_ts == offset
-WHERE update_ts > offset
-```
+Два алгоритма построения запросов на поиск измененных записей:
+- **v1 (FULL OUTER JOIN)** — традиционный подход без офсетов
+- **v2 (Offset-based)** — оптимизированный подход с ранней фильтрацией по офсетам
 
-### 2. Process Timestamp Check
+[Подробнее →](./offset-optimization-detailed.md#2-оптимизированные-sql-запросы-v1-vs-v2)
 
-After filtering by offset, we must check `process_ts` to avoid reprocessing:
+### 3. Reverse Join для референсных таблиц
 
-```python
-WHERE (
-    update_ts IS NULL  # Error records (always process)
-    OR process_ts IS NULL  # Never processed
-    OR (is_success = True AND update_ts > process_ts)  # Updated after last processing
-)
-```
+При изменении записей в референсной таблице (например, справочник пользователей) Datapipe автоматически находит все зависимые записи в основной таблице через **reverse join** с использованием `join_keys`.
 
-This prevents infinite loops when using `>=` offset.
+**Пример:** При обновлении `profiles.name` находятся все `posts` этого пользователя через `posts.profile_id = profiles.id`.
 
-### 3. Ordering
+[Подробнее →](./offset-optimization-detailed.md#3-reverse-join-для-референсных-таблиц)
 
-Results are ordered by `update_ts` first, then `transform_keys` for determinism:
+### 4. Filtered Join — оптимизация чтения референсных таблиц
 
-```sql
-ORDER BY update_ts, transform_keys
-```
+Вместо чтения всей референсной таблицы, Datapipe извлекает только те записи, которые реально нужны для обработки текущего батча. Это достигается через фильтрацию по уникальным значениям внешних ключей из индекса измененных записей.
 
-This ensures that:
-- Records are processed in chronological order
-- The offset accurately represents the last processed timestamp
-- No records with earlier timestamps are skipped
+**Пример:** Если обрабатываются посты 10 пользователей, из таблицы `profiles` читаются только профили этих 10 пользователей, а не все миллионы.
 
-### 4. Error Records
+[Подробнее →](./offset-optimization-detailed.md#4-filtered-join)
 
-Records that failed processing (`is_success != True`) are always included via a separate CTE, regardless of offset:
+### 5. Стратегия фиксации офсетов
 
-```sql
-error_records AS (
-    SELECT transform_keys, NULL as update_ts
-    FROM transform_meta
-    WHERE is_success != True
-)
-```
+Офсеты фиксируются **атомарно в конце run_full** после успешной обработки всех батчей. Это гарантирует:
+- **Отсутствие потери данных** — при сбое в середине обработки офсет не изменяется, данные переобработаются
+- **Изоляцию от run_changelist** — инкрементальные запуски не меняют глобальные офсеты
+- **Корректное восстановление** — после перезапуска обработка продолжается с последнего гарантированно завершенного run_full
 
-Error records have `update_ts = NULL` to distinguish them from changed records.
+**Планы развития:** В планах вернуть коммит офсетов после каждого батча, чтобы избежать ситуации, когда при сбое во время обработки большой таблицы приходится начинать с самого начала. При побатчевом коммите офсет будет сохраняться после каждого успешно обработанного батча, что позволит продолжить обработку с последнего завершенного батча вместо полной переобработки.
 
-## Enabling Offset Optimization
+[Подробнее →](./offset-optimization-detailed.md#5-стратегия-фиксации-офсетов)
 
-Offset optimization is controlled by the `use_offset_optimization` field in transform configuration:
+### 6. Инициализация офсетов
+
+Функция **initialize_offsets_from_transform_meta()** позволяет включить оптимизацию на существующих трансформациях без потери данных:
+1. Находит MIN(process_ts) из успешно обработанных записей
+2. Для каждой входной таблицы находит MAX(update_ts) где update_ts <= min_process_ts
+3. Устанавливает это значение как начальный офсет
+
+[Подробнее →](./offset-optimization-detailed.md#6-инициализация-офсетов)
+
+## Как включить оптимизацию
+
+### В определении трансформации
 
 ```python
-BatchTransform(
-    func=my_transform,
-    inputs=[input_table],
-    outputs=[output_table],
-    # Add this field to enable offset optimization
-    use_offset_optimization=True,
+from datapipe.step.batch_transform import BatchTransformStep
+from datapipe.compute import ComputeInput
+
+step = BatchTransformStep(
+    ds=ds,
+    name="process_posts",
+    func=transform_function,
+    input_dts=[
+        # Основная таблица (без join_keys)
+        ComputeInput(dt=posts_table, join_type="full"),
+
+        # Референсная таблица с reverse join
+        ComputeInput(
+            dt=profiles_table,
+            join_type="inner",
+            join_keys={"user_id": "id"}  # posts.user_id = profiles.id
+        ),
+    ],
+    output_dts=[output_table],
+    transform_keys=["post_id"],
+
+    # Включение offset-оптимизации
+    use_offset_optimization=True
 )
 ```
 
-When enabled, Datapipe tracks offsets in the `offset_table` and uses them to optimize changelist queries.
-
-## Important Considerations
-
-### Timestamp Accuracy
-
-The offset optimization relies on accurate timestamps. If you manually call `store_chunk()` with a `now` parameter that is in the past:
+### В runtime через RunConfig
 
 ```python
-# Warning: This may cause data loss with offset optimization!
-dt.store_chunk(data, now=old_timestamp)
+from datapipe.run_config import RunConfig
+
+run_config = RunConfig(
+    labels={"use_offset_optimization": True}
+)
+
+step.run_full(ds, run_config=run_config)
 ```
 
-Datapipe will log a warning:
+## Когда использовать
+
+### Рекомендуется использовать
+
+- ✅ **Большие таблицы метаданных** — трансформации с большим количеством обработанных записей (> 100k)
+- ✅ **Инкрементальные обновления** — малая доля данных изменяется на каждом запуске (< 10%)
+- ✅ **Индекс на update_ts** — входные таблицы имеют индекс на поле update_ts
+- ✅ **Референсные таблицы** — используются справочники с join_keys
+- ✅ **Production окружение** — стабильные пайплайны с регулярными запусками
+
+### Не рекомендуется использовать
+
+- ❌ **Полная переобработка** — если обрабатываются все данные на каждом запуске
+- ❌ **Малый объем метаданных** — если таблица метаданных небольшая (< 10k записей)
+- ❌ **Высокая доля изменений** — если большинство записей обновляется на каждом запуске (> 50%)
+- ❌ **Разработка/отладка** — на этапе разработки удобнее использовать v1 для простоты
+
+## Архитектура и поток данных
 
 ```
-WARNING - store_chunk called with now=X which is Ys in the past.
-This may cause data loss with offset optimization if offset > now.
+┌─────────────────────────────────────────────────────────────┐
+│                        DataStore                            │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ offset_table: TransformInputOffsetTable              │   │
+│  │  - get_offset(transformation_id, table_name)         │   │
+│  │  - update_offsets_bulk(offsets)                      │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                            ↑
+                            │ используется в run_full()
+                            │
+┌─────────────────────────────────────────────────────────────┐
+│              BaseBatchTransformStep                         │
+│                                                             │
+│  1. build_changed_idx_sql() → v2 с офсетами                 │
+│  2. get_batch_input_dfs() → filtered join                   │
+│  3. store_batch_result() → накопление офсетов в ChangeList  │
+│  4. run_full() → фиксация офсетов через                     │
+│     offset_table.update_offsets_bulk()                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-In normal operation, `store_chunk()` uses the current time automatically, so this is not a concern unless you explicitly provide the `now` parameter.
+## Критически важные детали реализации
 
-### When to Use
+1. **Инклюзивное неравенство** — используется `>=` а не `>` для избежания потери граничных записей
+2. **Проверка process_ts** — даже с офсетом проверяется `process_ts > update_ts` для предотвращения зацикливания
+3. **Reverse join для референсов** — автоматическое построение обратного join при наличии join_keys
+4. **Атомарная фиксация офсетов** — офсеты фиксируются только после успешного run_full
+5. **Записи с ошибками всегда включены** — записи с `is_success != True` включаются вне зависимости от офсета
+6. **NULL update_ts для ошибок** — записи с ошибками маркируются NULL update_ts для отличия от измененных записей
+7. **Сортировка по update_ts** — хронологический порядок критичен для корректности офсетов
 
-Offset optimization is most beneficial when:
-- ✅ Transformations have large metadata tables (many processed records)
-- ✅ Incremental updates are small compared to total data
-- ✅ Input tables have an index on `update_ts`
+## Дополнительные материалы
 
-It may not help when:
-- ❌ Processing all data on every run (full refresh)
-- ❌ Metadata table is small (< 10k records)
-- ❌ Most records are updated on every run
+- [Подробное описание Offset Optimization](./offset-optimization-detailed.md) — детальное описание всех фич и алгоритмов
+- [How Merging Works](./how-merging-works.md) — понимание стратегии changelist запросов
+- [BatchTransform Reference](./reference-batchtransform.md) — справочник по конфигурации трансформаций
+- [Lifecycle of a ComputeStep](./transformation-lifecycle.md) — жизненный цикл выполнения трансформации
 
-## See Also
+## Тестирование
 
-- [How Merging Works](./how-merging-works.md) - Understanding the changelist query strategy
-- [BatchTransform](./reference-batchtransform.md) - Transform configuration reference
-- [Lifecycle of a ComputeStep](./transformation-lifecycle.md) - Transformation execution flow
+Offset-оптимизация покрыта комплексным набором тестов:
+- `tests/test_offset_table.py` — операции с таблицей офсетов
+- `tests/test_offset_auto_update.py` — автоматическое обновление офсетов
+- `tests/test_offset_joinspec.py` — reverse join с join_keys
+- `tests/test_multi_table_filtered_join.py` — filtered join
+- `tests/test_batch_transform_with_offset_optimization.py` — интеграционные тесты
+- `tests/offset_edge_cases/` — граничные случаи и edge cases (13+ тестов)
+
+Нагрузочное тестирование: https://github.com/epoch8/datapipe-perf
+
+## Мониторинг и метрики
+
+Offset-оптимизация предоставляет метрики для мониторинга через Prometheus. Таблица офсетов поддерживает метод `get_statistics()`, который возвращает статистику по офсетам:
+
+```python
+# Получить статистику по всем офсетам
+stats = ds.offset_table.get_statistics()
+
+# Получить статистику для конкретной трансформации
+stats = ds.offset_table.get_statistics(transformation_id="process_posts")
+```
+
+**Доступные метрики:**
+- `transformation_id` — ID трансформации
+- `input_table_name` — имя входной таблицы
+- `update_ts_offset` — текущее значение офсета (timestamp)
+- `offset_age_seconds` — возраст офсета в секундах (сколько времени прошло с момента last processed update_ts)
+
+**Использование для мониторинга:**
+
+Метрика `offset_age_seconds` особенно полезна для мониторинга:
+- **Растущий offset_age** — индикатор того, что обработка отстает от поступления данных
+- **Стабильный offset_age** — нормальная работа с регулярными запусками
+- **Большой offset_age** — возможная проблема (трансформация долго не запускалась или упала)
+
+Эти метрики можно экспортировать в Prometheus для визуализации в Grafana и настройки алертов.
+
+## История и текущий статус
+
+Offset-оптимизация прошла первое тестирование в production окружении и показала значительное улучшение производительности для трансформаций с большими объемами обработанных данных. Функция стабильна и готова для использования в production.
+
+**Ветка разработки:** `Looky-7769/offsets`
