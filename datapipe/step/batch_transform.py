@@ -272,7 +272,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
         # TODO consider parallel fetch through executor
-        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.join_keys)) for inp in self.input_dts]
+        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.key_mapping)) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,

@@ -67,7 +67,7 @@ def test_compute_transform_schema_success(
     expected_keys,
 ):
     inp_mts = [
-        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", join_keys=None)
+        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", key_mapping=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
@@ -85,7 +85,7 @@ def test_compute_transform_schema_fail(
     transform_keys,
 ):
     inp_mts = [
-        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", join_keys=None)
+        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", key_mapping=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]

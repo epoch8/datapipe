@@ -171,21 +171,21 @@ class TableMeta:
     def transform_idx_to_table_idx(
         self,
         transform_idx: IndexDF,
-        join_keys: Optional[Dict[str, str]] = None,
+        key_mapping: Optional[Dict[str, str]] = None,
     ) -> IndexDF:
         """
         Given an index dataframe with transform keys, return an index dataframe
-        with table keys, applying `join_keys` aliasing if provided.
+        with table keys, applying `key_mapping` aliasing if provided.
 
-        * `join_keys` is a mapping from table key to transform key
+        * `key_mapping` is a mapping from table key to transform key
         """
 
-        if join_keys is None:
+        if key_mapping is None:
             return transform_idx
 
-        table_key_cols = {table_col: transform_idx[transform_col] for table_col, transform_col in join_keys.items()}
+        table_key_cols = {table_col: transform_idx[transform_col] for table_col, transform_col in key_mapping.items()}
         for transform_col in transform_idx.columns:
-            if transform_col not in join_keys.values():
+            if transform_col not in key_mapping.values():
                 table_key_cols[transform_col] = transform_idx[transform_col]
 
         return IndexDF(pd.DataFrame(table_key_cols))

@@ -357,15 +357,15 @@ class SQLTableMeta(TableMeta):
     def get_agg_cte(
         self,
         transform_keys: List[str],
-        join_keys: Optional[Dict[str, str]] = None,
+        key_mapping: Optional[Dict[str, str]] = None,
         filters_idx: Optional[IndexDF] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[List[str], Any]:
         """
         Create a CTE that aggregates the table by transform keys, applies
-        join_keys aliasing and returns the maximum update_ts for each group.
+        key_mapping aliasing and returns the maximum update_ts for each group.
 
-        * `join_keys` is a mapping from table key to transform key
+        * `key_mapping` is a mapping from table key to transform key
         * `transform_keys` is a list of keys used in the transformation
 
         CTE has the following columns:
@@ -379,7 +379,7 @@ class SQLTableMeta(TableMeta):
 
         tbl = self.sql_table
 
-        table_to_transform_key: Dict[str, str] = join_keys or {}
+        table_to_transform_key: Dict[str, str] = key_mapping or {}
         transform_to_table_key: Dict[str, str] = {v: k for k, v in table_to_transform_key.items()}
 
         cte_transform_keys = [k for k in transform_keys if transform_to_table_key.get(k, k) in self.primary_keys]
@@ -408,7 +408,7 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 class SQLMetaComputeInput:
     table: "SQLTableMeta"
     join_type: Literal["inner", "full"]
-    join_keys: Optional[Dict[str, str]]
+    key_mapping: Optional[Dict[str, str]]
 
 
 class SQLTransformMeta(TransformMeta):
@@ -492,7 +492,7 @@ class SQLTransformMeta(TransformMeta):
                 run_config=run_config,
             )
 
-            join_keys, u1 = self._build_changed_idx_sql(
+            key_mapping, u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
                 order_by=self.order_by,
@@ -502,7 +502,7 @@ class SQLTransformMeta(TransformMeta):
             # Список ключей из фильтров, которые нужно добавить в результат
             extra_filters: LabelDict
             if run_config is not None:
-                extra_filters = {k: v for k, v in run_config.filters.items() if k not in join_keys}
+                extra_filters = {k: v for k, v in run_config.filters.items() if k not in key_mapping}
             else:
                 extra_filters = {}
 
@@ -734,7 +734,7 @@ class SQLTransformMeta(TransformMeta):
         for inp in self.input_mts:
             keys, cte = inp.table.get_agg_cte(
                 transform_keys=self.primary_keys,
-                join_keys=inp.join_keys,
+                key_mapping=inp.key_mapping,
                 filters_idx=filters_idx,
                 run_config=run_config,
             )
@@ -970,7 +970,7 @@ class SQLMetaPlane(MetaPlane):
                 SQLMetaComputeInput(
                     table=inp.dt.meta,
                     join_type=inp.join_type,
-                    join_keys=inp.join_keys,
+                    key_mapping=inp.key_mapping,
                 )
             )
 

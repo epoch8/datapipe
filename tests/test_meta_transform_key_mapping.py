@@ -1,10 +1,3 @@
-"""
-Тест для проверки что offset'ы создаются для JoinSpec таблиц (с join_keys).
-
-Воспроизводит баг где offset создавался только для главной таблицы (posts),
-но не для справочной таблицы (profiles) с join_keys.
-"""
-
 import time
 
 import pandas as pd
@@ -16,12 +9,12 @@ from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 
 
-def test_offset_created_for_joinspec_tables(dbconn: DBConn):
+def test_transform_key_mapping(dbconn: DBConn):
     """
-    Проверяет что offset создается для таблиц с join_keys (JoinSpec).
+    Проверяет что offset создается для таблиц с key_mapping (JoinSpec).
 
     Сценарий:
-    1. Создаём posts и profiles (profiles с join_keys={'user_id': 'id'})
+    1. Создаём posts и profiles (profiles с key_mapping={'user_id': 'id'})
     """
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -86,7 +79,7 @@ def test_offset_created_for_joinspec_tables(dbconn: DBConn):
     )
     profiles.store_chunk(profiles_df, now=process_ts)
 
-    # 5. Создать трансформацию с join_keys
+    # 5. Создать трансформацию с key_mapping
     def transform_func(posts_df, profiles_df):
         # JOIN posts + profiles
         result = posts_df.merge(profiles_df, left_on="user_id", right_on="id", suffixes=("", "_profile"))
@@ -98,7 +91,7 @@ def test_offset_created_for_joinspec_tables(dbconn: DBConn):
         func=transform_func,
         input_dts=[
             ComputeInput(dt=posts, join_type="full"),  # Главная таблица
-            ComputeInput(dt=profiles, join_type="inner", join_keys={"user_id": "id"}),  # JoinSpec таблица
+            ComputeInput(dt=profiles, join_type="inner", key_mapping={"user_id": "id"}),  # JoinSpec таблица
         ],
         output_dts=[output_dt],
         transform_keys=["id"],  # Primary key первой таблицы (posts)

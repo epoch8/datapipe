@@ -1,7 +1,5 @@
 # Open questions
 
-* Maybe something like `column_aliases` is a better name for internal use than
-  `join_keys`?
 * How to deal with ChangeList filter_idx? Before this change we assume that idx
   mean the same everywhere and just filter by given idx name and values, now we
   should understand how table keys are propagated to join
@@ -33,7 +31,7 @@ BatchTransform(
         User,
 
         # matches tr.sub_user_id = User.user_id
-        JoinSpec(User, join_keys={"user_id", "sub_user_id"}) 
+        JoinSpec(User, key_mapping={"user_id", "sub_user_id"}) 
     ],
     outputs=[...],
 )
@@ -52,19 +50,19 @@ without renamings, it is up to end user to interpret the data.
 
 ## DX
 
-* [x] `datapipe.types.JoinSpec` receives `join_keys` parameter
+* [x] `datapipe.types.JoinSpec` receives `key_mapping` parameter
 
 ## Compute
 
-* [x] `datapipe.compute.ComputeInput` receives `join_keys` parameter
+* [x] `datapipe.compute.ComputeInput` receives `key_mapping` parameter
 
 `datapipe.meta.sql_meta.SQLTableMeta`:
 * [x] new method `transform_idx_to_table_idx` which should be used to convert
   transform keys to table keys
-* [x] `get_agg_cte` receives `join_keys` parameter and starts producing subquery
+* [x] `get_agg_cte` receives `key_mapping` parameter and starts producing subquery
   with renamed keys
-* [ ] `get_agg_cte` correctly applies `join_keys` to `filter_idx` parameter
-* [ ] `get_agg_cte` correctly applies `join_keys` to `RunConfig` filters
+* [ ] `get_agg_cte` correctly applies `key_mapping` to `filter_idx` parameter
+* [ ] `get_agg_cte` correctly applies `key_mapping` to `RunConfig` filters
 
 `BatchTransform`:
 * [x] Correctly converts transform idx to table idx in `get_batch_input_dfs`

@@ -89,7 +89,7 @@ class ComputeInput:
     # Alias dt column name to input index column name
     # Example: {"table_col": "idx_col"} means filter dt by dt.table_col IN (idx.idx_col)
     # I.e. from the join perspective table column is named "idx_col"
-    join_keys: Optional[Dict[str, str]] = None
+    key_mapping: Optional[Dict[str, str]] = None
 
 
 class ComputeStep:
