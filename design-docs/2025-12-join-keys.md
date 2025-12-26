@@ -52,23 +52,23 @@ without renamings, it is up to end user to interpret the data.
 
 ## DX
 
-* [v] `datapipe.types.JoinSpec` receives `join_keys` parameter
+* [x] `datapipe.types.JoinSpec` receives `join_keys` parameter
 
 ## Compute
 
-* [v] `datapipe.compute.ComputeInput` receives `join_keys` parameter
+* [x] `datapipe.compute.ComputeInput` receives `join_keys` parameter
 
 `datapipe.meta.sql_meta.SQLTableMeta`:
-* [ ] new method `transform_idx_to_table_idx` which should be used to convert
+* [x] new method `transform_idx_to_table_idx` which should be used to convert
   transform keys to table keys
-* [v] `get_agg_cte` receives `join_keys` parameter and starts producing subquery
+* [x] `get_agg_cte` receives `join_keys` parameter and starts producing subquery
   with renamed keys
 * [ ] `get_agg_cte` correctly applies `join_keys` to `filter_idx` parameter
 * [ ] `get_agg_cte` correctly applies `join_keys` to `RunConfig` filters
 
 `BatchTransform`:
-* [v] Correctly converts transform idx to table idx in `get_batch_input_dfs`
+* [x] Correctly converts transform idx to table idx in `get_batch_input_dfs`
 
 `DataTable`:
-* [v] `DataTable.get_data` accepts `table_idx` which is acquired by applying
+* [x] `DataTable.get_data` accepts `table_idx` which is acquired by applying
   `tranform_idx_to_table_idx`
