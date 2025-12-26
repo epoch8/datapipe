@@ -1,8 +1,8 @@
 import copy
 import logging
 import math
-from typing import Any, cast
 from collections.abc import Callable, Iterator
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -132,7 +132,7 @@ class TableStoreDB(TableStore):
 
     def __init__(
         self,
-        dbconn: "DBConn" | str,
+        dbconn: DBConn | str,
         name: str | None = None,
         data_sql_schema: list[Column] | None = None,
         create_table: bool = False,
