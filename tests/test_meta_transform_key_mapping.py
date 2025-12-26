@@ -11,7 +11,7 @@ from datapipe.store.database import DBConn, TableStoreDB
 
 def test_transform_key_mapping(dbconn: DBConn):
     """
-    Проверяет что offset создается для таблиц с key_mapping (JoinSpec).
+    Проверяет что трансформация с key_mapping (JoinSpec) корректно отрабатывает.
 
     Сценарий:
     1. Создаём posts и profiles (profiles с key_mapping={'user_id': 'id'})
