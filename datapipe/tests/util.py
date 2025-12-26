@@ -1,4 +1,4 @@
-from typing import List, cast
+from typing import cast
 
 import pandas as pd
 
@@ -47,7 +47,7 @@ def assert_ts_contains(ts: TableStore, df: DataDF):
     )
 
 
-def assert_idx_no_duplicates(idx: IndexDF, index_cols: List[str]) -> bool:
+def assert_idx_no_duplicates(idx: IndexDF, index_cols: list[str]) -> bool:
     duplicates = cast(IndexDF, idx[idx[index_cols].duplicated()])
     if len(duplicates) == 0:
         return True

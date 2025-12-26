@@ -1,5 +1,3 @@
-from typing import List
-
 import pandas as pd
 from sqlalchemy import Column, Integer
 
@@ -8,7 +6,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
 
-TEST_SCHEMA: List[Column] = [
+TEST_SCHEMA: list[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
 ]

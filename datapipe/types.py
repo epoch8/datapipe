@@ -5,17 +5,12 @@ from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
     NewType,
-    Set,
-    Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
 )
+from collections.abc import Callable
 
 import pandas as pd
 from sqlalchemy import Column
@@ -28,13 +23,13 @@ else:
     except ImportError:  # SQLAlchemy 1.x
         from sqlalchemy.ext.declarative import declarative_base
 
-        DeclarativeBase: Type[Any] = declarative_base()  # type: ignore[valid-type]
+        DeclarativeBase: type[Any] = declarative_base()  # type: ignore[valid-type]
 
 if TYPE_CHECKING:
     from datapipe.compute import Table
 
-DataSchema = List[Column]
-MetaSchema = List[Column]
+DataSchema = list[Column]
+MetaSchema = list[Column]
 
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType("IndexDF", pd.DataFrame)
@@ -51,13 +46,13 @@ DataDF = pd.DataFrame
 
 TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 
-Labels = List[Tuple[str, str]]
+Labels = list[tuple[str, str]]
 
-TransformResult = Union[DataDF, List[DataDF], Tuple[DataDF, ...]]
+TransformResult = DataDF | list[DataDF] | tuple[DataDF, ...]
 
-OrmTable = Type[DeclarativeBase]
+OrmTable = type[DeclarativeBase]
 
-TableOrName = Union[str, OrmTable, "Table"]
+TableOrName = Union[str | OrmTable | "Table"]
 
 
 @dataclass
@@ -70,12 +65,12 @@ class Required(JoinSpec):
     pass
 
 
-PipelineInput = Union[TableOrName, JoinSpec]
+PipelineInput = TableOrName | JoinSpec
 
 
 @dataclass
 class ChangeList:
-    changes: Dict[str, IndexDF] = field(default_factory=lambda: cast(Dict[str, IndexDF], {}))
+    changes: dict[str, IndexDF] = field(default_factory=lambda: cast(dict[str, IndexDF], {}))
 
     def append(self, table_name: str, idx: IndexDF) -> None:
         if table_name in self.changes:
@@ -104,15 +99,15 @@ class ChangeList:
         return changelist
 
 
-def data_to_index(data_df: DataDF, primary_keys: List[str]) -> IndexDF:
+def data_to_index(data_df: DataDF, primary_keys: list[str]) -> IndexDF:
     return cast(IndexDF, data_df[primary_keys])
 
 
-def meta_to_index(meta_df: MetadataDF, primary_keys: List[str]) -> IndexDF:
+def meta_to_index(meta_df: MetadataDF, primary_keys: list[str]) -> IndexDF:
     return cast(IndexDF, meta_df[primary_keys])
 
 
-def hash_to_index(hash_df: HashDF, primary_keys: List[str]) -> IndexDF:
+def hash_to_index(hash_df: HashDF, primary_keys: list[str]) -> IndexDF:
     return cast(IndexDF, hash_df[primary_keys])
 
 
@@ -144,8 +139,8 @@ def index_to_data(data_df: DataDF, idx_df: IndexDF) -> DataDF:
 
 
 def get_pairwise_primary_intersections_in_tables(
-    schemas: List[DataSchema], table_names: List[str]
-) -> Dict[Tuple[str, str], Set[str]]:
+    schemas: list[DataSchema], table_names: list[str]
+) -> dict[tuple[str, str], set[str]]:
     primary_keys = [set([x.name for x in schema if x.primary_key]) for schema in schemas]
     idxs = range(len(schemas))
     pairs = itertools.combinations(idxs, 2)
@@ -157,27 +152,27 @@ def get_pairwise_primary_intersections_in_tables(
 @dataclass
 class PairIntersection:
     table_name: str
-    idxs_intersection: List[str]
+    idxs_intersection: list[str]
 
 
 @dataclass
 class TableWithDiffentPairsIntersection:
     table_name: str
-    pairs_intersection: List[PairIntersection]
+    pairs_intersection: list[PairIntersection]
 
 
 @dataclass
 class EquivalenceTables:
-    table_names: List[str]
-    idxs: List[str]
+    table_names: list[str]
+    idxs: list[str]
 
 
-def get_all_equivalence_tables(schemas: List[DataSchema], table_names: List[str]) -> List[EquivalenceTables]:
+def get_all_equivalence_tables(schemas: list[DataSchema], table_names: list[str]) -> list[EquivalenceTables]:
     """
     Вычисляет классы эквивалетностей таблицы, максимально имеющих общие индексы
     """
     pairwise_primary_intersections_in_tables = get_pairwise_primary_intersections_in_tables(schemas, table_names)
-    all_equalience_tables: List[EquivalenceTables] = []
+    all_equalience_tables: list[EquivalenceTables] = []
     for table_name in table_names:
         # Проверяем, что у этой таблички должно быть непустым пересечение всех непустых пар
         non_empty_sets_intersection = None

@@ -1,8 +1,7 @@
 import importlib.metadata as metadata
-import os.path
 import sys
 import time
-from typing import Dict, List, Optional, cast
+from typing import cast
 
 import click
 import pandas as pd
@@ -49,7 +48,7 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     return app
 
 
-def parse_labels(labels: Optional[str]) -> Labels:
+def parse_labels(labels: str | None) -> Labels:
     if labels is None or labels == "":
         return []
 
@@ -68,8 +67,8 @@ def parse_labels(labels: Optional[str]) -> Labels:
 def filter_steps_by_labels_and_name(
     app: DatapipeApp,
     labels: Labels = [],
-    name_prefix: Optional[str] = None,
-) -> List[ComputeStep]:
+    name_prefix: str | None = None,
+) -> list[ComputeStep]:
     res = []
 
     name_prefixes = None if name_prefix is None else [p.strip() for p in name_prefix.split(",")]
@@ -311,7 +310,7 @@ def step(
     ctx.obj["steps"] = steps
 
 
-def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
+def to_human_repr(step: ComputeStep, extra_args: dict | None = None) -> str:
     res = []
 
     res.append(f"[green][bold]{step.name}[/bold][/green] ({step.__class__.__name__})")
@@ -340,7 +339,7 @@ def to_human_repr(step: ComputeStep, extra_args: Optional[Dict] = None) -> str:
 @click.pass_context
 def step_list(ctx: click.Context, status: bool) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
-    steps: List[ComputeStep] = ctx.obj["steps"]
+    steps: list[ComputeStep] = ctx.obj["steps"]
 
     for step in steps:
         extra_args = {}
@@ -365,7 +364,7 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 @click.pass_context
 def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run: list[ComputeStep] = ctx.obj["steps"]
 
     executor: Executor = ctx.obj["executor"]
 
@@ -389,7 +388,7 @@ def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
 @click.pass_context
 def run_idx(ctx: click.Context, idx: str) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run: list[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
@@ -411,11 +410,11 @@ def run_changelist(
     start_step: str,
     loop: bool,
     loop_delay: int,
-    chunk_size: Optional[int] = None,
+    chunk_size: int | None = None,
 ) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run: list[ComputeStep] = ctx.obj["steps"]
     if start_step is not None:
         start_step_objs = filter_steps_by_labels_and_name(app, labels=[], name_prefix=start_step)
         assert len(start_step_objs) == 1
@@ -465,7 +464,7 @@ def run_changelist(
 @click.pass_context
 def fill_metadata(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run: list[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
 
     for step in steps_to_run:
@@ -478,7 +477,7 @@ def fill_metadata(ctx: click.Context) -> None:
 @click.pass_context
 def reset_metadata(ctx: click.Context) -> None:  # noqa
     app: DatapipeApp = ctx.obj["pipeline"]
-    steps_to_run: List[ComputeStep] = ctx.obj["steps"]
+    steps_to_run: list[ComputeStep] = ctx.obj["steps"]
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Resetting following steps: {', '.join(steps_to_run_names)}")
 

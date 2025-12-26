@@ -1,7 +1,7 @@
 # Ex-test_datatable
 
 from functools import partial
-from typing import List, cast
+from typing import cast
 
 import pandas as pd
 import pytest
@@ -16,22 +16,22 @@ from datapipe.store.database import TableStoreDB
 from datapipe.tests.util import assert_datatable_equal, assert_df_equal
 from datapipe.types import IndexDF, data_to_index
 
-TEST_SCHEMA: List[Column] = [
+TEST_SCHEMA: list[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer),
 ]
 
-TEST_SCHEMA_OTM: List[Column] = [
+TEST_SCHEMA_OTM: list[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", JSON),
 ]
 
-TEST_SCHEMA_OTM2: List[Column] = [
+TEST_SCHEMA_OTM2: list[Column] = [
     Column("id", Integer, primary_key=True),
     Column("a", Integer, primary_key=True),
 ]
 
-TEST_SCHEMA_OTM3: List[Column] = [
+TEST_SCHEMA_OTM3: list[Column] = [
     Column("a", Integer, primary_key=True),
     Column("b", Integer, primary_key=True),
     Column("ids", JSON),

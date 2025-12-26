@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple
+from collections.abc import Iterator
 
 import pandas as pd
 import pytest
@@ -97,7 +97,7 @@ def gen_pipeline(df_left, df_right):
 @pytest.fixture
 def ds_catalog_pipeline_tbls(
     dbconn: DBConn,
-) -> Iterator[Tuple[DataStore, Catalog, DataTable, DataTable, DataTable, BatchTransformStep]]:
+) -> Iterator[tuple[DataStore, Catalog, DataTable, DataTable, DataTable, BatchTransformStep]]:
     catalog = Catalog(
         {
             "tbl_left": Table(store=TableStoreDB(dbconn, "id_left", TEST_SCHEMA_LEFT, True)),

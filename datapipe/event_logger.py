@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from traceback_with_variables import format_exc
 
@@ -16,7 +15,7 @@ class EventLogger:
         updated_count,
         deleted_count,
         processed_count,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ):
         logger.debug(
             f'Table "{table_name}": added = {added_count}; updated = {updated_count}; '
@@ -29,7 +28,7 @@ class EventLogger:
         message,
         description,
         params,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         if run_config is not None:
             logger.error(f"Error in step {run_config.labels.get('step_name')}: {type} {message}\n{description}")
@@ -39,7 +38,7 @@ class EventLogger:
     def log_exception(
         self,
         exc: Exception,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         self.log_error(
             type=type(exc).__name__,

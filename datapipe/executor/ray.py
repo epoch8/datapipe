@@ -1,5 +1,5 @@
-from functools import wraps
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
+from collections.abc import Iterable
 
 import ray
 from tqdm_loggable.auto import tqdm
@@ -18,12 +18,12 @@ class RayExecutor(Executor):
         idx_count: int,
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
-        run_config: Optional[RunConfig] = None,
-        executor_config: Optional[ExecutorConfig] = None,
+        run_config: RunConfig | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
-        remote_kwargs: Dict[str, Any] = {
+        remote_kwargs: dict[str, Any] = {
             "name": name,
         }
 

@@ -1,4 +1,3 @@
-from typing import List
 
 import pytest
 from pytest_cases import parametrize
@@ -17,7 +16,7 @@ def make_mt(name, dbconn, schema_keys) -> SQLTableMeta:
     )
 
 
-def assert_schema_equals(sch: MetaSchema, keys: List[str]):
+def assert_schema_equals(sch: MetaSchema, keys: list[str]):
     assert sorted(col.name for col in sch) == sorted(keys)
 
 

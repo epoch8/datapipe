@@ -1,4 +1,4 @@
-from typing import List, cast
+from typing import cast
 
 import pandas as pd
 import pytest
@@ -98,7 +98,7 @@ class CasesTestDF:
 )
 def test_insert_rows(
     dbconn: DBConn,
-    index_cols: List[str],
+    index_cols: list[str],
     primary_schema: DataSchema,
     meta_schema: MetaSchema,
     test_df: HashDF,
@@ -140,7 +140,7 @@ def test_insert_rows(
 )
 def test_get_metadata(
     dbconn: DBConn,
-    index_cols: List[str],
+    index_cols: list[str],
     primary_schema: DataSchema,
     meta_schema: MetaSchema,
     test_df: HashDF,

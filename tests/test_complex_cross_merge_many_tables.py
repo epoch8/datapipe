@@ -1,5 +1,4 @@
 import itertools
-from typing import List
 
 import pandas as pd
 import pytest
@@ -87,7 +86,7 @@ def get_all_cases_schemes():
                     yield input_schema_tables, output_schema_tables
 
 
-def get_primary_key_to_their_tables(schemas: List[List[Column]], table_names: List[str]):
+def get_primary_key_to_their_tables(schemas: list[list[Column]], table_names: list[str]):
     primary_keys = [set([x.name for x in schema if x.primary_key]) for schema in schemas]
     idxs = range(len(schemas))
     pairs = itertools.combinations(idxs, 2)
@@ -96,7 +95,7 @@ def get_primary_key_to_their_tables(schemas: List[List[Column]], table_names: Li
     return table_name1_table_name2_to_intersection_idxs
 
 
-def cross_merge_func(*dfs, input_intersection_idxs: List[str], output_schema_tables: List[List[Column]]):
+def cross_merge_func(*dfs, input_intersection_idxs: list[str], output_schema_tables: list[list[Column]]):
     df_res = dfs[0]
     for df in dfs[1:]:
         if len(input_intersection_idxs) > 0:

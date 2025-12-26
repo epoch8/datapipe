@@ -1,5 +1,4 @@
 import itertools
-from typing import List
 
 import pandas as pd
 import pytest
@@ -131,8 +130,8 @@ def get_all_cases(reversed: bool):
     looked_total_id = set()
     for left_schema_param in TEST_SCHEMA_LEFT:
         for right_schema_param in TEST_SCHEMA_RIGHT:
-            left_schema: List[Column] = left_schema_param.values[0]  # type: ignore
-            right_schema: List[Column] = right_schema_param.values[0]  # type: ignore
+            left_schema: list[Column] = left_schema_param.values[0]  # type: ignore
+            right_schema: list[Column] = right_schema_param.values[0]  # type: ignore
             left_columns_primary_keys = [x for x in left_schema if x.primary_key]
             right_columns_primary_keys = [x for x in right_schema if x.primary_key]
             intersecting_idxs = list(
@@ -251,7 +250,7 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
 
 
-def reverse_cross_merge_func(df_left_x_right: pd.DataFrame, left_schema: List[Column], right_schema: List[Column]):
+def reverse_cross_merge_func(df_left_x_right: pd.DataFrame, left_schema: list[Column], right_schema: list[Column]):
     df_left = df_left_x_right[[x.name for x in left_schema]].drop_duplicates()
     df_right = df_left_x_right[[x.name for x in right_schema]].drop_duplicates()
     return df_left, df_right

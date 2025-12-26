@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Generator, List, cast
+from typing import cast
+from collections.abc import Generator
 
 import pandas as pd
 from sqlalchemy import JSON, Column, String
@@ -46,7 +47,7 @@ edge_table = Table(name="edge_data", store=edge_store)
 
 
 def gen_nodes() -> Generator[pd.DataFrame, None, None]:
-    rows: List[dict] = [
+    rows: list[dict] = [
         {"node_id": "N0", "node_type": "person", "attributes": {"name": "Bob"}},
         {"node_id": "N1", "node_type": "person", "attributes": {"name": "Alice"}},
         {"node_id": "N2", "node_type": "person", "attributes": {"name": "TSheyd"}},
@@ -56,7 +57,7 @@ def gen_nodes() -> Generator[pd.DataFrame, None, None]:
 
 
 def gen_edges() -> Generator[pd.DataFrame, None, None]:
-    rows: List[dict] = [
+    rows: list[dict] = [
         {
             "from_node_id": "N0",
             "to_node_id": "N3",

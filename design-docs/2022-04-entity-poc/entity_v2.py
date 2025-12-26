@@ -1,5 +1,3 @@
-from typing import List
-
 # DataPipe ######################################################################################
 
 
@@ -93,35 +91,27 @@ def run_api(api, ds):
 def kub_deploy(graph, ds, deploy):
     pass
 
+
 # T4mp ######################################################################################
 
 
 class Product(Entity):
-    properties = {
-        "id": StringParam()
-    }
-    indexes = ('id')
+    properties = {"id": StringParam()}
+    indexes = "id"
 
 
 class OzonProduct(Entity):
-    properties = {
-        "id": StringParam()
-    }
-    indexes = ('id')
+    properties = {"id": StringParam()}
+    indexes = "id"
 
 
 class T4mpEntityRelations(EntityRelations):
-    links = [
-        EntityLink(
-            EnityLinkPoint(Product, 'id'),
-            EnityLinkPoint(OzonProduct, 'id')
-        )
-    ]
+    links = [EntityLink(EnityLinkPoint(Product, "id"), EnityLinkPoint(OzonProduct, "id"))]
 
 
 class OzonTransformations:
     @classmethod
-    def get_ozon_product(cls, products: List[Product]) -> List[OzonProduct]:
+    def get_ozon_product(cls, products: list[Product]) -> list[OzonProduct]:
         return []
 
 
@@ -140,16 +130,10 @@ class T4mpApi(APISchema):
     relations = T4mpEntityRelations
     schema = {
         "products": APIProperty(
-            entity=Product,
-            fields=['id'],
-            relations={
-                "ozon_product": APIProperty(
-                    entity=OzonProduct,
-                    fields=['id']
-                )
-            }
+            entity=Product, fields=["id"], relations={"ozon_product": APIProperty(entity=OzonProduct, fields=["id"])}
         )
     }
+
 
 # Runtime ---------------------------------------------------------------------------------------
 
@@ -158,11 +142,7 @@ mem_store = MemoryStoreDB()
 db_store = TableStoreDB()
 meta_store = TableStoreDB()
 
-datastore = DataStore(
-    [EntityStore(Product, db_store)],
-    default_store=mem_store,
-    meta_store=meta_store
-)
+datastore = DataStore([EntityStore(Product, db_store)], default_store=mem_store, meta_store=meta_store)
 
 executor = Executor()
 deploy = Deployment()

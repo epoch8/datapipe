@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional, Protocol
+from typing import Protocol
 
 from tqdm_loggable.auto import tqdm
 
@@ -14,15 +15,15 @@ class ProcessFn(Protocol):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> ChangeList: ...
 
 
 @dataclass
 class ExecutorConfig:
-    memory: Optional[int] = None
-    cpu: Optional[float] = None
-    gpu: Optional[int] = None
+    memory: int | None = None
+    cpu: float | None = None
+    gpu: int | None = None
 
     parallelism: int = 100
 
@@ -36,8 +37,8 @@ class Executor(ABC):
         idx_count: int,
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
-        run_config: Optional[RunConfig] = None,
-        executor_config: Optional[ExecutorConfig] = None,
+        run_config: RunConfig | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> ChangeList: ...
 
 
@@ -49,8 +50,8 @@ class SingleThreadExecutor(Executor):
         idx_count: int,
         idx_gen: Iterable[IndexDF],
         process_fn: ProcessFn,
-        run_config: Optional[RunConfig] = None,
-        executor_config: Optional[ExecutorConfig] = None,
+        run_config: RunConfig | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
