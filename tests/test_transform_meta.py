@@ -66,7 +66,10 @@ def test_compute_transform_schema_success(
     transform_keys,
     expected_keys,
 ):
-    inp_mts = [SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
+    inp_mts = [
+        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", join_keys=None)
+        for (i, keys) in enumerate(input_keys_list)
+    ]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
 
     _, sch = compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
@@ -81,7 +84,10 @@ def test_compute_transform_schema_fail(
     output_keys_list,
     transform_keys,
 ):
-    inp_mts = [SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
+    inp_mts = [
+        SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys), join_type="full", join_keys=None)
+        for (i, keys) in enumerate(input_keys_list)
+    ]
     out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
 
     with pytest.raises(AssertionError):
