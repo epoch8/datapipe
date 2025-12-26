@@ -52,7 +52,7 @@ TransformResult = DataDF | list[DataDF] | tuple[DataDF, ...]
 
 OrmTable = type[DeclarativeBase]
 
-TableOrName = Union[str | OrmTable | "Table"]
+TableOrName = Union[str, OrmTable, "Table"]
 
 
 @dataclass
