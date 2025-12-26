@@ -1,5 +1,4 @@
 import os
-from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -378,9 +377,9 @@ def test_run_changelist_with_datatable_transform(dbconn):
 
     def transform(
         ds: DataStore,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        run_config: Optional[RunConfig] = None,
+        input_dts: list[DataTable],
+        output_dts: list[DataTable],
+        run_config: RunConfig | None = None,
     ):
         input_dt = input_dts[0]
         output_dt = output_dts[0]

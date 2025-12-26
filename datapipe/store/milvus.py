@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional
-
 import pandas as pd
 from pymilvus import (
     Collection,
@@ -18,12 +16,12 @@ class MilvusStore(TableStore):
     def __init__(
         self,
         name: str,
-        schema: List[FieldSchema],
+        schema: list[FieldSchema],
         primary_db_schema: DataSchema,
-        index_params: Dict,
+        index_params: dict,
         pk_field: str,
         embedding_field: str,
-        connection_details: Dict,
+        connection_details: dict,
     ):
         super().__init__()
         self.name = name
@@ -85,7 +83,7 @@ class MilvusStore(TableStore):
         self.delete_rows(data_to_index(df, [self.pk_field]))
         self.insert_rows(df)
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         if not idx:
             raise Exception("Milvus doesn't support full store reading")
 
@@ -96,7 +94,7 @@ class MilvusStore(TableStore):
 
         return pd.DataFrame.from_records(result)
 
-    def vector_search(self, embeddings: List, query_params: Dict, expr: str, limit: int) -> SearchResult:
+    def vector_search(self, embeddings: list, query_params: dict, expr: str, limit: int) -> SearchResult:
         if not self._collection_loaded:
             self.collection.load()
             self._collection_loaded = True
@@ -110,7 +108,7 @@ class MilvusStore(TableStore):
             consistency_level="Strong",
         )
 
-    def query_search(self, expr: str, output_fields: List) -> List:
+    def query_search(self, expr: str, output_fields: list) -> list:
         if not self._collection_loaded:
             self.collection.load()
             self._collection_loaded = True

@@ -1,8 +1,7 @@
 import hashlib
 import re
 import uuid
-from collections.abc import Iterable
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 import pandas as pd
 from qdrant_client import QdrantClient
@@ -54,9 +53,9 @@ class QdrantStore(TableStore):
         pk_field: str,
         embedding_field: str,
         collection_params: CollectionParams,
-        index_schema: Optional[dict] = None,
-        api_key: Optional[str] = None,
-        force_vectors_to_ram: Optional[bool] = True,
+        index_schema: dict | None = None,
+        api_key: str | None = None,
+        force_vectors_to_ram: bool | None = True,
     ):
         super().__init__()
         self.name = name
@@ -66,7 +65,7 @@ class QdrantStore(TableStore):
         self.embedding_field = embedding_field
         self.collection_params = collection_params
         self.inited = False
-        self.client: Optional[QdrantClient] = None
+        self.client: QdrantClient | None = None
         self._api_key = api_key
         self.force_vectors_to_ram = force_vectors_to_ram
 
@@ -145,7 +144,7 @@ class QdrantStore(TableStore):
                 ids=self.__get_ids(df),
                 vectors=df[self.embedding_field].apply(list).to_list(),
                 payloads=cast(
-                    List[Dict[str, Any]],
+                    list[dict[str, Any]],
                     df[self.payloads_filelds].to_dict(orient="records"),
                 ),
             ),
@@ -168,7 +167,7 @@ class QdrantStore(TableStore):
             wait=True,
         )
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         self.__check_init()
 
         if idx is None:
@@ -219,8 +218,8 @@ class QdrantShardedStore(TableStore):
         schema: DataSchema,
         embedding_field: str,
         collection_params: CollectionParams,
-        index_schema: Optional[dict] = None,
-        api_key: Optional[str] = None,
+        index_schema: dict | None = None,
+        api_key: str | None = None,
     ):
         super().__init__()
         self.name_pattern = name_pattern
@@ -231,7 +230,7 @@ class QdrantShardedStore(TableStore):
         self._api_key = api_key
 
         self.inited_collections: set = set()
-        self.client: Optional[QdrantClient] = None
+        self.client: QdrantClient | None = None
 
         self.pk_fields = [column.name for column in self.schema if column.primary_key]
         self.payloads_filelds = [column.name for column in self.schema if column.name != self.embedding_field]
@@ -323,7 +322,7 @@ class QdrantShardedStore(TableStore):
                     ids=self.__get_ids(gdf),
                     vectors=gdf[self.embedding_field].apply(list).to_list(),
                     payloads=cast(
-                        List[Dict[str, Any]],
+                        list[dict[str, Any]],
                         df[self.payloads_filelds].to_dict(orient="records"),
                     ),
                 ),
@@ -346,7 +345,7 @@ class QdrantShardedStore(TableStore):
                 wait=True,
             )
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         if not idx:
             raise Exception("Qrand doesn't support full store reading")
 

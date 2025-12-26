@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional, Tuple
 
 from sqlalchemy import and_, func, insert, literal, not_, or_, select, update
 
@@ -17,7 +16,7 @@ class LintStatus(Enum):
 class Lint:
     desc: str
 
-    def check(self, dt: DataTable) -> Tuple[LintStatus, Optional[str]]:
+    def check(self, dt: DataTable) -> tuple[LintStatus, str | None]:
         assert isinstance(dt.meta, SQLTableMeta)
 
         query = self.check_query(dt)
@@ -39,7 +38,7 @@ class Lint:
     def check_query(self, dt: DataTable):
         raise NotImplementedError
 
-    def fix(self, dt: DataTable) -> Tuple[LintStatus, Optional[str]]:
+    def fix(self, dt: DataTable) -> tuple[LintStatus, str | None]:
         raise NotImplementedError
 
 

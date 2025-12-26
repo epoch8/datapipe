@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import List, Optional
 
 import pandas as pd
 from tqdm_loggable.auto import tqdm
@@ -17,7 +16,7 @@ from datapipe.types import Labels, MetadataDF, TableOrName, cast
 logger = logging.getLogger("datapipe.step.update_external_table")
 
 
-def update_external_table(ds: DataStore, table: DataTable, run_config: Optional[RunConfig] = None) -> None:
+def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig | None = None) -> None:
     now = time.time()
 
     for ps_df in tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
@@ -55,17 +54,17 @@ class UpdateExternalTable(PipelineStep):
     def __init__(
         self,
         output: TableOrName,
-        labels: Optional[Labels] = None,
+        labels: Labels | None = None,
     ) -> None:
         self.output_table_name = output
         self.labels = labels
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         def transform_func(
             ds: DataStore,
-            input_dts: List[DataTable],
-            output_dts: List[DataTable],
-            run_config: Optional[RunConfig],
+            input_dts: list[DataTable],
+            output_dts: list[DataTable],
+            run_config: RunConfig | None,
             **kwargs,
         ):
             return update_external_table(ds, output_dts[0], run_config)

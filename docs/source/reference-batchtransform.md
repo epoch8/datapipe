@@ -10,7 +10,7 @@ BatchTransoform(
     transform_keys: Optional[List[str]] = None,
     labels: Optional[Labels] = None,
     executor_config: Optional[ExecutorConfig] = None,
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
+    filters: Optional[LabelDict | Callable[[], LabelDict]] = None,
     order_by: Optional[List[str]] = None,
     order: Literal["asc", "desc"] = "asc",
 )

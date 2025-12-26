@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-LabelDict = Dict[str, Any]
+LabelDict = dict[str, Any]
 
 
 @dataclass

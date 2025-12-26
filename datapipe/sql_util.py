@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import Column, Integer, String, Table, tuple_
 
@@ -9,7 +9,7 @@ from datapipe.types import IndexDF
 def sql_apply_idx_filter_to_table(
     sql: Any,
     table: Table,
-    primary_keys: List[str],
+    primary_keys: list[str],
     idx: IndexDF,
 ) -> Any:
     if len(primary_keys) == 1:
@@ -31,8 +31,8 @@ def sql_apply_idx_filter_to_table(
 def sql_apply_runconfig_filter(
     sql: Any,
     table: Table,
-    primary_keys: List[str],
-    run_config: Optional[RunConfig] = None,
+    primary_keys: list[str],
+    run_config: RunConfig | None = None,
 ) -> Any:
     if run_config is not None:
         for k, v in run_config.filters.items():
@@ -48,5 +48,5 @@ SCHEMA_TO_DTYPE_LOOKUP = {
 }
 
 
-def sql_schema_to_dtype(schema: List[Column]) -> Dict[str, Any]:
+def sql_schema_to_dtype(schema: list[Column]) -> dict[str, Any]:
     return {i.name: SCHEMA_TO_DTYPE_LOOKUP[i.type.__class__] for i in schema}  # type: ignore

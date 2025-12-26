@@ -1,9 +1,8 @@
 import json
-from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from redis.client import Redis
-from redis.cluster import RedisCluster, ClusterNode
+from redis.cluster import ClusterNode, RedisCluster
 from sqlalchemy import Column
 
 from datapipe.store.database import MetaKey
@@ -44,19 +43,19 @@ class RedisStore(TableStore):
         self,
         connection: str,
         name: str,
-        data_sql_schema: List[Column],
+        data_sql_schema: list[Column],
         cluster_mode: bool = False,
-        password: Optional[str] = None,
+        password: str | None = None,
     ) -> None:
         self.connection = connection
         if not cluster_mode:
-            self.redis_connection: Union[Redis, RedisCluster] = Redis.from_url(connection, decode_responses=True)
+            self.redis_connection: Redis | RedisCluster = Redis.from_url(connection, decode_responses=True)
         else:
             if "," in connection:
                 self.redis_connection = RedisCluster(
                     startup_nodes=_parse_cluster_hosts(connection.removeprefix("redis://")),
                     password=password,
-                    decode_responses=True
+                    decode_responses=True,
                 )
             else:
                 self.redis_connection = RedisCluster.from_url(connection, decode_responses=True)
@@ -66,14 +65,14 @@ class RedisStore(TableStore):
         self.prim_keys = [column.name for column in self.data_sql_schema if column.primary_key]
         self.value_cols = [column.name for column in self.data_sql_schema if not column.primary_key]
 
-    def __getstate__(self) -> Dict:
+    def __getstate__(self) -> dict:
         return {
             "connection": self.connection,
             "name": self.name,
             "data_sql_schema": self.data_sql_schema,
         }
 
-    def __setstate__(self, state: Dict):
+    def __setstate__(self, state: dict):
         RedisStore.__init__(
             self,
             connection=state["connection"],
@@ -100,7 +99,7 @@ class RedisStore(TableStore):
         self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
-    def read_rows(self, df_keys: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, df_keys: IndexDF | None = None) -> DataDF:
         assert df_keys is not None
 
         if df_keys.empty:

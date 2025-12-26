@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 from opentelemetry import trace
 
@@ -20,10 +20,10 @@ class DatatableTransformFunc(Protocol):
     def __call__(
         self,
         ds: DataStore,
-        input_dts: List[DataTable],
-        output_dts: List[DataTable],
-        run_config: Optional[RunConfig],
-        kwargs: Optional[Dict[str, Any]] = None,
+        input_dts: list[DataTable],
+        output_dts: list[DataTable],
+        run_config: RunConfig | None,
+        kwargs: dict[str, Any] | None = None,
     ) -> None: ...
 
 
@@ -31,12 +31,12 @@ class DatatableTransformStep(ComputeStep):
     def __init__(
         self,
         name: str,
-        input_dts: List[ComputeInput],
-        output_dts: List[DataTable],
+        input_dts: list[ComputeInput],
+        output_dts: list[DataTable],
         func: DatatableTransformFunc,
-        kwargs: Optional[Dict] = None,
+        kwargs: dict | None = None,
         check_for_changes: bool = True,
-        labels: Optional[Labels] = None,
+        labels: Labels | None = None,
     ) -> None:
         ComputeStep.__init__(self, name, input_dts, output_dts, labels)
 
@@ -47,8 +47,8 @@ class DatatableTransformStep(ComputeStep):
     def run_full(
         self,
         ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> None:
         logger.info(f"Running: {self.name}")
 
@@ -90,13 +90,13 @@ class DatatableTransformStep(ComputeStep):
 @dataclass
 class DatatableTransform(PipelineStep):
     func: DatatableTransformFunc
-    inputs: List[TableOrName]
-    outputs: List[TableOrName]
+    inputs: list[TableOrName]
+    outputs: list[TableOrName]
     check_for_changes: bool = True
-    kwargs: Optional[Dict[str, Any]] = None
-    labels: Optional[Labels] = None
+    kwargs: dict[str, Any] | None = None
+    labels: Labels | None = None
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List["ComputeStep"]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list["ComputeStep"]:
         return [
             DatatableTransformStep(
                 name=self.func.__name__,
