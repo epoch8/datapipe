@@ -7,6 +7,7 @@
   steps to consume the new meta plane API
 * Added meta-plane design doc and removed legacy `MetaTable` plumbing in lints,
   migrations, and tests
+* Make CLI accept multiple `--name` values
 
 # 0.14.6
 
