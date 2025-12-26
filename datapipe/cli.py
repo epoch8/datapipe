@@ -1,4 +1,5 @@
 import importlib.metadata as metadata
+import os
 import sys
 import time
 from typing import cast
