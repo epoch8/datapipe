@@ -14,7 +14,7 @@ table do not match by name.
 
 # Use case
 
-You have tables `User (user_id)` and `Subscription (user_id, sub_user_id)`
+You have tables `User (id: PK)` and `Subscription (id: PK, user_id: DATA, sub_user_id: DATA)`
 You need to enrich both sides of `Subscription` with information
 
 You might write:
@@ -22,16 +22,19 @@ You might write:
 ```
 BatchTransform(
     process_func,
+
+    # defines ["user_id", "sub_user_id"] as a keys that identify each transform task
+    # every table should have a way to join to these keys
     transform_keys=["user_id", "sub_user_id"],
     inputs=[
-        # matches tr.user_id = Subscription.user_id and tr.sub_user_id = Subscription.sub_user_id
-        Subscription,
+        # Subscription has needed columns in data table, we fetch them from there
+        InputSpec(Subscription, keys={"user_id": DataField("user_id"), "sub_user_id": DataField("sub_user_id")}),
 
-        # matches tr.user_id = User.user_id
-        User,
+        # matches tr.user_id = User.id
+        InputSpec(User, keys={"user_id": "id"}),
 
-        # matches tr.sub_user_id = User.user_id
-        JoinSpec(User, key_mapping={"user_id", "sub_user_id"}) 
+        # matches tr.sub_user_id = User.id
+        InputSpec(User, keys={"sub_user_id": "id"}),
     ],
     outputs=[...],
 )
@@ -46,15 +49,28 @@ And `process_func` at each execution will receive three dataframes:
 Both `user_df` and `sub_user_df` have columns aligned with `User` table, i.e.
 without renamings, it is up to end user to interpret the data.
 
+# InputSpec
+
+We introduce `InputSpec` qualifier for `BatchTransform` inputs.
+
+`keys` parameter defines which columns to use for this input table and where to
+get them from. `keys` is a dict in a form `{"{transform_key}": key_accessor}`,
+where `key_accessor` might be:
+* a string, then a column from meta-table is used with possible renaming
+* `DataField("data_col")` then a `data_col` from data-table is used instead of
+  meta-table
+
+
 # Implementation
 
 ## DX
 
-* [x] `datapipe.types.JoinSpec` receives `key_mapping` parameter
+* [x] `datapipe.types.JoinSpec` is renamed to `InputSpec` and receives `keys`
+  parameter
 
 ## Compute
 
-* [x] `datapipe.compute.ComputeInput` receives `key_mapping` parameter
+* [x] `datapipe.compute.ComputeInput` receives `keys` parameter
 
 `datapipe.meta.sql_meta.SQLTableMeta`:
 * [x] new method `transform_idx_to_table_idx` which should be used to convert
