@@ -901,8 +901,21 @@ def build_changed_idx_sql_v2(
             primary_inp = inp
             break
 
+    # Отслеживаем использование таблиц для генерации уникальных имен CTE
+    # Ключ: имя таблицы, значение: количество использований
+    table_usage_count: Dict[str, int] = {}
+
     for inp in input_dts:
         tbl = inp.dt.meta_table.sql_table
+
+        # Генерируем уникальное имя CTE для текущей таблицы
+        table_name = inp.dt.name
+        if table_name not in table_usage_count:
+            table_usage_count[table_name] = 0
+            cte_name = f"{table_name}_changes"  # Первое использование - без индекса
+        else:
+            table_usage_count[table_name] += 1
+            cte_name = f"{table_name}_changes_{table_usage_count[table_name]}"  # Повторное - с индексом
 
         # Разделяем ключи на те, что есть в meta table, и те, что нужны из data table
         meta_cols = [c.name for c in tbl.columns]
@@ -979,7 +992,7 @@ def build_changed_idx_sql_v2(
             if len(group_by_cols) > 0:
                 changed_sql = changed_sql.group_by(*group_by_cols)
 
-            changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
+            changed_ctes.append(changed_sql.cte(name=cte_name))
             continue
 
         # Если все ключи есть в meta table - используем простой запрос
@@ -1047,7 +1060,7 @@ def build_changed_idx_sql_v2(
                     if len(select_cols) > 0:
                         changed_sql = changed_sql.group_by(*select_cols)
 
-                    changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
+                    changed_ctes.append(changed_sql.cte(name=cte_name))
                     continue
 
                 # SELECT meta_keys, data_keys FROM meta JOIN data ON primary_keys
@@ -1082,7 +1095,7 @@ def build_changed_idx_sql_v2(
                 if len(select_cols) > 0:
                     changed_sql = changed_sql.group_by(*select_cols)
 
-        changed_ctes.append(changed_sql.cte(name=f"{inp.dt.name}_changes"))
+        changed_ctes.append(changed_sql.cte(name=cte_name))
 
     # 3. Получить записи с ошибками из TransformMetaTable
     # Важно: error_records должен иметь все колонки из all_select_keys для UNION
