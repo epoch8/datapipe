@@ -1063,8 +1063,15 @@ def build_changed_idx_sql_v2(
                     changed_ctes.append(changed_sql.cte(name=cte_name))
                     continue
 
+                # ===================================================================
+                # ИСПРАВЛЕНИЕ БАГА: Разделяем измененные и удаленные записи
+                # ===================================================================
+                # Проблема: При INNER JOIN удаленные записи (физически удалены из data table)
+                # не попадают в результат, что приводит к тому что они не удаляются из output.
+                # Решение: Создаем отдельный CTE для удаленных записей (SELECT только из meta),
+                # где FK заменяются на NULL (они не нужны для удаления, достаточно transform_keys).
+
                 # SELECT meta_keys, data_keys FROM meta JOIN data ON primary_keys
-                # WHERE update_ts > offset OR delete_ts > offset
                 select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
 
                 # Строим JOIN condition по primary keys
@@ -1075,15 +1082,13 @@ def build_changed_idx_sql_v2(
                         tbl.c[pk] == data_tbl.c[pk] for pk in inp.dt.primary_keys
                     ])
 
+                # 1. CTE для ИЗМЕНЕННЫХ записей (INNER JOIN для получения FK из data table)
                 changed_sql = sa.select(*select_cols).select_from(
                     tbl.join(data_tbl, join_condition)
                 ).where(
-                    sa.or_(
+                    sa.and_(
                         tbl.c.update_ts >= offset,
-                        sa.and_(
-                            tbl.c.delete_ts.isnot(None),
-                            tbl.c.delete_ts >= offset
-                        )
+                        tbl.c.delete_ts.is_(None)  # ← Исключаем удаленные записи!
                     )
                 )
 
@@ -1094,6 +1099,42 @@ def build_changed_idx_sql_v2(
 
                 if len(select_cols) > 0:
                     changed_sql = changed_sql.group_by(*select_cols)
+
+                changed_ctes.append(changed_sql.cte(name=cte_name))
+
+                # ===================================================================
+                # 2. НОВЫЙ CTE для УДАЛЕННЫХ записей (БЕЗ JOIN, FK заменяем на NULL)
+                # ===================================================================
+                deleted_select_cols = []
+                for k in all_keys:
+                    if k in keys_in_meta:
+                        # Колонка есть в meta table (id, update_ts) - берем из tbl
+                        deleted_select_cols.append(tbl.c[k])
+                    else:
+                        # Колонка только в data table (FK) - используем NULL
+                        deleted_select_cols.append(sa.literal(None).label(k))
+
+                deleted_sql = sa.select(*deleted_select_cols).select_from(tbl).where(
+                    sa.and_(
+                        tbl.c.delete_ts.isnot(None),
+                        tbl.c.delete_ts >= offset
+                    )
+                )
+
+                # Применить filters_idx и run_config (только для keys_in_meta)
+                deleted_sql = sql_apply_filters_idx_to_subquery(deleted_sql, keys_in_meta, filters_idx)
+                deleted_sql = sql_apply_runconfig_filter(deleted_sql, tbl, inp.dt.primary_keys, run_config)
+
+                if len(deleted_select_cols) > 0:
+                    # GROUP BY только по колонкам из meta (не по NULL колонкам!)
+                    deleted_sql = deleted_sql.group_by(*[tbl.c[k] for k in keys_in_meta])
+
+                # Генерируем уникальное имя для deleted CTE
+                deleted_cte_name = f"{cte_name.replace('_changes', '_deleted')}"
+                changed_ctes.append(deleted_sql.cte(name=deleted_cte_name))
+
+                # Продолжаем дальше (не добавляем changed_ctes.append второй раз в конце)
+                continue  # ← ВАЖНО: пропускаем стандартное добавление в конце блока
 
         changed_ctes.append(changed_sql.cte(name=cte_name))
 
