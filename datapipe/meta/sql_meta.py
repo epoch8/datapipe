@@ -1165,36 +1165,119 @@ def build_changed_idx_sql_v2(
 
     error_records_cte = error_records_sql.cte(name="error_records")
 
-    # 4. Объединить все изменения и ошибки через UNION
+    # 4. Объединить все изменения и ошибки через UNION или CROSS JOIN
+    # Определяем какие transform_keys есть в каждом CTE
+    needs_cross_join = False  # Флаг для пропуска дедупликации в cross join случае
+
     if len(changed_ctes) == 0:
         # Если нет входных таблиц с изменениями, используем только ошибки
         union_sql: Any = sa.select(
             *[error_records_cte.c[k] for k in all_select_keys]
         ).select_from(error_records_cte)
     else:
-        # UNION всех изменений и ошибок
-        # Для отсутствующих колонок используем NULL
-        union_parts = []
+        # Собираем информацию о том, какие transform_keys есть в каждом CTE
+        cte_transform_keys_sets = []
         for cte in changed_ctes:
-            # Для каждой колонки из all_select_keys: берем из CTE если есть, иначе NULL
-            select_cols = [
-                cte.c[k] if k in cte.c else sa.literal(None).label(k)
-                for k in all_select_keys
-            ]
-            union_parts.append(sa.select(*select_cols).select_from(cte))
+            # Какие transform_keys есть в этом CTE (не NULL)
+            cte_keys = set(k for k in transform_keys if k in cte.c)
+            cte_transform_keys_sets.append(cte_keys)
 
-        union_parts.append(
-            sa.select(
-                *[error_records_cte.c[k] for k in all_select_keys]
-            ).select_from(error_records_cte)
-        )
+        # Проверяем все ли CTE содержат одинаковый набор transform_keys
+        unique_key_sets = set(map(frozenset, cte_transform_keys_sets))
+        needs_cross_join = len(unique_key_sets) > 1  # Устанавливаем флаг
 
-        union_sql = sa.union(*union_parts)
+        if needs_cross_join:
+            # Cross join сценарий: используем _make_agg_of_agg для FULL OUTER JOIN
+            # Преобразуем CTE в ComputeInputCTE структуры
+            compute_input_ctes = []
+            # ВАЖНО: НЕ включаем update_ts в keys - это agg_col, не transform_key
+            # Если update_ts будет в keys, разные CTE будут джойниться по update_ts,
+            # а не делать CROSS JOIN
+            keys_for_join = transform_keys + additional_columns  # БЕЗ update_ts
+            for i, cte in enumerate(changed_ctes):
+                # Определяем какие ключи из keys_for_join есть в этом CTE
+                cte_keys = [k for k in keys_for_join if k in cte.c]
+                # Определяем join_type - берём из исходного input_dts если возможно
+                # Для упрощения используем 'full' для всех CTE
+                compute_input_ctes.append(
+                    ComputeInputCTE(cte=cte, keys=cte_keys, join_type='full')
+                )
 
-    # 5. Применить сортировку
-    # Нам нужно join с transform meta для получения priority
+            # Используем _make_agg_of_agg для построения FULL OUTER JOIN (cross join)
+            # _make_agg_of_agg уже возвращает CTE
+            # ВАЖНО: передаём только transform_keys (без update_ts и additional_columns)
+            # update_ts будет добавлен автоматически как agg_col
+            cross_join_raw = _make_agg_of_agg(
+                ds=ds,
+                transform_keys=transform_keys + additional_columns,  # Только ключи, без update_ts
+                agg_col='update_ts',
+                ctes=compute_input_ctes
+            )
+
+            # Создаём SELECT который явно переименовывает колонки
+            # Это нужно чтобы избежать конфликтов имён с Label колонками
+            # Используем text() для выбора всех колонок без конфликтов
+            cross_join_clean_select = sa.select(
+                *[sa.column(k) for k in all_select_keys]
+            ).select_from(cross_join_raw)
+
+            cross_join_cte = cross_join_clean_select.cte(name="cross_join_clean")
+
+            # Объединяем cross join результат с error_records через UNION
+            union_sql = sa.union(
+                sa.select(*[cross_join_cte.c[k] for k in all_select_keys]).select_from(cross_join_cte),
+                sa.select(*[error_records_cte.c[k] for k in all_select_keys]).select_from(error_records_cte)
+            )
+        else:
+            # Обычный UNION - все CTE содержат одинаковый набор transform_keys
+            union_parts = []
+            for cte in changed_ctes:
+                # Для каждой колонки из all_select_keys: берем из CTE если есть, иначе NULL
+                select_cols = [
+                    cte.c[k] if k in cte.c else sa.literal(None).label(k)
+                    for k in all_select_keys
+                ]
+                union_parts.append(sa.select(*select_cols).select_from(cte))
+
+            union_parts.append(
+                sa.select(
+                    *[error_records_cte.c[k] for k in all_select_keys]
+                ).select_from(error_records_cte)
+            )
+
+            union_sql = sa.union(*union_parts)
+
+    # 5. Дедупликация при использовании join_keys
+    # Проблема: При reverse join разные CTE могут возвращать одинаковые transform_keys
+    # с разными update_ts, что создаёт дубликаты после UNION
+    # Решение: GROUP BY по transform_keys + additional_columns, выбираем MAX(update_ts)
+    # Примечание: При cross join дедупликация уже сделана в _make_agg_of_agg
     union_cte = union_sql.cte(name="changed_union")
 
+    has_join_keys = any(inp.join_keys for inp in input_dts)
+    if has_join_keys and len(transform_keys) > 0 and not needs_cross_join:
+        # Группируем по transform_keys + additional_columns для удаления дубликатов
+        # Используем MAX(update_ts) чтобы взять самое свежее обновление
+        # Колонки для GROUP BY: transform_keys + additional_columns (но не update_ts)
+        group_by_cols = transform_keys + additional_columns
+
+        select_cols = []
+        # transform_keys и additional_columns берём как есть
+        for k in group_by_cols:
+            select_cols.append(union_cte.c[k])
+        # update_ts агрегируем через MAX (или оставляем NULL для error records)
+        # Используем MAX для выбора самой свежей update_ts среди дубликатов
+        select_cols.append(sa.func.max(union_cte.c.update_ts).label('update_ts'))
+
+        deduplicated_sql = (
+            sa.select(*select_cols)
+            .select_from(union_cte)
+            .group_by(*[union_cte.c[k] for k in group_by_cols])
+        )
+        union_cte = deduplicated_sql.cte(name="changed_union_deduplicated")
+
+    # 6. Применить сортировку
+    # Нам нужно join с transform meta для получения priority
     if len(transform_keys) == 0:
         join_onclause_sql: Any = sa.literal(True)
     elif len(transform_keys) == 1:
