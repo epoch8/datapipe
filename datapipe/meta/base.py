@@ -192,8 +192,8 @@ class TableMeta:
 
 
 class TransformMeta:
-    primary_schema: DataSchema
-    primary_keys: List[str]
+    transform_keys_schema: DataSchema
+    transform_keys: List[str]
 
     def get_changed_idx_count(
         self,

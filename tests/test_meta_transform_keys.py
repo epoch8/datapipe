@@ -7,11 +7,12 @@ from datapipe.compute import ComputeInput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
+from datapipe.tests.util import assert_datatable_equal
 
 
 def test_transform_key_mapping(dbconn: DBConn):
     """
-    Проверяет что трансформация с key_mapping (JoinSpec) корректно отрабатывает.
+    Проверяет что трансформация с keys (InputSpec) корректно отрабатывает.
 
     Сценарий:
     1. Создаём posts и profiles (profiles с key_mapping={'user_id': 'id'})
@@ -102,13 +103,16 @@ def test_transform_key_mapping(dbconn: DBConn):
     step.run_full(ds)
 
     # Проверяем результаты трансформации
-    output_data = output_dt.get_data()
-    print(f"✅ Output rows created: {len(output_data)}")
-    print(f"Output data:\n{output_data}")
-
-    # Проверяем что были созданы 3 записи в output
-    output_data = output_dt.get_data()
-    assert len(output_data) == 3, f"Expected 3 output rows, got {len(output_data)}"
+    assert_datatable_equal(
+        output_dt,
+        pd.DataFrame(
+            [
+                {"id": "1", "user_id": "1", "content": "Post 1", "username": "alice"},
+                {"id": "2", "user_id": "1", "content": "Post 2", "username": "alice"},
+                {"id": "3", "user_id": "2", "content": "Post 3", "username": "bob"},
+            ]
+        ),
+    )
 
     # 8. Добавим новые данные и проверим инкрементальную обработку
     time.sleep(0.01)  # Небольшая задержка для различения timestamp'ов
@@ -133,6 +137,14 @@ def test_transform_key_mapping(dbconn: DBConn):
     # 9. Запускаем инкрементальную обработку
     step.run_full(ds)
 
-    # Проверяем что теперь 4 записи в output (3 старых + 1 новый пост)
-    output_data = output_dt.get_data()
-    assert len(output_data) == 4, f"Expected 4 output rows, got {len(output_data)}"
+    assert_datatable_equal(
+        output_dt,
+        pd.DataFrame(
+            [
+                {"id": "1", "user_id": "1", "content": "Post 1", "username": "alice"},
+                {"id": "2", "user_id": "1", "content": "Post 2", "username": "alice"},
+                {"id": "3", "user_id": "2", "content": "Post 3", "username": "bob"},
+                {"id": "4", "user_id": "1", "content": "New Post 4", "username": "alice"},
+            ]
+        ),
+    )

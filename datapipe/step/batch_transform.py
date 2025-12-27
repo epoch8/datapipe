@@ -117,7 +117,7 @@ class BaseBatchTransformStep(ComputeStep):
             order=order,
         )
 
-        self.transform_keys, self.transform_schema = self.meta.primary_keys, self.meta.primary_schema
+        self.transform_keys, self.transform_schema = self.meta.transform_keys, self.meta.transform_keys_schema
 
         self.filters = filters
         self.order_by = order_by
