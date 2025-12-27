@@ -1,5 +1,6 @@
 # WIP: 0.15.0
 
+Important new stuff:
 * Introduced `MetaPlane`/`TableMeta`/`TransformMeta` interfaces to decouple
   metadata management from the compute plane
 * Added SQL reference implementation (`SQLMetaPlane`, `SQLTableMeta`,
@@ -7,6 +8,10 @@
   steps to consume the new meta plane API
 * Added meta-plane design doc and removed legacy `MetaTable` plumbing in lints,
   migrations, and tests
+* Added `key_mapping` parameter to `JoinSpec` and `ComputeInput` to support
+  joining tables with different key names
+
+CLI improvements:
 * Make CLI accept multiple `--name` values
 
 # 0.14.6

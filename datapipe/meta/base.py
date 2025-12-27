@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
+
+import pandas as pd
 
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, DataSchema, HashDF, IndexDF, MetadataDF, MetaSchema
@@ -166,10 +168,32 @@ class TableMeta:
         # with self.meta_dbconn.con.begin() as con:
         #     con.execute(self.meta.sql_table.update().values(process_ts=0, update_ts=0))
 
+    def transform_idx_to_table_idx(
+        self,
+        transform_idx: IndexDF,
+        key_mapping: Optional[Dict[str, str]] = None,
+    ) -> IndexDF:
+        """
+        Given an index dataframe with transform keys, return an index dataframe
+        with table keys, applying `key_mapping` aliasing if provided.
+
+        * `key_mapping` is a mapping from table key to transform key
+        """
+
+        if key_mapping is None:
+            return transform_idx
+
+        table_key_cols = {table_col: transform_idx[transform_col] for table_col, transform_col in key_mapping.items()}
+        for transform_col in transform_idx.columns:
+            if transform_col not in key_mapping.values():
+                table_key_cols[transform_col] = transform_idx[transform_col]
+
+        return IndexDF(pd.DataFrame(table_key_cols))
+
 
 class TransformMeta:
-    primary_schema: DataSchema
-    primary_keys: List[str]
+    transform_keys_schema: DataSchema
+    transform_keys: List[str]
 
     def get_changed_idx_count(
         self,

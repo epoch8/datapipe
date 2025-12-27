@@ -1,4 +1,6 @@
-Main idea: separate all metadata management to separate package so, that
+# Goal
+
+Separate all metadata management to separate package so, that
 inteface between compute/execution-plane and meta would be relatively narrow and
 we could create alternative meta-plane implementation
 

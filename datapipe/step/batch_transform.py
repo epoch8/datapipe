@@ -117,7 +117,7 @@ class BaseBatchTransformStep(ComputeStep):
             order=order,
         )
 
-        self.transform_keys, self.transform_schema = self.meta.primary_keys, self.meta.primary_schema
+        self.transform_keys, self.transform_schema = self.meta.transform_keys, self.meta.transform_keys_schema
 
         self.filters = filters
         self.order_by = order_by
@@ -271,7 +271,8 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
-        return [inp.dt.get_data(idx) for inp in self.input_dts]
+        # TODO consider parallel fetch through executor
+        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.key_mapping)) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,
