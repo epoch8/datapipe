@@ -382,6 +382,9 @@ class SQLTableMeta(TableMeta):
         table_to_transform_key: Dict[str, str] = key_mapping or {}
         transform_to_table_key: Dict[str, str] = {v: k for k, v in table_to_transform_key.items()}
 
+        assert all(k in self.primary_keys for k in table_to_transform_key.keys()), (
+            "If key_mapping is provided, all its keys must be in primary keys of the table"
+        )
         cte_transform_keys = [k for k in transform_keys if transform_to_table_key.get(k, k) in self.primary_keys]
         key_cols: List[Any] = [sa.column(transform_to_table_key.get(k, k)).label(k) for k in cte_transform_keys]
 
