@@ -37,6 +37,7 @@ from datapipe.types import (
 if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
     from datapipe.datatable import DataStore
+    from datapipe.store.database import TableStoreDB
 
 logger = logging.getLogger("datapipe.meta.sql_meta")
 
@@ -824,6 +825,33 @@ def build_changed_idx_sql_v1(
     return (all_select_keys, sql)
 
 
+# ============================================================================
+# OFFSET OPTIMIZATION V2 - IMPLEMENTATION
+# ============================================================================
+#
+# Эта секция содержит функции для построения SQL запросов с offset optimization.
+# Использует UNION вместо FULL OUTER JOIN для объединения changed records.
+#
+# Структура функций (от низкого к высокому уровню):
+#
+# 1. БАЗОВЫЕ УТИЛИТЫ
+#    - Создание WHERE условий, фильтров, JOIN conditions
+#
+# 2. ФУНКЦИИ ПРИНЯТИЯ РЕШЕНИЯ
+#    - Определяют какой путь использовать (meta vs data)
+#
+# 3. ФУНКЦИИ ПОСТРОЕНИЯ CTE
+#    - Forward join: таблица изменилась сама
+#    - Reverse join: справочная таблица изменилась, находим зависимые записи
+#
+# 4. КООРДИНАТОРЫ
+#    - Объединяют CTE от всех таблиц, добавляют error records, сортировку
+#
+# 5. ГЛАВНАЯ ФУНКЦИЯ
+#    - build_changed_idx_sql_v2: entry point для offset optimization
+# ============================================================================
+
+
 # Обратная совместимость: алиас для старой версии
 def build_changed_idx_sql(
     ds: "DataStore",
@@ -850,48 +878,603 @@ def build_changed_idx_sql(
     )
 
 
-def build_changed_idx_sql_v2(
-    ds: "DataStore",
-    meta_table: "TransformMetaTable",
-    input_dts: List["ComputeInput"],
-    transform_keys: List[str],
-    offset_table: "TransformInputOffsetTable",
-    transformation_id: str,
-    filters_idx: Optional[IndexDF] = None,
-    order_by: Optional[List[str]] = None,
-    order: Literal["asc", "desc"] = "asc",
-    run_config: Optional[RunConfig] = None,
-    additional_columns: Optional[List[str]] = None,
-) -> Tuple[Iterable[str], Any]:
-    """
-    Новая версия build_changed_idx_sql, использующая offset'ы для оптимизации.
+# ----------------------------------------------------------------------------
+# 1. БАЗОВЫЕ УТИЛИТЫ
+# ----------------------------------------------------------------------------
 
-    Вместо FULL OUTER JOIN всех входных таблиц, выбираем только записи с
-    update_ts > offset для каждой входной таблицы, затем объединяем через UNION.
+def _generate_unique_cte_name(table_name: str, suffix: str, usage_count: Dict[str, int]) -> str:
+    """
+    Генерирует уникальное имя CTE для таблицы.
+
+    При первом использовании: "{table_name}_{suffix}"
+    При повторном: "{table_name}_{suffix}_{N}"
 
     Args:
-        additional_columns: Дополнительные колонки для включения в результат (для filtered join)
+        table_name: Имя таблицы
+        suffix: Суффикс для CTE (например "changes", "deleted")
+        usage_count: Словарь счётчиков использования (мутируется!)
+
+    Returns:
+        Уникальное имя CTE
     """
-    if additional_columns is None:
-        additional_columns = []
+    if table_name not in usage_count:
+        usage_count[table_name] = 0
+        return f"{table_name}_{suffix}"
+    else:
+        usage_count[table_name] += 1
+        return f"{table_name}_{suffix}_{usage_count[table_name]}"
 
-    # Полный список колонок для SELECT (transform_keys + additional_columns)
-    all_select_keys = list(transform_keys) + additional_columns
 
-    # Добавляем update_ts для ORDER BY если его еще нет
-    # (нужно для правильной сортировки батчей по времени обновления)
-    if 'update_ts' not in all_select_keys:
-        all_select_keys.append('update_ts')
+def _build_offset_where_clause(tbl: Any, offset: float) -> Any:
+    """Строит WHERE условие для фильтрации по offset."""
+    return sa.or_(
+        tbl.c.update_ts >= offset,
+        sa.and_(
+            tbl.c.delete_ts.isnot(None),
+            tbl.c.delete_ts >= offset
+        )
+    )
 
-    # 1. Получить все offset'ы одним запросом для избежания N+1
-    offsets = offset_table.get_offsets_for_transformation(transformation_id)
-    # Для таблиц без offset используем 0.0 (обрабатываем все данные)
-    for inp in input_dts:
-        if inp.dt.name not in offsets:
-            offsets[inp.dt.name] = 0.0
 
-    # 2. Построить CTE для каждой входной таблицы с фильтром по offset
-    # Для таблиц с join_keys нужен обратный JOIN к основной таблице
+def _build_join_condition(conditions: List[Any]) -> Any:
+    """Объединяет условия JOIN через AND."""
+    if len(conditions) == 0:
+        return None
+    if len(conditions) == 1:
+        return conditions[0]
+    return sa.and_(*conditions)
+
+
+def _apply_sql_filters(
+    sql: Any,
+    keys: List[str],
+    filters_idx: Optional[IndexDF],
+    tbl: Any,
+    primary_keys: List[str],
+    run_config: Optional[RunConfig],
+) -> Any:
+    """Применяет filters_idx и run_config фильтры к SQL запросу."""
+    sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
+    sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
+    return sql
+
+
+# ----------------------------------------------------------------------------
+# 2. ФУНКЦИИ ПРИНЯТИЯ РЕШЕНИЯ
+# ----------------------------------------------------------------------------
+
+def _can_use_only_meta(
+    required_keys: List[str],
+    meta_cols: List[str],
+    data_cols: List[str],
+    join_keys: Optional[Dict[str, str]] = None,
+) -> bool:
+    """
+    Базовая функция: проверяет можно ли обойтись только meta table без JOIN с data table.
+
+    Args:
+        required_keys: Колонки которые нужно выбрать
+        meta_cols: Доступные колонки в meta table
+        data_cols: Доступные колонки в data table
+        join_keys: Опционально - FK (Dict[primary_col, ref_col]) которые должны быть в meta
+
+    Returns:
+        True - можно использовать только meta (не нужен JOIN с data)
+        False - нужен JOIN с data (есть колонки или FK только в data)
+    """
+    # Если есть join_keys, проверяем что все FK в meta
+    if join_keys:
+        for primary_col in join_keys.keys():
+            if primary_col not in meta_cols:
+                return False
+
+    # Проверяем все ли required_keys доступны без data table
+    for k in required_keys:
+        if k not in meta_cols:
+            # Ключ не в meta - проверяем есть ли он в data
+            if k in data_cols:
+                # Ключ в data - нужен JOIN с data
+                return False
+            # Ключ ни в meta, ни в data - будет NULL (допустимо)
+
+    return True
+
+
+def _should_use_forward_meta(
+    inp: "ComputeInput",
+    all_select_keys: List[str],
+) -> bool:
+    """
+    Определяет какой путь использовать для forward join.
+
+    Returns:
+        True - ПУТЬ А: только meta (все ключи в meta, 1 CTE)
+        False - ПУТЬ Б: meta + data (нужен JOIN с data, 2 CTE)
+    """
+    tbl = inp.dt.meta_table.sql_table
+    meta_cols = [c.name for c in tbl.columns]
+
+    # Fallback: нет data_table
+    if not hasattr(inp.dt.table_store, 'data_table'):
+        return True
+
+    data_tbl = inp.dt.table_store.data_table
+    data_cols = [c.name for c in data_tbl.columns]
+
+    return _can_use_only_meta(all_select_keys, meta_cols, data_cols)
+
+
+def _should_use_reverse_meta(
+    ref_join_keys: Dict[str, str],
+    all_select_keys: List[str],
+    primary_meta_tbl: Any,
+    primary_store: "TableStoreDB",
+) -> bool:
+    """
+    Определяет какой путь использовать для reverse join.
+
+    Args:
+        ref_join_keys: join_keys из справочной таблицы
+        all_select_keys: Колонки которые нужно выбрать
+        primary_meta_tbl: Meta table основной таблицы
+        primary_store: TableStoreDB основной таблицы
+
+    Returns:
+        True - ПУТЬ А: JOIN meta с meta (FK и все ключи в primary_meta)
+        False - ПУТЬ Б: JOIN meta с data (FK или ключи в primary_data)
+    """
+    primary_data_tbl = primary_store.data_table
+    primary_meta_cols = [c.name for c in primary_meta_tbl.columns]
+    primary_data_cols = [c.name for c in primary_data_tbl.columns]
+
+    return _can_use_only_meta(all_select_keys, primary_meta_cols, primary_data_cols, ref_join_keys)
+
+
+# ----------------------------------------------------------------------------
+# 3. ФУНКЦИИ ПОСТРОЕНИЯ CTE
+# ----------------------------------------------------------------------------
+
+# 3.0 Внутренние helper'ы
+
+def _meta_sql_helper(
+    tbl: Any,
+    keys_in_meta: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    primary_keys: List[str],
+    run_config: Optional[RunConfig],
+) -> Any:
+    """Строит SQL: SELECT из meta table с WHERE по offset (1 CTE)."""
+    select_cols = [sa.column(k) for k in keys_in_meta]
+
+    sql = sa.select(*select_cols).select_from(tbl).where(
+        _build_offset_where_clause(tbl, offset)
+    )
+
+    sql = _apply_sql_filters(sql, keys_in_meta, filters_idx, tbl, primary_keys, run_config)
+
+    if len(select_cols) > 0:
+        sql = sql.group_by(*select_cols)
+
+    return sql
+
+
+def _meta_data_sql_helper(
+    tbl: Any,
+    data_tbl: Any,
+    keys_in_meta: List[str],
+    keys_in_data_available: List[str],
+    primary_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> Tuple[Any, Any]:
+    """
+    Строит SQL при JOIN meta с data table (2 CTE: changed + deleted).
+
+    Returns:
+        Tuple[changed_cte, deleted_cte]
+    """
+    join_conditions = [tbl.c[pk] == data_tbl.c[pk] for pk in primary_keys]
+    join_condition = _build_join_condition(join_conditions)
+
+    select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
+    all_keys = keys_in_meta + keys_in_data_available
+
+    # CTE для измененных записей
+    changed_sql = sa.select(*select_cols).select_from(
+        tbl.join(data_tbl, join_condition)
+    ).where(
+        sa.and_(
+            tbl.c.update_ts >= offset,
+            tbl.c.delete_ts.is_(None)
+        )
+    )
+
+    changed_sql = _apply_sql_filters(changed_sql, all_keys, filters_idx, tbl, primary_keys, run_config)
+
+    if len(select_cols) > 0:
+        changed_sql = changed_sql.group_by(*select_cols)
+
+    # CTE для удаленных записей
+    deleted_select_cols = [
+        tbl.c[k] if k in keys_in_meta else sa.literal(None).label(k)
+        for k in all_keys
+    ]
+
+    deleted_sql = sa.select(*deleted_select_cols).select_from(tbl).where(
+        sa.and_(
+            tbl.c.delete_ts.isnot(None),
+            tbl.c.delete_ts >= offset
+        )
+    )
+
+    deleted_sql = _apply_sql_filters(deleted_sql, keys_in_meta, filters_idx, tbl, primary_keys, run_config)
+
+    if len(deleted_select_cols) > 0:
+        deleted_sql = deleted_sql.group_by(*[tbl.c[k] for k in keys_in_meta])
+
+    return changed_sql, deleted_sql
+
+
+# 3.1 Forward join
+
+def _build_forward_meta_cte(
+    meta_tbl: Any,
+    primary_keys: List[str],
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> Any:
+    """
+    ПУТЬ А для forward join: Строит 1 CTE когда все ключи в meta table.
+
+    Deleted records включены в WHERE через _build_offset_where_clause:
+    WHERE (update_ts >= offset) OR (delete_ts >= offset)
+
+    Returns:
+        Один CTE с changed + deleted records
+    """
+    meta_cols = [c.name for c in meta_tbl.columns]
+    keys_in_meta = [k for k in all_select_keys if k in meta_cols]
+
+    return _meta_sql_helper(meta_tbl, keys_in_meta, offset, filters_idx, primary_keys, run_config)
+
+
+def _build_forward_data_cte(
+    meta_tbl: Any,
+    store: "TableStoreDB",
+    primary_keys: List[str],
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> Tuple[Any, Any]:
+    """
+    ПУТЬ Б для forward join: Строит 2 CTE когда нужны FK из data table.
+
+    Changed CTE: INNER JOIN с data_table WHERE delete_ts IS NULL
+    Deleted CTE: SELECT FROM meta WHERE delete_ts >= offset (FK заменяем на NULL)
+
+    Почему 2 CTE? Для deleted records НЕ нужен JOIN - они уже удалены из data table.
+
+    Returns:
+        Tuple[changed_cte, deleted_cte]
+    """
+    data_tbl = store.data_table
+
+    meta_cols = [c.name for c in meta_tbl.columns]
+    keys_in_meta = [k for k in all_select_keys if k in meta_cols]
+    keys_in_data_only = [k for k in all_select_keys if k not in meta_cols]
+
+    data_cols_available = [c.name for c in data_tbl.columns]
+    keys_in_data_available = [k for k in keys_in_data_only if k in data_cols_available]
+
+    return _meta_data_sql_helper(
+        tbl=meta_tbl,
+        data_tbl=data_tbl,
+        keys_in_meta=keys_in_meta,
+        keys_in_data_available=keys_in_data_available,
+        primary_keys=primary_keys,
+        offset=offset,
+        filters_idx=filters_idx,
+        run_config=run_config,
+    )
+
+
+# 3.2 Reverse join
+
+def _build_reverse_meta_cte(
+    ref_meta_tbl: Any,
+    ref_join_keys: Dict[str, str],
+    ref_primary_keys: List[str],
+    primary_meta_tbl: Any,
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> Optional[Any]:
+    """
+    ПУТЬ А для reverse join: JOIN meta справочника с meta основной таблицы.
+    Используется когда FK в primary_meta.
+
+    Returns:
+        SQL query или None если не удалось построить JOIN
+    """
+    meta_cols = [c.name for c in ref_meta_tbl.columns]
+    primary_meta_cols = [c.name for c in primary_meta_tbl.columns]
+
+    select_cols = []
+    group_by_cols = []
+    for k in all_select_keys:
+        if k == 'update_ts':
+            # update_ts всегда из meta справочника (ref_meta_tbl)
+            select_cols.append(ref_meta_tbl.c.update_ts)
+            group_by_cols.append(ref_meta_tbl.c.update_ts)
+        elif k in primary_meta_cols:
+            select_cols.append(primary_meta_tbl.c[k])
+            group_by_cols.append(primary_meta_tbl.c[k])
+        elif k in meta_cols:
+            # Берём колонки из meta справочника
+            select_cols.append(ref_meta_tbl.c[k])
+            group_by_cols.append(ref_meta_tbl.c[k])
+        else:
+            select_cols.append(sa.literal(None).label(k))
+
+    join_conditions = [
+        primary_meta_tbl.c[primary_col] == ref_meta_tbl.c[ref_col]
+        for primary_col, ref_col in ref_join_keys.items()
+        if primary_col in primary_meta_cols and ref_col in meta_cols
+    ]
+
+    join_condition = _build_join_condition(join_conditions)
+    if join_condition is None:
+        return None
+
+    sql = sa.select(*select_cols).select_from(
+        ref_meta_tbl.join(primary_meta_tbl, join_condition)
+    ).where(_build_offset_where_clause(ref_meta_tbl, offset))
+
+    sql = _apply_sql_filters(sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+
+    if len(group_by_cols) > 0:
+        sql = sql.group_by(*group_by_cols)
+
+    return sql
+
+
+def _build_reverse_data_cte(
+    ref_meta_tbl: Any,
+    ref_join_keys: Dict[str, str],
+    ref_primary_keys: List[str],
+    primary_meta_tbl: Any,
+    primary_store: "TableStoreDB",
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> Tuple[Optional[Any], Optional[Any]]:
+    """
+    ПУТЬ Б для reverse join: JOIN meta справочника с data основной таблицы.
+    Используется когда FK в primary_data.
+
+    Changed CTE: INNER JOIN с primary_data WHERE delete_ts IS NULL
+    Deleted CTE: SELECT FROM primary_meta WHERE delete_ts >= offset (FK заменяем на NULL)
+
+    Returns:
+        Tuple[changed_cte, deleted_cte] или (None, None) если не удалось построить JOIN
+    """
+    primary_data_tbl = primary_store.data_table
+    meta_cols = [c.name for c in ref_meta_tbl.columns]
+    primary_data_cols = [c.name for c in primary_data_tbl.columns]
+    primary_meta_cols = [c.name for c in primary_meta_tbl.columns]
+
+    # CHANGED CTE: JOIN meta с data
+    select_cols = []
+    group_by_cols = []
+    for k in all_select_keys:
+        if k == 'update_ts':
+            # update_ts всегда из meta справочника (ref_meta_tbl)
+            select_cols.append(ref_meta_tbl.c.update_ts)
+            group_by_cols.append(ref_meta_tbl.c.update_ts)
+        elif k in primary_data_cols:
+            select_cols.append(primary_data_tbl.c[k])
+            group_by_cols.append(primary_data_tbl.c[k])
+        elif k in meta_cols:
+            # Берём колонки из meta справочника
+            select_cols.append(ref_meta_tbl.c[k])
+            group_by_cols.append(ref_meta_tbl.c[k])
+        else:
+            select_cols.append(sa.literal(None).label(k))
+
+    join_conditions = [
+        primary_data_tbl.c[primary_col] == ref_meta_tbl.c[ref_col]
+        for primary_col, ref_col in ref_join_keys.items()
+        if primary_col in primary_data_cols and ref_col in meta_cols
+    ]
+
+    join_condition = _build_join_condition(join_conditions)
+    if join_condition is None:
+        return None, None
+
+    changed_sql = sa.select(*select_cols).select_from(
+        ref_meta_tbl.join(primary_data_tbl, join_condition)
+    ).where(_build_offset_where_clause(ref_meta_tbl, offset))
+
+    changed_sql = _apply_sql_filters(
+        changed_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+    )
+
+    if len(group_by_cols) > 0:
+        changed_sql = changed_sql.group_by(*group_by_cols)
+
+    # DELETED CTE: Только из primary_meta (FK заменяем на NULL)
+    deleted_select_cols = []
+    for k in all_select_keys:
+        if k == 'update_ts':
+            deleted_select_cols.append(ref_meta_tbl.c.update_ts)
+        elif k in primary_meta_cols:
+            deleted_select_cols.append(primary_meta_tbl.c[k])
+        elif k in meta_cols:
+            deleted_select_cols.append(ref_meta_tbl.c[k])
+        else:
+            # FK из primary_data недоступен для deleted records
+            deleted_select_cols.append(sa.literal(None).label(k))
+
+    # JOIN primary_meta с ref_meta_tbl для deleted records
+    deleted_join_conditions = [
+        primary_meta_tbl.c[primary_col] == ref_meta_tbl.c[ref_col]
+        for primary_col, ref_col in ref_join_keys.items()
+        if primary_col in primary_meta_cols and ref_col in meta_cols
+    ]
+
+    deleted_join_condition = _build_join_condition(deleted_join_conditions)
+    if deleted_join_condition is None:
+        return changed_sql, None
+
+    deleted_sql = sa.select(*deleted_select_cols).select_from(
+        ref_meta_tbl.join(primary_meta_tbl, deleted_join_condition)
+    ).where(ref_meta_tbl.c.delete_ts >= offset)
+
+    deleted_sql = _apply_sql_filters(
+        deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+    )
+
+    return changed_sql, deleted_sql
+
+
+# ----------------------------------------------------------------------------
+# 4. КООРДИНАТОРЫ
+# ----------------------------------------------------------------------------
+
+def _build_forward_input_cte(
+    inp: "ComputeInput",
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+    cte_name: str,
+) -> List[Any]:
+    """
+    Строит CTE для forward join (таблица без join_keys).
+
+    Находит изменения в самой таблице inp (прямой путь).
+
+    Returns:
+        List of CTE objects (1 CTE для пути А, 2 CTE для пути Б)
+    """
+    meta_tbl = inp.dt.meta_table.sql_table
+    primary_keys = inp.dt.primary_keys
+
+    # Определяем какой путь использовать
+    use_meta_path = _should_use_forward_meta(inp, all_select_keys)
+
+    # Выполняем соответствующий путь
+    if use_meta_path:
+        # ПУТЬ А: строим 1 CTE из meta table (changed + deleted в одном WHERE)
+        changed_sql = _build_forward_meta_cte(meta_tbl, primary_keys, all_select_keys, offset, filters_idx, run_config)
+        deleted_sql = None
+    else:
+        # ПУТЬ Б: строим 2 CTE (changed с JOIN, deleted без JOIN)
+        from datapipe.store.database import TableStoreDB
+
+        store = inp.dt.table_store
+        assert isinstance(store, TableStoreDB)
+
+        changed_sql, deleted_sql = _build_forward_data_cte(
+            meta_tbl, store, primary_keys, all_select_keys, offset, filters_idx, run_config
+        )
+
+    ctes = [changed_sql.cte(name=cte_name)]
+    if deleted_sql is not None:
+        deleted_cte_name = cte_name.replace('_changes', '_deleted')
+        ctes.append(deleted_sql.cte(name=deleted_cte_name))
+
+    return ctes
+
+
+def _build_reverse_input_cte(
+    ref_meta_tbl: Any,
+    ref_join_keys: Dict[str, str],
+    ref_primary_keys: List[str],
+    primary_meta_tbl: Any,
+    primary_store: "TableStoreDB",
+    all_select_keys: List[str],
+    offset: float,
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+    cte_name: str,
+) -> List[Any]:
+    """
+    Строит CTE для reverse join (справочная таблица с join_keys).
+
+    Когда изменяется справочная таблица (users), находит зависимые записи
+    в основной таблице (subscriptions) через обратный JOIN.
+
+    Args:
+        ref_meta_tbl: Meta table справочной таблицы
+        ref_join_keys: join_keys связывающие таблицы
+        ref_primary_keys: Primary keys справочной таблицы
+        primary_meta_tbl: Meta table основной таблицы
+        primary_store: TableStoreDB основной таблицы
+        all_select_keys: Колонки для выборки
+        offset: Временная метка offset
+        filters_idx: Дополнительные фильтры
+        run_config: Конфигурация выполнения
+        cte_name: Имя для CTE
+
+    Returns:
+        List of CTE objects (1 CTE для пути А, 2 CTE для пути Б)
+    """
+    # Определяем какой путь использовать для reverse_join
+    use_meta_path = _should_use_reverse_meta(
+        ref_join_keys, all_select_keys, primary_meta_tbl, primary_store
+    )
+
+    # Выполняем соответствующий путь
+    if use_meta_path:
+        # ПУТЬ А: JOIN meta с meta (FK в primary_meta)
+        changed_sql = _build_reverse_meta_cte(
+            ref_meta_tbl, ref_join_keys, ref_primary_keys,
+            primary_meta_tbl, all_select_keys, offset, filters_idx, run_config
+        )
+        deleted_sql = None
+    else:
+        # ПУТЬ Б: JOIN meta с data (FK в primary_data) - возвращает 2 CTE
+        changed_sql, deleted_sql = _build_reverse_data_cte(
+            ref_meta_tbl, ref_join_keys, ref_primary_keys,
+            primary_meta_tbl, primary_store,
+            all_select_keys, offset, filters_idx, run_config
+        )
+
+    if changed_sql is None:
+        return []
+
+    ctes = [changed_sql.cte(name=cte_name)]
+    if deleted_sql is not None:
+        deleted_cte_name = cte_name.replace('_changes', '_deleted')
+        ctes.append(deleted_sql.cte(name=deleted_cte_name))
+
+    return ctes
+
+
+def _build_input_ctes(
+    input_dts: List["ComputeInput"],
+    offsets: Dict[str, float],
+    all_select_keys: List[str],
+    filters_idx: Optional[IndexDF],
+    run_config: Optional[RunConfig],
+) -> List[Any]:
+    """
+    Строит CTE для каждой входной таблицы с фильтром по offset.
+
+    Для таблиц с join_keys делает обратный JOIN к основной таблице.
+    Для таблиц с join_keys также создаёт отдельный CTE для deleted records.
+
+    Returns:
+        List of CTE objects
+    """
     changed_ctes = []
 
     # Сначала находим "основную" таблицу - первую без join_keys
@@ -909,241 +1492,69 @@ def build_changed_idx_sql_v2(
         tbl = inp.dt.meta_table.sql_table
 
         # Генерируем уникальное имя CTE для текущей таблицы
-        table_name = inp.dt.name
-        if table_name not in table_usage_count:
-            table_usage_count[table_name] = 0
-            cte_name = f"{table_name}_changes"  # Первое использование - без индекса
-        else:
-            table_usage_count[table_name] += 1
-            cte_name = f"{table_name}_changes_{table_usage_count[table_name]}"  # Повторное - с индексом
+        cte_name = _generate_unique_cte_name(inp.dt.name, "changes", table_usage_count)
 
-        # Разделяем ключи на те, что есть в meta table, и те, что нужны из data table
+        # Проверяем есть ли ключи в meta table
         meta_cols = [c.name for c in tbl.columns]
         keys_in_meta = [k for k in all_select_keys if k in meta_cols]
-        keys_in_data_only = [k for k in all_select_keys if k not in meta_cols]
 
         if len(keys_in_meta) == 0:
             continue
 
         offset = offsets[inp.dt.name]
 
-        # ОБРАТНЫЙ JOIN для справочных таблиц с join_keys
-        # Когда изменяется справочная таблица, нужно найти все записи основной таблицы,
-        # которые на нее ссылаются
+        # Два взаимоисключающих пути:
+        # 1. Reverse join: справочная таблица с join_keys
+        # 2. Forward join: таблица без join_keys
         if inp.join_keys and primary_inp and hasattr(primary_inp.dt.table_store, 'data_table'):
-            # Справочная таблица изменилась - нужен обратный JOIN к основной
-            primary_data_tbl = primary_inp.dt.table_store.data_table
+            from datapipe.store.database import TableStoreDB
 
-            # Строим SELECT для всех колонок из all_select_keys основной таблицы
-            primary_data_cols = [c.name for c in primary_data_tbl.columns]
-            select_cols = []
-            group_by_cols = []
-            for k in all_select_keys:
-                if k in primary_data_cols:
-                    select_cols.append(primary_data_tbl.c[k])
-                    group_by_cols.append(primary_data_tbl.c[k])
-                elif k == 'update_ts':
-                    # КРИТИЧНО: Берем update_ts из мета-таблицы справочника (tbl.c.update_ts),
-                    # а НЕ из primary_data_tbl. Это необходимо для корректной работы
-                    # offset-оптимизации при reverse join (join_keys).
-                    # Если использовать NULL, записи будут помечаться как error_records
-                    # и переобрабатываться на каждом запуске.
-                    select_cols.append(tbl.c.update_ts)
-                    group_by_cols.append(tbl.c.update_ts)  # Добавляем в GROUP BY
-                else:
-                    select_cols.append(sa.literal(None).label(k))
+            # Reverse join: находим зависимые записи в primary таблице от изменений в referense таблице
+            primary_store = primary_inp.dt.table_store
+            assert isinstance(primary_store, TableStoreDB), "primary table must be TableStoreDB for reverse join"
 
-            # Обратный JOIN: primary_table.join_key = reference_table.id
-            # Например: posts.user_id = profiles.id
-            # inp.join_keys = {'user_id': 'id'} означает:
-            #   'user_id' - колонка в основной таблице (posts)
-            #   'id' - колонка в справочной таблице (profiles)
-            join_conditions = []
-            for primary_col, ref_col in inp.join_keys.items():
-                if primary_col in primary_data_cols and ref_col in meta_cols:
-                    join_conditions.append(primary_data_tbl.c[primary_col] == tbl.c[ref_col])
-
-            if len(join_conditions) == 0:
-                # Не можем построить JOIN - пропускаем эту таблицу
-                continue
-
-            join_condition = sa.and_(*join_conditions) if len(join_conditions) > 1 else join_conditions[0]
-
-            # SELECT primary_cols FROM reference_meta
-            # JOIN primary_data ON primary.join_key = reference.id
-            # WHERE reference.update_ts >= offset (используем >= вместо >)
-            changed_sql = sa.select(*select_cols).select_from(
-                tbl.join(primary_data_tbl, join_condition)
-            ).where(
-                sa.or_(
-                    tbl.c.update_ts >= offset,
-                    sa.and_(
-                        tbl.c.delete_ts.isnot(None),
-                        tbl.c.delete_ts >= offset
-                    )
-                )
+            ctes = _build_reverse_input_cte(
+                ref_meta_tbl=inp.dt.meta_table.sql_table,
+                ref_join_keys=inp.join_keys,
+                ref_primary_keys=inp.dt.primary_keys,
+                primary_meta_tbl=primary_inp.dt.meta_table.sql_table,
+                primary_store=primary_store,
+                all_select_keys=all_select_keys,
+                offset=offset,
+                filters_idx=filters_idx,
+                run_config=run_config,
+                cte_name=cte_name,
             )
-
-            # Применить filters и group by
-            changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, all_select_keys, filters_idx)
-            # run_config фильтры применяются к справочной таблице
-            changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
-
-            if len(group_by_cols) > 0:
-                changed_sql = changed_sql.group_by(*group_by_cols)
-
-            changed_ctes.append(changed_sql.cte(name=cte_name))
-            continue
-
-        # Если все ключи есть в meta table - используем простой запрос
-        if len(keys_in_data_only) == 0:
-            select_cols = [sa.column(k) for k in keys_in_meta]
-
-            # SELECT keys FROM input_meta WHERE update_ts >= offset OR delete_ts >= offset
-            changed_sql = sa.select(*select_cols).select_from(tbl).where(
-                sa.or_(
-                    tbl.c.update_ts >= offset,
-                    sa.and_(
-                        tbl.c.delete_ts.isnot(None),
-                        tbl.c.delete_ts >= offset
-                    )
-                )
-            )
-
-            # Применить filters_idx и run_config
-            changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
-            changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
-
-            if len(select_cols) > 0:
-                changed_sql = changed_sql.group_by(*select_cols)
         else:
-            # Есть колонки только в data table - нужен JOIN с data table
-            # Проверяем что у table_store есть data_table (для TableStoreDB)
-            if not hasattr(inp.dt.table_store, 'data_table'):
-                # Fallback: если нет data_table, используем только meta keys
-                select_cols = [sa.column(k) for k in keys_in_meta]
-                changed_sql = sa.select(*select_cols).select_from(tbl).where(
-                    sa.or_(
-                        tbl.c.update_ts >= offset,
-                        sa.and_(
-                            tbl.c.delete_ts.isnot(None),
-                            tbl.c.delete_ts >= offset
-                        )
-                    )
-                )
-                changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
-                changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
-                if len(select_cols) > 0:
-                    changed_sql = changed_sql.group_by(*select_cols)
-            else:
-                # JOIN meta table с data table для получения дополнительных колонок
-                data_tbl = inp.dt.table_store.data_table
+            # Forward join: находим изменения в самой primary таблице и зависимые referense записи
+            ctes = _build_forward_input_cte(
+                inp, all_select_keys, offset, filters_idx, run_config, cte_name
+            )
 
-                # Проверяем какие дополнительные колонки действительно есть в data table
-                data_cols_available = [c.name for c in data_tbl.columns]
-                keys_in_data_available = [k for k in keys_in_data_only if k in data_cols_available]
+        changed_ctes.extend(ctes)
 
-                if len(keys_in_data_available) == 0:
-                    # Fallback: если нужных колонок нет в data table, используем только meta keys
-                    select_cols = [sa.column(k) for k in keys_in_meta]
-                    changed_sql = sa.select(*select_cols).select_from(tbl).where(
-                        sa.or_(
-                            tbl.c.update_ts >= offset,
-                            sa.and_(
-                                tbl.c.delete_ts.isnot(None),
-                                tbl.c.delete_ts >= offset
-                            )
-                        )
-                    )
-                    changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, keys_in_meta, filters_idx)
-                    changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
-                    if len(select_cols) > 0:
-                        changed_sql = changed_sql.group_by(*select_cols)
+    return changed_ctes
 
-                    changed_ctes.append(changed_sql.cte(name=cte_name))
-                    continue
 
-                # Создаем отдельный CTE для удаленных записей (SELECT только из meta),
-                # где FK заменяются на NULL (они не нужны для удаления, достаточно transform_keys).
+def _build_error_records_cte(
+    meta_table: "TransformMetaTable",
+    transform_keys: List[str],
+    all_select_keys: List[str],
+    filters_idx: Optional[IndexDF],
+) -> Any:
+    """
+    Строит CTE для записей с ошибками из TransformMetaTable.
 
-                # SELECT meta_keys, data_keys FROM meta JOIN data ON primary_keys
-                select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
-
-                # Строим JOIN condition по primary keys
-                if len(inp.dt.primary_keys) == 1:
-                    join_condition = tbl.c[inp.dt.primary_keys[0]] == data_tbl.c[inp.dt.primary_keys[0]]
-                else:
-                    join_condition = sa.and_(*[
-                        tbl.c[pk] == data_tbl.c[pk] for pk in inp.dt.primary_keys
-                    ])
-
-                # 1. CTE для ИЗМЕНЕННЫХ записей (INNER JOIN для получения FK из data table)
-                changed_sql = sa.select(*select_cols).select_from(
-                    tbl.join(data_tbl, join_condition)
-                ).where(
-                    sa.and_(
-                        tbl.c.update_ts >= offset,
-                        tbl.c.delete_ts.is_(None)  # ← Исключаем удаленные записи!
-                    )
-                )
-
-                # Применить filters_idx и run_config
-                all_keys = keys_in_meta + keys_in_data_available
-                changed_sql = sql_apply_filters_idx_to_subquery(changed_sql, all_keys, filters_idx)
-                changed_sql = sql_apply_runconfig_filter(changed_sql, tbl, inp.dt.primary_keys, run_config)
-
-                if len(select_cols) > 0:
-                    changed_sql = changed_sql.group_by(*select_cols)
-
-                changed_ctes.append(changed_sql.cte(name=cte_name))
-
-                # CTE для удаленных записей (без JOIN, FK заменяем на NULL)
-                deleted_select_cols = []
-                for k in all_keys:
-                    if k in keys_in_meta:
-                        # Колонка есть в meta table (id, update_ts) - берем из tbl
-                        deleted_select_cols.append(tbl.c[k])
-                    else:
-                        # Колонка только в data table (FK) - используем NULL
-                        deleted_select_cols.append(sa.literal(None).label(k))
-
-                deleted_sql = sa.select(*deleted_select_cols).select_from(tbl).where(
-                    sa.and_(
-                        tbl.c.delete_ts.isnot(None),
-                        tbl.c.delete_ts >= offset
-                    )
-                )
-
-                # Применить filters_idx и run_config (только для keys_in_meta)
-                deleted_sql = sql_apply_filters_idx_to_subquery(deleted_sql, keys_in_meta, filters_idx)
-                deleted_sql = sql_apply_runconfig_filter(deleted_sql, tbl, inp.dt.primary_keys, run_config)
-
-                if len(deleted_select_cols) > 0:
-                    # GROUP BY только по колонкам из meta (не по NULL колонкам!)
-                    deleted_sql = deleted_sql.group_by(*[tbl.c[k] for k in keys_in_meta])
-
-                # Генерируем уникальное имя для deleted CTE
-                deleted_cte_name = f"{cte_name.replace('_changes', '_deleted')}"
-                changed_ctes.append(deleted_sql.cte(name=deleted_cte_name))
-
-                # Продолжаем дальше (не добавляем changed_ctes.append второй раз в конце)
-                continue  # ← ВАЖНО: пропускаем стандартное добавление в конце блока
-
-        changed_ctes.append(changed_sql.cte(name=cte_name))
-
-    # 3. Получить записи с ошибками из TransformMetaTable
-    # Важно: error_records должен иметь все колонки из all_select_keys для UNION
-    # Для additional_columns используем NULL, так как их нет в transform meta table
+    Returns:
+        CTE object для error_records
+    """
     tr_tbl = meta_table.sql_table
-    # Для error_records нужно создать колонки из all_select_keys
-    # Колонки из transform_keys берем из tr_tbl, остальные - NULL
     error_select_cols: List[Any] = []
     for k in all_select_keys:
         if k in transform_keys:
             error_select_cols.append(sa.column(k))
         else:
-            # Для дополнительных колонок (включая update_ts) используем NULL с правильным типом
-            # update_ts это Float, остальные - String
+            # Для дополнительных колонок (включая update_ts) используем NULL
             if k == 'update_ts':
                 error_select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
             else:
@@ -1163,11 +1574,24 @@ def build_changed_idx_sql_v2(
     if len(transform_keys) > 0:
         error_records_sql = error_records_sql.group_by(*[sa.column(k) for k in transform_keys])
 
-    error_records_cte = error_records_sql.cte(name="error_records")
+    return error_records_sql.cte(name="error_records")
 
-    # 4. Объединить все изменения и ошибки через UNION или CROSS JOIN
-    # Определяем какие transform_keys есть в каждом CTE
-    needs_cross_join = False  # Флаг для пропуска дедупликации в cross join случае
+
+def _union_or_cross_join_ctes(
+    ds: "DataStore",
+    changed_ctes: List[Any],
+    error_records_cte: Any,
+    transform_keys: List[str],
+    additional_columns: List[str],
+    all_select_keys: List[str],
+) -> Tuple[Any, bool]:
+    """
+    Объединяет CTE через UNION или CROSS JOIN в зависимости от структуры ключей.
+
+    Returns:
+        Tuple[CTE, needs_cross_join_flag]
+    """
+    needs_cross_join = False
 
     if len(changed_ctes) == 0:
         # Если нет входных таблиц с изменениями, используем только ошибки
@@ -1178,45 +1602,30 @@ def build_changed_idx_sql_v2(
         # Собираем информацию о том, какие transform_keys есть в каждом CTE
         cte_transform_keys_sets = []
         for cte in changed_ctes:
-            # Какие transform_keys есть в этом CTE (не NULL)
-            cte_keys = set(k for k in transform_keys if k in cte.c)
-            cte_transform_keys_sets.append(cte_keys)
+            cte_transform_keys = set(k for k in transform_keys if k in cte.c)
+            cte_transform_keys_sets.append(cte_transform_keys)
 
         # Проверяем все ли CTE содержат одинаковый набор transform_keys
         unique_key_sets = set(map(frozenset, cte_transform_keys_sets))
-        needs_cross_join = len(unique_key_sets) > 1  # Устанавливаем флаг
+        needs_cross_join = len(unique_key_sets) > 1
 
         if needs_cross_join:
             # Cross join сценарий: используем _make_agg_of_agg для FULL OUTER JOIN
-            # Преобразуем CTE в ComputeInputCTE структуры
             compute_input_ctes = []
-            # ВАЖНО: НЕ включаем update_ts в keys - это agg_col, не transform_key
-            # Если update_ts будет в keys, разные CTE будут джойниться по update_ts,
-            # а не делать CROSS JOIN
             keys_for_join = transform_keys + additional_columns  # БЕЗ update_ts
             for i, cte in enumerate(changed_ctes):
-                # Определяем какие ключи из keys_for_join есть в этом CTE
                 cte_keys = [k for k in keys_for_join if k in cte.c]
-                # Определяем join_type - берём из исходного input_dts если возможно
-                # Для упрощения используем 'full' для всех CTE
                 compute_input_ctes.append(
                     ComputeInputCTE(cte=cte, keys=cte_keys, join_type='full')
                 )
 
-            # Используем _make_agg_of_agg для построения FULL OUTER JOIN (cross join)
-            # _make_agg_of_agg уже возвращает CTE
-            # ВАЖНО: передаём только transform_keys (без update_ts и additional_columns)
-            # update_ts будет добавлен автоматически как agg_col
             cross_join_raw = _make_agg_of_agg(
                 ds=ds,
-                transform_keys=transform_keys + additional_columns,  # Только ключи, без update_ts
+                transform_keys=transform_keys + additional_columns,
                 agg_col='update_ts',
                 ctes=compute_input_ctes
             )
 
-            # Создаём SELECT который явно переименовывает колонки
-            # Это нужно чтобы избежать конфликтов имён с Label колонками
-            # Используем text() для выбора всех колонок без конфликтов
             cross_join_clean_select = sa.select(
                 *[sa.column(k) for k in all_select_keys]
             ).select_from(cross_join_raw)
@@ -1232,7 +1641,6 @@ def build_changed_idx_sql_v2(
             # Обычный UNION - все CTE содержат одинаковый набор transform_keys
             union_parts = []
             for cte in changed_ctes:
-                # Для каждой колонки из all_select_keys: берем из CTE если есть, иначе NULL
                 select_cols = [
                     cte.c[k] if k in cte.c else sa.literal(None).label(k)
                     for k in all_select_keys
@@ -1247,26 +1655,29 @@ def build_changed_idx_sql_v2(
 
             union_sql = sa.union(*union_parts)
 
-    # 5. Дедупликация при использовании join_keys
-    # Проблема: При reverse join разные CTE могут возвращать одинаковые transform_keys
-    # с разными update_ts, что создаёт дубликаты после UNION
-    # Решение: GROUP BY по transform_keys + additional_columns, выбираем MAX(update_ts)
-    # Примечание: При cross join дедупликация уже сделана в _make_agg_of_agg
-    union_cte = union_sql.cte(name="changed_union")
+    return union_sql.cte(name="changed_union"), needs_cross_join
 
+
+def _deduplicate_if_needed(
+    union_cte: Any,
+    input_dts: List["ComputeInput"],
+    transform_keys: List[str],
+    additional_columns: List[str],
+    needs_cross_join: bool,
+) -> Any:
+    """
+    Применяет дедупликацию при использовании join_keys (если нужно).
+
+    Returns:
+        Deduplicated CTE или исходный union_cte
+    """
     has_join_keys = any(inp.join_keys for inp in input_dts)
     if has_join_keys and len(transform_keys) > 0 and not needs_cross_join:
-        # Группируем по transform_keys + additional_columns для удаления дубликатов
-        # Используем MAX(update_ts) чтобы взять самое свежее обновление
-        # Колонки для GROUP BY: transform_keys + additional_columns (но не update_ts)
         group_by_cols = transform_keys + additional_columns
 
         select_cols = []
-        # transform_keys и additional_columns берём как есть
         for k in group_by_cols:
             select_cols.append(union_cte.c[k])
-        # update_ts агрегируем через MAX (или оставляем NULL для error records)
-        # Используем MAX для выбора самой свежей update_ts среди дубликатов
         select_cols.append(sa.func.max(union_cte.c.update_ts).label('update_ts'))
 
         deduplicated_sql = (
@@ -1274,10 +1685,27 @@ def build_changed_idx_sql_v2(
             .select_from(union_cte)
             .group_by(*[union_cte.c[k] for k in group_by_cols])
         )
-        union_cte = deduplicated_sql.cte(name="changed_union_deduplicated")
+        return deduplicated_sql.cte(name="changed_union_deduplicated")
 
-    # 6. Применить сортировку
-    # Нам нужно join с transform meta для получения priority
+    return union_cte
+
+
+def _apply_final_filters_and_sort(
+    union_cte: Any,
+    meta_table: "TransformMetaTable",
+    transform_keys: List[str],
+    all_select_keys: List[str],
+    order_by: Optional[List[str]],
+    order: Literal["asc", "desc"],
+) -> Any:
+    """
+    Применяет финальные фильтры и сортировку к результату.
+
+    Returns:
+        Final SQL query
+    """
+    tr_tbl = meta_table.sql_table
+
     if len(transform_keys) == 0:
         join_onclause_sql: Any = sa.literal(True)
     elif len(transform_keys) == 1:
@@ -1285,10 +1713,6 @@ def build_changed_idx_sql_v2(
     else:
         join_onclause_sql = sa.and_(*[union_cte.c[key] == tr_tbl.c[key] for key in transform_keys])
 
-    # Используем `out` для консистентности с v1
-    # Важно: Включаем все колонки (transform_keys + additional_columns)
-
-    # Error records имеют update_ts = NULL, используем это для их идентификации
     is_error_record = union_cte.c.update_ts.is_(None)
 
     out = (
@@ -1299,51 +1723,131 @@ def build_changed_idx_sql_v2(
         .select_from(union_cte)
         .outerjoin(tr_tbl, onclause=join_onclause_sql)
         .where(
-            # Фильтрация для предотвращения зацикливания при >= offset
-            # Логика аналогична v1, но с учетом error_records
             sa.or_(
-                # Error records (update_ts IS NULL) - всегда обрабатываем
                 is_error_record,
-                # Не обработано (первый раз)
                 tr_tbl.c.process_ts.is_(None),
-                # Успешно обработано, но данные обновились после обработки
                 sa.and_(
                     tr_tbl.c.is_success == True,  # noqa
                     union_cte.c.update_ts > tr_tbl.c.process_ts
                 )
-                # Примечание: is_success != True НЕ проверяем, так как
-                # ошибочные записи уже включены в error_records CTE
             )
         )
     )
 
     if order_by is None:
-        # Сортировка: сначала по update_ts (для консистентности с offset),
-        # затем по transform_keys (для детерминизма)
-        # NULLS LAST - error_records (с update_ts = NULL) обрабатываются последними
         out = out.order_by(
             tr_tbl.c.priority.desc().nullslast(),
-            union_cte.c.update_ts.asc().nullslast(),  # Сортировка по времени обновления, NULL в конце
-            *[union_cte.c[k] for k in transform_keys],  # Детерминизм при одинаковых update_ts
+            union_cte.c.update_ts.asc().nullslast(),
+            *[union_cte.c[k] for k in transform_keys],
         )
     else:
-        # КРИТИЧНО: При кастомном order_by всё равно нужно сортировать по update_ts ПЕРВЫМ
-        # для консистентности с offset (иначе данные могут быть пропущены)
         if order == "desc":
             out = out.order_by(
                 tr_tbl.c.priority.desc().nullslast(),
-                union_cte.c.update_ts.asc().nullslast(),  # update_ts ВСЕГДА первым
+                union_cte.c.update_ts.asc().nullslast(),
                 *[sa.desc(union_cte.c[k]) for k in order_by],
             )
         elif order == "asc":
             out = out.order_by(
                 tr_tbl.c.priority.desc().nullslast(),
-                union_cte.c.update_ts.asc().nullslast(),  # update_ts ВСЕГДА первым
+                union_cte.c.update_ts.asc().nullslast(),
                 *[sa.asc(union_cte.c[k]) for k in order_by],
             )
 
+    return out
+
+
+# ----------------------------------------------------------------------------
+# 5. ГЛАВНАЯ ФУНКЦИЯ
+# ----------------------------------------------------------------------------
+
+def build_changed_idx_sql_v2(
+    ds: "DataStore",
+    meta_table: "TransformMetaTable",
+    input_dts: List["ComputeInput"],
+    transform_keys: List[str],
+    offset_table: "TransformInputOffsetTable",
+    transformation_id: str,
+    filters_idx: Optional[IndexDF] = None,
+    order_by: Optional[List[str]] = None,
+    order: Literal["asc", "desc"] = "asc",
+    run_config: Optional[RunConfig] = None,
+    additional_columns: Optional[List[str]] = None,
+) -> Tuple[Iterable[str], Any]:
+    """
+    Новая версия build_changed_idx_sql, использующая offset'ы для оптимизации.
+
+    Вместо FULL OUTER JOIN всех входных таблиц, выбираем только записи с
+    update_ts >= offset для каждой входной таблицы, затем объединяем через UNION.
+
+    Args:
+        additional_columns: Дополнительные колонки для включения в результат (для filtered join)
+    """
+    if additional_columns is None:
+        additional_columns = []
+
+    # Полный список колонок для SELECT (transform_keys + additional_columns)
+    all_select_keys = list(transform_keys) + additional_columns
+
+    # Добавляем update_ts для ORDER BY если его еще нет
+    if 'update_ts' not in all_select_keys:
+        all_select_keys.append('update_ts')
+
+    # 1. Получить все offset'ы одним запросом для избежания N+1
+    offsets = offset_table.get_offsets_for_transformation(transformation_id)
+    for inp in input_dts:
+        if inp.dt.name not in offsets:
+            offsets[inp.dt.name] = 0.0
+
+    # 2. Построить CTE для каждой входной таблицы с фильтром по offset
+    changed_ctes = _build_input_ctes(
+        input_dts=input_dts,
+        offsets=offsets,
+        all_select_keys=all_select_keys,
+        filters_idx=filters_idx,
+        run_config=run_config,
+    )
+
+    # 3. Построить CTE для error_records
+    error_records_cte = _build_error_records_cte(
+        meta_table=meta_table,
+        transform_keys=transform_keys,
+        all_select_keys=all_select_keys,
+        filters_idx=filters_idx,
+    )
+
+    # 4. Объединить через UNION или CROSS JOIN
+    union_cte, needs_cross_join = _union_or_cross_join_ctes(
+        ds=ds,
+        changed_ctes=changed_ctes,
+        error_records_cte=error_records_cte,
+        transform_keys=transform_keys,
+        additional_columns=additional_columns,
+        all_select_keys=all_select_keys,
+    )
+
+    # 5. Дедупликация если нужно
+    union_cte = _deduplicate_if_needed(
+        union_cte=union_cte,
+        input_dts=input_dts,
+        transform_keys=transform_keys,
+        additional_columns=additional_columns,
+        needs_cross_join=needs_cross_join,
+    )
+
+    # 6. Применить финальные фильтры и сортировку
+    out = _apply_final_filters_and_sort(
+        union_cte=union_cte,
+        meta_table=meta_table,
+        transform_keys=transform_keys,
+        all_select_keys=all_select_keys,
+        order_by=order_by,
+        order=order,
+    )
+
     return (all_select_keys, out)
 
+# ----------------------------------------------------------------------------
 
 TRANSFORM_INPUT_OFFSET_SCHEMA: DataSchema = [
     sa.Column("transformation_id", sa.String, primary_key=True),
