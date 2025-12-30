@@ -41,6 +41,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("datapipe.meta.sql_meta")
 
+# Эпсилон для offset optimization: смещаем offset на эту величину назад
+# для захвата записей с одинаковыми timestamps при использовании строгого >
+# Это предотвращает потерю данных (Hypothesis 1) при сохранении производительности
+OFFSET_EPSILON_SECONDS = 0.01  # 10 миллисекунд
+
 TABLE_META_SCHEMA: List[sa.Column] = [
     sa.Column("hash", sa.Integer),
     sa.Column("create_ts", sa.Float),  # Время создания строки
@@ -906,12 +911,25 @@ def _generate_unique_cte_name(table_name: str, suffix: str, usage_count: Dict[st
 
 
 def _build_offset_where_clause(tbl: Any, offset: float) -> Any:
-    """Строит WHERE условие для фильтрации по offset."""
+    """
+    Строит WHERE условие для фильтрации по offset.
+
+    Применяет epsilon-сдвиг для захвата записей с timestamp близкими к offset.
+    Это предотвращает потерю данных при одинаковых update_ts (Hypothesis 1)
+    при сохранении производительности (offset остаётся = MAX(update_ts)).
+
+    WHERE update_ts > (offset - epsilon) эквивалентно >= для практических целей,
+    но читает только новые записи из БД.
+    """
+    # Вычитаем epsilon при использовании offset для захвата записей
+    # с update_ts близкими к offset (включая равные)
+    adjusted_offset = offset - OFFSET_EPSILON_SECONDS
+
     return sa.or_(
-        tbl.c.update_ts >= offset,
+        tbl.c.update_ts > adjusted_offset,
         sa.and_(
             tbl.c.delete_ts.isnot(None),
-            tbl.c.delete_ts >= offset
+            tbl.c.delete_ts > adjusted_offset
         )
     )
 
