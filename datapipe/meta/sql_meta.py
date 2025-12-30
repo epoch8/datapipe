@@ -1062,17 +1062,38 @@ def _meta_sql_helper(
     primary_keys: List[str],
     run_config: Optional[RunConfig],
 ) -> Any:
-    """Строит SQL: SELECT из meta table с WHERE по offset (1 CTE)."""
+    """
+    Строит SQL: SELECT из meta table с WHERE по offset.
+
+    Использует UNION двух SELECT вместо OR для использования индексов:
+    - SELECT WHERE update_ts > offset (использует индекс на update_ts)
+    - UNION
+    - SELECT WHERE delete_ts > offset (использует индекс на delete_ts)
+
+    Это позволяет PostgreSQL использовать Index Scan вместо Sequential Scan.
+    """
     select_cols = [sa.column(k) for k in keys_in_meta]
+    adjusted_offset = offset - OFFSET_EPSILON_SECONDS
 
-    sql = sa.select(*select_cols).select_from(tbl).where(
-        _build_offset_where_clause(tbl, offset)
+    # Часть 1: Измененные записи (update_ts > offset)
+    updated_sql = sa.select(*select_cols).select_from(tbl).where(
+        tbl.c.update_ts > adjusted_offset
     )
-
-    sql = _apply_sql_filters(sql, keys_in_meta, filters_idx, tbl, primary_keys, run_config)
-
+    updated_sql = _apply_sql_filters(updated_sql, keys_in_meta, filters_idx, tbl, primary_keys, run_config)
     if len(select_cols) > 0:
-        sql = sql.group_by(*select_cols)
+        updated_sql = updated_sql.group_by(*select_cols)
+
+    # Часть 2: Удаленные записи (delete_ts > offset)
+    # Примечание: IS NOT NULL не нужен - NULL > offset всегда FALSE
+    deleted_sql = sa.select(*select_cols).select_from(tbl).where(
+        tbl.c.delete_ts > adjusted_offset
+    )
+    deleted_sql = _apply_sql_filters(deleted_sql, keys_in_meta, filters_idx, tbl, primary_keys, run_config)
+    if len(select_cols) > 0:
+        deleted_sql = deleted_sql.group_by(*select_cols)
+
+    # UNION двух частей для использования отдельных индексов
+    sql = sa.union(updated_sql, deleted_sql)
 
     return sql
 
@@ -1250,14 +1271,26 @@ def _build_reverse_meta_cte(
     if join_condition is None:
         return None
 
-    sql = sa.select(*select_cols).select_from(
+    adjusted_offset = offset - OFFSET_EPSILON_SECONDS
+
+    # Часть 1: update_ts > offset (использует индекс на update_ts)
+    updated_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
-    ).where(_build_offset_where_clause(ref_meta_tbl, offset))
-
-    sql = _apply_sql_filters(sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
-
+    ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
+    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
-        sql = sql.group_by(*group_by_cols)
+        updated_sql = updated_sql.group_by(*group_by_cols)
+
+    # Часть 2: delete_ts > offset (использует индекс на delete_ts)
+    deleted_sql = sa.select(*select_cols).select_from(
+        ref_meta_tbl.join(primary_meta_tbl, join_condition)
+    ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
+    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+    if len(group_by_cols) > 0:
+        deleted_sql = deleted_sql.group_by(*group_by_cols)
+
+    # UNION для использования отдельных индексов
+    sql = sa.union(updated_sql, deleted_sql)
 
     return sql
 
@@ -1316,16 +1349,35 @@ def _build_reverse_data_cte(
     if join_condition is None:
         return None, None
 
-    changed_sql = sa.select(*select_cols).select_from(
-        ref_meta_tbl.join(primary_data_tbl, join_condition)
-    ).where(_build_offset_where_clause(ref_meta_tbl, offset))
+    # Используем UNION вместо OR для использования индексов на update_ts и delete_ts
+    adjusted_offset = offset - OFFSET_EPSILON_SECONDS
 
-    changed_sql = _apply_sql_filters(
-        changed_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+    # Часть 1: update_ts > offset (использует индекс на update_ts)
+    updated_sql = sa.select(*select_cols).select_from(
+        ref_meta_tbl.join(primary_data_tbl, join_condition)
+    ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
+
+    updated_sql = _apply_sql_filters(
+        updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
-        changed_sql = changed_sql.group_by(*group_by_cols)
+        updated_sql = updated_sql.group_by(*group_by_cols)
+
+    # Часть 2: delete_ts > offset (использует индекс на delete_ts)
+    deleted_part_sql = sa.select(*select_cols).select_from(
+        ref_meta_tbl.join(primary_data_tbl, join_condition)
+    ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
+
+    deleted_part_sql = _apply_sql_filters(
+        deleted_part_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+    )
+
+    if len(group_by_cols) > 0:
+        deleted_part_sql = deleted_part_sql.group_by(*group_by_cols)
+
+    # UNION для использования отдельных индексов
+    changed_sql = sa.union(updated_sql, deleted_part_sql)
 
     # DELETED CTE: Только из primary_meta (FK заменяем на NULL)
     deleted_select_cols = []
@@ -1353,7 +1405,7 @@ def _build_reverse_data_cte(
 
     deleted_sql = sa.select(*deleted_select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, deleted_join_condition)
-    ).where(ref_meta_tbl.c.delete_ts >= offset)
+    ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
 
     deleted_sql = _apply_sql_filters(
         deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
