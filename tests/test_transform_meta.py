@@ -3,16 +3,31 @@ import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
-from datapipe.meta.sql_meta import SQLMetaComputeInput, SQLTableMeta, compute_transform_schema
-from datapipe.store.database import DBConn
+from datapipe.compute import ComputeInput
+from datapipe.datatable import DataTable
+from datapipe.event_logger import EventLogger
+from datapipe.meta.base import TransformMeta
+from datapipe.meta.sql_meta import SQLTableMeta
+from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import MetaSchema
 
 
-def make_mt(name, dbconn, schema_keys) -> SQLTableMeta:
-    return SQLTableMeta(
-        dbconn=dbconn,
+def make_dt(name, dbconn, schema_keys) -> DataTable:
+    schema = [Column(key, Integer(), primary_key=True) for key in schema_keys]
+
+    return DataTable(
         name=name,
-        primary_schema=[Column(key, Integer(), primary_key=True) for key in schema_keys],
+        meta=SQLTableMeta(
+            dbconn=dbconn,
+            name=f"{name}_meta",
+            primary_schema=schema,
+        ),
+        table_store=TableStoreDB(
+            dbconn=dbconn,
+            name=name,
+            data_sql_schema=schema,
+        ),
+        event_logger=EventLogger(),
     )
 
 
@@ -65,10 +80,13 @@ def test_compute_transform_schema_success(
     transform_keys,
     expected_keys,
 ):
-    inp_mts = [SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
-    out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
+    inp_cis = [
+        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
+        for (i, keys) in enumerate(input_keys_list)
+    ]
+    out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
 
-    _, sch = compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
+    _, sch = TransformMeta.compute_transform_schema(inp_cis, out_dts, transform_keys=transform_keys)
 
     assert_schema_equals(sch, expected_keys)
 
@@ -80,8 +98,10 @@ def test_compute_transform_schema_fail(
     output_keys_list,
     transform_keys,
 ):
-    inp_mts = [SQLMetaComputeInput(make_mt(f"inp_{i}", dbconn, keys)) for (i, keys) in enumerate(input_keys_list)]
-    out_mts = [make_mt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
-
+    inp_cis = [
+        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
+        for (i, keys) in enumerate(input_keys_list)
+    ]
+    out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
     with pytest.raises(AssertionError):
-        compute_transform_schema(inp_mts, out_mts, transform_keys=transform_keys)
+        TransformMeta.compute_transform_schema(inp_cis, out_dts, transform_keys=transform_keys)

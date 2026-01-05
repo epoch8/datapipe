@@ -1,9 +1,12 @@
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
-from collections.abc import Iterable, Iterator, Sequence
+
+import pandas as pd
+from sqlalchemy import Column
 
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataSchema, HashDF, IndexDF, MetadataDF, MetaSchema
+from datapipe.types import ChangeList, DataSchema, FieldAccessor, HashDF, IndexDF, MetadataDF, MetaSchema
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
@@ -167,10 +170,72 @@ class TableMeta:
         # with self.meta_dbconn.con.begin() as con:
         #     con.execute(self.meta.sql_table.update().values(process_ts=0, update_ts=0))
 
+    def transform_idx_to_table_idx(
+        self,
+        transform_idx: IndexDF,
+        keys: dict[str, FieldAccessor] | None = None,
+    ) -> IndexDF:
+        """
+        Given an index dataframe with transform keys, return an index dataframe
+        with table keys, applying `keys` aliasing if provided.
+
+        * `keys` is a mapping from table key to transform key
+        """
+
+        if keys is None:
+            return transform_idx
+
+        table_key_cols: dict[str, pd.Series] = {}
+        for transform_col in transform_idx.columns:
+            accessor = keys.get(transform_col) if keys is not None else transform_col
+            if isinstance(accessor, str):
+                table_key_cols[accessor] = transform_idx[transform_col]
+            else:
+                pass  # skip non-meta fields
+
+        return IndexDF(pd.DataFrame(table_key_cols))
+
 
 class TransformMeta:
-    primary_schema: DataSchema
-    primary_keys: list[str]
+    transform_keys_schema: DataSchema
+    transform_keys: list[str]
+
+    @classmethod
+    def compute_transform_schema(
+        cls,
+        input_cis: Sequence["ComputeInput"],
+        output_dts: Sequence["DataTable"],
+        transform_keys: list[str] | None,
+    ) -> tuple[list[str], MetaSchema]:
+        # Hacky way to collect all the primary keys into a single set. Possible
+        # problem that is not handled here is that theres a possibility that the
+        # same key is defined differently in different input tables.
+        all_keys: dict[str, Column] = {}
+
+        for ci in input_cis:
+            all_keys.update({col.name: col for col in ci.primary_schema})
+
+        for dt in output_dts:
+            all_keys.update({col.name: col for col in dt.primary_schema})
+
+        if transform_keys is not None:
+            return (transform_keys, [all_keys[k] for k in transform_keys])
+
+        assert len(input_cis) > 0, "At least one input table is required to infer transform keys"
+
+        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in input_cis])
+        assert len(inp_p_keys) > 0
+
+        if len(output_dts) == 0:
+            return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
+
+        out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_dts])
+        assert len(out_p_keys) > 0
+
+        inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
+        assert len(inp_out_p_keys) > 0
+
+        return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
 
     def get_changed_idx_count(
         self,

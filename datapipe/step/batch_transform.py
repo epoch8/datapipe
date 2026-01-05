@@ -2,13 +2,13 @@ import copy
 import inspect
 import logging
 import time
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import (
     Any,
     Literal,
     Protocol,
 )
-from collections.abc import Callable, Iterable, Sequence
 
 from opentelemetry import trace
 from tqdm_loggable.auto import tqdm
@@ -27,7 +27,7 @@ from datapipe.types import (
     ChangeList,
     DataDF,
     IndexDF,
-    JoinSpec,
+    InputSpec,
     Labels,
     PipelineInput,
     Required,
@@ -110,7 +110,7 @@ class BaseBatchTransformStep(ComputeStep):
             order=order,
         )
 
-        self.transform_keys, self.transform_schema = self.meta.primary_keys, self.meta.primary_schema
+        self.transform_keys, self.transform_schema = self.meta.transform_keys, self.meta.transform_keys_schema
 
         self.filters = filters
         self.order_by = order_by
@@ -264,7 +264,8 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         run_config: RunConfig | None = None,
     ) -> list[DataDF]:
-        return [inp.dt.get_data(idx) for inp in self.input_dts]
+        # TODO consider parallel fetch through executor
+        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.keys)) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,
@@ -491,12 +492,13 @@ class BatchTransform(PipelineStep):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="inner",
+                keys=input.keys,
             )
-        elif isinstance(input, JoinSpec):
-            # This should not happen, but just in case
+        elif isinstance(input, InputSpec):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="full",
+                keys=input.keys,
             )
         else:
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")

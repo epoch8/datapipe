@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 from opentelemetry import trace
+from sqlalchemy import Column
 
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, IndexDF, Labels, TableOrName
+from datapipe.types import ChangeList, DataField, FieldAccessor, IndexDF, Labels, MetaSchema, TableOrName
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -86,6 +87,51 @@ class StepStatus:
 class ComputeInput:
     dt: DataTable
     join_type: Literal["inner", "full"] = "full"
+
+    # If provided, this dict tells how to get key columns from meta and data tables
+    #
+    # Example: {"idx_col": DataField("data_col")} means that to get idx_col value
+    # we should read data_col from data table
+    #
+    # Example: {"idx_col": "meta_col"} means that to get idx_col value
+    # we should read meta_col from meta table
+    keys: dict[str, FieldAccessor] | None = None
+
+    @property
+    def primary_keys(self) -> list[str]:
+        if self.keys:
+            return list(self.keys.keys())
+        else:
+            return self.dt.primary_keys
+
+    @property
+    def primary_schema(self) -> MetaSchema:
+        if self.keys:
+            primary_schema_dict = {col.name: col for col in self.dt.primary_schema}
+            data_schema_dict = {col.name: col for col in self.dt.table_store.get_schema()}
+
+            schema = []
+            for k, accessor in self.keys.items():
+                if isinstance(accessor, str):
+                    source_column = primary_schema_dict[accessor]
+                    column_alias = k
+                elif isinstance(accessor, DataField):
+                    source_column = data_schema_dict[accessor.field_name]
+                    column_alias = k
+                    schema.append(data_schema_dict[accessor.field_name])
+                else:
+                    raise ValueError(f"Unknown accessor type: {type(accessor)}")
+
+                schema.append(
+                    Column(
+                        column_alias,
+                        source_column.type,
+                        primary_key=source_column.primary_key,
+                    )
+                )
+            return schema
+        else:
+            return self.dt.primary_schema
 
 
 class ComputeStep:

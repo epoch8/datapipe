@@ -1,6 +1,7 @@
 import itertools
 import math
 import time
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -8,7 +9,6 @@ from typing import (
     Literal,
     cast,
 )
-from collections.abc import Iterable, Iterator, Sequence
 
 import pandas as pd
 import sqlalchemy as sa
@@ -20,10 +20,13 @@ from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMe
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
+from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     DataDF,
+    DataField,
     DataSchema,
+    FieldAccessor,
     HashDF,
     IndexDF,
     MetadataDF,
@@ -351,35 +354,71 @@ class SQLTableMeta(TableMeta):
     def get_agg_cte(
         self,
         transform_keys: list[str],
+        table_store: TableStore,
+        keys: dict[str, FieldAccessor],
         filters_idx: IndexDF | None = None,
         run_config: RunConfig | None = None,
     ) -> tuple[list[str], Any]:
         """
-        Create a CTE that aggregates the table by transform keys and returns the
-        maximum update_ts for each group.
+        Create a CTE that aggregates the table by transform keys, applies keys
+        aliasing and returns the maximum update_ts for each group.
+
+        * `keys` is a mapping from transform key to table key accessor
+          (can be string for meta table column or DataField for data table
+          column)
+        * `transform_keys` is a list of keys used in the transformation
 
         CTE has the following columns:
 
         * transform keys which are present in primary keys
         * update_ts
 
-        Returns a tuple of (keys, CTE).
+        Returns a tuple of (keys, CTE) where * keys is a list of transform keys
+        present in primary keys of this CTE
         """
 
-        tbl = self.sql_table
+        from datapipe.store.database import TableStoreDB
 
-        keys = [k for k in transform_keys if k in self.primary_keys]
-        key_cols: list[Any] = [sa.column(k) for k in keys]
+        meta_table = self.sql_table
+        data_table = None
 
-        sql: Any = sa.select(*key_cols + [sa.func.max(tbl.c["update_ts"]).label("update_ts")]).select_from(tbl)
+        key_cols: list[Any] = []
+        cte_transform_keys: list[str] = []
+        should_join_data_table = False
+
+        for transform_key in transform_keys:
+            # TODO convert to match when we deprecate Python 3.9
+            accessor = keys.get(transform_key, transform_key)
+            if isinstance(accessor, str):
+                if accessor in self.primary_keys:
+                    key_cols.append(meta_table.c[accessor].label(transform_key))
+                    cte_transform_keys.append(transform_key)
+            elif isinstance(accessor, DataField):
+                should_join_data_table = True
+                assert isinstance(table_store, TableStoreDB)
+                data_table = table_store.data_table
+
+                key_cols.append(data_table.c[accessor.field_name].label(transform_key))
+                cte_transform_keys.append(transform_key)
+
+        sql: Any = sa.select(*key_cols + [sa.func.max(meta_table.c["update_ts"]).label("update_ts")]).select_from(
+            meta_table
+        )
+
+        if should_join_data_table:
+            assert data_table is not None
+            sql = sql.join(
+                data_table,
+                sa.and_(*[meta_table.c[pk] == data_table.c[pk] for pk in self.primary_keys]),
+            )
 
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
 
-        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
+        sql = sql_apply_filters_idx_to_subquery(sql, cte_transform_keys, filters_idx)  # ???
+        sql = sql_apply_runconfig_filter(sql, meta_table, self.primary_keys, run_config)  # ???
 
-        return (keys, sql.cte(name=f"{tbl.name}__update"))
+        return (cte_transform_keys, sql.cte(name=f"{meta_table.name}__update"))
 
 
 TRANSFORM_META_SCHEMA: DataSchema = [
@@ -390,19 +429,13 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 ]
 
 
-@dataclass
-class SQLMetaComputeInput:
-    table: "SQLTableMeta"
-    join_type: Literal["inner", "full"] = "full"
-
-
 class SQLTransformMeta(TransformMeta):
     def __init__(
         self,
         dbconn: DBConn,
         name: str,
-        input_mts: Sequence[SQLMetaComputeInput],
-        output_mts: Sequence[SQLTableMeta],
+        input_cis: Sequence[ComputeInput],
+        output_dts: Sequence[DataTable],
         transform_keys: list[str] | None,
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
@@ -411,16 +444,16 @@ class SQLTransformMeta(TransformMeta):
         self.dbconn = dbconn
         self.name = name
 
-        self.input_mts = input_mts
-        self.output_mts = output_mts
+        self.input_cis = input_cis
+        self.output_dts = output_dts
 
-        self.primary_keys, self.primary_schema = compute_transform_schema(
-            input_mts=self.input_mts,
-            output_mts=self.output_mts,
+        self.transform_keys, self.transform_keys_schema = self.compute_transform_schema(
+            input_cis=self.input_cis,
+            output_dts=self.output_dts,
             transform_keys=transform_keys,
         )
 
-        self.sql_schema = [i._copy() for i in self.primary_schema + TRANSFORM_META_SCHEMA]
+        self.sql_schema = [i._copy() for i in self.transform_keys_schema + TRANSFORM_META_SCHEMA]
 
         self.sql_table = sa.Table(
             name,
@@ -441,9 +474,9 @@ class SQLTransformMeta(TransformMeta):
         return self.__class__, (
             self.dbconn,
             self.name,
-            self.input_mts,
-            self.output_mts,
-            self.primary_keys,
+            self.input_cis,
+            self.output_dts,
+            self.transform_keys,
             self.order_by,
             self.order,
         )
@@ -453,7 +486,7 @@ class SQLTransformMeta(TransformMeta):
         ds: "DataStore",
         run_config: RunConfig | None = None,
     ) -> int:
-        _, sql = self._build_changed_idx_sql(ds=ds, run_config=run_config)
+        sql = self._build_changed_idx_sql(ds=ds, run_config=run_config)
 
         with ds.meta_dbconn.con.begin() as con:
             idx_count = con.execute(
@@ -469,7 +502,7 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,
     ) -> tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
-            if len(self.input_mts) == 0:
+            if len(self.input_cis) == 0:
                 return (0, iter([]))
 
             idx_count = self.get_changed_idx_count(
@@ -477,7 +510,7 @@ class SQLTransformMeta(TransformMeta):
                 run_config=run_config,
             )
 
-            join_keys, u1 = self._build_changed_idx_sql(
+            u1 = self._build_changed_idx_sql(
                 ds=ds,
                 run_config=run_config,
                 order_by=self.order_by,
@@ -487,7 +520,7 @@ class SQLTransformMeta(TransformMeta):
             # Список ключей из фильтров, которые нужно добавить в результат
             extra_filters: LabelDict
             if run_config is not None:
-                extra_filters = {k: v for k, v in run_config.filters.items() if k not in join_keys}
+                extra_filters = {k: v for k, v in run_config.filters.items() if k not in self.transform_keys}
             else:
                 extra_filters = {}
 
@@ -495,7 +528,7 @@ class SQLTransformMeta(TransformMeta):
                 with ds.meta_dbconn.con.begin() as con:
                     for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
                         assert isinstance(df, pd.DataFrame)
-                        df = df[self.primary_keys]
+                        df = df[self.transform_keys]
 
                         for k, v in extra_filters.items():
                             df[k] = v
@@ -512,16 +545,16 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,
     ) -> tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
-            changes = [pd.DataFrame(columns=self.primary_keys)]
+            changes = [pd.DataFrame(columns=self.transform_keys)]
 
-            for inp in self.input_mts:
-                if inp.table.name in change_list.changes:
-                    idx = change_list.changes[inp.table.name]
-                    if any([key not in idx.columns for key in self.primary_keys]):
+            for inp in self.input_cis:
+                if inp.dt.name in change_list.changes:
+                    idx = change_list.changes[inp.dt.name]
+                    if any([key not in idx.columns for key in self.transform_keys]):
                         # TODO пересмотреть эту логику, выглядит избыточной
                         # (возможно, достаточно посчитать один раз для всех
                         # input таблиц)
-                        _, sql = self._build_changed_idx_sql(
+                        sql = self._build_changed_idx_sql(
                             ds=ds,
                             filters_idx=idx,
                             run_config=run_config,
@@ -531,14 +564,14 @@ class SQLTransformMeta(TransformMeta):
                                 sql,
                                 con=con,
                             )
-                            table_changes_df = table_changes_df[self.primary_keys]
+                            table_changes_df = table_changes_df[self.transform_keys]
 
                         changes.append(table_changes_df)
                     else:
-                        changes.append(data_to_index(idx, self.primary_keys))
+                        changes.append(data_to_index(idx, self.transform_keys))
 
-            idx_df = pd.concat(changes).drop_duplicates(subset=self.primary_keys)
-            idx = IndexDF(idx_df[self.primary_keys])
+            idx_df = pd.concat(changes).drop_duplicates(subset=self.transform_keys)
+            idx = IndexDF(idx_df[self.transform_keys])
 
             chunk_count = math.ceil(len(idx) / chunk_size)
 
@@ -552,7 +585,7 @@ class SQLTransformMeta(TransformMeta):
         self,
         idx: IndexDF,
     ) -> None:
-        idx = cast(IndexDF, idx[self.primary_keys])
+        idx = cast(IndexDF, idx[self.transform_keys])
 
         insert_sql = self.dbconn.insert(self.sql_table).values(
             [
@@ -567,7 +600,7 @@ class SQLTransformMeta(TransformMeta):
             ]
         )
 
-        sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+        sql = insert_sql.on_conflict_do_nothing(index_elements=self.transform_keys)
 
         with self.dbconn.con.begin() as con:
             con.execute(sql)
@@ -579,7 +612,7 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
+            IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
         if len(idx) == 0:
             return
@@ -622,7 +655,7 @@ class SQLTransformMeta(TransformMeta):
             )
 
             sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
+                index_elements=self.transform_keys,
                 set_={
                     "process_ts": process_ts,
                     "is_success": True,
@@ -642,7 +675,7 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,
     ) -> None:
         idx = cast(
-            IndexDF, idx[self.primary_keys].drop_duplicates().dropna()
+            IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
         )  # FIXME: сделать в основном запросе distinct
         if len(idx) == 0:
             return
@@ -661,7 +694,7 @@ class SQLTransformMeta(TransformMeta):
         )
 
         sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
+            index_elements=self.transform_keys,
             set_={
                 "process_ts": process_ts,
                 "is_success": False,
@@ -697,7 +730,7 @@ class SQLTransformMeta(TransformMeta):
             .where(self.sql_table.c.is_success == True)  # noqa: E712
         )
 
-        sql = sql_apply_runconfig_filter(update_sql, self.sql_table, self.primary_keys, run_config)
+        sql = sql_apply_runconfig_filter(update_sql, self.sql_table, self.transform_keys, run_config)
 
         # execute
         with self.dbconn.con.begin() as con:
@@ -710,15 +743,20 @@ class SQLTransformMeta(TransformMeta):
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
         run_config: RunConfig | None = None,  # TODO remove
-    ) -> tuple[Iterable[str], Any]:
+    ) -> Any:
         all_input_keys_counts: dict[str, int] = {}
-        for col in itertools.chain(*[inp.table.primary_schema for inp in self.input_mts]):
+        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_cis]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
         inp_ctes = []
-        for inp in self.input_mts:
-            keys, cte = inp.table.get_agg_cte(
-                transform_keys=self.primary_keys,
+        for inp in self.input_cis:
+            inp_meta = inp.dt.meta
+            assert isinstance(inp_meta, SQLTableMeta)
+
+            keys, cte = inp_meta.get_agg_cte(
+                transform_keys=self.transform_keys,
+                table_store=inp.dt.table_store,
+                keys=inp.keys or {},
                 filters_idx=filters_idx,
                 run_config=run_config,
             )
@@ -726,7 +764,7 @@ class SQLTransformMeta(TransformMeta):
 
         agg_of_aggs = _make_agg_of_agg(
             ds=ds,
-            transform_keys=self.primary_keys,
+            transform_keys=self.transform_keys,
             ctes=inp_ctes,
             agg_col="update_ts",
         )
@@ -734,30 +772,30 @@ class SQLTransformMeta(TransformMeta):
         tr_tbl = self.sql_table
         out: Any = (
             sa.select(
-                *[sa.column(k) for k in self.primary_keys]
+                *[sa.column(k) for k in self.transform_keys]
                 + [tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
             )
             .select_from(tr_tbl)
-            .group_by(*[sa.column(k) for k in self.primary_keys])
+            .group_by(*[sa.column(k) for k in self.transform_keys])
         )
 
-        out = sql_apply_filters_idx_to_subquery(out, self.primary_keys, filters_idx)
+        out = sql_apply_filters_idx_to_subquery(out, self.transform_keys, filters_idx)
 
         out = out.cte(name="transform")
 
-        if len(self.primary_keys) == 0:
+        if len(self.transform_keys) == 0:
             join_onclause_sql: Any = sa.literal(True)
-        elif len(self.primary_keys) == 1:
-            join_onclause_sql = agg_of_aggs.c[self.primary_keys[0]] == out.c[self.primary_keys[0]]
+        elif len(self.transform_keys) == 1:
+            join_onclause_sql = agg_of_aggs.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
         else:  # len(transform_keys) > 1:
-            join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in self.primary_keys])
+            join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in self.transform_keys])
 
         sql = (
             sa.select(
                 # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
                 # пустом transform_keys
                 sa.literal(1).label("_datapipe_dummy"),
-                *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in self.primary_keys],
+                *[sa.func.coalesce(agg_of_aggs.c[key], out.c[key]).label(key) for key in self.transform_keys],
             )
             .select_from(agg_of_aggs)
             .outerjoin(
@@ -779,7 +817,7 @@ class SQLTransformMeta(TransformMeta):
         if order_by is None:
             sql = sql.order_by(
                 out.c.priority.desc().nullslast(),
-                *[sa.column(k) for k in self.primary_keys],
+                *[sa.column(k) for k in self.transform_keys],
             )
         else:
             if order == "desc":
@@ -792,7 +830,7 @@ class SQLTransformMeta(TransformMeta):
                     *[sa.asc(sa.column(k)) for k in order_by],
                     out.c.priority.desc().nullslast(),
                 )
-        return (self.primary_keys, sql)
+        return sql
 
 
 def sql_apply_filters_idx_to_subquery(
@@ -884,41 +922,6 @@ def _make_agg_of_agg(
     return sql.cte(name=f"all__{agg_col}")
 
 
-def compute_transform_schema(
-    input_mts: Sequence[SQLMetaComputeInput],
-    output_mts: Sequence[SQLTableMeta],
-    transform_keys: list[str] | None,
-) -> tuple[list[str], MetaSchema]:
-    # Hacky way to collect all the primary keys into a single set. Possible
-    # problem that is not handled here is that theres a possibility that the
-    # same key is defined differently in different input tables.
-    all_keys = {
-        col.name: col
-        for col in itertools.chain(
-            *([inp.table.primary_schema for inp in input_mts] + [dt.primary_schema for dt in output_mts])
-        )
-    }
-
-    if transform_keys is not None:
-        return (transform_keys, [all_keys[k] for k in transform_keys])
-
-    assert len(input_mts) > 0
-
-    inp_p_keys = set.intersection(*[set(inp.table.primary_keys) for inp in input_mts])
-    assert len(inp_p_keys) > 0
-
-    if len(output_mts) == 0:
-        return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
-
-    out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
-    assert len(out_p_keys) > 0
-
-    inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
-    assert len(inp_out_p_keys) > 0
-
-    return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
-
-
 class SQLMetaPlane(MetaPlane):
     def __init__(self, dbconn: DBConn, create_meta_table: bool = False) -> None:
         self.dbconn = dbconn
@@ -947,26 +950,11 @@ class SQLMetaPlane(MetaPlane):
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> TransformMeta:
-        input_mts = []
-        for inp in input_dts:
-            assert isinstance(inp.dt.meta, SQLTableMeta)
-            input_mts.append(
-                SQLMetaComputeInput(
-                    table=inp.dt.meta,
-                    join_type=inp.join_type,
-                )
-            )
-
-        output_mts = []
-        for out in output_dts:
-            assert isinstance(out.meta, SQLTableMeta)
-            output_mts.append(out.meta)
-
         return SQLTransformMeta(
             dbconn=self.dbconn,
             name=name,
-            input_mts=input_mts,
-            output_mts=output_mts,
+            input_cis=input_dts,
+            output_dts=output_dts,
             transform_keys=transform_keys,
             order_by=order_by,
             order=order,
