@@ -82,7 +82,7 @@ def test_compute_transform_schema_success(
     expected_keys,
 ):
     inp_cis = [
-        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", key_mapping=None)
+        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
     out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
@@ -100,7 +100,7 @@ def test_compute_transform_schema_fail(
     transform_keys,
 ):
     inp_cis = [
-        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", key_mapping=None)
+        ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
     out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]

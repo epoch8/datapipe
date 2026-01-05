@@ -8,8 +8,10 @@ Important new stuff:
   steps to consume the new meta plane API
 * Added meta-plane design doc and removed legacy `MetaTable` plumbing in lints,
   migrations, and tests
-* Added `key_mapping` parameter to `JoinSpec` and `ComputeInput` to support
+* Renamed `JoinSpec` to `InputSpec`
+* Added `keys` parameter to `InputSpec` and `ComputeInput` to support
   joining tables with different key names
+* Added `DataField` accessor for `InputSpec.keys`
 
 CLI improvements:
 * Make CLI accept multiple `--name` values

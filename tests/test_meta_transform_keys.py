@@ -11,12 +11,12 @@ from datapipe.tests.util import assert_datatable_equal
 from datapipe.types import DataField
 
 
-def test_transform_key_mapping(dbconn: DBConn):
+def test_transform_keys(dbconn: DBConn):
     """
     Проверяет что трансформация с keys (InputSpec) корректно отрабатывает.
 
     Сценарий:
-    1. Создаём posts и profiles (profiles с key_mapping={'user_id': 'id'})
+    1. Создаём posts и profiles (profiles с keys={'user_id': 'id'})
     """
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -81,7 +81,7 @@ def test_transform_key_mapping(dbconn: DBConn):
     )
     profiles.store_chunk(profiles_df, now=process_ts)
 
-    # 5. Создать трансформацию с key_mapping
+    # 5. Создать трансформацию с keys
     def transform_func(posts_df, profiles_df):
         # JOIN posts + profiles
         result = posts_df.merge(profiles_df, left_on="user_id", right_on="id", suffixes=("", "_profile"))

@@ -366,10 +366,10 @@ class SQLTableMeta(TableMeta):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[List[str], Any]:
         """
-        Create a CTE that aggregates the table by transform keys, applies
-        key_mapping aliasing and returns the maximum update_ts for each group.
+        Create a CTE that aggregates the table by transform keys, applies keys
+        aliasing and returns the maximum update_ts for each group.
 
-        * `key_mapping` is a mapping from transform key to table key accessor
+        * `keys` is a mapping from transform key to table key accessor
           (can be string for meta table column or DataField for data table
           column)
         * `transform_keys` is a list of keys used in the transformation
