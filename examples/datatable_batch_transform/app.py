@@ -1,13 +1,9 @@
-from typing import Dict, List, Optional
-
 import numpy as np
 import pandas as pd
-from sqlalchemy import Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import functions, select
-from sqlalchemy.sql.schema import Column
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import BatchGenerate
@@ -56,9 +52,9 @@ def count(
 def count_tbl(
     ds: DataStore,
     idx: IndexDF,
-    input_dts: List[DataTable],
-    run_config: Optional[RunConfig] = None,
-    kwargs: Optional[Dict] = None,
+    input_dts: list[DataTable],
+    run_config: RunConfig | None = None,
+    kwargs: dict | None = None,
 ) -> pd.DataFrame:
     (input_dt,) = input_dts
 

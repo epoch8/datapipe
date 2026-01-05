@@ -23,6 +23,8 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
   joining tables with different key names
 * Added `DataField` accessor for `InputSpec.keys`
 
+### Python3.9 support is deprecated
+
 ## CLI improvements:
 * Make CLI accept multiple `--name` values
 

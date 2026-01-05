@@ -1,7 +1,7 @@
 import copy
 import logging
 import math
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Iterator, cast
 
 import numpy as np
 import pandas as pd
@@ -25,9 +25,9 @@ class DBConn:
     def __init__(
         self,
         connstr: str,
-        schema: Optional[str] = None,
-        create_engine_kwargs: Optional[Dict[str, Any]] = None,
-        sqla_metadata: Optional[MetaData] = None,
+        schema: str | None = None,
+        create_engine_kwargs: dict[str, Any] | None = None,
+        sqla_metadata: MetaData | None = None,
     ):
         create_engine_kwargs = create_engine_kwargs or {}
         self._init(connstr, schema, create_engine_kwargs, sqla_metadata)
@@ -35,9 +35,9 @@ class DBConn:
     def _init(
         self,
         connstr: str,
-        schema: Optional[str],
-        create_engine_kwargs: Dict[str, Any],
-        sqla_metadata: Optional[MetaData] = None,
+        schema: str | None,
+        create_engine_kwargs: dict[str, Any],
+        sqla_metadata: MetaData | None = None,
     ) -> None:
         self.connstr = connstr
         self.schema = schema
@@ -86,7 +86,7 @@ class DBConn:
         else:
             self.sqla_metadata = sqla_metadata
 
-    def __reduce__(self) -> Tuple[Any, ...]:
+    def __reduce__(self) -> tuple[Any, ...]:
         return self.__class__, (
             self.connstr,
             self.schema,
@@ -105,7 +105,7 @@ class DBConn:
 
 
 class MetaKey(SchemaItem):
-    def __init__(self, target_name: Optional[str] = None) -> None:
+    def __init__(self, target_name: str | None = None) -> None:
         self.target_name = target_name
 
     def _set_parent(self, parent: SchemaEventTarget, **kw: Any) -> None:
@@ -131,11 +131,11 @@ class TableStoreDB(TableStore):
 
     def __init__(
         self,
-        dbconn: Union["DBConn", str],
-        name: Optional[str] = None,
-        data_sql_schema: Optional[List[Column]] = None,
+        dbconn: DBConn | str,
+        name: str | None = None,
+        data_sql_schema: list[Column] | None = None,
         create_table: bool = False,
-        orm_table: Optional[OrmTable] = None,
+        orm_table: OrmTable | None = None,
     ) -> None:
         if isinstance(dbconn, str):
             self.dbconn = DBConn(dbconn)
@@ -184,7 +184,7 @@ class TableStoreDB(TableStore):
         if create_table:
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
-    def __reduce__(self) -> Tuple[Any, ...]:
+    def __reduce__(self) -> tuple[Any, ...]:
         return self.__class__, (
             self.dbconn,
             self.name,
@@ -259,7 +259,7 @@ class TableStoreDB(TableStore):
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
+    def read_rows(self, idx: IndexDF | None = None) -> pd.DataFrame:
         sql = select(*self.data_table.c)
 
         if idx is not None:
@@ -285,7 +285,7 @@ class TableStoreDB(TableStore):
     def read_rows_meta_pseudo_df(
         self,
         chunksize: int = 1000,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> Iterator[DataDF]:
         sql = select(*self.data_table.c)
 

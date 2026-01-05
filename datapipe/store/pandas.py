@@ -1,5 +1,4 @@
 from abc import ABC
-from typing import Optional
 
 import fsspec
 import pandas as pd
@@ -10,7 +9,7 @@ from datapipe.types import DataDF
 
 
 class TableStoreExcel(TableDataSingleFileStore, ABC):
-    def load_file(self) -> Optional[pd.DataFrame]:
+    def load_file(self) -> pd.DataFrame | None:
         of = fsspec.open(self.filename)
 
         if of.fs.exists(of.path):
@@ -27,7 +26,7 @@ class TableStoreExcel(TableDataSingleFileStore, ABC):
 
 
 class TableStoreJsonLine(TableDataSingleFileStore):
-    def load_file(self) -> Optional[pd.DataFrame]:
+    def load_file(self) -> pd.DataFrame | None:
         of = fsspec.open(self.filename)
 
         if of.fs.exists(of.path):

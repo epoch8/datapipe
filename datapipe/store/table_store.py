@@ -1,7 +1,7 @@
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional, Union, cast
+from typing import Iterator, cast
 
 import cityhash
 import pandas as pd
@@ -33,15 +33,15 @@ class TableStore(ABC):
         raise NotImplementedError
 
     @property
-    def primary_keys(self) -> List[str]:
+    def primary_keys(self) -> list[str]:
         return [i.name for i in self.get_primary_schema()]
 
     @property
-    def meta_keys(self) -> List[str]:
+    def meta_keys(self) -> list[str]:
         return [i.name for i in self.get_meta_schema()]
 
     @property
-    def hash_keys(self) -> List[str]:
+    def hash_keys(self) -> list[str]:
         return self.primary_keys + self.meta_keys
 
     def hash_rows(self, df: DataDF) -> HashDF:
@@ -64,12 +64,10 @@ class TableStore(ABC):
         self.delete_rows(data_to_index(df, self.primary_keys))
         self.insert_rows(df)
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         # FIXME сделать честную чанкированную реализацию во всех сторах
         yield self.read_rows()
 
@@ -85,8 +83,8 @@ class TableDataSingleFileStore(TableStore):
 
     def __init__(
         self,
-        filename: Union[Path, str, None] = None,
-        primary_schema: Optional[DataSchema] = None,
+        filename: Path | str | None = None,
+        primary_schema: DataSchema | None = None,
     ):
         if primary_schema is None:
             primary_schema = [Column("id", String(), primary_key=True)]
@@ -100,13 +98,13 @@ class TableDataSingleFileStore(TableStore):
     def get_meta_schema(self) -> MetaSchema:
         return []
 
-    def load_file(self) -> Optional[DataDF]:
+    def load_file(self) -> DataDF | None:
         raise NotImplementedError
 
     def save_file(self, df: DataDF) -> None:
         raise NotImplementedError
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         file_df = self.load_file()
 
         if file_df is not None:

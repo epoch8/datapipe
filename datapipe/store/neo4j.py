@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 import pandas as pd
 from neo4j import Driver, GraphDatabase
@@ -42,16 +42,16 @@ class Neo4JStore(TableStore):
 
     def __init__(
         self,
-        connection_kwargs: Dict[str, Any],
-        data_sql_schema: List[Column],
+        connection_kwargs: dict[str, Any],
+        data_sql_schema: list[Column],
     ) -> None:
         super().__init__()
 
         self.connection_kwargs = connection_kwargs
         self.data_sql_schema = data_sql_schema
 
-        self._pk_columns: List[str] = [c.name for c in self.data_sql_schema if c.primary_key]
-        self._non_pk_columns: List[str] = [c.name for c in self.data_sql_schema if not c.primary_key]
+        self._pk_columns: list[str] = [c.name for c in self.data_sql_schema if c.primary_key]
+        self._non_pk_columns: list[str] = [c.name for c in self.data_sql_schema if not c.primary_key]
 
         # Detect mode from PK set
         node_pk = {"node_id", "node_type"}
@@ -70,13 +70,13 @@ class Neo4JStore(TableStore):
 
         self._driver: Driver = GraphDatabase.driver(**self.connection_kwargs)
 
-    def __getstate__(self) -> Dict[str, Any]:
+    def __getstate__(self) -> dict[str, Any]:
         return {
             "connection_kwargs": self.connection_kwargs,
             "data_sql_schema": self.data_sql_schema,
         }
 
-    def __setstate__(self, state: Dict[str, Any]) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         Neo4JStore.__init__(
             self,
             connection_kwargs=state["connection_kwargs"],
@@ -95,7 +95,7 @@ class Neo4JStore(TableStore):
         # todo
         return []
 
-    def _run_query(self, cypher: str, params: Dict[str, Any]):
+    def _run_query(self, cypher: str, params: dict[str, Any]):
         with self._driver.session() as session:
             result = session.run(cypher, **params)
             return [tuple(rec.values()) for rec in result]
@@ -158,13 +158,13 @@ class Neo4JStore(TableStore):
                 self._run_query(cypher, {"rows": rows})
 
     # todo: read_rows is oversimplified for now, since Neo4JStore is intended as a sink, rather than a source.
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         if idx is None:
             raise NotImplementedError("Neo4JStore does not support reading full table")
         if idx.empty:
             return pd.DataFrame(columns=self._pk_columns)
 
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
         session = self._driver.session()
         if self._mode == "node":
             for row in idx[self._pk_columns].to_dict(orient="records"):
@@ -182,7 +182,7 @@ class Neo4JStore(TableStore):
                         {
                             "node_id": rec[0],
                             "node_type": rec[1],
-                            "attributes": cast(Dict[str, Any], rec[2]),
+                            "attributes": cast(dict[str, Any], rec[2]),
                         }
                     )
 
@@ -209,7 +209,7 @@ class Neo4JStore(TableStore):
                             "from_node_type": rec[2],
                             "to_node_type": rec[3],
                             "edge_label": rec[4],
-                            "attributes": cast(Dict[str, Any], rec[5]),
+                            "attributes": cast(dict[str, Any], rec[5]),
                         }
                     )
 

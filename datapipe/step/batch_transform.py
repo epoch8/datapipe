@@ -6,15 +6,10 @@ from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterable,
-    List,
     Literal,
-    Optional,
     Protocol,
     Sequence,
-    Tuple,
-    Union,
 )
 
 from opentelemetry import trace
@@ -54,9 +49,9 @@ class DatatableBatchTransformFunc(Protocol):
         self,
         ds: DataStore,
         idx: IndexDF,
-        input_dts: List[DataTable],
-        run_config: Optional[RunConfig] = None,
-        kwargs: Optional[Dict[str, Any]] = None,
+        input_dts: list[DataTable],
+        run_config: RunConfig | None = None,
+        kwargs: dict[str, Any] | None = None,
     ) -> TransformResult: ...
 
 
@@ -72,19 +67,19 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: Sequence[Union[ComputeInput, DataTable]],
-        output_dts: List[DataTable],
-        transform_keys: Optional[List[str]] = None,
+        input_dts: Sequence[ComputeInput | DataTable],
+        output_dts: list[DataTable],
+        transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
-        labels: Optional[Labels] = None,
-        executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
-        order_by: Optional[List[str]] = None,
+        labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
+        filters: LabelDict | Callable[[], LabelDict] | None = None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
         # Support both old API (List[DataTable]) and new API (List[ComputeInput])
         # Convert to new API format
-        compute_input_dts: List[ComputeInput] = []
+        compute_input_dts: list[ComputeInput] = []
         for inp in input_dts:
             if isinstance(inp, ComputeInput):
                 # New API: ComputeInput with .dt attribute
@@ -123,7 +118,7 @@ class BaseBatchTransformStep(ComputeStep):
         self.order_by = order_by
         self.order = order
 
-    def _apply_filters_to_run_config(self, run_config: Optional[RunConfig] = None) -> Optional[RunConfig]:
+    def _apply_filters_to_run_config(self, run_config: RunConfig | None = None) -> RunConfig | None:
         if self.filters is None:
             return run_config
         else:
@@ -153,9 +148,9 @@ class BaseBatchTransformStep(ComputeStep):
     def get_full_process_ids(
         self,
         ds: DataStore,
-        chunk_size: Optional[int] = None,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        chunk_size: int | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         """
         Метод для получения перечня индексов для обработки.
 
@@ -173,8 +168,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         change_list: ChangeList,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
         return self.meta.get_change_list_process_ids(
             ds=ds,
@@ -187,9 +182,9 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        output_dfs: Optional[TransformResult],
+        output_dfs: TransformResult | None,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> ChangeList:
         run_config = self._apply_filters_to_run_config(run_config)
 
@@ -234,7 +229,7 @@ class BaseBatchTransformStep(ComputeStep):
         idx: IndexDF,
         e: Exception,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         run_config = self._apply_filters_to_run_config(run_config)
 
@@ -269,8 +264,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> List[DataDF]:
+        run_config: RunConfig | None = None,
+    ) -> list[DataDF]:
         # TODO consider parallel fetch through executor
         return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.keys)) for inp in self.input_dts]
 
@@ -278,8 +273,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        input_dfs: List[DataDF],
-        run_config: Optional[RunConfig] = None,
+        input_dfs: list[DataDF],
+        run_config: RunConfig | None = None,
     ) -> TransformResult:
         raise NotImplementedError()
 
@@ -287,8 +282,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> Optional[TransformResult]:
+        run_config: RunConfig | None = None,
+    ) -> TransformResult | None:
         with tracer.start_as_current_span("get input data"):
             input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
 
@@ -309,7 +304,7 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> ChangeList:
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {idx.to_records()}")
@@ -329,8 +324,8 @@ class BaseBatchTransformStep(ComputeStep):
     def run_full(
         self,
         ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> None:
         if executor is None:
             executor = SingleThreadExecutor()
@@ -361,8 +356,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         change_list: ChangeList,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> ChangeList:
         if executor is None:
             executor = SingleThreadExecutor()
@@ -394,8 +389,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> ChangeList:
         if executor is None:
             executor = SingleThreadExecutor()
@@ -413,14 +408,14 @@ class BaseBatchTransformStep(ComputeStep):
 @dataclass
 class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
-    inputs: List[TableOrName]
-    outputs: List[TableOrName]
+    inputs: list[TableOrName]
+    outputs: list[TableOrName]
     chunk_size: int = 1000
-    transform_keys: Optional[List[str]] = None
-    kwargs: Optional[Dict] = None
-    labels: Optional[Labels] = None
+    transform_keys: list[str] | None = None
+    kwargs: dict | None = None
+    labels: Labels | None = None
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
@@ -445,12 +440,12 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: DatatableBatchTransformFunc,
-        input_dts: List[ComputeInput],
-        output_dts: List[DataTable],
-        kwargs: Optional[Dict] = None,
-        transform_keys: Optional[List[str]] = None,
+        input_dts: list[ComputeInput],
+        output_dts: list[DataTable],
+        kwargs: dict | None = None,
+        transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
-        labels: Optional[Labels] = None,
+        labels: Labels | None = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -469,8 +464,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> Optional[TransformResult]:
+        run_config: RunConfig | None = None,
+    ) -> TransformResult | None:
         return self.func(
             ds=ds,
             idx=idx,
@@ -483,15 +478,15 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 @dataclass
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
-    inputs: List[PipelineInput]
-    outputs: List[TableOrName]
+    inputs: list[PipelineInput]
+    outputs: list[TableOrName]
     chunk_size: int = 1000
-    kwargs: Optional[Dict[str, Any]] = None
-    transform_keys: Optional[List[str]] = None
-    labels: Optional[Labels] = None
-    executor_config: Optional[ExecutorConfig] = None
-    filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None
-    order_by: Optional[List[str]] = None
+    kwargs: dict[str, Any] | None = None
+    transform_keys: list[str] | None = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
+    filters: LabelDict | Callable[[], LabelDict] | None = None
+    order_by: list[str] | None = None
     order: Literal["asc", "desc"] = "asc"
 
     def pipeline_input_to_compute_input(self, ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
@@ -510,7 +505,7 @@ class BatchTransform(PipelineStep):
         else:
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [self.pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
         output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
 
@@ -539,15 +534,15 @@ class BatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: BatchTransformFunc,
-        input_dts: List[ComputeInput],
-        output_dts: List[DataTable],
-        kwargs: Optional[Dict[str, Any]] = None,
-        transform_keys: Optional[List[str]] = None,
+        input_dts: list[ComputeInput],
+        output_dts: list[DataTable],
+        kwargs: dict[str, Any] | None = None,
+        transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
-        labels: Optional[Labels] = None,
-        executor_config: Optional[ExecutorConfig] = None,
-        filters: Optional[Union[LabelDict, Callable[[], LabelDict]]] = None,
-        order_by: Optional[List[str]] = None,
+        labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
+        filters: LabelDict | Callable[[], LabelDict] | None = None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
         super().__init__(
@@ -572,8 +567,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
-    ) -> Optional[TransformResult]:
+        run_config: RunConfig | None = None,
+    ) -> TransformResult | None:
         with tracer.start_as_current_span("get input data"):
             input_dfs = self.get_batch_input_dfs(ds, idx, run_config)
 
@@ -594,8 +589,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         self,
         ds: DataStore,
         idx: IndexDF,
-        input_dfs: List[DataDF],
-        run_config: Optional[RunConfig] = None,
+        input_dfs: list[DataDF],
+        run_config: RunConfig | None = None,
     ) -> TransformResult:
         kwargs = {
             **({"ds": ds} if "ds" in self.parameters else {}),

@@ -5,7 +5,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO, Any, Dict, Iterator, List, Literal, Optional, Union, cast
+from typing import IO, Any, Iterator, Literal, cast
 
 import cityhash
 import fsspec
@@ -23,13 +23,13 @@ class ItemStoreFileAdapter(ABC):
     mode: str
 
     @abstractmethod
-    def load(self, f: IO) -> Dict[str, Any]: ...
+    def load(self, f: IO) -> dict[str, Any]: ...
 
     @abstractmethod
-    def dump(self, obj: Dict[str, Any], f: IO) -> None: ...
+    def dump(self, obj: dict[str, Any], f: IO) -> None: ...
 
     @abstractmethod
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF: ...
+    def hash_rows(self, df: DataDF, keys: list[str]) -> HashDF: ...
 
 
 class JSONFile(ItemStoreFileAdapter):
@@ -42,13 +42,13 @@ class JSONFile(ItemStoreFileAdapter):
     def __init__(self, **dump_params) -> None:
         self.dump_params = dump_params
 
-    def load(self, f: IO) -> Dict[str, Any]:
+    def load(self, f: IO) -> dict[str, Any]:
         return json.load(f)
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+    def dump(self, obj: dict[str, Any], f: IO) -> None:
         return json.dump(obj, f, **self.dump_params)
 
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+    def hash_rows(self, df: DataDF, keys: list[str]) -> HashDF:
         hash_df = df[keys]
         hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
@@ -67,7 +67,7 @@ class BytesFile(ItemStoreFileAdapter):
     def __init__(self, bytes_columns: str = "bytes"):
         self.bytes_columns = bytes_columns
 
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+    def hash_rows(self, df: DataDF, keys: list[str]) -> HashDF:
         data_df = df.copy()
         hash_df = df[keys]
 
@@ -82,10 +82,10 @@ class BytesFile(ItemStoreFileAdapter):
 
         return cast(HashDF, hash_df)
 
-    def load(self, f: IO) -> Dict[str, Any]:
+    def load(self, f: IO) -> dict[str, Any]:
         return {self.bytes_columns: f.read()}
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+    def dump(self, obj: dict[str, Any], f: IO) -> None:
         f.write(obj[self.bytes_columns])
 
 
@@ -101,7 +101,7 @@ class PILFile(ItemStoreFileAdapter):
         self.dump_params = dump_params
         self.image_column = image_column
 
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+    def hash_rows(self, df: DataDF, keys: list[str]) -> HashDF:
         data_df = df.copy()
         hash_df = df[keys]
 
@@ -116,12 +116,12 @@ class PILFile(ItemStoreFileAdapter):
 
         return cast(HashDF, hash_df)
 
-    def load(self, f: IO) -> Dict[str, Any]:
+    def load(self, f: IO) -> dict[str, Any]:
         im = Image.open(f)
         im.load()
         return {self.image_column: im}
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+    def dump(self, obj: dict[str, Any], f: IO) -> None:
         image_data: Any = obj[self.image_column]
 
         if isinstance(image_data, Image.Image):
@@ -137,7 +137,7 @@ class PILFile(ItemStoreFileAdapter):
         image.save(f, format=self.format, **self.dump_params)
 
 
-def duplicates(lst: List[Any]) -> Iterator[Any]:
+def duplicates(lst: list[Any]) -> Iterator[Any]:
     seen = set()
     for item in lst:
         if item in seen:
@@ -163,7 +163,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
         self.engine = engine
         self.compression = compression
 
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
+    def hash_rows(self, df: DataDF, keys: list[str]) -> HashDF:
         data_df = df.copy()
         hash_df = df[keys]
 
@@ -181,7 +181,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
     def hash_df(self, df: pd.DataFrame) -> str:
         return str(pd.util.hash_pandas_object(df).values)
 
-    def load(self, f: IO) -> Dict[str, Any]:
+    def load(self, f: IO) -> dict[str, Any]:
         return {
             self.pandas_column: pd.read_parquet(
                 f,
@@ -189,7 +189,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
             ),
         }
 
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
+    def dump(self, obj: dict[str, Any], f: IO) -> None:
         df = cast(pd.DataFrame, obj[self.pandas_column])
 
         df.to_parquet(
@@ -199,7 +199,7 @@ class PandasParquetFile(ItemStoreFileAdapter):
         )
 
 
-def _pattern_to_attrnames(pat: str) -> List[str]:
+def _pattern_to_attrnames(pat: str) -> list[str]:
     attrnames = re.findall(r"\{([^/]+?)\}", pat)
 
     assert len(attrnames) > 0, "The scheme is not valid."
@@ -210,7 +210,7 @@ def _pattern_to_attrnames(pat: str) -> List[str]:
     return attrnames
 
 
-def _pattern_to_patterns_or(pat) -> List[str]:
+def _pattern_to_patterns_or(pat) -> list[str]:
     pattern_or = re.compile(r"(?P<or>\(([a-zA-Z0-9]+\|)+[a-zA-Z0-9]+\))")
     # Ищем вхождения вида (aaa|bbb|ccc), в виду list of list [[aaa, bbb, ccc], [ddd, eee], ...]
     values = [list(dict.fromkeys(match.group("or")[1:-1].split("|"))) for match in pattern_or.finditer(pat)]
@@ -237,7 +237,7 @@ def _pattern_to_match(pat: str) -> str:
 
 
 class Replacer:
-    def __init__(self, values: List[str]):
+    def __init__(self, values: list[str]):
         self.counter = -1
         self.values = list(values)
 
@@ -257,14 +257,14 @@ class TableStoreFiledir(TableStore):
 
     def __init__(
         self,
-        filename_pattern: Union[str, Path],
+        filename_pattern: str | Path,
         adapter: ItemStoreFileAdapter,
         add_filepath_column: bool = False,
-        primary_schema: Optional[DataSchema] = None,
+        primary_schema: DataSchema | None = None,
         read_data: bool = True,
-        readonly: Optional[bool] = None,
+        readonly: bool | None = None,
         enable_rm: bool = False,
-        fsspec_kwargs: Optional[Dict[str, Any]] = None,
+        fsspec_kwargs: dict[str, Any] | None = None,
     ):
         """
         При построении `TableStoreFiledir` есть два способа указать схему
@@ -385,7 +385,7 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
-            attrnames = cast(List[str], attrnames_series.tolist())
+            attrnames = cast(list[str], attrnames_series.tolist())
 
             # Удаляем каждый файл с разными суффиксами, если они есть
             for filepath in self._filenames_from_idxs_values(attrnames):
@@ -393,7 +393,7 @@ class TableStoreFiledir(TableStore):
                 if self.filesystem.exists(path):
                     self.filesystem.rm(path)
 
-    def _filenames_from_idxs_values(self, idxs_values: List[str]) -> List[str]:
+    def _filenames_from_idxs_values(self, idxs_values: list[str]) -> list[str]:
         """
         Возвращает по индексам список всевозможных путей согласно шаблону
         Например для шаблона filedir/{id}.(jpg|png) и индекса id=0
@@ -401,7 +401,7 @@ class TableStoreFiledir(TableStore):
         """
         return [re.sub(r"\{([^/]+?)\}", Replacer(idxs_values), pat) for pat in self.filename_patterns]
 
-    def _idxs_values_from_filepath(self, filepath: str) -> Dict[str, Any]:
+    def _idxs_values_from_filepath(self, filepath: str) -> dict[str, Any]:
         """
         По пути возвращает список индексов согласно шаблону
         """
@@ -415,7 +415,7 @@ class TableStoreFiledir(TableStore):
 
         return data
 
-    def _assert_key_values(self, filepath: str, idxs_values: List[str]):
+    def _assert_key_values(self, filepath: str, idxs_values: list[str]):
         idx_data = self._idxs_values_from_filepath(filepath)
         idxs_values_np = np.array(idxs_values)
         idxs_values_parsed_from_filepath = np.array([idx_data[attrname] for attrname in self.attrnames])
@@ -429,7 +429,7 @@ class TableStoreFiledir(TableStore):
             f"{idxs_values_np=} not equals {idxs_values_parsed_from_filepath=}",
         )
 
-    def insert_rows(self, df: pd.DataFrame, adapter: Optional[ItemStoreFileAdapter] = None) -> None:
+    def insert_rows(self, df: pd.DataFrame, adapter: ItemStoreFileAdapter | None = None) -> None:
         if df.empty:
             return
         assert not self.readonly
@@ -439,7 +439,7 @@ class TableStoreFiledir(TableStore):
         # WARNING: Здесь я поставил .drop(columns=self.attrnames), тк ключи будут хранится снаружи, в имени
         for row_idx, data in zip(
             df.index,
-            cast(List[Dict[str, Any]], df.drop(columns=self.attrnames).to_dict("records")),
+            cast(list[dict[str, Any]], df.drop(columns=self.attrnames).to_dict("records")),
         ):
             attrnames_series = df.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
@@ -464,7 +464,7 @@ class TableStoreFiledir(TableStore):
             attrnames_series = idx.loc[row_idx, self.attrnames]
             assert isinstance(attrnames_series, pd.Series)
 
-            attrnames = cast(List[str], attrnames_series.tolist())
+            attrnames = cast(list[str], attrnames_series.tolist())
 
             _, path = fsspec.core.split_protocol(self._filenames_from_idxs_values(attrnames)[0])
 
@@ -474,9 +474,9 @@ class TableStoreFiledir(TableStore):
 
     def read_rows(
         self,
-        idx: Optional[IndexDF] = None,
-        read_data: Optional[bool] = None,
-        adapter: Optional[ItemStoreFileAdapter] = None,
+        idx: IndexDF | None = None,
+        read_data: bool | None = None,
+        adapter: ItemStoreFileAdapter | None = None,
     ) -> DataDF:
         if read_data is None:
             read_data = self.read_data
@@ -542,14 +542,12 @@ class TableStoreFiledir(TableStore):
 
         return df
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob, **self.fsspec_kwargs)
 
-        ids: Dict[str, List[str]] = {attrname: [] for attrname in self.attrnames}
+        ids: dict[str, list[str]] = {attrname: [] for attrname in self.attrnames}
         ukeys = []
         filepaths = []
 
@@ -576,5 +574,5 @@ class TableStoreFiledir(TableStore):
 
             yield pseudo_data_df.astype(object)  # type: ignore # TODO fix typing issue
         else:
-            filepath_kw: Dict = {"filepath": []} if self.add_filepath_column else {}
+            filepath_kw: dict = {"filepath": []} if self.add_filepath_column else {}
             yield pd.DataFrame({"ukey": [], **filepath_kw}).astype(object)  # type: ignore # TODO fix typing issue

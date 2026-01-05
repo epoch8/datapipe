@@ -1,6 +1,6 @@
 import base64
 import hashlib
-from typing import Any, Dict, Iterable, Iterator, List, Optional, TypedDict
+from typing import Any, Iterable, Iterator, TypedDict
 
 import pandas as pd
 from elastic_transport import ObjectApiResponse
@@ -26,16 +26,16 @@ def _to_itertuples(df: DataDF, colnames):
     return list(df[colnames].itertuples(index=False, name=None))
 
 
-def remap_dict_keys(data: Dict[str, Any], key_name_remapping: Dict[str, str]) -> Dict[str, Any]:
+def remap_dict_keys(data: dict[str, Any], key_name_remapping: dict[str, str]) -> dict[str, Any]:
     return {key_name_remapping.get(key, key): value for key, value in data.items()}
 
 
 class ElasticStoreState(TypedDict):
     index: str
-    data_sql_schema: List[Column]
-    es_kwargs: Dict[str, Any]
-    key_name_remapping: Optional[Dict[str, str]]
-    mapping: Optional[dict]
+    data_sql_schema: list[Column]
+    es_kwargs: dict[str, Any]
+    key_name_remapping: dict[str, str] | None
+    mapping: dict | None
 
 
 class ElasticStore(TableStore):
@@ -50,10 +50,10 @@ class ElasticStore(TableStore):
     def __init__(
         self,
         index: str,
-        data_sql_schema: List[Column],
-        es_kwargs: Dict[str, Any],
-        key_name_remapping: Optional[Dict[str, str]] = None,
-        mapping: Optional[dict] = None,
+        data_sql_schema: list[Column],
+        es_kwargs: dict[str, Any],
+        key_name_remapping: dict[str, str] | None = None,
+        mapping: dict | None = None,
     ) -> None:
         self.index = index
         self.data_sql_schema = data_sql_schema
@@ -99,7 +99,7 @@ class ElasticStore(TableStore):
             # I need to retrieve data in chunks and restore the ids
             # here ids are hashed, so I need to store the original ide values in _source
             # since I cannot store the _id in source (ES will not validate request), I rename these fields
-            row_data: Dict[str, Any] = {key: row[key] for key in self.value_key_columns}
+            row_data: dict[str, Any] = {key: row[key] for key in self.value_key_columns}
             row_id = get_elastic_id([row[key] for key in self.primary_key_columns])
             row_data = remap_dict_keys(row_data, self.key_name_remapping)
             row_data.update(
@@ -109,7 +109,7 @@ class ElasticStore(TableStore):
 
         helpers.bulk(client=self.es_client, actions=actions, refresh=True)
 
-    def read_rows(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         if idx is not None:
             if idx.empty:
                 return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
@@ -140,9 +140,7 @@ class ElasticStore(TableStore):
         else:
             return pd.DataFrame(columns=self.primary_key_columns)
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: Optional[RunConfig] = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         pit_timeout = "5m"
 
         pit_resp = self.es_client.open_point_in_time(index=self.index, keep_alive=pit_timeout)
@@ -155,7 +153,7 @@ class ElasticStore(TableStore):
         else:
             query = {"match_all": {}}
 
-        data_resp: Optional[ObjectApiResponse[Any]]
+        data_resp: ObjectApiResponse[Any] | None
         data_resp = self.es_client.search(
             query=query,
             sort=["_doc"],

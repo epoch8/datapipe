@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterator, List, Optional
+from typing import Callable, Iterator
 
 import pandas as pd
 from opentelemetry import trace
@@ -26,10 +26,10 @@ BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
 def do_batch_generate(
     func: BatchGenerateFunc,
     ds: DataStore,
-    output_dts: List[DataTable],
-    run_config: Optional[RunConfig] = None,
+    output_dts: list[DataTable],
+    run_config: RunConfig | None = None,
     delete_stale: bool = True,
-    kwargs: Optional[Dict] = None,
+    kwargs: dict | None = None,
 ) -> None:
     """
     Создание новой таблицы из результатов запуска `proc_func`.
@@ -86,12 +86,12 @@ def do_batch_generate(
 @dataclass
 class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
-    outputs: List[TableOrName]
-    kwargs: Optional[Dict] = None
-    labels: Optional[Labels] = None
+    outputs: list[TableOrName]
+    kwargs: dict | None = None
+    labels: Labels | None = None
     delete_stale: bool = True
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         return [
             DatatableTransformStep(
                 name=self.func.__name__,

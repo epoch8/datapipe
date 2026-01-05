@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple, Union
+from typing import Iterable, Literal, Sequence
 
 from opentelemetry import trace
 from sqlalchemy import Column
@@ -21,13 +21,13 @@ tracer = trace.get_tracer("datapipe.compute")
 @dataclass
 class Table:
     store: TableStore
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Catalog:
-    def __init__(self, catalog: Dict[str, Table]):
+    def __init__(self, catalog: dict[str, Table]):
         self.catalog = catalog
-        self.data_tables: Dict[str, DataTable] = {}
+        self.data_tables: dict[str, DataTable] = {}
 
     def add_datatable(self, name: str, dt: Table):
         self.catalog[name] = dt
@@ -94,10 +94,10 @@ class ComputeInput:
     #
     # Example: {"idx_col": "meta_col"} means that to get idx_col value
     # we should read meta_col from meta table
-    keys: Optional[Dict[str, FieldAccessor]] = None
+    keys: dict[str, FieldAccessor] | None = None
 
     @property
-    def primary_keys(self) -> List[str]:
+    def primary_keys(self) -> list[str]:
         if self.keys:
             return list(self.keys.keys())
         else:
@@ -152,10 +152,10 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: Sequence[Union[ComputeInput, DataTable]],
-        output_dts: List[DataTable],
-        labels: Optional[Labels] = None,
-        executor_config: Optional[ExecutorConfig] = None,
+        input_dts: Sequence[ComputeInput | DataTable],
+        output_dts: list[DataTable],
+        labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> None:
         self._name = name
         # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
@@ -222,24 +222,24 @@ class ComputeStep:
     def get_full_process_ids(
         self,
         ds: DataStore,
-        chunk_size: Optional[int] = None,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        chunk_size: int | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
     def get_change_list_process_ids(
         self,
         ds: DataStore,
         change_list: ChangeList,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         raise NotImplementedError()
 
     def run_full(
         self,
         ds: DataStore,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> None:
         raise NotImplementedError()
 
@@ -247,8 +247,8 @@ class ComputeStep:
         self,
         ds: DataStore,
         change_list: ChangeList,
-        run_config: Optional[RunConfig] = None,
-        executor: Optional[Executor] = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
     ) -> ChangeList:
         raise NotImplementedError()
 
@@ -256,7 +256,7 @@ class ComputeStep:
         self,
         ds: DataStore,
         idx: IndexDF,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> ChangeList:
         raise NotImplementedError()
 
@@ -270,7 +270,7 @@ class PipelineStep(ABC):
     """
 
     @abstractmethod
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         raise NotImplementedError
 
 
@@ -288,11 +288,11 @@ class DatapipeApp:
         self.steps = build_compute(ds, catalog, pipeline)
 
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[ComputeStep]:
+def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> list[ComputeStep]:
     with tracer.start_as_current_span("build_compute"):
         catalog.init_all_tables(ds)
 
-        compute_pipeline: List[ComputeStep] = []
+        compute_pipeline: list[ComputeStep] = []
 
         for step in pipeline.steps:
             compute_pipeline.extend(step.build_compute(ds, catalog))
@@ -304,7 +304,7 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> List[C
         return compute_pipeline
 
 
-def print_compute(steps: List[ComputeStep]) -> None:
+def print_compute(steps: list[ComputeStep]) -> None:
     import pprint
 
     pprint.pp(steps)
@@ -313,8 +313,8 @@ def print_compute(steps: List[ComputeStep]) -> None:
 def run_steps(
     ds: DataStore,
     steps: Sequence[ComputeStep],
-    run_config: Optional[RunConfig] = None,
-    executor: Optional[Executor] = None,
+    run_config: RunConfig | None = None,
+    executor: Executor | None = None,
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
@@ -332,7 +332,7 @@ def run_pipeline(
     ds: DataStore,
     catalog: Catalog,
     pipeline: Pipeline,
-    run_config: Optional[RunConfig] = None,
+    run_config: RunConfig | None = None,
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
     run_steps(ds, steps, run_config)
@@ -343,7 +343,7 @@ def run_changelist(
     catalog: Catalog,
     pipeline: Pipeline,
     changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
+    run_config: RunConfig | None = None,
 ) -> None:
     steps = build_compute(ds, catalog, pipeline)
 
@@ -352,10 +352,10 @@ def run_changelist(
 
 def run_steps_changelist(
     ds: DataStore,
-    steps: List[ComputeStep],
+    steps: list[ComputeStep],
     changelist: ChangeList,
-    run_config: Optional[RunConfig] = None,
-    executor: Optional[Executor] = None,
+    run_config: RunConfig | None = None,
+    executor: Executor | None = None,
 ) -> None:
     # FIXME extract Batch* steps to separate module
     from datapipe.step.batch_transform import BaseBatchTransformStep

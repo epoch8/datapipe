@@ -5,14 +5,10 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     Iterable,
     Iterator,
-    List,
     Literal,
-    Optional,
     Sequence,
-    Tuple,
     cast,
 )
 
@@ -48,7 +44,7 @@ if TYPE_CHECKING:
     from datapipe.datatable import DataStore
 
 
-TABLE_META_SCHEMA: List[sa.Column] = [
+TABLE_META_SCHEMA: list[sa.Column] = [
     sa.Column("hash", sa.Integer),
     sa.Column("create_ts", sa.Float),  # Время создания строки
     sa.Column("update_ts", sa.Float),  # Время последнего изменения
@@ -86,7 +82,7 @@ class SQLTableMeta(TableMeta):
         self.name = name
 
         self.primary_schema = primary_schema
-        self.primary_keys: List[str] = [column.name for column in primary_schema]
+        self.primary_keys: list[str] = [column.name for column in primary_schema]
 
         for item in primary_schema:
             item.primary_key = True
@@ -100,7 +96,7 @@ class SQLTableMeta(TableMeta):
             target_name = column.meta_key.target_name if hasattr(column, meta_key_prop) else column.name
             self.meta_keys[target_name] = column.name
 
-        self.sql_schema: List[sa.schema.SchemaItem] = [
+        self.sql_schema: list[sa.schema.SchemaItem] = [
             i._copy() for i in primary_schema + meta_schema + TABLE_META_SCHEMA
         ]
 
@@ -113,7 +109,7 @@ class SQLTableMeta(TableMeta):
         if create_table:
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
-    def __reduce__(self) -> Tuple[Any, ...]:
+    def __reduce__(self) -> tuple[Any, ...]:
         return self.__class__, (
             self.dbconn,
             self.name,
@@ -142,7 +138,7 @@ class SQLTableMeta(TableMeta):
 
             yield cast(TAnyDF, chunk_idx)
 
-    def _build_metadata_query(self, sql, idx: Optional[IndexDF] = None, include_deleted: bool = False):
+    def _build_metadata_query(self, sql, idx: IndexDF | None = None, include_deleted: bool = False):
         if idx is not None:
             if len(self.primary_keys) == 0:
                 # Когда ключей нет - не делаем ничего
@@ -156,7 +152,7 @@ class SQLTableMeta(TableMeta):
 
         return sql
 
-    def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
+    def get_metadata(self, idx: IndexDF | None = None, include_deleted: bool = False) -> MetadataDF:
         res = []
         sql = sa.select(*self.sql_schema)  # type: ignore
 
@@ -178,7 +174,7 @@ class SQLTableMeta(TableMeta):
                     pd.DataFrame(columns=[column.name for column in self.sql_schema]),  # type: ignore
                 )
 
-    def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
+    def get_metadata_size(self, idx: IndexDF | None = None, include_deleted: bool = False) -> int:
         sql = sa.select(sa.func.count()).select_from(self.sql_table)
         sql = self._build_metadata_query(sql, idx, include_deleted)
 
@@ -206,7 +202,7 @@ class SQLTableMeta(TableMeta):
     def _get_sql_param(self, param):
         return param.item() if hasattr(param, "item") else param
 
-    def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
+    def get_existing_idx(self, idx: IndexDF | None = None) -> IndexDF:
         sql = sa.select(*self.sql_schema)  # type: ignore
 
         if idx is not None:
@@ -245,8 +241,8 @@ class SQLTableMeta(TableMeta):
 
     # TODO Может быть переделать работу с метадатой на контекстный менеджер?
     def get_changes_for_store_chunk(
-        self, hash_df: HashDF, now: Optional[float] = None
-    ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
+        self, hash_df: HashDF, now: float | None = None
+    ) -> tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
         if now is None:
             now = time.time()
 
@@ -321,7 +317,7 @@ class SQLTableMeta(TableMeta):
     def mark_rows_deleted(
         self,
         deleted_idx: IndexDF,
-        now: Optional[float] = None,
+        now: float | None = None,
     ) -> None:
         if len(deleted_idx) > 0:
             if now is None:
@@ -339,7 +335,7 @@ class SQLTableMeta(TableMeta):
     def get_stale_idx(
         self,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> Iterator[IndexDF]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = sa.select(*idx_cols).where(
@@ -359,12 +355,12 @@ class SQLTableMeta(TableMeta):
 
     def get_agg_cte(
         self,
-        transform_keys: List[str],
+        transform_keys: list[str],
         table_store: TableStore,
-        keys: Dict[str, FieldAccessor],
-        filters_idx: Optional[IndexDF] = None,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[List[str], Any]:
+        keys: dict[str, FieldAccessor],
+        filters_idx: IndexDF | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[list[str], Any]:
         """
         Create a CTE that aggregates the table by transform keys, applies keys
         aliasing and returns the maximum update_ts for each group.
@@ -389,7 +385,7 @@ class SQLTableMeta(TableMeta):
         data_table = None
 
         key_cols: list[Any] = []
-        cte_transform_keys: List[str] = []
+        cte_transform_keys: list[str] = []
         should_join_data_table = False
 
         for transform_key in transform_keys:
@@ -442,8 +438,8 @@ class SQLTransformMeta(TransformMeta):
         name: str,
         input_cis: Sequence[ComputeInput],
         output_dts: Sequence[DataTable],
-        transform_keys: Optional[List[str]],
-        order_by: Optional[List[str]] = None,
+        transform_keys: list[str] | None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
         create_table: bool = False,
     ) -> None:
@@ -476,7 +472,7 @@ class SQLTransformMeta(TransformMeta):
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     # TODO extract all complex logic into .create classmethod, make constructor simple
-    def __reduce__(self) -> Tuple[Any, ...]:
+    def __reduce__(self) -> tuple[Any, ...]:
         return self.__class__, (
             self.dbconn,
             self.name,
@@ -490,7 +486,7 @@ class SQLTransformMeta(TransformMeta):
     def get_changed_idx_count(
         self,
         ds: "DataStore",
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> int:
         sql = self._build_changed_idx_sql(ds=ds, run_config=run_config)
 
@@ -505,8 +501,8 @@ class SQLTransformMeta(TransformMeta):
         self,
         ds: "DataStore",
         chunk_size: int,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.input_cis) == 0:
                 return (0, iter([]))
@@ -548,8 +544,8 @@ class SQLTransformMeta(TransformMeta):
         ds: "DataStore",
         change_list: ChangeList,
         chunk_size: int,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -615,7 +611,7 @@ class SQLTransformMeta(TransformMeta):
         self,
         idx: IndexDF,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         idx = cast(
             IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
@@ -678,7 +674,7 @@ class SQLTransformMeta(TransformMeta):
         idx: IndexDF,
         process_ts: float,
         error: str,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         idx = cast(
             IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
@@ -722,7 +718,7 @@ class SQLTransformMeta(TransformMeta):
 
     def mark_all_rows_unprocessed(
         self,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         update_sql = (
             sa.update(self.sql_table)
@@ -745,12 +741,12 @@ class SQLTransformMeta(TransformMeta):
     def _build_changed_idx_sql(
         self,
         ds: "DataStore",
-        filters_idx: Optional[IndexDF] = None,
-        order_by: Optional[List[str]] = None,
+        filters_idx: IndexDF | None = None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
-        run_config: Optional[RunConfig] = None,  # TODO remove
+        run_config: RunConfig | None = None,  # TODO remove
     ) -> Any:
-        all_input_keys_counts: Dict[str, int] = {}
+        all_input_keys_counts: dict[str, int] = {}
         for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_cis]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
@@ -841,8 +837,8 @@ class SQLTransformMeta(TransformMeta):
 
 def sql_apply_filters_idx_to_subquery(
     sql: Any,
-    keys: List[str],
-    filters_idx: Optional[pd.DataFrame],
+    keys: list[str],
+    filters_idx: pd.DataFrame | None,
 ) -> Any:
     if filters_idx is None:
         return sql
@@ -861,15 +857,15 @@ def sql_apply_filters_idx_to_subquery(
 @dataclass
 class ComputeInputCTE:
     cte: Any
-    keys: List[str]
+    keys: list[str]
     join_type: Literal["inner", "full"]
 
 
 def _make_agg_of_agg(
     ds: "DataStore",
-    transform_keys: List[str],
+    transform_keys: list[str],
     agg_col: str,
-    ctes: List[ComputeInputCTE],
+    ctes: list[ComputeInputCTE],
 ) -> Any:
     assert len(ctes) > 0
 
@@ -952,8 +948,8 @@ class SQLMetaPlane(MetaPlane):
         name: str,
         input_dts: Sequence[ComputeInput],
         output_dts: Sequence[DataTable],
-        transform_keys: Optional[List[str]] = None,
-        order_by: Optional[List[str]] = None,
+        transform_keys: list[str] | None = None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> TransformMeta:
         return SQLTransformMeta(

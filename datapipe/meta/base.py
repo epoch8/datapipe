@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Iterable, Iterator, Literal, Sequence
 
 import pandas as pd
 from sqlalchemy import Column
@@ -38,8 +38,8 @@ class MetaPlane:
         name: str,
         input_dts: Sequence["ComputeInput"],
         output_dts: Sequence["DataTable"],
-        transform_keys: Optional[List[str]] = None,
-        order_by: Optional[List[str]] = None,
+        transform_keys: list[str] | None = None,
+        order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> "TransformMeta":
         """
@@ -64,9 +64,9 @@ class TableDebugInfo:
 
 class TableMeta:
     primary_schema: DataSchema
-    primary_keys: List[str]
+    primary_keys: list[str]
 
-    def get_metadata(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> MetadataDF:
+    def get_metadata(self, idx: IndexDF | None = None, include_deleted: bool = False) -> MetadataDF:
         """
         Return a dataframe with metadata rows.
 
@@ -76,7 +76,7 @@ class TableMeta:
 
         raise NotImplementedError()
 
-    def get_metadata_size(self, idx: Optional[IndexDF] = None, include_deleted: bool = False) -> int:
+    def get_metadata_size(self, idx: IndexDF | None = None, include_deleted: bool = False) -> int:
         """
         Return the number of metadata rows.
 
@@ -86,7 +86,7 @@ class TableMeta:
 
         raise NotImplementedError()
 
-    def get_existing_idx(self, idx: Optional[IndexDF] = None) -> IndexDF:
+    def get_existing_idx(self, idx: IndexDF | None = None) -> IndexDF:
         """
         Return indices already present in the metadata store (not marked
         deleted). If `idx` is provided, return its intersection; otherwise, all
@@ -106,8 +106,8 @@ class TableMeta:
     # TODO return a dataclass, pair it with `apply_changes_from_store_chunk`
     # TODO take processed_idx as input, compute deleted rows inside, see datatable.store_chunk
     def get_changes_for_store_chunk(
-        self, hash_df: HashDF, now: Optional[float] = None
-    ) -> Tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
+        self, hash_df: HashDF, now: float | None = None
+    ) -> tuple[IndexDF, IndexDF, MetadataDF, MetadataDF]:
         """
         Analyze a hash_df chunk to detect rows that are new (to insert) and
         changed (to update).
@@ -133,7 +133,7 @@ class TableMeta:
     def mark_rows_deleted(
         self,
         deleted_idx: IndexDF,
-        now: Optional[float] = None,
+        now: float | None = None,
     ) -> None:
         """
         Mark the given indices as deleted by setting `delete_ts` (using `now` or
@@ -145,7 +145,7 @@ class TableMeta:
     def get_stale_idx(
         self,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> Iterator[IndexDF]:
         """
         Iterate over indices whose `process_ts` is below the given threshold
@@ -157,7 +157,7 @@ class TableMeta:
 
     def reset_metadata(
         self,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         """
         Reset service metadata fields (e.g., process_ts / update_ts) for all
@@ -172,7 +172,7 @@ class TableMeta:
     def transform_idx_to_table_idx(
         self,
         transform_idx: IndexDF,
-        keys: Optional[Dict[str, FieldAccessor]] = None,
+        keys: dict[str, FieldAccessor] | None = None,
     ) -> IndexDF:
         """
         Given an index dataframe with transform keys, return an index dataframe
@@ -184,7 +184,7 @@ class TableMeta:
         if keys is None:
             return transform_idx
 
-        table_key_cols: Dict[str, pd.Series] = {}
+        table_key_cols: dict[str, pd.Series] = {}
         for transform_col in transform_idx.columns:
             accessor = keys.get(transform_col) if keys is not None else transform_col
             if isinstance(accessor, str):
@@ -197,19 +197,19 @@ class TableMeta:
 
 class TransformMeta:
     transform_keys_schema: DataSchema
-    transform_keys: List[str]
+    transform_keys: list[str]
 
     @classmethod
     def compute_transform_schema(
         cls,
         input_cis: Sequence["ComputeInput"],
         output_dts: Sequence["DataTable"],
-        transform_keys: Optional[List[str]],
-    ) -> Tuple[List[str], MetaSchema]:
+        transform_keys: list[str] | None,
+    ) -> tuple[list[str], MetaSchema]:
         # Hacky way to collect all the primary keys into a single set. Possible
         # problem that is not handled here is that theres a possibility that the
         # same key is defined differently in different input tables.
-        all_keys: Dict[str, Column] = {}
+        all_keys: dict[str, Column] = {}
 
         for ci in input_cis:
             all_keys.update({col.name: col for col in ci.primary_schema})
@@ -239,7 +239,7 @@ class TransformMeta:
     def get_changed_idx_count(
         self,
         ds: "DataStore",
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> int:
         """
         Count how many indices require processing given current input tables and
@@ -252,8 +252,8 @@ class TransformMeta:
         self,
         ds: "DataStore",
         chunk_size: int,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         """
         Compute indices for a full transform run: returns chunk count and an
         iterator of index dataframes ordered by priority/keys, respecting
@@ -267,8 +267,8 @@ class TransformMeta:
         ds: "DataStore",
         change_list: ChangeList,
         chunk_size: int,
-        run_config: Optional[RunConfig] = None,
-    ) -> Tuple[int, Iterable[IndexDF]]:
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
         """
         Like `get_full_process_ids`, but limited to changes from `change_list`
         (e.g., modified input tables). Returns chunk count and a generator of
@@ -292,7 +292,7 @@ class TransformMeta:
         self,
         idx: IndexDF,
         process_ts: float,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         """
         Mark the given indices as successfully processed at `process_ts`,
@@ -307,7 +307,7 @@ class TransformMeta:
         idx: IndexDF,
         process_ts: float,
         error: str,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         """
         Record a processing error for the given indices: set `process_ts`, store
@@ -326,7 +326,7 @@ class TransformMeta:
 
     def mark_all_rows_unprocessed(
         self,
-        run_config: Optional[RunConfig] = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         """
         Clear success status and error for all transform rows (or those filtered

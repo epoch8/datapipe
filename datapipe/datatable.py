@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 from opentelemetry import trace
@@ -38,10 +38,10 @@ class DataTable:
         self.primary_schema = meta.primary_schema
         self.primary_keys = meta.primary_keys
 
-    def get_metadata(self, idx: Optional[IndexDF] = None) -> MetadataDF:
+    def get_metadata(self, idx: IndexDF | None = None) -> MetadataDF:
         return self.meta.get_metadata(idx)
 
-    def get_data(self, idx: Optional[IndexDF] = None) -> DataDF:
+    def get_data(self, idx: IndexDF | None = None) -> DataDF:
         return self.table_store.read_rows(self.meta.get_existing_idx(idx))
 
     def reset_metadata(self):
@@ -56,9 +56,9 @@ class DataTable:
     def store_chunk(
         self,
         data_df: DataDF,
-        processed_idx: Optional[IndexDF] = None,
-        now: Optional[float] = None,
-        run_config: Optional[RunConfig] = None,
+        processed_idx: IndexDF | None = None,
+        now: float | None = None,
+        run_config: RunConfig | None = None,
     ) -> IndexDF:
         """
         Записать новые данные в таблицу.
@@ -134,8 +134,8 @@ class DataTable:
     def delete_by_idx(
         self,
         idx: IndexDF,
-        now: Optional[float] = None,
-        run_config: Optional[RunConfig] = None,
+        now: float | None = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         if len(idx) > 0:
             logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
@@ -146,8 +146,8 @@ class DataTable:
     def delete_stale_by_process_ts(
         self,
         process_ts: float,
-        now: Optional[float] = None,
-        run_config: Optional[RunConfig] = None,
+        now: float | None = None,
+        run_config: RunConfig | None = None,
     ) -> None:
         for deleted_df in self.meta.get_stale_idx(process_ts, run_config=run_config):
             deleted_idx = data_to_index(deleted_df, self.primary_keys)
@@ -165,7 +165,7 @@ class DataStore:
 
         self.meta_dbconn = meta_dbconn
         self.event_logger = EventLogger()
-        self.tables: Dict[str, DataTable] = {}
+        self.tables: dict[str, DataTable] = {}
 
         # TODO move initialization outside
         self.meta_plane = SQLMetaPlane(dbconn=meta_dbconn, create_meta_table=create_meta_table)
