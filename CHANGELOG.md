@@ -4,7 +4,7 @@
 
 ### MetaPlane
 
-See [design-docs/2025-12-meta-plane.md](meta-plane.md) for motivation
+See [meta-plane.md](design-docs/2025-12-meta-plane.md) for motivation
 
 * Introduced `MetaPlane`/`TableMeta`/`TransformMeta` interfaces to decouple
   metadata management from the compute plane
@@ -16,7 +16,7 @@ See [design-docs/2025-12-meta-plane.md](meta-plane.md) for motivation
 
 ### InputSpec and key mapping
 
-See [design-docs/2025-12-key-mapping.md](key-mapping.md) for motivation
+See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 
 * Renamed `JoinSpec` to `InputSpec`
 * Added `keys` parameter to `InputSpec` and `ComputeInput` to support
