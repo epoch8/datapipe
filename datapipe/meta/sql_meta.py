@@ -1,12 +1,14 @@
 import itertools
 import math
 import time
-from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
+    Iterable,
+    Iterator,
     Literal,
+    Sequence,
     cast,
 )
 

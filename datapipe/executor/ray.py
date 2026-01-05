@@ -1,5 +1,4 @@
-from typing import Any
-from collections.abc import Iterable
+from typing import Any, Iterable
 
 import ray
 from tqdm_loggable.auto import tqdm

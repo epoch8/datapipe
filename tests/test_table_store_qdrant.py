@@ -1,5 +1,5 @@
 from pathlib import Path
-from collections.abc import Generator
+from typing import Generator
 
 import pandas as pd
 from qdrant_client.models import Distance, VectorParams

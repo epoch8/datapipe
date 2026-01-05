@@ -10,7 +10,7 @@ from typing import (
     Union,
     cast,
 )
-from collections.abc import Callable
+from typing import Callable
 
 import pandas as pd
 from sqlalchemy import Column

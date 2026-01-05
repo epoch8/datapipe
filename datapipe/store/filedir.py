@@ -5,8 +5,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO, Any, Literal, cast
-from collections.abc import Iterator
+from typing import IO, Any, Iterator, Literal, cast
 
 import cityhash
 import fsspec
@@ -543,9 +542,7 @@ class TableStoreFiledir(TableStore):
 
         return df
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: RunConfig | None = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         # FIXME реализовать чанкирование
 
         files = fsspec.open_files(self.filename_glob, **self.fsspec_kwargs)

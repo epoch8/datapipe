@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from collections.abc import Callable, Iterator
+from typing import Callable, Iterator
 
 import pandas as pd
 from opentelemetry import trace

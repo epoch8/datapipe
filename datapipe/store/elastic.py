@@ -1,7 +1,6 @@
 import base64
 import hashlib
-from typing import Any, TypedDict
-from collections.abc import Iterable, Iterator
+from typing import Any, Iterable, Iterator, TypedDict
 
 import pandas as pd
 from elastic_transport import ObjectApiResponse
@@ -141,9 +140,7 @@ class ElasticStore(TableStore):
         else:
             return pd.DataFrame(columns=self.primary_key_columns)
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: RunConfig | None = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         pit_timeout = "5m"
 
         pit_resp = self.es_client.open_point_in_time(index=self.index, keep_alive=pit_timeout)

@@ -1,6 +1,5 @@
-from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Iterable, Iterator, Literal, Sequence
 
 import pandas as pd
 from sqlalchemy import Column

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import cast
-from collections.abc import Generator
+from typing import Generator, cast
 
 import pandas as pd
 from sqlalchemy import JSON, Column, String

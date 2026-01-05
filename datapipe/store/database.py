@@ -1,8 +1,7 @@
 import copy
 import logging
 import math
-from collections.abc import Callable, Iterator
-from typing import Any, cast
+from typing import Any, Callable, Iterator, cast
 
 import numpy as np
 import pandas as pd

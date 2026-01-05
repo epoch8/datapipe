@@ -2,12 +2,14 @@ import copy
 import inspect
 import logging
 import time
-from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
+    Iterable,
     Literal,
     Protocol,
+    Sequence,
 )
 
 from opentelemetry import trace

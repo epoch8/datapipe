@@ -1,8 +1,7 @@
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
-from collections.abc import Iterator
+from typing import Iterator, cast
 
 import cityhash
 import pandas as pd
@@ -68,9 +67,7 @@ class TableStore(ABC):
     def read_rows(self, idx: IndexDF | None = None) -> DataDF:
         raise NotImplementedError
 
-    def read_rows_meta_pseudo_df(
-        self, chunksize: int = 1000, run_config: RunConfig | None = None
-    ) -> Iterator[DataDF]:
+    def read_rows_meta_pseudo_df(self, chunksize: int = 1000, run_config: RunConfig | None = None) -> Iterator[DataDF]:
         # FIXME сделать честную чанкированную реализацию во всех сторах
         yield self.read_rows()
 

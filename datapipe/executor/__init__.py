@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Iterable, Protocol
 
 from tqdm_loggable.auto import tqdm
 
