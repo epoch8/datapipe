@@ -1,5 +1,11 @@
 # WIP: 0.15.0
 
+## Important new stuff:
+
+### MetaPlane
+
+See [design-docs/2025-12-meta-plane.md](meta-plane.md) for motivation
+
 * Introduced `MetaPlane`/`TableMeta`/`TransformMeta` interfaces to decouple
   metadata management from the compute plane
 * Added SQL reference implementation (`SQLMetaPlane`, `SQLTableMeta`,
@@ -7,6 +13,17 @@
   steps to consume the new meta plane API
 * Added meta-plane design doc and removed legacy `MetaTable` plumbing in lints,
   migrations, and tests
+
+### InputSpec and key mapping
+
+See [design-docs/2025-12-key-mapping.md](key-mapping.md) for motivation
+
+* Renamed `JoinSpec` to `InputSpec`
+* Added `keys` parameter to `InputSpec` and `ComputeInput` to support
+  joining tables with different key names
+* Added `DataField` accessor for `InputSpec.keys`
+
+## CLI improvements:
 * Make CLI accept multiple `--name` values
 
 # 0.14.6
