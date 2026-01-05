@@ -8,6 +8,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.tests.util import assert_datatable_equal
+from datapipe.types import DataField
 
 
 def test_transform_key_mapping(dbconn: DBConn):
@@ -91,11 +92,24 @@ def test_transform_key_mapping(dbconn: DBConn):
         name="test_transform",
         func=transform_func,
         input_dts=[
-            ComputeInput(dt=posts, join_type="full"),  # Главная таблица
-            ComputeInput(dt=profiles, join_type="inner", key_mapping={"user_id": "id"}),  # JoinSpec таблица
+            ComputeInput(
+                dt=posts,
+                join_type="full",
+                keys={
+                    "post_id": "id",
+                    "user_id": DataField("user_id"),
+                },
+            ),
+            ComputeInput(
+                dt=profiles,
+                join_type="inner",
+                keys={
+                    "user_id": "id",
+                },
+            ),
         ],
         output_dts=[output_dt],
-        transform_keys=["id"],  # Primary key первой таблицы (posts)
+        transform_keys=["post_id", "user_id"],
     )
 
     # 6. Запустить трансформацию

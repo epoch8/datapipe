@@ -62,21 +62,33 @@ TableOrName = Union[str, OrmTable, "Table"]
 
 
 @dataclass
-class JoinSpec:
-    table: TableOrName
+class DataField:
+    field_name: str
 
-    # Alias dt column name to input index column name
-    # Example: {"table_col": "idx_col"} means filter dt by dt.table_col IN (idx.idx_col)
-    # I.e. from the join perspective table column is named "idx_col"
-    key_mapping: Optional[Dict[str, str]] = None
+
+FieldAccessor = Union[str, DataField]
 
 
 @dataclass
-class Required(JoinSpec):
+class InputSpec:
+    table: TableOrName
+
+    # If provided, this dict tells how to get key columns from meta and data tables
+    #
+    # Example: {"idx_col": DataField("data_col")} means that to get idx_col value
+    # we should read data_col from data table
+    #
+    # Example: {"idx_col": "meta_col"} means that to get idx_col value
+    # we should read meta_col from meta table
+    keys: Optional[Dict[str, FieldAccessor]] = None
+
+
+@dataclass
+class Required(InputSpec):
     pass
 
 
-PipelineInput = Union[TableOrName, JoinSpec]
+PipelineInput = Union[TableOrName, InputSpec]
 
 
 @dataclass

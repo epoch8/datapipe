@@ -60,6 +60,21 @@ where `key_accessor` might be:
 * `DataField("data_col")` then a `data_col` from data-table is used instead of
   meta-table
 
+If table is provided as is without `InputSpec` wrapper, then it is equivalent to
+`InputSpec(Table, join_type="outer", keys={"id1": "id1", ...})`, join type is
+outer join and all keys are mapped to themselves.
+
+## DataField limitations
+
+`DataField` accessor serves as an ad-hoc solution for a situation when for some
+reason a data field can not be promoted to a meta-field.
+
+Data fields are not used when retreiving a chunk of data, so it is possible to
+over-fetch data.
+
+Data fields are not enforced to have indices in DB, so their usage might be very
+heavy for database.
+
 
 # Implementation
 
@@ -75,13 +90,15 @@ where `key_accessor` might be:
 `datapipe.meta.sql_meta.SQLTableMeta`:
 * [x] new method `transform_idx_to_table_idx` which should be used to convert
   transform keys to table keys
-* [x] `get_agg_cte` receives `key_mapping` parameter and starts producing subquery
-  with renamed keys
-* [ ] `get_agg_cte` correctly applies `key_mapping` to `filter_idx` parameter
-* [ ] `get_agg_cte` correctly applies `key_mapping` to `RunConfig` filters
+* [x] `get_agg_cte` receives `keys` parameter and starts producing subquery with
+  renamed keys
+* [ ] `get_agg_cte` correctly applies `keys` to `filter_idx` parameter
+* [ ] `get_agg_cte` correctly applies `keys` to `RunConfig` filters
 
 `BatchTransform`:
-* [x] Correctly converts transform idx to table idx in `get_batch_input_dfs`
+* [x] correctly converts transform idx to table idx in `get_batch_input_dfs`
+* [x] inputs and outputs are stored as `ComputeInput` lists, because we need
+  data table for `DataField`
 
 `DataTable`:
 * [x] `DataTable.get_data` accepts `table_idx` which is acquired by applying

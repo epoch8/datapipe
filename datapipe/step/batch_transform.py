@@ -34,7 +34,7 @@ from datapipe.types import (
     ChangeList,
     DataDF,
     IndexDF,
-    JoinSpec,
+    InputSpec,
     Labels,
     PipelineInput,
     Required,
@@ -272,7 +272,7 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> List[DataDF]:
         # TODO consider parallel fetch through executor
-        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.key_mapping)) for inp in self.input_dts]
+        return [inp.dt.get_data(inp.dt.meta.transform_idx_to_table_idx(idx, inp.keys)) for inp in self.input_dts]
 
     def process_batch_dfs(
         self,
@@ -499,12 +499,13 @@ class BatchTransform(PipelineStep):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="inner",
+                keys=input.keys,
             )
-        elif isinstance(input, JoinSpec):
-            # This should not happen, but just in case
+        elif isinstance(input, InputSpec):
             return ComputeInput(
                 dt=catalog.get_datatable(ds, input.table),
                 join_type="full",
+                keys=input.keys,
             )
         else:
             return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")

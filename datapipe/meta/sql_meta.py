@@ -26,10 +26,13 @@ from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMe
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
+from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     DataDF,
+    DataField,
     DataSchema,
+    FieldAccessor,
     HashDF,
     IndexDF,
     MetadataDF,
@@ -357,7 +360,8 @@ class SQLTableMeta(TableMeta):
     def get_agg_cte(
         self,
         transform_keys: List[str],
-        key_mapping: Optional[Dict[str, str]] = None,
+        table_store: TableStore,
+        keys: Dict[str, FieldAccessor],
         filters_idx: Optional[IndexDF] = None,
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[List[str], Any]:
@@ -365,7 +369,9 @@ class SQLTableMeta(TableMeta):
         Create a CTE that aggregates the table by transform keys, applies
         key_mapping aliasing and returns the maximum update_ts for each group.
 
-        * `key_mapping` is a mapping from table key to transform key
+        * `key_mapping` is a mapping from transform key to table key accessor
+          (can be string for meta table column or DataField for data table
+          column)
         * `transform_keys` is a list of keys used in the transformation
 
         CTE has the following columns:
@@ -373,30 +379,52 @@ class SQLTableMeta(TableMeta):
         * transform keys which are present in primary keys
         * update_ts
 
-        Returns a tuple of (keys, CTE) where
-        * keys is a list of transform keys present in primary keys of this CTE
+        Returns a tuple of (keys, CTE) where * keys is a list of transform keys
+        present in primary keys of this CTE
         """
 
-        tbl = self.sql_table
+        from datapipe.store.database import TableStoreDB
 
-        table_to_transform_key: Dict[str, str] = key_mapping or {}
-        transform_to_table_key: Dict[str, str] = {v: k for k, v in table_to_transform_key.items()}
+        meta_table = self.sql_table
+        data_table = None
 
-        assert all(k in self.primary_keys for k in table_to_transform_key.keys()), (
-            "If key_mapping is provided, all its keys must be in primary keys of the table"
+        key_cols: list[Any] = []
+        cte_transform_keys: List[str] = []
+        should_join_data_table = False
+
+        for transform_key in transform_keys:
+            # TODO convert to match when we deprecate Python 3.9
+            accessor = keys.get(transform_key, transform_key)
+            if isinstance(accessor, str):
+                if accessor in self.primary_keys:
+                    key_cols.append(meta_table.c[accessor].label(transform_key))
+                    cte_transform_keys.append(transform_key)
+            elif isinstance(accessor, DataField):
+                should_join_data_table = True
+                assert isinstance(table_store, TableStoreDB)
+                data_table = table_store.data_table
+
+                key_cols.append(data_table.c[accessor.field_name].label(transform_key))
+                cte_transform_keys.append(transform_key)
+
+        sql: Any = sa.select(*key_cols + [sa.func.max(meta_table.c["update_ts"]).label("update_ts")]).select_from(
+            meta_table
         )
-        cte_transform_keys = [k for k in transform_keys if transform_to_table_key.get(k, k) in self.primary_keys]
-        key_cols: List[Any] = [sa.column(transform_to_table_key.get(k, k)).label(k) for k in cte_transform_keys]
 
-        sql: Any = sa.select(*key_cols + [sa.func.max(tbl.c["update_ts"]).label("update_ts")]).select_from(tbl)
+        if should_join_data_table:
+            assert data_table is not None
+            sql = sql.join(
+                data_table,
+                sa.and_(*[meta_table.c[pk] == data_table.c[pk] for pk in self.primary_keys]),
+            )
 
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
 
         sql = sql_apply_filters_idx_to_subquery(sql, cte_transform_keys, filters_idx)  # ???
-        sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)  # ???
+        sql = sql_apply_runconfig_filter(sql, meta_table, self.primary_keys, run_config)  # ???
 
-        return (cte_transform_keys, sql.cte(name=f"{tbl.name}__update"))
+        return (cte_transform_keys, sql.cte(name=f"{meta_table.name}__update"))
 
 
 TRANSFORM_META_SCHEMA: DataSchema = [
@@ -407,20 +435,13 @@ TRANSFORM_META_SCHEMA: DataSchema = [
 ]
 
 
-@dataclass
-class SQLMetaComputeInput:
-    table: "SQLTableMeta"
-    join_type: Literal["inner", "full"]
-    key_mapping: Optional[Dict[str, str]]
-
-
 class SQLTransformMeta(TransformMeta):
     def __init__(
         self,
         dbconn: DBConn,
         name: str,
-        input_mts: Sequence[SQLMetaComputeInput],
-        output_mts: Sequence[SQLTableMeta],
+        input_cis: Sequence[ComputeInput],
+        output_dts: Sequence[DataTable],
         transform_keys: Optional[List[str]],
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
@@ -429,12 +450,12 @@ class SQLTransformMeta(TransformMeta):
         self.dbconn = dbconn
         self.name = name
 
-        self.input_mts = input_mts
-        self.output_mts = output_mts
+        self.input_cis = input_cis
+        self.output_dts = output_dts
 
-        self.transform_keys, self.transform_keys_schema = compute_transform_schema(
-            input_mts=self.input_mts,
-            output_mts=self.output_mts,
+        self.transform_keys, self.transform_keys_schema = self.compute_transform_schema(
+            input_cis=self.input_cis,
+            output_dts=self.output_dts,
             transform_keys=transform_keys,
         )
 
@@ -459,8 +480,8 @@ class SQLTransformMeta(TransformMeta):
         return self.__class__, (
             self.dbconn,
             self.name,
-            self.input_mts,
-            self.output_mts,
+            self.input_cis,
+            self.output_dts,
             self.transform_keys,
             self.order_by,
             self.order,
@@ -487,7 +508,7 @@ class SQLTransformMeta(TransformMeta):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
-            if len(self.input_mts) == 0:
+            if len(self.input_cis) == 0:
                 return (0, iter([]))
 
             idx_count = self.get_changed_idx_count(
@@ -532,9 +553,9 @@ class SQLTransformMeta(TransformMeta):
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
-            for inp in self.input_mts:
-                if inp.table.name in change_list.changes:
-                    idx = change_list.changes[inp.table.name]
+            for inp in self.input_cis:
+                if inp.dt.name in change_list.changes:
+                    idx = change_list.changes[inp.dt.name]
                     if any([key not in idx.columns for key in self.transform_keys]):
                         # TODO пересмотреть эту логику, выглядит избыточной
                         # (возможно, достаточно посчитать один раз для всех
@@ -730,14 +751,18 @@ class SQLTransformMeta(TransformMeta):
         run_config: Optional[RunConfig] = None,  # TODO remove
     ) -> Any:
         all_input_keys_counts: Dict[str, int] = {}
-        for col in itertools.chain(*[inp.table.primary_schema for inp in self.input_mts]):
+        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_cis]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
         inp_ctes = []
-        for inp in self.input_mts:
-            keys, cte = inp.table.get_agg_cte(
+        for inp in self.input_cis:
+            inp_meta = inp.dt.meta
+            assert isinstance(inp_meta, SQLTableMeta)
+
+            keys, cte = inp_meta.get_agg_cte(
                 transform_keys=self.transform_keys,
-                key_mapping=inp.key_mapping,
+                table_store=inp.dt.table_store,
+                keys=inp.keys or {},
                 filters_idx=filters_idx,
                 run_config=run_config,
             )
@@ -903,41 +928,6 @@ def _make_agg_of_agg(
     return sql.cte(name=f"all__{agg_col}")
 
 
-def compute_transform_schema(
-    input_mts: Sequence[SQLMetaComputeInput],
-    output_mts: Sequence[SQLTableMeta],
-    transform_keys: Optional[List[str]],
-) -> Tuple[List[str], MetaSchema]:
-    # Hacky way to collect all the primary keys into a single set. Possible
-    # problem that is not handled here is that theres a possibility that the
-    # same key is defined differently in different input tables.
-    all_keys = {
-        col.name: col
-        for col in itertools.chain(
-            *([inp.table.primary_schema for inp in input_mts] + [dt.primary_schema for dt in output_mts])
-        )
-    }
-
-    if transform_keys is not None:
-        return (transform_keys, [all_keys[k] for k in transform_keys])
-
-    assert len(input_mts) > 0
-
-    inp_p_keys = set.intersection(*[set(inp.table.primary_keys) for inp in input_mts])
-    assert len(inp_p_keys) > 0
-
-    if len(output_mts) == 0:
-        return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
-
-    out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_mts])
-    assert len(out_p_keys) > 0
-
-    inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)
-    assert len(inp_out_p_keys) > 0
-
-    return (list(inp_out_p_keys), [all_keys[k] for k in inp_out_p_keys])
-
-
 class SQLMetaPlane(MetaPlane):
     def __init__(self, dbconn: DBConn, create_meta_table: bool = False) -> None:
         self.dbconn = dbconn
@@ -966,27 +956,11 @@ class SQLMetaPlane(MetaPlane):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> TransformMeta:
-        input_mts = []
-        for inp in input_dts:
-            assert isinstance(inp.dt.meta, SQLTableMeta)
-            input_mts.append(
-                SQLMetaComputeInput(
-                    table=inp.dt.meta,
-                    join_type=inp.join_type,
-                    key_mapping=inp.key_mapping,
-                )
-            )
-
-        output_mts = []
-        for out in output_dts:
-            assert isinstance(out.meta, SQLTableMeta)
-            output_mts.append(out.meta)
-
         return SQLTransformMeta(
             dbconn=self.dbconn,
             name=name,
-            input_mts=input_mts,
-            output_mts=output_mts,
+            input_cis=input_dts,
+            output_dts=output_dts,
             transform_keys=transform_keys,
             order_by=order_by,
             order=order,
