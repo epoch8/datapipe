@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.7-alpha.1"
+version = "0.14.7-alpha.2"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
@@ -22,7 +22,7 @@ dependencies = [
     "opentelemetry-sdk>=1.8.0,<2",
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
-    "rich>=13.3.2,<14",
+    "rich>=13.3.2",
 ]
 
 [project.optional-dependencies]
