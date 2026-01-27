@@ -1079,7 +1079,7 @@ def _meta_sql_helper(
 
     Это позволяет PostgreSQL использовать Index Scan вместо Sequential Scan.
     """
-    select_cols = [sa.column(k) for k in keys_in_meta]
+    select_cols: List[Any] = [sa.column(k) for k in keys_in_meta]
     adjusted_offset = offset - OFFSET_EPSILON_SECONDS
 
     # Часть 1: Измененные записи (update_ts > offset)
