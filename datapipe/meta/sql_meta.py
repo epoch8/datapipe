@@ -960,7 +960,9 @@ def _apply_sql_filters(
 ) -> Any:
     """Применяет filters_idx и run_config фильтры к SQL запросу."""
     sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx, tbl)
-    sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
+    # sql_apply_runconfig_filter требует tbl, не применяем для JOIN (tbl=None)
+    if tbl is not None:
+        sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
     return sql
 
 
@@ -1137,7 +1139,8 @@ def _meta_data_sql_helper(
         )
     )
 
-    changed_sql = _apply_sql_filters(changed_sql, all_keys, filters_idx, tbl, primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    changed_sql = _apply_sql_filters(changed_sql, all_keys, filters_idx, None, primary_keys, run_config)
 
     if len(select_cols) > 0:
         changed_sql = changed_sql.group_by(*select_cols)
@@ -1284,7 +1287,8 @@ def _build_reverse_meta_cte(
     updated_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
-    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         updated_sql = updated_sql.group_by(*group_by_cols)
 
@@ -1292,7 +1296,8 @@ def _build_reverse_meta_cte(
     deleted_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
-    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         deleted_sql = deleted_sql.group_by(*group_by_cols)
 
@@ -1364,8 +1369,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
 
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
     updated_sql = _apply_sql_filters(
-        updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+        updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
@@ -1376,8 +1382,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
 
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
     deleted_part_sql = _apply_sql_filters(
-        deleted_part_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+        deleted_part_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
