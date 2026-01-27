@@ -422,7 +422,7 @@ class MetaTable:
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
 
-        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
+        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx, tbl)
         sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
 
         return (keys, sql.cte(name=f"{tbl.name}__update"))
@@ -638,14 +638,21 @@ def sql_apply_filters_idx_to_subquery(
     sql: Any,
     keys: List[str],
     filters_idx: Optional[pd.DataFrame],
+    tbl: Optional[Any] = None,
 ) -> Any:
     if filters_idx is None:
         return sql
 
     applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
     if len(applicable_filter_keys) > 0:
+        # Используем tbl.c[i] если таблица указана (для JOIN), иначе sa.column(i)
+        if tbl is not None:
+            filter_cols = [tbl.c[i] for i in applicable_filter_keys]
+        else:
+            filter_cols = [sa.column(i) for i in applicable_filter_keys]
+
         sql = sql.where(
-            sa.tuple_(*[sa.column(i) for i in applicable_filter_keys]).in_(
+            sa.tuple_(*filter_cols).in_(
                 [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in filters_idx.to_dict(orient="records")]
             )
         )
@@ -774,7 +781,7 @@ def build_changed_idx_sql_v1(
         .group_by(*[sa.column(k) for k in transform_keys])
     )
 
-    out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx)
+    out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx, tr_tbl)
 
     out = out.cte(name="transform")
 
@@ -952,8 +959,10 @@ def _apply_sql_filters(
     run_config: Optional[RunConfig],
 ) -> Any:
     """Применяет filters_idx и run_config фильтры к SQL запросу."""
-    sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
-    sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
+    sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx, tbl)
+    # sql_apply_runconfig_filter требует tbl, не применяем для JOIN (tbl=None)
+    if tbl is not None:
+        sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
     return sql
 
 
@@ -1072,7 +1081,7 @@ def _meta_sql_helper(
 
     Это позволяет PostgreSQL использовать Index Scan вместо Sequential Scan.
     """
-    select_cols = [sa.column(k) for k in keys_in_meta]
+    select_cols: List[Any] = [sa.column(k) for k in keys_in_meta]
     adjusted_offset = offset - OFFSET_EPSILON_SECONDS
 
     # Часть 1: Измененные записи (update_ts > offset)
@@ -1130,7 +1139,8 @@ def _meta_data_sql_helper(
         )
     )
 
-    changed_sql = _apply_sql_filters(changed_sql, all_keys, filters_idx, tbl, primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    changed_sql = _apply_sql_filters(changed_sql, all_keys, filters_idx, None, primary_keys, run_config)
 
     if len(select_cols) > 0:
         changed_sql = changed_sql.group_by(*select_cols)
@@ -1277,7 +1287,8 @@ def _build_reverse_meta_cte(
     updated_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
-    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         updated_sql = updated_sql.group_by(*group_by_cols)
 
@@ -1285,7 +1296,8 @@ def _build_reverse_meta_cte(
     deleted_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
-    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         deleted_sql = deleted_sql.group_by(*group_by_cols)
 
@@ -1357,8 +1369,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
 
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
     updated_sql = _apply_sql_filters(
-        updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+        updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
@@ -1369,8 +1382,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
 
+    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
     deleted_part_sql = _apply_sql_filters(
-        deleted_part_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
+        deleted_part_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
@@ -1638,7 +1652,7 @@ def _build_error_records_cte(
     )
 
     error_records_sql = sql_apply_filters_idx_to_subquery(
-        error_records_sql, transform_keys, filters_idx
+        error_records_sql, transform_keys, filters_idx, tr_tbl
     )
 
     if len(transform_keys) > 0:
