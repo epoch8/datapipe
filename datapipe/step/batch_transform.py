@@ -654,6 +654,8 @@ class BaseBatchTransformStep(ComputeStep):
                     if idx_col in idx.columns:
                         # Получаем уникальные значения и создаем маппинг
                         unique_values = idx[idx_col].unique()
+                        # Фильтруем NaN/None значения (могут появиться для deleted records)
+                        unique_values = unique_values[pd.notna(unique_values)]
                         filtered_idx_data[dt_col] = unique_values
                     else:
                         # Если хотя бы одного ключа нет - используем fallback
