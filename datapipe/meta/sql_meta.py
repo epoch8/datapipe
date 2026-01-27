@@ -422,7 +422,7 @@ class MetaTable:
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)
 
-        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
+        sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx, tbl)
         sql = sql_apply_runconfig_filter(sql, tbl, self.primary_keys, run_config)
 
         return (keys, sql.cte(name=f"{tbl.name}__update"))
@@ -638,14 +638,21 @@ def sql_apply_filters_idx_to_subquery(
     sql: Any,
     keys: List[str],
     filters_idx: Optional[pd.DataFrame],
+    tbl: Optional[Any] = None,
 ) -> Any:
     if filters_idx is None:
         return sql
 
     applicable_filter_keys = [i for i in filters_idx.columns if i in keys]
     if len(applicable_filter_keys) > 0:
+        # Используем tbl.c[i] если таблица указана (для JOIN), иначе sa.column(i)
+        if tbl is not None:
+            filter_cols = [tbl.c[i] for i in applicable_filter_keys]
+        else:
+            filter_cols = [sa.column(i) for i in applicable_filter_keys]
+
         sql = sql.where(
-            sa.tuple_(*[sa.column(i) for i in applicable_filter_keys]).in_(
+            sa.tuple_(*filter_cols).in_(
                 [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in filters_idx.to_dict(orient="records")]
             )
         )
@@ -774,7 +781,7 @@ def build_changed_idx_sql_v1(
         .group_by(*[sa.column(k) for k in transform_keys])
     )
 
-    out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx)
+    out = sql_apply_filters_idx_to_subquery(out, transform_keys, filters_idx, tr_tbl)
 
     out = out.cte(name="transform")
 
@@ -952,7 +959,7 @@ def _apply_sql_filters(
     run_config: Optional[RunConfig],
 ) -> Any:
     """Применяет filters_idx и run_config фильтры к SQL запросу."""
-    sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx)
+    sql = sql_apply_filters_idx_to_subquery(sql, keys, filters_idx, tbl)
     sql = sql_apply_runconfig_filter(sql, tbl, primary_keys, run_config)
     return sql
 
@@ -1638,7 +1645,7 @@ def _build_error_records_cte(
     )
 
     error_records_sql = sql_apply_filters_idx_to_subquery(
-        error_records_sql, transform_keys, filters_idx
+        error_records_sql, transform_keys, filters_idx, tr_tbl
     )
 
     if len(transform_keys) > 0:
