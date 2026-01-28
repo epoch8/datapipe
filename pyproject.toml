@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-core"
-version = "0.14.6"
+version = "0.14.7"
 description = "`datapipe` is a realtime incremental ETL library for Python application"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
     "cloudpickle>=1.6.0",
     "PyYAML>=5.3.1",
     "cityhash>=0.4.2,<0.5",
-    "Pillow>=10.0.0,<11",
+    "Pillow>=10.0.0,<12",
     "tqdm-loggable>=0.2,<0.3",
     "traceback-with-variables>=2.0.4,<3",
     "opentelemetry-api>=1.8.0,<2",
