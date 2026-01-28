@@ -404,6 +404,10 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
+
+        # Для changelist используем offset=0 (обрабатываем все записи из filters_idx, без фильтрации по времени)
+        changelist_run_config = RunConfig.add_labels(run_config, {"changelist_mode": True})
+
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 

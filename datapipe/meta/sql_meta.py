@@ -647,15 +647,19 @@ def sql_apply_filters_idx_to_subquery(
     if len(applicable_filter_keys) > 0:
         # Используем tbl.c[i] если таблица указана (для JOIN), иначе sa.column(i)
         if tbl is not None:
-            filter_cols = [tbl.c[i] for i in applicable_filter_keys]
+            # Фильтруем только по колонкам, которые действительно есть в таблице
+            actual_filter_keys = [i for i in applicable_filter_keys if i in tbl.c]
+            filter_cols = [tbl.c[i] for i in actual_filter_keys]
         else:
-            filter_cols = [sa.column(i) for i in applicable_filter_keys]
+            actual_filter_keys = applicable_filter_keys
+            filter_cols = [sa.column(i) for i in actual_filter_keys]
 
-        sql = sql.where(
-            sa.tuple_(*filter_cols).in_(
-                [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in filters_idx.to_dict(orient="records")]
+        if len(actual_filter_keys) > 0:
+            sql = sql.where(
+                sa.tuple_(*filter_cols).in_(
+                    [sa.tuple_(*[r[k] for k in actual_filter_keys]) for r in filters_idx.to_dict(orient="records")]
+                )
             )
-        )
 
     return sql
 
@@ -1126,7 +1130,7 @@ def _meta_data_sql_helper(
     join_conditions = [tbl.c[pk] == data_tbl.c[pk] for pk in primary_keys]
     join_condition = _build_join_condition(join_conditions)
 
-    select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
+    select_cols = [tbl.c[k].label(k) for k in keys_in_meta] + [data_tbl.c[k].label(k) for k in keys_in_data_available]
     all_keys = keys_in_meta + keys_in_data_available
 
     # CTE для измененных записей
@@ -1259,14 +1263,14 @@ def _build_reverse_meta_cte(
     for k in all_select_keys:
         if k == 'update_ts':
             # update_ts всегда из meta справочника (ref_meta_tbl)
-            select_cols.append(ref_meta_tbl.c.update_ts)
+            select_cols.append(ref_meta_tbl.c.update_ts.label(k))
             group_by_cols.append(ref_meta_tbl.c.update_ts)
         elif k in primary_meta_cols:
-            select_cols.append(primary_meta_tbl.c[k])
+            select_cols.append(primary_meta_tbl.c[k].label(k))
             group_by_cols.append(primary_meta_tbl.c[k])
         elif k in meta_cols:
             # Берём колонки из meta справочника
-            select_cols.append(ref_meta_tbl.c[k])
+            select_cols.append(ref_meta_tbl.c[k].label(k))
             group_by_cols.append(ref_meta_tbl.c[k])
         else:
             select_cols.append(sa.literal(None).label(k))
@@ -1287,8 +1291,8 @@ def _build_reverse_meta_cte(
     updated_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
-    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
-    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
+    # Передаем ref_meta_tbl для квалификации колонок в filters_idx
+    updated_sql = _apply_sql_filters(updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         updated_sql = updated_sql.group_by(*group_by_cols)
 
@@ -1296,8 +1300,8 @@ def _build_reverse_meta_cte(
     deleted_sql = sa.select(*select_cols).select_from(
         ref_meta_tbl.join(primary_meta_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
-    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
-    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config)
+    # Передаем ref_meta_tbl для квалификации колонок в filters_idx
+    deleted_sql = _apply_sql_filters(deleted_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config)
     if len(group_by_cols) > 0:
         deleted_sql = deleted_sql.group_by(*group_by_cols)
 
@@ -1339,14 +1343,14 @@ def _build_reverse_data_cte(
     for k in all_select_keys:
         if k == 'update_ts':
             # update_ts всегда из meta справочника (ref_meta_tbl)
-            select_cols.append(ref_meta_tbl.c.update_ts)
+            select_cols.append(ref_meta_tbl.c.update_ts.label(k))
             group_by_cols.append(ref_meta_tbl.c.update_ts)
         elif k in primary_data_cols:
-            select_cols.append(primary_data_tbl.c[k])
+            select_cols.append(primary_data_tbl.c[k].label(k))
             group_by_cols.append(primary_data_tbl.c[k])
         elif k in meta_cols:
             # Берём колонки из meta справочника
-            select_cols.append(ref_meta_tbl.c[k])
+            select_cols.append(ref_meta_tbl.c[k].label(k))
             group_by_cols.append(ref_meta_tbl.c[k])
         else:
             select_cols.append(sa.literal(None).label(k))
@@ -1369,9 +1373,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.update_ts > adjusted_offset)
 
-    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    # Передаем ref_meta_tbl для квалификации колонок в filters_idx
     updated_sql = _apply_sql_filters(
-        updated_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
+        updated_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
@@ -1382,9 +1386,9 @@ def _build_reverse_data_cte(
         ref_meta_tbl.join(primary_data_tbl, join_condition)
     ).where(ref_meta_tbl.c.delete_ts > adjusted_offset)
 
-    # Не передаем tbl для JOIN - колонки могут быть из разных таблиц
+    # Передаем ref_meta_tbl для квалификации колонок в filters_idx
     deleted_part_sql = _apply_sql_filters(
-        deleted_part_sql, all_select_keys, filters_idx, None, ref_primary_keys, run_config
+        deleted_part_sql, all_select_keys, filters_idx, ref_meta_tbl, ref_primary_keys, run_config
     )
 
     if len(group_by_cols) > 0:
@@ -1878,10 +1882,18 @@ def build_changed_idx_sql_v2(
         all_select_keys.append('update_ts')
 
     # 1. Получить все offset'ы одним запросом для избежания N+1
-    offsets = offset_table.get_offsets_for_transformation(transformation_id)
-    for inp in input_dts:
-        if inp.dt.name not in offsets:
-            offsets[inp.dt.name] = 0.0
+    # Для changelist используем offset=0 (обрабатываем все записи из filters_idx)
+    use_zero_offset = run_config and run_config.labels.get("changelist_mode", False)
+
+    if use_zero_offset:
+        # Для changelist: offset=0 для всех таблиц (не фильтруем по update_ts)
+        offsets = {inp.dt.name: 0.0 for inp in input_dts}
+    else:
+        # Для run_full: используем сохраненные offsets
+        offsets = offset_table.get_offsets_for_transformation(transformation_id)
+        for inp in input_dts:
+            if inp.dt.name not in offsets:
+                offsets[inp.dt.name] = 0.0
 
     # 2. Построить CTE для каждой входной таблицы с фильтром по offset
     changed_ctes = _build_input_ctes(
