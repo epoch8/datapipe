@@ -404,6 +404,15 @@ class BaseBatchTransformStep(ComputeStep):
         run_config: Optional[RunConfig] = None,
     ) -> Tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
+
+        # CRITICAL: Disable offset optimization for changelist processing
+        # The changelist already contains specific records to process,
+        # and applying offset filtering on top could skip necessary records
+        changelist_run_config = RunConfig.add_labels(
+            run_config,
+            {"use_offset_optimization": False}
+        )
+
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
@@ -417,11 +426,11 @@ class BaseBatchTransformStep(ComputeStep):
                         _, sql = self._build_changed_idx_sql(
                             ds=ds,
                             filters_idx=idx,
-                            run_config=run_config,
+                            run_config=changelist_run_config,
                         )
 
                         # Определяем метод для логирования
-                        method = self._get_optimization_method_name(run_config)
+                        method = self._get_optimization_method_name(changelist_run_config)
 
                         with tracer.start_as_current_span(f"execute_changed_idx_sql_change_list_{method}"):
                             start_time = time.time()
