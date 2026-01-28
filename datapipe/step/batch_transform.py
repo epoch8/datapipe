@@ -405,13 +405,8 @@ class BaseBatchTransformStep(ComputeStep):
     ) -> Tuple[int, Iterable[IndexDF]]:
         run_config = self._apply_filters_to_run_config(run_config)
 
-        # CRITICAL: Disable offset optimization for changelist processing
-        # The changelist already contains specific records to process,
-        # and applying offset filtering on top could skip necessary records
-        changelist_run_config = RunConfig.add_labels(
-            run_config,
-            {"use_offset_optimization": False}
-        )
+        # Для changelist используем offset=0 (обрабатываем все записи из filters_idx, без фильтрации по времени)
+        changelist_run_config = RunConfig.add_labels(run_config, {"changelist_mode": True})
 
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
