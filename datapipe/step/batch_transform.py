@@ -421,11 +421,11 @@ class BaseBatchTransformStep(ComputeStep):
                         _, sql = self._build_changed_idx_sql(
                             ds=ds,
                             filters_idx=idx,
-                            run_config=changelist_run_config,
+                            run_config=run_config,
                         )
 
                         # Определяем метод для логирования
-                        method = self._get_optimization_method_name(changelist_run_config)
+                        method = self._get_optimization_method_name(run_config)
 
                         with tracer.start_as_current_span(f"execute_changed_idx_sql_change_list_{method}"):
                             start_time = time.time()
