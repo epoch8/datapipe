@@ -1126,7 +1126,7 @@ def _meta_data_sql_helper(
     join_conditions = [tbl.c[pk] == data_tbl.c[pk] for pk in primary_keys]
     join_condition = _build_join_condition(join_conditions)
 
-    select_cols = [tbl.c[k] for k in keys_in_meta] + [data_tbl.c[k] for k in keys_in_data_available]
+    select_cols = [tbl.c[k].label(k) for k in keys_in_meta] + [data_tbl.c[k].label(k) for k in keys_in_data_available]
     all_keys = keys_in_meta + keys_in_data_available
 
     # CTE для измененных записей
@@ -1259,14 +1259,14 @@ def _build_reverse_meta_cte(
     for k in all_select_keys:
         if k == 'update_ts':
             # update_ts всегда из meta справочника (ref_meta_tbl)
-            select_cols.append(ref_meta_tbl.c.update_ts)
+            select_cols.append(ref_meta_tbl.c.update_ts.label(k))
             group_by_cols.append(ref_meta_tbl.c.update_ts)
         elif k in primary_meta_cols:
-            select_cols.append(primary_meta_tbl.c[k])
+            select_cols.append(primary_meta_tbl.c[k].label(k))
             group_by_cols.append(primary_meta_tbl.c[k])
         elif k in meta_cols:
             # Берём колонки из meta справочника
-            select_cols.append(ref_meta_tbl.c[k])
+            select_cols.append(ref_meta_tbl.c[k].label(k))
             group_by_cols.append(ref_meta_tbl.c[k])
         else:
             select_cols.append(sa.literal(None).label(k))
@@ -1339,14 +1339,14 @@ def _build_reverse_data_cte(
     for k in all_select_keys:
         if k == 'update_ts':
             # update_ts всегда из meta справочника (ref_meta_tbl)
-            select_cols.append(ref_meta_tbl.c.update_ts)
+            select_cols.append(ref_meta_tbl.c.update_ts.label(k))
             group_by_cols.append(ref_meta_tbl.c.update_ts)
         elif k in primary_data_cols:
-            select_cols.append(primary_data_tbl.c[k])
+            select_cols.append(primary_data_tbl.c[k].label(k))
             group_by_cols.append(primary_data_tbl.c[k])
         elif k in meta_cols:
             # Берём колонки из meta справочника
-            select_cols.append(ref_meta_tbl.c[k])
+            select_cols.append(ref_meta_tbl.c[k].label(k))
             group_by_cols.append(ref_meta_tbl.c[k])
         else:
             select_cols.append(sa.literal(None).label(k))
