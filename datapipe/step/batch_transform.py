@@ -583,7 +583,15 @@ class BaseBatchTransformStep(ComputeStep):
 
             # Извлекаем индекс из DataFrame результата
             if not first_output.empty:
-                processed_idx = data_to_index(first_output, self.transform_keys)
+                # Проверяем, что output содержит все transform_keys
+                # Если агрегация убрала некоторые колонки, используем input idx
+                missing_keys = set(self.transform_keys) - set(first_output.columns)
+                if missing_keys:
+                    # Агрегация убрала некоторые transform_keys из output
+                    # Используем input idx для расчета offset
+                    processed_idx = idx
+                else:
+                    processed_idx = data_to_index(first_output, self.transform_keys)
 
                 for inp in self.input_dts:
                     # Найти максимальный update_ts из УСПЕШНО обработанного батча
