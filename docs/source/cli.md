@@ -68,7 +68,7 @@ Runs checks on current state of database. Can detect and fix commong issues.
 
 ## `step`
 
-* `--name` is to provide a filter of steps with prefix matching of step name. Example: `datapipe step --name=my_step_name run`.
+* `--name` is to provide a filter of steps with prefix matching of step name. Accepts a comma-separated list of prefixes. Example: `datapipe step --name=my_step_name run` or `datapipe step --name=my_step_name,my_other_step_name run`.
 * `--labels` is to provide a filter of steps according to its labels. Example: `datapipe step --labels=my_label_name=my_label_value run`.
 
 ### `run`

@@ -1,3 +1,8 @@
+# WIP: 0.14.7
+
+* Make CLI accept multiple `--name` values
+* Relax `rich` library dependency
+
 # 0.14.6
 
 * Allow `DataTable` objects directly in `ComputeStep.input_dts` parameter

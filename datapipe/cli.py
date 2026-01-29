@@ -72,12 +72,13 @@ def filter_steps_by_labels_and_name(
 ) -> List[ComputeStep]:
     res = []
 
+    name_prefixes = None if name_prefix is None else [p.strip() for p in name_prefix.split(",")]
     for step in app.steps:
         for k, v in labels:
             if (k, v) not in step.labels:
                 break
         else:
-            if name_prefix is None or step.name.startswith(name_prefix):
+            if name_prefixes is None or any(step.name.startswith(p) for p in name_prefixes):
                 res.append(step)
 
     return res
