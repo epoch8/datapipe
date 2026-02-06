@@ -1049,6 +1049,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
         use_offset_optimization: bool = False,
+        max_records_per_run: Optional[int] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -1063,6 +1064,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             order_by=order_by,
             order=order,
             use_offset_optimization=use_offset_optimization,
+            max_records_per_run=max_records_per_run,
         )
 
         self.func = func
