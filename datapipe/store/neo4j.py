@@ -109,9 +109,10 @@ class Neo4JStore(TableStore):
         if self._mode == "node":
             for node_type, gdf in df.groupby("node_type"):  # group by label for single-label bulk queries
                 rows = [
-                    {"id": r["node_id"], "props": r.get("attributes", {}) or {}} for r in gdf.to_dict(orient="records")
+                    {"id": r["node_id"], "props": {"id": r["node_id"], **(r.get("attributes", {}) or {})}}
+                    for r in gdf.to_dict(orient="records")
                 ]
-                cypher = f"UNWIND $rows AS row\nMERGE (n:`{node_type}` {{id: row.id}})\nSET   n += row.props"
+                cypher = f"UNWIND $rows AS row\nMERGE (n:`{node_type}` {{id: row.id}})\nSET n = row.props"
                 self._run_query(cypher, {"rows": rows})
 
         else:  # unwind edges in the same fashion
@@ -130,7 +131,7 @@ class Neo4JStore(TableStore):
                     f"MERGE (from:`{from_type}` {{id: row.from_id}})\n"
                     f"MERGE (to:`{to_type}` {{id: row.to_id}})\n"
                     f"MERGE (from)-[r:`{edge_label}`]->(to)\n"
-                    f"SET r += row.props"
+                    f"SET r = row.props"
                 )
                 self._run_query(cypher, {"rows": rows})
 
