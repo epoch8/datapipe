@@ -95,6 +95,7 @@ class BaseBatchTransformStep(ComputeStep):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
         use_offset_optimization: bool = False,
+        max_records_per_run: Optional[int] = None,
     ) -> None:
         # Support both old API (List[DataTable]) and new API (List[ComputeInput])
         # Convert to new API format
@@ -119,6 +120,7 @@ class BaseBatchTransformStep(ComputeStep):
         self.chunk_size = chunk_size
         self.ds = ds  # Сохраняем ссылку на DataStore для доступа к offset_table
         self.use_offset_optimization = use_offset_optimization
+        self.max_records_per_run = max_records_per_run  # Лимит для защиты от обработки миллионов записей
 
         # Force transform_keys to be a list, otherwise Pandas will not be happy
         if transform_keys is not None and not isinstance(transform_keys, list):
@@ -363,6 +365,19 @@ class BaseBatchTransformStep(ComputeStep):
                 order=self.order,  # type: ignore  # pylance is stupid
             )
 
+            # Применяем max_records_per_run если указан
+            if self.max_records_per_run is not None:
+                # Логируем если лимит будет применен
+                if idx_count > self.max_records_per_run:
+                    logger.warning(
+                        f"[{self.get_name()}] Limiting records to process from {idx_count} to {self.max_records_per_run} "
+                        f"(max_records_per_run protection). Remaining records will be processed in next runs."
+                    )
+                    idx_count = self.max_records_per_run
+
+                # Добавляем LIMIT к SQL запросу
+                u1 = u1.limit(self.max_records_per_run)
+
             # Список ключей из фильтров, которые нужно добавить в результат
             extra_filters: LabelDict
             if run_config is not None:
@@ -601,6 +616,25 @@ class BaseBatchTransformStep(ComputeStep):
                         offset_key = (self.get_name(), inp.dt.name)
                         # Добавляем offset в ChangeList для возврата из функции
                         changes.offsets[offset_key] = max_update_ts
+                    else:
+                        # Диагностика: логируем почему offset не был вычислен
+                        logger.warning(
+                            f"Offset not calculated for {self.get_name()}, "
+                            f"input: {inp.dt.name}, processed_idx size: {len(processed_idx)}, "
+                            f"max_update_ts is None"
+                        )
+            else:
+                # Диагностика: логируем пустой output
+                logger.warning(
+                    f"Offset not calculated for {self.get_name()}: "
+                    f"output is empty (0 rows processed)"
+                )
+        else:
+            # Диагностика: логируем отсутствие output_dfs
+            logger.debug(
+                f"Offset not calculated for {self.get_name()}: "
+                f"output_dfs is None (delete operation or no data)"
+            )
 
         return changes
 
@@ -799,6 +833,14 @@ class BaseBatchTransformStep(ComputeStep):
                     f"Failed to update offsets for {self.get_name()}: {e}. "
                     "Offset table may not exist (create_meta_table=False)"
                 )
+        else:
+            # Диагностика: логируем если offset не был вычислен ни для одного input
+            logger.warning(
+                f"Offsets not updated for {self.get_name()}: "
+                f"changes.offsets is empty after processing {idx_count} batches. "
+                f"This may indicate empty output or failed offset calculation. "
+                f"Check warnings above for details."
+            )
 
         ds.event_logger.log_step_full_complete(self.name)
 
@@ -865,6 +907,7 @@ class DatatableBatchTransform(PipelineStep):
     kwargs: Optional[Dict] = None
     labels: Optional[Labels] = None
     use_offset_optimization: bool = False
+    max_records_per_run: Optional[int] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
@@ -882,6 +925,7 @@ class DatatableBatchTransform(PipelineStep):
                 chunk_size=self.chunk_size,
                 labels=self.labels,
                 use_offset_optimization=self.use_offset_optimization,
+                max_records_per_run=self.max_records_per_run,
             )
         ]
 
@@ -899,6 +943,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         chunk_size: int = 1000,
         labels: Optional[Labels] = None,
         use_offset_optimization: bool = False,
+        max_records_per_run: Optional[int] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -909,6 +954,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             chunk_size=chunk_size,
             labels=labels,
             use_offset_optimization=use_offset_optimization,
+            max_records_per_run=max_records_per_run,
         )
 
         self.func = func
@@ -943,6 +989,7 @@ class BatchTransform(PipelineStep):
     order_by: Optional[List[str]] = None
     order: Literal["asc", "desc"] = "asc"
     use_offset_optimization: bool = False
+    max_records_per_run: Optional[int] = None
 
     def pipeline_input_to_compute_input(self, ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
         if isinstance(input, Required):
@@ -980,6 +1027,7 @@ class BatchTransform(PipelineStep):
                 order_by=self.order_by,
                 order=self.order,
                 use_offset_optimization=self.use_offset_optimization,
+                max_records_per_run=self.max_records_per_run,
             )
         ]
 
@@ -1001,6 +1049,7 @@ class BatchTransformStep(BaseBatchTransformStep):
         order_by: Optional[List[str]] = None,
         order: Literal["asc", "desc"] = "asc",
         use_offset_optimization: bool = False,
+        max_records_per_run: Optional[int] = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -1015,6 +1064,7 @@ class BatchTransformStep(BaseBatchTransformStep):
             order_by=order_by,
             order=order,
             use_offset_optimization=use_offset_optimization,
+            max_records_per_run=max_records_per_run,
         )
 
         self.func = func
