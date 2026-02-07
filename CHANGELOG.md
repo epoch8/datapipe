@@ -1,4 +1,4 @@
-# WIP 0.14.8
+# 0.14.8
 
 * Neo4JStore - rewrite attributes instead of upsert
 
