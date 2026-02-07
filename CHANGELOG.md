@@ -1,3 +1,7 @@
+# WIP 0.14.8
+
+* Neo4JStore - rewrite attributes instead of upsert
+
 # 0.14.7
 
 * Make CLI accept multiple `--name` values
