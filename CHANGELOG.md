@@ -1,7 +1,7 @@
-# WIP: 0.14.7
+# 0.14.7
 
 * Make CLI accept multiple `--name` values
-* Relax `rich` library dependency
+* Relax `rich`, `Pillow` libraries dependencies
 
 # 0.14.6
 
