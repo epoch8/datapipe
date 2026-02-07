@@ -25,8 +25,14 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 
 ### Python3.9 support is deprecated
 
-## CLI improvements:
+# 0.14.8
+
+* Neo4JStore - rewrite attributes instead of upsert
+
+# 0.14.7
+
 * Make CLI accept multiple `--name` values
+* Relax `rich`, `Pillow` libraries dependencies
 
 # 0.14.6
 
