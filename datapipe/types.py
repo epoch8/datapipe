@@ -6,6 +6,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     NewType,
+    TypeAlias,
     TypeVar,
     Union,
     cast,
@@ -32,17 +33,17 @@ DataSchema = list[Column]
 MetaSchema = list[Column]
 
 # Dataframe with columns (<index_cols ...>)
-IndexDF = NewType("IndexDF", pd.DataFrame)
+IndexDF = NewType("IndexDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
 # Dataframe with columns (<index_cols ...>, hash)
-HashDF = NewType("HashDF", pd.DataFrame)
+HashDF = NewType("HashDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
 # Dataframe with columns (<index_cols ...>, hash, create_ts, update_ts, process_ts, delete_ts)
-MetadataDF = NewType("MetadataDF", pd.DataFrame)
+MetadataDF = NewType("MetadataDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
 # Dataframe with columns (<index_cols ...>, <data_cols ...>)
 # DataDF = NewType('DataDF', pd.DataFrame)
-DataDF = pd.DataFrame
+DataDF: TypeAlias = pd.DataFrame
 
 TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 
