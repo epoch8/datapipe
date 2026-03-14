@@ -272,7 +272,11 @@ class TableStoreDB(TableStore):
             with self.dbconn.con.begin() as con:
                 for chunk_idx in self._chunk_idx_df(idx):
                     chunk_sql = sql_apply_idx_filter_to_table(sql, self.data_table, self.primary_keys, chunk_idx)
-                    chunk_df = pd.read_sql_query(chunk_sql, con=con)
+                    chunk_df = pd.read_sql_query(
+                        chunk_sql,
+                        con=con,
+                        dtype_backend="pyarrow",
+                    )
 
                     res.append(chunk_df)
 
@@ -280,7 +284,11 @@ class TableStoreDB(TableStore):
 
         else:
             with self.dbconn.con.begin() as con:
-                return pd.read_sql_query(sql, con=con)
+                return pd.read_sql_query(
+                    sql,
+                    con=con,
+                    dtype_backend="pyarrow",
+                )
 
     def read_rows_meta_pseudo_df(
         self,
@@ -296,4 +304,5 @@ class TableStoreDB(TableStore):
                 sql,
                 con=con,
                 chunksize=chunksize,
+                dtype_backend="pyarrow",
             )

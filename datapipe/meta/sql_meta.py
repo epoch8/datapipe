@@ -156,12 +156,25 @@ class SQLTableMeta(TableMeta):
         with self.dbconn.con.begin() as con:
             if idx is None:
                 sql = self._build_metadata_query(sql, idx, include_deleted)
-                return cast(MetadataDF, pd.read_sql_query(sql, con=con))
+                return cast(
+                    MetadataDF,
+                    pd.read_sql_query(
+                        sql,
+                        con=con,
+                        dtype_backend="pyarrow",
+                    ),
+                )
 
             for chunk_idx in self._chunk_idx_df(idx):
                 chunk_sql = self._build_metadata_query(sql, chunk_idx, include_deleted)
 
-                res.append(pd.read_sql_query(chunk_sql, con=con))
+                res.append(
+                    pd.read_sql_query(
+                        chunk_sql,
+                        con=con,
+                        dtype_backend="pyarrow",
+                    )
+                )
 
             if len(res) > 0:
                 return cast(MetadataDF, pd.concat(res))
@@ -222,6 +235,7 @@ class SQLTableMeta(TableMeta):
             res_df: DataDF = pd.read_sql_query(
                 sql,
                 con=con,
+                dtype_backend="pyarrow",
             )
 
         return data_to_index(res_df, self.primary_keys)
@@ -347,7 +361,14 @@ class SQLTableMeta(TableMeta):
         with self.dbconn.con.begin() as con:
             return cast(
                 Iterator[IndexDF],
-                list(pd.read_sql_query(sql, con=con, chunksize=1000)),
+                list(
+                    pd.read_sql_query(
+                        sql,
+                        con=con,
+                        chunksize=1000,
+                        dtype_backend="pyarrow",
+                    )
+                ),
             )
 
     def get_agg_cte(
@@ -503,7 +524,12 @@ class SQLTransformMeta(TransformMeta):
 
             def alter_res_df():
                 with ds.meta_dbconn.con.begin() as con:
-                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                    for df in pd.read_sql_query(
+                        u1,
+                        con=con,
+                        chunksize=chunk_size,
+                        dtype_backend="pyarrow",
+                    ):
                         assert isinstance(df, pd.DataFrame)
                         df = df[self.transform_keys]
 
@@ -540,6 +566,7 @@ class SQLTransformMeta(TransformMeta):
                             table_changes_df = pd.read_sql_query(
                                 sql,
                                 con=con,
+                                dtype_backend="pyarrow",
                             )
                             table_changes_df = table_changes_df[self.transform_keys]
 
