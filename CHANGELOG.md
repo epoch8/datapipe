@@ -21,7 +21,6 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 * Renamed `JoinSpec` to `InputSpec`
 * Added `keys` parameter to `InputSpec` and `ComputeInput` to support
   joining tables with different key names
-* Added `DataField` accessor for `InputSpec.keys`
 
 ### Python3.9 support is deprecated
 

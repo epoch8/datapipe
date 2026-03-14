@@ -14,7 +14,7 @@ table do not match by name.
 
 # Use case
 
-You have tables `User (id: PK)` and `Subscription (id: PK, user_id: DATA, sub_user_id: DATA)`
+You have tables `User (id: PK)` and `Subscription (id: PK, user_id: PK, sub_user_id: PK)`
 You need to enrich both sides of `Subscription` with information
 
 You might write:
@@ -27,8 +27,8 @@ BatchTransform(
     # every table should have a way to join to these keys
     transform_keys=["user_id", "sub_user_id"],
     inputs=[
-        # Subscription has needed columns in data table, we fetch them from there
-        InputSpec(Subscription, keys={"user_id": DataField("user_id"), "sub_user_id": DataField("sub_user_id")}),
+        # Subscription has user_id and sub_user_id as primary keys
+        InputSpec(Subscription, keys={"user_id": "user_id", "sub_user_id": "sub_user_id"}),
 
         # matches tr.user_id = User.id
         InputSpec(User, keys={"user_id": "id"}),
@@ -54,26 +54,15 @@ without renamings, it is up to end user to interpret the data.
 We introduce `InputSpec` qualifier for `BatchTransform` inputs.
 
 `keys` parameter defines which columns to use for this input table and where to
-get them from. `keys` is a dict in a form `{"{transform_key}": key_accessor}`,
-where `key_accessor` might be:
-* a string, then a column from meta-table is used with possible renaming
-* `DataField("data_col")` then a `data_col` from data-table is used instead of
-  meta-table
+get them from. `keys` is a dict in a form `{"{transform_key}": "meta_table_col"}`,
+where `meta_table_col` is a string referencing a column from the meta table
+(i.e. a primary key column).
 
 If table is provided as is without `InputSpec` wrapper, then it is equivalent to
 `InputSpec(Table, join_type="outer", keys={"id1": "id1", ...})`, join type is
 outer join and all keys are mapped to themselves.
 
-## DataField limitations
-
-`DataField` accessor serves as an ad-hoc solution for a situation when for some
-reason a data field can not be promoted to a meta-field.
-
-Data fields are not used when retreiving a chunk of data, so it is possible to
-over-fetch data.
-
-Data fields are not enforced to have indices in DB, so their usage might be very
-heavy for database.
+Note: transform key columns must always be primary keys in the table schema.
 
 
 # Implementation
@@ -97,8 +86,7 @@ heavy for database.
 
 `BatchTransform`:
 * [x] correctly converts transform idx to table idx in `get_batch_input_dfs`
-* [x] inputs and outputs are stored as `ComputeInput` lists, because we need
-  data table for `DataField`
+* [x] inputs and outputs are stored as `ComputeInput` lists
 
 `DataTable`:
 * [x] `DataTable.get_data` accepts `table_idx` which is acquired by applying

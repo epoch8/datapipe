@@ -12,7 +12,7 @@ from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, DataField, FieldAccessor, IndexDF, Labels, MetaSchema, TableOrName
+from datapipe.types import ChangeList, IndexDF, Labels, MetaSchema, TableOrName
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -87,14 +87,11 @@ class ComputeInput:
     dt: DataTable
     join_type: Literal["inner", "full"] = "full"
 
-    # If provided, this dict tells how to get key columns from meta and data tables
-    #
-    # Example: {"idx_col": DataField("data_col")} means that to get idx_col value
-    # we should read data_col from data table
+    # If provided, this dict tells how to get key columns from meta table
     #
     # Example: {"idx_col": "meta_col"} means that to get idx_col value
     # we should read meta_col from meta table
-    keys: dict[str, FieldAccessor] | None = None
+    keys: dict[str, str] | None = None
 
     @property
     def primary_keys(self) -> list[str]:
@@ -107,23 +104,13 @@ class ComputeInput:
     def primary_schema(self) -> MetaSchema:
         if self.keys:
             primary_schema_dict = {col.name: col for col in self.dt.primary_schema}
-            data_schema_dict = {col.name: col for col in self.dt.table_store.get_schema()}
 
             schema = []
             for k, accessor in self.keys.items():
-                if isinstance(accessor, str):
-                    source_column = primary_schema_dict[accessor]
-                    column_alias = k
-                elif isinstance(accessor, DataField):
-                    source_column = data_schema_dict[accessor.field_name]
-                    column_alias = k
-                    schema.append(data_schema_dict[accessor.field_name])
-                else:
-                    raise ValueError(f"Unknown accessor type: {type(accessor)}")
-
+                source_column = primary_schema_dict[accessor]
                 schema.append(
                     Column(
-                        column_alias,
+                        k,
                         source_column.type,
                         primary_key=source_column.primary_key,
                     )

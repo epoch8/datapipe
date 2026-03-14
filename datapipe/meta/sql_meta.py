@@ -26,9 +26,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     DataDF,
-    DataField,
     DataSchema,
-    FieldAccessor,
     HashDF,
     IndexDF,
     MetadataDF,
@@ -357,7 +355,7 @@ class SQLTableMeta(TableMeta):
         self,
         transform_keys: list[str],
         table_store: TableStore,
-        keys: dict[str, FieldAccessor],
+        keys: dict[str, str],
         filters_idx: IndexDF | None = None,
         run_config: RunConfig | None = None,
     ) -> tuple[list[str], Any]:
@@ -365,9 +363,7 @@ class SQLTableMeta(TableMeta):
         Create a CTE that aggregates the table by transform keys, applies keys
         aliasing and returns the maximum update_ts for each group.
 
-        * `keys` is a mapping from transform key to table key accessor
-          (can be string for meta table column or DataField for data table
-          column)
+        * `keys` is a mapping from transform key to meta table column name
         * `transform_keys` is a list of keys used in the transformation
 
         CTE has the following columns:
@@ -379,40 +375,21 @@ class SQLTableMeta(TableMeta):
         present in primary keys of this CTE
         """
 
-        from datapipe.store.database import TableStoreDB
-
         meta_table = self.sql_table
-        data_table = None
 
         key_cols: list[Any] = []
         cte_transform_keys: list[str] = []
-        should_join_data_table = False
 
         for transform_key in transform_keys:
             # TODO convert to match when we deprecate Python 3.9
             accessor = keys.get(transform_key, transform_key)
-            if isinstance(accessor, str):
-                if accessor in self.primary_keys:
-                    key_cols.append(meta_table.c[accessor].label(transform_key))
-                    cte_transform_keys.append(transform_key)
-            elif isinstance(accessor, DataField):
-                should_join_data_table = True
-                assert isinstance(table_store, TableStoreDB)
-                data_table = table_store.data_table
-
-                key_cols.append(data_table.c[accessor.field_name].label(transform_key))
+            if accessor in self.primary_keys:
+                key_cols.append(meta_table.c[accessor].label(transform_key))
                 cte_transform_keys.append(transform_key)
 
         sql: Any = sa.select(*key_cols + [sa.func.max(meta_table.c["update_ts"]).label("update_ts")]).select_from(
             meta_table
         )
-
-        if should_join_data_table:
-            assert data_table is not None
-            sql = sql.join(
-                data_table,
-                sa.and_(*[meta_table.c[pk] == data_table.c[pk] for pk in self.primary_keys]),
-            )
 
         if len(key_cols) > 0:
             sql = sql.group_by(*key_cols)

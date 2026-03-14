@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import Column
 
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, DataSchema, FieldAccessor, HashDF, IndexDF, MetadataDF, MetaSchema
+from datapipe.types import ChangeList, DataSchema, HashDF, IndexDF, MetadataDF, MetaSchema
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeInput
@@ -172,13 +172,13 @@ class TableMeta:
     def transform_idx_to_table_idx(
         self,
         transform_idx: IndexDF,
-        keys: dict[str, FieldAccessor] | None = None,
+        keys: dict[str, str] | None = None,
     ) -> IndexDF:
         """
         Given an index dataframe with transform keys, return an index dataframe
         with table keys, applying `keys` aliasing if provided.
 
-        * `keys` is a mapping from table key to transform key
+        * `keys` is a mapping from transform key to table key
         """
 
         if keys is None:
@@ -186,11 +186,9 @@ class TableMeta:
 
         table_key_cols: dict[str, pd.Series] = {}
         for transform_col in transform_idx.columns:
-            accessor = keys.get(transform_col) if keys is not None else transform_col
-            if isinstance(accessor, str):
-                table_key_cols[accessor] = transform_idx[transform_col]
-            else:
-                pass  # skip non-meta fields
+            table_col = keys.get(transform_col)
+            if table_col is not None:
+                table_key_cols[table_col] = transform_idx[transform_col]
 
         return IndexDF(pd.DataFrame(table_key_cols))
 
