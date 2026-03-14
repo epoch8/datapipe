@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 from sqlalchemy import Column, Integer, String, Table, tuple_
 
 from datapipe.run_config import RunConfig
@@ -21,9 +22,17 @@ def sql_apply_idx_filter_to_table(
         # Когда ключей много - сравниваем по кортежу
         keys = tuple_(*[table.c[key] for key in primary_keys])  # type: ignore
 
-        sql = sql.where(
-            keys.in_([tuple([r[key] for key in primary_keys]) for r in idx.to_dict(orient="records")])  # type: ignore
-        )
+        where_values: list[tuple] = []
+        for r in idx.to_dict(orient="records"):
+            this_row: list[Any] = []
+            for key in primary_keys:
+                if pd.isna(r[key]):
+                    this_row.append(None)
+                else:
+                    this_row.append(r[key])
+            where_values.append(tuple(this_row))
+
+        sql = sql.where(keys.in_(where_values))
 
     return sql
 

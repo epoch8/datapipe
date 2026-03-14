@@ -6,7 +6,7 @@ from typing import Callable, Iterable, cast
 import cloudpickle
 import pandas as pd
 import pytest
-from sqlalchemy import Column, String
+from sqlalchemy import Column, Integer, String
 
 from datapipe.run_config import RunConfig
 from datapipe.store.table_store import TableStore
@@ -48,6 +48,47 @@ class AbstractBaseStoreTests:
             raise pytest.skip("Store does not support get_schema")
 
         assert store.get_schema() == schema
+
+    def test_multiple_keys_with_nan(self, store_maker: TableStoreMaker) -> None:
+        data_df = pd.DataFrame(
+            {
+                "id1": [1, 2, 3],
+                "id2": ["a", "b", "c"],
+                "value": [10, 20, 30],
+            }
+        )
+        schema: list[Column] = [
+            Column("id1", Integer, primary_key=True),
+            Column("id2", String(100), primary_key=True),
+            Column("value", Integer),
+        ]
+
+        store = store_maker(schema)
+        store.insert_rows(data_df)
+
+        assert_df_equal(
+            store.read_rows(
+                data_to_index(
+                    pd.DataFrame.from_dict({"id1": [2, -1], "id2": ["b", None]}),
+                    ["id1", "id2"],
+                )
+            ),
+            pd.DataFrame.from_dict({"id1": [2], "id2": ["b"], "value": [20]}),
+            index_cols=["id1", "id2"],
+        )
+
+        assert_df_equal(
+            store.read_rows(
+                data_to_index(
+                    pd.DataFrame.from_dict({"id1": [2, None], "id2": ["b", "z"]}),
+                    ["id1", "id2"],
+                )
+            ),
+            pd.DataFrame.from_dict({"id1": [2], "id2": ["b"], "value": [20]}),
+            index_cols=["id1", "id2"],
+        )
+
+        assert_ts_contains(store, data_df)
 
     @pytest.mark.parametrize("data_df,schema", DATA_PARAMS)
     def test_write_read_rows(
