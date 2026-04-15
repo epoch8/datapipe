@@ -692,25 +692,20 @@ class BaseBatchTransformStep(ComputeStep):
         for inp in self.input_dts:
             if inp.join_keys:
                 # FILTERED JOIN: Читаем только связанные записи
-                # Извлекаем уникальные значения foreign keys из idx
-                filtered_idx_data = {}
-                all_keys_present = True
+                # Для composite key сохраняем реальные пары/кортежи ключей из idx,
+                # а не независимые множества значений по каждой колонке.
+                idx_cols = list(inp.join_keys.keys())
+                all_keys_present = all(idx_col in idx.columns for idx_col in idx_cols)
 
-                for idx_col, dt_col in inp.join_keys.items():
-                    if idx_col in idx.columns:
-                        # Получаем уникальные значения и создаем маппинг
-                        unique_values = idx[idx_col].unique()
-                        # Фильтруем NaN/None значения (могут появиться для deleted records)
-                        unique_values = unique_values[pd.notna(unique_values)]
-                        filtered_idx_data[dt_col] = unique_values
-                    else:
-                        # Если хотя бы одного ключа нет - используем fallback
-                        all_keys_present = False
-                        break
-
-                if all_keys_present and filtered_idx_data:
+                if all_keys_present:
                     # Создаем filtered_idx для чтения только нужных записей
-                    filtered_idx = IndexDF(pd.DataFrame(filtered_idx_data))
+                    filtered_idx = IndexDF(
+                        idx[idx_cols]
+                        .dropna()
+                        .drop_duplicates()
+                        .rename(columns=inp.join_keys)
+                        .reset_index(drop=True)
+                    )
 
                     logger.debug(
                         f"[{self.get_name()}] Filtered join for {inp.dt.name}: "

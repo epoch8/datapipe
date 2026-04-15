@@ -15,6 +15,7 @@ from datapipe.compute import ComputeInput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
+from datapipe.types import IndexDF
 
 
 def test_filtered_join_is_called(dbconn: DBConn):
@@ -302,6 +303,121 @@ def test_join_keys_correctness(dbconn: DBConn):
         "amount": [100, 200, 150]
     })
     pd.testing.assert_frame_equal(output_data, expected)
+
+
+def test_composite_join_keys_preserve_key_pairs(dbconn: DBConn):
+    """
+    Regression test for composite join_keys where unique values per column have
+    different lengths. Filtered join must preserve real (id, ad_campaign_id)
+    pairs from idx instead of building columns from independent unique arrays.
+    """
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    campaigns_store = TableStoreDB(
+        dbconn,
+        "campaigns_composite_pairs",
+        [
+            Column("id", String, primary_key=True),
+            Column("ad_campaign_id", String, primary_key=True),
+            Column("status", String),
+        ],
+        create_table=True,
+    )
+    campaigns_dt = ds.create_table("campaigns_composite_pairs", campaigns_store)
+
+    moderation_store = TableStoreDB(
+        dbconn,
+        "moderation_composite_pairs",
+        [
+            Column("id", String, primary_key=True),
+            Column("ad_campaign_id", String, primary_key=True),
+            Column("approved", String),
+        ],
+        create_table=True,
+    )
+    moderation_dt = ds.create_table("moderation_composite_pairs", moderation_store)
+
+    output_store = TableStoreDB(
+        dbconn,
+        "aggregated_composite_pairs",
+        [
+            Column("id", String, primary_key=True),
+            Column("ad_campaign_id", String, primary_key=True),
+            Column("final_status", String),
+        ],
+        create_table=True,
+    )
+    output_dt = ds.create_table("aggregated_composite_pairs", output_store)
+
+    def transform_func(campaigns_df, moderation_df):
+        merged = campaigns_df.merge(moderation_df, on=["id", "ad_campaign_id"], how="left")
+        merged["final_status"] = merged["approved"].fillna(merged["status"])
+        return merged[["id", "ad_campaign_id", "final_status"]]
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test_composite_join_keys_preserve_key_pairs",
+        func=transform_func,
+        input_dts=[
+            ComputeInput(dt=campaigns_dt, join_type="full"),
+            ComputeInput(
+                dt=moderation_dt,
+                join_type="full",
+                join_keys={"id": "id", "ad_campaign_id": "ad_campaign_id"},
+            ),
+        ],
+        output_dts=[output_dt],
+        transform_keys=["id", "ad_campaign_id"],
+    )
+
+    now = time.time()
+    campaigns_dt.store_chunk(
+        pd.DataFrame([
+            {"id": "post_1", "ad_campaign_id": "camp_1", "status": "pending"},
+            {"id": "post_1", "ad_campaign_id": "camp_2", "status": "pending"},
+        ]),
+        now=now,
+    )
+    moderation_dt.store_chunk(
+        pd.DataFrame([
+            {"id": "post_1", "ad_campaign_id": "camp_1", "approved": "approved_1"},
+            {"id": "post_1", "ad_campaign_id": "camp_2", "approved": "approved_2"},
+            {"id": "post_2", "ad_campaign_id": "camp_1", "approved": "unrelated"},
+        ]),
+        now=now,
+    )
+
+    get_data_calls = []
+    original_get_data = moderation_dt.get_data
+
+    def tracked_get_data(idx=None, **kwargs):
+        get_data_calls.append(idx.copy() if idx is not None else None)
+        return original_get_data(idx=idx, **kwargs)
+
+    moderation_dt.get_data = tracked_get_data  # type: ignore[method-assign]
+
+    batch_idx = pd.DataFrame([
+        {"id": "post_1", "ad_campaign_id": "camp_1"},
+        {"id": "post_1", "ad_campaign_id": "camp_2"},
+        {"id": "post_1", "ad_campaign_id": "camp_2"},
+    ])
+
+    _, moderation_df = step.get_batch_input_dfs(ds, IndexDF(batch_idx))
+
+    assert len(get_data_calls) == 1
+    filtered_idx = get_data_calls[0].sort_values(["id", "ad_campaign_id"]).reset_index(drop=True)
+    expected_idx = pd.DataFrame([
+        {"id": "post_1", "ad_campaign_id": "camp_1"},
+        {"id": "post_1", "ad_campaign_id": "camp_2"},
+    ])
+    pd.testing.assert_frame_equal(filtered_idx, expected_idx)
+
+    moderation_df = moderation_df.sort_values(["id", "ad_campaign_id"]).reset_index(drop=True)
+    expected_data = pd.DataFrame([
+        {"id": "post_1", "ad_campaign_id": "camp_1", "approved": "approved_1"},
+        {"id": "post_1", "ad_campaign_id": "camp_2", "approved": "approved_2"},
+    ])
+    pd.testing.assert_frame_equal(moderation_df, expected_data)
 
 
 def test_v1_vs_v2_results_identical(dbconn: DBConn):
