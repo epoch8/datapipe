@@ -1,6 +1,24 @@
+import datetime
 from typing import Any
 
-from sqlalchemy import Column, Integer, String, Table, tuple_
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Table,
+    Text,
+    Time,
+    Unicode,
+    UnicodeText,
+    tuple_,
+)
 
 from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF
@@ -44,7 +62,18 @@ def sql_apply_runconfig_filter(
 
 SCHEMA_TO_DTYPE_LOOKUP = {
     String: str,
+    Text: str,
+    Unicode: str,
+    UnicodeText: str,
     Integer: int,
+    BigInteger: int,
+    SmallInteger: int,
+    Float: float,
+    Numeric: float,
+    Boolean: bool,
+    DateTime: datetime.datetime,
+    Date: datetime.date,
+    Time: datetime.time,
 }
 
 
