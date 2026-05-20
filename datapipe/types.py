@@ -48,6 +48,7 @@ DataDF: TypeAlias = pd.DataFrame
 TAnyDF = TypeVar("TAnyDF", pd.DataFrame, IndexDF, MetadataDF)
 
 Labels = list[tuple[str, str]]
+LabelsFilter = list[tuple[str, str, str]]
 
 TransformResult = DataDF | list[DataDF] | tuple[DataDF, ...]
 

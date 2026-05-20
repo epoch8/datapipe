@@ -19,7 +19,7 @@ from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_chan
 from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.migrations import v013 as migrations_v013
 from datapipe.step.batch_transform import BaseBatchTransformStep
-from datapipe.types import IndexDF, Labels
+from datapipe.types import IndexDF, Labels, LabelsFilter
 
 tracer = trace.get_tracer("datapipe_app")
 
@@ -49,33 +49,38 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     return app
 
 
-def parse_labels(labels: str | None) -> Labels:
+def parse_labels(labels: str | None) -> LabelsFilter:
     if labels is None or labels == "":
         return []
 
     labels_list = []
 
     for kv in labels.split(","):
-        if "=" not in kv:
-            raise Exception(f"Expected labels in format 'key=value,key2=value2' got '{labels}'")
-
-        k, v = kv.split("=")
-        labels_list.append((k, v))
+        if "!=" in kv:
+            k, v = kv.split("!=", 1)
+            labels_list.append((k, "!=", v))
+        elif "=" in kv:
+            k, v = kv.split("=", 1)
+            labels_list.append((k, "=", v))
+        else:
+            raise Exception(f"Expected labels in format 'key=value,key2!=value2' got '{labels}'")
 
     return labels_list
 
 
 def filter_steps_by_labels_and_name(
     app: DatapipeApp,
-    labels: Labels = [],
+    labels: LabelsFilter = [],
     name_prefix: str | None = None,
 ) -> list[ComputeStep]:
     res = []
 
     name_prefixes = None if name_prefix is None else [p.strip() for p in name_prefix.split(",")]
     for step in app.steps:
-        for k, v in labels:
-            if (k, v) not in step.labels:
+        for k, op, v in labels:
+            if ((k, v) not in step.labels) and (op == "="):
+                break
+            elif ((k, v) in step.labels) and (op == "!="):
                 break
         else:
             if name_prefixes is None or any(step.name.startswith(p) for p in name_prefixes):
