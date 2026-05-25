@@ -18,7 +18,9 @@ from datapipe.types import (
     InputSpec,
     Labels,
     MetaSchema,
+    OutputSpec,
     PipelineInput,
+    PipelineOutput,
     Required,
     TableOrName,
 )
@@ -129,12 +131,51 @@ class ComputeInput:
             return self.dt.primary_schema
 
 
-def make_mungled_step_name(cls, base_name: str, input_dts: Sequence[ComputeInput], output_dts: list[DataTable]) -> str:
+@dataclass
+class ComputeOutput:
+    dt: DataTable
+
+    # If provided, this dict tells how transform keys map to output primary keys.
+    #
+    # Example: {"post_id": "id"} means that cleanup for transform key post_id
+    # should be applied to output primary key id.
+    keys: dict[str, str] | None = None
+
+    @property
+    def primary_keys(self) -> list[str]:
+        if self.keys:
+            return list(self.keys.keys())
+        else:
+            return self.dt.primary_keys
+
+    @property
+    def primary_schema(self) -> MetaSchema:
+        if self.keys:
+            primary_schema_dict = {col.name: col for col in self.dt.primary_schema}
+
+            schema = []
+            for k, accessor in self.keys.items():
+                source_column = primary_schema_dict[accessor]
+                schema.append(
+                    Column(
+                        k,
+                        source_column.type,
+                        primary_key=source_column.primary_key,
+                    )
+                )
+            return schema
+        else:
+            return self.dt.primary_schema
+
+
+def make_mungled_step_name(
+    cls, base_name: str, input_dts: Sequence[ComputeInput], output_dts: Sequence[ComputeOutput]
+) -> str:
     ss = [
         cls.__name__,
         base_name,
         *[i.dt.name for i in input_dts],
-        *[o.name for o in output_dts],
+        *[o.dt.name for o in output_dts],
     ]
 
     m = hashlib.shake_128()
@@ -160,6 +201,16 @@ def pipeline_input_to_compute_input(ds: DataStore, catalog: Catalog, input: Pipe
         return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
 
 
+def pipeline_output_to_compute_output(ds: DataStore, catalog: Catalog, output: PipelineOutput) -> ComputeOutput:
+    if isinstance(output, OutputSpec):
+        return ComputeOutput(
+            dt=catalog.get_datatable(ds, output.table),
+            keys=output.keys,
+        )
+
+    return ComputeOutput(dt=catalog.get_datatable(ds, output))
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -179,18 +230,15 @@ class ComputeStep:
     def __init__(
         self,
         name: str,
-        input_dts: Sequence[ComputeInput | DataTable],
-        output_dts: list[DataTable],
+        input_dts: Sequence[ComputeInput],
+        output_dts: Sequence[ComputeOutput],
         labels: Labels | None = None,
         executor_config: ExecutorConfig | None = None,
     ) -> None:
-        # TODO validate name for database tables naming compatibility
         self.name = name
         # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
-        self.input_dts = [
-            inp if isinstance(inp, ComputeInput) else ComputeInput(dt=inp, join_type="full") for inp in input_dts
-        ]
-        self.output_dts = output_dts
+        self.input_dts = list(input_dts)
+        self.output_dts = list(output_dts)
         self._labels = labels
         self.executor_config = executor_config
 
@@ -207,7 +255,7 @@ class ComputeStep:
     # TODO: move to lints
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
-        out_p_keys_arr = [set(out.primary_keys) for out in self.output_dts if out]
+        out_p_keys_arr = [set(out.dt.primary_keys) for out in self.output_dts if out]
 
         inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
         out_p_keys = set.intersection(*out_p_keys_arr) if len(out_p_keys_arr) else set()
@@ -222,7 +270,7 @@ class ComputeStep:
         key_to_column_type_out = {
             column.name: type(column.type)
             for inp in self.output_dts
-            for column in inp.primary_schema
+            for column in inp.dt.primary_schema
             if column.name in join_keys
         }
 
@@ -338,10 +386,10 @@ def run_steps(
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
-            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
         ):
             logger.info(
-                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
             )
 
             step.run_full(ds=ds, run_config=run_config, executor=executor)
@@ -388,11 +436,11 @@ def run_steps_changelist(
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
                     with tracer.start_as_current_span(
-                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
                     ):
                         logger.info(
                             f"Running {step.name} "
-                            f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                            f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
                         )
 
                         if isinstance(step, BaseBatchTransformStep):

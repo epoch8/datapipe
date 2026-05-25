@@ -7,7 +7,14 @@ from typing import Callable, Iterator
 import pandas as pd
 from opentelemetry import trace
 
-from datapipe.compute import Catalog, ComputeInput, ComputeStep, PipelineStep, make_mungled_step_name
+from datapipe.compute import (
+    Catalog,
+    ComputeInput,
+    ComputeStep,
+    PipelineStep,
+    make_mungled_step_name,
+    pipeline_output_to_compute_output,
+)
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.datatable_transform import (
@@ -94,7 +101,7 @@ class BatchGenerate(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts: list[ComputeInput] = []
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
 
         step_name = self.name or make_mungled_step_name(
             DatatableTransformStep, self.func.__name__, input_dts, output_dts

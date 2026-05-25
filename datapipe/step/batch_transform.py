@@ -12,17 +12,20 @@ from typing import (
     Sequence,
 )
 
+import pandas as pd
 from opentelemetry import trace
 from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     Catalog,
     ComputeInput,
+    ComputeOutput,
     ComputeStep,
     PipelineStep,
     StepStatus,
     make_mungled_step_name,
     pipeline_input_to_compute_input,
+    pipeline_output_to_compute_output,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
@@ -32,7 +35,9 @@ from datapipe.types import (
     DataDF,
     IndexDF,
     Labels,
+    OutputSpec,
     PipelineInput,
+    PipelineOutput,
     TableOrName,
     TransformResult,
 )
@@ -67,8 +72,8 @@ class BaseBatchTransformStep(ComputeStep):
         self,
         ds: DataStore,
         name: str,
-        input_dts: Sequence[ComputeInput | DataTable],
-        output_dts: list[DataTable],
+        input_dts: Sequence[ComputeInput],
+        output_dts: Sequence[ComputeOutput],
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
         labels: Labels | None = None,
@@ -77,26 +82,16 @@ class BaseBatchTransformStep(ComputeStep):
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
-        # Support both old API (List[DataTable]) and new API (List[ComputeInput])
-        # Convert to new API format
-        compute_input_dts: list[ComputeInput] = []
-        for inp in input_dts:
-            if isinstance(inp, ComputeInput):
-                # New API: ComputeInput with .dt attribute
-                compute_input_dts.append(inp)
-            else:
-                # Old API: DataTable passed directly - convert to new API
-                compute_input_dts.append(ComputeInput(dt=inp, join_type="full"))
-
         ComputeStep.__init__(
             self,
             name=name,
-            input_dts=compute_input_dts,
+            input_dts=input_dts,
             output_dts=output_dts,
             labels=labels,
             executor_config=executor_config,
         )
 
+        self.output_specs = output_dts
         self.chunk_size = chunk_size
 
         # Force transform_keys to be a list, otherwise Pandas will not be happy
@@ -117,6 +112,33 @@ class BaseBatchTransformStep(ComputeStep):
         self.filters = filters
         self.order_by = order_by
         self.order = order
+
+    # TODO consider making this method a property of ComputeOutput
+    # Also see TableMeta.transform_idx_to_table_idx for the same functionality
+    @staticmethod
+    def _transform_idx_to_output_idx(
+        idx: IndexDF,
+        output_spec: ComputeOutput,
+    ) -> IndexDF | None:
+        res_dt = output_spec.dt
+        output_to_transform_keys = {
+            output_key: transform_key for transform_key, output_key in (output_spec.keys or {}).items()
+        }
+        columns: dict[str, Any] = {}
+
+        for pk in res_dt.primary_keys:
+            if pk in idx.columns:
+                columns[pk] = idx[pk]
+                continue
+
+            transform_key = output_to_transform_keys.get(pk)
+            if transform_key is not None and transform_key in idx.columns:
+                columns[pk] = idx[transform_key]
+
+        if not columns:
+            return None
+
+        return IndexDF(pd.DataFrame(columns))
 
     def _apply_filters_to_run_config(self, run_config: RunConfig | None = None) -> RunConfig | None:
         if self.filters is None:
@@ -198,12 +220,13 @@ class BaseBatchTransformStep(ComputeStep):
                     assert len(self.output_dts) == 1
                     output_dfs = [output_dfs]
 
-                for k, res_dt in enumerate(self.output_dts):
+                for k, output_spec in enumerate(self.output_specs):
+                    res_dt = output_spec.dt
                     # Берем k-ое значение функции для k-ой таблички
                     # Добавляем результат в результирующие чанки
                     change_idx = res_dt.store_chunk(
                         data_df=output_dfs[k],
-                        processed_idx=idx,
+                        processed_idx=self._transform_idx_to_output_idx(idx, output_spec),
                         now=process_ts,
                         run_config=run_config,
                     )
@@ -212,8 +235,13 @@ class BaseBatchTransformStep(ComputeStep):
 
         else:
             with tracer.start_as_current_span("delete missing data from output"):
-                for k, res_dt in enumerate(self.output_dts):
-                    del_idx = res_dt.meta.get_existing_idx(idx)
+                for k, output_spec in enumerate(self.output_specs):
+                    res_dt = output_spec.dt
+                    processed_idx = self._transform_idx_to_output_idx(idx, output_spec)
+                    if processed_idx is None:
+                        continue
+
+                    del_idx = res_dt.meta.get_existing_idx(processed_idx)
 
                     res_dt.delete_by_idx(del_idx, run_config=run_config)
 
@@ -418,7 +446,7 @@ class DatatableBatchTransform(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
 
         step_name = self.name or make_mungled_step_name(
             DatatableBatchTransformStep, self.func.__name__, input_dts, output_dts
@@ -445,8 +473,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: DatatableBatchTransformFunc,
-        input_dts: list[ComputeInput],
-        output_dts: list[DataTable],
+        input_dts: Sequence[ComputeInput],
+        output_dts: Sequence[ComputeOutput],
         kwargs: dict | None = None,
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
@@ -484,7 +512,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
     inputs: list[PipelineInput]
-    outputs: list[TableOrName]
+    outputs: list[PipelineOutput]
     chunk_size: int = 1000
     name: str | None = None
     kwargs: dict[str, Any] | None = None
@@ -497,7 +525,7 @@ class BatchTransform(PipelineStep):
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
 
         step_name = self.name or make_mungled_step_name(BatchTransformStep, self.func.__name__, input_dts, output_dts)
 
@@ -526,8 +554,8 @@ class BatchTransformStep(BaseBatchTransformStep):
         ds: DataStore,
         name: str,
         func: BatchTransformFunc,
-        input_dts: list[ComputeInput],
-        output_dts: list[DataTable],
+        input_dts: Sequence[ComputeInput],
+        output_dts: Sequence[ComputeOutput],
         kwargs: dict[str, Any] | None = None,
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
