@@ -15,6 +15,20 @@ from datapipe_cvat.cvat_step import create_cvat_client
 pytestmark = pytest.mark.cvat
 
 
+class _Shape:
+    def __init__(self, type, label_id, points, occluded=False, z_order=0):
+        self.type = type
+        self.label_id = label_id
+        self.points = points
+        self.occluded = occluded
+        self.z_order = z_order
+
+
+class _Annotations:
+    def __init__(self, shapes):
+        self.shapes = shapes
+
+
 def wait_until_cvat_is_up(cvat_url: str, timeout_seconds: int = 120) -> None:
     deadline = time.time() + timeout_seconds
     last_error = None
@@ -35,6 +49,11 @@ def _require_cvat(cvat_url: str) -> None:
     wait_until_cvat_is_up(cvat_url)
 
 
+def _shape_type_value(shape_type) -> str:
+    value = getattr(shape_type, "value", shape_type)
+    return str(value).lower()
+
+
 def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], image_path) -> str:
     image = Image.open(image_path)
     image_element = ET.Element(
@@ -47,7 +66,8 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
     )
     for shape in annotations.shapes:
         label = labels_by_id[shape.label_id]
-        if shape.type == "rectangle":
+        shape_type = _shape_type_value(shape.type)
+        if shape_type == "rectangle":
             ET.SubElement(
                 image_element,
                 "box",
@@ -62,7 +82,7 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
                     "z_order": str(shape.z_order or 0),
                 },
             )
-        elif shape.type == "polygon":
+        elif shape_type == "polygon":
             points = ";".join(
                 f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2)
             )
@@ -77,7 +97,7 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
                     "z_order": str(shape.z_order or 0),
                 },
             )
-        elif shape.type == "points":
+        elif shape_type == "points":
             points = ";".join(
                 f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2)
             )
@@ -93,6 +113,31 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
                 },
             )
     return ET.tostring(image_element, encoding="unicode")
+
+
+def test_annotations_to_cvat_image_xml_handles_sdk_shape_type_objects(tmp_dir):
+    class ShapeTypeLike:
+        def __init__(self, value):
+            self.value = value
+
+    image_path = tmp_dir / "image.jpg"
+    Image.new("RGB", (100, 50), color="white").save(image_path)
+    xml = _annotations_to_cvat_image_xml(
+        _Annotations(
+            [
+                _Shape(ShapeTypeLike("rectangle"), 1, [10, 5, 30, 25]),
+                _Shape(ShapeTypeLike("polygon"), 2, [40, 10, 80, 10, 80, 40, 40, 40]),
+                _Shape(ShapeTypeLike("points"), 3, [15, 10]),
+            ]
+        ),
+        {1: "cat", 2: "dog", 3: "keypoint"},
+        image_path,
+    )
+    image_element = ET.fromstring(xml)
+
+    assert image_element.find("box").attrib["label"] == "cat"
+    assert image_element.find("polygon").attrib["label"] == "dog"
+    assert image_element.find("points").attrib["label"] == "keypoint"
 
 
 def test_real_cvat_annotations_roundtrip(tmp_dir, cvat_url, cvat_credentials):
