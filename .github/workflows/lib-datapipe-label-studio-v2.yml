@@ -1,4 +1,4 @@
-name: datapipe-label-studio
+name: datapipe-label-studio-v2
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - "v**"
       - "feature/monorepo-migration"
     paths:
-      - ".github/workflows/lib-datapipe-label-studio.yml"
+      - ".github/workflows/lib-datapipe-label-studio-v2.yml"
       - "libs/datapipe-core/**"
       - "libs/datapipe-label-studio/**"
       - "pyproject.toml"
@@ -15,7 +15,7 @@ on:
     branches:
       - "**"
     paths:
-      - ".github/workflows/lib-datapipe-label-studio.yml"
+      - ".github/workflows/lib-datapipe-label-studio-v2.yml"
       - "libs/datapipe-core/**"
       - "libs/datapipe-label-studio/**"
       - "pyproject.toml"

@@ -1,4 +1,4 @@
-name: datapipe-cvat
+name: datapipe-cvat-v2
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - "v**"
       - "feature/monorepo-migration"
     paths:
-      - ".github/workflows/lib-datapipe-cvat.yml"
+      - ".github/workflows/lib-datapipe-cvat-v2.yml"
       - "examples/datapipe_cvat/**"
       - "libs/datapipe-core/**"
       - "libs/datapipe-cvat/**"
@@ -16,7 +16,7 @@ on:
     branches:
       - "**"
     paths:
-      - ".github/workflows/lib-datapipe-cvat.yml"
+      - ".github/workflows/lib-datapipe-cvat-v2.yml"
       - "examples/datapipe_cvat/**"
       - "libs/datapipe-core/**"
       - "libs/datapipe-cvat/**"

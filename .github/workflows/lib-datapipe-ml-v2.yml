@@ -1,4 +1,4 @@
-name: datapipe-ml
+name: datapipe-ml-v2
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - "v**"
       - "feature/monorepo-migration"
     paths:
-      - ".github/workflows/lib-datapipe-ml.yml"
+      - ".github/workflows/lib-datapipe-ml-v2.yml"
       - "examples/e2e_template/**"
       - "libs/datapipe-core/**"
       - "libs/datapipe-label-studio/**"
@@ -17,7 +17,7 @@ on:
     branches:
       - "**"
     paths:
-      - ".github/workflows/lib-datapipe-ml.yml"
+      - ".github/workflows/lib-datapipe-ml-v2.yml"
       - "examples/e2e_template/**"
       - "libs/datapipe-core/**"
       - "libs/datapipe-label-studio/**"

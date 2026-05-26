@@ -1,4 +1,4 @@
-name: datapipe-core
+name: datapipe-core-v2
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - "v**"
       - "feature/monorepo-migration"
     paths:
-      - ".github/workflows/lib-datapipe-core.yml"
+      - ".github/workflows/lib-datapipe-core-v2.yml"
       - ".vscode/**"
       - "LICENSE"
       - "README.md"
@@ -18,7 +18,7 @@ on:
     branches:
       - "**"
     paths:
-      - ".github/workflows/lib-datapipe-core.yml"
+      - ".github/workflows/lib-datapipe-core-v2.yml"
       - ".vscode/**"
       - "LICENSE"
       - "README.md"
