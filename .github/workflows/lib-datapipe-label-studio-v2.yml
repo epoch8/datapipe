@@ -1,0 +1,124 @@
+name: datapipe-label-studio-v2
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+      - "feature/monorepo-migration"
+    paths:
+      - ".github/workflows/lib-datapipe-label-studio-v2.yml"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-label-studio-v2.yml"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e "libs/datapipe-core[sqlite]"
+          pip install -e "libs/datapipe-label-studio" --no-deps
+          pip install "label-studio-sdk>=2.0.16,<2.0.20" "flake8" "mypy"
+          pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML types-requests
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-label-studio/datapipe_label_studio --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-label-studio/datapipe_label_studio --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        run: |
+          mypy -p datapipe_label_studio --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        test-db-env: ["postgres"]
+        test-ls-env: ["heartexlabs/label-studio:1.22.0"]
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Run Label Studio
+        run: |
+          docker run -d \
+            --add-host host.docker.internal:host-gateway \
+            -p 8080:8080 \
+            --env DJANGO_DB=default \
+            --env POSTGRE_NAME=postgres \
+            --env POSTGRE_USER=postgres \
+            --env POSTGRE_PASSWORD=password \
+            --env POSTGRE_PORT=5432 \
+            --env POSTGRE_HOST=host.docker.internal \
+            --env LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN=true \
+            ${{ matrix.test-ls-env }}
+
+      - name: Wait for Label Studio startup
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS "http://localhost:8080/user/login/" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Label Studio didn't become ready in time"
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e "libs/datapipe-core[sqlite]"
+          pip install -e "libs/datapipe-label-studio" --no-deps
+          pip install "label-studio-sdk>=2.0.16,<2.0.20" "pytest<8" "pytest_cases" "python-dotenv"
+
+      - name: Test with pytest
+        run: |
+          pytest -vv -x libs/datapipe-label-studio/tests
+        env:
+          TEST_DB_ENV: ${{ matrix.test-db-env }}
+          LABEL_STUDIO_HOST: localhost
+          LABEL_STUDIO_PORT: 8080

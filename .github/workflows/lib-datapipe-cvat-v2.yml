@@ -1,0 +1,78 @@
+name: datapipe-cvat-v2
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+      - "feature/monorepo-migration"
+    paths:
+      - ".github/workflows/lib-datapipe-cvat-v2.yml"
+      - "examples/datapipe_cvat/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-cvat/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-cvat-v2.yml"
+      - "examples/datapipe_cvat/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-cvat/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-cvat" --no-deps
+          pip install "cvat-sdk>=2.29.0" "flake8" "mypy"
+          pip install pandas-stubs pytest-cases types-setuptools types-requests
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-cvat/datapipe_cvat --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-cvat/datapipe_cvat --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        run: |
+          mypy -p datapipe_cvat --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-cvat" --no-deps
+          pip install "cvat-sdk>=2.29.0" "pytest<8" "pytest_cases"
+
+      - name: Import smoke test
+        run: |
+          pytest libs/datapipe-cvat/tests
