@@ -5,7 +5,7 @@
 ### Monorepo
 
 * Moved `datapipe-core`, `datapipe-ml`, `datapipe-label-studio`, and
-  `datapipe-cvat` into a single `datapipe` monorepo with shared examples and CI.
+  `datapipe-cvat` into a single `datapipe` monorepo with shared examples and CI
 
 ### MetaPlane
 
