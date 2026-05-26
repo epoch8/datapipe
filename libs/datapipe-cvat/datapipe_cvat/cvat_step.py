@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from numbers import Integral
-from typing import Any, Dict, Hashable, List, Literal, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Hashable, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import pandas as pd
 from cvat_sdk import Client as CVATClient
@@ -61,6 +61,14 @@ class CVATFrameUpdatePlan(NamedTuple):
     rows_to_delete: pd.DataFrame
     rows_to_upload: pd.DataFrame
     rows_to_keep: pd.DataFrame
+
+
+CVATFailureHook = Callable[[str], None]
+
+
+def _run_failure_hook(failure_hook: Optional[CVATFailureHook], point: str) -> None:
+    if failure_hook is not None:
+        failure_hook(point)
 
 
 def int_from_scalar(value: object) -> int:
@@ -826,6 +834,7 @@ def upload_batches_to_cvat(
     task_name_format: str,
     max_attempts: int,
     attempt_poll_s: int,
+    failure_hook: Optional[CVATFailureHook] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Uploads new files (images or videos) to CVAT, grouping them by `inner_task_id`.
@@ -878,8 +887,10 @@ def upload_batches_to_cvat(
     )
     rows_to_delete = update_plan.rows_to_delete
     rows_to_upload = update_plan.rows_to_upload
+    changed_delete_idx = data_to_index(rows_to_upload, primary_keys)
     kept_annotated_rows: List[pd.Series] = []
     actual_rows_to_delete: List[pd.Series] = []
+    deletion_frames_by_task_id: Dict[int, List[int]] = {}
     for task_id, df__delete_task in rows_to_delete.groupby("task_id"):
         task = cvat_client.tasks.retrieve(int_from_scalar(task_id))
         annotations = task.get_annotations()
@@ -887,30 +898,42 @@ def upload_batches_to_cvat(
         for _, row in df__delete_task.iterrows():
             frame_id = int_from_scalar(row["inner_frame_id"])
             has_local_annotation = _annotation_xml_has_data(row.get("annotations"))
-            if delete_unannotated_tasks_only_on_update and (has_local_annotation or _frame_has_annotations(annotations, frame_id)):
+            is_changed_row = not data_to_index(pd.DataFrame([row]), primary_keys).merge(changed_delete_idx).empty
+            if (
+                delete_unannotated_tasks_only_on_update
+                and is_changed_row
+                and (has_local_annotation or _frame_has_annotations(annotations, frame_id))
+            ):
                 kept_annotated_rows.append(row)
             else:
                 actual_rows_to_delete.append(row)
                 frame_ids_to_delete.append(frame_id)
         if frame_ids_to_delete:
-            task.remove_frames_by_ids(frame_ids_to_delete)
+            deletion_frames_by_task_id[int_from_scalar(task_id)] = frame_ids_to_delete
 
     actual_deleted_df = pd.DataFrame(actual_rows_to_delete)
-    if len(actual_deleted_df) > 0:
-        deleted_idx = data_to_index(actual_deleted_df, primary_keys + ["project_id", "inner_task_id", "task_id"])
-        cvat_files_dt.delete_by_idx(deleted_idx)
-        df__cvat_files = pd.merge(
-            df__cvat_files,
-            deleted_idx,
-            on=primary_keys + ["project_id", "inner_task_id", "task_id"],
-            how="left",
-            indicator=True,
-        )
-        df__cvat_files = df__cvat_files[df__cvat_files["_merge"] == "left_only"].drop(columns="_merge")
 
     if kept_annotated_rows:
         kept_df = pd.DataFrame(kept_annotated_rows)
         rows_to_upload = index_to_data(rows_to_upload, index_difference(data_to_index(rows_to_upload, primary_keys), data_to_index(kept_df, primary_keys)))
+
+    if len(rows_to_upload) > 0 and len(df__cvat_files) > 0:
+        rows_to_upload = rows_to_upload.copy()
+        rows_to_upload["cvat__file_path"] = rows_to_upload[file_path_column].apply(
+            lambda filepath: _cvat_file_path(filepath, cloud_storage_bucket)
+        )
+        already_uploaded_idx = data_to_index(
+            pd.merge(
+                rows_to_upload[primary_keys + ["cvat__file_path"]],
+                df__cvat_files[primary_keys + ["cvat__file_path"]],
+                on=primary_keys + ["cvat__file_path"],
+            ),
+            primary_keys,
+        )
+        rows_to_upload = index_to_data(
+            rows_to_upload.drop(columns=["cvat__file_path"]),
+            index_difference(data_to_index(rows_to_upload, primary_keys), already_uploaded_idx),
+        )
 
     existing_task_keys = data_to_index(df__cvat_task, [task_queue_id__name, "inner_task_id"])
     rows_to_upload_existing_tasks = pd.merge(rows_to_upload, existing_task_keys, on=[task_queue_id__name, "inner_task_id"])
@@ -944,10 +967,7 @@ def upload_batches_to_cvat(
         max_inner_task_id_by_queue[task_queue_id] = next_inner_task_id
 
         df__new_task_batch = df__batch_to_append.copy()
-        old_assignment_idx = data_to_index(df__new_task_batch, primary_keys + ["inner_task_id"])
         df__new_task_batch["inner_task_id"] = next_inner_task_id
-        input_batches_dt.delete_by_idx(old_assignment_idx)
-        input_batches_dt.store_chunk(df__new_task_batch[input_batches_dt.table_store.primary_keys + [file_path_column, "annotations"]])
         input_batches_for_new_tasks.append(df__new_task_batch)
         rows_to_create_tasks_dfs.append(df__new_task_batch)
         logger.info(
@@ -962,9 +982,19 @@ def upload_batches_to_cvat(
     df__files = pd.concat([df__cvat_files, rows_to_create_tasks], ignore_index=True).copy()
 
     new_dfs__cvat_files: List[pd.DataFrame] = []
+    created_input_batches_dfs: List[pd.DataFrame] = []
+    created_task_records: List[dict] = []
 
     for (task_queue_id, inner_task_id), df__batch in df__files.groupby([task_queue_id__name, "inner_task_id"]):
         inner_task_id_scalar: Hashable = inner_task_id
+        is_replacement_task = any(
+            len(df__input_batch) > 0
+            and df__input_batch[task_queue_id__name].iloc[0] == task_queue_id
+            and int_from_scalar(df__input_batch["inner_task_id"].iloc[0]) == int_from_scalar(inner_task_id_scalar)
+            for df__input_batch in input_batches_for_new_tasks
+        )
+        if is_replacement_task:
+            _run_failure_hook(failure_hook, "before_replacement_upload")
         for attempt in range(1, max_attempts + 1):
             try:
                 cvat_client = create_cvat_client(cvat_url, cvat_organization, cvat_credentials)
@@ -983,15 +1013,24 @@ def upload_batches_to_cvat(
                     attempt_poll_s=attempt_poll_s,
                 )
 
-                task_records.append(
-                    {
-                        "project_id": cvat_project_id,
-                        task_queue_id__name: task_queue_id,
-                        "inner_task_id": inner_task_id,
-                        "task_id": task.id,
-                    }
-                )
+                task_record = {
+                    "project_id": cvat_project_id,
+                    task_queue_id__name: task_queue_id,
+                    "inner_task_id": inner_task_id,
+                    "task_id": task.id,
+                }
+                task_records.append(task_record)
                 new_dfs__cvat_files.append(df__batch_with_meta)
+                if is_replacement_task:
+                    created_task_records.append(task_record)
+                    created_input_batches_dfs.extend(
+                        df__input_batch
+                        for df__input_batch in input_batches_for_new_tasks
+                        if len(df__input_batch) > 0
+                        and df__input_batch[task_queue_id__name].iloc[0] == task_queue_id
+                        and int_from_scalar(df__input_batch["inner_task_id"].iloc[0]) == int_from_scalar(inner_task_id_scalar)
+                    )
+                    _run_failure_hook(failure_hook, "after_replacement_upload_before_local_store")
 
                 logger.info(
                     "Uploaded %d new files to CVAT: task_id = %d (inner_task_id = %d)",
@@ -1019,6 +1058,46 @@ def upload_batches_to_cvat(
         df__cvat_files_new = pd.concat(new_dfs__cvat_files, ignore_index=True)
     else:
         df__cvat_files_new = pd.DataFrame(columns=primary_keys + ["project_id", "inner_task_id", "task_id", "cvat__file_path", "inner_frame_id"])
+
+    if created_input_batches_dfs:
+        for df__input_batch in created_input_batches_dfs:
+            input_batches_dt.store_chunk(
+                df__input_batch[input_batches_dt.table_store.primary_keys + [file_path_column, "annotations"]]
+            )
+        cvat_task_dt.store_chunk(pd.DataFrame(created_task_records)[task_record_columns])
+        cvat_files_dt.store_chunk(
+            df__cvat_files_new[
+                primary_keys + ["project_id", "inner_task_id", "task_id", "cvat__file_path", "inner_frame_id"]
+            ]
+        )
+        _run_failure_hook(failure_hook, "after_replacement_local_store_before_old_delete")
+
+    for task_id, frame_ids_to_delete in deletion_frames_by_task_id.items():
+        task = cvat_client.tasks.retrieve(task_id)
+        _run_failure_hook(failure_hook, "before_old_delete")
+        task.remove_frames_by_ids(frame_ids_to_delete)
+
+    if len(actual_deleted_df) > 0:
+        deleted_idx = data_to_index(actual_deleted_df, primary_keys + ["project_id", "inner_task_id", "task_id"])
+        old_assignment_idx = data_to_index(actual_deleted_df, primary_keys + ["inner_task_id"])
+        input_batches_dt.delete_by_idx(old_assignment_idx)
+        cvat_files_dt.delete_by_idx(deleted_idx)
+        df__cvat_files = pd.merge(
+            df__cvat_files,
+            deleted_idx,
+            on=primary_keys + ["project_id", "inner_task_id", "task_id"],
+            how="left",
+            indicator=True,
+        )
+        df__cvat_files = df__cvat_files[df__cvat_files["_merge"] == "left_only"].drop(columns="_merge")
+        df__cvat_files_new = pd.merge(
+            df__cvat_files_new,
+            deleted_idx,
+            on=primary_keys + ["project_id", "inner_task_id", "task_id"],
+            how="left",
+            indicator=True,
+        )
+        df__cvat_files_new = df__cvat_files_new[df__cvat_files_new["_merge"] == "left_only"].drop(columns="_merge")
 
     logger.info(
         "upload_batches_to_cvat returning %d task rows and %d file rows",
