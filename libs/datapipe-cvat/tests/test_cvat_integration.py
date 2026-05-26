@@ -95,7 +95,7 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
     return ET.tostring(image_element, encoding="unicode")
 
 
-def test_real_cvat_annotations_roundtrip_with_image_data_converter(tmp_dir, cvat_url, cvat_credentials):
+def test_real_cvat_annotations_roundtrip(tmp_dir, cvat_url, cvat_credentials):
     _require_cvat(cvat_url)
     image_path = tmp_dir / "image_1.jpg"
     Image.new("RGB", (100, 50), color="white").save(image_path)

@@ -89,15 +89,15 @@ jobs:
 
       - name: Start CVAT
         run: |
-          curl -fsSL https://raw.githubusercontent.com/cvat-ai/cvat/v2.29.0/docker-compose.yml -o /tmp/cvat-docker-compose.yml
-          CVAT_VERSION=v2.29.0 docker compose -f /tmp/cvat-docker-compose.yml up -d
+          git clone --depth 1 --branch v2.29.0 https://github.com/cvat-ai/cvat.git /tmp/cvat
+          CVAT_VERSION=v2.29.0 docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml up -d
           for i in $(seq 1 180); do
             if curl -fsS "http://localhost:8080/api/server/about" >/dev/null; then
               exit 0
             fi
             sleep 2
           done
-          docker compose -f /tmp/cvat-docker-compose.yml logs --tail=200
+          docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml logs --tail=200
           echo "CVAT didn't become ready in time"
           exit 1
 
