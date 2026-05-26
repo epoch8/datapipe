@@ -89,8 +89,8 @@ jobs:
 
       - name: Start CVAT
         run: |
-          git clone --depth 1 --branch v2.65.0 https://github.com/cvat-ai/cvat.git /tmp/cvat
-          CVAT_VERSION=v2.65.0 docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml up -d
+          CVAT_VERSION=v2.65.0 CVAT_REPO_DIR=/tmp/cvat libs/datapipe-cvat/tests/start-cvat.sh &
+          echo "CVAT_START_PID=$!" >> "$GITHUB_ENV"
           for i in $(seq 1 180); do
             if curl -fsS "http://localhost:8080/api/server/about" >/dev/null; then
               exit 0
@@ -118,3 +118,12 @@ jobs:
           CVAT_URL: http://localhost:8080
           CVAT_USERNAME: admin
           CVAT_PASSWORD: admin
+
+      - name: Stop CVAT
+        if: always()
+        run: |
+          if [ -n "${CVAT_START_PID:-}" ]; then
+            kill "$CVAT_START_PID" || true
+            wait "$CVAT_START_PID" || true
+          fi
+          docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml down

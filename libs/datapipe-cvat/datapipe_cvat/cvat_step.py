@@ -10,7 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Hashable, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Hashable, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import pandas as pd
 from cvat_sdk import Client as CVATClient
@@ -41,6 +41,7 @@ from datapipe.types import (
     get_pipeline_input_name,
     get_pipeline_output_name,
     index_difference,
+    index_to_data,
 )
 from sqlalchemy import Column, DateTime, Integer, String, and_, func, select
 
@@ -53,6 +54,12 @@ class SkipError(Exception):
     """
     Exception when there is not enough data.
     """
+
+
+class CVATFrameUpdatePlan(NamedTuple):
+    rows_to_delete: pd.DataFrame
+    rows_to_upload: pd.DataFrame
+    rows_to_keep: pd.DataFrame
 
 
 def int_from_scalar(value: object) -> int:
@@ -130,6 +137,7 @@ def assign_batches_to_files(
         task_queue_id__name,
     )
 
+    df__input_batches = pd.merge(df__input_batches, data_to_index(df__item, primary_keys), on=primary_keys)
     existing_idx = data_to_index(df__input_batches, primary_keys)
 
     to_assign_df = index_difference(data_to_index(df__item, primary_keys), existing_idx)
@@ -316,6 +324,98 @@ def _annotations_are_empty(ann: Any) -> bool:
         return False
     length = max(len(ann.get("shapes", [])), len(ann.get("tracks", [])), len(ann.get("tags", [])))
     return (length == 0)
+
+
+def _frame_has_annotations(annotations: Any, frame_id: int) -> bool:
+    if annotations is None:
+        return False
+    for key in ["shapes", "tracks", "tags"]:
+        for item in annotations.get(key, []):
+            if item.get("frame") == frame_id:
+                return True
+    return False
+
+
+def _annotation_xml_has_data(annotation: Any) -> bool:
+    if not isinstance(annotation, str) or not annotation.strip():
+        return False
+    try:
+        root = ET.fromstring(annotation)
+    except ET.ParseError:
+        return True
+    return len(list(root)) > 0
+
+
+def _cvat_file_path(filepath: Any, cloud_storage_bucket: Optional[str]) -> str:
+    return Path(filepath).name if cloud_storage_bucket is None else extract_key(str(filepath))
+
+
+def plan_cvat_frame_updates(
+    df__input_batches: pd.DataFrame,
+    df__cvat_files: pd.DataFrame,
+    df__local_annotations: pd.DataFrame,
+    primary_keys: List[str],
+    file_path_column: str,
+    cloud_storage_bucket: Optional[str],
+    delete_unannotated_tasks_only_on_update: bool,
+) -> CVATFrameUpdatePlan:
+    existing_idx = data_to_index(df__cvat_files, primary_keys)
+    input_idx = data_to_index(df__input_batches, primary_keys)
+    rows_to_delete = index_to_data(df__cvat_files, index_difference(existing_idx, input_idx))
+    rows_to_upload = index_to_data(df__input_batches, index_difference(input_idx, existing_idx))
+
+    potentially_changed_rows = pd.merge(df__input_batches, df__cvat_files, on=primary_keys + ["inner_task_id"])
+    changed_rows = potentially_changed_rows[
+        potentially_changed_rows[file_path_column].apply(
+            lambda filepath: _cvat_file_path(filepath, cloud_storage_bucket)
+        )
+        != potentially_changed_rows["cvat__file_path"]
+    ]
+    if len(changed_rows) > 0:
+        rows_to_delete = pd.concat(
+            [rows_to_delete, changed_rows[df__cvat_files.columns]],
+            ignore_index=True,
+        )
+        rows_to_upload = pd.concat(
+            [rows_to_upload, changed_rows[df__input_batches.columns]],
+            ignore_index=True,
+        )
+
+    if len(rows_to_delete) == 0:
+        return CVATFrameUpdatePlan(
+            rows_to_delete=rows_to_delete,
+            rows_to_upload=rows_to_upload,
+            rows_to_keep=pd.DataFrame(columns=rows_to_delete.columns),
+        )
+
+    rows_to_delete_with_annotations = pd.merge(
+        rows_to_delete,
+        df__local_annotations,
+        how="left",
+        on=primary_keys,
+    )
+    keep_mask = (
+        rows_to_delete_with_annotations["annotations"].apply(_annotation_xml_has_data)
+        if "annotations" in rows_to_delete_with_annotations.columns
+        else pd.Series([False] * len(rows_to_delete_with_annotations))
+    )
+    if not delete_unannotated_tasks_only_on_update:
+        keep_mask = pd.Series([False] * len(rows_to_delete_with_annotations))
+
+    rows_to_keep = rows_to_delete_with_annotations[keep_mask].drop(columns=["annotations"], errors="ignore")
+    rows_to_delete = rows_to_delete_with_annotations[~keep_mask].drop(columns=["annotations"], errors="ignore")
+    if len(rows_to_keep) > 0 and len(rows_to_upload) > 0:
+        rows_to_upload = index_to_data(
+            rows_to_upload,
+            index_difference(data_to_index(rows_to_upload, primary_keys), data_to_index(rows_to_keep, primary_keys)),
+        )
+
+    return CVATFrameUpdatePlan(
+        rows_to_delete=rows_to_delete,
+        rows_to_upload=rows_to_upload,
+        rows_to_keep=rows_to_keep,
+    )
+
 
 def get_or_create_task(
     df__batch: pd.DataFrame,
@@ -517,6 +617,72 @@ def get_or_create_task(
         raise
 
 
+def append_files_to_task(
+    cvat_client: CVATClient,
+    task: Task,
+    df__batch: pd.DataFrame,
+    file_path_column: str,
+    cloud_storage_bucket: Optional[str],
+    primary_keys: List[str],
+    project_id: int,
+    inner_task_id: int,
+    task_queue_id__name: str,
+    task_queue_id: Any,
+) -> pd.DataFrame:
+    if df__batch.empty:
+        return pd.DataFrame(
+            columns=primary_keys + ["project_id", "inner_task_id", "task_id", "cvat__file_path", "inner_frame_id"]
+        )
+
+    if cloud_storage_bucket is None:
+        resources = df__batch[file_path_column].tolist()
+        resource_type = ResourceType.LOCAL
+        data_params = {
+            "image_quality": 75,
+            "use_zip_chunks": True,
+            "use_cache": True,
+            "sorting_method": "predefined",
+        }
+    else:
+        resources = [_cvat_file_path(filepath, cloud_storage_bucket) for filepath in df__batch[file_path_column]]
+        resource_type = ResourceType.SHARE
+        data_params = {
+            "cloud_storage_id": get_cloud_storage(cvat_client, cloud_storage_bucket),
+            "image_quality": 75,
+            "use_zip_chunks": True,
+            "use_cache": True,
+            "sorting_method": "predefined",
+        }
+    task.upload_data(resources=resources, resource_type=resource_type, params=data_params)
+    meta = task.get_meta()
+    df__meta = pd.DataFrame(
+        {
+            "project_id": project_id,
+            "inner_task_id": inner_task_id,
+            task_queue_id__name: task_queue_id,
+            "task_id": task.id,
+            "cvat__file_path": frame["name"],
+            "inner_frame_id": frame_id,
+        }
+        for frame_id, frame in enumerate(meta["frames"])
+    )
+    df__batch = df__batch.copy()
+    df__batch["cvat__file_path"] = df__batch[file_path_column].apply(
+        lambda filepath: _cvat_file_path(filepath, cloud_storage_bucket)
+    )
+    return pd.merge(
+        df__batch[primary_keys + ["cvat__file_path"]],
+        df__meta,
+        on=[task_queue_id__name, "cvat__file_path"],
+    ).sort_values(by=[task_queue_id__name, "inner_frame_id"])
+
+
+def reset_task_jobs_status(task: Task) -> None:
+    for job in task.get_jobs():
+        if getattr(job, "state", None) == "completed":
+            job.update({"state": "new"})
+
+
 def update_cvat_task_status(
     ds: DataStore,
     input_dts: List[DataTable],
@@ -642,10 +808,11 @@ def upload_batches_to_cvat(
     cvat_files_dt: DataTable,
     cvat_task_dt: DataTable,
     task_sync_table_dt: DataTable,
+    cvat_annotation_dt: DataTable,
     cvat_url: str,
     cvat_organization: str,
     cvat_credentials: Tuple[str, str],
-    delete_cvat_tasks: bool,
+    delete_unannotated_tasks_only_on_update: bool,
     file_path_column: str,
     cvat_project_id: int,
     cloud_storage_bucket: Optional[str],
@@ -671,45 +838,110 @@ def upload_batches_to_cvat(
             - df__cvat_files: files table with links to tasks and frames
     """
 
-    if delete_cvat_tasks:
-        df_existing_input_batches_to_be_deleted = input_batches_dt.get_data(idx=idx)
-        df_existing_tasks_to_be_deleted = df_existing_input_batches_to_be_deleted.merge(
-            df__cvat_files, on=primary_keys + ["inner_task_id"]
+    df__input_batches = pd.merge(df__input, df__input_batches)
+    cvat_client: CVATClient = create_cvat_client(cvat_url, cvat_organization, cvat_credentials)
+    preliminary_delete_idx = index_difference(
+        data_to_index(df__cvat_files, primary_keys),
+        data_to_index(df__input_batches, primary_keys),
+    )
+    preliminary_changed_rows = pd.merge(df__input_batches, df__cvat_files, on=primary_keys + ["inner_task_id"])
+    preliminary_changed_rows = preliminary_changed_rows[
+        preliminary_changed_rows[file_path_column].apply(lambda filepath: _cvat_file_path(filepath, cloud_storage_bucket))
+        != preliminary_changed_rows["cvat__file_path"]
+    ]
+    preliminary_rows_to_delete = pd.concat(
+        [
+            index_to_data(df__cvat_files, preliminary_delete_idx),
+            preliminary_changed_rows[df__cvat_files.columns],
+        ],
+        ignore_index=True,
+    )
+    local_annotations = (
+        cvat_annotation_dt.get_data(idx=data_to_index(preliminary_rows_to_delete, primary_keys))
+        if len(preliminary_rows_to_delete) > 0
+        else pd.DataFrame(columns=primary_keys + ["annotations"])
+    )
+    update_plan = plan_cvat_frame_updates(
+        df__input_batches=df__input_batches,
+        df__cvat_files=df__cvat_files,
+        df__local_annotations=local_annotations,
+        primary_keys=primary_keys,
+        file_path_column=file_path_column,
+        cloud_storage_bucket=cloud_storage_bucket,
+        delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
+    )
+    rows_to_delete = update_plan.rows_to_delete
+    rows_to_upload = update_plan.rows_to_upload
+    kept_annotated_rows: List[pd.Series] = []
+    actual_rows_to_delete: List[pd.Series] = []
+    for task_id, df__delete_task in rows_to_delete.groupby("task_id"):
+        task = cvat_client.tasks.retrieve(int_from_scalar(task_id))
+        annotations = task.get_annotations()
+        frame_ids_to_delete = []
+        for _, row in df__delete_task.iterrows():
+            frame_id = int_from_scalar(row["inner_frame_id"])
+            has_local_annotation = _annotation_xml_has_data(row.get("annotations"))
+            if delete_unannotated_tasks_only_on_update and (has_local_annotation or _frame_has_annotations(annotations, frame_id)):
+                kept_annotated_rows.append(row)
+            else:
+                actual_rows_to_delete.append(row)
+                frame_ids_to_delete.append(frame_id)
+        if frame_ids_to_delete:
+            task.remove_frames_by_ids(frame_ids_to_delete)
+
+    actual_deleted_df = pd.DataFrame(actual_rows_to_delete)
+    if len(actual_deleted_df) > 0:
+        deleted_idx = data_to_index(actual_deleted_df, primary_keys + ["project_id", "inner_task_id", "task_id"])
+        cvat_files_dt.delete_by_idx(deleted_idx)
+        task_sync_table_dt.delete_by_idx(data_to_index(actual_deleted_df, ["project_id", "inner_task_id", "task_id"]))
+        df__cvat_files = pd.merge(
+            df__cvat_files,
+            deleted_idx,
+            on=primary_keys + ["project_id", "inner_task_id", "task_id"],
+            how="left",
+            indicator=True,
+        )
+        df__cvat_files = df__cvat_files[df__cvat_files["_merge"] == "left_only"].drop(columns="_merge")
+
+    if kept_annotated_rows:
+        kept_df = pd.DataFrame(kept_annotated_rows)
+        rows_to_upload = index_to_data(rows_to_upload, index_difference(data_to_index(rows_to_upload, primary_keys), data_to_index(kept_df, primary_keys)))
+
+    existing_task_keys = data_to_index(df__cvat_task, [task_queue_id__name, "inner_task_id"])
+    rows_to_upload_existing_tasks = pd.merge(rows_to_upload, existing_task_keys, on=[task_queue_id__name, "inner_task_id"])
+    rows_to_create_tasks = index_to_data(
+        rows_to_upload,
+        index_difference(
+            data_to_index(rows_to_upload, [task_queue_id__name, "inner_task_id"]),
+            data_to_index(rows_to_upload_existing_tasks, [task_queue_id__name, "inner_task_id"]),
+        ),
+    )
+    appended_dfs__cvat_files = []
+    for (task_queue_id, inner_task_id), df__batch_to_append in rows_to_upload_existing_tasks.groupby(
+        [task_queue_id__name, "inner_task_id"]
+    ):
+        task_row = df__cvat_task[
+            (df__cvat_task[task_queue_id__name] == task_queue_id)
+            & (df__cvat_task["inner_task_id"] == inner_task_id)
+        ].iloc[0]
+        task = cvat_client.tasks.retrieve(int_from_scalar(task_row["task_id"]))
+        reset_task_jobs_status(task)
+        appended_dfs__cvat_files.append(
+            append_files_to_task(
+                cvat_client=cvat_client,
+                task=task,
+                df__batch=df__batch_to_append,
+                file_path_column=file_path_column,
+                cloud_storage_bucket=cloud_storage_bucket,
+                primary_keys=primary_keys,
+                project_id=cvat_project_id,
+                inner_task_id=int_from_scalar(inner_task_id),
+                task_queue_id__name=task_queue_id__name,
+                task_queue_id=task_queue_id,
+            )
         )
 
-        if len(df_existing_tasks_to_be_deleted) > 0:
-            cvat_client: CVATClient = create_cvat_client(cvat_url, cvat_organization, cvat_credentials)
-            cvat_client.tasks.remove_by_ids(task_ids=list(set(df_existing_tasks_to_be_deleted["task_id"])))
-
-            input_batches_dt.delete_by_idx(
-                idx=data_to_index(
-                    df_existing_tasks_to_be_deleted,
-                    primary_keys + ["inner_task_id"],
-                )
-            )
-            cvat_files_dt.delete_by_idx(
-                idx=data_to_index(
-                    df_existing_tasks_to_be_deleted,
-                    primary_keys + ["project_id", "inner_task_id", "task_id"],
-                )
-            )
-            cvat_task_dt.delete_by_idx(
-                idx=data_to_index(
-                    df_existing_tasks_to_be_deleted,
-                    ["project_id", "inner_task_id", "task_id"],
-                )
-            )
-            task_sync_table_dt.delete_by_idx(
-                idx=data_to_index(
-                    df_existing_tasks_to_be_deleted,
-                    ["project_id", "inner_task_id", "task_id"],
-                )
-            )
-            df__cvat_task = df__cvat_task[~df__cvat_task["task_id"].isin(df_existing_tasks_to_be_deleted["task_id"])]
-            df__cvat_files = df__cvat_files[~df__cvat_files["task_id"].isin(df_existing_tasks_to_be_deleted["task_id"])]
-
-    df__input_batches = pd.merge(df__input, df__input_batches)
-    df__files = (df__input_batches if len(df__input_batches) >= len(df__cvat_files) else df__cvat_files).copy()
+    df__files = pd.concat([df__cvat_files, rows_to_create_tasks], ignore_index=True).copy()
 
     new_dfs__cvat_files: List[pd.DataFrame] = []
     new_tasks_records: List[dict] = []
@@ -763,7 +995,9 @@ def upload_batches_to_cvat(
         new_tasks_records, columns=["project_id", task_queue_id__name, "task_id", "inner_task_id"]
     )
     if len(new_dfs__cvat_files) > 0:
-        df__cvat_files_new = pd.concat(new_dfs__cvat_files, ignore_index=True)
+        df__cvat_files_new = pd.concat(new_dfs__cvat_files + appended_dfs__cvat_files, ignore_index=True)
+    elif len(appended_dfs__cvat_files) > 0:
+        df__cvat_files_new = pd.concat(appended_dfs__cvat_files, ignore_index=True)
     else:
         df__cvat_files_new = pd.DataFrame(columns=primary_keys + ["project_id", "inner_task_id", "task_id", "cvat__file_path", "inner_frame_id"])
 
@@ -798,7 +1032,7 @@ class CVATStep(PipelineStep):
     primary_keys: List[str]
     file_path_column: str
     cloud_storage_bucket: Optional[str]
-    delete_cvat_tasks: bool = False
+    delete_unannotated_tasks_only_on_update: bool = False
     file_type: Literal["image", "video"] = "image"
     files_batch: Union[int, dict[Any, int]] = 100
     minimum_files_in_job: Union[int, dict[Any, int]] = 50
@@ -939,7 +1173,7 @@ class CVATStep(PipelineStep):
             ],
         )
 
-        _mk(
+        cvat_annotation_dt = _mk(
             output_cvat_annotation_name,
             [column for column in dt_input.table_store.get_schema() if column.name in self.primary_keys]
             + [Column("inner_task_id", Integer, primary_key=True)]
@@ -986,10 +1220,11 @@ class CVATStep(PipelineStep):
                         cvat_files_dt=cvat_files_dt,
                         cvat_task_dt=cvat_task_dt,
                         task_sync_table_dt=task_sync_table_dt,
+                        cvat_annotation_dt=cvat_annotation_dt,
                         cvat_url=self.cvat_url,
                         cvat_organization=self.cvat_organization,
                         cvat_credentials=self.cvat_credentials,
-                        delete_cvat_tasks=self.delete_cvat_tasks,
+                        delete_unannotated_tasks_only_on_update=self.delete_unannotated_tasks_only_on_update,
                         file_path_column=self.file_path_column,
                         cvat_project_id=self.cvat_project_id,
                         cloud_storage_bucket=self.cloud_storage_bucket,

@@ -15,7 +15,7 @@ from cvat_sdk.models import LabeledDataRequest, LabeledShapeRequest, PatchedLabe
 from PIL import Image
 from sqlalchemy import Column, String
 
-from datapipe_cvat.cvat_step import CVATStep, create_cvat_client
+from datapipe_cvat.cvat_step import CVATStep, create_cvat_client, plan_cvat_frame_updates, reset_task_jobs_status
 
 
 pytestmark = pytest.mark.cvat
@@ -34,6 +34,24 @@ class _Shape:
 class _Annotations:
     def __init__(self, shapes):
         self.shapes = shapes
+
+
+class _Job:
+    def __init__(self, state):
+        self.state = state
+        self.updates = []
+
+    def update(self, values):
+        self.updates.append(values)
+        self.state = values.get("state", self.state)
+
+
+class _Task:
+    def __init__(self, jobs):
+        self._jobs = jobs
+
+    def get_jobs(self):
+        return self._jobs
 
 
 def wait_until_cvat_is_up(cvat_url: str, timeout_seconds: int = 120) -> None:
@@ -122,6 +140,120 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
     return ET.tostring(image_element, encoding="unicode")
 
 
+def test_reset_task_jobs_status_resets_completed_jobs_only():
+    completed_job = _Job("completed")
+    active_job = _Job("new")
+
+    reset_task_jobs_status(_Task([completed_job, active_job]))
+
+    assert completed_job.updates == [{"state": "new"}]
+    assert completed_job.state == "new"
+    assert active_job.updates == []
+
+
+SCENARIO_BATCHES = [
+    ("all_u_same", ["U_same", "U_same", "U_same", "U_same"]),
+    ("all_a_same", ["A_same", "A_same", "A_same", "A_same"]),
+    ("u_changed", ["U_changed", "U_same", "U_same", "U_same"]),
+    ("a_changed", ["A_changed", "U_same", "U_same", "U_same"]),
+    ("u_deleted", ["U_deleted", "U_same", "U_same", "U_same"]),
+    ("a_deleted", ["A_deleted", "U_same", "U_same", "U_same"]),
+    ("a_changed_u_deleted", ["A_changed", "U_deleted", "U_same", "U_same"]),
+    ("a_changed_a_deleted", ["A_changed", "A_deleted", "U_same", "U_same"]),
+    ("u_changed_a_deleted", ["U_changed", "A_deleted", "U_same", "U_same"]),
+    ("two_a_changed_two_a_deleted", ["A_changed", "A_changed", "A_deleted", "A_deleted"]),
+    ("two_u_changed_two_u_deleted", ["U_changed", "U_changed", "U_deleted", "U_deleted"]),
+    ("mixed_full", ["A_changed", "U_changed", "A_deleted", "U_deleted"]),
+    ("all_a_changed", ["A_changed", "A_changed", "A_changed", "A_changed"]),
+    ("all_a_deleted", ["A_deleted", "A_deleted", "A_deleted", "A_deleted"]),
+    ("a_changed_three_a_same", ["A_changed", "A_same", "A_same", "A_same"]),
+    ("a_deleted_three_a_same", ["A_deleted", "A_same", "A_same", "A_same"]),
+]
+
+
+def _scenario_data(states):
+    existing_rows = []
+    input_rows = []
+    annotation_rows = []
+    for frame_id, state in enumerate(states):
+        image_id = f"image_{frame_id}"
+        existing_rows.append(
+            {
+                "image_id": image_id,
+                "task_queue_id": "queue1",
+                "project_id": 1,
+                "inner_task_id": 0,
+                "task_id": 10,
+                "cvat__file_path": f"{image_id}.jpg",
+                "inner_frame_id": frame_id,
+            }
+        )
+        if state.startswith("A_"):
+            annotation_rows.append(
+                {
+                    "image_id": image_id,
+                    "task_queue_id": "queue1",
+                    "inner_task_id": 0,
+                    "annotations": '<image><box label="cat" xtl="1" ytl="1" xbr="2" ybr="2" /></image>',
+                }
+            )
+        if state.endswith("_deleted"):
+            continue
+        image_path = f"/tmp/{image_id}.jpg"
+        if state.endswith("_changed"):
+            image_path = f"/tmp/{image_id}_changed.jpg"
+        input_rows.append(
+            {
+                "image_id": image_id,
+                "task_queue_id": "queue1",
+                "inner_task_id": 0,
+                "image_path": image_path,
+                "annotations": '<image />',
+            }
+        )
+    return (
+        pd.DataFrame(input_rows, columns=["image_id", "task_queue_id", "inner_task_id", "image_path", "annotations"]),
+        pd.DataFrame(existing_rows),
+        pd.DataFrame(annotation_rows, columns=["image_id", "task_queue_id", "inner_task_id", "annotations"]),
+    )
+
+
+@pytest.mark.parametrize("delete_unannotated_tasks_only_on_update", [False, True])
+@pytest.mark.parametrize("scenario_name,states", SCENARIO_BATCHES)
+def test_plan_cvat_frame_updates_scenario_matrix(scenario_name, states, delete_unannotated_tasks_only_on_update):
+    df__input_batches, df__cvat_files, df__local_annotations = _scenario_data(states)
+
+    plan = plan_cvat_frame_updates(
+        df__input_batches=df__input_batches,
+        df__cvat_files=df__cvat_files,
+        df__local_annotations=df__local_annotations,
+        primary_keys=["image_id", "task_queue_id"],
+        file_path_column="image_path",
+        cloud_storage_bucket=None,
+        delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
+    )
+
+    expected_delete = []
+    expected_upload = []
+    expected_keep = []
+    for frame_id, state in enumerate(states):
+        image_id = f"image_{frame_id}"
+        is_annotated = state.startswith("A_")
+        is_changed = state.endswith("_changed")
+        is_deleted = state.endswith("_deleted")
+        if is_changed or is_deleted:
+            if delete_unannotated_tasks_only_on_update and is_annotated:
+                expected_keep.append(image_id)
+            else:
+                expected_delete.append(image_id)
+                if is_changed:
+                    expected_upload.append(image_id)
+
+    assert sorted(plan.rows_to_delete["image_id"].tolist()) == expected_delete, scenario_name
+    assert sorted(plan.rows_to_upload["image_id"].tolist()) == expected_upload, scenario_name
+    assert sorted(plan.rows_to_keep["image_id"].tolist()) == expected_keep, scenario_name
+
+
 def _make_image_files(tmp_dir, ids: list[str]) -> dict[str, str]:
     images_dir = tmp_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
@@ -147,6 +279,38 @@ def _make_image_df(tmp_dir, ids: list[str] | None = None) -> pd.DataFrame:
             ],
         }
     )
+
+
+def _make_scenario_initial_df(tmp_dir, scenario_name: str, states) -> pd.DataFrame:
+    ids = [f"{scenario_name}_image_{idx}" for idx in range(len(states))]
+    image_paths = _make_image_files(tmp_dir, ids)
+    return pd.DataFrame(
+        {
+            "image_id": ids,
+            "task_queue_id": [scenario_name] * len(ids),
+            "image_path": [image_paths[image_id] for image_id in ids],
+            "annotations": ["<image />" for _ in ids],
+        }
+    )
+
+
+def _make_scenario_updated_df(tmp_dir, scenario_name: str, states) -> pd.DataFrame:
+    rows = []
+    for idx, state in enumerate(states):
+        if state.endswith("_deleted"):
+            continue
+        image_id = f"{scenario_name}_image_{idx}"
+        path_image_id = f"{image_id}_changed" if state.endswith("_changed") else image_id
+        image_path = _make_image_files(tmp_dir, [path_image_id])[path_image_id]
+        rows.append(
+            {
+                "image_id": image_id,
+                "task_queue_id": scenario_name,
+                "image_path": image_path,
+                "annotations": "<image />",
+            }
+        )
+    return pd.DataFrame(rows, columns=["image_id", "task_queue_id", "image_path", "annotations"])
 
 
 def _store_generated_df(df: pd.DataFrame):
@@ -275,7 +439,7 @@ def cvat_pipeline_delete_case(tmp_dir, dbconn, cvat_url, cvat_credentials):
                 primary_keys=["image_id", "task_queue_id"],
                 file_path_column="image_path",
                 cloud_storage_bucket=None,
-                delete_cvat_tasks=True,
+                delete_unannotated_tasks_only_on_update=True,
                 files_batch=2,
                 minimum_files_in_job=2,
                 task_queue_id__name="task_queue_id",
@@ -306,6 +470,171 @@ def _run_with_df(ds: DataStore, steps, df: pd.DataFrame) -> None:
         output_dts=[ds.get_table("image_raw")],
     )
     run_steps(ds, steps)
+
+
+def _build_cvat_pipeline_case(
+    dbconn,
+    cvat_url,
+    cvat_credentials,
+    project,
+    delete_unannotated_tasks_only_on_update: bool,
+):
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "image_raw": Table(
+                store=TableStoreDB(
+                    dbconn=dbconn,
+                    name="image_raw",
+                    data_sql_schema=[
+                        Column("image_id", String, primary_key=True),
+                        Column("task_queue_id", String, primary_key=True),
+                        Column("image_path", String),
+                        Column("annotations", String),
+                    ],
+                    create_table=True,
+                )
+            )
+        }
+    )
+    pipeline = Pipeline(
+        [
+            CVATStep(
+                input="image_raw",
+                output__input_batches="image_batches",
+                output__cvat_task="cvat_task",
+                output__cvat_files="cvat_files",
+                output__cvat_annotation="cvat_annotation",
+                task_sync_table="cvat_task_sync_table",
+                cvat_url=cvat_url,
+                cvat_organization="",
+                cvat_credentials=cvat_credentials,
+                cvat_project_id=project.id,
+                primary_keys=["image_id", "task_queue_id"],
+                file_path_column="image_path",
+                cloud_storage_bucket=None,
+                delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
+                files_batch=4,
+                minimum_files_in_job=4,
+                task_queue_id__name="task_queue_id",
+                task_name_format="datapipe-cvat-scenario {task_queue_id} batch={inner_task_id}",
+                max_attempts=1,
+                attempt_poll_s=1,
+                create_table=True,
+            )
+        ]
+    )
+    return ds, build_compute(ds, catalog, pipeline)
+
+
+@pytest.fixture
+def cvat_scenario_case(tmp_dir, dbconn, cvat_url, cvat_credentials, request):
+    _require_cvat(cvat_url)
+    delete_unannotated_tasks_only_on_update = bool(request.param)
+    client = create_cvat_client(cvat_url, "", cvat_credentials)
+    project = client.projects.create(
+        ProjectWriteRequest(
+            name=f"datapipe-cvat-scenario-test-{uuid4().hex}",
+            labels=[PatchedLabelRequest(name="cat")],
+        )
+    )
+    ds, steps = _build_cvat_pipeline_case(
+        dbconn=dbconn,
+        cvat_url=cvat_url,
+        cvat_credentials=cvat_credentials,
+        project=project,
+        delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
+    )
+    try:
+        yield ds, steps, client, project, tmp_dir, delete_unannotated_tasks_only_on_update
+    finally:
+        try:
+            for task in project.get_tasks():
+                client.tasks.remove_by_ids([task.id])
+            client.projects.remove_by_ids([project.id])
+        except Exception:
+            pass
+
+
+def _mark_scenario_annotations(ds: DataStore, project, states) -> None:
+    task = project.get_tasks()[0]
+    labels_by_name = {label.name: label.id for label in task.get_labels()}
+    shapes = []
+    annotation_rows = []
+    cvat_files = ds.get_table("cvat_files").get_data().sort_values("image_id").reset_index(drop=True)
+    for idx, state in enumerate(states):
+        if not state.startswith("A_"):
+            continue
+        frame_row = cvat_files.iloc[idx]
+        shapes.append(
+            LabeledShapeRequest(
+                type="rectangle",
+                label_id=labels_by_name["cat"],
+                frame=int(frame_row["inner_frame_id"]),
+                points=[10, 5, 30, 25],
+                occluded=False,
+                outside=False,
+                z_order=0,
+            )
+        )
+        annotation_rows.append(
+            {
+                "image_id": frame_row["image_id"],
+                "task_queue_id": frame_row["task_queue_id"],
+                "inner_task_id": frame_row["inner_task_id"],
+                "annotations": '<image><box label="cat" xtl="10" ytl="5" xbr="30" ybr="25" /></image>',
+            }
+        )
+    task.set_annotations(LabeledDataRequest(version=0, tags=[], shapes=shapes, tracks=[]))
+    if annotation_rows:
+        ds.get_table("cvat_annotation").store_chunk(pd.DataFrame(annotation_rows))
+
+
+@pytest.mark.parametrize("cvat_scenario_case", [False, True], indirect=True)
+@pytest.mark.parametrize("scenario_name,states", SCENARIO_BATCHES)
+def test_real_cvat_pipeline_frame_update_scenarios(cvat_scenario_case, scenario_name, states):
+    ds, steps, _, project, tmp_dir, delete_unannotated_tasks_only_on_update = cvat_scenario_case
+    initial_df = _make_scenario_initial_df(tmp_dir, scenario_name, states)
+    updated_df = _make_scenario_updated_df(tmp_dir, scenario_name, states)
+
+    _run_with_df(ds, steps, initial_df)
+    assert len(project.get_tasks()) == 1
+    _mark_scenario_annotations(ds, project, states)
+    task_id_before = project.get_tasks()[0].id
+    initial_cvat_files = ds.get_table("cvat_files").get_data()
+
+    _run_with_df(ds, steps, updated_df)
+
+    assert len(project.get_tasks()) == 1
+    assert project.get_tasks()[0].id == task_id_before
+    cvat_files = ds.get_table("cvat_files").get_data()
+
+    expected_rows = 0
+    for idx, state in enumerate(states):
+        image_id = f"{scenario_name}_image_{idx}"
+        is_annotated = state.startswith("A_")
+        is_changed = state.endswith("_changed")
+        is_deleted = state.endswith("_deleted")
+        if is_deleted:
+            expected_rows += int(delete_unannotated_tasks_only_on_update and is_annotated)
+        else:
+            expected_rows += 1
+
+        row = cvat_files[cvat_files["image_id"] == image_id]
+        if delete_unannotated_tasks_only_on_update and is_annotated and (is_changed or is_deleted):
+            previous_row = initial_cvat_files[initial_cvat_files["image_id"] == image_id].iloc[0]
+            assert len(row) == 1
+            assert row.iloc[0]["inner_frame_id"] == previous_row["inner_frame_id"]
+            assert row.iloc[0]["cvat__file_path"] == previous_row["cvat__file_path"]
+        elif is_deleted:
+            assert len(row) == 0
+        elif is_changed:
+            assert len(row) == 1
+            assert row.iloc[0]["cvat__file_path"].endswith("_changed.jpg")
+        else:
+            assert len(row) == 1
+
+    assert len(cvat_files) == expected_rows
 
 
 def _set_first_task_completed(client, ds: DataStore, project) -> None:
@@ -436,12 +765,13 @@ def test_cvat_pipeline_specific_updating_scenario(cvat_pipeline_delete_case):
 
     _run_with_df(ds, steps, df1)
     task_ids_before = set(ds.get_table("cvat_task").get_data()["task_id"].tolist())
+    tasks_before_count = len(project.get_tasks())
     _run_with_df(ds, steps, df2)
 
     assert len(ds.get_table("image_raw").get_data()) == 4
     assert len(ds.get_table("cvat_files").get_data()) == 4
-    assert len(project.get_tasks()) == 2
-    assert set(ds.get_table("cvat_task").get_data()["task_id"].tolist()) != task_ids_before
+    assert len(project.get_tasks()) == tasks_before_count
+    assert set(ds.get_table("cvat_task").get_data()["task_id"].tolist()) == task_ids_before
 
 
 def test_cvat_pipeline_moderate_then_delete_task(cvat_pipeline_delete_case):
@@ -458,7 +788,7 @@ def test_cvat_pipeline_moderate_then_delete_task(cvat_pipeline_delete_case):
 
     assert len(ds.get_table("image_raw").get_data()) == 2
     assert len(ds.get_table("cvat_files").get_data()) == 2
-    assert len(project.get_tasks()) == 1
+    assert len(project.get_tasks()) == 2
 
 
 def test_annotations_to_cvat_image_xml_handles_sdk_shape_type_objects(tmp_dir):
