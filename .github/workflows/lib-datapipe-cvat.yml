@@ -40,7 +40,7 @@ jobs:
         run: |
           pip install -e "libs/datapipe-core[gcsfs,s3fs]"
           pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk>=2.29.0" "flake8" "mypy"
+          pip install "cvat-sdk==2.65.0" "flake8" "mypy"
           pip install pandas-stubs pytest-cases types-setuptools types-requests
 
       - name: Lint with flake8
@@ -70,7 +70,7 @@ jobs:
         run: |
           pip install -e "libs/datapipe-core[gcsfs,s3fs]"
           pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk>=2.29.0" "pytest<8" "pytest_cases"
+          pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases"
 
       - name: Import smoke test
         run: |
@@ -89,8 +89,8 @@ jobs:
 
       - name: Start CVAT
         run: |
-          git clone --depth 1 --branch v2.29.0 https://github.com/cvat-ai/cvat.git /tmp/cvat
-          CVAT_VERSION=v2.29.0 docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml up -d
+          git clone --depth 1 --branch v2.65.0 https://github.com/cvat-ai/cvat.git /tmp/cvat
+          CVAT_VERSION=v2.65.0 docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml up -d
           for i in $(seq 1 180); do
             if curl -fsS "http://localhost:8080/api/server/about" >/dev/null; then
               exit 0
@@ -109,7 +109,7 @@ jobs:
         run: |
           pip install -e "libs/datapipe-core[gcsfs,s3fs]"
           pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk>=2.29.0" "pytest<8" "pytest_cases" "requests"
+          pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases" "requests"
 
       - name: Test with real CVAT
         run: |
