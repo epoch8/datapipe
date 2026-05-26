@@ -783,7 +783,9 @@ def test_cvat_pipeline_moderate_then_delete_task(cvat_pipeline_delete_case):
     run_steps(ds, steps)
     assert len(ds.get_table("cvat_annotation").get_data()) == 2
 
-    ds.get_table("image_raw").delete_by_idx(pd.DataFrame({"image_id": ["image_0", "image_1"]}))
+    ds.get_table("image_raw").delete_by_idx(
+        pd.DataFrame({"image_id": ["image_0", "image_1"], "task_queue_id": ["queue1", "queue1"]})
+    )
     run_steps(ds, steps)
 
     assert len(ds.get_table("image_raw").get_data()) == 2

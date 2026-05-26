@@ -392,7 +392,7 @@ def plan_cvat_frame_updates(
         rows_to_delete,
         df__local_annotations,
         how="left",
-        on=primary_keys,
+        on=primary_keys + ["inner_task_id"],
     )
     keep_mask = (
         rows_to_delete_with_annotations["annotations"].apply(_annotation_xml_has_data)
