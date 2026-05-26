@@ -74,4 +74,47 @@ jobs:
 
       - name: Import smoke test
         run: |
-          pytest libs/datapipe-cvat/tests
+          pytest libs/datapipe-cvat/tests -m "not cvat"
+
+  test-cvat-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Start CVAT
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/cvat-ai/cvat/v2.29.0/docker-compose.yml -o /tmp/cvat-docker-compose.yml
+          CVAT_VERSION=v2.29.0 docker compose -f /tmp/cvat-docker-compose.yml up -d
+          for i in $(seq 1 180); do
+            if curl -fsS "http://localhost:8080/api/server/about" >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f /tmp/cvat-docker-compose.yml logs --tail=200
+          echo "CVAT didn't become ready in time"
+          exit 1
+
+      - name: Create CVAT superuser
+        run: |
+          docker exec cvat_server bash -lc "DJANGO_SUPERUSER_PASSWORD=admin python3 ~/manage.py createsuperuser --username admin --email admin@example.com --noinput || true"
+
+      - name: Install dependencies
+        run: |
+          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-cvat" --no-deps
+          pip install "cvat-sdk>=2.29.0" "pytest<8" "pytest_cases" "requests"
+
+      - name: Test with real CVAT
+        run: |
+          pytest libs/datapipe-cvat/tests -m "cvat"
+        env:
+          CVAT_URL: http://localhost:8080
+          CVAT_USERNAME: admin
+          CVAT_PASSWORD: admin

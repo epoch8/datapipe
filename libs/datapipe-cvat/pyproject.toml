@@ -28,6 +28,11 @@ dev = [
 [tool.uv.sources]
 datapipe-core = { workspace = true }
 
+[tool.pytest.ini_options]
+markers = [
+    "cvat: tests that require a real CVAT service",
+]
+
 [tool.hatch.build.targets.sdist]
 exclude = ["tests", "experiments"]
 
