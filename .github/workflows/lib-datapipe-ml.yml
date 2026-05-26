@@ -1,0 +1,286 @@
+name: datapipe-ml
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+      - "feature/monorepo-migration"
+    paths:
+      - ".github/workflows/lib-datapipe-ml.yml"
+      - "examples/e2e_template/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-ml.yml"
+      - "examples/e2e_template/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with pip
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[sqlite]" "flake8" "mypy"
+          uv pip install --system pandas-stubs types-setuptools types-tqdm types-pillow types-PyYAML
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-ml/datapipe_ml --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-ml/datapipe_ml --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        working-directory: libs/datapipe-ml
+        run: |
+          mypy --config-file mypy-config.toml -p datapipe_ml --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        test-db-env: ["sqlite"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with pip
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[sqlite]" "pytest<8" "pytest-cases"
+
+      - name: Test with pytest
+        run: |
+          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not tensorflow and not torch"
+        env:
+          TEST_DB_ENV: ${{ matrix.test-db-env }}
+
+  test-tensorflow:
+    runs-on: ubuntu-latest
+    container:
+      image: tensorflow/tensorflow:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y git libgl1 libglib2.0-0
+
+      - name: Install dependencies with pip
+        run: |
+          python -m pip install --upgrade pip
+          uv pip install --system -e "libs/datapipe-ml[tensorflow,sqlite]" "pytest<8" "pytest-cases"
+
+      - name: Test TensorFlow extra with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests -m "tensorflow and not sky_vast and not e2e_examples"
+        env:
+          TEST_DB_ENV: sqlite
+
+  test-torch:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/pytorch/ci-image:pytorch-linux-jammy-py3.12-clang18
+      options: --user root
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y git libgl1 libglib2.0-0
+
+      - name: Install dependencies with pip
+        run: |
+          python -m pip install --upgrade pip
+          python tools/ci/generate_requirements.py --pyproject libs/datapipe-ml/pyproject.toml --extra torch --extra sqlite --exclude torch --exclude torchvision --output /tmp/datapipe-ml-requirements.txt
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-ml" --no-deps
+          uv pip install --system -r /tmp/datapipe-ml-requirements.txt "boto3" "pytest<8" "pytest-cases"
+
+      - name: Test Torch extra with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests -m "torch and not sky_vast and not e2e_examples"
+        env:
+          TEST_DB_ENV: sqlite
+
+  test-e2e-template:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      minio:
+        image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 9000:9000
+        command: server /data
+    steps:
+      - name: Run Label Studio
+        run: |
+          docker run -d \
+            --add-host host.docker.internal:host-gateway \
+            -p 8080:8080 \
+            --env DJANGO_DB=default \
+            --env POSTGRE_NAME=postgres \
+            --env POSTGRE_USER=postgres \
+            --env POSTGRE_PASSWORD=password \
+            --env POSTGRE_PORT=5432 \
+            --env POSTGRE_HOST=host.docker.internal \
+            --env LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN=true \
+            heartexlabs/label-studio:1.22.0
+
+      - name: Wait for Label Studio startup
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS "http://localhost:8080/user/login/" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Label Studio didn't become ready in time"
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with pip
+        run: |
+          python -m pip install --upgrade pip
+          uv pip install --system -e "libs/datapipe-label-studio" -e "libs/datapipe-ml[torch,sqlite]" "boto3" "pytest<8" "pytest-cases" "fiftyone==1.4.0"
+
+      - name: Get Label Studio API token
+        id: label-studio-token
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from datapipe_label_studio.sdk_utils import login_and_get_token, sign_up
+          url = "http://localhost:8080"
+          email = "test@epoch8.com"
+          password = "qwerty123"
+          token = sign_up(url, email, password) or login_and_get_token(url, email, password)
+          print(f"token={token}")
+          PY
+
+      - name: Seed MinIO bucket
+        run: |
+          python - <<'PY'
+          import boto3
+          client = boto3.client(
+              "s3",
+              endpoint_url="http://localhost:9000",
+              aws_access_key_id="minioadmin",
+              aws_secret_access_key="minioadmin",
+              region_name="us-east-1",
+          )
+          bucket = "datapipe-e2e"
+          existing = [b["Name"] for b in client.list_buckets()["Buckets"]]
+          if bucket not in existing:
+              client.create_bucket(Bucket=bucket)
+          PY
+
+      - name: Create e2e Postgres schema
+        run: |
+          python - <<'PY'
+          import os
+          import sqlalchemy as sa
+
+          schema = os.environ["DB_SCHEMA"]
+          engine = sa.create_engine(os.environ["DB_URL"])
+          with engine.begin() as conn:
+              conn.execute(sa.text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+              conn.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
+          PY
+        env:
+          DB_URL: postgresql://postgres:password@localhost:5432/postgres
+          DB_SCHEMA: datapipe_e2e
+
+      - name: Test e2e template with local services
+        run: |
+          python -m pytest \
+            libs/datapipe-ml/tests/test_e2e_template_structure.py \
+            libs/datapipe-ml/tests/test_e2e_template_service.py \
+            -m "e2e_template"
+        env:
+          DB_URL: postgresql://postgres:password@localhost:5432/postgres
+          DB_SCHEMA: datapipe_e2e
+          LABEL_STUDIO_URL: http://localhost:8080
+          LABEL_STUDIO_API_KEY: ${{ steps.label-studio-token.outputs.token }}
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          S3_ENDPOINT_URL: http://localhost:9000
+          S3_BUCKET: datapipe-e2e
+          S3_PREFIX: images

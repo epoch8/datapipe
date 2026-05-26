@@ -1,0 +1,64 @@
+# https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+
+name: Build and Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "datapipe-core-v*"
+      - "datapipe-ml-v*"
+      - "datapipe-label-studio-v*"
+      - "datapipe-cvat-v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      package-name: ${{ steps.package.outputs.package-name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select package from tag
+        id: package
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            datapipe-core-v*) echo "package-name=datapipe-core" >> "$GITHUB_OUTPUT" ;;
+            datapipe-ml-v*) echo "package-name=datapipe-ml" >> "$GITHUB_OUTPUT" ;;
+            datapipe-label-studio-v*) echo "package-name=datapipe-label-studio" >> "$GITHUB_OUTPUT" ;;
+            datapipe-cvat-v*) echo "package-name=datapipe-cvat" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported tag: ${GITHUB_REF_NAME}" >&2; exit 1 ;;
+          esac
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build wheel
+        run: |
+          uv build --package "${{ steps.package.outputs.package-name }}"
+
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.package-name }}-distributions
+          path: dist/
+
+  publish-to-pypi:
+    environment:
+      name: pypi
+      url: https://pypi.org/
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-distributions"
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
