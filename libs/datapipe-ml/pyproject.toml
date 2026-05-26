@@ -41,6 +41,9 @@ torch = [
     "huggingface-hub<0.25",
     "ultralytics>=8.0.232",
 ]
+fiftyone = [
+    "fiftyone",
+]
 sky-vast = [
     "skypilot[vast]==0.12.2.post1",
     "vastai-sdk>=0.1.20,<0.2",
@@ -90,6 +93,7 @@ markers = [
     "service_e2e: tests that require local service containers",
     "tensorflow: tests that require the tensorflow optional extra",
     "torch: tests that require the torch optional extra",
+    "fiftyone: tests that require the fiftyone optional extra and MongoDB",
     "sky_vast: tests that require SkyPilot and Vast credentials",
 ]
 

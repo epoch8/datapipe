@@ -5,7 +5,6 @@ on:
     branches:
       - "master"
       - "v**"
-      - "feature/monorepo-migration"
     paths:
       - ".github/workflows/lib-datapipe-ml.yml"
       - "examples/e2e_template/**"
@@ -85,9 +84,47 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not tensorflow and not torch"
+          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not tensorflow and not torch and not fiftyone"
         env:
           TEST_DB_ENV: ${{ matrix.test-db-env }}
+
+  test-fiftyone:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with pip
+        run: |
+          python -m pip install --upgrade pip
+          uv pip install --system -e "libs/datapipe-ml[fiftyone,sqlite]" "pytest<8" "pytest-cases"
+
+      - name: Test FiftyOne extra with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests/test_utils_image_data_stores.py -m "fiftyone"
+        env:
+          TEST_DB_ENV: sqlite
+          FIFTYONE_DATABASE_URI: mongodb://localhost:27017
 
   test-tensorflow:
     runs-on: ubuntu-latest

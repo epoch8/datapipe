@@ -25,7 +25,7 @@ from cv_pipeliner.utils.imagesize import get_image_size
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.store.filedir import ItemStoreFileAdapter, TableStoreFiledir
-from datapipe.store.table_store import TableStore
+from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import (
     DataDF,
     DataSchema,
@@ -96,8 +96,8 @@ class NumpyDataFile(ItemStoreFileAdapter):
 class GetImageSizeFile(ItemStoreFileAdapter):
     mode = "b"
 
-    def load(self, f: IO) -> Dict[str, Tuple[int, int]]:
-        image_size = get_image_size(f)
+    def load(self, f: fsspec.core.OpenFile) -> Dict[str, Tuple[int, int]]:
+        image_size = get_image_size(f.path)
         return {"image_size": image_size}
 
     def dump(self, obj: Dict[str, Tuple[int, int]], f: IO) -> None:
@@ -128,7 +128,7 @@ class YOLOLabelsFile(ItemStoreFileAdapter):
                 protocol = protocol[0]
             prefix = f"{protocol}://"
         image_data = self.yolo_converter.get_image_data_from_annot(image_path=f"{prefix}{image_path}", annot=f)
-        return {"image_size": image_data}
+        return {"image_data": image_data}
 
     def dump(self, obj: Dict[str, Any], f: fsspec.core.OpenFile) -> None:
         image_data: ImageData = obj["image_data"]
@@ -169,11 +169,27 @@ class ImageDataTableStoreDB(TableStoreDB):
         )
 
     def insert_rows(self, df: DataDF) -> None:
+        if df.empty:
+            super().insert_rows(df)
+            return
+        super().insert_rows(self._serialize_image_data(df))
+
+    def update_rows(self, df: DataDF) -> None:
+        if df.empty:
+            super().update_rows(df)
+            return
+        super().update_rows(self._serialize_image_data(df))
+
+    def _serialize_image_data(self, df: DataDF) -> DataDF:
         df = df.copy()
         df["image_data"] = df["image_data"].apply(
-            lambda image_data: json.loads(image_data.json()) if image_data is not None else None
+            lambda image_data: (
+                json.loads(image_data.json())
+                if isinstance(image_data, ImageData)
+                else image_data
+            )
         )
-        super().insert_rows(df)
+        return df
 
     def read_rows(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:
         df = super().read_rows(idx=idx)
@@ -185,20 +201,15 @@ class ImageDataTableStoreDB(TableStoreDB):
         return df
 
 
-class EmptyItemStoreFileAdapter(ItemStoreFileAdapter):
-    mode = "b"
-
-    def load(self, f: IO) -> Dict[str, Any]:
-        return {}
-
-    def dump(self, obj: Dict[str, Any], f: IO) -> None:
-        return None
-
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
-        return _hash_rows(df, keys)
-
-
 class ConnectedImageDataTableStore(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=False,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=False,
+        supports_read_meta_pseudo_df=True,
+    )
+
     def __init__(
         self,
         images_table_store: TableStoreFiledir,
@@ -218,6 +229,9 @@ class ConnectedImageDataTableStore(TableStore):
 
     def get_meta_schema(self) -> MetaSchema:
         return []
+
+    def get_schema(self) -> DataSchema:
+        return self.primary_schema
 
     def delete_rows(self, idx: IndexDF) -> None:
         self.images_data_store.delete_rows(idx)
@@ -365,7 +379,7 @@ class FiftyOneImagesDataTableStore(TableStore):
         if len(df_sample) == 0:
             df_sample = pd.DataFrame(columns=self.attrnames + ["sample"])
         if idx is not None:
-            df_sample = pd.merge(df_sample, idx, on=self.attrnames_no_filepath)
+            df_sample = pd.merge(df_sample, idx, on=self.attrnames)
         return df_sample
 
     def _attend_image_path_to_image_data(self, image_data: ImageData, idxs_values: List[str]) -> ImageData:
@@ -424,7 +438,13 @@ class FiftyOneImagesDataTableStore(TableStore):
         df_samples_to_be_updated_unordered = pd.DataFrame(
             {
                 "sample": [sample for sample in samples_to_be_updated_unordered],
-                **{field: [sample[field] for sample in samples_to_be_updated_unordered] for field in self.attrnames},
+                **{
+                    field: [
+                        self.inverse_mapping_filepath(sample.filepath) if field == "filepath" else sample[field]
+                        for sample in samples_to_be_updated_unordered
+                    ]
+                    for field in self.attrnames
+                },
             }
         )
         samples_to_be_updated = index_to_data(df_samples_to_be_updated_unordered, idxs_to_be_updated)["sample"]
