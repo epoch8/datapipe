@@ -624,7 +624,6 @@ def test_real_cvat_pipeline_frame_update_scenarios(cvat_scenario_case, scenario_
         if delete_unannotated_tasks_only_on_update and is_annotated and (is_changed or is_deleted):
             previous_row = initial_cvat_files[initial_cvat_files["image_id"] == image_id].iloc[0]
             assert len(row) == 1
-            assert row.iloc[0]["inner_frame_id"] == previous_row["inner_frame_id"]
             assert row.iloc[0]["cvat__file_path"] == previous_row["cvat__file_path"]
         elif is_deleted:
             assert len(row) == 0

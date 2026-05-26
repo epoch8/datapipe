@@ -483,7 +483,7 @@ def get_or_create_task(
                             "image_quality": 75,
                             "use_zip_chunks": True,
                             "use_cache": True,
-                            "sorting_method": "random",
+                            "sorting_method": "predefined",
                         }
                     else:
                         resources = df__batch["cvat__file_path"].tolist()
@@ -493,7 +493,7 @@ def get_or_create_task(
                             "image_quality": 75,
                             "use_zip_chunks": True,
                             "use_cache": True,
-                            "sorting_method": "random",
+                            "sorting_method": "predefined",
                         }
                     task = cvat_client.tasks.create_from_data(
                         spec=TaskWriteRequest(
@@ -893,9 +893,6 @@ def upload_batches_to_cvat(
     if len(actual_deleted_df) > 0:
         deleted_idx = data_to_index(actual_deleted_df, primary_keys + ["project_id", "inner_task_id", "task_id"])
         cvat_files_dt.delete_by_idx(deleted_idx)
-        task_sync_table_dt.delete_by_idx(
-            data_to_index(actual_deleted_df, ["project_id", task_queue_id__name, "inner_task_id", "task_id"])
-        )
         df__cvat_files = pd.merge(
             df__cvat_files,
             deleted_idx,
@@ -918,7 +915,9 @@ def upload_batches_to_cvat(
             data_to_index(rows_to_upload_existing_tasks, [task_queue_id__name, "inner_task_id"]),
         ),
     )
+    task_record_columns = ["project_id", task_queue_id__name, "inner_task_id", "task_id"]
     appended_dfs__cvat_files = []
+    task_records: List[dict] = df__cvat_task[task_record_columns].to_dict(orient="records")
     for (task_queue_id, inner_task_id), df__batch_to_append in rows_to_upload_existing_tasks.groupby(
         [task_queue_id__name, "inner_task_id"]
     ):
@@ -926,6 +925,7 @@ def upload_batches_to_cvat(
             (df__cvat_task[task_queue_id__name] == task_queue_id)
             & (df__cvat_task["inner_task_id"] == inner_task_id)
         ].iloc[0]
+        task_records.append(task_row[task_record_columns].to_dict())
         task = cvat_client.tasks.retrieve(int_from_scalar(task_row["task_id"]))
         reset_task_jobs_status(task)
         appended_dfs__cvat_files.append(
@@ -946,7 +946,6 @@ def upload_batches_to_cvat(
     df__files = pd.concat([df__cvat_files, rows_to_create_tasks], ignore_index=True).copy()
 
     new_dfs__cvat_files: List[pd.DataFrame] = []
-    new_tasks_records: List[dict] = []
 
     for (task_queue_id, inner_task_id), df__batch in df__files.groupby([task_queue_id__name, "inner_task_id"]):
         inner_task_id_scalar: Hashable = inner_task_id
@@ -968,7 +967,7 @@ def upload_batches_to_cvat(
                     attempt_poll_s=attempt_poll_s,
                 )
 
-                new_tasks_records.append(
+                task_records.append(
                     {
                         "project_id": cvat_project_id,
                         task_queue_id__name: task_queue_id,
@@ -994,7 +993,11 @@ def upload_batches_to_cvat(
                 continue
 
     df__cvat_task_new = pd.DataFrame(
-        new_tasks_records, columns=["project_id", task_queue_id__name, "task_id", "inner_task_id"]
+        task_records, columns=task_record_columns
+    )
+    df__cvat_task_new = df__cvat_task_new.drop_duplicates(
+        subset=task_record_columns,
+        keep="last",
     )
     if len(new_dfs__cvat_files) > 0:
         df__cvat_files_new = pd.concat(new_dfs__cvat_files + appended_dfs__cvat_files, ignore_index=True)
