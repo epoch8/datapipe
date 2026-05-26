@@ -10,6 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from numbers import Integral
 from typing import Any, Dict, Hashable, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import pandas as pd
@@ -63,7 +64,7 @@ class CVATFrameUpdatePlan(NamedTuple):
 
 
 def int_from_scalar(value: object) -> int:
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, (Integral, float, str)):
         return int(value)
     raise TypeError(f"Expected int-like scalar, got {type(value)!r}")
 
@@ -137,13 +138,17 @@ def assign_batches_to_files(
         task_queue_id__name,
     )
 
-    df__input_batches = pd.merge(df__input_batches, data_to_index(df__item, primary_keys), on=primary_keys)
+    assignment_columns = primary_keys + ["inner_task_id"]
+    df__input_batches = pd.merge(
+        df__input_batches[assignment_columns].drop_duplicates(),
+        df__item,
+        on=primary_keys,
+    )
     existing_idx = data_to_index(df__input_batches, primary_keys)
 
-    to_assign_df = index_difference(data_to_index(df__item, primary_keys), existing_idx)
+    to_assign_idx = index_difference(data_to_index(df__item, primary_keys), existing_idx)
 
-    if to_assign_df.empty:
-        logger.info("No new files to assign — skipping.")
+    if to_assign_idx.empty:
         return df__input_batches
 
     dt__input_batches = ds.get_table(output__input_batches)
@@ -181,7 +186,10 @@ def assign_batches_to_files(
 
     rows_to_insert: List[Dict[str, object]] = []
 
-    for task_queue_id, df__remaining_rows in to_assign_df.groupby(task_queue_id__name, dropna=False):
+    for task_queue_id, df__remaining_rows in index_to_data(df__item, to_assign_idx).groupby(
+        task_queue_id__name,
+        dropna=False,
+    ):
         if isinstance(files_batch, dict):
             files_batch_value = files_batch[task_queue_id]
         else:
@@ -207,8 +215,9 @@ def assign_batches_to_files(
                 if not opened:
                     break
 
-            row_to_insert: Dict[str, object] = {key: df__remaining_rows.at[i, key] for key in primary_keys}
-            row_to_insert[task_queue_id__name] = df__remaining_rows.at[i, task_queue_id__name]
+            row_to_insert: Dict[str, object] = {
+                str(column): value for column, value in df__remaining_rows.iloc[i].to_dict().items()
+            }
             row_to_insert["inner_task_id"] = batch_idx
             rows_to_insert.append(row_to_insert)
             batch_fill += 1
@@ -350,6 +359,25 @@ def _cvat_file_path(filepath: Any, cloud_storage_bucket: Optional[str]) -> str:
     return Path(filepath).name if cloud_storage_bucket is None else extract_key(str(filepath))
 
 
+def _ensure_cvat_file_path_column(
+    df: pd.DataFrame,
+    file_path_column: str,
+    cloud_storage_bucket: Optional[str],
+) -> pd.DataFrame:
+    df = df.copy()
+    if "cvat__file_path" in df.columns:
+        missing_cvat_path = df["cvat__file_path"].isna()
+        if missing_cvat_path.any():
+            df.loc[missing_cvat_path, "cvat__file_path"] = df.loc[missing_cvat_path, file_path_column].apply(
+                lambda filepath: _cvat_file_path(filepath, cloud_storage_bucket)
+            )
+    elif file_path_column in df.columns and cloud_storage_bucket is None:
+        df["cvat__file_path"] = df[file_path_column].apply(lambda filepath: Path(filepath).name)
+    elif file_path_column in df.columns:
+        df["cvat__file_path"] = df[file_path_column].apply(extract_key)
+    return df
+
+
 def plan_cvat_frame_updates(
     df__input_batches: pd.DataFrame,
     df__cvat_files: pd.DataFrame,
@@ -388,32 +416,10 @@ def plan_cvat_frame_updates(
             rows_to_keep=pd.DataFrame(columns=rows_to_delete.columns),
         )
 
-    rows_to_delete_with_annotations = pd.merge(
-        rows_to_delete,
-        df__local_annotations,
-        how="left",
-        on=primary_keys + ["inner_task_id"],
-    )
-    keep_mask = (
-        rows_to_delete_with_annotations["annotations"].apply(_annotation_xml_has_data)
-        if "annotations" in rows_to_delete_with_annotations.columns
-        else pd.Series([False] * len(rows_to_delete_with_annotations))
-    )
-    if not delete_unannotated_tasks_only_on_update:
-        keep_mask = pd.Series([False] * len(rows_to_delete_with_annotations))
-
-    rows_to_keep = rows_to_delete_with_annotations[keep_mask].drop(columns=["annotations"], errors="ignore")
-    rows_to_delete = rows_to_delete_with_annotations[~keep_mask].drop(columns=["annotations"], errors="ignore")
-    if len(rows_to_keep) > 0 and len(rows_to_upload) > 0:
-        rows_to_upload = index_to_data(
-            rows_to_upload,
-            index_difference(data_to_index(rows_to_upload, primary_keys), data_to_index(rows_to_keep, primary_keys)),
-        )
-
     return CVATFrameUpdatePlan(
         rows_to_delete=rows_to_delete,
         rows_to_upload=rows_to_upload,
-        rows_to_keep=rows_to_keep,
+        rows_to_keep=pd.DataFrame(columns=rows_to_delete.columns),
     )
 
 
@@ -454,11 +460,7 @@ def get_or_create_task(
     new_task_name = task_name_format.format(**ctx)
     lookup_regex = build_regex_from_format(task_name_format, inner_task_id, task_queue_id__name, task_queue_id)
 
-    df__batch = df__batch.copy()
-    if file_path_column in df__batch.columns and cloud_storage_bucket is None:
-        df__batch["cvat__file_path"] = df__batch[file_path_column].apply(lambda filepath: Path(filepath).name)
-    elif file_path_column in df__batch.columns:
-        df__batch["cvat__file_path"] = df__batch[file_path_column].apply(extract_key)
+    df__batch = _ensure_cvat_file_path_column(df__batch, file_path_column, cloud_storage_bucket)
     expected_frames = len(df__batch["cvat__file_path"])
 
     project = cvat_client.projects.retrieve(project_id)
@@ -539,7 +541,7 @@ def get_or_create_task(
                 "inner_task_id": inner_task_id,
                 task_queue_id__name: task_queue_id,
                 "task_id": task.id,
-                "cvat__file_path": frame["name"],
+                "cvat__file_path": _cvat_file_path(frame["name"], cloud_storage_bucket),
                 "inner_frame_id": frame_id,
             }
             for frame_id, frame in enumerate(meta["frames"])
@@ -555,44 +557,48 @@ def get_or_create_task(
         if _annotations_are_empty(annotations) and "annotations" in df__batch.columns:
             labels_names = [lbl.name for lbl in task.get_labels()]
 
-            df__batch_with_meta = pd.merge(
+            df__batch_with_annotations = pd.merge(
                 df__batch_with_meta,
                 df__batch[["cvat__file_path", "annotations"]],
                 on="cvat__file_path",
             )
+            df__batch_with_annotations = df__batch_with_annotations[
+                df__batch_with_annotations["annotations"].apply(_annotation_xml_has_data)
+            ]
 
-            root = ET.Element("annotations")
-            ET.SubElement(root, "version").text = "1.1"
+            if len(df__batch_with_annotations) > 0:
+                root = ET.Element("annotations")
+                ET.SubElement(root, "version").text = "1.1"
 
-            for inner_frame_id, annotation, cvat_path in zip(
-                df__batch_with_meta["inner_frame_id"],
-                df__batch_with_meta["annotations"],
-                df__batch_with_meta["cvat__file_path"],
-            ):
-                img_elem = ET.fromstring(annotation)
+                for inner_frame_id, annotation, cvat_path in zip(
+                    df__batch_with_annotations["inner_frame_id"],
+                    df__batch_with_annotations["annotations"],
+                    df__batch_with_annotations["cvat__file_path"],
+                ):
+                    img_elem = ET.fromstring(annotation)
 
-                for label in {e.get("label") for e in img_elem.iter() if e.get("label")}:
-                    if label not in labels_names:
-                        project.update({"labels": [PatchedLabelRequest(name=label)]})
-                        labels_names.append(label)
+                    for label in {e.get("label") for e in img_elem.iter() if e.get("label")}:
+                        if label not in labels_names:
+                            project.update({"labels": [PatchedLabelRequest(name=label)]})
+                            labels_names.append(label)
 
-                img_elem.set("id", str(inner_frame_id))
-                img_elem.set("name", cvat_path)
-                root.append(img_elem)
+                    img_elem.set("id", str(inner_frame_id))
+                    img_elem.set("name", cvat_path)
+                    root.append(img_elem)
 
-            ET.indent(root)
+                ET.indent(root)
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                zip_path = Path(tmpdir) / "annotations.zip"
-                with zipfile.ZipFile(zip_path, "w") as zf:
-                    zf.writestr("annotations.xml", ET.tostring(root))
-                _import_annotations_with_retry(
-                    task=task,
-                    filename=str(zip_path),
-                    format_name="CVAT 1.1",
-                    max_attempts=max_attempts,
-                    attempt_poll_s=attempt_poll_s,
-                )
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zip_path = Path(tmpdir) / "annotations.zip"
+                    with zipfile.ZipFile(zip_path, "w") as zf:
+                        zf.writestr("annotations.xml", ET.tostring(root))
+                    _import_annotations_with_retry(
+                        task=task,
+                        filename=str(zip_path),
+                        format_name="CVAT 1.1",
+                        max_attempts=max_attempts,
+                        attempt_poll_s=attempt_poll_s,
+                    )
 
         return task, df__batch_with_meta
 
@@ -661,7 +667,7 @@ def append_files_to_task(
             "inner_task_id": inner_task_id,
             task_queue_id__name: task_queue_id,
             "task_id": task.id,
-            "cvat__file_path": frame["name"],
+            "cvat__file_path": _cvat_file_path(frame["name"], cloud_storage_bucket),
             "inner_frame_id": frame_id,
         }
         for frame_id, frame in enumerate(meta["frames"])
@@ -838,7 +844,7 @@ def upload_batches_to_cvat(
             - df__cvat_files: files table with links to tasks and frames
     """
 
-    df__input_batches = pd.merge(df__input, df__input_batches)
+    df__input_batches = pd.merge(df__input, df__input_batches[primary_keys + ["inner_task_id"]], on=primary_keys)
     cvat_client: CVATClient = create_cvat_client(cvat_url, cvat_organization, cvat_credentials)
     preliminary_delete_idx = index_difference(
         data_to_index(df__cvat_files, primary_keys),
@@ -916,8 +922,16 @@ def upload_batches_to_cvat(
         ),
     )
     task_record_columns = ["project_id", task_queue_id__name, "inner_task_id", "task_id"]
-    appended_dfs__cvat_files = []
+    rows_to_create_tasks_dfs = [rows_to_create_tasks]
     task_records: List[dict] = df__cvat_task[task_record_columns].to_dict(orient="records")
+    input_batches_for_new_tasks: List[pd.DataFrame] = []
+    max_inner_task_id_by_queue = {
+        task_queue_id: int_from_scalar(inner_task_id)
+        for task_queue_id, inner_task_id in input_batches_dt.get_data()
+        .groupby(task_queue_id__name)["inner_task_id"]
+        .max()
+        .items()
+    }
     for (task_queue_id, inner_task_id), df__batch_to_append in rows_to_upload_existing_tasks.groupby(
         [task_queue_id__name, "inner_task_id"]
     ):
@@ -926,23 +940,25 @@ def upload_batches_to_cvat(
             & (df__cvat_task["inner_task_id"] == inner_task_id)
         ].iloc[0]
         task_records.append(task_row[task_record_columns].to_dict())
-        task = cvat_client.tasks.retrieve(int_from_scalar(task_row["task_id"]))
-        reset_task_jobs_status(task)
-        appended_dfs__cvat_files.append(
-            append_files_to_task(
-                cvat_client=cvat_client,
-                task=task,
-                df__batch=df__batch_to_append,
-                file_path_column=file_path_column,
-                cloud_storage_bucket=cloud_storage_bucket,
-                primary_keys=primary_keys,
-                project_id=cvat_project_id,
-                inner_task_id=int_from_scalar(inner_task_id),
-                task_queue_id__name=task_queue_id__name,
-                task_queue_id=task_queue_id,
-            )
+        next_inner_task_id = max_inner_task_id_by_queue.get(task_queue_id, int_from_scalar(inner_task_id)) + 1
+        max_inner_task_id_by_queue[task_queue_id] = next_inner_task_id
+
+        df__new_task_batch = df__batch_to_append.copy()
+        old_assignment_idx = data_to_index(df__new_task_batch, primary_keys + ["inner_task_id"])
+        df__new_task_batch["inner_task_id"] = next_inner_task_id
+        input_batches_dt.delete_by_idx(old_assignment_idx)
+        input_batches_dt.store_chunk(df__new_task_batch[input_batches_dt.table_store.primary_keys + [file_path_column, "annotations"]])
+        input_batches_for_new_tasks.append(df__new_task_batch)
+        rows_to_create_tasks_dfs.append(df__new_task_batch)
+        logger.info(
+            "CVAT does not support appending data to existing task_id=%s; moved %d rows from inner_task_id=%s to new inner_task_id=%s",
+            task_row["task_id"],
+            len(df__new_task_batch),
+            inner_task_id,
+            next_inner_task_id,
         )
 
+    rows_to_create_tasks = pd.concat(rows_to_create_tasks_dfs, ignore_index=True)
     df__files = pd.concat([df__cvat_files, rows_to_create_tasks], ignore_index=True).copy()
 
     new_dfs__cvat_files: List[pd.DataFrame] = []
@@ -1000,11 +1016,15 @@ def upload_batches_to_cvat(
         keep="last",
     )
     if len(new_dfs__cvat_files) > 0:
-        df__cvat_files_new = pd.concat(new_dfs__cvat_files + appended_dfs__cvat_files, ignore_index=True)
-    elif len(appended_dfs__cvat_files) > 0:
-        df__cvat_files_new = pd.concat(appended_dfs__cvat_files, ignore_index=True)
+        df__cvat_files_new = pd.concat(new_dfs__cvat_files, ignore_index=True)
     else:
         df__cvat_files_new = pd.DataFrame(columns=primary_keys + ["project_id", "inner_task_id", "task_id", "cvat__file_path", "inner_frame_id"])
+
+    logger.info(
+        "upload_batches_to_cvat returning %d task rows and %d file rows",
+        len(df__cvat_task_new),
+        len(df__cvat_files_new),
+    )
 
     return (
         df__cvat_task_new[["project_id", task_queue_id__name, "task_id", "inner_task_id"]],
@@ -1162,7 +1182,7 @@ class CVATStep(PipelineStep):
 
         input_batches_dt = _mk(
             output_input_batches_name,
-            [column for column in dt_input.table_store.get_schema() if column.name in self.primary_keys]
+            [column for column in dt_input.table_store.get_schema()]
             + [Column("inner_task_id", Integer, primary_key=True)],
         )
 
@@ -1217,8 +1237,8 @@ class CVATStep(PipelineStep):
                     outputs=[self.output__cvat_task, self.output__cvat_files],
                     chunk_size=1,
                     labels=self.labels,
-                    transform_keys=[self.task_queue_id__name, "inner_task_id"],
-                    order_by=["inner_task_id", self.task_queue_id__name],
+                    transform_keys=[self.task_queue_id__name],
+                    order_by=[self.task_queue_id__name],
                     kwargs=dict(
                         primary_keys=self.primary_keys,
                         input_batches_dt=input_batches_dt,
