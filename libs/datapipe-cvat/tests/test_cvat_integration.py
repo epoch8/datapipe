@@ -373,7 +373,9 @@ def test_cvat_pipeline_when_data_is_changed(cvat_pipeline_case):
     ds, steps, _, project, tmp_dir = cvat_pipeline_case
     df1 = _make_image_df(tmp_dir)
     df2 = df1.copy()
-    df2.loc[0, "image_path"] = _make_image_files(tmp_dir, ["image_0_changed"])["image_0_changed"]
+    df2.loc[0, "annotations"] = (
+        '<image><box label="cat" source="manual" occluded="0" xtl="12" ytl="7" xbr="32" ybr="27" z_order="0" /></image>'
+    )
 
     _run_with_df(ds, steps, df1)
     task_ids_before = sorted(ds.get_table("cvat_task").get_data()["task_id"].tolist())

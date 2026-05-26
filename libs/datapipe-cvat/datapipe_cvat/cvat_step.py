@@ -672,10 +672,8 @@ def upload_batches_to_cvat(
     """
 
     if delete_cvat_tasks:
-        idx = data_to_index(idx, primary_keys + ["inner_task_id"])
-
-        df_existing_tasks_to_be_deleted = input_batches_dt.get_data(idx=idx)
-        df_existing_tasks_to_be_deleted = df_existing_tasks_to_be_deleted.merge(
+        df_existing_input_batches_to_be_deleted = input_batches_dt.get_data(idx=idx)
+        df_existing_tasks_to_be_deleted = df_existing_input_batches_to_be_deleted.merge(
             df__cvat_files, on=primary_keys + ["inner_task_id"]
         )
 
