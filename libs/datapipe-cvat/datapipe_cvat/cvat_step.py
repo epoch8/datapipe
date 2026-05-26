@@ -893,7 +893,9 @@ def upload_batches_to_cvat(
     if len(actual_deleted_df) > 0:
         deleted_idx = data_to_index(actual_deleted_df, primary_keys + ["project_id", "inner_task_id", "task_id"])
         cvat_files_dt.delete_by_idx(deleted_idx)
-        task_sync_table_dt.delete_by_idx(data_to_index(actual_deleted_df, ["project_id", "inner_task_id", "task_id"]))
+        task_sync_table_dt.delete_by_idx(
+            data_to_index(actual_deleted_df, ["project_id", task_queue_id__name, "inner_task_id", "task_id"])
+        )
         df__cvat_files = pd.merge(
             df__cvat_files,
             deleted_idx,
