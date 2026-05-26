@@ -5,7 +5,7 @@ on:
     branches:
       - "master"
       - "v**"
-      - "feature/monorepo-migration"
+      - "feature/monorepo-migration-v2"
     paths:
       - ".github/workflows/lib-datapipe-ml.yml"
       - "examples/e2e_template/**"
