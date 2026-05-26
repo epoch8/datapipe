@@ -3,12 +3,18 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from datapipe.store.database import DBConn
 
 
 @pytest.fixture
 def tmp_dir():
     with tempfile.TemporaryDirectory() as d:
         yield Path(d)
+
+
+@pytest.fixture
+def dbconn():
+    yield DBConn("sqlite:///:memory:", None)
 
 
 @pytest.fixture(scope="session")

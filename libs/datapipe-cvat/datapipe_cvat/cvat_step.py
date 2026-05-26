@@ -323,7 +323,7 @@ def get_or_create_task(
     cvat_client: CVATClient,
     project_id: int,
     inner_task_id: int,
-    cloud_storage_bucket: str,
+    cloud_storage_bucket: Optional[str],
     primary_keys: List[str],
     task_name_format: str,
     task_queue_id__name: str,
@@ -341,7 +341,7 @@ def get_or_create_task(
     :param cvat_client: Initialized CVAT client.
     :param project_id: CVAT project ID.
     :param inner_task_id: Internal batch ID (Datapipe).
-    :param cloud_storage_bucket: Name of the bucket from which CVAT reads images.
+    :param cloud_storage_bucket: Name of the bucket from which CVAT reads images. If None, files are uploaded directly.
     :param primary_keys: List of primary keys (for join and merge).
 
     :return: Tuple of Task and DataFrame with metadata (frames, path, task_id, etc.).
@@ -355,7 +355,9 @@ def get_or_create_task(
     lookup_regex = build_regex_from_format(task_name_format, inner_task_id, task_queue_id__name, task_queue_id)
 
     df__batch = df__batch.copy()
-    if file_path_column in df__batch.columns:
+    if file_path_column in df__batch.columns and cloud_storage_bucket is None:
+        df__batch["cvat__file_path"] = df__batch[file_path_column].apply(lambda filepath: Path(filepath).name)
+    elif file_path_column in df__batch.columns:
         df__batch["cvat__file_path"] = df__batch[file_path_column].apply(extract_key)
     expected_frames = len(df__batch["cvat__file_path"])
 
@@ -372,24 +374,35 @@ def get_or_create_task(
                 "Creating CVAT task '%s' with %d resources in project %d (scope=%s:%s)",
                 new_task_name, expected_frames, project_id, task_queue_id__name, task_queue_id
             )
-            cloud_storage = get_cloud_storage(cvat_client, cloud_storage_bucket)
-
             for attempt in range(1, max_attempts + 1):
                 try:
+                    if cloud_storage_bucket is None:
+                        resources = df__batch[file_path_column].tolist()
+                        resource_type = ResourceType.LOCAL
+                        data_params = {
+                            "image_quality": 75,
+                            "use_zip_chunks": True,
+                            "use_cache": True,
+                            "sorting_method": "random",
+                        }
+                    else:
+                        resources = df__batch["cvat__file_path"].tolist()
+                        resource_type = ResourceType.SHARE
+                        data_params = {
+                            "cloud_storage_id": get_cloud_storage(cvat_client, cloud_storage_bucket),
+                            "image_quality": 75,
+                            "use_zip_chunks": True,
+                            "use_cache": True,
+                            "sorting_method": "random",
+                        }
                     task = cvat_client.tasks.create_from_data(
                         spec=TaskWriteRequest(
                             name=new_task_name,
                             project_id=project_id,
                         ),
-                        resources=df__batch["cvat__file_path"].tolist(),
-                        resource_type=ResourceType.SHARE,
-                        data_params={
-                            "cloud_storage_id": cloud_storage,
-                            "image_quality": 75,
-                            "use_zip_chunks": True,
-                            "use_cache": True,
-                            "sorting_method": "random",
-                        },
+                        resources=resources,
+                        resource_type=resource_type,
+                        data_params=data_params,
                     )
                     logger.info(f"create_from_data: attempt: {attempt}: success")
                     logger.info(f"create_from_data: task: {task}")
@@ -635,7 +648,7 @@ def upload_batches_to_cvat(
     delete_cvat_tasks: bool,
     file_path_column: str,
     cvat_project_id: int,
-    cloud_storage_bucket: str,
+    cloud_storage_bucket: Optional[str],
     task_queue_id__name: str,
     task_name_format: str,
     max_attempts: int,
@@ -783,12 +796,10 @@ class CVATStep(PipelineStep):
     cvat_credentials: Tuple[str, str]  # (username, password)
     cvat_project_id: int
 
-    # --- Cloud Storage ------------------------------------------------------
-    cloud_storage_bucket: str
-
     # --- step behaviour -----------------------------------------------------
     primary_keys: List[str]
     file_path_column: str
+    cloud_storage_bucket: Optional[str]
     delete_cvat_tasks: bool = False
     file_type: Literal["image", "video"] = "image"
     files_batch: Union[int, dict[Any, int]] = 100
