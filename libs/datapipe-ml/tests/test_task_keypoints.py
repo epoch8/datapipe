@@ -5,19 +5,100 @@ import pytest
 from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
-pytestmark = [pytest.mark.training, pytest.mark.torch]
+from tests.helpers.training_smoke import (
+    assert_metrics_have_values,
+    assert_model_artifact,
+    assert_table_has_rows,
+    keypoints_freeze_step,
+    keypoints_inference_step,
+    keypoints_metrics_step,
+    keypoints_train_step,
+    make_runtime,
+    run_pipeline,
+)
 
 
-def _require_datapipe_runtime():
+@pytest.mark.torch
+@pytest.mark.smoke
+@pytest.mark.slow
+@pytest.mark.training
+def test_yolov8_keypoints_training_smoke_cpu(tmp_path):
+    runtime = make_runtime(tmp_path, include_keypoints_gt=True)
+    run_pipeline(runtime, [keypoints_freeze_step(tmp_path), keypoints_train_step(tmp_path)])
+
+    assert_model_artifact(
+        runtime,
+        "keypoints_model",
+        "keypoints_model__type",
+        "keypoints_model__model_path",
+        "yolov8_pose",
+    )
+
+
+@pytest.mark.torch
+@pytest.mark.smoke
+@pytest.mark.slow
+@pytest.mark.training
+def test_keypoints_inference_smoke_cpu(tmp_path):
+    runtime = make_runtime(tmp_path, include_keypoints_gt=True)
+    run_pipeline(
+        runtime,
+        [
+            keypoints_freeze_step(tmp_path),
+            keypoints_train_step(tmp_path),
+            keypoints_inference_step(),
+        ],
+    )
+
+    df = assert_table_has_rows(runtime, "keypoints_prediction")
+    assert {
+        "image_id",
+        "bboxes",
+        "labels",
+        "keypoints",
+        "prediction__detection_scores",
+        "prediction__keypoints_scores",
+    }.issubset(df.columns)
+
+
+@pytest.mark.torch
+@pytest.mark.slow
+@pytest.mark.training
+@pytest.mark.e2e
+def test_keypoints_pipeline_e2e_smoke_cpu(tmp_path):
+    runtime = make_runtime(tmp_path, include_keypoints_gt=True)
+    run_pipeline(
+        runtime,
+        [
+            keypoints_freeze_step(tmp_path),
+            keypoints_train_step(tmp_path),
+            keypoints_inference_step(),
+            keypoints_metrics_step(),
+        ],
+    )
+
+    assert_table_has_rows(runtime, "keypoints_prediction")
+    assert_metrics_have_values(
+        runtime,
+        "keypoints_metrics_on_subset",
+        ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
+    )
+
+
+@pytest.mark.torch
+@pytest.mark.training
+def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, smoke_dataset, tmp_path):
     pytest.importorskip("tqdm")
     pytest.importorskip("datapipe")
 
-
-def _make_catalog(dbconn):
-    from datapipe.compute import Catalog, Table
+    from datapipe.compute import Catalog, Pipeline, Table, build_compute
     from datapipe.store.database import TableStoreDB
+    from datapipe_ml.tasks.keypoints.train.yolov8 import (
+        Train_YoloV8_KeypointsModel,
+        YoloV8_TrainingConfig,
+    )
 
-    return Catalog(
+    catalog = Catalog(
         {
             "keypoints_frozen_dataset": Table(
                 store=TableStoreDB(
@@ -51,18 +132,6 @@ def _make_catalog(dbconn):
             ),
         }
     )
-
-
-def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, smoke_dataset, tmp_path):
-    _require_datapipe_runtime()
-    from datapipe.compute import Pipeline, build_compute
-
-    from datapipe_ml.tasks.keypoints.train.yolov8 import (
-        Train_YoloV8_KeypointsModel,
-        YoloV8_TrainingConfig,
-    )
-
-    catalog = _make_catalog(dbconn)
     catalog.get_datatable(base_datastore, "keypoints_frozen_dataset").store_chunk(
         pd.DataFrame(
             {
