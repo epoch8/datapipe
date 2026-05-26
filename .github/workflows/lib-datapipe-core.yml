@@ -5,7 +5,7 @@ on:
     branches:
       - "master"
       - "v**"
-      - "feature/monorepo-migration-v2"
+      - "feature/monorepo-migration"
     paths:
       - ".github/workflows/lib-datapipe-core.yml"
       - ".vscode/**"
