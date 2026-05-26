@@ -2,6 +2,11 @@
 
 ## Important new stuff:
 
+### Monorepo
+
+* Moved `datapipe-core`, `datapipe-ml`, `datapipe-label-studio`, and
+  `datapipe-cvat` into a single `datapipe` monorepo with shared examples and CI.
+
 ### MetaPlane
 
 See [meta-plane.md](design-docs/2025-12-meta-plane.md) for motivation
