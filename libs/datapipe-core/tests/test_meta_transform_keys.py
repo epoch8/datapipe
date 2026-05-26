@@ -280,6 +280,117 @@ def test_transform_output_spec_keys(dbconn: DBConn):
     assert step.output_specs[0].keys == {"post_id": "id"}
 
 
+def test_transform_keys_with_input_table_as_output(dbconn: DBConn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    users = ds.create_table(
+        "users",
+        TableStoreDB(
+            dbconn,
+            "users",
+            [
+                Column("id", String, primary_key=True),
+                Column("name", String),
+            ],
+            create_table=True,
+        ),
+    )
+    scores = ds.create_table(
+        "scores",
+        TableStoreDB(
+            dbconn,
+            "scores",
+            [
+                Column("id", String, primary_key=True),
+                Column("score", String),
+                Column("user_name", String),
+            ],
+            create_table=True,
+        ),
+    )
+
+    process_ts = time.time()
+    users.store_chunk(
+        pd.DataFrame(
+            [
+                {"id": "u1", "name": "Alice"},
+                {"id": "u2", "name": "Bob"},
+            ]
+        ),
+        now=process_ts,
+    )
+    scores.store_chunk(
+        pd.DataFrame(
+            [
+                {"id": "u1", "score": "10", "user_name": ""},
+                {"id": "u2", "score": "20", "user_name": ""},
+            ]
+        ),
+        now=process_ts,
+    )
+
+    def transform_func(users_df, scores_df):
+        df = scores_df[["id", "score"]].merge(users_df, on="id")
+        return df.rename(columns={"name": "user_name"})[["id", "score", "user_name"]]
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test_input_table_as_output",
+        func=transform_func,
+        input_dts=[
+            ComputeInput(
+                dt=users,
+                join_type="full",
+                keys={
+                    "user_id": "id",
+                },
+            ),
+            ComputeInput(
+                dt=scores,
+                join_type="inner",
+                keys={
+                    "user_id": "id",
+                },
+            ),
+        ],
+        output_dts=[
+            ComputeOutput(
+                dt=scores,
+                keys={
+                    "user_id": "id",
+                },
+            )
+        ],
+        transform_keys=["user_id"],
+    )
+
+    step.run_full(ds)
+
+    assert_datatable_equal(
+        scores,
+        pd.DataFrame(
+            [
+                {"id": "u1", "score": "10", "user_name": "Alice"},
+                {"id": "u2", "score": "20", "user_name": "Bob"},
+            ]
+        ),
+    )
+
+    time.sleep(0.01)
+    users.store_chunk(pd.DataFrame([{"id": "u1", "name": "Alice Updated"}]), now=time.time())
+    step.run_full(ds)
+
+    assert_datatable_equal(
+        scores,
+        pd.DataFrame(
+            [
+                {"id": "u1", "score": "10", "user_name": "Alice Updated"},
+                {"id": "u2", "score": "20", "user_name": "Bob"},
+            ]
+        ),
+    )
+
+
 def test_batch_transform_outputs_with_different_key_mappings(dbconn: DBConn):
     ds = DataStore(dbconn, create_meta_table=True)
 
