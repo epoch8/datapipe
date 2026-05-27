@@ -199,6 +199,7 @@ class ComputeStep:
         labels: Labels | None = None,
         executor_config: ExecutorConfig | None = None,
     ) -> None:
+        # TODO validate name for database tables naming compatibility
         self.name = name
         # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
         self.input_dts = [
