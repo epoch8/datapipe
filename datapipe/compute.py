@@ -12,7 +12,18 @@ from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
-from datapipe.types import ChangeList, DataField, FieldAccessor, IndexDF, Labels, MetaSchema, TableOrName
+from datapipe.types import (
+    ChangeList,
+    DataField,
+    FieldAccessor,
+    IndexDF,
+    InputSpec,
+    Labels,
+    MetaSchema,
+    PipelineInput,
+    Required,
+    TableOrName,
+)
 
 logger = logging.getLogger("datapipe.compute")
 tracer = trace.get_tracer("datapipe.compute")
@@ -133,6 +144,37 @@ class ComputeInput:
             return self.dt.primary_schema
 
 
+def make_mungled_step_name(cls, base_name: str, input_dts: Sequence[ComputeInput], output_dts: list[DataTable]) -> str:
+    ss = [
+        cls.__name__,
+        base_name,
+        *[i.dt.name for i in input_dts],
+        *[o.name for o in output_dts],
+    ]
+
+    m = hashlib.shake_128()
+    m.update("".join(ss).encode("utf-8"))
+
+    return f"{base_name}_{m.hexdigest(5)}"
+
+
+def pipeline_input_to_compute_input(ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
+    if isinstance(input, Required):
+        return ComputeInput(
+            dt=catalog.get_datatable(ds, input.table),
+            join_type="inner",
+            keys=input.keys,
+        )
+    elif isinstance(input, InputSpec):
+        return ComputeInput(
+            dt=catalog.get_datatable(ds, input.table),
+            join_type="full",
+            keys=input.keys,
+        )
+    else:
+        return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -157,7 +199,8 @@ class ComputeStep:
         labels: Labels | None = None,
         executor_config: ExecutorConfig | None = None,
     ) -> None:
-        self._name = name
+        # TODO validate name for database tables naming compatibility
+        self.name = name
         # Нормализация input_dts: автоматически оборачиваем DataTable в ComputeInput
         self.input_dts = [
             inp if isinstance(inp, ComputeInput) else ComputeInput(dt=inp, join_type="full") for inp in input_dts
@@ -167,21 +210,7 @@ class ComputeStep:
         self.executor_config = executor_config
 
     def get_name(self) -> str:
-        ss = [
-            self.__class__.__name__,
-            self._name,
-            *[i.dt.name for i in self.input_dts],
-            *[o.name for o in self.output_dts],
-        ]
-
-        m = hashlib.shake_128()
-        m.update("".join(ss).encode("utf-8"))
-
-        return f"{self._name}_{m.hexdigest(5)}"
-
-    @property
-    def name(self) -> str:
-        return self.get_name()
+        return self.name
 
     @property
     def labels(self) -> Labels:
@@ -294,12 +323,18 @@ def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> list[C
 
         compute_pipeline: list[ComputeStep] = []
 
+        seen_steps = []
         for step in pipeline.steps:
-            compute_pipeline.extend(step.build_compute(ds, catalog))
+            compute_steps = step.build_compute(ds, catalog)
+            compute_pipeline.extend(compute_steps)
 
-        # TODO move to lints
-        for compute_step in compute_pipeline:
-            compute_step.validate()
+            for compute_step in compute_steps:
+                if compute_step.name in seen_steps:
+                    raise Exception(f"Duplicate step name: {compute_step.name}")
+                seen_steps.append(compute_step.name)
+
+                # TODO move to lints
+                compute_step.validate()
 
         return compute_pipeline
 
@@ -318,11 +353,10 @@ def run_steps(
 ) -> None:
     for step in steps:
         with tracer.start_as_current_span(
-            f"{step.get_name()} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
         ):
             logger.info(
-                f"Running {step.get_name()} "
-                f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
             )
 
             step.run_full(ds=ds, run_config=run_config, executor=executor)
@@ -369,11 +403,10 @@ def run_steps_changelist(
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
                     with tracer.start_as_current_span(
-                        f"{step.get_name()} "
-                        f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
+                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                     ):
                         logger.info(
-                            f"Running {step.get_name()} "
+                            f"Running {step.name} "
                             f"{[i.dt.name for i in step.input_dts]} -> {[i.name for i in step.output_dts]}"
                         )
 

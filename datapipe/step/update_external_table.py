@@ -4,7 +4,7 @@ import time
 import pandas as pd
 from tqdm_loggable.auto import tqdm
 
-from datapipe.compute import Catalog, ComputeStep, PipelineStep
+from datapipe.compute import Catalog, ComputeInput, ComputeStep, PipelineStep, make_mungled_step_name
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.datatable_transform import (
@@ -70,13 +70,17 @@ class UpdateExternalTable(PipelineStep):
             return update_external_table(ds, output_dts[0], run_config)
 
         output_table = catalog.get_datatable(ds, self.output_table_name)
+        input_dts: list[ComputeInput] = []
+        output_dts = [output_table]
+
+        step_name = make_mungled_step_name(DatatableTransformStep, f"update_{output_table.name}", input_dts, output_dts)
 
         return [
             DatatableTransformStep(
-                name=f"update_{output_table.name}",
+                name=step_name,
                 func=cast(DatatableTransformFunc, transform_func),
-                input_dts=[],
-                output_dts=[output_table],
+                input_dts=input_dts,
+                output_dts=output_dts,
                 labels=self.labels,
             )
         ]

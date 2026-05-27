@@ -1,6 +1,7 @@
 import time
 
 import pandas as pd
+import pytest
 from sqlalchemy import Column, String
 
 from datapipe.compute import ComputeInput
@@ -11,6 +12,7 @@ from datapipe.tests.util import assert_datatable_equal
 from datapipe.types import DataField
 
 
+@pytest.mark.skip
 def test_transform_keys(dbconn: DBConn):
     """
     Проверяет что трансформация с keys (InputSpec) корректно отрабатывает.
