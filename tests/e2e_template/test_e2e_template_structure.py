@@ -85,4 +85,3 @@ def test_template_split_helpers_are_deterministic():
 
     assert detection_split.to_dict("records") == keypoints_split.to_dict("records")
     assert detection_split["subset_id"].tolist() == ["train", "train", "train", "train"]
-

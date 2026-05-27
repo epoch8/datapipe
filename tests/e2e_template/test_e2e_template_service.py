@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.append(str(Path(__file__).parents[2] / "libs/datapipe-ml/tests"))
 
 pytestmark = [
     pytest.mark.e2e_examples,
@@ -33,7 +37,7 @@ def _require_service_env() -> None:
 def test_detection_template_service_pipeline_smoke(tmp_path):
     from examples.e2e_template.common import ServiceSettings
     from examples.e2e_template.image_detection.app import build_pipeline as build_detection_pipeline
-    from tests.helpers.training_smoke import (
+    from helpers.training_smoke import (
         assert_metrics_have_values,
         assert_table_has_rows,
         detection_freeze_step,
@@ -71,7 +75,7 @@ def test_detection_template_service_pipeline_smoke(tmp_path):
 def test_keypoints_template_service_pipeline_smoke(tmp_path):
     from examples.e2e_template.common import ServiceSettings
     from examples.e2e_template.image_keypoints.app import build_pipeline as build_keypoints_pipeline
-    from tests.helpers.training_smoke import (
+    from helpers.training_smoke import (
         assert_metrics_have_values,
         assert_table_has_rows,
         keypoints_freeze_step,
@@ -104,4 +108,3 @@ def test_keypoints_template_service_pipeline_smoke(tmp_path):
         "keypoints_metrics_on_subset",
         ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
     )
-
