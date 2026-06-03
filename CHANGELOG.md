@@ -45,6 +45,10 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 
 ### Python3.9 support is deprecated
 
+## Improvements
+
+* Fixed dtypes mapping for TableStoreExcel, TableStoreJsonLine
+
 # 0.14.8
 
 * Neo4JStore - rewrite attributes instead of upsert
