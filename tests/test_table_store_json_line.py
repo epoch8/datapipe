@@ -1,5 +1,25 @@
+import datetime
+import shutil
+from pathlib import Path
+
 import pandas as pd
 import pytest
+from sqlalchemy import (
+    Column,
+    String,
+    Text,
+    Unicode,
+    UnicodeText,
+    Integer,
+    BigInteger,
+    SmallInteger,
+    Float,
+    Numeric,
+    Boolean,
+    DateTime,
+    Date,
+    Time,
+)
 
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
@@ -31,6 +51,10 @@ def make_file2(file):
     with open(file, "w") as out:
         out.write('{"id": "0", "text": "text0"}\n')
         out.write('{"id": "2", "text": "text2"}\n')
+
+
+def make_dtypes_file(file):
+    shutil.copy(Path(__file__).parent / "data" / "dtypes.json", file)
 
 
 def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
@@ -71,6 +95,116 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
     assert len(catalog.get_datatable(ds, "input_data").get_data()) == 2
     assert len(catalog.get_datatable(ds, "transfomed_data").get_data()) == 2
+
+
+def test_dtype_mapping(tmp_dir):
+    schema = [
+        Column("dtype_String", String),
+        Column("dtype_Text", Text),
+        Column("dtype_Unicode", Unicode),
+        Column("dtype_UnicodeText", UnicodeText),
+        Column("dtype_Integer", Integer),
+        Column("dtype_BigInteger", BigInteger),
+        Column("dtype_SmallInteger", SmallInteger),
+        Column("dtype_Float", Float),
+        Column("dtype_Numeric", Numeric),
+        Column("dtype_Boolean", Boolean),
+        Column("dtype_DateTime", DateTime),
+        Column("dtype_Date", Date),
+        Column("dtype_Time", Time),
+    ]
+    store = TableStoreJsonLine(filename=tmp_dir / "dtypes.json", primary_schema=schema)
+
+    now = datetime.datetime(2024, 1, 15, 12, 0, 0)
+    df = pd.DataFrame(
+        {
+            "dtype_String": ["hello"],
+            "dtype_Text": ["world"],
+            "dtype_Unicode": ["unicode"],
+            "dtype_UnicodeText": ["unicode text"],
+            "dtype_Integer": [42],
+            "dtype_BigInteger": [1_000_000],
+            "dtype_SmallInteger": [10],
+            "dtype_Float": [3.14],
+            "dtype_Numeric": [2.71],
+            "dtype_Boolean": [True],
+            "dtype_DateTime": [now],
+            "dtype_Date": [now.date()],
+            "dtype_Time": [now.time()],
+        }
+    )
+
+    store.save_file(df)
+    loaded = store.load_file()
+
+    assert pd.api.types.is_string_dtype(loaded["dtype_String"])
+    assert pd.api.types.is_string_dtype(loaded["dtype_Text"])
+    assert pd.api.types.is_string_dtype(loaded["dtype_Unicode"])
+    assert pd.api.types.is_string_dtype(loaded["dtype_UnicodeText"])
+    assert pd.api.types.is_integer_dtype(loaded["dtype_Integer"])
+    assert pd.api.types.is_integer_dtype(loaded["dtype_BigInteger"])
+    assert pd.api.types.is_integer_dtype(loaded["dtype_SmallInteger"])
+    assert pd.api.types.is_float_dtype(loaded["dtype_Float"])
+    assert pd.api.types.is_float_dtype(loaded["dtype_Numeric"])
+    assert loaded["dtype_Boolean"].dtype == bool
+    assert pd.api.types.is_datetime64_any_dtype(loaded["dtype_DateTime"])
+    assert loaded["dtype_Date"].dtype == object
+    assert loaded["dtype_Time"].dtype == object
+
+
+def test_table_store_json_line_with_dtype_mapping(dbconn, tmp_dir):
+    schema = [
+        Column("dtype_String", String),
+        Column("dtype_Text", Text),
+        Column("dtype_Unicode", Unicode),
+        Column("dtype_UnicodeText", UnicodeText),
+        Column("dtype_Integer", Integer),
+        Column("dtype_BigInteger", BigInteger),
+        Column("dtype_SmallInteger", SmallInteger),
+        Column("dtype_Float", Float),
+        Column("dtype_Numeric", Numeric),
+        Column("dtype_Boolean", Boolean),
+        Column("dtype_DateTime", DateTime),
+        Column("dtype_Date", Date),
+        Column("dtype_Time", Time),
+    ]
+
+    ds = DataStore(dbconn, create_meta_table=True)
+    catalog = Catalog(
+        {
+            "input_dtypes": Table(
+                store=TableStoreJsonLine(
+                    filename=tmp_dir / "dtypes.json",
+                    primary_schema=schema,
+                ),
+            ),
+            "transfomed_dtypes": Table(
+                store=TableStoreJsonLine(
+                    filename=tmp_dir / "dtypes_transformed.json",
+                    primary_schema=schema,
+                ),
+            ),
+        }
+    )
+    pipeline = Pipeline(
+        [
+            UpdateExternalTable("input_dtypes"),
+            BatchTransform(lambda df: df, inputs=["input_dtypes"], outputs=["transfomed_dtypes"]),
+        ]
+    )
+
+    make_dtypes_file(tmp_dir / "dtypes.json")
+
+    steps = build_compute(ds, catalog, pipeline)
+    run_steps(ds, steps)
+
+    assert len(catalog.get_datatable(ds, "input_dtypes").get_data()) == 3
+    assert len(catalog.get_datatable(ds, "transfomed_dtypes").get_data()) == 3
+
+    print(catalog.get_datatable(ds, "transfomed_dtypes").get_data())
+    with open(tmp_dir / "dtypes_transformed.json", "r") as f:
+        for line in f.readlines():
+            print(line)
 
 
 class TestTableStoreJsonLine(AbstractBaseStoreTests):
