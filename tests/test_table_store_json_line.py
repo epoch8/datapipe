@@ -113,7 +113,8 @@ def test_dtype_mapping(tmp_dir):
         Column("dtype_Date", Date),
         Column("dtype_Time", Time),
     ]
-    store = TableStoreJsonLine(filename=tmp_dir / "dtypes.json", primary_schema=schema)
+    store_excel = TableStoreExcel(filename=tmp_dir / "dtypes.xlsx", primary_schema=schema)
+    store_json_line = TableStoreJsonLine(filename=tmp_dir / "dtypes.json", primary_schema=schema)
 
     now = datetime.datetime(2024, 1, 15, 12, 0, 0)
     df = pd.DataFrame(
@@ -134,22 +135,23 @@ def test_dtype_mapping(tmp_dir):
         }
     )
 
-    store.save_file(df)
-    loaded = store.load_file()
+    for store in [store_excel, store_json_line]:
+        store.save_file(df)
+        loaded = store.load_file()
 
-    assert pd.api.types.is_string_dtype(loaded["dtype_String"])
-    assert pd.api.types.is_string_dtype(loaded["dtype_Text"])
-    assert pd.api.types.is_string_dtype(loaded["dtype_Unicode"])
-    assert pd.api.types.is_string_dtype(loaded["dtype_UnicodeText"])
-    assert pd.api.types.is_integer_dtype(loaded["dtype_Integer"])
-    assert pd.api.types.is_integer_dtype(loaded["dtype_BigInteger"])
-    assert pd.api.types.is_integer_dtype(loaded["dtype_SmallInteger"])
-    assert pd.api.types.is_float_dtype(loaded["dtype_Float"])
-    assert pd.api.types.is_float_dtype(loaded["dtype_Numeric"])
-    assert loaded["dtype_Boolean"].dtype == bool
-    assert pd.api.types.is_datetime64_any_dtype(loaded["dtype_DateTime"])
-    assert loaded["dtype_Date"].dtype == object
-    assert loaded["dtype_Time"].dtype == object
+        assert pd.api.types.is_string_dtype(loaded["dtype_String"])
+        assert pd.api.types.is_string_dtype(loaded["dtype_Text"])
+        assert pd.api.types.is_string_dtype(loaded["dtype_Unicode"])
+        assert pd.api.types.is_string_dtype(loaded["dtype_UnicodeText"])
+        assert pd.api.types.is_integer_dtype(loaded["dtype_Integer"])
+        assert pd.api.types.is_integer_dtype(loaded["dtype_BigInteger"])
+        assert pd.api.types.is_integer_dtype(loaded["dtype_SmallInteger"])
+        assert pd.api.types.is_float_dtype(loaded["dtype_Float"])
+        assert pd.api.types.is_float_dtype(loaded["dtype_Numeric"])
+        assert loaded["dtype_Boolean"].dtype == bool
+        assert pd.api.types.is_datetime64_any_dtype(loaded["dtype_DateTime"])
+        assert loaded["dtype_Date"].dtype == object
+        assert loaded["dtype_Time"].dtype == object
 
 
 def test_table_store_json_line_with_dtype_mapping(dbconn, tmp_dir):

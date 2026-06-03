@@ -17,7 +17,19 @@ class TableStoreExcel(TableDataSingleFileStore, ABC):
 
         if of.fs.exists(of.path):
             dtypes = sql_schema_to_dtype(self.primary_schema)
-            df = pd.read_excel(of.open(), engine="openpyxl", dtype=dtypes)
+            plain_dtypes = {k: v for k, v in dtypes.items() if v not in _DATETIME_PYTHON_TYPES}
+
+            df = pd.read_excel(of.open(), engine="openpyxl", dtype=plain_dtypes)
+
+            for col, py_type in dtypes.items():
+                if col not in df.columns or py_type not in _DATETIME_PYTHON_TYPES:
+                    continue
+                if py_type == datetime.datetime:
+                    df[col] = pd.to_datetime(df[col])
+                elif py_type == datetime.date:
+                    df[col] = pd.to_datetime(df[col]).dt.date
+                elif py_type == datetime.time:
+                    df[col] = pd.to_datetime(df[col]).dt.time
 
             return df
         else:
