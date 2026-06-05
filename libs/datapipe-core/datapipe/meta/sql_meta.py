@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
+    Generator,
     Iterator,
     Literal,
     Sequence,
@@ -333,7 +333,7 @@ class SQLTableMeta(TableMeta):
         self,
         process_ts: float,
         run_config: RunConfig | None = None,
-    ) -> Iterator[IndexDF]:
+    ) -> Generator[IndexDF, None, None]:
         idx_cols = [self.sql_table.c[key] for key in self.primary_keys]
         sql = sa.select(*idx_cols).where(
             sa.and_(
@@ -343,12 +343,9 @@ class SQLTableMeta(TableMeta):
         )
 
         sql = sql_apply_runconfig_filter(sql, self.sql_table, self.primary_keys, run_config)
-
         with self.dbconn.con.begin() as con:
-            return cast(
-                Iterator[IndexDF],
-                list(pd.read_sql_query(sql, con=con, chunksize=1000)),
-            )
+            for chunk in pd.read_sql_query(sql, con=con, chunksize=1000):
+                yield cast(IndexDF, chunk)
 
     def get_agg_cte(
         self,
@@ -477,10 +474,14 @@ class SQLTransformMeta(TransformMeta):
         ds: "DataStore",
         chunk_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0:
-                return (0, iter([]))
+
+                def empty():
+                    yield from ()
+
+                return (0, empty())
 
             idx_count = self.get_changed_idx_count(
                 ds=ds,
@@ -520,7 +521,7 @@ class SQLTransformMeta(TransformMeta):
         change_list: ChangeList,
         chunk_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 

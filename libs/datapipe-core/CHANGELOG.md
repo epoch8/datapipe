@@ -1,3 +1,11 @@
+# WIP 0.15.1
+
+## Changes
+
+* Added `fail_fast` flag to `RunConfig` (defaults from new `DATAPIPE_FAIL_FAST`
+  setting); when set, `BatchTransformStep` re-raises processing errors instead
+  of recording them as batch errors and continuing
+
 # 0.15.0
 
 ## Important new stuff:
