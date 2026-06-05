@@ -902,16 +902,16 @@ def _make_agg_of_agg(
                     onclause.append(prev_cte.cte.c[key] == cte.cte.c[key])
 
         if len(onclause) > 0:
-            sql = sql.outerjoin(
+            sql = sql.join(
                 cte.cte,
                 onclause=sa.and_(*onclause),
-                full=True,
+                full=cte.join_type == "full",
             )
         else:
-            sql = sql.outerjoin(
+            sql = sql.join(
                 cte.cte,
                 onclause=sa.literal(True),
-                full=True,
+                full=cte.join_type == "full",
             )
 
         if cte.join_type == "inner":
