@@ -7,22 +7,23 @@ readme = "../../README.md"
 
 requires-python = ">=3.10,<3.15"
 dependencies = [
-    "fsspec>=2021.11.1",
-    "pandas>=1.2.0",
-    "numpy>=1.21.0, <3.0",
-    "SQLAlchemy>=1.4.0, <3.0.0",
-    "psycopg2_binary>=2.8.4",
-    "cloudpickle>=1.6.0",
-    "PyYAML>=5.3.1",
     "cityhash>=0.4.2,<0.5",
+    "click>=7.1.2",
+    "cloudpickle>=1.6.0",
+    "fsspec>=2021.11.1",
+    "numpy>=1.21.0, <3.0",
+    "opentelemetry-api>=1.8.0,<2",
+    "opentelemetry-instrumentation-sqlalchemy",
+    "opentelemetry-sdk>=1.8.0,<2",
+    "pandas>=1.2.0",
     "Pillow>=12.2.0,<13",
+    "psycopg2_binary>=2.8.4",
+    "pydantic-settings>=2.14.1",
+    "PyYAML>=5.3.1",
+    "rich>=13.3.2",
+    "SQLAlchemy>=1.4.0, <3.0.0",
     "tqdm-loggable>=0.4.1,<0.5",
     "traceback-with-variables>=2.0.4,<3",
-    "opentelemetry-api>=1.8.0,<2",
-    "opentelemetry-sdk>=1.8.0,<2",
-    "opentelemetry-instrumentation-sqlalchemy",
-    "click>=7.1.2",
-    "rich>=13.3.2",
 ]
 
 [project.optional-dependencies]
