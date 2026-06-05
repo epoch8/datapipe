@@ -12,7 +12,6 @@ from datapipe.tests.util import assert_datatable_equal
 from datapipe.types import DataField
 
 
-@pytest.mark.skip
 def test_transform_keys(dbconn: DBConn):
     """
     Проверяет что трансформация с keys (InputSpec) корректно отрабатывает.
@@ -96,7 +95,7 @@ def test_transform_keys(dbconn: DBConn):
         input_dts=[
             ComputeInput(
                 dt=posts,
-                join_type="full",
+                join_type="inner",
                 keys={
                     "post_id": "id",
                     "user_id": DataField("user_id"),
@@ -130,9 +129,27 @@ def test_transform_keys(dbconn: DBConn):
         ),
     )
 
-    # 8. Добавим новые данные и проверим инкрементальную обработку
+    # 8. Изменение lookup-таблицы должно пересчитать все связанные posts.
     time.sleep(0.01)  # Небольшая задержка для различения timestamp'ов
     process_ts2 = time.time()
+
+    profiles.store_chunk(pd.DataFrame([{"id": "1", "username": "alice-updated"}]), now=process_ts2)
+    step.run_full(ds)
+
+    assert_datatable_equal(
+        output_dt,
+        pd.DataFrame(
+            [
+                {"id": "1", "user_id": "1", "content": "Post 1", "username": "alice-updated"},
+                {"id": "2", "user_id": "1", "content": "Post 2", "username": "alice-updated"},
+                {"id": "3", "user_id": "2", "content": "Post 3", "username": "bob"},
+            ]
+        ),
+    )
+
+    # 9. Добавим новые данные и проверим инкрементальную обработку
+    time.sleep(0.01)  # Небольшая задержка для различения timestamp'ов
+    process_ts3 = time.time()
 
     # Добавляем 1 новый пост
     new_posts_df = pd.DataFrame(
@@ -140,27 +157,27 @@ def test_transform_keys(dbconn: DBConn):
             {"id": "4", "user_id": "1", "content": "New Post 4"},
         ]
     )
-    posts.store_chunk(new_posts_df, now=process_ts2)
+    posts.store_chunk(new_posts_df, now=process_ts3)
 
-    # Добавляем 1 новый профиль
+    # Добавляем 1 новый профиль без связанных posts. Он не должен создать partial transform task.
     new_profiles_df = pd.DataFrame(
         [
             {"id": "3", "username": "charlie"},
         ]
     )
-    profiles.store_chunk(new_profiles_df, now=process_ts2)
+    profiles.store_chunk(new_profiles_df, now=process_ts3)
 
-    # 9. Запускаем инкрементальную обработку
+    # 10. Запускаем инкрементальную обработку
     step.run_full(ds)
 
     assert_datatable_equal(
         output_dt,
         pd.DataFrame(
             [
-                {"id": "1", "user_id": "1", "content": "Post 1", "username": "alice"},
-                {"id": "2", "user_id": "1", "content": "Post 2", "username": "alice"},
+                {"id": "1", "user_id": "1", "content": "Post 1", "username": "alice-updated"},
+                {"id": "2", "user_id": "1", "content": "Post 2", "username": "alice-updated"},
                 {"id": "3", "user_id": "2", "content": "Post 3", "username": "bob"},
-                {"id": "4", "user_id": "1", "content": "New Post 4", "username": "alice"},
+                {"id": "4", "user_id": "1", "content": "New Post 4", "username": "alice-updated"},
             ]
         ),
     )
