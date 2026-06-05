@@ -45,9 +45,10 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 
 ### Python3.9 support is deprecated
 
-## Improvements
+## Improvements and fixes
 
 * Fixed dtypes mapping for TableStoreExcel, TableStoreJsonLine
+* Fixed meta changes compute logic for `Required` tables
 
 # 0.14.8
 
