@@ -9,7 +9,6 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.tests.util import assert_datatable_equal
-from datapipe.types import DataField
 
 
 def test_transform_keys(dbconn: DBConn):
@@ -27,7 +26,7 @@ def test_transform_keys(dbconn: DBConn):
         "posts",
         [
             Column("id", String, primary_key=True),
-            Column("user_id", String),
+            Column("user_id", String, primary_key=True),
             Column("content", String),
         ],
         create_table=True,
@@ -98,7 +97,7 @@ def test_transform_keys(dbconn: DBConn):
                 join_type="inner",
                 keys={
                     "post_id": "id",
-                    "user_id": DataField("user_id"),
+                    "user_id": "user_id",
                 },
             ),
             ComputeInput(
