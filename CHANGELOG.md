@@ -1,4 +1,4 @@
-# WIP: 0.15.0
+# 0.15.0
 
 ## Important new stuff:
 
