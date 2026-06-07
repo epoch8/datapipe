@@ -1,5 +1,7 @@
 # BatchTransform
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 ```python
 BatchTransoform(
     func: BatchTransformFunc,

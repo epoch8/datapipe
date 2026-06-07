@@ -1,3 +1,0 @@
-# Milvus
-
-TBD

@@ -1,4 +1,8 @@
-# Case: model inference on images
+# Change Detection and Merging
+
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
+## Case: model inference on images
 
 Imagine we have two input tables:
 

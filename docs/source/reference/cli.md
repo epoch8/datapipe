@@ -1,5 +1,7 @@
 # Datapipe CLI
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 Datapipe provides `datapipe` CLI tool which can be useful for inspecting
 pipeline, tables, and running steps.
 

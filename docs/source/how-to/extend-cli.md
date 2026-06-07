@@ -1,5 +1,7 @@
 # Extending `datapipe` cli
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 ## Entry point
 
 Datapipe offers a way to add additional cli commands. It is achieved by

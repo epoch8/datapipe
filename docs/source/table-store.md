@@ -1,3 +1,0 @@
-# TableStore
-
-TBD

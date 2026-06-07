@@ -1,3 +1,0 @@
-# Elastic
-
-TBD
