@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
-from datapipe.compute import ComputeInput
+from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import do_batch_generate
 from datapipe.step.batch_transform import BatchTransformStep
@@ -99,7 +99,7 @@ def test_inc_process_modify_values(dbconn) -> None:
         name="test",
         func=id_func,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(ds)
@@ -130,7 +130,7 @@ def test_inc_process_delete_values_from_input(dbconn) -> None:
         name="test",
         func=id_func,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(ds)
@@ -165,7 +165,7 @@ def test_inc_process_delete_values_from_proc(dbconn) -> None:
         name="test",
         func=id_func,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(ds)
@@ -224,7 +224,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         name="step_inc",
         func=inc_func,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl1, tbl2, tbl3],
+        output_dts=[ComputeOutput(dt=tbl1), ComputeOutput(dt=tbl2), ComputeOutput(dt=tbl3)],
     )
 
     step_inc.run_full(ds)
@@ -250,7 +250,7 @@ def test_inc_process_many_modify_values(dbconn) -> None:
         name="step_inc_inv",
         func=inc_func_inv,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl3, tbl2, tbl1],
+        output_dts=[ComputeOutput(dt=tbl3), ComputeOutput(dt=tbl2), ComputeOutput(dt=tbl1)],
     )
 
     step_inc_inv.run_full(ds)
@@ -306,7 +306,7 @@ def test_inc_process_many_several_inputs(dbconn) -> None:
             ComputeInput(dt=tbl1, join_type="full"),
             ComputeInput(dt=tbl2, join_type="full"),
         ],
-        output_dts=[tbl],
+        output_dts=[ComputeOutput(dt=tbl)],
     )
 
     step.run_full(ds)
@@ -390,7 +390,7 @@ def test_inc_process_many_several_outputs(dbconn) -> None:
         name="test",
         func=inc_func,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl_good, tbl_bad],
+        output_dts=[ComputeOutput(dt=tbl_good), ComputeOutput(dt=tbl_bad)],
     )
 
     step.run_full(ds)
@@ -438,14 +438,14 @@ def test_inc_process_many_one_to_many(dbconn) -> None:
         name="unpack",
         func=inc_func_unpack,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl_rel],
+        output_dts=[ComputeOutput(dt=tbl_rel)],
     )
     step_pack = BatchTransformStep(
         ds=ds,
         name="pack",
         func=inc_func_pack,
         input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step_unpack.run_full(ds)
@@ -506,14 +506,14 @@ def test_inc_process_many_one_to_many_change_primary(dbconn) -> None:
         name="unpack",
         func=inc_func_unpack,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl_rel],
+        output_dts=[ComputeOutput(dt=tbl_rel)],
     )
     step_pack = BatchTransformStep(
         ds=ds,
         name="pack",
         func=inc_func_pack,
         input_dts=[ComputeInput(dt=tbl_rel, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step_unpack.run_full(ds)
@@ -619,7 +619,7 @@ def test_error_handling(dbconn) -> None:
         name="bad",
         func=inc_func_bad,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl_good],
+        output_dts=[ComputeOutput(dt=tbl_good)],
         chunk_size=1,
     )
     step_bad.run_full(ds)
@@ -631,7 +631,7 @@ def test_error_handling(dbconn) -> None:
         name="good",
         func=inc_func_good,
         input_dts=[ComputeInput(dt=tbl, join_type="full")],
-        output_dts=[tbl_good],
+        output_dts=[ComputeOutput(dt=tbl_good)],
         chunk_size=CHUNKSIZE,
     )
     step_good.run_full(ds)

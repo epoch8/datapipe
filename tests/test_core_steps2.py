@@ -9,7 +9,7 @@ import pandas as pd
 from sqlalchemy import Column, String
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import ComputeInput
+from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import do_batch_generate
@@ -91,7 +91,7 @@ def test_batch_transform(dbconn):
         name="test",
         func=lambda df: df,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(ds)
@@ -125,7 +125,7 @@ def test_batch_transform_with_filter(dbconn):
         name="test",
         func=lambda df: df,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
     step.run_full(
         ds,
@@ -151,7 +151,7 @@ def test_batch_transform_with_filter_not_in_transform_index(dbconn):
         name="test",
         func=lambda df: df[["item_id", "a"]],
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(
@@ -191,7 +191,7 @@ def test_batch_transform_with_dt_on_input_and_output(dbconn):
             ComputeInput(dt=tbl1, join_type="full"),
             ComputeInput(dt=tbl2, join_type="full"),
         ],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     step.run_full(ds)
@@ -246,7 +246,7 @@ def test_batch_transform_with_fails(dbconn):
         name="step1",
         func=transform_func,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     tbl1.store_chunk(
@@ -305,7 +305,7 @@ def test_transform_with_changelist(dbconn):
         name="test",
         func=func,
         input_dts=[ComputeInput(dt=tbl1, join_type="full")],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     change_list = ChangeList()
@@ -354,7 +354,7 @@ def test_batch_transform_with_entity(dbconn):
             ComputeInput(dt=products, join_type="full"),
             ComputeInput(dt=items, join_type="full"),
         ],
-        output_dts=[items2],
+        output_dts=[ComputeOutput(dt=items2)],
     )
 
     step.run_full(ds)

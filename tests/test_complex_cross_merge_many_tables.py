@@ -12,6 +12,7 @@ from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.tests.util import assert_datatable_equal
+from datapipe.types import InputSpec, OutputSpec
 
 TEST_SCHEMA_LEFT = [
     pytest.param(
@@ -90,8 +91,9 @@ def get_primary_key_to_their_tables(schemas: list[list[Column]], table_names: li
     primary_keys = [set([x.name for x in schema if x.primary_key]) for schema in schemas]
     idxs = range(len(schemas))
     pairs = itertools.combinations(idxs, 2)
-    nt = lambda a, b: primary_keys[a].intersection(primary_keys[b])
-    table_name1_table_name2_to_intersection_idxs = {(table_names[t[0]], table_names[t[1]]): nt(*t) for t in pairs}
+    table_name1_table_name2_to_intersection_idxs = {
+        (table_names[t[0]], table_names[t[1]]): primary_keys[t[0]].intersection(primary_keys[t[1]]) for t in pairs
+    }
     return table_name1_table_name2_to_intersection_idxs
 
 
@@ -245,3 +247,90 @@ def test_complex_cross_merge_on_many_tables(dbconn, test_case):
     for output_table_name, test_output_df in zip(output_tables_names, test_output_dfs):
         tbl_output = catalog.get_datatable(ds, output_table_name)
         assert_datatable_equal(tbl_output, test_output_df)
+
+
+def test_complex_cross_merge_on_many_tables_with_index_aliases(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    left_schema = [
+        Column("id_left", Integer, primary_key=True),
+        Column("a_left", Integer),
+    ]
+    center_schema = [
+        Column("id_center", Integer, primary_key=True),
+        Column("c_center", Integer),
+    ]
+    right_schema = [
+        Column("id_right", Integer, primary_key=True),
+        Column("b_right", Integer),
+    ]
+    output_schema = [
+        Column("id_left", Integer, primary_key=True),
+        Column("id_center", Integer, primary_key=True),
+        Column("id_right", Integer, primary_key=True),
+        Column("a_left", Integer),
+        Column("c_center", Integer),
+        Column("b_right", Integer),
+    ]
+
+    test_df_left = pd.DataFrame({"id_left": [1, 2], "a_left": [10, 20]})
+    test_df_center = pd.DataFrame({"id_center": [3, 4], "c_center": [30, 40]})
+    test_df_right = pd.DataFrame({"id_right": [5, 6], "b_right": [50, 60]})
+    test_df_output = cross_merge_func(
+        test_df_left,
+        test_df_center,
+        test_df_right,
+        input_intersection_idxs=[],
+        output_schema_tables=[output_schema],
+    )[0]
+
+    catalog = Catalog(
+        {
+            "table_left": Table(store=TableStoreDB(dbconn, "table_left", left_schema, True)),
+            "table_center": Table(store=TableStoreDB(dbconn, "table_center", center_schema, True)),
+            "table_right": Table(store=TableStoreDB(dbconn, "table_right", right_schema, True)),
+            "table_output": Table(store=TableStoreDB(dbconn, "table_output", output_schema, True)),
+        }
+    )
+
+    def gen_tbl(df):
+        yield df
+
+    pipeline_case = Pipeline(
+        [
+            BatchGenerate(func=gen_tbl, outputs=["table_left"], kwargs=dict(df=test_df_left)),
+            BatchGenerate(func=gen_tbl, outputs=["table_center"], kwargs=dict(df=test_df_center)),
+            BatchGenerate(func=gen_tbl, outputs=["table_right"], kwargs=dict(df=test_df_right)),
+            BatchTransform(
+                func=cross_merge_func,
+                inputs=[
+                    InputSpec(table="table_left", keys={"left_id": "id_left"}),
+                    InputSpec(table="table_center", keys={"center_id": "id_center"}),
+                    InputSpec(table="table_right", keys={"right_id": "id_right"}),
+                ],
+                outputs=[
+                    OutputSpec(
+                        table="table_output",
+                        keys={
+                            "left_id": "id_left",
+                            "center_id": "id_center",
+                            "right_id": "id_right",
+                        },
+                    )
+                ],
+                transform_keys=["left_id", "center_id", "right_id"],
+                chunk_size=6,
+                kwargs=dict(
+                    input_intersection_idxs=[],
+                    output_schema_tables=[output_schema],
+                ),
+            ),
+        ]
+    )
+
+    run_pipeline(ds, catalog, pipeline_case)
+
+    assert_datatable_equal(catalog.get_datatable(ds, "table_left"), test_df_left)
+    assert_datatable_equal(catalog.get_datatable(ds, "table_center"), test_df_center)
+    assert_datatable_equal(catalog.get_datatable(ds, "table_right"), test_df_right)
+    assert_datatable_equal(catalog.get_datatable(ds, "table_output"), test_df_output)
