@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import Column, Integer
 
-from datapipe.compute import ComputeInput
+from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
@@ -40,7 +40,7 @@ def test_inc_process_proc_no_change(dbconn) -> None:
         input_dts=[
             ComputeInput(dt=tbl1, join_type="full"),
         ],
-        output_dts=[tbl2],
+        output_dts=[ComputeOutput(dt=tbl2)],
     )
 
     count, idx_gen = step.get_full_process_ids(ds)
@@ -150,7 +150,7 @@ def test_aux_input(dbconn) -> None:
             ComputeInput(dt=tbl_items2, join_type="full"),
             ComputeInput(dt=tbl_aux, join_type="full"),
         ],
-        output_dts=[tbl_out],
+        output_dts=[ComputeOutput(dt=tbl_out)],
         transform_keys=["id"],
     )
 

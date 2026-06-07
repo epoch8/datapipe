@@ -12,6 +12,7 @@ from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.tests.util import assert_datatable_equal, assert_df_equal
+from datapipe.types import InputSpec, OutputSpec
 
 TEST_SCHEMA_LEFT = [
     pytest.param(
@@ -248,6 +249,66 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     assert_datatable_equal(tbl_left, test_df_left)
     assert_datatable_equal(tbl_right, test_df_right)
     assert_datatable_equal(tbl_left_x_right, test_df_left_x_right)
+
+
+def test_complex_cross_merge_scenary_with_index_aliases(dbconn):
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    left_schema = [
+        Column("id_left", Integer, primary_key=True),
+        Column("a_left", Integer),
+    ]
+    right_schema = [
+        Column("id_right", Integer, primary_key=True),
+        Column("b_right", Integer),
+    ]
+    left_x_right_schema = left_schema + right_schema
+
+    test_df_left = pd.DataFrame({"id_left": [1, 2], "a_left": [10, 20]})
+    test_df_right = pd.DataFrame({"id_right": [3, 4], "b_right": [30, 40]})
+    test_df_left_x_right = cross_merge_func(test_df_left, test_df_right)
+
+    catalog = Catalog(
+        {
+            "tbl_left": Table(store=TableStoreDB(dbconn, "tbl_left", left_schema, True)),
+            "tbl_right": Table(store=TableStoreDB(dbconn, "tbl_right", right_schema, True)),
+            "tbl_left_x_right": Table(store=TableStoreDB(dbconn, "tbl_left_x_right", left_x_right_schema, True)),
+        }
+    )
+
+    def gen_tbl(df):
+        yield df
+
+    pipeline_case = Pipeline(
+        [
+            BatchGenerate(func=gen_tbl, outputs=["tbl_left"], kwargs=dict(df=test_df_left)),
+            BatchGenerate(func=gen_tbl, outputs=["tbl_right"], kwargs=dict(df=test_df_right)),
+            BatchTransform(
+                func=cross_merge_func,
+                inputs=[
+                    InputSpec(table="tbl_left", keys={"left_id": "id_left"}),
+                    InputSpec(table="tbl_right", keys={"right_id": "id_right"}),
+                ],
+                outputs=[
+                    OutputSpec(
+                        table="tbl_left_x_right",
+                        keys={
+                            "left_id": "id_left",
+                            "right_id": "id_right",
+                        },
+                    )
+                ],
+                transform_keys=["left_id", "right_id"],
+                chunk_size=6,
+            ),
+        ]
+    )
+
+    run_pipeline(ds, catalog, pipeline_case)
+
+    assert_datatable_equal(catalog.get_datatable(ds, "tbl_left"), test_df_left)
+    assert_datatable_equal(catalog.get_datatable(ds, "tbl_right"), test_df_right)
+    assert_datatable_equal(catalog.get_datatable(ds, "tbl_left_x_right"), test_df_left_x_right)
 
 
 def reverse_cross_merge_func(df_left_x_right: pd.DataFrame, left_schema: list[Column], right_schema: list[Column]):

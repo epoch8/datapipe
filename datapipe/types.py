@@ -76,6 +76,20 @@ PipelineInput = TableOrName | InputSpec
 
 
 @dataclass
+class OutputSpec:
+    table: TableOrName
+
+    # If provided, this dict tells how transform keys map to output primary keys.
+    #
+    # Example: {"post_id": "id"} means that cleanup for transform key post_id
+    # should be applied to output primary key id.
+    keys: dict[str, str] | None = None
+
+
+PipelineOutput = TableOrName | OutputSpec
+
+
+@dataclass
 class ChangeList:
     changes: dict[str, IndexDF] = field(default_factory=lambda: cast(dict[str, IndexDF], {}))
 

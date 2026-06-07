@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+from pathlib import Path
 
 import fsspec
 import numpy as np
@@ -186,13 +187,22 @@ def tmp_dir_with_json_data(tmp_dir):
     for fn, data in TEST_JSONS.items():
         with fsspec.open(f"{tmp_dir}/{fn}.json", "w+") as f:
             json.dump(data, f)
-    yield tmp_dir
+    yield canonical_local_path(tmp_dir)
 
 
 def get_test_df_filepath(test_df, tmp_dir_):
     test_df_filepath = test_df.copy()
     test_df_filepath["filepath"] = test_df_filepath["id"].map(lambda idx: f"{tmp_dir_}/{idx}.json")
     return test_df_filepath
+
+
+def canonical_local_path(path):
+    path = str(path)
+    if path.startswith("file://"):
+        return f"file://{Path(path.removeprefix('file://')).resolve()}"
+    if "://" in path:
+        return path
+    return str(Path(path).resolve())
 
 
 def test_read_json_rows(tmp_dir_with_json_data):
@@ -409,7 +419,7 @@ def tmp_several_dirs_with_json_data(tmp_dir):
                 out.write(f'{{"a": {i}, "b": {j}}}')
         with fsspec.open(f"{tmp_dir}/folder{i}/{i}.json", "w", auto_mkdir=True) as out:
             out.write(f'{{"a": {i}, "b": -1}}')
-    yield tmp_dir
+    yield canonical_local_path(tmp_dir)
 
 
 TEST_DF_FOLDER0 = pd.DataFrame(

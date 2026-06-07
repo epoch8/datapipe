@@ -21,6 +21,10 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 * Renamed `JoinSpec` to `InputSpec`
 * Added `keys` parameter to `InputSpec` and `ComputeInput` to support
   joining tables with different key names
+* Added `OutputSpec` and `ComputeOutput.keys` to explicitly map transform keys
+  to output table primary keys
+* Fixed batch transform cleanup for aliased output keys and incomplete transform
+  keys
 
 ### Step name overrides and uniform hash-based naming
 

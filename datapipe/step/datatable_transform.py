@@ -4,7 +4,16 @@ from typing import Any, Protocol
 
 from opentelemetry import trace
 
-from datapipe.compute import Catalog, ComputeInput, ComputeStep, PipelineStep, make_mungled_step_name
+from datapipe.compute import (
+    Catalog,
+    ComputeInput,
+    ComputeOutput,
+    ComputeStep,
+    PipelineStep,
+    make_mungled_step_name,
+    pipeline_input_to_compute_input,
+    pipeline_output_to_compute_output,
+)
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
@@ -32,7 +41,7 @@ class DatatableTransformStep(ComputeStep):
         self,
         name: str,
         input_dts: list[ComputeInput],
-        output_dts: list[DataTable],
+        output_dts: list[ComputeOutput],
         func: DatatableTransformFunc,
         kwargs: dict | None = None,
         check_for_changes: bool = True,
@@ -76,7 +85,7 @@ class DatatableTransformStep(ComputeStep):
                 self.func(
                     ds=ds,
                     input_dts=[inp.dt for inp in self.input_dts],
-                    output_dts=self.output_dts,
+                    output_dts=[out.dt for out in self.output_dts],
                     run_config=run_config,
                     kwargs=self.kwargs,
                 )
@@ -97,8 +106,8 @@ class DatatableTransform(PipelineStep):
     labels: Labels | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list["ComputeStep"]:
-        input_dts = [ComputeInput(dt=catalog.get_datatable(ds, i), join_type="full") for i in self.inputs]
-        output_dts = [catalog.get_datatable(ds, i) for i in self.outputs]
+        input_dts = [pipeline_input_to_compute_input(ds, catalog, i) for i in self.inputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, i) for i in self.outputs]
 
         step_name = make_mungled_step_name(DatatableTransformStep, self.func.__name__, input_dts, output_dts)
 

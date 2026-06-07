@@ -36,7 +36,10 @@ BatchTransform(
         # matches tr.sub_user_id = User.id
         InputSpec(User, keys={"sub_user_id": "id"}),
     ],
-    outputs=[...],
+    outputs=[
+        # output table has user_id as PK; transform key sub_user_id is not relevant here
+        OutputSpec(SubscriptionUserSummary, keys={"user_id": "user_id"}),
+    ],
 )
 ```
 
@@ -49,18 +52,24 @@ And `process_func` at each execution will receive three dataframes:
 Both `user_df` and `sub_user_df` have columns aligned with `User` table, i.e.
 without renamings, it is up to end user to interpret the data.
 
-# InputSpec
+# InputSpec and OutputSpec
 
-We introduce `InputSpec` qualifier for `BatchTransform` inputs.
+We introduce `InputSpec` qualifier for `BatchTransform` inputs and `OutputSpec`
+qualifier for `BatchTransform` outputs.
 
-`keys` parameter defines which columns to use for this input table and where to
-get them from. `keys` is a dict in a form `{"{transform_key}": "meta_table_col"}`,
-where `meta_table_col` is a string referencing a column from the meta table
-(i.e. a primary key column).
+`InputSpec.keys` defines which columns to use for this input table and where to
+get them from. `keys` is a dict in a form `{"{transform_key}": "table_pk_col"}`,
+where `table_pk_col` is a string referencing a primary key column of the table.
 
-If table is provided as is without `InputSpec` wrapper, then it is equivalent to
+If a table is provided as is without `InputSpec` wrapper, then it is equivalent to
 `InputSpec(Table, join_type="outer", keys={"id1": "id1", ...})`, join type is
 outer join and all keys are mapped to themselves.
+
+`OutputSpec.keys` defines how transform keys map to the output table's primary key
+columns for the purpose of cleanup. `keys` is a dict in the form
+`{"{transform_key}": "output_pk_col"}`. Only the transform keys that are relevant
+to this output table need to be listed. If a table is provided without `OutputSpec`,
+all transform keys are assumed to match the output primary keys by name.
 
 Note: transform key columns must always be primary keys in the table schema.
 
@@ -71,23 +80,34 @@ Note: transform key columns must always be primary keys in the table schema.
 
 * [x] `datapipe.types.JoinSpec` is renamed to `InputSpec` and receives `keys`
   parameter
+* [x] `datapipe.types.OutputSpec` is added with `keys` parameter to map transform
+  keys to output table primary key columns
 
 ## Compute
 
 * [x] `datapipe.compute.ComputeInput` receives `keys` parameter
+* [x] `datapipe.compute.ComputeOutput` is added with `keys` parameter (mirrors
+  `ComputeInput`); `pipeline_output_to_compute_output` converts `PipelineOutput`
+  to `ComputeOutput`
+
+`datapipe.meta.base.TableMeta` (base class, not `SQLTableMeta`):
+* [x] new method `transform_idx_to_table_idx` which should be used to convert
+  transform keys to table keys by applying `keys` aliasing
 
 `datapipe.meta.sql_meta.SQLTableMeta`:
-* [x] new method `transform_idx_to_table_idx` which should be used to convert
-  transform keys to table keys
 * [x] `get_agg_cte` receives `keys` parameter and starts producing subquery with
   renamed keys
 * [ ] `get_agg_cte` correctly applies `keys` to `filter_idx` parameter
 * [ ] `get_agg_cte` correctly applies `keys` to `RunConfig` filters
 
-`BatchTransform`:
-* [x] correctly converts transform idx to table idx in `get_batch_input_dfs`
-* [x] inputs and outputs are stored as `ComputeInput` lists
+`BatchTransformStep`:
+* [x] correctly converts transform idx to table idx in `get_batch_input_dfs` via
+  `transform_idx_to_table_idx`
+* [x] new method `_transform_idx_to_output_idx` converts transform idx to output
+  table idx using `ComputeOutput.keys` for cleanup/delete operations
+* [x] inputs are stored as `ComputeInput` list; outputs are stored as `ComputeOutput`
+  list
 
 `DataTable`:
 * [x] `DataTable.get_data` accepts `table_idx` which is acquired by applying
-  `tranform_idx_to_table_idx`
+  `transform_idx_to_table_idx`

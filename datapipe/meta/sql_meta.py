@@ -16,8 +16,7 @@ import pandas as pd
 import sqlalchemy as sa
 from opentelemetry import trace
 
-from datapipe.compute import ComputeInput
-from datapipe.datatable import DataTable
+from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMeta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
@@ -412,8 +411,8 @@ class SQLTransformMeta(TransformMeta):
         self,
         dbconn: DBConn,
         name: str,
-        input_cis: Sequence[ComputeInput],
-        output_dts: Sequence[DataTable],
+        inputs: Sequence[ComputeInput],
+        outputs: Sequence[ComputeOutput],
         transform_keys: list[str] | None,
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
@@ -422,12 +421,12 @@ class SQLTransformMeta(TransformMeta):
         self.dbconn = dbconn
         self.name = name
 
-        self.input_cis = input_cis
-        self.output_dts = output_dts
+        self.inputs = inputs
+        self.outputs = outputs
 
         self.transform_keys, self.transform_keys_schema = self.compute_transform_schema(
-            input_cis=self.input_cis,
-            output_dts=self.output_dts,
+            inputs=self.inputs,
+            outputs=self.outputs,
             transform_keys=transform_keys,
         )
 
@@ -452,8 +451,8 @@ class SQLTransformMeta(TransformMeta):
         return self.__class__, (
             self.dbconn,
             self.name,
-            self.input_cis,
-            self.output_dts,
+            self.inputs,
+            self.outputs,
             self.transform_keys,
             self.order_by,
             self.order,
@@ -480,7 +479,7 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,
     ) -> tuple[int, Iterable[IndexDF]]:
         with tracer.start_as_current_span("compute ids to process"):
-            if len(self.input_cis) == 0:
+            if len(self.inputs) == 0:
                 return (0, iter([]))
 
             idx_count = self.get_changed_idx_count(
@@ -525,7 +524,7 @@ class SQLTransformMeta(TransformMeta):
         with tracer.start_as_current_span("compute ids to process"):
             changes = [pd.DataFrame(columns=self.transform_keys)]
 
-            for inp in self.input_cis:
+            for inp in self.inputs:
                 if inp.dt.name in change_list.changes:
                     idx = change_list.changes[inp.dt.name]
                     if any([key not in idx.columns for key in self.transform_keys]):
@@ -723,11 +722,11 @@ class SQLTransformMeta(TransformMeta):
         run_config: RunConfig | None = None,  # TODO remove
     ) -> Any:
         all_input_keys_counts: dict[str, int] = {}
-        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.input_cis]):
+        for col in itertools.chain(*[inp.dt.primary_schema for inp in self.inputs]):
             all_input_keys_counts[col.name] = all_input_keys_counts.get(col.name, 0) + 1
 
         inp_ctes = []
-        for inp in self.input_cis:
+        for inp in self.inputs:
             inp_meta = inp.dt.meta
             assert isinstance(inp_meta, SQLTableMeta)
 
@@ -923,7 +922,7 @@ class SQLMetaPlane(MetaPlane):
         self,
         name: str,
         input_dts: Sequence[ComputeInput],
-        output_dts: Sequence[DataTable],
+        output_dts: Sequence[ComputeOutput],
         transform_keys: list[str] | None = None,
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
@@ -931,8 +930,8 @@ class SQLMetaPlane(MetaPlane):
         return SQLTransformMeta(
             dbconn=self.dbconn,
             name=name,
-            input_cis=input_dts,
-            output_dts=output_dts,
+            inputs=input_dts,
+            outputs=output_dts,
             transform_keys=transform_keys,
             order_by=order_by,
             order=order,

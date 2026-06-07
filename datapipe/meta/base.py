@@ -8,8 +8,8 @@ from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, DataSchema, HashDF, IndexDF, MetadataDF, MetaSchema
 
 if TYPE_CHECKING:
-    from datapipe.compute import ComputeInput
-    from datapipe.datatable import DataStore, DataTable
+    from datapipe.compute import ComputeInput, ComputeOutput
+    from datapipe.datatable import DataStore
 
 
 class MetaPlane:
@@ -37,7 +37,7 @@ class MetaPlane:
         self,
         name: str,
         input_dts: Sequence["ComputeInput"],
-        output_dts: Sequence["DataTable"],
+        output_dts: Sequence["ComputeOutput"],
         transform_keys: list[str] | None = None,
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
@@ -200,8 +200,8 @@ class TransformMeta:
     @classmethod
     def compute_transform_schema(
         cls,
-        input_cis: Sequence["ComputeInput"],
-        output_dts: Sequence["DataTable"],
+        inputs: Sequence["ComputeInput"],
+        outputs: Sequence["ComputeOutput"],
         transform_keys: list[str] | None,
     ) -> tuple[list[str], MetaSchema]:
         # Hacky way to collect all the primary keys into a single set. Possible
@@ -209,24 +209,24 @@ class TransformMeta:
         # same key is defined differently in different input tables.
         all_keys: dict[str, Column] = {}
 
-        for ci in input_cis:
+        for ci in inputs:
             all_keys.update({col.name: col for col in ci.primary_schema})
 
-        for dt in output_dts:
-            all_keys.update({col.name: col for col in dt.primary_schema})
+        for co in outputs:
+            all_keys.update({col.name: col for col in co.primary_schema})
 
         if transform_keys is not None:
             return (transform_keys, [all_keys[k] for k in transform_keys])
 
-        assert len(input_cis) > 0, "At least one input table is required to infer transform keys"
+        assert len(inputs) > 0, "At least one input table is required to infer transform keys"
 
-        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in input_cis])
+        inp_p_keys = set.intersection(*[set(inp.primary_keys) for inp in inputs])
         assert len(inp_p_keys) > 0
 
-        if len(output_dts) == 0:
+        if len(outputs) == 0:
             return (list(inp_p_keys), [all_keys[k] for k in inp_p_keys])
 
-        out_p_keys = set.intersection(*[set(out.primary_keys) for out in output_dts])
+        out_p_keys = set.intersection(*[set(out.primary_keys) for out in outputs])
         assert len(out_p_keys) > 0
 
         inp_out_p_keys = set.intersection(inp_p_keys, out_p_keys)

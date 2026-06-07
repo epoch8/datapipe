@@ -37,6 +37,7 @@ jobs:
           - many_to_zero
           - model_inference
           - one_to_many_pipeline
+          - key_mapping
         executor:
           - SingleThreadExecutor
           - RayExecutor

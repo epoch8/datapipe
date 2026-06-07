@@ -324,7 +324,7 @@ def to_human_repr(step: ComputeStep, extra_args: dict | None = None) -> str:
         inputs = ", ".join(inputs_arr)
         res.append(f"  inputs: {inputs}")
 
-    if outputs_arr := [i.name for i in step.output_dts]:
+    if outputs_arr := [i.dt.name for i in step.output_dts]:
         outputs = ", ".join(outputs_arr)
         res.append(f"  outputs: {outputs}")
 
