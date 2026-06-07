@@ -23,6 +23,7 @@
 - [Map Mismatched Primary Keys](./how-to/key-mapping.md)
 - [Filter Steps by Labels](./how-to/filter-by-labels.md)
 - [Use SQLite as Metadata Store](./how-to/using-sqlite.md)
+- [Manage Schema Changes with Alembic](./how-to/alembic-migrations.md)
 - [Extend the CLI](./how-to/extend-cli.md)
 - [Write a Custom TableStore](./how-to/custom-table-store.md)
 
