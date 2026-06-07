@@ -76,6 +76,7 @@ def count_tbl(
         return pd.read_sql_query(
             sql,
             con=con,
+            dtype_backend="pyarrow",
         )
 
 

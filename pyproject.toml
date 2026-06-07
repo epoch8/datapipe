@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "fsspec>=2021.11.1",
-    "pandas>=1.2.0",
+    "pandas>=1.2.0, <3.0",
     "numpy>=1.21.0, <3.0",
     "SQLAlchemy>=1.4.0, <3.0.0",
     "psycopg2_binary>=2.8.4",
@@ -23,6 +23,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "click>=7.1.2",
     "rich>=13.3.2",
+    "pyarrow[pyarrow]>=21.0.0",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,6 @@ ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
 elastic = ["elasticsearch>=8.17.1"]
 neo4j = ["neo4j"]
-pyarrow = ["pyarrow[pyarrow]>=21.0.0"]
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"

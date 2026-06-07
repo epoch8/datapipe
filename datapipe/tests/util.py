@@ -15,6 +15,9 @@ def assert_idx_equal(a, b):
 
 
 def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame, index_cols=["id"]) -> bool:
+    a = a.convert_dtypes(dtype_backend="pyarrow")
+    b = b.convert_dtypes(dtype_backend="pyarrow")
+
     a = a.set_index(index_cols)
     b = b.set_index(index_cols)
 
