@@ -1,5 +1,7 @@
 # Using with SQLite
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 Python comes with some ([at least
 3.7.15](https://docs.python.org/3/library/sqlite3.html)) version of SQLite
 included.

@@ -1,5 +1,7 @@
 # Lifecycle of a ComputeStep execution
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 As a computational graph node, transformation consists of:
 
 * `input_dts` - Input data tables

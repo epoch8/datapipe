@@ -1,5 +1,7 @@
 # Developing TableStore
 
+> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+
 ## When you need it?
 
 If you need Datapipe to read or write data to a specific database which is not
