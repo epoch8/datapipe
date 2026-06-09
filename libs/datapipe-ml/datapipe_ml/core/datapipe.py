@@ -7,7 +7,7 @@ import pandas as pd
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
-from datapipe.types import FieldAccessor, IndexDF, InputSpec, OutputSpec, PipelineInput, PipelineOutput, get_pipeline_table
+from datapipe.types import IndexDF, InputSpec, OutputSpec, PipelineInput, PipelineOutput, get_pipeline_table
 
 PipelineInputOrList: TypeAlias = PipelineInput | Sequence[PipelineInput]
 PipelineTableOrList: TypeAlias = PipelineInput | PipelineOutput | Sequence[PipelineInput | PipelineOutput]
@@ -66,9 +66,7 @@ def normalize_pipeline_inputs(tbl_name: PipelineInputOrList) -> List[PipelineInp
 
 def pipeline_output_as_input(output: PipelineOutput) -> PipelineInput:
     if isinstance(output, OutputSpec):
-        keys: dict[str, FieldAccessor] | None = (
-            {key: value for key, value in output.keys.items()} if output.keys is not None else None
-        )
+        keys: dict[str, str] | None = {key: value for key, value in output.keys.items()} if output.keys is not None else None
         return InputSpec(table=output.table, keys=keys)
     return output
 

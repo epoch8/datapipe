@@ -57,25 +57,14 @@ TableOrName = Union[str, OrmTable, "Table"]
 
 
 @dataclass
-class DataField:
-    field_name: str
-
-
-FieldAccessor = Union[str, DataField]
-
-
-@dataclass
 class InputSpec:
     table: TableOrName
 
-    # If provided, this dict tells how to get key columns from meta and data tables
+    # If provided, this dict tells how to map transform index columns to table columns
     #
-    # Example: {"idx_col": DataField("data_col")} means that to get idx_col value
-    # we should read data_col from data table
-    #
-    # Example: {"idx_col": "meta_col"} means that to get idx_col value
-    # we should read meta_col from meta table
-    keys: dict[str, FieldAccessor] | None = None
+    # Example: {"transform_col": "table_col"} means that to get transform_col value
+    # we should read table_col from the meta table
+    keys: dict[str, str] | None = None
 
 
 @dataclass
