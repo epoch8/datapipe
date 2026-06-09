@@ -75,10 +75,23 @@ class Required(InputSpec):
 PipelineInput = TableOrName | InputSpec
 
 
+def required_pipeline_input(input: PipelineInput) -> Required:
+    if isinstance(input, InputSpec):
+        return Required(table=input.table, keys=input.keys)
+    return Required(input)
+
+
 def get_pipeline_input_table(input: PipelineInput) -> TableOrName:
     if isinstance(input, InputSpec):
         return input.table
     return input
+
+
+def get_pipeline_input_name(input: PipelineInput) -> str:
+    table = get_pipeline_input_table(input)
+    if not isinstance(table, str):
+        raise TypeError(f"Expected a named pipeline input, got {type(table)!r}")
+    return table
 
 
 @dataclass
@@ -99,6 +112,21 @@ def get_pipeline_output_table(output: PipelineOutput) -> TableOrName:
     if isinstance(output, OutputSpec):
         return output.table
     return output
+
+
+def get_pipeline_output_name(output: PipelineOutput) -> str:
+    table = get_pipeline_output_table(output)
+    if not isinstance(table, str):
+        raise TypeError(f"Expected a named pipeline output, got {type(table)!r}")
+    return table
+
+
+def get_pipeline_table(table: PipelineInput | PipelineOutput) -> TableOrName:
+    if isinstance(table, InputSpec):
+        return table.table
+    if isinstance(table, OutputSpec):
+        return table.table
+    return table
 
 
 @dataclass
