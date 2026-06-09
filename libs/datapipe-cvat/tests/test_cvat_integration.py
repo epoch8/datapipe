@@ -348,11 +348,15 @@ class _FakeCVATAnnotations:
 
 
 class _FakeCVATTask:
-    def __init__(self, task_id: int, frame_names: list[str]):
+    def __init__(self, task_id: int, frame_names: list[str], annotations=None):
         self.id = task_id
         self.frame_names = frame_names
         self.removed_frame_ids: list[int] = []
-        self.annotations = _FakeCVATAnnotations()
+        self.annotations = (
+            annotations
+            if annotations is not None
+            else _FakeCVATAnnotations()
+        )
 
     def get_annotations(self):
         return self.annotations
@@ -484,6 +488,7 @@ def _call_upload_failure_case(
     df__cvat_task,
     df__cvat_files,
     failure_hook=None,
+    delete_unannotated_tasks_only_on_update=False,
 ):
     return upload_batches_to_cvat(
         df__input=df__input,
@@ -500,7 +505,7 @@ def _call_upload_failure_case(
         cvat_url="http://cvat.example",
         cvat_organization="",
         cvat_credentials=("admin", "admin"),
-        delete_unannotated_tasks_only_on_update=False,
+        delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
         file_path_column="image_path",
         cvat_project_id=1,
         cloud_storage_bucket=None,
@@ -685,6 +690,80 @@ def test_upload_batches_to_cvat_recovers_after_process_crash(
     assert image_batches_after[image_batches_after["inner_task_id"] == 0].iloc[0]["image_id"] == "image_1"
     assert len(image_batches_after[image_batches_after["inner_task_id"] == 1]) == 1
     assert image_batches_after[image_batches_after["inner_task_id"] == 1].iloc[0]["image_id"] == "image_0"
+
+
+def test_upload_batches_to_cvat_keeps_annotated_changed_frames_when_delete_unannotated(
+    dbconn,
+    monkeypatch,
+):
+    ds, df__input, df__input_batches, df__cvat_task, df__cvat_files = (
+        _make_upload_failure_case(dbconn)
+    )
+    df__input.loc[
+        df__input["image_id"] == "image_1",
+        "image_path",
+    ] = "/tmp/image_1_changed.jpg"
+    df__input_batches.loc[
+        df__input_batches["image_id"] == "image_1",
+        "image_path",
+    ] = "/tmp/image_1_changed.jpg"
+
+    old_task = _FakeCVATTask(
+        10,
+        ["image_0.jpg", "image_1.jpg"],
+        annotations={"shapes": [{"frame": 0}], "tracks": [], "tags": []},
+    )
+    new_task = _FakeCVATTask(11, ["image_1_changed.jpg"])
+    monkeypatch.setattr(
+        cvat_step_module,
+        "create_cvat_client",
+        lambda *args, **kwargs: _FakeCVATClient({10: old_task}),
+    )
+
+    def fake_get_or_create_task(**kwargs):
+        if kwargs["inner_task_id"] == 0:
+            return old_task, df__cvat_files.copy()
+        return new_task, pd.DataFrame(
+            [
+                {
+                    "image_id": "image_1",
+                    "task_queue_id": "queue1",
+                    "project_id": 1,
+                    "inner_task_id": kwargs["inner_task_id"],
+                    "task_id": new_task.id,
+                    "cvat__file_path": "image_1_changed.jpg",
+                    "inner_frame_id": 0,
+                }
+            ]
+        )
+
+    monkeypatch.setattr(cvat_step_module, "get_or_create_task", fake_get_or_create_task)
+
+    _call_upload_failure_case(
+        ds,
+        df__input,
+        df__input_batches,
+        df__cvat_task,
+        df__cvat_files,
+        delete_unannotated_tasks_only_on_update=True,
+    )
+
+    cvat_files_after = ds.get_table("cvat_files").get_data()
+    image_batches_after = ds.get_table("image_batches").get_data()
+    image_0_files = cvat_files_after[cvat_files_after["image_id"] == "image_0"]
+    image_1_files = cvat_files_after[cvat_files_after["image_id"] == "image_1"]
+    image_0_batches = image_batches_after[image_batches_after["image_id"] == "image_0"]
+    image_1_batches = image_batches_after[image_batches_after["image_id"] == "image_1"]
+
+    assert old_task.removed_frame_ids == [1]
+    assert len(cvat_files_after) == 2
+    assert len(image_batches_after) == 2
+    assert image_0_files.iloc[0]["inner_task_id"] == 0
+    assert image_0_files.iloc[0]["cvat__file_path"] == "image_0.jpg"
+    assert image_1_files.iloc[0]["inner_task_id"] == 1
+    assert image_1_files.iloc[0]["cvat__file_path"] == "image_1_changed.jpg"
+    assert image_0_batches.iloc[0]["inner_task_id"] == 0
+    assert image_1_batches.iloc[0]["inner_task_id"] == 1
 
 
 def _store_generated_df(df: pd.DataFrame):
