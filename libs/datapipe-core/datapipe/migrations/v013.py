@@ -15,7 +15,7 @@ def migrate_transform_tables(app, steps):
         if size > 0:
             print(f"Skipping -- size of metadata is greater 0: {size=}")
             continue
-        output_tbls = [output_dt.dt.meta.sql_table for output_dt in batch_transform.output_dts]  # type: ignore
+        output_tbls = [output_dt.meta.sql_table for output_dt in batch_transform.output_dts]  # type: ignore
 
         def make_ids_cte():
             ids_cte = (

@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol, Sequence
+from typing import Any, Protocol
 
 from opentelemetry import trace
 
@@ -17,7 +17,7 @@ from datapipe.compute import (
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
-from datapipe.types import Labels, PipelineInput, PipelineOutput
+from datapipe.types import Labels, TableOrName
 
 logger = logging.getLogger("datapipe.step.datatable_transform")
 tracer = trace.get_tracer("datapipe.step.datatable_transform")
@@ -99,8 +99,8 @@ class DatatableTransformStep(ComputeStep):
 @dataclass
 class DatatableTransform(PipelineStep):
     func: DatatableTransformFunc
-    inputs: Sequence[PipelineInput]
-    outputs: Sequence[PipelineOutput]
+    inputs: list[TableOrName]
+    outputs: list[TableOrName]
     check_for_changes: bool = True
     kwargs: dict[str, Any] | None = None
     labels: Labels | None = None

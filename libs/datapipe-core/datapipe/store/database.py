@@ -3,6 +3,7 @@ import logging
 import math
 from typing import Any, Callable, Iterator, cast
 
+import numpy as np
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func, text
@@ -14,16 +15,7 @@ from sqlalchemy.sql.expression import delete, select
 from datapipe.run_config import RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore, TableStoreCaps
-from datapipe.types import (
-    DataDF,
-    DataSchema,
-    IndexDF,
-    MetaSchema,
-    OrmTable,
-    PipelineOutput,
-    TAnyDF,
-    get_pipeline_output_name,
-)
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
 logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
@@ -140,7 +132,7 @@ class TableStoreDB(TableStore):
     def __init__(
         self,
         dbconn: DBConn | str,
-        name: str | PipelineOutput | None = None,
+        name: str | None = None,
         data_sql_schema: list[Column] | None = None,
         create_table: bool = False,
         orm_table: OrmTable | None = None,
@@ -176,7 +168,7 @@ class TableStoreDB(TableStore):
             assert name is not None, "name should be provided if data_table is not provided"
             assert data_sql_schema is not None, "data_sql_schema should be provided if data_table is not provided"
 
-            self.name = get_pipeline_output_name(name)
+            self.name = name
 
             self.data_sql_schema = data_sql_schema
 
@@ -247,12 +239,10 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
-        # SQLAlchemy expects Python None for SQL NULL; keep object dtype to avoid
-        # pandas downcasting warnings while preserving scalar values.
-        df_records = df.astype(object)
-        df_records[pd.isna(df_records)] = None
-        records = df_records.to_dict(orient="records")
-        insert_sql = self.dbconn.insert(self.data_table).values(records)
+        # TODO разобраться, нужен ли этот блок кода, написать тесты на заполнение None/NULL
+        insert_sql = self.dbconn.insert(self.data_table).values(
+            df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
+        )
 
         if len(self.data_keys) > 0:
             sql = insert_sql.on_conflict_do_update(

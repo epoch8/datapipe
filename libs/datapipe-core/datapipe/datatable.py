@@ -9,17 +9,7 @@ from datapipe.meta.base import TableMeta
 from datapipe.run_config import RunConfig
 from datapipe.store.database import DBConn
 from datapipe.store.table_store import TableStore
-from datapipe.types import (
-    DataDF,
-    IndexDF,
-    MetadataDF,
-    PipelineInput,
-    PipelineOutput,
-    data_to_index,
-    get_pipeline_table,
-    index_difference,
-    index_to_data,
-)
+from datapipe.types import DataDF, IndexDF, MetadataDF, data_to_index, index_difference, index_to_data
 
 if TYPE_CHECKING:
     try:
@@ -180,11 +170,7 @@ class DataStore:
         # TODO move initialization outside
         self.meta_plane = SQLMetaPlane(dbconn=meta_dbconn, create_meta_table=create_meta_table)
 
-    def create_table(self, name: str | PipelineInput | PipelineOutput, table_store: TableStore) -> DataTable:
-        table_ref = get_pipeline_table(name)
-        if not isinstance(table_ref, str):
-            raise TypeError(f"Expected a named table, got {type(table_ref)!r}")
-        name = table_ref
+    def create_table(self, name: str, table_store: TableStore) -> DataTable:
         assert name not in self.tables
 
         primary_schema = table_store.get_primary_schema()
@@ -205,19 +191,11 @@ class DataStore:
 
         return res
 
-    def get_or_create_table(self, name: str | PipelineInput | PipelineOutput, table_store: TableStore) -> DataTable:
-        table_ref = get_pipeline_table(name)
-        if not isinstance(table_ref, str):
-            raise TypeError(f"Expected a named table, got {type(table_ref)!r}")
-        name = table_ref
+    def get_or_create_table(self, name: str, table_store: TableStore) -> DataTable:
         if name in self.tables:
             return self.tables[name]
         else:
             return self.create_table(name, table_store)
 
-    def get_table(self, name: str | PipelineInput | PipelineOutput) -> DataTable:
-        table_ref = get_pipeline_table(name)
-        if not isinstance(table_ref, str):
-            raise TypeError(f"Expected a named table, got {type(table_ref)!r}")
-        name = table_ref
+    def get_table(self, name: str) -> DataTable:
         return self.tables[name]

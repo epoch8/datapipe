@@ -15,15 +15,16 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     IndexDF,
+    InputSpec,
     Labels,
     MetaSchema,
-    InputSpec,
     OutputSpec,
     PipelineInput,
     PipelineOutput,
     Required,
     TableOrName,
-    get_pipeline_table,
+    get_pipeline_input_table,
+    get_pipeline_output_table,
 )
 
 logger = logging.getLogger("datapipe.compute")
@@ -41,27 +42,17 @@ class Catalog:
         self.catalog = catalog
         self.data_tables: dict[str, DataTable] = {}
 
-    def add_datatable(self, name: str | PipelineOutput, dt: Table):
-        table_ref = get_pipeline_table(name)
-        if not isinstance(table_ref, str):
-            raise TypeError(f"Expected a named table, got {type(table_ref)!r}")
-        name = table_ref
+    def add_datatable(self, name: str, dt: Table):
         self.catalog[name] = dt
 
-    def remove_datatable(self, name: str | PipelineOutput):
-        table_ref = get_pipeline_table(name)
-        if not isinstance(table_ref, str):
-            raise TypeError(f"Expected a named table, got {type(table_ref)!r}")
-        name = table_ref
+    def remove_datatable(self, name: str):
         del self.catalog[name]
 
     def init_all_tables(self, ds: DataStore):
         for name in self.catalog.keys():
             self.get_datatable(ds, name)
 
-    def get_datatable(self, ds: DataStore, table: TableOrName | PipelineInput | PipelineOutput) -> DataTable:
-        table = get_pipeline_table(table)
-
+    def get_datatable(self, ds: DataStore, table: TableOrName) -> DataTable:
         if isinstance(table, str):
             assert table in self.catalog, f"Table {table} not found in catalog"
             return ds.get_or_create_table(name=table, table_store=self.catalog[table].store)
@@ -110,6 +101,7 @@ class ComputeInput:
     join_type: Literal["inner", "full"] = "full"
 
     # If provided, this dict tells how to get key columns from meta table
+    #
     # Example: {"idx_col": "meta_col"} means that to get idx_col value
     # we should read meta_col from meta table
     keys: dict[str, str] | None = None
@@ -195,30 +187,16 @@ def make_mungled_step_name(
 
 
 def pipeline_input_to_compute_input(ds: DataStore, catalog: Catalog, input: PipelineInput) -> ComputeInput:
-    if isinstance(input, Required):
-        return ComputeInput(
-            dt=catalog.get_datatable(ds, input.table),
-            join_type="inner",
-            keys=input.keys,
-        )
-    elif isinstance(input, InputSpec):
-        return ComputeInput(
-            dt=catalog.get_datatable(ds, input.table),
-            join_type="full",
-            keys=input.keys,
-        )
-    else:
-        return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
+    table = get_pipeline_input_table(input)
+    keys = input.keys if isinstance(input, InputSpec) else None
+    join_type: Literal["inner", "full"] = "inner" if isinstance(input, Required) else "full"
+    return ComputeInput(dt=catalog.get_datatable(ds, table), join_type=join_type, keys=keys)
 
 
 def pipeline_output_to_compute_output(ds: DataStore, catalog: Catalog, output: PipelineOutput) -> ComputeOutput:
-    if isinstance(output, OutputSpec):
-        return ComputeOutput(
-            dt=catalog.get_datatable(ds, output.table),
-            keys=output.keys,
-        )
-
-    return ComputeOutput(dt=catalog.get_datatable(ds, output))
+    table = get_pipeline_output_table(output)
+    keys = output.keys if isinstance(output, OutputSpec) else None
+    return ComputeOutput(dt=catalog.get_datatable(ds, table), keys=keys)
 
 
 class ComputeStep:

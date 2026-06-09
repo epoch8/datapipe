@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Iterator, Sequence
+from typing import Callable, Iterator
 
 import pandas as pd
 from opentelemetry import trace
@@ -21,7 +21,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, PipelineOutput, TransformResult, cast
+from datapipe.types import Labels, TableOrName, TransformResult, cast
 
 logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")
@@ -93,7 +93,7 @@ def do_batch_generate(
 @dataclass
 class BatchGenerate(PipelineStep):
     func: BatchGenerateFunc
-    outputs: Sequence[PipelineOutput]
+    outputs: list[TableOrName]
     name: str | None = None
     kwargs: dict | None = None
     labels: Labels | None = None

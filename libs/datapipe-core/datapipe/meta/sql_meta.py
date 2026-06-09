@@ -894,8 +894,6 @@ def _make_agg_of_agg(
 
         prev_ctes.append(cte)
 
-    sql = sql.where(sa.and_(*[key.isnot(None) for key in coalesce_keys]))
-
     sql = sql.group_by(*coalesce_keys)
 
     return sql.cte(name=f"all__{agg_col}")

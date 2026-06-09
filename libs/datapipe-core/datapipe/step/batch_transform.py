@@ -35,8 +35,10 @@ from datapipe.types import (
     DataDF,
     IndexDF,
     Labels,
+    OutputSpec,
     PipelineInput,
     PipelineOutput,
+    TableOrName,
     TransformResult,
 )
 
@@ -80,19 +82,16 @@ class BaseBatchTransformStep(ComputeStep):
         order_by: list[str] | None = None,
         order: Literal["asc", "desc"] = "asc",
     ) -> None:
-        compute_input_dts = list(input_dts)
-        compute_output_dts = list(output_dts)
-
         ComputeStep.__init__(
             self,
             name=name,
-            input_dts=compute_input_dts,
-            output_dts=compute_output_dts,
+            input_dts=input_dts,
+            output_dts=output_dts,
             labels=labels,
             executor_config=executor_config,
         )
 
-        self.output_specs = compute_output_dts
+        self.output_specs = output_dts
         self.chunk_size = chunk_size
 
         # Force transform_keys to be a list, otherwise Pandas will not be happy
@@ -437,8 +436,8 @@ class BaseBatchTransformStep(ComputeStep):
 @dataclass
 class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
-    inputs: Sequence[PipelineInput]
-    outputs: Sequence[PipelineOutput]
+    inputs: list[TableOrName]
+    outputs: list[TableOrName]
     name: str | None = None
     chunk_size: int = 1000
     transform_keys: list[str] | None = None
@@ -512,8 +511,8 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
 @dataclass
 class BatchTransform(PipelineStep):
     func: BatchTransformFunc
-    inputs: Sequence[PipelineInput]
-    outputs: Sequence[PipelineOutput]
+    inputs: list[PipelineInput]
+    outputs: list[PipelineOutput]
     chunk_size: int = 1000
     name: str | None = None
     kwargs: dict[str, Any] | None = None
