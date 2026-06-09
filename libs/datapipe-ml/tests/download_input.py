@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import random
+import time
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -32,11 +33,26 @@ KPS_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 KPS_LABELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_with_retries(url: str, *, attempts: int = 5) -> requests.Response:
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(url, timeout=60, stream=True)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == attempts:
+                break
+            time.sleep(min(2**attempt, 30))
+    assert last_error is not None
+    raise last_error
+
+
 def download_with_tqdm(url: str, dst: Path, desc: str):
     tmp_dst = dst.with_suffix(f"{dst.suffix}.tmp")
     tmp_dst.unlink(missing_ok=True)
-    with requests.get(url, timeout=60, stream=True) as response:
-        response.raise_for_status()
+    with get_with_retries(url) as response:
         total = int(response.headers.get("content-length", 0))
         with open(tmp_dst, "wb") as f, tqdm(total=total, unit="B", unit_scale=True, desc=desc) as bar:
             for chunk in response.iter_content(8192):
@@ -101,13 +117,16 @@ def download_images(sample_ids, id_to_img, images_dir, desc):
         outp = images_dir / fname
         if outp.exists():
             continue
-        r = requests.get(url, timeout=60, stream=True)
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        with open(outp, "wb") as f, tqdm(total=total, unit="B", unit_scale=True, desc=fname, leave=False) as bar:
-            for chunk in r.iter_content(8192):
-                f.write(chunk)
-                bar.update(len(chunk))
+        tmp_outp = outp.with_suffix(f"{outp.suffix}.tmp")
+        tmp_outp.unlink(missing_ok=True)
+        with get_with_retries(url) as r:
+            total = int(r.headers.get("content-length", 0))
+            with open(tmp_outp, "wb") as f, tqdm(total=total, unit="B", unit_scale=True, desc=fname, leave=False) as bar:
+                for chunk in r.iter_content(8192):
+                    if chunk:
+                        f.write(chunk)
+                        bar.update(len(chunk))
+        tmp_outp.replace(outp)
 
 
 def split_coco_keypoints(flat_keypoints):

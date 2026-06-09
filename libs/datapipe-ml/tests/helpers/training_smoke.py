@@ -22,7 +22,7 @@ from datapipe.store.database import DBConn, TableStoreDB
 from sklearn.model_selection import train_test_split
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, String
-from ..conftest import get_sqlite_dbconnstr
+from .dbconn import get_sqlite_dbconnstr
 
 TESTS_DIR = Path(__file__).parents[1]
 INPUT_DIR = TESTS_DIR / "input"

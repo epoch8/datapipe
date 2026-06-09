@@ -1,5 +1,4 @@
 import os
-import sys
 
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
@@ -11,6 +10,7 @@ from sqlalchemy import Column, create_engine, text
 from sqlalchemy.sql.sqltypes import JSON, String
 
 from tests.fixtures.smoke_data import SmokeDataset, make_smoke_dataset
+from tests.helpers.dbconn import get_sqlite_dbconnstr
 
 
 @pytest.fixture
@@ -18,13 +18,6 @@ def tmp_dir() -> Path:
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         yield d
-
-
-def get_sqlite_dbconnstr(path: Path | None = None) -> str:
-    db_path = ":memory:" if path is None else str(path)
-    if sys.platform == "darwin":
-        return f"sqlite:///{db_path}"
-    return f"sqlite+pysqlite3:///{db_path}"
 
 
 @pytest.fixture
