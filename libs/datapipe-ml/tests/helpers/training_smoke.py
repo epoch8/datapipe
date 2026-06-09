@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -21,7 +22,7 @@ from datapipe.store.database import DBConn, TableStoreDB
 from sklearn.model_selection import train_test_split
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, String
-from tests.conftest import get_sqlite_dbconnstr
+from ..conftest import get_sqlite_dbconnstr
 
 TESTS_DIR = Path(__file__).parents[1]
 INPUT_DIR = TESTS_DIR / "input"

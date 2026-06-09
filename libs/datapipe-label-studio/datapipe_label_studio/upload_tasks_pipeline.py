@@ -126,7 +126,7 @@ def upload_tasks_to_label_studio(
         for tasks_page in get_tasks_iter(client, project_id, filters=filters):
             tasks.extend(tasks_page)
         df__output__label_studio_project_annotation = (
-            pd.DataFrame.from_records(
+            pd.DataFrame(
                 {
                     **{column: [task["data"].get(column) for task in tasks] for column in primary_keys + columns},
                     "annotations": [_cleanup(task["annotations"]) for task in tasks],
@@ -276,7 +276,7 @@ def get_annotations_from_label_studio(
     updated_ats = []
     for tasks_page in get_tasks_iter(client, project_id, filters=filters):
         updated_ats.extend([task["updated_at"] for task in tasks_page])
-        output_df = pd.DataFrame.from_records(
+        output_df = pd.DataFrame(
             {
                 **{primary_key: [task["data"][primary_key] for task in tasks_page] for primary_key in primary_keys},
                 "annotations": [_cleanup(task["annotations"]) for task in tasks_page],
