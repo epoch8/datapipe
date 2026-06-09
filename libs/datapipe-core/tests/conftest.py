@@ -1,4 +1,5 @@
 import os
+import sys
 
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
@@ -48,7 +49,10 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
 @pytest.fixture
 def dbconn():
     if os.environ.get("TEST_DB_ENV") == "sqlite":
-        DBCONNSTR = "sqlite+pysqlite3:///:memory:"
+        if sys.platform == "darwin":
+            DBCONNSTR = "sqlite:///:memory:"
+        else:
+            DBCONNSTR = "sqlite+pysqlite3:///:memory:"
         DB_TEST_SCHEMA = None
     else:
         pg_host = os.getenv("POSTGRES_HOST", "localhost")

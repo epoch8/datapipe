@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import os
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -22,6 +21,7 @@ from datapipe.store.database import DBConn, TableStoreDB
 from sklearn.model_selection import train_test_split
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, String
+from tests.conftest import get_sqlite_dbconnstr
 
 TESTS_DIR = Path(__file__).parents[1]
 INPUT_DIR = TESTS_DIR / "input"
@@ -32,15 +32,11 @@ KEYPOINTS_IMAGES_DIR = KEYPOINTS_INPUT_DIR / "images"
 KEYPOINTS_LABELS_DIR = KEYPOINTS_INPUT_DIR / "labels"
 
 SMOKE_IMAGES = 8
-SMOKE_EPOCHS = 2
-SMOKE_IMGSZ = 16
+SMOKE_EPOCHS = int(os.environ.get("DATAPIPE_ML_SMOKE_EPOCHS", "2"))
+SMOKE_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_IMGSZ", "16"))
+SMOKE_YOLOV5_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_YOLOV5_IMGSZ", str(max(64, SMOKE_IMGSZ))))
+SMOKE_DEVICE = os.environ.get("DATAPIPE_ML_SMOKE_DEVICE", "cpu")
 PRIMARY_KEYS = ["image_id"]
-
-
-def get_sqlite_dbconnstr(path: Path) -> str:
-    if sqlite3.sqlite_version_info < (3, 39, 0):
-        return f"sqlite+pysqlite3:///{path}"
-    return f"sqlite:///{path}"
 
 
 @dataclass
@@ -315,7 +311,7 @@ def detection_train_step(workdir: Path):
                 batch=2,
                 epochs=SMOKE_EPOCHS,
                 seed=42,
-                device="cpu",
+                device=SMOKE_DEVICE,
                 workers=0,
                 patience=SMOKE_EPOCHS,
                 amp=False,
@@ -352,11 +348,11 @@ def detection_yolov5_train_step(workdir: Path):
             YoloV5_TrainingConfig(
                 weights="",
                 cfg="yolov5.ROOT / 'models/yolov5n.yaml'",
-                imgsz=64,
+                imgsz=SMOKE_YOLOV5_IMGSZ,
                 batch_size=2,
                 epochs=SMOKE_EPOCHS,
                 seed=42,
-                device="cpu",
+                device=SMOKE_DEVICE,
                 workers=0,
                 patience=SMOKE_EPOCHS,
                 noautoanchor=True,
@@ -444,7 +440,7 @@ def segmentation_train_step(workdir: Path):
                 batch=2,
                 epochs=SMOKE_EPOCHS,
                 seed=42,
-                device="cpu",
+                device=SMOKE_DEVICE,
                 workers=0,
                 patience=SMOKE_EPOCHS,
                 amp=False,
@@ -517,7 +513,7 @@ def keypoints_train_step(workdir: Path):
                 batch=2,
                 epochs=SMOKE_EPOCHS,
                 seed=42,
-                device="cpu",
+                device=SMOKE_DEVICE,
                 workers=0,
                 patience=SMOKE_EPOCHS,
                 amp=False,
@@ -563,7 +559,7 @@ def keypoints_metrics_step():
         bbox_id__name=None,
         create_table=True,
         yolo_validation_batch=1,
-        yolo_validation_device="cpu",
+        yolo_validation_device=SMOKE_DEVICE,
     )
 
 

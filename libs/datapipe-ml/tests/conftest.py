@@ -1,4 +1,5 @@
 import os
+import sys
 
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
@@ -19,6 +20,13 @@ def tmp_dir() -> Path:
         yield d
 
 
+def get_sqlite_dbconnstr(path: Path | None = None) -> str:
+    db_path = ":memory:" if path is None else str(path)
+    if sys.platform == "darwin":
+        return f"sqlite:///{db_path}"
+    return f"sqlite+pysqlite3:///{db_path}"
+
+
 @pytest.fixture
 def dbconn():
     from datapipe.store.database import DBConn
@@ -29,7 +37,7 @@ def dbconn():
         DBCONNSTR = f"postgresql://postgres:password@{pg_host}:{pg_port}/postgres"
         DB_TEST_SCHEMA = "test"
     else:
-        DBCONNSTR = "sqlite:///:memory:"
+        DBCONNSTR = get_sqlite_dbconnstr()
         DB_TEST_SCHEMA = None
 
     if DB_TEST_SCHEMA:
