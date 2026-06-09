@@ -45,7 +45,7 @@ class RayExecutor(Executor):
         # Generator to collect results, so tqdm can show progress
         def _results(idx_gen):
             # Submit tasks to remote functions using Ray
-            futures = []
+            futures: list[Any] = []
             for idx in idx_gen:
                 if len(futures) > parallelism:
                     ready, futures = ray.wait(futures, timeout=None)

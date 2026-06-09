@@ -26,7 +26,7 @@ from datapipe.types import required_pipeline_input, PipelineInput, PipelineOutpu
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON, Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs
+from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable, get_pipeline_table_name
 from datapipe_ml.core.image_data import (
     check_if_images_opens,
     convert_df_with_image_data_to_df_with_bbox,
@@ -227,8 +227,8 @@ class Inference_KeypointsModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_keypoints_model = ds.get_table(self.input__keypoints_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_keypoints_model = get_datatable(ds, self.input__keypoints_model)
         check_columns_are_in_table(
             ds,
             self.input__keypoints_model,
@@ -262,13 +262,13 @@ class Inference_KeypointsModel(PipelineStep):
                 Column("prediction__keypoints_scores", JSON),
             ]
         catalog.add_datatable(
-            self.output__keypoints_prediction,
+            get_pipeline_table_name(self.output__keypoints_prediction),
             Table(
                 ds.get_or_create_table(
-                    self.output__keypoints_prediction,
+                    get_pipeline_table_name(self.output__keypoints_prediction),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__keypoints_prediction,
+                        name=get_pipeline_table_name(self.output__keypoints_prediction),
                         data_sql_schema=[
                             column for column in dt__input__images[0].primary_schema if column.name in self.primary_keys
                         ]

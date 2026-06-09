@@ -19,7 +19,7 @@ from sqlalchemy import Column
 from sqlalchemy.sql import and_, functions, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
 
 
 def count_labels_total_on_subset(
@@ -62,19 +62,19 @@ class CountTotalLabelOnSubset(PipelineStep):
     chunk_size: int = 1000000
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        dt__input__item__ground_truth = ds.get_table(self.input__item__ground_truth)
+        dt__input__item__ground_truth = get_datatable(ds, self.input__item__ground_truth)
         assert isinstance(dt__input__item__ground_truth.table_store, TableStoreDB)
-        assert isinstance(ds.get_table(self.input__subset__has__item).table_store, TableStoreDB)
+        assert isinstance(get_datatable(ds, self.input__subset__has__item).table_store, TableStoreDB)
         check_columns_are_in_table(ds, self.input__item__ground_truth, self.primary_keys + ["label"])
         check_columns_are_in_table(ds, self.input__subset__has__item, self.primary_keys + ["subset_id"])
         catalog.add_datatable(
-            self.output__subset__has__label__total,
+            get_pipeline_table_name(self.output__subset__has__label__total),
             Table(
                 ds.get_or_create_table(
-                    self.output__subset__has__label__total,
+                    get_pipeline_table_name(self.output__subset__has__label__total),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__subset__has__label__total,
+                        name=get_pipeline_table_name(self.output__subset__has__label__total),
                         data_sql_schema=[
                             Column("subset_id", String, primary_key=True),
                             Column("label", String, primary_key=True),
@@ -135,16 +135,16 @@ class CountTotalLabel(PipelineStep):
     chunk_size: int = 1000000
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        dt__input__item__ground_truth = ds.get_table(self.input__item__ground_truth)
+        dt__input__item__ground_truth = get_datatable(ds, self.input__item__ground_truth)
         assert isinstance(dt__input__item__ground_truth.table_store, TableStoreDB)
         catalog.add_datatable(
-            self.output__item__has__total_label,
+            get_pipeline_table_name(self.output__item__has__total_label),
             Table(
                 ds.get_or_create_table(
-                    self.output__item__has__total_label,
+                    get_pipeline_table_name(self.output__item__has__total_label),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__item__has__total_label,
+                        name=get_pipeline_table_name(self.output__item__has__total_label),
                         data_sql_schema=[Column("label", String, primary_key=True), Column("label__total", Integer)],
                         create_table=self.create_table,
                     ),

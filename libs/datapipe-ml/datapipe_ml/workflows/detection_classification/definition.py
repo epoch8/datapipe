@@ -20,7 +20,12 @@ from datapipe.step.batch_transform import (
 from datapipe.store.database import TableStoreDB
 from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input
+from datapipe_ml.core.datapipe import (
+    check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
+    pipeline_output_as_input,
+)
 
 
 def define_pipeline_model(
@@ -69,8 +74,8 @@ class Define_PipelineModel(PipelineStep):
     define_pipeline_model_func: DatatableBatchTransformFunc = define_pipeline_model
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        dt__input__detection_model = ds.get_table(self.input__detection_model)
-        dt__input__classification_model = ds.get_table(self.input__classification_model)
+        dt__input__detection_model = get_datatable(ds, self.input__detection_model)
+        dt__input__classification_model = get_datatable(ds, self.input__classification_model)
         assert (
             len(set(dt__input__detection_model.primary_keys).intersection(dt__input__classification_model.primary_keys))
             == 0
@@ -100,13 +105,13 @@ class Define_PipelineModel(PipelineStep):
         )
         # ---
         catalog.add_datatable(
-            self.output__pipeline_model,
+            get_pipeline_table_name(self.output__pipeline_model),
             Table(
                 ds.get_or_create_table(
-                    self.output__pipeline_model,
+                    get_pipeline_table_name(self.output__pipeline_model),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__pipeline_model,
+                        name=get_pipeline_table_name(self.output__pipeline_model),
                         data_sql_schema=dt__input__detection_model.primary_schema
                         + dt__input__classification_model.primary_schema,
                         create_table=self.create_table,

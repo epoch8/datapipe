@@ -27,7 +27,7 @@ from datapipe.types import required_pipeline_input, PipelineInput, PipelineOutpu
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON, Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs
+from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable, get_pipeline_table_name
 from datapipe_ml.core.image_data import (
     check_if_images_opens,
     convert_df_with_image_data_to_df_with_bbox,
@@ -245,8 +245,8 @@ class Inference_SegmentationModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_segmentation_model = ds.get_table(self.input__segmentation_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_segmentation_model = get_datatable(ds, self.input__segmentation_model)
         check_columns_are_in_table(
             ds,
             self.input__segmentation_model,
@@ -262,13 +262,13 @@ class Inference_SegmentationModel(PipelineStep):
         # ---
         if self.bbox_id__name is not None:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -296,13 +296,13 @@ class Inference_SegmentationModel(PipelineStep):
             )
         else:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -419,8 +419,8 @@ class InferenceBySplitOnCrops_SegmentationModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_segmentation_model = ds.get_table(self.input__segmentation_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_segmentation_model = get_datatable(ds, self.input__segmentation_model)
         check_columns_are_in_table(
             ds,
             self.input__segmentation_model,
@@ -436,13 +436,13 @@ class InferenceBySplitOnCrops_SegmentationModel(PipelineStep):
         # ---
         if self.bbox_id__name is not None:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -470,13 +470,13 @@ class InferenceBySplitOnCrops_SegmentationModel(PipelineStep):
             )
         else:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -586,8 +586,8 @@ class Inference_UsingThresholdsPerClasss_SegmentationModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_segmentation_model = ds.get_table(self.input__segmentation_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_segmentation_model = get_datatable(ds, self.input__segmentation_model)
         check_columns_are_in_table(
             ds,
             self.input__segmentation_model,
@@ -608,13 +608,13 @@ class Inference_UsingThresholdsPerClasss_SegmentationModel(PipelineStep):
         # ---
         if self.bbox_id__name is not None:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -642,13 +642,13 @@ class Inference_UsingThresholdsPerClasss_SegmentationModel(PipelineStep):
             )
         else:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema

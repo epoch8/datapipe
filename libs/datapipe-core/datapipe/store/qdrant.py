@@ -91,7 +91,12 @@ class QdrantStore(TableStore):
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 if self.force_vectors_to_ram:
-                    self.collection_params.vectors.on_disk = False
+                    vectors = self.collection_params.vectors
+                    if isinstance(vectors, rest.VectorParams):
+                        vectors.on_disk = False
+                    elif isinstance(vectors, dict):
+                        for vector in vectors.values():
+                            vector.on_disk = False
 
                 self.client.http.collections_api.create_collection(
                     collection_name=self.name, create_collection=self.collection_params
@@ -102,6 +107,7 @@ class QdrantStore(TableStore):
         Checks on collection's payload indexes and adds them from index_field, if necessary.
         Schema checks are not performed.
         """
+        assert self.client is not None
         payload_schema = self.client.get_collection(self.name).payload_schema
         for field, field_schema in self.index_field.items():
             if field not in payload_schema.keys():
@@ -252,6 +258,7 @@ class QdrantShardedStore(TableStore):
             raise ValueError("Incorrect params in name pattern")
 
     def __init_collection(self, name):
+        assert self.client is not None
         try:
             self.client.get_collection(name)
         except UnexpectedResponse as e:
@@ -265,6 +272,7 @@ class QdrantShardedStore(TableStore):
         Checks on collection's payload indexes and adds them from index_field, if necessary.
         Schema checks are not performed.
         """
+        assert self.client is not None
         payload_schema = self.client.get_collection(name).payload_schema
         for field, field_schema in self.index_field.items():
             if field not in payload_schema.keys():

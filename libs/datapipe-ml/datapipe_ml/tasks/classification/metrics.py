@@ -20,7 +20,7 @@ from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
 from sqlalchemy import Column, Float, and_, func, select, tuple_
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input
+from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input, get_datatable, get_pipeline_table_name
 from datapipe_ml.metrics.common import (
     CLASS_METRIC_COLUMNS,
     KNOWN_OVERALL_METRIC_COLUMNS,
@@ -432,17 +432,17 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
             self.primary_keys + self.classification_model_primary_keys + ["label", "prediction__top_n"],
         )
 
-        dt__image__ground_truth = ds.get_table(self.input__image__ground_truth)
-        dt__classification_prediction = ds.get_table(self.input__classification_prediction)
+        dt__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__classification_prediction = get_datatable(ds, self.input__classification_prediction)
 
         catalog.add_datatable(
-            self.output__classification_model__metrics__on__image,
+            get_pipeline_table_name(self.output__classification_model__metrics__on__image),
             Table(
                 ds.get_or_create_table(
-                    self.output__classification_model__metrics__on__image,
+                    get_pipeline_table_name(self.output__classification_model__metrics__on__image),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__classification_model__metrics__on__image,
+                        name=get_pipeline_table_name(self.output__classification_model__metrics__on__image),
                         data_sql_schema=[
                             column
                             for column in dt__image__ground_truth.primary_schema
@@ -469,13 +469,13 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
         )
 
         catalog.add_datatable(
-            self.output__classification_model__metrics_by_cls_on__subset,
+            get_pipeline_table_name(self.output__classification_model__metrics_by_cls_on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__classification_model__metrics_by_cls_on__subset,
+                    get_pipeline_table_name(self.output__classification_model__metrics_by_cls_on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__classification_model__metrics_by_cls_on__subset,
+                        name=get_pipeline_table_name(self.output__classification_model__metrics_by_cls_on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__classification_prediction.primary_schema
@@ -504,13 +504,13 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
             extra_known_columns = float_columns(KNOWN_OVERALL_METRIC_COLUMNS)
 
         catalog.add_datatable(
-            self.output__classification_model__metrics_on__subset,
+            get_pipeline_table_name(self.output__classification_model__metrics_on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__classification_model__metrics_on__subset,
+                    get_pipeline_table_name(self.output__classification_model__metrics_on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__classification_model__metrics_on__subset,
+                        name=get_pipeline_table_name(self.output__classification_model__metrics_on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__classification_prediction.primary_schema

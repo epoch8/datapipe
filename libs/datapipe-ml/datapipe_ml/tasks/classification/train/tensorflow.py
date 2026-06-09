@@ -24,7 +24,7 @@ from pathy import Pathy
 from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import Boolean, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
 from datapipe_ml.frameworks.tensorflow.classification_runner import (
     TF_ClassificationTrainingConfig,
 )
@@ -326,7 +326,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
             self.input__classification_frozen_dataset__has__image_gt,
             classification_model_other_primary_keys + ["subset_id", "image__image_path", "label"],
         )
-        dt__input__classification_frozen_dataset__has__image_gt = ds.get_table(
+        dt__input__classification_frozen_dataset__has__image_gt = get_datatable(ds, 
             self.input__classification_frozen_dataset__has__image_gt
         )
         classification_model_primary_columns = [
@@ -336,13 +336,13 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
         ] + [Column(self.classification_model_id__name, String, primary_key=True)]
         # ---
         catalog.add_datatable(
-            self.output__tf_classification_train_config,
+            get_pipeline_table_name(self.output__tf_classification_train_config),
             Table(
                 ds.get_or_create_table(
-                    self.output__tf_classification_train_config,
+                    get_pipeline_table_name(self.output__tf_classification_train_config),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__tf_classification_train_config,
+                        name=get_pipeline_table_name(self.output__tf_classification_train_config),
                         data_sql_schema=[
                             Column("classification_train_config_id", String, primary_key=True),
                             Column("classification_train_config__params", JSON),
@@ -355,13 +355,13 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
         )
         # ---
         catalog.add_datatable(
-            self.output__classification_model,
+            get_pipeline_table_name(self.output__classification_model),
             Table(
                 ds.get_or_create_table(
-                    self.output__classification_model,
+                    get_pipeline_table_name(self.output__classification_model),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__classification_model,
+                        name=get_pipeline_table_name(self.output__classification_model),
                         data_sql_schema=classification_model_primary_columns
                         + [
                             Column("classification_model__input_size", JSON),
@@ -376,13 +376,13 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
             ),
         )
         catalog.add_datatable(
-            self.output__classification_model_is_trained_on_cls_frozen_dataset,
+            get_pipeline_table_name(self.output__classification_model_is_trained_on_cls_frozen_dataset),
             Table(
                 ds.get_or_create_table(
-                    self.output__classification_model_is_trained_on_cls_frozen_dataset,
+                    get_pipeline_table_name(self.output__classification_model_is_trained_on_cls_frozen_dataset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__classification_model_is_trained_on_cls_frozen_dataset,
+                        name=get_pipeline_table_name(self.output__classification_model_is_trained_on_cls_frozen_dataset),
                         data_sql_schema=classification_model_primary_columns
                         + [
                             Column(self.classification_frozen_dataset_id__name, String, primary_key=True),
@@ -420,8 +420,8 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                     kwargs=dict(
                         models_dir=str(Pathy.fluid(self.working_dir) / "models"),
                         max_within_time=self.max_within_time,
-                        dt__classification_model=ds.get_table(self.output__classification_model),
-                        dt__classification_model_is_trained_on_cls_frozen_dataset=ds.get_table(
+                        dt__classification_model=get_datatable(ds, self.output__classification_model),
+                        dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(ds, 
                             self.output__classification_model_is_trained_on_cls_frozen_dataset
                         ),
                         classification_model_other_primary_keys=classification_model_other_primary_keys,

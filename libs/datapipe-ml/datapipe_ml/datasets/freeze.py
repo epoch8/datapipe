@@ -25,7 +25,11 @@ from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer, String
 
 from datapipe_ml.core.datapipe import (
     check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
     is_last_frozen_dataset_old_enough,
+    pipeline_input_as_table,
+    pipeline_output_as_table,
 )
 
 logger = logging.getLogger("datapipe.ml.freeze")
@@ -297,8 +301,8 @@ class FreezeDatasetStep(PipelineStep):
             raise ValueError(f"Table {self.input__subset__has__image} missing primary key or 'subset_id'")
 
         # get DataTable objects
-        # dt__image = ds.get_table(self.input__image)
-        dt__image__ground_truth = ds.get_table(self.input__image__ground_truth)
+        # dt__image = get_datatable(ds, self.input__image)
+        dt__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
 
         # prepare schema for output tables
         prim_schema = [
@@ -308,13 +312,13 @@ class FreezeDatasetStep(PipelineStep):
 
         # register frozen_dataset table
         catalog.add_datatable(
-            self.output__frozen_dataset,
+            get_pipeline_table_name(self.output__frozen_dataset),
             Table(
                 ds.get_or_create_table(
-                    self.output__frozen_dataset,
+                    get_pipeline_table_name(self.output__frozen_dataset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__frozen_dataset,
+                        name=get_pipeline_table_name(self.output__frozen_dataset),
                         data_sql_schema=prim_schema
                         + [
                             Column(f"{prefix}__created_at", DateTime),
@@ -356,13 +360,13 @@ class FreezeDatasetStep(PipelineStep):
                     extra_cols.append(Column("masks", JSON))
         extra_cols += [Column(column_name, JSON) for column_name in self.extra_gt_columns]
         catalog.add_datatable(
-            self.output__frozen_dataset__has__image_gt,
+            get_pipeline_table_name(self.output__frozen_dataset__has__image_gt),
             Table(
                 ds.get_or_create_table(
-                    self.output__frozen_dataset__has__image_gt,
+                    get_pipeline_table_name(self.output__frozen_dataset__has__image_gt),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__frozen_dataset__has__image_gt,
+                        name=get_pipeline_table_name(self.output__frozen_dataset__has__image_gt),
                         data_sql_schema=prim_schema
                         + [
                             c
@@ -382,13 +386,13 @@ class FreezeDatasetStep(PipelineStep):
                 DatatableTransform(
                     func=freeze_dataset,
                     inputs=[
-                        self.input__image,
-                        self.input__subset__has__image,
-                        self.input__image__ground_truth,
+                        pipeline_input_as_table(self.input__image),
+                        pipeline_input_as_table(self.input__subset__has__image),
+                        pipeline_input_as_table(self.input__image__ground_truth),
                     ],
                     outputs=[
-                        self.output__frozen_dataset,
-                        self.output__frozen_dataset__has__image_gt,
+                        pipeline_output_as_table(self.output__frozen_dataset),
+                        pipeline_output_as_table(self.output__frozen_dataset__has__image_gt),
                     ],
                     kwargs={
                         "model_type": self.model_type,

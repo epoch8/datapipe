@@ -22,7 +22,7 @@ from pathy import Pathy
 from sqlalchemy import JSON, Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable
 from datapipe_ml.frameworks.yolo.dataset import get_size_for_resize
 
 
@@ -104,7 +104,7 @@ def _resolve_yolo_schema(
         model_other_primary_keys + required_has_gt_columns,
     )
 
-    dt__input_has_gt = ds.get_table(input__frozen_dataset__has__image_gt)
+    dt__input_has_gt = get_datatable(ds, input__frozen_dataset__has__image_gt)
     model_primary_columns = [col for col in dt__input_has_gt.primary_schema if col.name in model_other_primary_keys] + [
         Column(model_id__name, String, primary_key=True)
     ]
@@ -235,16 +235,16 @@ def _build_yolo_pipeline_steps(
             kwargs=dict(
                 models_dir=str(Pathy.fluid(working_dir) / mode.models_subdir),
                 max_within_time=max_within_time,
-                dt__detection_model=ds.get_table(output__model),
-                dt__segmentation_model=ds.get_table(output__model),
-                dt__detection_model_is_trained_on_detection_frozen_dataset=ds.get_table(
+                dt__detection_model=get_datatable(ds, output__model),
+                dt__segmentation_model=get_datatable(ds, output__model),
+                dt__detection_model_is_trained_on_detection_frozen_dataset=get_datatable(ds, 
                     output__model_is_trained_on_frozen_dataset
                 ),
-                dt__segm_model_is_trained_on_segm_frozen_dataset=ds.get_table(
+                dt__segm_model_is_trained_on_segm_frozen_dataset=get_datatable(ds, 
                     output__model_is_trained_on_frozen_dataset
                 ),
-                dt__keypoints_model=ds.get_table(output__model),
-                dt__keypoints_model_is_trained_on_keypoints_frozen_dataset=ds.get_table(
+                dt__keypoints_model=get_datatable(ds, output__model),
+                dt__keypoints_model_is_trained_on_keypoints_frozen_dataset=get_datatable(ds, 
                     output__model_is_trained_on_frozen_dataset
                 ),
                 save_checkpoints_to_cloud=save_checkpoints_to_cloud,
@@ -510,7 +510,7 @@ def build_yolo_compute(
     model_other_primary_keys = schema.model_other_primary_keys
     model_primary_columns = schema.model_primary_columns
     pattern = schema.filename_pattern
-    dt__input_has_gt = ds.get_table(input__frozen_dataset__has__image_gt)
+    dt__input_has_gt = get_datatable(ds, input__frozen_dataset__has__image_gt)
     model_context_dir = _model_context_dir(model_other_primary_keys, dt__input_has_gt)
 
     _register_yolo_tables(

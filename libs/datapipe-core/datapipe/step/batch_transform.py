@@ -436,8 +436,8 @@ class BaseBatchTransformStep(ComputeStep):
 @dataclass
 class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
-    inputs: list[TableOrName]
-    outputs: list[TableOrName]
+    inputs: list[PipelineInput]
+    outputs: list[PipelineOutput]
     name: str | None = None
     chunk_size: int = 1000
     transform_keys: list[str] | None = None

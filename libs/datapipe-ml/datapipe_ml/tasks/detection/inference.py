@@ -29,7 +29,7 @@ from datapipe.types import Labels, PipelineInput, PipelineOutput, get_pipeline_i
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON, Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs
+from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable
 from datapipe_ml.core.image_data import (
     check_if_images_opens,
     convert_df_with_image_data_to_df_with_bbox,
@@ -272,8 +272,8 @@ class Inference_DetectionModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__image_names]
-        dt__input_detection_model = ds.get_table(input_detection_model_name)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__image_names]
+        dt__input_detection_model = get_datatable(ds, input_detection_model_name)
         check_columns_are_in_table(
             ds,
             self.input__detection_model,
@@ -448,8 +448,8 @@ class InferenceBySplitOnCrops_DetectionModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__image_names]
-        dt__input_detection_model = ds.get_table(input_detection_model_name)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__image_names]
+        dt__input_detection_model = get_datatable(ds, input_detection_model_name)
         check_columns_are_in_table(
             ds,
             self.input__detection_model,
@@ -617,8 +617,8 @@ class Inference_UsingThresholdsPerClasss_DetectionModel(PipelineStep):
                 for input__image in input__images
             ]
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__image_names]
-        dt__input_detection_model = ds.get_table(input_detection_model_name)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__image_names]
+        dt__input_detection_model = get_datatable(ds, input_detection_model_name)
         check_columns_are_in_table(
             ds,
             self.input__detection_model,

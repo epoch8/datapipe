@@ -22,7 +22,7 @@ from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 
 KEYPOINTS_METRIC_COLUMNS = [
@@ -219,15 +219,15 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
             self.input__keypoints_model,
             self.keypoints_model_primary_keys + ["keypoints_model__input_size", "keypoints_model__model_path"],
         )
-        dt__pred = ds.get_table(self.input__keypoints_prediction)
+        dt__pred = get_datatable(ds, self.input__keypoints_prediction)
         catalog.add_datatable(
-            self.output__keypoints_model__metrics__on__subset,
+            get_pipeline_table_name(self.output__keypoints_model__metrics__on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__keypoints_model__metrics__on__subset,
+                    get_pipeline_table_name(self.output__keypoints_model__metrics__on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__keypoints_model__metrics__on__subset,
+                        name=get_pipeline_table_name(self.output__keypoints_model__metrics__on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__pred.primary_schema
@@ -389,15 +389,15 @@ class CountMetrics_FrozenDataset_KeypointsModel(PipelineStep):
         check_columns_are_in_table(ds, self.input__keypoints_frozen_dataset__has__image_gt, required_gt)
         check_columns_are_in_table(ds, self.input__keypoints_prediction, required_pred)
 
-        dt__pred = ds.get_table(self.input__keypoints_prediction)
+        dt__pred = get_datatable(ds, self.input__keypoints_prediction)
         catalog.add_datatable(
-            self.output__keypoints_model__metrics_on__frozen_dataset,
+            get_pipeline_table_name(self.output__keypoints_model__metrics_on__frozen_dataset),
             Table(
                 ds.get_or_create_table(
-                    self.output__keypoints_model__metrics_on__frozen_dataset,
+                    get_pipeline_table_name(self.output__keypoints_model__metrics_on__frozen_dataset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__keypoints_model__metrics_on__frozen_dataset,
+                        name=get_pipeline_table_name(self.output__keypoints_model__metrics_on__frozen_dataset),
                         data_sql_schema=[
                             column
                             for column in dt__pred.primary_schema

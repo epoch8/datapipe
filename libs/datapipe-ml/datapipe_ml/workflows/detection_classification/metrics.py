@@ -25,7 +25,7 @@ from natsort import natsorted
 from sqlalchemy import JSON, Column, Float, and_, func, select, tuple_
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, pipeline_output_as_input
+from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, pipeline_output_as_input, get_datatable, get_pipeline_table_name
 from datapipe_ml.core.image_data import (
     convert_df_with_bbox_to_df_with_image_data,
     convert_df_with_image_data_to_df_with_bbox,
@@ -591,17 +591,17 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                 self.primary_keys + self.pipeline_model_primary_keys + ["bboxes", "labels"],
             )
 
-        dt__input__image__ground_truth = ds.get_table(self.input__image__ground_truth)
-        dt__input__pipeline_prediction = ds.get_table(self.input__pipeline_prediction)
+        dt__input__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__input__pipeline_prediction = get_datatable(ds, self.input__pipeline_prediction)
 
         catalog.add_datatable(
-            self.output__pipeline_model__metrics_on__image,
+            get_pipeline_table_name(self.output__pipeline_model__metrics_on__image),
             Table(
                 ds.get_or_create_table(
-                    self.output__pipeline_model__metrics_on__image,
+                    get_pipeline_table_name(self.output__pipeline_model__metrics_on__image),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__pipeline_model__metrics_on__image,
+                        name=get_pipeline_table_name(self.output__pipeline_model__metrics_on__image),
                         data_sql_schema=[
                             column
                             for column in dt__input__image__ground_truth.primary_schema
@@ -638,13 +638,13 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
         )
 
         catalog.add_datatable(
-            self.output__pipeline_model__metrics_by_cls_on__subset,
+            get_pipeline_table_name(self.output__pipeline_model__metrics_by_cls_on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__pipeline_model__metrics_by_cls_on__subset,
+                    get_pipeline_table_name(self.output__pipeline_model__metrics_by_cls_on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__pipeline_model__metrics_by_cls_on__subset,
+                        name=get_pipeline_table_name(self.output__pipeline_model__metrics_by_cls_on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__input__pipeline_prediction.primary_schema
@@ -680,13 +680,13 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
             extra_known_columns = float_columns(KNOWN_OVERALL_METRIC_COLUMNS)
 
         catalog.add_datatable(
-            self.output__pipeline_model__metrics_on__subset,
+            get_pipeline_table_name(self.output__pipeline_model__metrics_on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__pipeline_model__metrics_on__subset,
+                    get_pipeline_table_name(self.output__pipeline_model__metrics_on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__pipeline_model__metrics_on__subset,
+                        name=get_pipeline_table_name(self.output__pipeline_model__metrics_on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__input__pipeline_prediction.primary_schema
@@ -906,16 +906,16 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
             subset_ids=self.subset_ids,
             image_data_matching_class=self.image_data_matching_class,
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_detection_model = ds.get_table(self.input__detection_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_detection_model = get_datatable(ds, self.input__detection_model)
         catalog.add_datatable(
-            self.output__detection_model_thresholds,
+            get_pipeline_table_name(self.output__detection_model_thresholds),
             Table(
                 ds.get_or_create_table(
-                    self.output__detection_model_thresholds,
+                    get_pipeline_table_name(self.output__detection_model_thresholds),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__detection_model_thresholds,
+                        name=get_pipeline_table_name(self.output__detection_model_thresholds),
                         data_sql_schema=[
                             column
                             for column in dt__input_detection_model.primary_schema
@@ -931,13 +931,13 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
         )
         if self.bbox_id__name is not None:
             catalog.add_datatable(
-                self.output__detection_prediction,
+                get_pipeline_table_name(self.output__detection_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__detection_prediction,
+                        get_pipeline_table_name(self.output__detection_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__detection_prediction,
+                            name=get_pipeline_table_name(self.output__detection_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -964,13 +964,13 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
             )
         else:
             catalog.add_datatable(
-                self.output__detection_prediction,
+                get_pipeline_table_name(self.output__detection_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__detection_prediction,
+                        get_pipeline_table_name(self.output__detection_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__detection_prediction,
+                            name=get_pipeline_table_name(self.output__detection_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -1119,16 +1119,16 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_SegmentationModel(Pipeli
             subset_ids=self.subset_ids,
             image_data_matching_class=self.image_data_matching_class,
         )
-        dt__input__images = [ds.get_table(input__image) for input__image in input__images]
-        dt__input_segmentation_model = ds.get_table(self.input__segmentation_model)
+        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
+        dt__input_segmentation_model = get_datatable(ds, self.input__segmentation_model)
         catalog.add_datatable(
-            self.output__segmentation_model_thresholds,
+            get_pipeline_table_name(self.output__segmentation_model_thresholds),
             Table(
                 ds.get_or_create_table(
-                    self.output__segmentation_model_thresholds,
+                    get_pipeline_table_name(self.output__segmentation_model_thresholds),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__segmentation_model_thresholds,
+                        name=get_pipeline_table_name(self.output__segmentation_model_thresholds),
                         data_sql_schema=[
                             column
                             for column in dt__input_segmentation_model.primary_schema
@@ -1144,13 +1144,13 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_SegmentationModel(Pipeli
         )
         if self.bbox_id__name is not None:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema
@@ -1178,13 +1178,13 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_SegmentationModel(Pipeli
             )
         else:
             catalog.add_datatable(
-                self.output__segmentation_prediction,
+                get_pipeline_table_name(self.output__segmentation_prediction),
                 Table(
                     ds.get_or_create_table(
-                        self.output__segmentation_prediction,
+                        get_pipeline_table_name(self.output__segmentation_prediction),
                         TableStoreDB(
                             dbconn=ds.meta_dbconn,
-                            name=self.output__segmentation_prediction,
+                            name=get_pipeline_table_name(self.output__segmentation_prediction),
                             data_sql_schema=[
                                 column
                                 for column in dt__input__images[0].primary_schema

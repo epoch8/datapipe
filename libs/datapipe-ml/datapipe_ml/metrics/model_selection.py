@@ -18,7 +18,7 @@ from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Boolean
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input
+from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input, get_datatable, get_pipeline_table_name
 
 
 def get_best_model_flag(
@@ -97,20 +97,20 @@ class FindBestModel(PipelineStep):
         if self.func not in ["min", "max"]:
             raise ValueError("func must be 'min' or 'max'")
         check_columns_are_in_table(ds, self.input__model, self.primary_keys)
-        dt__input__model = ds.get_table(self.input__model)
+        dt__input__model = get_datatable(ds, self.input__model)
         check_columns_are_in_table(
             ds,
             self.input__model__metrics_on__subset,
             self.primary_keys + ["subset_id", self.metric__name],
         )
         catalog.add_datatable(
-            self.output__attr__model__is_best,
+            get_pipeline_table_name(self.output__attr__model__is_best),
             Table(
                 ds.get_or_create_table(
-                    self.output__attr__model__is_best,
+                    get_pipeline_table_name(self.output__attr__model__is_best),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__attr__model__is_best,
+                        name=get_pipeline_table_name(self.output__attr__model__is_best),
                         data_sql_schema=[
                             column for column in dt__input__model.primary_schema if column.name in self.primary_keys
                         ]
@@ -121,13 +121,13 @@ class FindBestModel(PipelineStep):
             ),
         )
         catalog.add_datatable(
-            self.output__best_model,
+            get_pipeline_table_name(self.output__best_model),
             Table(
                 ds.get_or_create_table(
-                    self.output__best_model,
+                    get_pipeline_table_name(self.output__best_model),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__best_model,
+                        name=get_pipeline_table_name(self.output__best_model),
                         data_sql_schema=[
                             column for column in dt__input__model.primary_schema if column.name in self.primary_keys
                         ],

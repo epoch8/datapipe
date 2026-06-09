@@ -7,7 +7,18 @@ import pandas as pd
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
-from datapipe.types import IndexDF, InputSpec, OutputSpec, PipelineInput, PipelineOutput, get_pipeline_table
+from datapipe.types import (
+    IndexDF,
+    InputSpec,
+    OutputSpec,
+    PipelineInput,
+    PipelineOutput,
+    TableOrName,
+    get_pipeline_input_table,
+    get_pipeline_input_name,
+    get_pipeline_output_table,
+    get_pipeline_output_name,
+)
 
 PipelineInputOrList: TypeAlias = PipelineInput | Sequence[PipelineInput]
 PipelineTableOrList: TypeAlias = PipelineInput | PipelineOutput | Sequence[PipelineInput | PipelineOutput]
@@ -26,6 +37,16 @@ def _get_datatable_meta(dt: DataTable) -> _DatatableMetaLike:
     return cast(_DatatableMetaLike, meta)
 
 
+def get_pipeline_table_name(table: PipelineInput | PipelineOutput) -> str:
+    if isinstance(table, OutputSpec):
+        return get_pipeline_output_name(table)
+    return get_pipeline_input_name(table)
+
+
+def get_datatable(ds: DataStore, table: PipelineInput | PipelineOutput) -> DataTable:
+    return ds.get_table(get_pipeline_table_name(table))
+
+
 def check_columns_are_in_table(
     ds: DataStore,
     tbl_name: PipelineTableOrList,
@@ -38,7 +59,7 @@ def check_columns_are_in_table(
     else:
         tbl_names = tbl_name
     for tbl_name in tbl_names:
-        table_name = get_pipeline_table(tbl_name)
+        table_name = get_pipeline_table_name(tbl_name)
         datatable = ds.get_table(table_name)
         assert isinstance(datatable.table_store, (TableStoreDB, TableStoreFiledir))
         if isinstance(datatable.table_store, TableStoreDB):
@@ -69,6 +90,14 @@ def pipeline_output_as_input(output: PipelineOutput) -> PipelineInput:
         keys: dict[str, str] | None = {key: value for key, value in output.keys.items()} if output.keys is not None else None
         return InputSpec(table=output.table, keys=keys)
     return output
+
+
+def pipeline_input_as_table(input: PipelineInput) -> TableOrName:
+    return get_pipeline_input_table(input)
+
+
+def pipeline_output_as_table(output: PipelineOutput) -> TableOrName:
+    return get_pipeline_output_table(output)
 
 
 def is_frozen_dataset_old(

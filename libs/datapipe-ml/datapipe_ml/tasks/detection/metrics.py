@@ -23,7 +23,12 @@ from sqlalchemy import cast as sql_cast
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input
+from datapipe_ml.core.datapipe import (
+    check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
+    pipeline_output_as_input,
+)
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 from datapipe_ml.metrics.common import stable_unique
 
@@ -245,16 +250,16 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
                 self.primary_keys + self.detection_model_primary_keys + ["bboxes"],
             )
         # ---
-        dt__input__image__ground_truth = ds.get_table(self.input__image__ground_truth)
-        dt__input__detection_prediction = ds.get_table(self.input__detection_prediction)
+        dt__input__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__input__detection_prediction = get_datatable(ds, self.input__detection_prediction)
         catalog.add_datatable(
-            self.output__detection_model__metrics__on__image,
+            get_pipeline_table_name(self.output__detection_model__metrics__on__image),
             Table(
                 ds.get_or_create_table(
-                    self.output__detection_model__metrics__on__image,
+                    get_pipeline_table_name(self.output__detection_model__metrics__on__image),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__detection_model__metrics__on__image,
+                        name=get_pipeline_table_name(self.output__detection_model__metrics__on__image),
                         data_sql_schema=[
                             column
                             for column in dt__input__image__ground_truth.primary_schema
@@ -279,13 +284,13 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
             ),
         )
         catalog.add_datatable(
-            self.output__detection_model__metrics__on__subset,
+            get_pipeline_table_name(self.output__detection_model__metrics__on__subset),
             Table(
                 ds.get_or_create_table(
-                    self.output__detection_model__metrics__on__subset,
+                    get_pipeline_table_name(self.output__detection_model__metrics__on__subset),
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
-                        name=self.output__detection_model__metrics__on__subset,
+                        name=get_pipeline_table_name(self.output__detection_model__metrics__on__subset),
                         data_sql_schema=[
                             column
                             for column in dt__input__detection_prediction.primary_schema
