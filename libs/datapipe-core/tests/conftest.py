@@ -48,7 +48,7 @@ def assert_df_equal(a: pd.DataFrame, b: pd.DataFrame) -> bool:
 @pytest.fixture
 def dbconn():
     if os.environ.get("TEST_DB_ENV") == "sqlite":
-        DBCONNSTR = "sqlite:///:memory:"
+        DBCONNSTR = "sqlite+pysqlite3:///:memory:"
         DB_TEST_SCHEMA = None
     else:
         pg_host = os.getenv("POSTGRES_HOST", "localhost")

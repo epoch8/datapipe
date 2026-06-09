@@ -23,6 +23,9 @@ from datapipe.compute import (
     ComputeStep,
     PipelineStep,
     StepStatus,
+    make_mungled_step_name,
+    pipeline_input_to_compute_input,
+    pipeline_output_to_compute_output,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig, SingleThreadExecutor
@@ -31,12 +34,9 @@ from datapipe.types import (
     ChangeList,
     DataDF,
     IndexDF,
-    InputSpec,
     Labels,
     PipelineInput,
     PipelineOutput,
-    OutputSpec,
-    Required,
     TransformResult,
 )
 
@@ -87,7 +87,7 @@ class BaseBatchTransformStep(ComputeStep):
             self,
             name=name,
             input_dts=compute_input_dts,
-            output_dts=[out.dt for out in compute_output_dts],
+            output_dts=compute_output_dts,
             labels=labels,
             executor_config=executor_config,
         )
@@ -100,7 +100,7 @@ class BaseBatchTransformStep(ComputeStep):
             transform_keys = list(transform_keys)
 
         self.meta = ds.meta_plane.create_transform_meta(
-            name=f"{self.get_name()}_meta",
+            name=f"{self.name}_meta",
             input_dts=self.input_dts,
             output_dts=self.output_dts,
             transform_keys=transform_keys,
@@ -114,6 +114,8 @@ class BaseBatchTransformStep(ComputeStep):
         self.order_by = order_by
         self.order = order
 
+    # TODO consider making this method a property of ComputeOutput
+    # Also see TableMeta.transform_idx_to_table_idx for the same functionality
     @staticmethod
     def _transform_idx_to_output_idx(
         idx: IndexDF,
@@ -437,22 +439,27 @@ class DatatableBatchTransform(PipelineStep):
     func: DatatableBatchTransformFunc
     inputs: Sequence[PipelineInput]
     outputs: Sequence[PipelineOutput]
+    name: str | None = None
     chunk_size: int = 1000
     transform_keys: list[str] | None = None
     kwargs: dict | None = None
     labels: Labels | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
-        input_dts = [catalog.get_datatable(ds, name) for name in self.inputs]
-        output_dts = [catalog.get_datatable(ds, name) for name in self.outputs]
+        input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
+
+        step_name = self.name or make_mungled_step_name(
+            DatatableBatchTransformStep, self.func.__name__, input_dts, output_dts
+        )
 
         return [
             DatatableBatchTransformStep(
                 ds=ds,
-                name=f"{self.func.__name__}",
+                name=step_name,
                 func=self.func,
-                input_dts=[ComputeInput(dt=inp, join_type="full") for inp in input_dts],
-                output_dts=[ComputeOutput(dt=out) for out in output_dts],
+                input_dts=input_dts,
+                output_dts=output_dts,
                 kwargs=self.kwargs,
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
@@ -508,6 +515,7 @@ class BatchTransform(PipelineStep):
     inputs: Sequence[PipelineInput]
     outputs: Sequence[PipelineOutput]
     chunk_size: int = 1000
+    name: str | None = None
     kwargs: dict[str, Any] | None = None
     transform_keys: list[str] | None = None
     labels: Labels | None = None
@@ -516,44 +524,16 @@ class BatchTransform(PipelineStep):
     order_by: list[str] | None = None
     order: Literal["asc", "desc"] = "asc"
 
-    def pipeline_input_to_compute_input(
-        self,
-        ds: DataStore,
-        catalog: Catalog,
-        input: PipelineInput,
-    ) -> ComputeInput:
-        if isinstance(input, Required):
-            return ComputeInput(
-                dt=catalog.get_datatable(ds, input.table),
-                join_type="inner",
-                keys=input.keys,
-            )
-        elif isinstance(input, InputSpec):
-            return ComputeInput(
-                dt=catalog.get_datatable(ds, input.table),
-                join_type="full",
-                keys=input.keys,
-            )
-        else:
-            return ComputeInput(dt=catalog.get_datatable(ds, input), join_type="full")
-
-    def pipeline_output_to_compute_output(self, ds: DataStore, catalog: Catalog, output: PipelineOutput) -> ComputeOutput:
-        if isinstance(output, OutputSpec):
-            return ComputeOutput(
-                dt=catalog.get_datatable(ds, output.table),
-                keys=output.keys,
-            )
-
-        return ComputeOutput(dt=catalog.get_datatable(ds, output))
-
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
-        input_dts = [self.pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
-        output_dts = [self.pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
+        input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
+        output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
+
+        step_name = self.name or make_mungled_step_name(BatchTransformStep, self.func.__name__, input_dts, output_dts)
 
         return [
             BatchTransformStep(
                 ds=ds,
-                name=f"{self.func.__name__}",
+                name=step_name,
                 input_dts=input_dts,
                 output_dts=output_dts,
                 func=self.func,

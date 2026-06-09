@@ -1,4 +1,4 @@
-# WIP: 0.15.0
+# 0.15.0
 
 ## Important new stuff:
 
@@ -27,11 +27,38 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 * Added `keys` parameter to `InputSpec` and `ComputeInput` to support
   joining tables with different key names
 * Added `DataField` accessor for `InputSpec.keys`
-* Added `OutputSpec` and `ComputeOutput.keys` to explicitly map transform keys to output table primary keys
-* Fixed batch transform cleanup for aliased output keys and incomplete transform keys
+* Added `OutputSpec` and `ComputeOutput.keys` to explicitly map transform keys
+  to output table primary keys
+* Fixed batch transform cleanup for aliased output keys and incomplete transform
+  keys
 * Updated `tqdm-loggable` to avoid Python 3.12 deprecation warnings
 
+### Step name overrides and uniform hash-based naming
+
+* Extracted `make_mungled_step_name(cls, base_name, input_dts, output_dts)` as a
+  public helper in `compute.py`; it encodes the step class, function name, and
+  table names into a short shake-128 hash suffix (e.g. `my_func_9762dd6bae`)
+* `ComputeStep.name` is now a plain stored attribute instead of a computed
+  property, so the name is fixed at construction time and readable without
+  re-hashing
+* All `PipelineStep` types now accept an optional `name: str | None` parameter;
+  when provided it overrides the auto-generated hash name, making it easy to
+  pin a stable name for a step independent of its inputs/outputs
+* `DatatableTransform` and `UpdateExternalTable` were previously using plain
+  names (e.g. `update_item`); they now use `make_mungled_step_name` for
+  consistency with the batch step types
+* `pipeline_input_to_compute_input()` extracted from `BatchTransform` into a
+  module-level helper in `compute.py` and reused by `DatatableBatchTransform`
+* `DatatableBatchTransform.inputs` now accepts `PipelineInput` (same as
+  `BatchTransform`), enabling `Required`/`InputSpec` wrappers
+* `build_compute()` now raises immediately on duplicate step names
+
 ### Python3.9 support is deprecated
+
+## Improvements and fixes
+
+* Fixed dtypes mapping for TableStoreExcel, TableStoreJsonLine
+* Fixed meta changes compute logic for `Required` tables
 
 # 0.14.8
 

@@ -1,13 +1,25 @@
 # Datapipe
 
-[Datapipe](https://datapipe.dev/) is a real-time, incremental ETL library for Python with record-level dependency tracking.
+[Datapipe](https://datapipe.dev/) is a Python framework for **durable, incremental batch processing**.
 
-The library is designed for describing data processing pipelines and is capable
-of tracking dependencies for each record in the pipeline. This ensures that
-tasks within the pipeline receive only the data that has been modified, thereby
-improving the overall efficiency of data handling.
+Define a pipeline as a graph of tables connected by transform functions. Datapipe tracks dependencies at the record level: when a row in an input table changes, only the downstream steps that depend on that row are re-run. Processing state is persisted, so a pipeline interrupted mid-run resumes from where it left off.
 
-https://datapipe.dev/
+```python
+pipeline = Pipeline([
+    UpdateExternalTable(output=images_tbl),
+    BatchTransform(
+        resize_images,
+        inputs=[images_tbl],
+        outputs=[thumbnails_tbl],
+        chunk_size=100,
+    ),
+])
+```
+
+Your transform functions stay simple and stateless — they receive a `pd.DataFrame` and return a `pd.DataFrame`. Datapipe figures out which rows need processing.
+
+**Documentation:** https://epoch8.github.io/datapipe/
+**Website:** https://datapipe.dev/
 
 This repository contains the Datapipe Python packages as a `uv` monorepo workspace.
 
@@ -41,12 +53,11 @@ Documentation lives in `libs/datapipe-core/docs`. Design notes live in
 
 ## Version Compatibility
 
-At the moment, the datapipe library is under active development. Versions:
-`v0.*.*`
+* `master` — current development state, will become the `0.15.x` release
+* `v0.14` — current stable version
 
-It should be expected that each minor version is not backward compatible with
-the previous one. That is, `v0.7.0` is not compatible with `v0.6.1`. Dependencies
-should be fixed to the exact minor version.
+## Version compatibility
 
-After stabilization and transition to the major version `v1.*.*`, the common
-rules will apply: all versions with the same major component are compatible.
+The library is under active development at `v0.*.*`. Each minor version should be considered incompatible with the previous one (`v0.7.0` is not compatible with `v0.6.1`). Pin dependencies to the exact minor version.
+
+Compatibility guarantees following the standard semver rules (`v1.*.*` and beyond) will apply once the library stabilises.

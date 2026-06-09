@@ -139,6 +139,7 @@ def get_pipeline_table(table: PipelineInput | PipelineOutput) -> TableOrName:
         return table.table
     return table
 
+
 @dataclass
 class ChangeList:
     changes: dict[str, IndexDF] = field(default_factory=lambda: cast(dict[str, IndexDF], {}))

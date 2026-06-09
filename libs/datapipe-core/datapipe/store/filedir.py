@@ -565,7 +565,7 @@ class TableStoreFiledir(TableStore):
 
         if len(ids) > 0:
             pseudo_data_df = pd.DataFrame.from_records(
-                {
+                {  # type: ignore
                     **ids,
                     "ukey": ukeys,
                     **({"filepath": filepaths} if self.add_filepath_column else {}),

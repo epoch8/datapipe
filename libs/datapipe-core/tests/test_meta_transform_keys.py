@@ -1,4 +1,5 @@
 import time
+from typing import cast
 
 import pandas as pd
 from sqlalchemy import Column, String
@@ -8,7 +9,7 @@ from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.tests.util import assert_datatable_equal
-from datapipe.types import DataField, InputSpec, OutputSpec
+from datapipe.types import IndexDF, InputSpec, OutputSpec
 
 
 def test_transform_keys(dbconn: DBConn):
@@ -26,7 +27,7 @@ def test_transform_keys(dbconn: DBConn):
         "posts",
         [
             Column("id", String, primary_key=True),
-            Column("user_id", String),
+            Column("user_id", String, primary_key=True),
             Column("content", String),
         ],
         create_table=True,
@@ -94,10 +95,10 @@ def test_transform_keys(dbconn: DBConn):
         input_dts=[
             ComputeInput(
                 dt=posts,  # [id, user_id, content]
-                join_type="full",
+                join_type="inner",
                 keys={
                     "post_id": "id",
-                    "user_id": DataField("user_id"),
+                    "user_id": "user_id",
                 },
             ),
             ComputeInput(
@@ -109,17 +110,15 @@ def test_transform_keys(dbconn: DBConn):
             ),
         ],
         # post, profiles -> output_dt
-
         # 1 post [id, user_id, content] -> mapping [post_id, user_id, content]
         # 2 profiles [id, username] -> mapping [user_id, username]
-
         # output_dt 1x2 = [post_id, user_id, content, username] -> get output [post_id, username] -> mapping [id, user_name]
         output_dts=[
             ComputeOutput(
                 dt=output_dt,  # [id, user_id, content, username]
                 keys={
                     "post_id": "id",
-                }
+                },
             ),
         ],
         transform_keys=["post_id", "user_id"],
@@ -161,7 +160,7 @@ def test_transform_keys(dbconn: DBConn):
 
     # 11. Удаление lookup-записи должно удалить все output rows для связанных posts.
     time.sleep(0.01)  # Небольшая задержка для различения timestamp'ов
-    profiles.delete_by_idx(pd.DataFrame([{"id": "1"}]), now=time.time())
+    profiles.delete_by_idx(cast(IndexDF, pd.DataFrame([{"id": "1"}])), now=time.time())
     step.run_full(ds)
 
     assert_datatable_equal(
@@ -217,7 +216,7 @@ def test_transform_output_spec_keys(dbconn: DBConn):
                     "posts",
                     [
                         Column("id", String, primary_key=True),
-                        Column("user_id", String),
+                        Column("user_id", String, primary_key=True),
                         Column("content", String),
                     ],
                     create_table=True,
@@ -261,7 +260,7 @@ def test_transform_output_spec_keys(dbconn: DBConn):
                 table="posts",
                 keys={
                     "post_id": "id",
-                    "user_id": DataField("user_id"),
+                    "user_id": "user_id",
                 },
             ),
             InputSpec(
@@ -402,7 +401,7 @@ def test_batch_transform_outputs_with_different_key_mappings(dbconn: DBConn):
                     "posts",
                     [
                         Column("id", String, primary_key=True),
-                        Column("user_id", String),
+                        Column("user_id", String, primary_key=True),
                         Column("content", String),
                     ],
                     create_table=True,
@@ -490,7 +489,7 @@ def test_batch_transform_outputs_with_different_key_mappings(dbconn: DBConn):
                 table="posts",
                 keys={
                     "post_id": "id",
-                    "user_id": DataField("user_id"),
+                    "user_id": "user_id",
                 },
             ),
             InputSpec(
@@ -530,7 +529,7 @@ def test_batch_transform_outputs_with_different_key_mappings(dbconn: DBConn):
     )
 
     time.sleep(0.01)
-    profiles.delete_by_idx(pd.DataFrame([{"id": "u1"}]), now=time.time())
+    profiles.delete_by_idx(cast(IndexDF, pd.DataFrame([{"id": "u1"}])), now=time.time())
     step.run_full(ds)
 
     assert_datatable_equal(
@@ -768,7 +767,7 @@ def test_transform_keys_with_composite_aliases_and_multiple_outputs(dbconn: DBCo
     )
 
     time.sleep(0.01)
-    tenants.delete_by_idx(pd.DataFrame([{"id": "t1"}]), now=time.time())
+    tenants.delete_by_idx(cast(IndexDF, pd.DataFrame([{"id": "t1"}])), now=time.time())
     step.run_full(ds)
 
     assert_datatable_equal(
@@ -806,8 +805,8 @@ def test_transform_keys_with_same_column_names_and_different_aliases(dbconn: DBC
             [
                 Column("id", String, primary_key=True),
                 Column("name", String),
-                Column("team_id", String),
-                Column("role_id", String),
+                Column("team_id", String, primary_key=True),
+                Column("role_id", String, primary_key=True),
             ],
             create_table=True,
         ),
@@ -907,8 +906,8 @@ def test_transform_keys_with_same_column_names_and_different_aliases(dbconn: DBC
                 join_type="full",
                 keys={
                     "user_id": "id",
-                    "team_id": DataField("team_id"),
-                    "role_id": DataField("role_id"),
+                    "team_id": "team_id",
+                    "role_id": "role_id",
                 },
             ),
             ComputeInput(
@@ -1010,7 +1009,7 @@ def test_transform_keys_with_same_column_names_and_different_aliases(dbconn: DBC
     )
 
     time.sleep(0.01)
-    roles.delete_by_idx(pd.DataFrame([{"id": "r1"}]), now=time.time())
+    roles.delete_by_idx(cast(IndexDF, pd.DataFrame([{"id": "r1"}])), now=time.time())
     step.run_full(ds)
 
     assert_datatable_equal(
@@ -1041,7 +1040,7 @@ def test_transform_keys_with_same_output_column_names_and_different_aliases(dbco
             [
                 Column("id", String, primary_key=True),
                 Column("name", String),
-                Column("role_id", String),
+                Column("role_id", String, primary_key=True),
             ],
             create_table=True,
         ),
@@ -1133,7 +1132,7 @@ def test_transform_keys_with_same_output_column_names_and_different_aliases(dbco
                 join_type="full",
                 keys={
                     "user_id": "id",
-                    "role_id": DataField("role_id"),
+                    "role_id": "role_id",
                 },
             ),
             ComputeInput(
@@ -1208,7 +1207,7 @@ def test_transform_keys_with_same_output_column_names_and_different_aliases(dbco
     )
 
     time.sleep(0.01)
-    roles.delete_by_idx(pd.DataFrame([{"id": "r1"}]), now=time.time())
+    roles.delete_by_idx(cast(IndexDF, pd.DataFrame([{"id": "r1"}])), now=time.time())
     step.run_full(ds)
 
     assert_datatable_equal(
