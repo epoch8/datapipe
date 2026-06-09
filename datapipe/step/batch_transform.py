@@ -597,38 +597,37 @@ class BaseBatchTransformStep(ComputeStep):
                 first_output = output_dfs
 
             # Извлекаем индекс из DataFrame результата
-            if not first_output.empty:
-                # Проверяем, что output содержит все transform_keys
-                # Если агрегация убрала некоторые колонки, используем input idx
-                missing_keys = set(self.transform_keys) - set(first_output.columns)
-                if missing_keys:
-                    # Агрегация убрала некоторые transform_keys из output
-                    # Используем input idx для расчета offset
-                    processed_idx = idx
-                else:
-                    processed_idx = data_to_index(first_output, self.transform_keys)
-
-                for inp in self.input_dts:
-                    # Найти максимальный update_ts из УСПЕШНО обработанного батча
-                    max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
-
-                    if max_update_ts is not None:
-                        offset_key = (self.get_name(), inp.dt.name)
-                        # Добавляем offset в ChangeList для возврата из функции
-                        changes.offsets[offset_key] = max_update_ts
-                    else:
-                        # Диагностика: логируем почему offset не был вычислен
-                        logger.warning(
-                            f"Offset not calculated for {self.get_name()}, "
-                            f"input: {inp.dt.name}, processed_idx size: {len(processed_idx)}, "
-                            f"max_update_ts is None"
-                        )
+            # Важно: offset должен продвигаться даже если output пустой (фильтр отсеял все записи)
+            # Проверяем, что output содержит все transform_keys
+            missing_keys = set(self.transform_keys) - set(first_output.columns)
+            if missing_keys or first_output.empty:
+                # Агрегация убрала некоторые transform_keys из output
+                # ИЛИ output пустой (фильтр отсеял все записи)
+                # Используем input idx для расчета offset
+                processed_idx = idx
+                if first_output.empty:
+                    logger.debug(
+                        f"Output is empty for {self.get_name()}, using input idx for offset calculation "
+                        f"({len(idx)} rows processed)"
+                    )
             else:
-                # Диагностика: логируем пустой output
-                logger.warning(
-                    f"Offset not calculated for {self.get_name()}: "
-                    f"output is empty (0 rows processed)"
-                )
+                processed_idx = data_to_index(first_output, self.transform_keys)
+
+            for inp in self.input_dts:
+                # Найти максимальный update_ts из УСПЕШНО обработанного батча
+                max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
+
+                if max_update_ts is not None:
+                    offset_key = (self.get_name(), inp.dt.name)
+                    # Добавляем offset в ChangeList для возврата из функции
+                    changes.offsets[offset_key] = max_update_ts
+                else:
+                    # Диагностика: логируем почему offset не был вычислен
+                    logger.warning(
+                        f"Offset not calculated for {self.get_name()}, "
+                        f"input: {inp.dt.name}, processed_idx size: {len(processed_idx)}, "
+                        f"max_update_ts is None"
+                    )
         else:
             # Диагностика: логируем отсутствие output_dfs
             logger.debug(

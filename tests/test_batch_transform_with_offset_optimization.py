@@ -424,3 +424,208 @@ def test_batch_transform_offset_no_new_data(dbconn: DBConn):
     # Проверяем что результаты не изменились
     output_data = output_dt.get_data()
     assert len(output_data) == 2
+
+
+def test_batch_transform_max_records_per_run_keeps_boundary_timestamp_records(dbconn: DBConn):
+    """`max_records_per_run` не должен терять записи на границе одинакового update_ts."""
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    input_store = TableStoreDB(
+        dbconn,
+        "test_input_max_records",
+        [Column("profile_id", String, primary_key=True), Column("value", Integer)],
+        create_table=True,
+    )
+    input_dt = ds.create_table("test_input_max_records", input_store)
+
+    output_store = TableStoreDB(
+        dbconn,
+        "test_output_max_records",
+        [Column("profile_id", String, primary_key=True), Column("result", Integer)],
+        create_table=True,
+    )
+    output_dt = ds.create_table("test_output_max_records", output_store)
+
+    def transform_func(df):
+        return df.rename(columns={"value": "result"})
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test_transform_max_records",
+        func=transform_func,
+        input_dts=[ComputeInput(dt=input_dt, join_type="full")],
+        output_dts=[output_dt],
+        transform_keys=["profile_id"],
+        chunk_size=2,
+        use_offset_optimization=True,
+        max_records_per_run=3,
+    )
+
+    first_ts = time.time() - 10
+    second_ts = first_ts + 1
+
+    input_dt.store_chunk(
+        pd.DataFrame(
+            {
+                "profile_id": ["p1", "p2", "p3", "p4"],
+                "value": [1, 2, 3, 4],
+            }
+        ),
+        now=first_ts,
+    )
+    input_dt.store_chunk(
+        pd.DataFrame(
+            {
+                "profile_id": ["p5", "p6"],
+                "value": [5, 6],
+            }
+        ),
+        now=second_ts,
+    )
+
+    step.run_full(ds)
+
+    first_run_output = output_dt.get_data().sort_values("profile_id").reset_index(drop=True)
+    assert first_run_output["profile_id"].tolist() == ["p1", "p2", "p3"]
+
+    offsets_after_first = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    offset_after_first = offsets_after_first["test_input_max_records"]
+    assert first_ts <= offset_after_first < second_ts
+    assert step.get_changed_idx_count(ds) == 3
+
+    step.run_full(ds)
+
+    final_output = output_dt.get_data().sort_values("profile_id").reset_index(drop=True)
+    assert final_output["profile_id"].tolist() == ["p1", "p2", "p3", "p4", "p5", "p6"]
+
+    offsets_after_second = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    offset_after_second = offsets_after_second["test_input_max_records"]
+    assert offset_after_second >= second_ts
+    assert step.get_changed_idx_count(ds) == 0
+
+
+def test_batch_transform_offset_with_empty_output_filter(dbconn: DBConn):
+    """
+    Тест для edge case: фильтр-трансформ возвращает пустой output.
+
+    Баг: offset не продвигается когда output пустой, что приводит к
+    бесконечной переобработке одних и тех же данных.
+
+    Ожидаемое поведение: offset должен продвигаться по обработанному ВХОДУ,
+    даже если выход пустой (все записи отфильтрованы).
+    """
+    ds = DataStore(dbconn, create_meta_table=True)
+
+    input_store = TableStoreDB(
+        dbconn,
+        "test_input_filter",
+        [
+            Column("id", String, primary_key=True),
+            Column("status", String),
+            Column("value", Integer),
+        ],
+        create_table=True,
+    )
+    input_dt = ds.create_table("test_input_filter", input_store)
+
+    output_store = TableStoreDB(
+        dbconn,
+        "test_output_filter",
+        [
+            Column("id", String, primary_key=True),
+            Column("status", String),
+            Column("value", Integer),
+        ],
+        create_table=True,
+    )
+    output_dt = ds.create_table("test_output_filter", output_store)
+
+    # Счетчик вызовов для отслеживания переобработки
+    call_data = {"calls": 0, "processed_ids": []}
+
+    def filter_func(df):
+        """Фильтр: оставляем только записи со status='approved'"""
+        call_data["calls"] += 1
+        call_data["processed_ids"].extend(df["id"].tolist())
+        # Фильтруем - может вернуть пустой DataFrame
+        return df[df["status"] == "approved"]
+
+    step = BatchTransformStep(
+        ds=ds,
+        name="test_filter_transform",
+        func=filter_func,
+        input_dts=[ComputeInput(dt=input_dt, join_type="full")],
+        output_dts=[output_dt],
+        transform_keys=["id"],
+        use_offset_optimization=True,
+    )
+
+    # Первая партия: все записи с status='pending' (НЕ пройдут фильтр)
+    first_ts = time.time()
+    input_dt.store_chunk(
+        pd.DataFrame({
+            "id": ["1", "2", "3"],
+            "status": ["pending", "pending", "pending"],
+            "value": [10, 20, 30],
+        }),
+        now=first_ts,
+    )
+
+    # Первый запуск - обработка записей с пустым output
+    step.run_full(ds)
+
+    # Проверяем что функция вызвалась и обработала записи
+    assert call_data["calls"] == 1
+    assert sorted(call_data["processed_ids"]) == ["1", "2", "3"]
+
+    # Проверяем что output пустой (все отфильтровались)
+    output_data = output_dt.get_data()
+    assert len(output_data) == 0
+
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: offset должен продвинуться несмотря на пустой output!
+    offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    assert "test_input_filter" in offsets, "Offset должен быть записан даже при пустом output"
+    first_offset = offsets["test_input_filter"]
+    assert first_offset >= first_ts, f"Offset {first_offset} должен быть >= {first_ts}"
+
+    # Проверяем что changelist теперь пустой (нет новых данных)
+    changed_count = step.get_changed_idx_count(ds)
+    assert changed_count == 0, f"Должно быть 0 новых записей, но найдено {changed_count}"
+
+    # Вторая партия: добавляем новые данные (также pending)
+    time.sleep(0.01)
+    second_ts = time.time()
+    input_dt.store_chunk(
+        pd.DataFrame({
+            "id": ["4", "5"],
+            "status": ["approved", "pending"],  # Только '4' пройдет фильтр
+            "value": [40, 50],
+        }),
+        now=second_ts,
+    )
+
+    # Сбрасываем счетчик
+    call_data["calls"] = 0
+    call_data["processed_ids"] = []
+
+    # Второй запуск - должны обработаться ТОЛЬКО новые записи (4, 5)
+    step.run_full(ds)
+
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: старые записи (1, 2, 3) НЕ должны переобрабатываться!
+    assert call_data["calls"] == 1
+    assert sorted(call_data["processed_ids"]) == ["4", "5"], (
+        f"Должны обработаться только новые записи ['4', '5'], "
+        f"но обработались {sorted(call_data['processed_ids'])}"
+    )
+
+    # Проверяем output - должна быть только одна запись (id='4')
+    output_data = output_dt.get_data()
+    assert len(output_data) == 1
+    assert output_data["id"].tolist() == ["4"]
+    assert output_data["status"].tolist() == ["approved"]
+
+    # Проверяем что offset снова продвинулся
+    offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    second_offset = offsets["test_input_filter"]
+    assert second_offset >= second_ts
+    assert second_offset > first_offset, "Offset должен продвинуться после второй партии"
