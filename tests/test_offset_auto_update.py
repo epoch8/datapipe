@@ -358,7 +358,10 @@ def test_works_without_offset_table(dbconn: DBConn):
 
 def test_offset_not_updated_on_empty_result(dbconn: DBConn):
     """
-    Тест что offset НЕ обновляется если трансформация вернула пустой результат
+    Тест что offset ОБНОВЛЯЕТСЯ даже если трансформация вернула пустой результат.
+
+    Пустой output не означает что данные не обработаны - это нормально для фильтров.
+    Offset должен продвигаться по обработанному входу, а не по выходу.
     """
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -378,7 +381,7 @@ def test_offset_not_updated_on_empty_result(dbconn: DBConn):
     )
     output_dt = ds.create_table("empty_result_output", output_store)
 
-    # Трансформация которая всегда возвращает пустой DataFrame
+    # Трансформация которая всегда возвращает пустой DataFrame (фильтр)
     def transform_func(df):
         return pd.DataFrame(columns=["id", "result"])
 
@@ -403,6 +406,8 @@ def test_offset_not_updated_on_empty_result(dbconn: DBConn):
     output_data = output_dt.get_data()
     assert len(output_data) == 0
 
-    # Проверяем что offset НЕ обновился (потому что результат пустой)
+    # Проверяем что offset ОБНОВИЛСЯ (несмотря на пустой результат)
     offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
-    assert len(offsets) == 0, "Offset не должен обновиться при пустом результате"
+    assert len(offsets) == 1, "Offset должен обновиться даже при пустом результате"
+    assert "empty_result_input" in offsets
+    assert offsets["empty_result_input"] >= now

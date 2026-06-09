@@ -404,13 +404,16 @@ def test_partial_processing_offset_not_updated(dbconn: DBConn):
 
 def test_empty_result_offset_not_updated(dbconn: DBConn):
     """
-    Тест: Пустой результат трансформации, offset НЕ обновляется.
+    Тест: Пустой результат трансформации, offset ОБНОВЛЯЕТСЯ.
+
+    Пустой output не означает что данные не обработаны - это нормально для фильтров.
+    Offset должен продвигаться по обработанному входу, а не по выходу.
 
     Сценарий:
     1. Создать данные
-    2. Трансформация возвращает пустой DataFrame
+    2. Трансформация возвращает пустой DataFrame (фильтр)
     3. Запустить run_full
-    4. Проверить что offset НЕ обновился
+    4. Проверить что offset обновился (данные обработаны, но отфильтрованы)
     """
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -438,7 +441,7 @@ def test_empty_result_offset_not_updated(dbconn: DBConn):
     )
     output_dt = ds.create_table("empty_output", output_store)
 
-    # Трансформация всегда возвращает пустой DataFrame
+    # Трансформация всегда возвращает пустой DataFrame (фильтр)
     def empty_func(df):
         return pd.DataFrame(columns=["id", "result"])
 
@@ -465,9 +468,11 @@ def test_empty_result_offset_not_updated(dbconn: DBConn):
     output_data = output_dt.get_data()
     assert len(output_data) == 0, "Output должен быть пустым"
 
-    # Проверяем что offset НЕ обновился
+    # Проверяем что offset ОБНОВИЛСЯ (несмотря на пустой результат)
     offsets = ds.offset_table.get_offsets_for_transformation(step.get_name())
-    assert len(offsets) == 0, "Offset не должен обновиться при пустом результате"
+    assert len(offsets) == 1, "Offset должен обновиться даже при пустом результате"
+    assert "empty_input" in offsets
+    assert offsets["empty_input"] >= now
 
 
 def test_run_changelist_does_not_update_offset(dbconn: DBConn):
