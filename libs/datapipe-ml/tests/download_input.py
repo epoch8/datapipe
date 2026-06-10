@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import random
 import sys
 import time
@@ -31,8 +32,8 @@ LABELS_DIR = OUT_DIR / "labels"  # per-image JSON goes here
 KPS_OUT_DIR = Path("input_kps")
 KPS_IMAGES_DIR = KPS_OUT_DIR / "images"
 KPS_LABELS_DIR = KPS_OUT_DIR / "labels"
-NUM_IMAGES = 100
-NUM_KEYPOINT_IMAGES = 100
+NUM_IMAGES = int(os.environ.get("DATAPIPE_ML_DOWNLOAD_IMAGES", "100"))
+NUM_KEYPOINT_IMAGES = int(os.environ.get("DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES", str(NUM_IMAGES)))
 RNG_SEED = 1234
 
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
@@ -236,6 +237,9 @@ def main():
             instances_data = json.load(f)
         with zf.open(KEYPOINTS_ANN_JSON_PATH_IN_ZIP) as f:
             keypoints_data = json.load(f)
+
+    if os.environ.get("DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ") == "1":
+        ann_zip.unlink(missing_ok=True)
 
     # 3) write per-image JSONs in the requested formats
     write_detection_segmentation_dataset(instances_data)
