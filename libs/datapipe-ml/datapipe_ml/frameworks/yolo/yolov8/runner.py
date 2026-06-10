@@ -195,7 +195,10 @@ class YoloV8_TrainingConfig:
 
         full_dict = asdict(self)
 
-        return {k: full_dict[k] for k in training_yolo_arguments if k in full_dict}
+        kwargs = {k: full_dict[k] for k in training_yolo_arguments if k in full_dict}
+        if kwargs.get("copy_paste_mode") is None:
+            kwargs.pop("copy_paste_mode", None)
+        return kwargs
 
 
 @dataclass
