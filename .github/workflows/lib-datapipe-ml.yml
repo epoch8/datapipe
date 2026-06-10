@@ -144,7 +144,7 @@ jobs:
           python -m pip install --upgrade pip
           uv pip install --system -e "libs/datapipe-ml[tensorflow,sqlite]" "pytest<8" "pytest-cases"
           uv cache clean
-          python -m pip cache purge
+          python -m pip cache purge || true
 
       - name: Test TensorFlow extra with pytest
         run: |
@@ -182,7 +182,7 @@ jobs:
           uv pip install --system -e "libs/datapipe-ml" --no-deps
           uv pip install --system -r /tmp/datapipe-ml-requirements.txt "boto3" "pytest<8" "pytest-cases"
           uv cache clean
-          python -m pip cache purge
+          python -m pip cache purge || true
 
       - name: Test Torch extra with pytest
         run: |
