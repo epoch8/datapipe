@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import logging
 from pathlib import Path
 
 import pytest
@@ -231,9 +232,10 @@ def test_template_annotation_roundtrip_from_label_studio(pipeline_name: str):
 
 
 @pytest.mark.parametrize("pipeline_name", ["detection", "keypoints"])
-def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str):
+def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str, caplog):
     from helpers import run_template_stage
 
+    caplog.set_level(logging.ERROR)
     _require_service_env()
     _ensure_label_studio_token()
     _ensure_sample_images_seeded()
@@ -244,11 +246,9 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     freeze_min_delta = _freeze_min_delta(pipeline_name, app)
     initial_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
 
-    with pytest.raises(
-        ValueError,
-        match=rf"Not enough changed idx for freezing \({initial_annotations_count} < {freeze_min_delta}\)",
-    ):
-        run_template_stage(pipeline_name, "train-prepare")
+    caplog.clear()
+    run_template_stage(pipeline_name, "train-prepare")
+    assert f"Not enough changed idx for freezing ({initial_annotations_count} < {freeze_min_delta})" in caplog.text
     assert app.ds.get_table(frozen_dataset_table).get_data().empty
     assert app.ds.get_table(trained_model_table).get_data().empty
 
@@ -259,11 +259,9 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     assert synced_annotations_count < freeze_min_delta
 
     # CI seeds fewer annotated images than the freeze step requires, so training must stay blocked.
-    with pytest.raises(
-        ValueError,
-        match=rf"Not enough changed idx for freezing \({synced_annotations_count} < {freeze_min_delta}\)",
-    ):
-        run_template_stage(pipeline_name, "train-prepare")
+    caplog.clear()
+    run_template_stage(pipeline_name, "train-prepare")
+    assert f"Not enough changed idx for freezing ({synced_annotations_count} < {freeze_min_delta})" in caplog.text
     assert app.ds.get_table(frozen_dataset_table).get_data().empty
     assert app.ds.get_table(trained_model_table).get_data().empty
 

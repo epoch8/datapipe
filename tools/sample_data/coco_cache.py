@@ -90,6 +90,7 @@ def ensure_coco_annotations_zip(
         return zip_path
 
     remove_invalid_coco_annotations_zip(zip_path)
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading COCO annotations (~241MB, cached in {zip_path.parent}/)...")
     (download or default_download_coco_annotations_zip)(zip_path)
 
