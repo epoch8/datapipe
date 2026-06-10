@@ -1,5 +1,5 @@
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -11,6 +11,10 @@ from datapipe.types import IndexDF, Labels
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON
 
+from datapipe_ml.training.train_config_id import (
+    build_yolo_train_config_summary,
+    train_configs_to_dataframe,
+)
 from datapipe_ml.frameworks.yolo.datapipe_compute import (
     YoloModeSpec,
     build_yolo_compute,
@@ -94,17 +98,11 @@ def train_yolov8_keypoints(
 
 
 def get_yolov8_keypoints_train_configs(yolov8_train_configs: List[YoloV8_TrainingConfig]):
-    yield pd.DataFrame(
-        [
-            dict(
-                keypoints_train_config_id=(
-                    f"{x.model.replace('.pt', '')}-{x.imgsz}-default-batch{x.batch}-epochs{x.epochs}"
-                    + (f"-from-ckpt-{x.initial_weights_path}" if x.initial_weights_path is not None else "")
-                ),
-                keypoints_train_config__params=asdict(x),
-            )
-            for x in yolov8_train_configs
-        ]
+    yield train_configs_to_dataframe(
+        yolov8_train_configs,
+        id_column="keypoints_train_config_id",
+        params_column="keypoints_train_config__params",
+        summary_builder=build_yolo_train_config_summary,
     )
 
 

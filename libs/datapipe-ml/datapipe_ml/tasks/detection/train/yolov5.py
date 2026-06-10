@@ -1,5 +1,5 @@
 # algos/yolov5.py
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -9,6 +9,10 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF, Labels
 
+from datapipe_ml.training.train_config_id import (
+    build_yolo_train_config_summary,
+    train_configs_to_dataframe,
+)
 from datapipe_ml.frameworks.yolo.datapipe_compute import (
     YoloModeSpec,
     build_yolo_compute,
@@ -136,17 +140,15 @@ def train_yolov5(
 
 
 def get_yolov5_detection_train_configs(yolov5_train_configs: List[YoloV5_TrainingConfig]):
-    yield pd.DataFrame(
-        [
-            dict(
-                detection_train_config_id=(
-                    f"{x.weights.replace('.pt', '')}-{x.imgsz}-default-batch{x.batch_size}-epochs{x.epochs}"
-                    + (f"-from-ckpt-{x.initial_weights_path}" if x.initial_weights_path is not None else "")
-                ),
-                detection_train_config__params=asdict(x),
-            )
-            for x in yolov5_train_configs
-        ]
+    yield train_configs_to_dataframe(
+        yolov5_train_configs,
+        id_column="detection_train_config_id",
+        params_column="detection_train_config__params",
+        summary_builder=lambda params: build_yolo_train_config_summary(
+            params,
+            model_key="weights",
+            batch_key="batch_size",
+        ),
     )
 
 

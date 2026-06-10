@@ -10,6 +10,7 @@ from datapipe.types import IndexDF
 from pathy import Pathy
 
 from datapipe_ml.frameworks.yolo.artifacts import YoloDataYAMLConfig
+from datapipe_ml.training.train_config_id import build_train_config_id, build_yolo_train_config_summary
 from datapipe_ml.training.specs import (
     Algo,
     PreparedData,
@@ -227,10 +228,14 @@ class YoloBaseAlgo(Algo):
             if ctx.model_other_primary_keys
             else ""
         )
-        model_name = train_params[self.model_key].replace(".pt", "")
-        imgsz = train_params["imgsz"]
-        epochs = train_params["epochs"]
-        core = f"{date}_{model_name}{imgsz}_epochs{epochs}{ctx.model_suffix}"
+        batch_key = "batch_size" if self.model_key == "weights" else "batch"
+        summary = build_yolo_train_config_summary(
+            train_params,
+            model_key=self.model_key,
+            batch_key=batch_key,
+        )
+        config_id = build_train_config_id(train_params, summary=summary)
+        core = f"{date}_{config_id}{ctx.model_suffix}"
         return f"{prefix + ('-' if prefix else '')}{core}"
 
     # ---------- Common training launcher (v8) ----------

@@ -270,6 +270,68 @@ def assert_metrics_have_values(runtime: SmokeRuntime, table_name: str, metric_co
     return df
 
 
+def exp_folder_from_model_path(model_path: str | Path) -> Path:
+    return Path(model_path).resolve().parent.parent
+
+
+def assert_training_yaml_values(yaml_path: Path, expected: dict[str, object]) -> None:
+    import yaml
+
+    assert yaml_path.exists(), f"Missing training artifact: {yaml_path}"
+    data = yaml.safe_load(yaml_path.read_text()) or {}
+    for key, value in expected.items():
+        assert key in data, f"Missing key {key!r} in {yaml_path}"
+        actual = data[key]
+        if isinstance(value, (int, float)) and isinstance(actual, (int, float, str)):
+            assert float(actual) == float(value), f"{key}: {actual!r} != {value!r}"
+        else:
+            assert actual == value, f"{key}: {actual!r} != {value!r}"
+
+
+def assert_yolov8_training_args(runtime: SmokeRuntime, expected: dict[str, object]) -> None:
+    df_model = runtime.ds.get_table("detection_model").get_data()
+    model_path = df_model["detection_model__model_path"].iloc[0]
+    assert_training_yaml_values(exp_folder_from_model_path(model_path) / "args.yaml", expected)
+
+
+def assert_yolov5_training_hyp(runtime: SmokeRuntime, expected: dict[str, object]) -> None:
+    df_model = runtime.ds.get_table("detection_model").get_data()
+    model_path = df_model["detection_model__model_path"].iloc[0]
+    assert_training_yaml_values(exp_folder_from_model_path(model_path) / "hyp.yaml", expected)
+
+
+def copy_ultralytics_preset_checkpoint(workdir: Path, preset: str, alias: str = "custom_pretrained.pt") -> Path:
+    import shutil
+
+    from ultralytics import YOLO
+
+    dest = workdir / alias
+    if dest.exists():
+        return dest
+    YOLO(preset)
+    shutil.copy(Path(preset), dest)
+    return dest
+
+
+def assert_training_uses_architecture_label(
+    runtime: SmokeRuntime,
+    *,
+    table_name: str,
+    model_id_column: str,
+    model_path_column: str,
+    architecture: str,
+    checkpoint_alias: str = "custom_pretrained",
+) -> None:
+    df_model = runtime.ds.get_table(table_name).get_data()
+    model_id = str(df_model[model_id_column].iloc[0])
+    exp_folder_name = exp_folder_from_model_path(df_model[model_path_column].iloc[0]).name
+
+    assert architecture in model_id
+    assert architecture in exp_folder_name
+    assert checkpoint_alias not in model_id
+    assert "/" not in model_id
+
+
 def detection_freeze_step(workdir: Path):
     from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 
@@ -328,6 +390,99 @@ def detection_train_step(workdir: Path):
     )
 
 
+def _yolov8_smoke_train_kwargs(model: str) -> dict:
+    return dict(
+        model=model,
+        imgsz=SMOKE_IMGSZ,
+        batch=2,
+        epochs=SMOKE_EPOCHS,
+        seed=42,
+        device=SMOKE_DEVICE,
+        workers=0,
+        patience=SMOKE_EPOCHS,
+        amp=False,
+        val=False,
+        plots=False,
+    )
+
+
+def detection_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolo11n.pt"):
+    from datapipe_ml.tasks.detection.train.yolov8 import (
+        Train_YoloV8_DetectionModel,
+        YoloV8_TrainingConfig,
+    )
+
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    return Train_YoloV8_DetectionModel(
+        input__detection_frozen_dataset="detection_frozen_dataset",
+        input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+        output__yolov8_train_config="yolov8_train_config",
+        output__detection_size_for_resize="yolov8_detection_size_for_resize",
+        output__detection_frozen_dataset__resized_image_file="yolov8_detection_resized_image_file",
+        output__detection_frozen_dataset__yolo_txt="yolov8_detection_yolo_txt",
+        output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
+        output__detection_model="detection_model",
+        output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        working_dir=str(workdir),
+        yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
+        primary_keys=PRIMARY_KEYS,
+        create_table=True,
+        ignore_errors_sample_sizes=True,
+        tmp_folder=str(workdir / "tmp"),
+        model_suffix="_smoke_ckpt",
+    )
+
+
+def detection_train_step_with_augmentations(workdir: Path):
+    from datapipe_ml.tasks.detection.train.yolov8 import (
+        Train_YoloV8_DetectionModel,
+        YoloV8_TrainingConfig,
+    )
+
+    return Train_YoloV8_DetectionModel(
+        input__detection_frozen_dataset="detection_frozen_dataset",
+        input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+        output__yolov8_train_config="yolov8_train_config",
+        output__detection_size_for_resize="yolov8_detection_size_for_resize",
+        output__detection_frozen_dataset__resized_image_file="yolov8_detection_resized_image_file",
+        output__detection_frozen_dataset__yolo_txt="yolov8_detection_yolo_txt",
+        output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
+        output__detection_model="detection_model",
+        output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        working_dir=str(workdir),
+        yolov8_train_configs=[
+            YoloV8_TrainingConfig(
+                model="yolo11n.pt",
+                imgsz=SMOKE_IMGSZ,
+                batch=2,
+                epochs=SMOKE_EPOCHS,
+                seed=42,
+                device=SMOKE_DEVICE,
+                workers=0,
+                patience=SMOKE_EPOCHS,
+                amp=False,
+                val=False,
+                plots=False,
+                mosaic=1.0,
+                mixup=0.2,
+                degrees=12.0,
+                translate=0.1,
+                scale=0.5,
+                fliplr=0.5,
+                hsv_h=0.015,
+                hsv_s=0.7,
+                hsv_v=0.4,
+                auto_augment="randaugment",
+            )
+        ],
+        primary_keys=PRIMARY_KEYS,
+        create_table=True,
+        ignore_errors_sample_sizes=True,
+        tmp_folder=str(workdir / "tmp"),
+        model_suffix="_smoke_aug",
+    )
+
+
 def detection_yolov5_train_step(workdir: Path):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
@@ -365,6 +520,51 @@ def detection_yolov5_train_step(workdir: Path):
         ignore_errors_sample_sizes=True,
         tmp_folder=str(workdir / "tmp"),
         model_suffix="_smoke",
+    )
+
+
+def detection_yolov5_train_step_with_augmentations(workdir: Path):
+    from datapipe_ml.tasks.detection.train.yolov5 import (
+        Train_YoloV5_DetectionModel,
+        YoloV5_TrainingConfig,
+    )
+
+    return Train_YoloV5_DetectionModel(
+        input__detection_frozen_dataset="detection_frozen_dataset",
+        input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+        output__yolov5_train_config="yolov5_train_config",
+        output__detection_size_for_resize="yolov5_detection_size_for_resize",
+        output__detection_frozen_dataset__resized_image_file="yolov5_detection_resized_image_file",
+        output__detection_frozen_dataset__yolo_txt="yolov5_detection_yolo_txt",
+        output__detection_frozen_dataset__class_names="yolov5_detection_class_names",
+        output__detection_model="detection_model",
+        output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        working_dir=str(workdir),
+        yolov5_train_configs=[
+            YoloV5_TrainingConfig(
+                weights="",
+                cfg="yolov5.ROOT / 'models/yolov5n.yaml'",
+                imgsz=SMOKE_YOLOV5_IMGSZ,
+                batch_size=2,
+                epochs=SMOKE_EPOCHS,
+                seed=42,
+                device=SMOKE_DEVICE,
+                workers=0,
+                patience=SMOKE_EPOCHS,
+                noautoanchor=True,
+                noplots=True,
+                mosaic=0.0,
+                degrees=8.0,
+                fliplr=0.25,
+                mixup=0.1,
+                hsv_h=0.02,
+            )
+        ],
+        primary_keys=PRIMARY_KEYS,
+        create_table=True,
+        ignore_errors_sample_sizes=True,
+        tmp_folder=str(workdir / "tmp"),
+        model_suffix="_smoke_aug",
     )
 
 
@@ -456,6 +656,32 @@ def segmentation_train_step(workdir: Path):
     )
 
 
+def segmentation_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolov8n-seg.pt"):
+    from datapipe_ml.tasks.segmentation.train.yolov8 import (
+        Train_YoloV8_SegmentationModel,
+        YoloV8_TrainingConfig,
+    )
+
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    return Train_YoloV8_SegmentationModel(
+        input__segmentation_frozen_dataset="segmentation_frozen_dataset",
+        input__segmentation_frozen_dataset__has__image_gt="segmentation_frozen_dataset__has__image_gt",
+        output__yolov8_train_config="segmentation_yolov8_train_config",
+        output__segmentation_size_for_resize="segmentation_size_for_resize",
+        output__segmentation_frozen_dataset__class_names="segmentation_class_names",
+        output__segmentation_frozen_dataset__resized_image_file="segmentation_resized_image_file",
+        output__segmentation_frozen_dataset__yolo_txt="segmentation_yolo_txt",
+        output__segmentation_model="segmentation_model",
+        output__segm_model_is_trained_on_segm_frozen_dataset="segmentation_model_link",
+        working_dir=str(workdir),
+        yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
+        primary_keys=PRIMARY_KEYS,
+        create_table=True,
+        tmp_folder=str(workdir / "tmp"),
+        model_suffix="_smoke_ckpt",
+    )
+
+
 def segmentation_inference_step():
     from datapipe_ml.tasks.segmentation.inference import Inference_SegmentationModel
 
@@ -528,6 +754,34 @@ def keypoints_train_step(workdir: Path):
         ignore_errors_sample_sizes=True,
         tmp_folder=str(workdir / "tmp"),
         model_suffix="_smoke",
+    )
+
+
+def keypoints_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolo11n-pose.pt"):
+    from datapipe_ml.tasks.keypoints.train.yolov8 import (
+        Train_YoloV8_KeypointsModel,
+        YoloV8_TrainingConfig,
+    )
+
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    return Train_YoloV8_KeypointsModel(
+        input__keypoints_frozen_dataset="keypoints_frozen_dataset",
+        input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
+        output__yolov8_train_config="keypoints_yolov8_train_config",
+        output__keypoints_size_for_resize="keypoints_size_for_resize",
+        output__keypoints_frozen_dataset__class_names="keypoints_class_names",
+        output__keypoints_frozen_dataset__resized_image_file="keypoints_resized_image_file",
+        output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
+        output__keypoints_model="keypoints_model",
+        output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
+        working_dir=str(workdir),
+        yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
+        primary_keys=PRIMARY_KEYS,
+        create_table=True,
+        bbox_id__name=None,
+        ignore_errors_sample_sizes=True,
+        tmp_folder=str(workdir / "tmp"),
+        model_suffix="_smoke_ckpt",
     )
 
 

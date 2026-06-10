@@ -101,6 +101,27 @@ class YoloV8_TrainingConfig:
     val: bool = True  # Enables validation during training
     plots: bool = True  # Generates and saves plots of training and validation metrics
 
+    # Data augmentation (Ultralytics train args; defaults disable augmentations — see docs.ultralytics.com/guides/yolo-data-augmentation)
+    multi_scale: bool = False  # Vary imgsz each batch by +/- 50% (YOLOv5-style; Ultralytics also accepts float 0.0–1.0)
+    degrees: float = 0.0  # Random rotation (+/- deg), range 0.0–180
+    translate: float = 0.0  # Random translation (+/- fraction of image size), range 0.0–1.0
+    scale: float = 0.0  # Random scale (+/- gain), range 0.0–1.0
+    shear: float = 0.0  # Random shear (+/- deg)
+    perspective: float = 0.0  # Random perspective (+/- fraction)
+    fliplr: float = 0.0  # Horizontal flip probability, range 0.0–1.0
+    flipud: float = 0.0  # Vertical flip probability, range 0.0–1.0
+    mosaic: float = 0.0  # Mosaic augmentation probability (combines 4 images), range 0.0–1.0
+    mixup: float = 0.0  # MixUp augmentation probability, range 0.0–1.0
+    copy_paste: float = 0.0  # Copy-paste augmentation probability (segmentation), range 0.0–1.0
+    copy_paste_mode: Optional[str] = None  # Copy-paste strategy: 'flip' or 'mixup' (segmentation)
+    hsv_h: float = 0.0  # HSV-Hue augmentation (fraction)
+    hsv_s: float = 0.0  # HSV-Saturation augmentation (fraction)
+    hsv_v: float = 0.0  # HSV-Value augmentation (fraction)
+    bgr: float = 0.0  # BGR channel swap probability
+    cutmix: float = 0.0  # CutMix augmentation probability, range 0.0–1.0
+    erasing: float = 0.0  # Random erasing probability (classification-style regularization)
+    auto_augment: Optional[str] = None  # Auto augmentation policy, e.g. 'randaugment'; None disables
+
     def to_yolo_kwargs(self):
         training_yolo_arguments = [
             "model",
@@ -151,6 +172,25 @@ class YoloV8_TrainingConfig:
             "dropout",
             "val",
             "plots",
+            "multi_scale",
+            "degrees",
+            "translate",
+            "scale",
+            "shear",
+            "perspective",
+            "fliplr",
+            "flipud",
+            "mosaic",
+            "mixup",
+            "copy_paste",
+            "copy_paste_mode",
+            "hsv_h",
+            "hsv_s",
+            "hsv_v",
+            "bgr",
+            "cutmix",
+            "erasing",
+            "auto_augment",
         ]
 
         full_dict = asdict(self)

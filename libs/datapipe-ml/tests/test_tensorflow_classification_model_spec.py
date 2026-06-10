@@ -67,8 +67,7 @@ def test_tf_classification_train_config_id_includes_model_spec_kwargs():
     config_id_b = get_tf_classification_train_config_id(config_b)
 
     assert "build_tiny_custom_classifier" in config_id_a
-    assert '"filters": 4' in config_id_a
-    assert '"filters": 8' in config_id_b
+    assert config_id_a.startswith("build_tiny_custom_classifier-size16x16-batch1-epochs1-cfg")
     assert config_id_a != config_id_b
 
 

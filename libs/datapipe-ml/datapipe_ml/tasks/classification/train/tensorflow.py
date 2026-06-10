@@ -1,4 +1,3 @@
-import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +24,7 @@ from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import Boolean, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
+from datapipe_ml.training.train_config_id import build_train_config_id, train_configs_to_dataframe
 from datapipe_ml.frameworks.tensorflow.classification_runner import (
     TF_ClassificationTrainingConfig,
 )
@@ -143,9 +143,9 @@ class TFClassificationAlgo(Algo):
             if ctx.model_other_primary_keys
             else ""
         )
-        arch = get_tf_classification_model_name(train_params)
-        size = max(train_params["image_size"])
-        return f"{prefix + ('-' if prefix else '')}{date}_{arch}{size}{ctx.model_suffix}"
+        summary = build_tf_classification_train_config_summary(train_params)
+        config_id = build_train_config_id(train_params, summary=summary)
+        return f"{prefix + ('-' if prefix else '')}{date}_{config_id}{ctx.model_suffix}"
 
     def launch_training(
         self,
@@ -258,33 +258,27 @@ def get_tf_classification_model_name(train_params: Dict[str, Any]) -> str:
     return str(train_params["arch"])
 
 
-def get_tf_classification_train_config_id(config: TF_ClassificationTrainingConfig) -> str:
-    params = asdict(config)
-    model_name = get_tf_classification_model_name(params)
-    model_spec = params.get("model_spec")
-    model_spec_id = ""
-    if model_spec is not None:
-        model_spec_id = "-model_spec" + json.dumps(model_spec, sort_keys=True, default=str)
+def build_tf_classification_train_config_summary(train_params: Dict[str, Any]) -> str:
+    model_name = get_tf_classification_model_name(train_params)
+    width, height = train_params["image_size"]
     return (
-        f"{model_name}-size{config.image_size[0]}x{config.image_size[1]}-epochs{config.epochs}-"
-        f"batch{config.batch_size}-aug{config.augmentations}-seed{config.seed}-init_lr{config.init_lr}-"
-        f"reduce_lr_patience{config.reduce_lr_patience}-reduce_lr_factor{config.reduce_lr_factor}-"
-        f"early_stopping_patience{config.early_stopping_patience}-label_smoothing{config.label_smoothing}"
-        f"-class_weight-{config.class_weight}{model_spec_id}"
+        f"{model_name}-size{width}x{height}-batch{train_params['batch_size']}-epochs{train_params['epochs']}"
     )
 
 
+def get_tf_classification_train_config_id(config: TF_ClassificationTrainingConfig) -> str:
+    params = asdict(config)
+    return build_train_config_id(params, summary=build_tf_classification_train_config_summary(params))
+
+
 def get_tf_classification_train_configs(tf_classification_train_configs: List[TF_ClassificationTrainingConfig]):
-    dfs__train_config = []
-    for x in tf_classification_train_configs:
-        dfs__train_config.append(
-            dict(
-                classification_train_config_id=get_tf_classification_train_config_id(x),
-                classification_train_config__params=asdict(x),
-                classification_train_config__train=True,  # TODO: смотреть на саму табличку в наличии галки
-            )
-        )
-    yield pd.DataFrame(dfs__train_config)
+    yield train_configs_to_dataframe(
+        tf_classification_train_configs,
+        id_column="classification_train_config_id",
+        params_column="classification_train_config__params",
+        summary_builder=build_tf_classification_train_config_summary,
+        extra_columns=lambda _config, _params, _config_id: {"classification_train_config__train": True},
+    )
 
 
 this_folder = Path(__file__).parent

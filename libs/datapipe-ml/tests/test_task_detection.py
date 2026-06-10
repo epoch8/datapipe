@@ -6,11 +6,15 @@ from tests.helpers.training_smoke import (
     assert_metrics_have_values,
     assert_model_artifact,
     assert_table_has_rows,
+    assert_yolov5_training_hyp,
+    assert_yolov8_training_args,
     detection_freeze_step,
     detection_inference_step,
     detection_metrics_step,
     detection_train_step,
+    detection_train_step_with_augmentations,
     detection_yolov5_train_step,
+    detection_yolov5_train_step_with_augmentations,
     make_runtime,
     run_pipeline,
 )
@@ -55,6 +59,71 @@ def test_yolov5_detection_training_smoke_cpu(tmp_path):
         "detection_model__type",
         "detection_model__model_path",
         "yolov5",
+    )
+
+
+@pytest.mark.torch
+@pytest.mark.smoke
+@pytest.mark.slow
+@pytest.mark.training
+def test_yolov8_detection_training_with_augmentations_smoke_cpu(tmp_path):
+    runtime = make_runtime(tmp_path)
+    run_pipeline(
+        runtime,
+        [detection_freeze_step(tmp_path), detection_train_step_with_augmentations(tmp_path)],
+    )
+
+    assert_model_artifact(
+        runtime,
+        "detection_model",
+        "detection_model__type",
+        "detection_model__model_path",
+        "yolov8",
+    )
+    assert_yolov8_training_args(
+        runtime,
+        {
+            "mosaic": 1.0,
+            "mixup": 0.2,
+            "degrees": 12.0,
+            "translate": 0.1,
+            "scale": 0.5,
+            "fliplr": 0.5,
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+            "auto_augment": "randaugment",
+        },
+    )
+
+
+@pytest.mark.torch
+@pytest.mark.smoke
+@pytest.mark.slow
+@pytest.mark.training
+def test_yolov5_detection_training_with_augmentations_smoke_cpu(tmp_path):
+    runtime = make_runtime(tmp_path)
+    run_pipeline(
+        runtime,
+        [detection_freeze_step(tmp_path), detection_yolov5_train_step_with_augmentations(tmp_path)],
+    )
+
+    assert_model_artifact(
+        runtime,
+        "detection_model",
+        "detection_model__type",
+        "detection_model__model_path",
+        "yolov5",
+    )
+    assert_yolov5_training_hyp(
+        runtime,
+        {
+            "mosaic": 0.0,
+            "degrees": 8.0,
+            "fliplr": 0.25,
+            "mixup": 0.1,
+            "hsv_h": 0.02,
+        },
     )
 
 

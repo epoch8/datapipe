@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import io
+from pathlib import Path
+from typing import Any, Mapping
+
+import fsspec
+
+
+def _path_stem(value: str) -> str:
+    from datapipe_ml.training.train_config_id import short_path_label
+
+    return short_path_label(value)
+
+
+def _is_checkpoint_path(value: str) -> bool:
+    return "/" in value or "://" in value
+
+
+def _architecture_from_checkpoint(ckpt: Mapping[str, Any]) -> str | None:
+    train_args = ckpt.get("train_args")
+    if isinstance(train_args, Mapping) and train_args.get("model"):
+        return Path(str(train_args["model"])).stem
+
+    model = ckpt.get("ema") or ckpt.get("model")
+    yaml_file: str | None = None
+    if model is not None:
+        yaml_file = getattr(model, "yaml_file", None)
+        if not yaml_file:
+            yaml_attr = getattr(model, "yaml", None)
+            if isinstance(yaml_attr, Mapping):
+                yaml_file = yaml_attr.get("yaml_file")
+    if yaml_file:
+        return Path(str(yaml_file)).stem
+    return None
+
+
+def _read_checkpoint_architecture_label(path: str) -> str | None:
+    import torch
+
+    with fsspec.open(path, "rb") as src:
+        ckpt = torch.load(io.BytesIO(src.read()), map_location="cpu", weights_only=False)
+    if isinstance(ckpt, Mapping):
+        return _architecture_from_checkpoint(ckpt)
+    return None
+
+
+def resolve_yolo_model_label(value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError("Cannot resolve YOLO model label from an empty path.")
+
+    if normalized.endswith((".pt", ".pth")):
+        if _is_checkpoint_path(normalized):
+            try:
+                label = _read_checkpoint_architecture_label(normalized)
+            except Exception as exc:
+                raise ValueError(
+                    f"Cannot resolve YOLO model architecture from checkpoint {normalized!r}: {exc}"
+                ) from exc
+            if not label:
+                raise ValueError(
+                    f"Cannot resolve YOLO model architecture from checkpoint {normalized!r}: "
+                    "checkpoint metadata does not contain train_args.model or model yaml."
+                )
+            return label.replace(" ", "_")
+        return _path_stem(normalized)
+
+    if ".yaml" in normalized or ".yml" in normalized:
+        if "'" in normalized:
+            normalized = normalized.split("'")[-2]
+        return _path_stem(normalized)
+
+    if _is_checkpoint_path(normalized):
+        raise ValueError(f"Cannot resolve YOLO model label from path {normalized!r}.")
+
+    return _path_stem(normalized)
+
+
+def resolve_yolo_model_label_from_params(params: Mapping[str, Any], *, model_key: str = "model") -> str:
+    for key in (model_key, "cfg" if model_key == "weights" else None, "initial_weights_path"):
+        if key is None:
+            continue
+        value = str(params.get(key) or "").strip()
+        if value:
+            return resolve_yolo_model_label(value)
+    raise ValueError(
+        "Cannot resolve YOLO model label: training config has no model, cfg, or initial_weights_path."
+    )

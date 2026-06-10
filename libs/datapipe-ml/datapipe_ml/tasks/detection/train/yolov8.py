@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import List, Optional
 
-import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
 from datapipe.types import Labels
 
+from datapipe_ml.training.train_config_id import (
+    build_yolo_train_config_summary,
+    train_configs_to_dataframe,
+)
 from datapipe_ml.frameworks.yolo.datapipe_compute import (
     YoloModeSpec,
     build_yolo_compute,
@@ -74,17 +77,11 @@ def train_yolov8(ds, idx, input_dts, run_config=None, kwargs=None):
 
 
 def get_yolov8_detection_train_configs(yolov8_train_configs: List[YoloV8_TrainingConfig]):
-    yield pd.DataFrame(
-        [
-            dict(
-                detection_train_config_id=(
-                    f"{x.model.replace('.pt', '')}-{x.imgsz}-default-batch{x.batch}-epochs{x.epochs}"
-                    + (f"-from-ckpt-{x.initial_weights_path}" if x.initial_weights_path is not None else "")
-                ),
-                detection_train_config__params=asdict(x),
-            )
-            for x in yolov8_train_configs
-        ]
+    yield train_configs_to_dataframe(
+        yolov8_train_configs,
+        id_column="detection_train_config_id",
+        params_column="detection_train_config__params",
+        summary_builder=build_yolo_train_config_summary,
     )
 
 

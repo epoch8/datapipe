@@ -6,11 +6,13 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import List, Optional, Union
 
 import numpy as np
+import yaml
 from PIL import Image
 
 from datapipe_ml.frameworks.yolo.artifacts import (
@@ -32,6 +34,23 @@ YOLOV5_DEFAULT_PROJECT = "yolov5.ROOT / 'runs/train'"
 YOLOV5_DEFAULT_DATA = "yolov5.ROOT / 'data/coco128.yaml'"
 YOLOV5_DEFAULT_CFG = "yolov5.ROOT / 'models/yolov5s.yaml'"
 YOLOV5_DEFAULT_HYP = "yolov5.ROOT / 'data/hyps/hyp.scratch-low.yaml'"
+
+# Optional hyp.yaml overrides (not YOLOv5 CLI args); see YOLOv5 data/hyps/*.yaml
+YOLOV5_HYP_OVERRIDE_FIELD_NAMES = (
+    "hsv_h",
+    "hsv_s",
+    "hsv_v",
+    "degrees",
+    "translate",
+    "scale",
+    "shear",
+    "perspective",
+    "flipud",
+    "fliplr",
+    "mosaic",
+    "mixup",
+    "copy_paste",
+)
 
 
 def _yolov5_cli_name(field_name: str) -> str:
@@ -96,10 +115,26 @@ class YoloV5_TrainingConfig:
     tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
     initial_weights_path: Optional[str] = None
 
+    # Optional hyp.yaml augmentation overrides (None = use value from hyp file)
+    hsv_h: Optional[float] = None  # HSV-Hue augmentation (fraction)
+    hsv_s: Optional[float] = None  # HSV-Saturation augmentation (fraction)
+    hsv_v: Optional[float] = None  # HSV-Value augmentation (fraction)
+    degrees: Optional[float] = None  # Image rotation (+/- deg)
+    translate: Optional[float] = None  # Image translation (+/- fraction)
+    scale: Optional[float] = None  # Image scale (+/- gain)
+    shear: Optional[float] = None  # Image shear (+/- deg)
+    perspective: Optional[float] = None  # Image perspective (+/- fraction), range 0–0.001
+    flipud: Optional[float] = None  # Flip up-down probability
+    fliplr: Optional[float] = None  # Flip left-right probability
+    mosaic: Optional[float] = None  # Mosaic augmentation probability
+    mixup: Optional[float] = None  # MixUp augmentation probability
+    copy_paste: Optional[float] = None  # Copy-paste augmentation probability (segmentation)
+
     def get_arguments(self) -> List[str]:
         arguments = []
+        skip_fields = {"tmp_folder", "initial_weights_path", *YOLOV5_HYP_OVERRIDE_FIELD_NAMES}
         for field_ in fields(self):
-            if field_.name in ["tmp_folder", "initial_weights_path"]:
+            if field_.name in skip_fields:
                 continue
             value = self.__getattribute__(field_.name)
             if _should_skip_yolov5_cli_value(field_.name, value):
@@ -163,6 +198,27 @@ def _resolve_yolov5_root_expr(value: str, root: Path) -> Optional[str]:
     return None
 
 
+def _apply_yolov5_hyp_overrides(cfg: YoloV5_TrainingConfig) -> None:
+    overrides = {
+        name: getattr(cfg, name)
+        for name in YOLOV5_HYP_OVERRIDE_FIELD_NAMES
+        if getattr(cfg, name) is not None
+    }
+    if not overrides:
+        return
+
+    hyp_path = Path(cfg.hyp)
+    with open(hyp_path) as f:
+        hyp = yaml.safe_load(f) or {}
+    hyp.update(overrides)
+
+    tmp_hyp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+    yaml.safe_dump(hyp, tmp_hyp, sort_keys=False)
+    tmp_hyp.close()
+    cfg.hyp = tmp_hyp.name
+    logger.info("Applied YOLOv5 hyp overrides %s -> %s", overrides, cfg.hyp)
+
+
 def _resolve_defaults_and_objects_count(cfg: YoloV5_TrainingConfig, ROOT: Path, objects_count: Optional[int]) -> int:
     # Привязка путей по умолчанию к корню скрипта
     if cfg.project is None:
@@ -193,6 +249,8 @@ def _resolve_defaults_and_objects_count(cfg: YoloV5_TrainingConfig, ROOT: Path, 
     if objects_count is None:
         data_cfg = yolo_load_data_config(cfg.data) if isinstance(cfg.data, (str, Path)) else cfg.data
         objects_count = yolo_count_objects(data_cfg)
+
+    _apply_yolov5_hyp_overrides(cfg)
     return objects_count
 
 
