@@ -1,12 +1,28 @@
 #!/usr/bin/env python3
 import json
 import random
+import sys
 import time
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
+from zipfile import ZipFile
 
 import requests
 from tqdm import tqdm
+
+for parent in Path(__file__).resolve().parents:
+    if (parent / "tools" / "sample_data" / "coco_cache.py").exists():
+        sys.path.insert(0, str(parent))
+        break
+else:
+    raise RuntimeError("Cannot find datapipe workspace root (expected tools/sample_data/coco_cache.py)")
+
+from tools.sample_data.coco_cache import (
+    COCO_ANN_ZIP_URL,
+    INSTANCES_JSON,
+    KEYPOINTS_JSON,
+    coco_annotations_zip_path,
+    ensure_coco_annotations_zip,
+)
 
 # ---------- settings ----------
 OUT_DIR = Path("input")
@@ -19,11 +35,9 @@ NUM_IMAGES = 100
 NUM_KEYPOINT_IMAGES = 100
 RNG_SEED = 1234
 
-COCO_ANN_ZIP_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
-ANN_ZIP_LOCAL = OUT_DIR / "annotations_trainval2017.zip"
-ANN_JSON_PATH_IN_ZIP = "annotations/instances_train2017.json"
-KEYPOINTS_ANN_JSON_PATH_IN_ZIP = "annotations/person_keypoints_train2017.json"
+ANN_JSON_PATH_IN_ZIP = INSTANCES_JSON
+KEYPOINTS_ANN_JSON_PATH_IN_ZIP = KEYPOINTS_JSON
 COCO_PERSON_KEYPOINT_FLIP_IDX = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
 
 random.seed(RNG_SEED)
@@ -60,29 +74,6 @@ def download_with_tqdm(url: str, dst: Path, desc: str):
                     f.write(chunk)
                     bar.update(len(chunk))
     tmp_dst.replace(dst)
-
-
-def annotations_zip_is_valid() -> bool:
-    try:
-        with ZipFile(ANN_ZIP_LOCAL, "r") as zf:
-            zf.getinfo(ANN_JSON_PATH_IN_ZIP)
-            zf.getinfo(KEYPOINTS_ANN_JSON_PATH_IN_ZIP)
-        return True
-    except (BadZipFile, KeyError):
-        return False
-
-
-def ensure_valid_annotations_zip() -> None:
-    if ANN_ZIP_LOCAL.exists():
-        if annotations_zip_is_valid():
-            return
-        ANN_ZIP_LOCAL.unlink()
-
-    print("-> Downloading COCO annotations (~241MB)...")
-    download_with_tqdm(COCO_ANN_ZIP_URL, ANN_ZIP_LOCAL, desc="Annotations")
-    if not annotations_zip_is_valid():
-        ANN_ZIP_LOCAL.unlink(missing_ok=True)
-        raise RuntimeError(f"Downloaded COCO annotations archive is not a valid zip: {ANN_ZIP_LOCAL}")
 
 
 def is_polygon_segmentation(seg):
@@ -234,12 +225,13 @@ def write_keypoints_dataset(data):
 
 
 def main():
-    # 1) download annotations zip (once)
-    ensure_valid_annotations_zip()
+    ann_zip = ensure_coco_annotations_zip(
+        download=lambda dst: download_with_tqdm(COCO_ANN_ZIP_URL, dst, desc="Annotations")
+    )
 
-    # 2) read COCO annotations directly from ZIP (no extraction to disk)
+    # read COCO annotations directly from ZIP (no extraction to disk)
     print("-> Reading annotations from ZIP...")
-    with ZipFile(ANN_ZIP_LOCAL, "r") as zf:
+    with ZipFile(ann_zip, "r") as zf:
         with zf.open(ANN_JSON_PATH_IN_ZIP) as f:
             instances_data = json.load(f)
         with zf.open(KEYPOINTS_ANN_JSON_PATH_IN_ZIP) as f:
@@ -249,13 +241,8 @@ def main():
     write_detection_segmentation_dataset(instances_data)
     write_keypoints_dataset(keypoints_data)
 
-    # 4) cleanup
-    try:
-        ANN_ZIP_LOCAL.unlink()
-    except Exception:
-        pass
-
     print("\nDone!")
+    print(f"- COCO annotations cache: {coco_annotations_zip_path().resolve()}")
     print(f"- Images: {IMAGES_DIR.resolve()}")
     print(f"- JSONs : {LABELS_DIR.resolve()}")
     print(f"- Keypoints images: {KPS_IMAGES_DIR.resolve()}")

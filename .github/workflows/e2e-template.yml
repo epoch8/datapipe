@@ -75,9 +75,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            examples/e2e_template/.cache
+            ~/.cache/datapipe/coco
             examples/e2e_template/sample_data
-          key: e2e-coco-sample-${{ hashFiles('examples/e2e_template/scripts/seed_sample_data.py') }}
+          key: e2e-coco-sample-${{ hashFiles('tools/sample_data/coco_cache.py', 'examples/e2e_template/scripts/seed_sample_data.py') }}
 
       - name: Start local services (docker compose)
         run: docker compose up -d --wait

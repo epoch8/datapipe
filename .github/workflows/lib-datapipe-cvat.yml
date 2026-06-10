@@ -38,7 +38,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
           pip install -e "libs/datapipe-cvat" --no-deps
           pip install "cvat-sdk==2.65.0" "flake8" "mypy"
           pip install pandas-stubs pytest-cases types-setuptools types-requests
@@ -68,7 +68,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
           pip install -e "libs/datapipe-cvat" --no-deps
           pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases"
 
@@ -107,7 +107,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs]"
+          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
           pip install -e "libs/datapipe-cvat" --no-deps
           pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases" "requests"
 

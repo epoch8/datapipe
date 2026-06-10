@@ -101,7 +101,7 @@ Seed sample images (10 cat/dog + 10 person keypoint photos from COCO train2017, 
 uv run python scripts/seed_sample_data.py
 ```
 
-The first run creates both Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`), downloads COCO annotations once into `.cache/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse cached files.
+The first run creates both Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`.
 
 Options:
 

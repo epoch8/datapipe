@@ -8,23 +8,27 @@ import random
 import sys
 import time
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
+from zipfile import ZipFile
 
 import fsspec
 import requests
 from sqlalchemy import create_engine, text
 from tqdm import tqdm
 
+for parent in Path(__file__).resolve().parents:
+    if (parent / "tools" / "sample_data" / "coco_cache.py").exists():
+        sys.path.insert(0, str(parent))
+        break
+else:
+    raise RuntimeError("Cannot find datapipe workspace root (expected tools/sample_data/coco_cache.py)")
+
+from tools.sample_data.coco_cache import INSTANCES_JSON, KEYPOINTS_JSON, ensure_coco_annotations_zip
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 E2E_DIR = SCRIPT_DIR.parent
-CACHE_DIR = E2E_DIR / ".cache"
 SAMPLE_DIR = E2E_DIR / "sample_data" / "images"
 
-COCO_ANN_ZIP_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
-ANN_ZIP_LOCAL = CACHE_DIR / "annotations_trainval2017.zip"
-INSTANCES_JSON = "annotations/instances_train2017.json"
-KEYPOINTS_JSON = "annotations/person_keypoints_train2017.json"
 
 CAT_DOG_CATEGORY_IDS = {17, 18}  # cat, dog
 RNG_SEED = 1234
@@ -60,30 +64,8 @@ def download_file(url: str, dst: Path, desc: str) -> None:
     tmp_dst.replace(dst)
 
 
-def annotations_zip_is_valid() -> bool:
-    try:
-        with ZipFile(ANN_ZIP_LOCAL, "r") as zf:
-            zf.getinfo(INSTANCES_JSON)
-            zf.getinfo(KEYPOINTS_JSON)
-        return True
-    except (BadZipFile, KeyError):
-        return False
-
-
-def ensure_annotations_zip() -> None:
-    if ANN_ZIP_LOCAL.exists() and annotations_zip_is_valid():
-        return
-    if ANN_ZIP_LOCAL.exists():
-        ANN_ZIP_LOCAL.unlink()
-    print("Downloading COCO annotations (~241MB, cached in .cache/)...")
-    download_file(COCO_ANN_ZIP_URL, ANN_ZIP_LOCAL, "annotations")
-    if not annotations_zip_is_valid():
-        ANN_ZIP_LOCAL.unlink(missing_ok=True)
-        raise RuntimeError(f"Downloaded COCO annotations archive is invalid: {ANN_ZIP_LOCAL}")
-
-
-def load_coco_json(path_in_zip: str) -> dict:
-    with ZipFile(ANN_ZIP_LOCAL, "r") as zf:
+def load_coco_json(ann_zip: Path, path_in_zip: str) -> dict:
+    with ZipFile(ann_zip, "r") as zf:
         with zf.open(path_in_zip) as handle:
             return json.load(handle)
 
@@ -207,9 +189,9 @@ def main() -> int:
             print(f"No images found in {SAMPLE_DIR}", file=sys.stderr)
             return 1
     else:
-        ensure_annotations_zip()
-        instances_data = load_coco_json(INSTANCES_JSON)
-        keypoints_data = load_coco_json(KEYPOINTS_JSON)
+        ann_zip = ensure_coco_annotations_zip()
+        instances_data = load_coco_json(ann_zip, INSTANCES_JSON)
+        keypoints_data = load_coco_json(ann_zip, KEYPOINTS_JSON)
         image_ids = pick_image_ids(
             instances_data,
             keypoints_data,
