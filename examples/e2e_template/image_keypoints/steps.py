@@ -12,33 +12,38 @@ from datapipe.datatable import DataStore
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 from datapipe_ml.tasks.keypoints.inference import keypoints_inference
 
-from examples.e2e_template.common import ServiceSettings
-from examples.e2e_template.image_keypoints.config import (
+from config import (
+    AWS_KEY,
+    AWS_REGION,
+    AWS_SECRET,
     CLASSES_TO_KEEP,
     KEYPOINTS_LABELS,
     KEYPOINTS_MODEL_CONFIG,
-    local_images_dir,
+    LOCAL_IMAGES_DIR,
+    S3_BUCKET,
+    S3_ENDPOINT_URL,
+    S3_PREFIX,
+    S3_PUBLIC_URL,
 )
 
 
-def list_s3_images(settings: ServiceSettings) -> Iterator[pd.DataFrame]:
-    import boto3
+def _s3_storage_options() -> dict:
+    client_kwargs: dict = {"region_name": AWS_REGION}
+    if S3_ENDPOINT_URL:
+        client_kwargs["endpoint_url"] = S3_ENDPOINT_URL
+    return {"key": AWS_KEY, "secret": AWS_SECRET, "client_kwargs": client_kwargs}
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=settings.aws_key,
-        aws_secret_access_key=settings.aws_secret,
-        region_name=settings.aws_region,
-        endpoint_url=settings.s3_endpoint_url,
-    )
-    paginator = s3.get_paginator("list_objects_v2")
+
+def list_s3_images() -> Iterator[pd.DataFrame]:
+    fs = fsspec.filesystem("s3", **_s3_storage_options())
+    root = f"{S3_BUCKET}/{S3_PREFIX}".strip("/")
     keys, urls = [], []
-    for page in paginator.paginate(Bucket=settings.s3_bucket, Prefix=settings.s3_prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
-                keys.append(key.replace("/", "___"))
-                urls.append(f"s3://{settings.s3_bucket}/{key}")
+    for path in fs.find(root):
+        if not path.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+            continue
+        key = path[len(S3_BUCKET) + 1 :]
+        keys.append(key.replace("/", "___"))
+        urls.append(f"{S3_PUBLIC_URL.rstrip('/')}/{S3_BUCKET}/{key}")
     yield pd.DataFrame({"image_name": keys, "image_url": urls})
 
 
@@ -119,12 +124,19 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(records, columns=["image_name", "bboxes", "labels", "keypoints"])
 
 
-def split_df_train_val(df: pd.DataFrame, val_perc: float = 0.25) -> pd.DataFrame:
-    train_size = int(len(df) * (1 - val_perc))
-    df_subset = pd.DataFrame({"image_name": df["image_name"]})
-    df_subset["subset_id"] = "val"
-    df_subset.loc[:train_size, "subset_id"] = "train"
-    return df_subset
+def split_df_train_val(
+    df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    primary_keys: list[str],
+    val_perc: float = 0.25,
+    random_seed: int = 42,
+) -> pd.DataFrame:
+    df__merged = pd.merge(df, subset_df, on=primary_keys, how="outer")
+    df__missing = df__merged[df__merged["subset_id"].isna()].copy()
+    df__val = df__missing.sample(frac=val_perc, random_state=random_seed)
+    df__missing["subset_id"] = "train"
+    df__missing.loc[df__val.index, "subset_id"] = "val"
+    return pd.concat([subset_df, df__missing], ignore_index=True)[primary_keys + ["subset_id"]]
 
 
 def untracked_inference(
@@ -150,11 +162,10 @@ def untracked_inference(
 
 def download_images(
     s3_images_df: pd.DataFrame,
-    settings: ServiceSettings,
     image__image_path__name: str,
     image__local_image_path__name: str,
 ) -> pd.DataFrame:
-    output_dir = local_images_dir(settings)
+    output_dir = LOCAL_IMAGES_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     local_paths = []
     for _, row in s3_images_df.iterrows():

@@ -1,20 +1,28 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.append(str(Path(__file__).parents[2] / "libs/datapipe-ml/tests"))
-
 pytestmark = [
     pytest.mark.e2e_examples,
     pytest.mark.e2e_template,
     pytest.mark.service_e2e,
-    pytest.mark.training,
-    pytest.mark.torch,
 ]
+
+
+def _ensure_label_studio_token() -> None:
+    e2e_dir = Path(__file__).resolve().parents[2] / "examples" / "e2e_template"
+    token = subprocess.check_output(
+        [sys.executable, str(e2e_dir / "scripts/label_studio_token.py")],
+        cwd=e2e_dir,
+        env=os.environ.copy(),
+        text=True,
+    ).strip()
+    os.environ["LABEL_STUDIO_API_KEY"] = token
 
 
 def _require_service_env() -> None:
@@ -27,6 +35,7 @@ def _require_service_env() -> None:
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "S3_BUCKET",
+            "S3_ENDPOINT_URL",
         ]
         if not os.environ.get(name)
     ]
@@ -34,77 +43,50 @@ def _require_service_env() -> None:
         pytest.skip(f"service e2e env is not configured: {', '.join(missing)}")
 
 
-def test_detection_template_service_pipeline_smoke(tmp_path):
-    from examples.e2e_template.common import ServiceSettings
-    from examples.e2e_template.image_detection.app import build_pipeline as build_detection_pipeline
-    from helpers.training_smoke import (
-        assert_metrics_have_values,
-        assert_table_has_rows,
-        detection_freeze_step,
-        detection_inference_step,
-        detection_metrics_step,
-        detection_train_step,
-        make_runtime,
-        run_pipeline,
-    )
+def _ensure_sample_images_seeded() -> None:
+    e2e_dir = Path(__file__).resolve().parents[2] / "examples/e2e_template"
+    seed_script = e2e_dir / "scripts/seed_sample_data.py"
+    sample_dir = e2e_dir / "sample_data" / "images"
+    cmd = [
+        sys.executable,
+        str(seed_script),
+        "--detection-limit",
+        "2",
+        "--keypoints-limit",
+        "2",
+    ]
+    if sample_dir.exists() and any(sample_dir.glob("*.jpg")):
+        cmd.append("--skip-download")
+    subprocess.run(cmd, check=True, cwd=e2e_dir, env=os.environ.copy())
+
+
+def test_detection_template_annotation_stage():
+    from helpers import run_template_stage
 
     _require_service_env()
-    settings = ServiceSettings.from_env()
-    pipeline = build_detection_pipeline(settings, include_training=True)
-    assert len(pipeline.steps) > 0
+    _ensure_label_studio_token()
+    _ensure_sample_images_seeded()
 
-    runtime = make_runtime(tmp_path)
-    run_pipeline(
-        runtime,
-        [
-            detection_freeze_step(tmp_path),
-            detection_train_step(tmp_path),
-            detection_inference_step(),
-            detection_metrics_step(),
-        ],
-    )
+    app = run_template_stage("detection", "annotation")
 
-    assert_table_has_rows(runtime, "detection_prediction")
-    assert_metrics_have_values(
-        runtime,
-        "detection_metrics_on_subset",
-        ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
-    )
+    assert not app.ds.get_table("s3_images").get_data().empty
+    assert not app.ds.get_table("detection_model").get_data().empty
+    assert not app.ds.get_table("detection_predictions").get_data().empty
+    assert not app.ds.get_table("images_with_predictions").get_data().empty
+    assert not app.ds.get_table("ls_task").get_data().empty
 
 
-def test_keypoints_template_service_pipeline_smoke(tmp_path):
-    from examples.e2e_template.common import ServiceSettings
-    from examples.e2e_template.image_keypoints.app import build_pipeline as build_keypoints_pipeline
-    from helpers.training_smoke import (
-        assert_metrics_have_values,
-        assert_table_has_rows,
-        keypoints_freeze_step,
-        keypoints_inference_step,
-        keypoints_metrics_step,
-        keypoints_train_step,
-        make_runtime,
-        run_pipeline,
-    )
+def test_keypoints_template_annotation_stage():
+    from helpers import run_template_stage
 
     _require_service_env()
-    settings = ServiceSettings.from_env()
-    pipeline = build_keypoints_pipeline(settings, include_training=True)
-    assert len(pipeline.steps) > 0
+    _ensure_label_studio_token()
+    _ensure_sample_images_seeded()
 
-    runtime = make_runtime(tmp_path, include_keypoints_gt=True)
-    run_pipeline(
-        runtime,
-        [
-            keypoints_freeze_step(tmp_path),
-            keypoints_train_step(tmp_path),
-            keypoints_inference_step(),
-            keypoints_metrics_step(),
-        ],
-    )
+    app = run_template_stage("keypoints", "annotation")
 
-    assert_table_has_rows(runtime, "keypoints_prediction")
-    assert_metrics_have_values(
-        runtime,
-        "keypoints_metrics_on_subset",
-        ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
-    )
+    assert not app.ds.get_table("s3_images").get_data().empty
+    assert not app.ds.get_table("keypoints_model").get_data().empty
+    assert not app.ds.get_table("keypoints_predictions").get_data().empty
+    assert not app.ds.get_table("images_with_predictions").get_data().empty
+    assert not app.ds.get_table("ls_task").get_data().empty

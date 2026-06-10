@@ -1,8 +1,22 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from examples.e2e_template.common import ServiceSettings
+from datapipe.store.database import DBConn
+
+AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+
+S3_BUCKET = os.environ.get("S3_BUCKET", "")
+S3_PREFIX = os.environ.get("S3_PREFIX", "images")
+S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL")
+S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL", S3_ENDPOINT_URL or "http://localhost:9000")
+LABEL_STUDIO_S3_ENDPOINT_URL = os.environ.get("LABEL_STUDIO_S3_ENDPOINT_URL", S3_ENDPOINT_URL)
+
+LABEL_STUDIO_URL = os.environ.get("LABEL_STUDIO_URL", "")
+LABEL_STUDIO_API_KEY = os.environ.get("LABEL_STUDIO_API_KEY", "")
 
 PROJECT_NAME = "Datapipe keypoints e2e"
 LABEL_CONFIG = """
@@ -11,7 +25,7 @@ LABEL_CONFIG = """
   <RectangleLabels name="bbox" toName="image">
     <Label value="person" background="#4ECDC4"/>
   </RectangleLabels>
-  <KeyPointLabels name="kp" toName="image" smart="true">
+  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="2">
     <Label value="nose" background="#1f77b4"/>
     <Label value="left_eye" background="#ff7f0e"/>
     <Label value="right_eye" background="#2ca02c"/>
@@ -64,8 +78,19 @@ KEYPOINTS_MODEL_CONFIG = {
     "keypoints_model__score_threshold": 0.01,
 }
 
+DATAPIPE_DIR = Path(os.environ.get("DATAPIPE_E2E_DIR", "datapipe")).resolve()
+DATAPIPE_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_IMAGES_DIR = Path(os.environ.get("LOCAL_IMAGES_DIR", DATAPIPE_DIR / "local_images")).resolve()
 
-def local_images_dir(settings: ServiceSettings) -> Path:
-    assert settings.local_images_dir is not None
-    return settings.local_images_dir
 
+DB_URL = os.environ.get("DB_URL")
+if not DB_URL:
+    raise RuntimeError(
+        "DB_URL is required. Copy examples/e2e_template/.env.example to .env, "
+        "start docker compose, and run: set -a && source .env && set +a"
+    )
+
+DB_SCHEMA = os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints")
+DBCONN = DBConn(DB_URL, DB_SCHEMA)
+
+FIFTYONE_DATASET_NAME = "datapipe_keypoints_e2e"

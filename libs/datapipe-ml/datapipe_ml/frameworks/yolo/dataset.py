@@ -215,7 +215,7 @@ def get_class_names_from_det_frozen_dataset_gt(
     )
 
 
-def get_class_names_from_keypoints_frozen_dataset_gt(
+def get_class_names_from_kps_frozen_dataset_gt(
     df__keypoints_frozen_dataset__has__image_gt: pd.DataFrame,
     bbox_id__name: Optional[str],
     filedir: Pathy,
@@ -285,6 +285,9 @@ def get_class_names_from_keypoints_frozen_dataset_gt(
             }
         ]
     )
+
+
+get_class_names_from_keypoints_frozen_dataset_gt = get_class_names_from_kps_frozen_dataset_gt
 
 
 def resize_and_prepare_yolo_images(

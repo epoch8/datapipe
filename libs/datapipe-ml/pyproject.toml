@@ -10,7 +10,7 @@ dependencies = [
     "opencv-python>=4.8.0.76",
     "opencv-python-headless>=4.8.0.76",
     "datapipe-core[gcsfs,s3fs,ray]",
-    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@53bb43bf0fe5513e45a59a8a02bfb72c557133b8",
+    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@5724f8d54e4df64013fad85d41129799bc143293",
     "imageio>=2.31.3,<3",
     "joblib>=1.3.2,<2",
     "natsort>=8.4.0",

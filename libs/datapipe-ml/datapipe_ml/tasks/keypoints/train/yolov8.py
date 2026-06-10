@@ -17,7 +17,7 @@ from datapipe_ml.frameworks.yolo.datapipe_compute import (
 )
 from datapipe_ml.frameworks.yolo.dataset import (
     CustomYOLOV8PoseLabelsFile,
-    get_class_names_from_keypoints_frozen_dataset_gt,
+    get_class_names_from_kps_frozen_dataset_gt,
     resize_and_prepare_yolo_images,
 )
 from datapipe_ml.frameworks.yolo.training import (
@@ -179,7 +179,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
                 labels_adapter_factory=CustomYOLOV8PoseLabelsFile,
                 get_train_configs_func=get_yolov8_keypoints_train_configs,
                 resize_and_prepare_images_func=resize_and_prepare_yolo_images,
-                get_class_names_from_gt_func=get_class_names_from_keypoints_frozen_dataset_gt,
+                get_class_names_from_gt_func=get_class_names_from_kps_frozen_dataset_gt,
                 train_callable=train_yolov8_keypoints,
                 models_subdir="keypoints_models",
                 extra_class_names_columns=[
