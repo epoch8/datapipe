@@ -7,17 +7,13 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
 
 import pandas as pd
 import pytest
 from datapipe.compute import Pipeline, PipelineStep, build_compute
 from datapipe.types import IndexDF
 
-from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel, train_yolov5
-from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, train_yolov8
-from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel, train_yolov8_keypoints
-from datapipe_ml.tasks.segmentation.train.yolov8 import Train_YoloV8_SegmentationModel, train_yolov8_segmentation
 from datapipe_ml.training.runs import active_lease
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest, verify_manifest_checkpoint
@@ -34,12 +30,20 @@ from tests.helpers.training_smoke import (
     segmentation_train_step,
 )
 
-RecoveryTrainStep = (
-    Train_YoloV8_DetectionModel
-    | Train_YoloV5_DetectionModel
-    | Train_YoloV8_SegmentationModel
-    | Train_YoloV8_KeypointsModel
-)
+if TYPE_CHECKING:
+    from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
+    from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
+    from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel
+    from datapipe_ml.tasks.segmentation.train.yolov8 import Train_YoloV8_SegmentationModel
+
+    RecoveryTrainStep = (
+        Train_YoloV8_DetectionModel
+        | Train_YoloV5_DetectionModel
+        | Train_YoloV8_SegmentationModel
+        | Train_YoloV8_KeypointsModel
+    )
+else:
+    RecoveryTrainStep = Any
 
 _LINK_TABLE_BY_MODE = dict(
     detection="detection_model_link",
@@ -98,6 +102,11 @@ def _torch_case(
 
 
 def real_recovery_torch_cases() -> list:
+    from datapipe_ml.tasks.detection.train.yolov5 import train_yolov5
+    from datapipe_ml.tasks.detection.train.yolov8 import train_yolov8
+    from datapipe_ml.tasks.keypoints.train.yolov8 import train_yolov8_keypoints
+    from datapipe_ml.tasks.segmentation.train.yolov8 import train_yolov8_segmentation
+
     return [
         _torch_case(
             "yolov8_detection",
@@ -203,6 +212,11 @@ def _configure_yolov5_step(step: RecoveryTrainStep, epochs: int) -> None:
 
 
 def _recovery_step_configure() -> dict[type, StepConfigureFn]:
+    from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
+    from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
+    from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel
+    from datapipe_ml.tasks.segmentation.train.yolov8 import Train_YoloV8_SegmentationModel
+
     return {
         Train_YoloV8_DetectionModel: _configure_yolov8_step,
         Train_YoloV8_SegmentationModel: _configure_yolov8_step,
@@ -478,11 +492,18 @@ def _yolo_train_kwargs(
 
 
 def _yolov5_train_kwargs(runtime: SmokeRuntime, case: RealRecoveryCase, step: RecoveryTrainStep) -> dict[str, object]:
+    from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
+
     assert isinstance(step, Train_YoloV5_DetectionModel)
     return _yolo_train_kwargs(runtime, case, step, yolov5_script_file=step.yolov5_script_file)
 
 
 def _train_kwargs_builders(extra_builders: dict[type, TrainKwargsFn] | None = None) -> dict[type, TrainKwargsFn]:
+    from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
+    from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
+    from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel
+    from datapipe_ml.tasks.segmentation.train.yolov8 import Train_YoloV8_SegmentationModel
+
     return {
         Train_YoloV8_DetectionModel: _yolo_train_kwargs,
         Train_YoloV8_SegmentationModel: _yolo_train_kwargs,
