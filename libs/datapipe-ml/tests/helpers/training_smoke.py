@@ -5,8 +5,19 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
+
+from tests.helpers.cloud_storage import (
+    assert_model_path_under_working_dir,
+    assert_url_exists,
+    is_cloud_url,
+    join_cloud_path,
+    s3_storage_options,
+    upload_local_file,
+)
+
+Workdir = str | Path
 
 import pandas as pd
 import fsspec
@@ -54,11 +65,26 @@ def _default_smoke_device() -> str | None:
 SMOKE_DEVICE = _default_smoke_device()
 
 
+def _resolve_scratch(workdir: Workdir, local_scratch: Path | None) -> Path:
+    if local_scratch is not None:
+        return local_scratch
+    if isinstance(workdir, Path):
+        return workdir
+    if is_cloud_url(workdir):
+        raise ValueError("local_scratch is required when working_dir is a cloud URL")
+    return Path(workdir)
+
+
+def _smoke_tmp_folder(workdir: Workdir, local_scratch: Path | None) -> str:
+    return str(_resolve_scratch(workdir, local_scratch) / "tmp")
+
+
 @dataclass
 class SmokeRuntime:
     ds: DataStore
     catalog: Catalog
-    workdir: Path
+    workdir: Workdir
+    local_scratch: Path
 
 
 def assert_yolov8_training_artifacts(runtime: SmokeRuntime) -> None:
@@ -70,9 +96,10 @@ def assert_yolov8_training_artifacts(runtime: SmokeRuntime) -> None:
     args_path = str(Path(stripped_model_path).parent.parent / "args.yaml")
     assert fs.isfile(args_path)
     assert int(fs.info(args_path).get("size") or 0) > 0
-    protocol, _ = fsspec.core.split_protocol(model_path)
-    if protocol in [None, "file"]:
-        assert Path(stripped_model_path).resolve().is_relative_to(runtime.workdir.resolve())
+    if is_cloud_url(str(runtime.workdir)):
+        assert_model_path_under_working_dir(model_path, str(runtime.workdir))
+    else:
+        assert Path(stripped_model_path).resolve().is_relative_to(Path(runtime.workdir).resolve())
 
 
 def ensure_input_data(*, include_keypoints_gt: bool = False) -> None:
@@ -154,7 +181,11 @@ def load_training_frames(limit: int = SMOKE_IMAGES) -> tuple[pd.DataFrame, pd.Da
 
 
 def make_runtime(
-    tmp_path: Path, *, include_classification_gt: bool = False, include_keypoints_gt: bool = False
+    tmp_path: Path,
+    *,
+    working_dir: Workdir | None = None,
+    include_classification_gt: bool = False,
+    include_keypoints_gt: bool = False,
 ) -> SmokeRuntime:
     dbconn = DBConn(get_sqlite_dbconnstr(tmp_path / "training_smoke.sqlite"))
     ds = DataStore(dbconn, create_meta_table=True)
@@ -197,7 +228,16 @@ def make_runtime(
     if include_keypoints_gt:
         assert keypoints_gt is not None
         catalog.get_datatable(ds, "image__ground_truth_for_keypoints").store_chunk(keypoints_gt)
-    return SmokeRuntime(ds=ds, catalog=catalog, workdir=tmp_path)
+    workdir = working_dir if working_dir is not None else tmp_path
+    return SmokeRuntime(ds=ds, catalog=catalog, workdir=workdir, local_scratch=tmp_path)
+
+
+def make_cloud_runtime(tmp_path: Path, suffix: str, **kwargs) -> tuple[SmokeRuntime, str]:
+    from tests.helpers.cloud_storage import cloud_working_dir
+
+    workdir = str(cloud_working_dir(suffix))
+    runtime = make_runtime(tmp_path, working_dir=workdir, **kwargs)
+    return runtime, workdir
 
 
 def build_base_catalog(
@@ -278,7 +318,11 @@ def assert_model_artifact(
     df_model = runtime.ds.get_table(table_name).get_data()
     assert len(df_model) == 1
     assert df_model[type_column].iloc[0] == expected_type
-    assert Path(df_model[path_column].iloc[0]).exists()
+    model_path = str(df_model[path_column].iloc[0])
+    if is_cloud_url(model_path):
+        assert_url_exists(model_path)
+    else:
+        assert Path(model_path).exists()
 
 
 def assert_completed_training_status_with_manifest(runtime: SmokeRuntime, table_name: str) -> pd.DataFrame:
@@ -318,14 +362,19 @@ def assert_metrics_have_values(runtime: SmokeRuntime, table_name: str, metric_co
 
 
 def exp_folder_from_model_path(model_path: str | Path) -> Path:
+    path = str(model_path)
+    if is_cloud_url(path):
+        return Path(PurePosixPath(path.split("://", 1)[-1]).parent.parent)
     return Path(model_path).resolve().parent.parent
 
 
-def assert_training_yaml_values(yaml_path: Path, expected: dict[str, object]) -> None:
+def assert_training_yaml_values(yaml_path: str | Path, expected: dict[str, object]) -> None:
     import yaml
 
-    assert yaml_path.exists(), f"Missing training artifact: {yaml_path}"
-    data = yaml.safe_load(yaml_path.read_text()) or {}
+    yaml_path_str = str(yaml_path)
+    storage_options = s3_storage_options() if is_cloud_url(yaml_path_str) else {}
+    with fsspec.open(yaml_path_str, "r", **storage_options) as handle:
+        data = yaml.safe_load(handle) or {}
     for key, value in expected.items():
         assert key in data, f"Missing key {key!r} in {yaml_path}"
         actual = data[key]
@@ -347,16 +396,27 @@ def assert_yolov5_training_hyp(runtime: SmokeRuntime, expected: dict[str, object
     assert_training_yaml_values(exp_folder_from_model_path(model_path) / "hyp.yaml", expected)
 
 
-def copy_ultralytics_preset_checkpoint(workdir: Path, preset: str, alias: str = "custom_pretrained.pt") -> Path:
+def copy_ultralytics_preset_checkpoint(
+    workdir: Workdir,
+    preset: str,
+    alias: str = "custom_pretrained.pt",
+    *,
+    local_scratch: Path | None = None,
+) -> str | Path:
     import shutil
 
     from ultralytics import YOLO
 
-    dest = workdir / alias
+    YOLO(preset)
+    preset_path = Path(preset)
+    if is_cloud_url(str(workdir)):
+        dest_url = join_cloud_path(workdir, alias)
+        upload_local_file(preset_path, dest_url)
+        return dest_url
+    dest = _resolve_scratch(workdir, local_scratch) / alias
     if dest.exists():
         return dest
-    YOLO(preset)
-    shutil.copy(Path(preset), dest)
+    shutil.copy(preset_path, dest)
     return dest
 
 
@@ -379,7 +439,7 @@ def assert_training_uses_architecture_label(
     assert "/" not in model_id
 
 
-def detection_freeze_step(workdir: Path):
+def detection_freeze_step(workdir: Workdir):
     from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 
     return DetectionFreezeDataset(
@@ -397,7 +457,7 @@ def detection_freeze_step(workdir: Path):
     )
 
 
-def detection_train_step(workdir: Path):
+def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -433,7 +493,7 @@ def detection_train_step(workdir: Path):
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
 
@@ -454,13 +514,15 @@ def _yolov8_smoke_train_kwargs(model: str) -> dict:
     )
 
 
-def detection_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolo11n.pt"):
+def detection_train_step_with_local_checkpoint(
+    workdir: Workdir, preset: str = "yolo11n.pt", *, local_scratch: Path | None = None
+):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
     )
 
-    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset, local_scratch=local_scratch)
     return Train_YoloV8_DetectionModel(
         input__detection_frozen_dataset="detection_frozen_dataset",
         input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
@@ -477,12 +539,12 @@ def detection_train_step_with_local_checkpoint(workdir: Path, preset: str = "yol
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_ckpt",
     )
 
 
-def detection_train_step_with_augmentations(workdir: Path):
+def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -528,12 +590,12 @@ def detection_train_step_with_augmentations(workdir: Path):
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_aug",
     )
 
 
-def detection_yolov5_train_step(workdir: Path):
+def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -569,12 +631,12 @@ def detection_yolov5_train_step(workdir: Path):
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
 
 
-def detection_yolov5_train_step_with_augmentations(workdir: Path):
+def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -615,7 +677,7 @@ def detection_yolov5_train_step_with_augmentations(workdir: Path):
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_aug",
     )
 
@@ -651,7 +713,7 @@ def detection_metrics_step():
     )
 
 
-def segmentation_freeze_step(workdir: Path):
+def segmentation_freeze_step(workdir: Workdir):
     from datapipe_ml.tasks.segmentation.freeze import SegmentationFreezeDataset
 
     return SegmentationFreezeDataset(
@@ -669,7 +731,7 @@ def segmentation_freeze_step(workdir: Path):
     )
 
 
-def segmentation_train_step(workdir: Path):
+def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.segmentation.train.yolov8 import (
         Train_YoloV8_SegmentationModel,
         YoloV8_TrainingConfig,
@@ -704,18 +766,20 @@ def segmentation_train_step(workdir: Path):
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
 
 
-def segmentation_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolov8n-seg.pt"):
+def segmentation_train_step_with_local_checkpoint(
+    workdir: Workdir, preset: str = "yolov8n-seg.pt", *, local_scratch: Path | None = None
+):
     from datapipe_ml.tasks.segmentation.train.yolov8 import (
         Train_YoloV8_SegmentationModel,
         YoloV8_TrainingConfig,
     )
 
-    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset, local_scratch=local_scratch)
     return Train_YoloV8_SegmentationModel(
         input__segmentation_frozen_dataset="segmentation_frozen_dataset",
         input__segmentation_frozen_dataset__has__image_gt="segmentation_frozen_dataset__has__image_gt",
@@ -731,7 +795,7 @@ def segmentation_train_step_with_local_checkpoint(workdir: Path, preset: str = "
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_ckpt",
     )
 
@@ -752,7 +816,7 @@ def segmentation_inference_step():
     )
 
 
-def keypoints_freeze_step(workdir: Path):
+def keypoints_freeze_step(workdir: Workdir):
     from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 
     return KeypointsFreezeDataset(
@@ -770,7 +834,7 @@ def keypoints_freeze_step(workdir: Path):
     )
 
 
-def keypoints_train_step(workdir: Path):
+def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
         YoloV8_TrainingConfig,
@@ -807,18 +871,20 @@ def keypoints_train_step(workdir: Path):
         create_table=True,
         bbox_id__name=None,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
 
 
-def keypoints_train_step_with_local_checkpoint(workdir: Path, preset: str = "yolo11n-pose.pt"):
+def keypoints_train_step_with_local_checkpoint(
+    workdir: Workdir, preset: str = "yolo11n-pose.pt", *, local_scratch: Path | None = None
+):
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
         YoloV8_TrainingConfig,
     )
 
-    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset)
+    checkpoint = copy_ultralytics_preset_checkpoint(workdir, preset, local_scratch=local_scratch)
     return Train_YoloV8_KeypointsModel(
         input__keypoints_frozen_dataset="keypoints_frozen_dataset",
         input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
@@ -836,7 +902,7 @@ def keypoints_train_step_with_local_checkpoint(workdir: Path, preset: str = "yol
         create_table=True,
         bbox_id__name=None,
         ignore_errors_sample_sizes=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_ckpt",
     )
 
@@ -874,7 +940,7 @@ def keypoints_metrics_step():
     )
 
 
-def classification_freeze_step(workdir: Path):
+def classification_freeze_step(workdir: Workdir):
     from datapipe_ml.tasks.classification.freeze import ClassificationFreezeDataset
 
     return ClassificationFreezeDataset(
@@ -891,7 +957,7 @@ def classification_freeze_step(workdir: Path):
     )
 
 
-def classification_train_step(workdir: Path):
+def classification_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
     from datapipe_ml.tasks.classification.train.tensorflow import (
         TF_ClassificationTrainingConfig,
         Train_Tensorflow_ClassificationModel,
@@ -924,7 +990,7 @@ def classification_train_step(workdir: Path):
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        tmp_folder=str(workdir / "tmp"),
+        tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
         clean_checkpoints_after_train=True,
     )

@@ -92,7 +92,10 @@ def run_training_with_failure_hooks(queue, target, *args):  # noqa: ANN001
 
 
 def _install_yolov8_failure_hook(patcher: _AttrPatcher) -> None:
-    import ultralytics
+    try:
+        import ultralytics
+    except ImportError:
+        return
 
     original_yolo = ultralytics.YOLO
 
@@ -113,7 +116,10 @@ def _install_yolov8_failure_hook(patcher: _AttrPatcher) -> None:
 
 
 def _install_yolov5_failure_hook(patcher: _AttrPatcher) -> None:
-    import datapipe_ml.frameworks.yolo.yolov5.runner as runner
+    try:
+        import datapipe_ml.frameworks.yolo.yolov5.runner as runner
+    except ImportError:
+        return
 
     original_train_model = runner.train_model
 

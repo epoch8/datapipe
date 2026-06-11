@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import fsspec
 from datapipe.store.database import DBConn
+from pathy import Pathy
 
 AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
@@ -55,9 +57,47 @@ DETECTION_MODEL_CONFIG = {
     "detection_model__score_threshold": 0.01,
 }
 
-DATAPIPE_DIR = Path(os.environ.get("DATAPIPE_E2E_DIR", "datapipe")).resolve()
-DATAPIPE_DIR.mkdir(parents=True, exist_ok=True)
-LOCAL_IMAGES_DIR = Path(os.environ.get("LOCAL_IMAGES_DIR", DATAPIPE_DIR / "local_images")).resolve()
+
+def _is_cloud_path(path: str) -> bool:
+    protocol, _ = fsspec.core.split_protocol(path)
+    return protocol not in (None, "file")
+
+
+def datapipe_working_dir() -> str:
+    explicit = os.environ.get("DATAPIPE_E2E_DIR")
+    if explicit:
+        if _is_cloud_path(explicit):
+            return explicit.rstrip("/")
+        local = Path(explicit).resolve()
+        local.mkdir(parents=True, exist_ok=True)
+        return str(local)
+    if S3_BUCKET:
+        prefix = Path(os.environ.get("S3_DATAPIPE_PREFIX", f"{S3_PREFIX}/datapipe"))
+        return str(Pathy(f"s3://{S3_BUCKET}").joinpath(*prefix.parts))
+    local = Path("datapipe").resolve()
+    local.mkdir(parents=True, exist_ok=True)
+    return str(local)
+
+
+DATAPIPE_DIR = datapipe_working_dir()
+
+
+def datapipe_tmp_folder() -> str:
+    if _is_cloud_path(DATAPIPE_DIR):
+        return str(Path(os.environ.get("DATAPIPE_E2E_TMP_DIR", "/tmp/datapipe-e2e")).resolve())
+    return str(Path(DATAPIPE_DIR) / "tmp")
+
+
+def _local_images_dir() -> Path:
+    explicit = os.environ.get("LOCAL_IMAGES_DIR")
+    if explicit:
+        return Path(explicit).resolve()
+    if _is_cloud_path(DATAPIPE_DIR):
+        return Path("/tmp/datapipe-e2e/local_images").resolve()
+    return (Path(DATAPIPE_DIR) / "local_images").resolve()
+
+
+LOCAL_IMAGES_DIR = _local_images_dir()
 
 
 DB_URL = os.environ.get("DB_URL")

@@ -40,7 +40,7 @@ torch = [
     "YOLOv5>=7.0.0,<8",
     "huggingface-hub<0.25",
     "requests-toolbelt>=1.0.0",
-    "ultralytics>=8.0.232",
+    "ultralytics>=8.4.66",
 ]
 fiftyone = [
     "fiftyone",

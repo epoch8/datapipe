@@ -19,6 +19,7 @@ from config import (
     AWS_REGION,
     AWS_SECRET,
     DATAPIPE_DIR,
+    datapipe_tmp_folder,
     DBCONN,
     LABEL_CONFIG,
     LABEL_STUDIO_API_KEY,
@@ -151,7 +152,7 @@ pipeline = Pipeline(
             output__detection_frozen_dataset__class_names="detection_frozen_dataset__class_names",
             max_within_time="1w",
             working_dir=str(DATAPIPE_DIR),
-            tmp_folder=str(DATAPIPE_DIR / "tmp"),
+            tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
                 YoloV8_TrainingConfig(
                     model="yolov8n.pt",

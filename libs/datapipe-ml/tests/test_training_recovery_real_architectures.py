@@ -9,6 +9,7 @@ from tests.helpers.failure_injection import (
 )
 from tests.helpers.training_recovery import (
     REAL_RECOVERY_CASE_PARAMS,
+    TENSORFLOW_RECOVERY_CASE_IDS,
     assert_status_manifest,
     configure_recovery_steps,
     invoke_real_train_callable_for_backfill,
@@ -100,6 +101,7 @@ def test_real_architecture_trains_new_model_when_resume_disabled_after_epoch6_er
         steps,
         resume_enabled=False,
         extra_configure=extra_configure,
+        include_torch_configure=case.id not in TENSORFLOW_RECOVERY_CASE_IDS,
     )
     monkeypatch.setenv(FAIL_AFTER_EPOCH_ENV, "6")
     monkeypatch.setenv(FAIL_MODE_ENV, "error")

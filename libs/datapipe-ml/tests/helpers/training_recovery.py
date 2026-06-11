@@ -19,6 +19,7 @@ from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest, verify_manifest_checkpoint
 from tests.helpers.training_smoke import (
     SmokeRuntime,
+    Workdir,
     detection_freeze_step,
     detection_train_step,
     detection_yolov5_train_step,
@@ -75,7 +76,7 @@ class RealRecoveryCase:
     model_id_column: str
     models_subdir: str
     make_runtime_kwargs: dict
-    steps_factory: Callable[[Path], list]
+    steps_factory: Callable[[Workdir, Path], list]
     train_fn: Callable
     input_tables: tuple[str, ...]
 
@@ -92,7 +93,7 @@ def _torch_case(
     model_table: str,
     model_id_column: str,
     models_subdir: str,
-    steps_factory: Callable[[Path], list],
+    steps_factory: Callable[[Workdir, Path], list],
     train_fn: Callable,
     input_tables: tuple[str, ...],
     make_runtime_kwargs: dict | None = None,
@@ -129,7 +130,10 @@ def real_recovery_torch_cases() -> list:
             model_table="detection_model",
             model_id_column="detection_model_id",
             models_subdir="models",
-            steps_factory=lambda workdir: [detection_freeze_step(workdir), detection_train_step(workdir)],
+            steps_factory=lambda workdir, scratch: [
+                detection_freeze_step(workdir),
+                detection_train_step(workdir, local_scratch=scratch),
+            ],
             train_fn=train_yolov8,
             input_tables=(
                 "detection_frozen_dataset",
@@ -146,7 +150,10 @@ def real_recovery_torch_cases() -> list:
             model_table="detection_model",
             model_id_column="detection_model_id",
             models_subdir="models",
-            steps_factory=lambda workdir: [detection_freeze_step(workdir), detection_yolov5_train_step(workdir)],
+            steps_factory=lambda workdir, scratch: [
+                detection_freeze_step(workdir),
+                detection_yolov5_train_step(workdir, local_scratch=scratch),
+            ],
             train_fn=train_yolov5,
             input_tables=(
                 "detection_frozen_dataset",
@@ -163,7 +170,10 @@ def real_recovery_torch_cases() -> list:
             model_table="segmentation_model",
             model_id_column="segmentation_model_id",
             models_subdir="segmentation_models",
-            steps_factory=lambda workdir: [segmentation_freeze_step(workdir), segmentation_train_step(workdir)],
+            steps_factory=lambda workdir, scratch: [
+                segmentation_freeze_step(workdir),
+                segmentation_train_step(workdir, local_scratch=scratch),
+            ],
             train_fn=train_yolov8_segmentation,
             input_tables=(
                 "segmentation_frozen_dataset",
@@ -180,7 +190,10 @@ def real_recovery_torch_cases() -> list:
             model_table="keypoints_model",
             model_id_column="keypoints_model_id",
             models_subdir="keypoints_models",
-            steps_factory=lambda workdir: [keypoints_freeze_step(workdir), keypoints_train_step(workdir)],
+            steps_factory=lambda workdir, scratch: [
+                keypoints_freeze_step(workdir),
+                keypoints_train_step(workdir, local_scratch=scratch),
+            ],
             train_fn=train_yolov8_keypoints,
             input_tables=(
                 "keypoints_frozen_dataset",
@@ -275,8 +288,12 @@ def configure_recovery_steps(
     sync_interval_s: Optional[int] = 1,
     reset_attempts_after: str = "1s",
     extra_configure: dict[type, StepConfigureFn] | None = None,
+    include_torch_configure: bool = True,
 ) -> list[PipelineStep]:
-    configure_by_type = {**_recovery_step_configure(), **(extra_configure or dict())}
+    configure_by_type = {
+        **(_recovery_step_configure() if include_torch_configure else dict()),
+        **(extra_configure or dict()),
+    }
     steps = list(steps)
     for step in steps:
         configure = configure_by_type.get(type(step))
@@ -292,19 +309,24 @@ def configure_recovery_steps(
     return steps
 
 
-def make_recovery_runtime(tmp_path: Path, case: RealRecoveryCase) -> tuple[SmokeRuntime, list]:
+def make_recovery_runtime(
+    tmp_path: Path, case: RealRecoveryCase, *, working_dir: Workdir | None = None
+) -> tuple[SmokeRuntime, list]:
     if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
         from tests.helpers.training_recovery_tensorflow import make_recovery_runtime as make_tf_recovery_runtime
 
-        return make_tf_recovery_runtime(tmp_path, case)
-    runtime = make_runtime(tmp_path, **case.make_runtime_kwargs)
-    steps = configure_recovery_steps(case.steps_factory(tmp_path))
+        return make_tf_recovery_runtime(tmp_path, case, working_dir=working_dir)
+    workdir = working_dir if working_dir is not None else tmp_path
+    runtime = make_runtime(tmp_path, working_dir=workdir, **case.make_runtime_kwargs)
+    steps = configure_recovery_steps(case.steps_factory(workdir, tmp_path))
     return runtime, steps
 
 
-def reopen_recovery_runtime(tmp_path: Path, case: RealRecoveryCase) -> tuple[SmokeRuntime, list]:
+def reopen_recovery_runtime(
+    tmp_path: Path, case: RealRecoveryCase, *, working_dir: Workdir | None = None
+) -> tuple[SmokeRuntime, list]:
     """Reattach to an existing workdir and register pipeline tables for status reads."""
-    runtime, steps = make_recovery_runtime(tmp_path, case)
+    runtime, steps = make_recovery_runtime(tmp_path, case, working_dir=working_dir)
     build_compute(runtime.ds, runtime.catalog, Pipeline(steps))
     return runtime, steps
 
@@ -471,8 +493,10 @@ def _shared_train_runtime_kwargs(
     case: RealRecoveryCase,
     step: RecoveryTrainStep,
 ) -> dict[str, object]:
+    from pathy import Pathy
+
     return dict(
-        models_dir=str(runtime.workdir / case.models_subdir),
+        models_dir=str(Pathy.fluid(runtime.workdir) / case.models_subdir),
         max_within_time=step.max_within_time,
         dt__training_status=runtime.ds.get_table(case.status_table),
         tmp_folder=step.tmp_folder,
@@ -520,7 +544,7 @@ def _yolo_train_kwargs(
             segmentation_frozen_dataset_id__name="segmentation_frozen_dataset_id",
             keypoints_frozen_dataset_id__name="keypoints_frozen_dataset_id",
             extra_class_names_to_yaml_fields=dict(),
-            ignore_errors_sample_sizes=step.ignore_errors_sample_sizes,
+            ignore_errors_sample_sizes=getattr(step, "ignore_errors_sample_sizes", False),
         )
     )
     if yolov5_script_file is not None:
@@ -532,7 +556,9 @@ def _yolov5_train_kwargs(runtime: SmokeRuntime, case: RealRecoveryCase, step: Re
     from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
 
     assert isinstance(step, Train_YoloV5_DetectionModel)
-    return _yolo_train_kwargs(runtime, case, step, yolov5_script_file=step.yolov5_script_file)
+    kwargs = _yolo_train_kwargs(runtime, case, step)
+    kwargs["yolov5_script_file"] = step.yolov5_script_file
+    return kwargs
 
 
 def _train_kwargs_builders(extra_builders: dict[type, TrainKwargsFn] | None = None) -> dict[type, TrainKwargsFn]:

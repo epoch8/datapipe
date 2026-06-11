@@ -19,7 +19,7 @@ from tests.helpers.training_recovery import (
     direct_train_kwargs,
     make_runtime,
 )
-from tests.helpers.training_smoke import classification_freeze_step, classification_train_step
+from tests.helpers.training_smoke import Workdir, classification_freeze_step, classification_train_step
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
@@ -82,7 +82,10 @@ def real_recovery_tensorflow_cases() -> list:
                 model_id_column="classification_model_id",
                 models_subdir="models",
                 make_runtime_kwargs=dict(include_classification_gt=True),
-                steps_factory=lambda workdir: [classification_freeze_step(workdir), classification_train_step(workdir)],
+                steps_factory=lambda workdir, scratch: [
+                    classification_freeze_step(workdir),
+                    classification_train_step(workdir, local_scratch=scratch),
+                ],
                 train_fn=train_tf_classification_model,
                 input_tables=("classification_frozen_dataset", "tf_classification_train_config"),
             ),
@@ -100,11 +103,15 @@ def recovery_tensorflow_case_by_id(case_id: str) -> RealRecoveryCase:
     raise KeyError(case_id)
 
 
-def make_recovery_runtime(tmp_path: Path, case: RealRecoveryCase) -> tuple[SmokeRuntime, list]:
-    runtime = make_runtime(tmp_path, **case.make_runtime_kwargs)
+def make_recovery_runtime(
+    tmp_path: Path, case: RealRecoveryCase, *, working_dir: Workdir | None = None
+) -> tuple[SmokeRuntime, list]:
+    workdir = working_dir if working_dir is not None else tmp_path
+    runtime = make_runtime(tmp_path, working_dir=workdir, **case.make_runtime_kwargs)
     steps = configure_recovery_steps(
-        case.steps_factory(tmp_path),
+        case.steps_factory(workdir, tmp_path),
         extra_configure=tensorflow_step_configure(),
+        include_torch_configure=False,
     )
     return runtime, steps
 

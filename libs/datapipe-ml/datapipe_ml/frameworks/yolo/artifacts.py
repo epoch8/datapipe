@@ -114,13 +114,19 @@ def _yolo_smooth(y: np.ndarray, f: float = 0.05) -> np.ndarray:
     return np.convolve(yp, np.ones(nf) / nf, mode="valid")
 
 
-_YoloCurveValues = tuple[Sequence[float], Union[Sequence[Sequence[float]], np.ndarray]]
+_YoloCurveValues = Sequence[Union[Sequence[float], np.ndarray]]
 
 
 @runtime_checkable
 class _UltralyticsCurveMetrics(Protocol):
     curves: Sequence[str]
     curves_results: Sequence[_YoloCurveValues]
+
+
+def _curve_xy_from_ultralytics_values(values: Any) -> tuple[Any, Any] | None:
+    if not isinstance(values, (tuple, list)) or len(values) < 2:
+        return None
+    return values[0], values[1]
 
 
 def yolo_best_threshold_from_ultralytics_metrics(metrics: Any, curve_name_part: str = "F1-Confidence") -> float:
@@ -133,9 +139,12 @@ def yolo_best_threshold_from_ultralytics_metrics(metrics: Any, curve_name_part: 
         return best_threshold
 
     for name, values in zip(curves, curves_results):
-        if curve_name_part in str(name):
-            x_vals, y_vals = values
-            return yolo_best_threshold_from_curve(x_vals, y_vals)
+        if curve_name_part not in str(name):
+            continue
+        xy = _curve_xy_from_ultralytics_values(values)
+        if xy is None:
+            continue
+        return yolo_best_threshold_from_curve(xy[0], xy[1])
     return best_threshold
 
 
