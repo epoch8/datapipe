@@ -718,15 +718,15 @@ def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
     assert os.getenv("VAPI_API_KEY"), "tests/.env must provide VAPI_API_KEY for Sky/Vast integration tests"
 
 
-# @pytest.mark.sky_vast
-# def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
-#     if not _sky_vast_available():
-#         pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
-#     if _sky_vast_all_candidates_are_cached():
-#         pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
+@pytest.mark.sky_vast
+def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
+    if not _sky_vast_available():
+        pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
+    if _sky_vast_all_candidates_are_cached():
+        pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
 
-#     result = _launch_minimal_worker_with_candidates(_sky_vast_candidates())
-#     assert result == {"ok": True}
+    result = _launch_minimal_worker_with_candidates(_sky_vast_candidates())
+    assert result == {"ok": True}
 
 
 @pytest.mark.torch
@@ -755,82 +755,6 @@ def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment
             instance_type=instance_type,
             run_timeout_s=900,
             source_install_extras=("torch",),
-        )
-
-        run_pipeline(runtime, [detection_freeze_step(attempt_path), train_step])
-        assert_model_artifact(
-            runtime,
-            "detection_model",
-            "detection_model__type",
-            "detection_model__model_path",
-            "yolov8",
-        )
-        _assert_local_yolov8_training_files(runtime)
-
-    _run_with_accelerator_candidates(tmp_path, _run)
-
-
-@pytest.mark.torch
-@pytest.mark.sky_vast
-def test_yolov8n_detection_training_sky_vast_rtx3060(tmp_path, sky_vast_environment):
-    if not _sky_vast_available():
-        pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
-    if _sky_vast_all_candidates_are_cached():
-        pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
-
-    from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
-    from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
-    from tests.helpers.training_smoke import (
-        PRIMARY_KEYS,
-        assert_model_artifact,
-        detection_freeze_step,
-        make_runtime,
-        run_pipeline,
-    )
-
-    def _run(attempt_path: Path, infra: str, accelerator: str, instance_type: str | None) -> None:
-        runtime = make_runtime(attempt_path)
-        cluster_name = f"datapipe-ml-yolov8n-test-{uuid.uuid4().hex[:8]}"
-        epochs = int(os.getenv("DATAPIPE_ML_SKY_VAST_YOLOV8N_EPOCHS", "2"))
-        train_step = Train_YoloV8_DetectionModel(
-            input__detection_frozen_dataset="detection_frozen_dataset",
-            input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
-            output__yolov8_train_config="yolov8_train_config",
-            output__detection_size_for_resize="yolov8_detection_size_for_resize",
-            output__detection_frozen_dataset__resized_image_file="yolov8_detection_resized_image_file",
-            output__detection_frozen_dataset__yolo_txt="yolov8_detection_yolo_txt",
-            output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
-            output__detection_model="detection_model",
-            output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
-            working_dir=str(attempt_path),
-            yolov8_train_configs=[
-                YoloV8_TrainingConfig(
-                    model="yolov8n.pt",
-                    imgsz=64,
-                    batch=2,
-                    epochs=epochs,
-                    seed=42,
-                    device=os.getenv("DATAPIPE_ML_SKY_VAST_YOLOV8N_DEVICE"),
-                    workers=0,
-                    patience=epochs,
-                    amp=False,
-                    val=True,
-                    plots=False,
-                )
-            ],
-            primary_keys=PRIMARY_KEYS,
-            create_table=True,
-            ignore_errors_sample_sizes=True,
-            tmp_folder=str(attempt_path / "tmp"),
-            model_suffix="_sky_vast_yolov8n",
-            training_launcher_config=_sky_vast_config(
-                cluster_name=cluster_name,
-                infra=infra,
-                accelerators=accelerator,
-                instance_type=instance_type,
-                run_timeout_s=900,
-                source_install_extras=("torch",),
-            ),
         )
 
         run_pipeline(runtime, [detection_freeze_step(attempt_path), train_step])
