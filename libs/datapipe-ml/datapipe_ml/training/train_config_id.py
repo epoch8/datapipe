@@ -40,20 +40,6 @@ def _dataclass_params(instance: object) -> dict[str, Any]:
     return {field.name: getattr(instance, field.name) for field in fields(instance)}
 
 
-def build_yolo_train_config_summary(
-    params: Mapping[str, Any],
-    *,
-    model_key: str = "model",
-    batch_key: Optional[str] = None,
-) -> str:
-    from datapipe_ml.frameworks.yolo.checkpoint_label import resolve_yolo_model_label_from_params
-
-    if batch_key is None:
-        batch_key = "batch_size" if "batch_size" in params else "batch"
-    model_label = resolve_yolo_model_label_from_params(params, model_key=model_key)
-    return f"{model_label}-{params['imgsz']}-batch{params[batch_key]}-epochs{params['epochs']}"
-
-
 def train_configs_to_dataframe(
     configs: Iterable[Any],
     *,

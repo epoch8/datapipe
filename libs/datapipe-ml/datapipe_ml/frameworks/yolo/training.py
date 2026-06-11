@@ -10,7 +10,8 @@ from datapipe.types import IndexDF
 from pathy import Pathy
 
 from datapipe_ml.frameworks.yolo.artifacts import YoloDataYAMLConfig
-from datapipe_ml.training.train_config_id import build_train_config_id, build_yolo_train_config_summary
+from datapipe_ml.frameworks.yolo.checkpoint_label import build_yolo_train_config_summary
+from datapipe_ml.training.train_config_id import build_train_config_id
 from datapipe_ml.training.specs import (
     Algo,
     PreparedData,

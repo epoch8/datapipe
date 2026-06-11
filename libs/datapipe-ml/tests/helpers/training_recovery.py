@@ -45,6 +45,20 @@ if TYPE_CHECKING:
 else:
     RecoveryTrainStep = Any
 
+TORCH_RECOVERY_CASE_IDS = (
+    "yolov8_detection",
+    "yolov5_detection",
+    "yolov8_segmentation",
+    "yolov8_keypoints",
+)
+
+TENSORFLOW_RECOVERY_CASE_IDS = ("tensorflow_classification",)
+
+REAL_RECOVERY_CASE_PARAMS = [
+    *[pytest.param(case_id, marks=pytest.mark.torch) for case_id in TORCH_RECOVERY_CASE_IDS],
+    pytest.param("tensorflow_classification", marks=pytest.mark.tensorflow),
+]
+
 _LINK_TABLE_BY_MODE = dict(
     detection="detection_model_link",
     segmentation="segmentation_model_link",
@@ -185,11 +199,23 @@ def real_recovery_cases() -> list:
 
 
 def recovery_case_by_id(case_id: str) -> RealRecoveryCase:
+    if case_id in TENSORFLOW_RECOVERY_CASE_IDS:
+        from tests.helpers.training_recovery_tensorflow import recovery_tensorflow_case_by_id
+
+        return recovery_tensorflow_case_by_id(case_id)
     for param in real_recovery_torch_cases():
         case = param.values[0]
         if case.id == case_id:
             return case
     raise KeyError(case_id)
+
+
+def recovery_extra_step_configure(case: RealRecoveryCase) -> dict[type, StepConfigureFn] | None:
+    if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
+        from tests.helpers.training_recovery_tensorflow import tensorflow_step_configure
+
+        return tensorflow_step_configure()
+    return None
 
 
 def yolov8_detection_recovery_case() -> RealRecoveryCase:
@@ -267,6 +293,10 @@ def configure_recovery_steps(
 
 
 def make_recovery_runtime(tmp_path: Path, case: RealRecoveryCase) -> tuple[SmokeRuntime, list]:
+    if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
+        from tests.helpers.training_recovery_tensorflow import make_recovery_runtime as make_tf_recovery_runtime
+
+        return make_tf_recovery_runtime(tmp_path, case)
     runtime = make_runtime(tmp_path, **case.make_runtime_kwargs)
     steps = configure_recovery_steps(case.steps_factory(tmp_path))
     return runtime, steps
@@ -424,6 +454,13 @@ def invoke_real_train_callable_for_backfill(
     case: RealRecoveryCase,
     step: RecoveryTrainStep,
 ) -> None:
+    if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
+        from tests.helpers.training_recovery_tensorflow import (
+            invoke_real_train_callable_for_backfill as invoke_tf_backfill,
+        )
+
+        invoke_tf_backfill(runtime, case, step)
+        return
     idx = IndexDF(pd.DataFrame([{}]))
     input_dts = [runtime.ds.get_table(name) for name in case.input_tables]
     case.train_fn(runtime.ds, idx, input_dts, kwargs=direct_train_kwargs(runtime, case, step))

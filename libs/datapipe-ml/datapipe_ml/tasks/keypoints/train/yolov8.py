@@ -11,10 +11,8 @@ from datapipe.types import IndexDF, Labels
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON
 
-from datapipe_ml.training.train_config_id import (
-    build_yolo_train_config_summary,
-    train_configs_to_dataframe,
-)
+from datapipe_ml.frameworks.yolo.checkpoint_label import build_yolo_train_config_summary
+from datapipe_ml.training.train_config_id import train_configs_to_dataframe
 from datapipe_ml.frameworks.yolo.datapipe_compute import (
     YoloModeSpec,
     build_yolo_compute,

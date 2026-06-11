@@ -5,14 +5,11 @@ from pathlib import Path
 import pytest
 
 from datapipe_ml.frameworks.yolo.checkpoint_label import (
+    build_yolo_train_config_summary,
     resolve_yolo_model_label,
     resolve_yolo_model_label_from_params,
 )
-from datapipe_ml.training.train_config_id import (
-    build_train_config_id,
-    build_yolo_train_config_summary,
-    short_path_label,
-)
+from datapipe_ml.training.train_config_id import build_train_config_id, short_path_label
 
 
 def test_resolve_yolo_model_label_keeps_preset_names():

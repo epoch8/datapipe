@@ -85,6 +85,18 @@ def resolve_yolo_model_label(value: str) -> str:
     return _path_stem(normalized)
 
 
+def build_yolo_train_config_summary(
+    params: Mapping[str, Any],
+    *,
+    model_key: str = "model",
+    batch_key: str | None = None,
+) -> str:
+    if batch_key is None:
+        batch_key = "batch_size" if "batch_size" in params else "batch"
+    model_label = resolve_yolo_model_label_from_params(params, model_key=model_key)
+    return f"{model_label}-{params['imgsz']}-batch{params[batch_key]}-epochs{params['epochs']}"
+
+
 def resolve_yolo_model_label_from_params(params: Mapping[str, Any], *, model_key: str = "model") -> str:
     for key in (model_key, "cfg" if model_key == "weights" else None, "initial_weights_path"):
         if key is None:

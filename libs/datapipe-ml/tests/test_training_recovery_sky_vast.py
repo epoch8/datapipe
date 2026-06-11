@@ -14,7 +14,7 @@ from tests.helpers.training_recovery import (
     assert_status_manifest,
     configure_recovery_steps,
     make_recovery_runtime,
-    real_recovery_torch_cases,
+    recovery_case_by_id,
 )
 from tests.helpers.training_smoke import run_pipeline
 from tests.test_training_sky_vast import _run_with_accelerator_candidates, _sky_vast_config, sky_vast_environment
@@ -28,7 +28,7 @@ def _require_sky_vast_recovery() -> None:
 
 
 def _yolov8_detection_case():
-    return real_recovery_torch_cases()[0].values[0]
+    return recovery_case_by_id("yolov8_detection")
 
 
 def _run_recovery_on_sky_vast(
