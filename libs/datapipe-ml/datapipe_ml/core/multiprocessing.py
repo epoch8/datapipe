@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import queue
 
 
 def _spawn(target, *args):
@@ -8,7 +9,16 @@ def _spawn(target, *args):
     p = ctx.Process(target=target, args=(q, *args))
     p.start()
     try:
-        res = q.get()
+        while True:
+            try:
+                res = q.get(timeout=1)
+                break
+            except queue.Empty:
+                if not p.is_alive():
+                    p.join()
+                    raise RuntimeError(
+                        f"Training subprocess exited before returning a result. exitcode={p.exitcode}"
+                    )
         p.join()
         return res
     finally:

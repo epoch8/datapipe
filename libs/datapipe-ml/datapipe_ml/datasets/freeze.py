@@ -40,12 +40,7 @@ class _SqlTableMetaLike(Protocol):
 
 
 def _get_datatable_sql_meta_table(dt: DataTable):
-    meta = getattr(dt, "meta", None)
-    if meta is None:
-        meta = getattr(dt, "meta_table", None)
-    if meta is None:
-        raise AttributeError(f"DataTable {dt.name!r} has neither 'meta' nor 'meta_table'")
-    return cast(_SqlTableMetaLike, meta).sql_table
+    return cast(_SqlTableMetaLike, dt.meta).sql_table
 
 
 def get_changed_idxs_since_last_freeze_sql(

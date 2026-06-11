@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Protocol, Type, Union, runtime_checkable
 
 import pandas as pd
 from cv_pipeliner.metrics.detection import ImageDataMatching, get_df_detection_metrics
@@ -23,6 +23,11 @@ from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
+
+
+@runtime_checkable
+class _YoloValidationResults(Protocol):
+    results_dict: dict[str, float]
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 
 KEYPOINTS_METRIC_COLUMNS = [
@@ -96,7 +101,7 @@ def _run_native_yolo_pose_validation(
         if yolo_validation_device is not None:
             kwargs["device"] = yolo_validation_device
         results = model.val(**kwargs)
-        results_dict = getattr(results, "results_dict", {}) or {}
+        results_dict = results.results_dict if isinstance(results, _YoloValidationResults) else {}
         return {
             "calc__pose_P": _float_or_none(results_dict.get("metrics/precision(P)")),
             "calc__pose_R": _float_or_none(results_dict.get("metrics/recall(P)")),

@@ -21,7 +21,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, Labels
 from pathy import Pathy
 from sqlalchemy import JSON, Column
-from sqlalchemy.sql.sqltypes import Boolean, String
+from sqlalchemy.sql.sqltypes import Boolean, Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
 from datapipe_ml.training.train_config_id import build_train_config_id, train_configs_to_dataframe
@@ -44,6 +44,8 @@ from datapipe_ml.training.specs import (
     TrainingLauncherConfig,
     TrainingLaunchRequest,
     TrainingPathMap,
+    TrainingResumeConfig,
+    TrainingSyncConfig,
     build_training_launcher,
 )
 
@@ -67,11 +69,14 @@ class TensorflowClassificationRuntimeConfig:
     model_suffix: str
     dt__model: DataTable
     dt__link: DataTable
+    dt__training_status: DataTable
     model_other_primary_keys: List[str]
     model_id__name: str
     frozen_dataset_id__name: str
     clean_checkpoints_after_train: bool
     training_launcher_config: Optional[TrainingLauncherConfig]
+    sync_config: Optional[TrainingSyncConfig]
+    resume_config: Optional[TrainingResumeConfig]
 
     @classmethod
     def from_kwargs(cls, kwargs: Dict[str, Any]) -> "TensorflowClassificationRuntimeConfig":
@@ -82,11 +87,14 @@ class TensorflowClassificationRuntimeConfig:
             model_suffix=kwargs["model_suffix"],
             dt__model=kwargs["dt__classification_model"],
             dt__link=kwargs["dt__classification_model_is_trained_on_cls_frozen_dataset"],
+            dt__training_status=kwargs["dt__training_status"],
             model_other_primary_keys=kwargs["classification_model_other_primary_keys"],
             model_id__name=kwargs["classification_model_id__name"],
             frozen_dataset_id__name=kwargs["classification_frozen_dataset_id__name"],
             clean_checkpoints_after_train=kwargs["clean_checkpoints_after_train"],
             training_launcher_config=kwargs.get("training_launcher_config"),
+            sync_config=kwargs.get("sync_config"),
+            resume_config=kwargs.get("resume_config"),
         )
 
     def build_context(
@@ -104,6 +112,7 @@ class TensorflowClassificationRuntimeConfig:
             model_suffix=self.model_suffix,
             dt__model=self.dt__model,
             dt__link=self.dt__link,
+            dt__training_status=self.dt__training_status,
             dt__frozen_dataset=dt__frozen_dataset,
             dt__frozen_dataset__has__image_gt=dt__frozen_dataset__has__image_gt,
             dt__train_config=dt__train_config,
@@ -113,6 +122,8 @@ class TensorflowClassificationRuntimeConfig:
             clean_checkpoints_after_train=self.clean_checkpoints_after_train,
             orchestrator_idx=idx,
             training_launcher_config=self.training_launcher_config,
+            sync_config=self.sync_config,
+            resume_config=self.resume_config,
         )
 
 
@@ -160,6 +171,8 @@ class TFClassificationAlgo(Algo):
             train_process,
         )
 
+        train_params = dict(train_params)
+        resume_checkpoint_filepath = train_params.pop("__resume_checkpoint_filepath", None)
         cfg = TF_ClassificationTrainingConfig(**train_params)
         # ctx has an extra field clean_checkpoints_after_train in TensorflowClassificationTrainContext
         from typing import cast as _cast
@@ -181,6 +194,8 @@ class TFClassificationAlgo(Algo):
                     ctx.models_dir,
                     tctx.clean_checkpoints_after_train,
                     str(ctx.tmp_folder),
+                    resume_checkpoint_filepath,
+                    ctx.sync_config,
                 ),
                 cluster_suffix=model_id,
                 inputs=tuple(TrainingPathMap(local_path, remote_path) for local_path, remote_path in image_rewrites),
@@ -200,6 +215,22 @@ class TFClassificationAlgo(Algo):
             classification_model_id=raw_result.classification_model_id,
             preprocess_input_script_path=raw_result.preprocess_input_script_path,
         )
+
+    def collect_checkpoint_paths(self, raw_result: TrainModelResult) -> List[str]:
+        if raw_result.model_path is None:
+            return []
+        return [str(raw_result.model_path)]
+
+    def apply_resume_checkpoint(
+        self,
+        ctx: TrainContext,
+        train_params: Dict[str, Any],
+        checkpoint_path: Optional[str],
+    ) -> Dict[str, Any]:
+        params = dict(train_params)
+        if checkpoint_path is not None:
+            params["__resume_checkpoint_filepath"] = checkpoint_path
+        return params
 
     def build_model_row(
         self,
@@ -230,7 +261,7 @@ def train_tf_classification_model(
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     kwargs = kwargs or {}
     (
         dt__classification_frozen_dataset,
@@ -248,7 +279,7 @@ def train_tf_classification_model(
 
     algo = TFClassificationAlgo()
     out = orchestrate(idx, ctx, algo)
-    return (out.df__model, out.df__link)
+    return (out.df__model, out.df__link, out.df__training_status)
 
 
 def get_tf_classification_model_name(train_params: Dict[str, Any]) -> str:
@@ -291,6 +322,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     output__tf_classification_train_config: str
     output__classification_model: str
     output__classification_model_is_trained_on_cls_frozen_dataset: str
+    output__training_status: str
     working_dir: str
     tf_classification_train_configs: List[TF_ClassificationTrainingConfig]
     primary_keys: List[str]
@@ -307,14 +339,24 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
+    sync_config: Optional[TrainingSyncConfig] = None
+    resume_config: Optional[TrainingResumeConfig] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.classification_model_primary_keys is None:
             self.classification_model_primary_keys = [self.classification_model_id__name]
-        assert self.classification_model_id__name in self.classification_model_primary_keys
+        if self.classification_model_id__name not in self.classification_model_primary_keys:
+            raise ValueError(
+                f"{self.classification_model_id__name!r} must be present in classification_model_primary_keys"
+            )
         classification_model_other_primary_keys = [
             x for x in self.classification_model_primary_keys if x != self.classification_model_id__name
         ]
+        check_columns_are_in_table(
+            ds,
+            self.input__classification_frozen_dataset,
+            classification_model_other_primary_keys + [self.classification_frozen_dataset_id__name],
+        )
         check_columns_are_in_table(
             ds,
             self.input__classification_frozen_dataset__has__image_gt,
@@ -388,6 +430,43 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                 ).table_store
             ),
         )
+        catalog.add_datatable(
+            get_pipeline_table_name(self.output__training_status),
+            Table(
+                ds.get_or_create_table(
+                    get_pipeline_table_name(self.output__training_status),
+                    TableStoreDB(
+                        dbconn=ds.meta_dbconn,
+                        name=get_pipeline_table_name(self.output__training_status),
+                        data_sql_schema=[
+                            Column("training_status_id", String, primary_key=True),
+                            Column("training_status__run_key", String),
+                            Column("training_status__launcher_type", String),
+                            Column("training_status__launcher_config", JSON),
+                            Column("training_status__launcher_state", JSON),
+                        ]
+                        + classification_model_primary_columns[:-1]
+                        + [
+                            Column(self.classification_frozen_dataset_id__name, String),
+                            Column("classification_train_config_id", String),
+                            Column(self.classification_model_id__name, String),
+                            Column("training_status__models_dir", String),
+                            Column("training_status__run_dir", String),
+                            Column("training_status__status", String),
+                            Column("training_status__started_at", String),
+                            Column("training_status__finished_at", String),
+                            Column("training_status__attempt", Integer),
+                            Column("training_status__manifest_path", String),
+                            Column("training_status__error", String),
+                            Column("training_status__owner_id", String),
+                            Column("training_status__heartbeat_at", String),
+                            Column("training_status__lease_expires_at", String),
+                        ],
+                        create_table=self.create_table,
+                    ),
+                ).table_store
+            ),
+        )
         # ---
         pipeline = Pipeline(
             [
@@ -407,6 +486,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                     outputs=[
                         self.output__classification_model,
                         self.output__classification_model_is_trained_on_cls_frozen_dataset,
+                        self.output__training_status,
                     ],
                     transform_keys=classification_model_other_primary_keys
                     + [self.classification_frozen_dataset_id__name, "classification_train_config_id"],
@@ -418,6 +498,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                         dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(ds, 
                             self.output__classification_model_is_trained_on_cls_frozen_dataset
                         ),
+                        dt__training_status=get_datatable(ds, self.output__training_status),
                         classification_model_other_primary_keys=classification_model_other_primary_keys,
                         classification_model_id__name=self.classification_model_id__name,
                         classification_frozen_dataset_id__name=self.classification_frozen_dataset_id__name,
@@ -425,6 +506,8 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                         tmp_folder=self.tmp_folder,
                         model_suffix=self.model_suffix,
                         training_launcher_config=self.training_launcher_config,
+                        sync_config=self.sync_config,
+                        resume_config=self.resume_config,
                     ),
                     labels=self.labels,
                 ),

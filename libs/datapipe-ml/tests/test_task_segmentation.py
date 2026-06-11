@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.helpers.training_smoke import (
+    assert_completed_training_status_with_manifest,
     assert_model_artifact,
     assert_table_has_rows,
     make_runtime,
@@ -28,6 +29,7 @@ def test_yolov8_segmentation_training_smoke_cpu(tmp_path):
         "segmentation_model__model_path",
         "yolov8",
     )
+    assert_completed_training_status_with_manifest(runtime, "segmentation_training_status")
 
 
 @pytest.mark.torch

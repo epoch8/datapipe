@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Protocol, Sequence, runtime_checkable
 
 from fsspec import AbstractFileSystem
 
@@ -42,36 +42,19 @@ from datapipe_ml.training.specs import (
     SkyVastTrainingLauncherConfig,
     TrainingLaunchRequest,
 )
+from datapipe_ml.training.sync import PeriodicSyncScheduler
 
 logger = logging.getLogger("datapipe.ml.sky_vast")
 
 
+@runtime_checkable
+class _SkyClusterHandle(Protocol):
+    head_ip: str
+    stable_ssh_ports: Sequence[int]
+
+
 class SkyVastTrainingError(RuntimeError):
     pass
-
-
-class _PeriodicOutputSync:
-    def __init__(
-        self,
-        launcher: "SkyVastTrainingLauncher",
-        sshfs: AbstractFileSystem,
-        request: TrainingLaunchRequest,
-    ):
-        self.launcher = launcher
-        self.sshfs = sshfs
-        self.request = request
-        self.interval_s = launcher.config.output_sync_interval_s
-        self._next_sync_at = time.time() + self.interval_s if self.interval_s and self.interval_s > 0 else None
-
-    def maybe_sync(self) -> None:
-        if self._next_sync_at is None or time.time() < self._next_sync_at:
-            return
-        self._next_sync_at = time.time() + self.interval_s  # type: ignore[operator]
-        try:
-            print("[sky-vast] periodic output sync", flush=True)
-            self.launcher._copy_outputs(self.sshfs, self.request, label="periodic output")
-        except Exception:
-            logger.exception("Periodic Sky/Vast output sync failed")
 
 
 def _safe_cluster_part(value: str) -> str:
@@ -113,6 +96,7 @@ class _SkyLogsStreamer:
 class SkyVastTrainingLauncher:
     def __init__(self, config: SkyVastTrainingLauncherConfig):
         self.config = config
+        self._current_cluster_name: Optional[str] = None
 
     def _retry_transport(self, fn: Callable[[], Any], *, label: str) -> Any:
         return retry(
@@ -154,6 +138,7 @@ class SkyVastTrainingLauncher:
         except BaseException:
             print(f"[sky-vast] failed: {cluster_name}", flush=True)
             self._print_remote_diagnostics(sshfs)
+            self._copy_failed_outputs_best_effort(sshfs, request)
             raise
         finally:
             try:
@@ -226,8 +211,11 @@ class SkyVastTrainingLauncher:
                 time.sleep(self.config.poll_s)
                 continue
             handle = status.get("handle")
-            host = getattr(handle, "head_ip", None) if handle is not None else None
-            ports = getattr(handle, "stable_ssh_ports", []) if handle is not None else []
+            if not isinstance(handle, _SkyClusterHandle):
+                time.sleep(self.config.poll_s)
+                continue
+            host = handle.head_ip
+            ports = list(handle.stable_ssh_ports)
             if not host or not ports:
                 time.sleep(self.config.poll_s)
                 continue
@@ -248,7 +236,7 @@ class SkyVastTrainingLauncher:
         raise SkyVastTrainingError(f"SSH did not become ready for Sky/Vast cluster {cluster_name!r}")
 
     def _prepare_remote(self, sshfs: AbstractFileSystem, request: TrainingLaunchRequest) -> None:
-        cluster_name = getattr(self, "_current_cluster_name", None)
+        cluster_name = self._current_cluster_name
         deadline = time.time() + self.config.ssh_connect_timeout_s
         while time.time() < deadline:
             if sshfs.exists(str(REMOTE_SIGNALS / "VM_BOOT")):
@@ -302,8 +290,8 @@ class SkyVastTrainingLauncher:
 
     def _wait_for_result(self, sshfs: AbstractFileSystem, request: TrainingLaunchRequest) -> None:
         deadline = None if self.config.run_timeout_s is None else time.time() + self.config.run_timeout_s
-        output_sync = _PeriodicOutputSync(self, sshfs, request)
-        cluster_name = getattr(self, "_current_cluster_name", None)
+        output_sync = PeriodicSyncScheduler(self.config.output_sync_interval_s)
+        cluster_name = self._current_cluster_name
         while deadline is None or time.time() < deadline:
             if sshfs.exists(str(REMOTE_SIGNALS / "TRAIN_DONE")):
                 return
@@ -315,7 +303,11 @@ class SkyVastTrainingLauncher:
                 raise SkyVastTrainingError(f"Remote Sky/Vast training failed.\n{details}")
             if cluster_name and self._job_failed(cluster_name):
                 raise SkyVastTrainingError(f"Sky job failed before remote training result for {cluster_name!r}")
-            output_sync.maybe_sync()
+            def _periodic_output_sync() -> None:
+                print("[sky-vast] periodic output sync", flush=True)
+                self._copy_outputs(sshfs, request, label="periodic output")
+
+            output_sync.maybe_run(_periodic_output_sync, label="periodic output")
             time.sleep(self.config.poll_s)
         raise SkyVastTrainingError("Timed out waiting for remote Sky/Vast training result")
 
@@ -334,6 +326,12 @@ class SkyVastTrainingLauncher:
                 )
 
             self._retry_transport(_copy_output, label=f"copy {label} {remote_path}")
+
+    def _copy_failed_outputs_best_effort(self, sshfs: AbstractFileSystem, request: TrainingLaunchRequest) -> None:
+        try:
+            self._copy_outputs(sshfs, request, label="failed output")
+        except Exception:
+            logger.exception("Failed to copy Sky/Vast outputs after remote failure")
 
     def _read_remote_text(self, sshfs: AbstractFileSystem, path: str, *, label: str) -> str:
         def _read() -> str:

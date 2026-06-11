@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.helpers.training_smoke import (
+    assert_completed_training_status_with_manifest,
     assert_metrics_have_values,
     assert_model_artifact,
     assert_table_has_rows,
@@ -43,6 +44,7 @@ def test_yolov8_detection_training_smoke_cpu(tmp_path):
         "detection_model__model_path",
         "yolov8",
     )
+    assert_completed_training_status_with_manifest(runtime, "detection_training_status")
 
 
 @pytest.mark.torch
@@ -60,6 +62,7 @@ def test_yolov5_detection_training_smoke_cpu(tmp_path):
         "detection_model__model_path",
         "yolov5",
     )
+    assert_completed_training_status_with_manifest(runtime, "detection_training_status")
 
 
 @pytest.mark.torch

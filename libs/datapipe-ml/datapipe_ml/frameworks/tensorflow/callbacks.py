@@ -1,9 +1,10 @@
 import inspect
 import multiprocessing
-import os
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from pathy import Pathy
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
 
 from datapipe_ml.core.files import copy_url_to_url
@@ -56,8 +57,8 @@ class FsspecModelCheckpoint(Callback):
 
         # temp-директория на весь ран
         self._tmpdir = tempfile.TemporaryDirectory()
-        base_name = os.path.basename(self.remote_filepath_pattern)
-        self._local_pattern = os.path.join(self._tmpdir.name, base_name)
+        base_name = Pathy.fluid(self.remote_filepath_pattern).name
+        self._local_pattern = str(Path(self._tmpdir.name) / base_name)
 
         # Аккуратно прокидываем только поддерживаемые аргументы
         params = inspect.signature(ModelCheckpoint.__init__).parameters
@@ -112,16 +113,15 @@ class FsspecModelCheckpoint(Callback):
 
     # Внутреннее зеркалирование
     def _mirror_if_exists(self, epoch: int, logs: Optional[Dict[str, Any]]):
-        local_filename = _safe_format(os.path.basename(self._local_pattern), epoch, logs)
-        local_path = os.path.join(self._tmpdir.name, local_filename)
+        local_filename = _safe_format(Path(self._local_pattern).name, epoch, logs)
+        local_path = Path(self._tmpdir.name) / local_filename
 
-        if not os.path.exists(local_path):
+        if not local_path.exists():
             try:
-                candidates = [os.path.join(self._tmpdir.name, f) for f in os.listdir(self._tmpdir.name)]
-                candidates = [p for p in candidates if os.path.isfile(p)]
+                candidates = [path for path in Path(self._tmpdir.name).iterdir() if path.is_file()]
                 if not candidates:
                     return
-                local_path = max(candidates, key=os.path.getmtime)
+                local_path = max(candidates, key=lambda path: path.stat().st_mtime)
             except Exception:
                 return
 
@@ -134,8 +134,8 @@ class FsspecModelCheckpoint(Callback):
             print(f"FsspecModelCheckpoint: mirroring '{local_path}' -> '{remote_url}'")
 
         if self._async_ok:
-            p = multiprocessing.Process(target=_copy_file_fsspec, args=(local_path, remote_url, self._chunk_bytes))
+            p = multiprocessing.Process(target=_copy_file_fsspec, args=(str(local_path), remote_url, self._chunk_bytes))
             p.start()
             self._copy_processes.append(p)
         else:
-            _copy_file_fsspec(local_path, remote_url, self._chunk_bytes)
+            _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)

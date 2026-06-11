@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.helpers.training_smoke import (
+    assert_completed_training_status_with_manifest,
     assert_metrics_have_values,
     assert_model_artifact,
     assert_table_has_rows,
@@ -20,6 +21,7 @@ from tests.helpers.training_smoke import (
 @pytest.mark.slow
 @pytest.mark.training
 def test_tensorflow_classification_training_smoke_cpu(tmp_path):
+    pytest.importorskip("tensorflow")
     runtime = make_runtime(tmp_path, include_classification_gt=True)
     run_pipeline(runtime, [classification_freeze_step(tmp_path), classification_train_step(tmp_path)])
 
@@ -30,6 +32,7 @@ def test_tensorflow_classification_training_smoke_cpu(tmp_path):
         "classification_model__model_path",
         "tf.keras",
     )
+    assert_completed_training_status_with_manifest(runtime, "classification_training_status")
 
 
 @pytest.mark.tensorflow
@@ -37,6 +40,7 @@ def test_tensorflow_classification_training_smoke_cpu(tmp_path):
 @pytest.mark.slow
 @pytest.mark.training
 def test_classification_inference_smoke_cpu(tmp_path):
+    pytest.importorskip("tensorflow")
     runtime = make_runtime(tmp_path, include_classification_gt=True)
     run_pipeline(
         runtime,
@@ -56,6 +60,7 @@ def test_classification_inference_smoke_cpu(tmp_path):
 @pytest.mark.training
 @pytest.mark.e2e
 def test_classification_pipeline_e2e_smoke_cpu(tmp_path):
+    pytest.importorskip("tensorflow")
     runtime = make_runtime(tmp_path, include_classification_gt=True)
     run_pipeline(
         runtime,

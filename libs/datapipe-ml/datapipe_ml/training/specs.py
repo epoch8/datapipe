@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
 import pandas as pd
 from datapipe.datatable import DataTable
@@ -63,6 +63,23 @@ class TrainingLaunchRequest:
             output_dirs=tuple((item.local, item.remote) for item in outputs),
             path_rewrites=tuple((item.local, item.remote) for item in (*inputs, *outputs)) + extra_path_rewrites,
         )
+
+
+@dataclass
+class TrainingSyncConfig:
+    enabled: bool = False
+    interval_s: Optional[int] = 600
+    retries: int = 3
+    retry_sleep_s: int = 30
+
+
+@dataclass
+class TrainingResumeConfig:
+    continue_train_failed_models: bool = False
+    min_completed_epochs: int = 1
+    checkpoint: Literal["last", "best", "latest_epoch"] = "last"
+    max_attempts: int = 3
+    reset_attempts_after: Optional[str] = "1d"
 
 
 class TrainingLauncher(Protocol):
@@ -133,6 +150,7 @@ class TrainContext:
     # data tables (polymorphic naming)
     dt__model: DataTable
     dt__link: DataTable  # "is_trained_on_*"
+    dt__training_status: DataTable
     dt__frozen_dataset: DataTable
     dt__frozen_dataset__has__image_gt: Optional[DataTable]
     dt__train_config: DataTable
@@ -141,12 +159,15 @@ class TrainContext:
     model_id__name: str
     frozen_dataset_id__name: str
     training_launcher_config: Optional[TrainingLauncherConfig] = field(default=None, kw_only=True)
+    sync_config: Optional[TrainingSyncConfig] = field(default=None, kw_only=True)
+    resume_config: Optional[TrainingResumeConfig] = field(default=None, kw_only=True)
 
 
 @dataclass
 class TrainOutputs:
     df__model: pd.DataFrame
     df__link: pd.DataFrame
+    df__training_status: pd.DataFrame
 
 
 # ---- Algo interface ----
@@ -196,34 +217,36 @@ class Algo(ABC):
 
     @abstractmethod
     def select_best(self, raw_result: Any, idx: IndexDF) -> Dict[str, Any]:
-        """
-        Return dict with keys:
-          - model_path
-          - class_names
-          - score_threshold
-        plus anything else you want.
-        """
+        """Return model artifact metadata produced by launch_training."""
         ...
 
+    @abstractmethod
     def build_model_row(
         self, ctx: TrainContext, idx: IndexDF, model_id: str, best: Dict[str, Any], train_params: Dict[str, Any]
     ) -> pd.DataFrame:
         """Compose a single-row DataFrame for the model table."""
-        from pandas import DataFrame
+        ...
 
-        prefix = self.model_row_prefix
-        row = {
-            **{k: idx.loc[0][k] for k in ctx.model_other_primary_keys},
-            ctx.model_id__name: model_id,
-            f"{prefix}__input_size": self._input_size_from_params(train_params),
-            f"{prefix}__score_threshold": float(best.get("score_threshold", 0.45)),
-            f"{prefix}__model_path": best["model_path"],
-            f"{prefix}__type": best.get("type_name", "model"),
-            f"{prefix}__class_names": best["class_names"],
-        }
-        for column_name, metric_name in self.extra_model_metric_map.items():
-            row[f"{prefix}__{column_name}"] = best.get("metrics", {}).get(metric_name)
-        return DataFrame([row])
+    def run_dir_from_model_id(self, ctx: TrainContext, model_id: str) -> str:
+        from pathy import Pathy
+
+        return str(Pathy.fluid(ctx.models_dir) / model_id)
+
+    def run_dir_from_model_path(self, model_path: str) -> str:
+        from pathy import Pathy
+
+        return str(Pathy.fluid(model_path).parent)
+
+    def collect_checkpoint_paths(self, raw_result: Any) -> List[str]:
+        return []
+
+    def apply_resume_checkpoint(
+        self,
+        ctx: TrainContext,
+        train_params: Dict[str, Any],
+        checkpoint_path: Optional[str],
+    ) -> Dict[str, Any]:
+        return dict(train_params)
 
     def build_link_row(
         self, ctx: TrainContext, idx: IndexDF, model_id: str, train_config_id: str, train_params: Dict[str, Any]
@@ -239,17 +262,3 @@ class Algo(ABC):
             self.train_params_col: train_params,
         }
         return DataFrame([row])
-
-    # ---- helpers used by defaults ----
-    def _input_size_from_params(self, train_params: Dict[str, Any]) -> Tuple[int, int]:
-        # Override if needed per algo
-        imgsz = train_params.get("imgsz")
-        if isinstance(imgsz, int):
-            return (imgsz, imgsz)
-        if isinstance(imgsz, (tuple, list)) and len(imgsz) == 2:
-            return tuple(imgsz)  # type: ignore
-        # TF classification:
-        image_size = train_params.get("image_size")
-        if isinstance(image_size, (tuple, list)) and len(image_size) == 2:
-            return tuple(image_size)  # type: ignore
-        raise ValueError("Cannot infer input size from training params.")

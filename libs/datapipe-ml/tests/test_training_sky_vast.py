@@ -24,6 +24,7 @@ from datapipe_ml.training.specs import (
     TrainingLaunchRequest,
     build_training_launcher,
 )
+from tests.helpers.training_smoke import assert_yolov8_training_artifacts
 
 pytestmark = [pytest.mark.slow, pytest.mark.training]
 
@@ -526,18 +527,6 @@ def _run_with_accelerator_candidates(
     pytest.skip("No configured Sky/Vast accelerator candidate was currently available:\n" + "\n".join(resource_errors))
 
 
-def _assert_local_yolov8_training_files(runtime) -> None:
-    df_model = runtime.ds.get_table("detection_model").get_data()
-    model_path = Path(df_model["detection_model__model_path"].iloc[0]).resolve()
-    workdir = runtime.workdir.resolve()
-    assert model_path.is_relative_to(workdir)
-    assert model_path.is_file()
-    assert model_path.stat().st_size > 0
-    args_path = model_path.parent.parent / "args.yaml"
-    assert args_path.is_file()
-    assert args_path.stat().st_size > 0
-
-
 def test_sky_vast_config_builds_launcher_without_credentials():
     config = SkyVastTrainingLauncherConfig(cluster_name="test-sky-vast")
     launcher = build_training_launcher(config)
@@ -591,6 +580,27 @@ def test_sky_vast_wait_result_fails_when_sky_job_failed():
         launcher._wait_for_result(EmptySignalFS(), TrainingLaunchRequest(target=str, args=(), cluster_suffix="worker"))  # type: ignore[arg-type]
 
 
+def test_sky_vast_failed_output_copy_is_best_effort():
+    from datapipe_ml.training.sky_vast.launcher import SkyVastTrainingLauncher
+
+    launcher = SkyVastTrainingLauncher(SkyVastTrainingLauncherConfig(cluster_name="unit"))
+    calls = {"count": 0}
+
+    def fail_copy_outputs(sshfs, request, *, label="output"):  # noqa: ANN001
+        calls["count"] += 1
+        assert label == "failed output"
+        raise RuntimeError("copy failed")
+
+    launcher._copy_outputs = fail_copy_outputs  # type: ignore[method-assign]
+
+    launcher._copy_failed_outputs_best_effort(
+        object(),  # type: ignore[arg-type]
+        TrainingLaunchRequest(target=str, args=(), cluster_suffix="worker"),
+    )
+
+    assert calls["count"] == 1
+
+
 def test_sky_vast_remote_request_rewrites_paths(tmp_path):
     local_data_dir = tmp_path / "data"
     request = TrainingLaunchRequest(
@@ -618,10 +628,8 @@ def test_sky_vast_rewrites_remote_results_back_to_local_paths(tmp_path):
 def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
     import fsspec
 
-    from datapipe_ml.training.sky_vast.launcher import (
-        SkyVastTrainingLauncher,
-        _PeriodicOutputSync,
-    )
+    from datapipe_ml.training.sky_vast.launcher import SkyVastTrainingLauncher
+    from datapipe_ml.training.sync import PeriodicSyncScheduler
 
     sshfs = fsspec.filesystem("memory")
     remote_model_path = "/workspace/datapipe_ml/output/models/run/weights/best.pt"
@@ -638,9 +646,12 @@ def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
     )
     launcher = SkyVastTrainingLauncher(SkyVastTrainingLauncherConfig(cluster_name="unit", output_sync_interval_s=600))
 
-    output_sync = _PeriodicOutputSync(launcher, sshfs, request)
+    output_sync = PeriodicSyncScheduler(launcher.config.output_sync_interval_s)
     output_sync._next_sync_at = 0
-    output_sync.maybe_sync()
+    output_sync.maybe_run(
+        lambda: launcher._copy_outputs(sshfs, request, label="periodic output"),
+        label="periodic output",
+    )
 
     assert (local_models_dir / "run" / "weights" / "best.pt").read_bytes() == b"checkpoint"
 
@@ -765,6 +776,6 @@ def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment
             "detection_model__model_path",
             "yolov8",
         )
-        _assert_local_yolov8_training_files(runtime)
+        assert_yolov8_training_artifacts(runtime)
 
     _run_with_accelerator_candidates(tmp_path, _run)

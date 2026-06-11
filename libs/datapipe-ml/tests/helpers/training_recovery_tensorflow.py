@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+import pytest
+from datapipe.types import IndexDF
+
+from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
+from datapipe_ml.tasks.classification.train.tensorflow import (
+    Train_Tensorflow_ClassificationModel,
+    train_tf_classification_model,
+)
+from tests.helpers.training_recovery import (
+    RealRecoveryCase,
+    RecoveryTrainStep,
+    SmokeRuntime,
+    StepConfigureFn,
+    TrainKwargsFn,
+    _shared_train_runtime_kwargs,
+    configure_recovery_steps,
+    direct_train_kwargs,
+    make_runtime,
+)
+from tests.helpers.training_smoke import classification_freeze_step, classification_train_step
+
+
+def _configure_tf_configs(configs: list[TF_ClassificationTrainingConfig], epochs: int) -> None:
+    for config in configs:
+        config.epochs = epochs
+        config.early_stopping_patience = epochs
+
+
+def _configure_tf_step(step: RecoveryTrainStep, epochs: int) -> None:
+    assert isinstance(step, Train_Tensorflow_ClassificationModel)
+    _configure_tf_configs(step.tf_classification_train_configs, epochs)
+    step.clean_checkpoints_after_train = False
+
+
+def tensorflow_step_configure() -> dict[type, StepConfigureFn]:
+    return {Train_Tensorflow_ClassificationModel: _configure_tf_step}
+
+
+def _tf_train_kwargs(runtime: SmokeRuntime, case: RealRecoveryCase, step: RecoveryTrainStep) -> dict[str, object]:
+    assert isinstance(step, Train_Tensorflow_ClassificationModel)
+    kwargs = dict(_shared_train_runtime_kwargs(runtime, case, step))
+    kwargs.update(
+        dict(
+            dt__classification_model=runtime.ds.get_table(case.model_table),
+            dt__classification_model_is_trained_on_cls_frozen_dataset=runtime.ds.get_table("classification_model_link"),
+            classification_model_other_primary_keys=list(),
+            classification_model_id__name="classification_model_id",
+            classification_frozen_dataset_id__name="classification_frozen_dataset_id",
+            clean_checkpoints_after_train=step.clean_checkpoints_after_train,
+        )
+    )
+    return kwargs
+
+
+def tensorflow_train_kwargs_builders() -> dict[type, TrainKwargsFn]:
+    return {Train_Tensorflow_ClassificationModel: _tf_train_kwargs}
+
+
+def real_recovery_tensorflow_cases() -> list:
+    return [
+        pytest.param(
+            RealRecoveryCase(
+                id="tensorflow_classification",
+                mode="classification",
+                status_table="classification_training_status",
+                model_table="classification_model",
+                model_id_column="classification_model_id",
+                models_subdir="models",
+                make_runtime_kwargs=dict(include_classification_gt=True),
+                steps_factory=lambda workdir: [classification_freeze_step(workdir), classification_train_step(workdir)],
+                train_fn=train_tf_classification_model,
+                input_tables=("classification_frozen_dataset", "tf_classification_train_config"),
+            ),
+            id="tensorflow_classification",
+        ),
+    ]
+
+
+def make_recovery_runtime(tmp_path: Path, case: RealRecoveryCase) -> tuple[SmokeRuntime, list]:
+    runtime = make_runtime(tmp_path, **case.make_runtime_kwargs)
+    steps = configure_recovery_steps(
+        case.steps_factory(tmp_path),
+        extra_configure=tensorflow_step_configure(),
+    )
+    return runtime, steps
+
+
+def invoke_real_train_callable_for_backfill(
+    runtime: SmokeRuntime,
+    case: RealRecoveryCase,
+    step: RecoveryTrainStep,
+) -> None:
+    idx = IndexDF(pd.DataFrame([{}]))
+    input_dts = [runtime.ds.get_table(name) for name in case.input_tables]
+    case.train_fn(
+        runtime.ds,
+        idx,
+        input_dts,
+        kwargs=direct_train_kwargs(runtime, case, step, extra_builders=tensorflow_train_kwargs_builders()),
+    )

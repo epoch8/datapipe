@@ -29,12 +29,7 @@ class _DatatableMetaLike(Protocol):
 
 
 def _get_datatable_meta(dt: DataTable) -> _DatatableMetaLike:
-    meta = getattr(dt, "meta", None)
-    if meta is None:
-        meta = getattr(dt, "meta_table", None)
-    if meta is None:
-        raise AttributeError(f"DataTable {dt.name!r} has neither 'meta' nor 'meta_table'")
-    return cast(_DatatableMetaLike, meta)
+    return dt.meta
 
 
 def get_pipeline_table_name(table: PipelineInput | PipelineOutput) -> str:

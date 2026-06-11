@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, cast
 
 import pandas as pd
 from datapipe.datatable import DataTable
@@ -17,8 +17,14 @@ from datapipe_ml.training.specs import (
     TrainContext,
     TrainingLaunchRequest,
     TrainingPathMap,
+    TrainingResumeConfig,
+    TrainingSyncConfig,
     build_training_launcher,
 )
+
+if TYPE_CHECKING:
+    from datapipe_ml.frameworks.yolo.yolov5.runner import TrainModelResult as YoloV5TrainModelResult
+    from datapipe_ml.frameworks.yolo.yolov8.runner import TrainModelResult as YoloV8TrainModelResult
 
 
 def get_best_models(df_models: pd.DataFrame, model_id_column: str) -> pd.DataFrame:
@@ -51,7 +57,6 @@ class YoloPreparedData(PreparedData):
 
 @dataclass
 class YoloTrainContext(TrainContext):
-    save_checkpoints_to_cloud: bool
     dt__class_names: DataTable
     dt__resized_image_file: DataTable
     dt__yolo_txt: DataTable
@@ -70,12 +75,14 @@ class YoloTrainRuntimeConfig:
     model_suffix: str
     dt__model: DataTable
     dt__link: DataTable
+    dt__training_status: DataTable
     model_other_primary_keys: List[str]
     model_id__name: str
     frozen_dataset_id__name: str
-    save_checkpoints_to_cloud: bool
     ignore_errors_sample_sizes: bool
     training_launcher_config: Any = None
+    sync_config: Optional[TrainingSyncConfig] = None
+    resume_config: Optional[TrainingResumeConfig] = None
     extra_class_names_to_yaml_fields: List[str] = field(default_factory=list)
 
     @classmethod
@@ -96,12 +103,14 @@ class YoloTrainRuntimeConfig:
             model_suffix=kwargs["model_suffix"],
             dt__model=kwargs[model_table_key],
             dt__link=kwargs[link_table_key],
+            dt__training_status=kwargs["dt__training_status"],
             model_other_primary_keys=kwargs[model_other_primary_keys_key],
             model_id__name=kwargs[model_id_key],
             frozen_dataset_id__name=kwargs[frozen_dataset_id_key],
-            save_checkpoints_to_cloud=kwargs["save_checkpoints_to_cloud"],
             ignore_errors_sample_sizes=kwargs["ignore_errors_sample_sizes"],
             training_launcher_config=kwargs.get("training_launcher_config"),
+            sync_config=kwargs.get("sync_config"),
+            resume_config=kwargs.get("resume_config"),
             extra_class_names_to_yaml_fields=kwargs.get("extra_class_names_to_yaml_fields", []),
         )
 
@@ -123,19 +132,21 @@ class YoloTrainRuntimeConfig:
             model_suffix=self.model_suffix,
             dt__model=self.dt__model,
             dt__link=self.dt__link,
+            dt__training_status=self.dt__training_status,
             dt__frozen_dataset=dt__frozen_dataset,
             dt__frozen_dataset__has__image_gt=None,
             dt__train_config=dt__train_config,
             model_other_primary_keys=self.model_other_primary_keys,
             model_id__name=self.model_id__name,
             frozen_dataset_id__name=self.frozen_dataset_id__name,
-            save_checkpoints_to_cloud=self.save_checkpoints_to_cloud,
             dt__class_names=dt__class_names,
             dt__resized_image_file=dt__resized_image_file,
             dt__yolo_txt=dt__yolo_txt,
             ignore_errors_sample_sizes=self.ignore_errors_sample_sizes,
             extra_class_names_to_yaml_fields=self.extra_class_names_to_yaml_fields,
             training_launcher_config=self.training_launcher_config,
+            sync_config=self.sync_config,
+            resume_config=self.resume_config,
             **extra_fields,
         )
 
@@ -264,12 +275,27 @@ class YoloBaseAlgo(Algo):
         cfg.name = model_id
         return cfg
 
+    def apply_resume_checkpoint(
+        self,
+        ctx: TrainContext,
+        train_params: Dict[str, Any],
+        checkpoint_path: Optional[str],
+    ) -> Dict[str, Any]:
+        params = dict(train_params)
+        if checkpoint_path is None:
+            return params
+        params["initial_weights_path"] = checkpoint_path
+        params["resume"] = True
+        params["exist_ok"] = True
+        params["save_period"] = max(1, int(params.get("save_period", -1)))
+        return params
+
     def launch_training(
         self, ctx: TrainContext, idx: IndexDF, model_id: str, train_params: Dict[str, Any], data: PreparedData
     ) -> Any:
         """
         Default launcher for YOLOv8-style train_process:
-        train_process(queue, cfg, objects_count, class_names, image_filepaths, yolo_txt_filepaths, save_checkpoints_to_cloud, task)
+        train_process(queue, cfg, objects_count, class_names, image_filepaths, yolo_txt_filepaths, sync_config, task)
         Subclasses can override for YOLOv5.
         """
         d = cast(YoloPreparedData, data)
@@ -286,7 +312,7 @@ class YoloBaseAlgo(Algo):
                     d.class_names,
                     d.image_filepaths,
                     d.yolo_txt_filepaths,
-                    yctx.save_checkpoints_to_cloud,
+                    yctx.sync_config,
                     self.task,
                 ),
                 cluster_suffix=model_id,
@@ -294,6 +320,46 @@ class YoloBaseAlgo(Algo):
                 outputs=(TrainingPathMap(str(yctx.models_dir), "/workspace/datapipe_ml/output/models"),),
             )
         )
+
+    def run_dir_from_model_path(self, model_path: str) -> str:
+        return str(Pathy.fluid(model_path).parent.parent)
+
+    def collect_checkpoint_paths(
+        self,
+        raw_result: "YoloV5TrainModelResult | YoloV8TrainModelResult",
+    ) -> List[str]:
+        if raw_result.training_results is None:
+            return []
+        return sorted({str(item.model_path) for item in raw_result.training_results if item.model_path})
+
+    @staticmethod
+    def _input_size_from_params(train_params: Dict[str, Any]) -> Tuple[int, int]:
+        imgsz = train_params.get("imgsz")
+        if isinstance(imgsz, int):
+            return (imgsz, imgsz)
+        if isinstance(imgsz, (tuple, list)) and len(imgsz) == 2:
+            return tuple(imgsz)  # type: ignore[return-value]
+        raise ValueError("Cannot infer YOLO input size from training params.")
+
+    def build_model_row(
+        self,
+        ctx: TrainContext,
+        idx: IndexDF,
+        model_id: str,
+        best: Dict[str, Any],
+        train_params: Dict[str, Any],
+    ) -> pd.DataFrame:
+        prefix = self.model_row_prefix
+        row: dict[str, Any] = {k: idx.loc[0][k] for k in ctx.model_other_primary_keys}
+        row[ctx.model_id__name] = model_id
+        row[f"{prefix}__input_size"] = self._input_size_from_params(train_params)
+        row[f"{prefix}__score_threshold"] = float(best.get("score_threshold", 0.45))
+        row[f"{prefix}__model_path"] = best["model_path"]
+        row[f"{prefix}__type"] = best.get("type_name", "model")
+        row[f"{prefix}__class_names"] = best["class_names"]
+        for column_name, metric_name in self.extra_model_metric_map.items():
+            row[f"{prefix}__{column_name}"] = best.get("metrics", {}).get(metric_name)
+        return pd.DataFrame([row])
 
     # ---------- Common "select best" ----------
     def select_best(self, raw_result: Any, idx: IndexDF) -> Dict[str, Any]:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+import fsspec
 from datapipe.compute import (
     Catalog,
     Pipeline,
@@ -36,8 +37,21 @@ SMOKE_IMAGES = 8
 SMOKE_EPOCHS = int(os.environ.get("DATAPIPE_ML_SMOKE_EPOCHS", "2"))
 SMOKE_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_IMGSZ", "16"))
 SMOKE_YOLOV5_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_YOLOV5_IMGSZ", str(max(64, SMOKE_IMGSZ))))
-SMOKE_DEVICE = os.environ.get("DATAPIPE_ML_SMOKE_DEVICE")
 PRIMARY_KEYS = ["image_id"]
+
+
+def _default_smoke_device() -> str | None:
+    env_device = os.environ.get("DATAPIPE_ML_SMOKE_DEVICE")
+    if env_device is not None:
+        return env_device
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    return None if torch.cuda.is_available() else "cpu"
+
+
+SMOKE_DEVICE = _default_smoke_device()
 
 
 @dataclass
@@ -45,6 +59,20 @@ class SmokeRuntime:
     ds: DataStore
     catalog: Catalog
     workdir: Path
+
+
+def assert_yolov8_training_artifacts(runtime: SmokeRuntime) -> None:
+    df_model = runtime.ds.get_table("detection_model").get_data()
+    model_path = str(df_model["detection_model__model_path"].iloc[0])
+    fs, stripped_model_path = fsspec.core.url_to_fs(model_path)
+    assert fs.isfile(stripped_model_path)
+    assert int(fs.info(stripped_model_path).get("size") or 0) > 0
+    args_path = str(Path(stripped_model_path).parent.parent / "args.yaml")
+    assert fs.isfile(args_path)
+    assert int(fs.info(args_path).get("size") or 0) > 0
+    protocol, _ = fsspec.core.split_protocol(model_path)
+    if protocol in [None, "file"]:
+        assert Path(stripped_model_path).resolve().is_relative_to(runtime.workdir.resolve())
 
 
 def ensure_input_data(*, include_keypoints_gt: bool = False) -> None:
@@ -253,6 +281,25 @@ def assert_model_artifact(
     assert Path(df_model[path_column].iloc[0]).exists()
 
 
+def assert_completed_training_status_with_manifest(runtime: SmokeRuntime, table_name: str) -> pd.DataFrame:
+    from datapipe_ml.training.sync import read_checkpoint_manifest, verify_manifest_checkpoint
+
+    df_status = runtime.ds.get_table(table_name).get_data()
+    assert len(df_status) > 0
+    completed = df_status[df_status["training_status__status"] == "completed"]
+    assert len(completed) == 1
+    row = completed.iloc[0]
+    manifest_path = row["training_status__manifest_path"]
+    assert isinstance(manifest_path, str) and manifest_path
+
+    manifest = read_checkpoint_manifest(manifest_path)
+    assert manifest is not None
+    assert manifest.checkpoints
+    assert all(item.complete for item in manifest.checkpoints)
+    assert all(verify_manifest_checkpoint(item) for item in manifest.checkpoints)
+    return df_status
+
+
 def assert_table_has_rows(runtime: SmokeRuntime, table_name: str) -> pd.DataFrame:
     df = runtime.ds.get_table(table_name).get_data()
     assert len(df) > 0
@@ -366,6 +413,7 @@ def detection_train_step(workdir: Path):
         output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
         output__detection_model="detection_model",
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        output__training_status="detection_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
@@ -423,6 +471,7 @@ def detection_train_step_with_local_checkpoint(workdir: Path, preset: str = "yol
         output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
         output__detection_model="detection_model",
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        output__training_status="detection_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
@@ -449,6 +498,7 @@ def detection_train_step_with_augmentations(workdir: Path):
         output__detection_frozen_dataset__class_names="yolov8_detection_class_names",
         output__detection_model="detection_model",
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        output__training_status="detection_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
@@ -499,6 +549,7 @@ def detection_yolov5_train_step(workdir: Path):
         output__detection_frozen_dataset__class_names="yolov5_detection_class_names",
         output__detection_model="detection_model",
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        output__training_status="detection_training_status",
         working_dir=str(workdir),
         yolov5_train_configs=[
             YoloV5_TrainingConfig(
@@ -539,6 +590,7 @@ def detection_yolov5_train_step_with_augmentations(workdir: Path):
         output__detection_frozen_dataset__class_names="yolov5_detection_class_names",
         output__detection_model="detection_model",
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
+        output__training_status="detection_training_status",
         working_dir=str(workdir),
         yolov5_train_configs=[
             YoloV5_TrainingConfig(
@@ -633,6 +685,7 @@ def segmentation_train_step(workdir: Path):
         output__segmentation_frozen_dataset__yolo_txt="segmentation_yolo_txt",
         output__segmentation_model="segmentation_model",
         output__segm_model_is_trained_on_segm_frozen_dataset="segmentation_model_link",
+        output__training_status="segmentation_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
@@ -673,6 +726,7 @@ def segmentation_train_step_with_local_checkpoint(workdir: Path, preset: str = "
         output__segmentation_frozen_dataset__yolo_txt="segmentation_yolo_txt",
         output__segmentation_model="segmentation_model",
         output__segm_model_is_trained_on_segm_frozen_dataset="segmentation_model_link",
+        output__training_status="segmentation_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
@@ -732,6 +786,7 @@ def keypoints_train_step(workdir: Path):
         output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
         output__keypoints_model="keypoints_model",
         output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
+        output__training_status="keypoints_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
@@ -774,6 +829,7 @@ def keypoints_train_step_with_local_checkpoint(workdir: Path, preset: str = "yol
         output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
         output__keypoints_model="keypoints_model",
         output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
+        output__training_status="keypoints_training_status",
         working_dir=str(workdir),
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
@@ -847,6 +903,7 @@ def classification_train_step(workdir: Path):
         output__tf_classification_train_config="tf_classification_train_config",
         output__classification_model="classification_model",
         output__classification_model_is_trained_on_cls_frozen_dataset="classification_model_link",
+        output__training_status="classification_training_status",
         working_dir=str(workdir),
         tf_classification_train_configs=[
             TF_ClassificationTrainingConfig(

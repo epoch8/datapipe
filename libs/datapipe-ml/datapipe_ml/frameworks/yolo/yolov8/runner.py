@@ -22,6 +22,8 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     yolo_select_last_exp,
     yolo_write_data_yaml_if_needed,
 )
+from datapipe_ml.training.specs import TrainingSyncConfig
+from datapipe_ml.training.sync import PeriodicTrainingSync
 
 logger = logging.getLogger("datapipe.ml.yolov8.script")
 os.environ["WANDB_DISABLED"] = "true"
@@ -297,7 +299,7 @@ def train_model(
     class_names_in: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
-    save_checkpoints_to_cloud: bool,
+    sync_config: Optional[TrainingSyncConfig],
     task: Literal["detect", "segment", "pose"],
 ) -> Optional[Union[List[TrainingSegmentationResult], List[TrainingResult], List[TrainingKeypointsResult]]]:
 
@@ -328,9 +330,6 @@ def train_model(
         coco_txt_filepaths=coco_txt_filepaths,
     )
 
-    if save_checkpoints_to_cloud and src_project_path is not None:
-        os.environ["YOLOV8__SAVE_WEIGHTS_DIRECTORY"] = str(src_project_path)
-
     class_names, tmp_yaml_path = yolo_write_data_yaml_if_needed(yolov8_training_config)
     if not class_names and isinstance(yolov8_training_config.data, str):
         try:
@@ -340,11 +339,26 @@ def train_model(
             class_names = []
 
     logger.info("yolov8_training_config=%s", yolov8_training_config)
-    model = ultralytics.YOLO(yolov8_training_config.model)
-    logger.info("Train %s model", yolov8_training_config.model)
-    _ = model.train(**yolov8_training_config.to_yolo_kwargs())
-    metrics = getattr(getattr(model, "trainer", None), "validator", None)
-    metrics = getattr(metrics, "metrics", None)
+    output_sync = None
+    if sync_config is not None and sync_config.enabled:
+        output_sync = PeriodicTrainingSync(
+            src=str(tmp_dir_project or yolov8_training_config.project),
+            dst=str(src_project_path or yolov8_training_config.project),
+            config=sync_config,
+            model_id=yolov8_training_config.name,
+        )
+    if output_sync is None:
+        model = ultralytics.YOLO(yolov8_training_config.model)
+        logger.info("Train %s model", yolov8_training_config.model)
+        _ = model.train(**yolov8_training_config.to_yolo_kwargs())
+    else:
+        with output_sync:
+            model = ultralytics.YOLO(yolov8_training_config.model)
+            logger.info("Train %s model", yolov8_training_config.model)
+            _ = model.train(**yolov8_training_config.to_yolo_kwargs())
+    trainer = model.trainer
+    validator = trainer.validator if trainer is not None else None
+    metrics = validator.metrics if validator is not None else None
 
     exp_folder = yolo_select_last_exp(yolov8_training_config.project, yolov8_training_config.name)
     if exp_folder is None:
@@ -500,7 +514,7 @@ def train_process(
     class_names: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
-    save_checkpoints_to_cloud: bool,
+    sync_config: Optional[TrainingSyncConfig],
     task: Literal["detect", "segment", "pose"],
 ):
     training_results = None
@@ -512,7 +526,7 @@ def train_process(
             class_names_in=class_names,
             image_filepaths=image_filepaths,
             coco_txt_filepaths=coco_txt_filepaths,
-            save_checkpoints_to_cloud=save_checkpoints_to_cloud,
+            sync_config=sync_config,
             task=task,
         )
     except Exception as e:

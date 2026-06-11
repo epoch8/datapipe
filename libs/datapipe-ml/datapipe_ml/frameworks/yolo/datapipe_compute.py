@@ -24,6 +24,7 @@ from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable
 from datapipe_ml.frameworks.yolo.dataset import get_size_for_resize
+from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 
 
 @dataclass
@@ -135,6 +136,7 @@ def _build_yolo_pipeline_steps(
     output__frozen_dataset__yolo_txt: str,
     output__model: str,
     output__model_is_trained_on_frozen_dataset: str,
+    output__training_status: str,
     working_dir: str,
     primary_keys: List[str],
     model_other_primary_keys: List[str],
@@ -146,13 +148,14 @@ def _build_yolo_pipeline_steps(
     prepare_data_executor_config: Optional[ExecutorConfig],
     resize_images: bool,
     max_within_time: str,
-    save_checkpoints_to_cloud: bool,
     tmp_folder: str,
     model_suffix: str,
     ignore_errors_sample_sizes: bool,
     mode: YoloModeSpec,
     train_configs_list: Dict[str, Any],
     training_launcher_config: Optional[Any],
+    sync_config: Optional[TrainingSyncConfig],
+    resume_config: Optional[TrainingResumeConfig],
     extra_train_kwargs: Optional[Dict[str, Any]],
 ) -> List[PipelineStep]:
     return [
@@ -229,6 +232,7 @@ def _build_yolo_pipeline_steps(
             outputs=[
                 output__model,
                 output__model_is_trained_on_frozen_dataset,
+                output__training_status,
             ],
             transform_keys=model_other_primary_keys + [frozen_dataset_id__name, mode.train_config_id_col],
             chunk_size=1,
@@ -247,7 +251,7 @@ def _build_yolo_pipeline_steps(
                 dt__keypoints_model_is_trained_on_keypoints_frozen_dataset=get_datatable(ds, 
                     output__model_is_trained_on_frozen_dataset
                 ),
-                save_checkpoints_to_cloud=save_checkpoints_to_cloud,
+                dt__training_status=get_datatable(ds, output__training_status),
                 detection_model_other_primary_keys=model_other_primary_keys,
                 segmentation_model_other_primary_keys=model_other_primary_keys,
                 keypoints_model_other_primary_keys=model_other_primary_keys,
@@ -262,6 +266,8 @@ def _build_yolo_pipeline_steps(
                 ignore_errors_sample_sizes=ignore_errors_sample_sizes,
                 model_suffix=model_suffix,
                 training_launcher_config=training_launcher_config,
+                sync_config=sync_config,
+                resume_config=resume_config,
                 **(extra_train_kwargs or {}),
             ),
             labels=labels,
@@ -280,6 +286,7 @@ def _register_yolo_tables(
     output__frozen_dataset__yolo_txt: str,
     output__model: str,
     output__model_is_trained_on_frozen_dataset: str,
+    output__training_status: str,
     working_dir: str,
     primary_keys: List[str],
     model_other_primary_keys: List[str],
@@ -450,6 +457,43 @@ def _register_yolo_tables(
             ).table_store
         ),
     )
+    catalog.add_datatable(
+        output__training_status,
+        Table(
+            ds.get_or_create_table(
+                output__training_status,
+                TableStoreDB(
+                    dbconn=ds.meta_dbconn,
+                    name=output__training_status,
+                    data_sql_schema=[
+                        Column("training_status_id", String, primary_key=True),
+                        Column("training_status__run_key", String),
+                        Column("training_status__launcher_type", String),
+                        Column("training_status__launcher_config", JSON),
+                        Column("training_status__launcher_state", JSON),
+                    ]
+                    + model_primary_columns[:-1]
+                    + [
+                        Column(frozen_dataset_id__name, String),
+                        Column(mode.train_config_id_col, String),
+                        Column(model_primary_columns[-1].name, String),
+                        Column("training_status__models_dir", String),
+                        Column("training_status__run_dir", String),
+                        Column("training_status__status", String),
+                        Column("training_status__started_at", String),
+                        Column("training_status__finished_at", String),
+                        Column("training_status__attempt", Integer),
+                        Column("training_status__manifest_path", String),
+                        Column("training_status__error", String),
+                        Column("training_status__owner_id", String),
+                        Column("training_status__heartbeat_at", String),
+                        Column("training_status__lease_expires_at", String),
+                    ],
+                    create_table=create_table,
+                ),
+            ).table_store
+        ),
+    )
 
 
 def build_yolo_compute(
@@ -466,6 +510,7 @@ def build_yolo_compute(
     output__frozen_dataset__yolo_txt: str,
     output__model: str,
     output__model_is_trained_on_frozen_dataset: str,
+    output__training_status: str,
     working_dir: str,
     primary_keys: List[str],
     model_primary_keys: Optional[List[str]],
@@ -480,13 +525,14 @@ def build_yolo_compute(
     prepare_data_executor_config: Optional[ExecutorConfig],
     resize_images: bool,
     max_within_time: str,
-    save_checkpoints_to_cloud: bool,
     tmp_folder: str,
     model_suffix: str,
     ignore_errors_sample_sizes: bool = False,
     mode: YoloModeSpec,
     train_configs_list: Dict[str, Any],
     training_launcher_config: Optional[Any] = None,
+    sync_config: Optional[TrainingSyncConfig] = None,
+    resume_config: Optional[TrainingResumeConfig] = None,
     extra_train_kwargs: Optional[Dict[str, Any]] = None,
 ) -> List[ComputeStep]:
     """
@@ -523,6 +569,7 @@ def build_yolo_compute(
         output__frozen_dataset__yolo_txt=output__frozen_dataset__yolo_txt,
         output__model=output__model,
         output__model_is_trained_on_frozen_dataset=output__model_is_trained_on_frozen_dataset,
+        output__training_status=output__training_status,
         working_dir=working_dir,
         primary_keys=primary_keys,
         model_other_primary_keys=model_other_primary_keys,
@@ -547,6 +594,7 @@ def build_yolo_compute(
         output__frozen_dataset__yolo_txt=output__frozen_dataset__yolo_txt,
         output__model=output__model,
         output__model_is_trained_on_frozen_dataset=output__model_is_trained_on_frozen_dataset,
+        output__training_status=output__training_status,
         working_dir=working_dir,
         primary_keys=primary_keys,
         model_other_primary_keys=model_other_primary_keys,
@@ -558,13 +606,14 @@ def build_yolo_compute(
         prepare_data_executor_config=prepare_data_executor_config,
         resize_images=resize_images,
         max_within_time=max_within_time,
-        save_checkpoints_to_cloud=save_checkpoints_to_cloud,
         tmp_folder=tmp_folder,
         model_suffix=model_suffix,
         ignore_errors_sample_sizes=ignore_errors_sample_sizes,
         mode=mode,
         train_configs_list=train_configs_list,
         training_launcher_config=training_launcher_config,
+        sync_config=sync_config,
+        resume_config=resume_config,
         extra_train_kwargs=extra_train_kwargs,
     )
     return build_compute(ds, catalog, Pipeline(steps))

@@ -80,7 +80,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not tensorflow and not torch and not fiftyone"
+          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not service_e2e and not cloud_storage and not tensorflow and not torch and not fiftyone"
         env:
           TEST_DB_ENV: ${{ matrix.test-db-env }}
 
@@ -149,7 +149,7 @@ jobs:
       - name: Test TensorFlow extra with pytest
         run: |
           trap 'rm -rf ~/.cache/datapipe/coco libs/datapipe-ml/tests/input libs/datapipe-ml/tests/input_kps libs/datapipe-ml/tests/output' EXIT
-          python -m pytest libs/datapipe-ml/tests -m "tensorflow and not sky_vast and not e2e_examples"
+          python -m pytest libs/datapipe-ml/tests -m "tensorflow and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
         env:
           TEST_DB_ENV: sqlite
           DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
@@ -187,9 +187,61 @@ jobs:
       - name: Test Torch extra with pytest
         run: |
           trap 'rm -rf ~/.cache/datapipe/coco libs/datapipe-ml/tests/input libs/datapipe-ml/tests/input_kps libs/datapipe-ml/tests/output' EXIT
-          python -m pytest libs/datapipe-ml/tests -m "torch and not sky_vast and not e2e_examples"
+          python -m pytest libs/datapipe-ml/tests -m "torch and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
         env:
           TEST_DB_ENV: sqlite
           DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
           DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES: "12"
           DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ: "1"
+
+  test-cloud-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with pip
+        run: |
+          python -m pip install --upgrade pip
+          uv pip install --system -e "libs/datapipe-core[s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-ml[torch,sqlite]" "boto3" "pytest<8" "pytest-cases"
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name datapipe-ml-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data
+          for i in {1..30}; do
+            curl -f http://localhost:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          docker logs datapipe-ml-minio
+          exit 1
+
+      - name: Test cloud storage with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests -m "cloud_storage and service_e2e" -v || test $? -eq 5
+        env:
+          TEST_DB_ENV: sqlite
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          S3_ENDPOINT_URL: http://localhost:9000
+          S3_BUCKET: datapipe-e2e
+          S3_PREFIX: datapipe-ml-tests/${{ github.run_id }}
+
+      - name: Stop MinIO
+        if: always()
+        run: docker rm -f datapipe-ml-minio || true

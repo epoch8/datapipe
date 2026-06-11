@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol, runtime_checkable
 
 import fsspec
 
@@ -17,6 +17,16 @@ def _is_checkpoint_path(value: str) -> bool:
     return "/" in value or "://" in value
 
 
+@runtime_checkable
+class _CheckpointModelWithYamlFile(Protocol):
+    yaml_file: str
+
+
+@runtime_checkable
+class _CheckpointModelWithYamlMapping(Protocol):
+    yaml: Mapping[str, Any]
+
+
 def _architecture_from_checkpoint(ckpt: Mapping[str, Any]) -> str | None:
     train_args = ckpt.get("train_args")
     if isinstance(train_args, Mapping) and train_args.get("model"):
@@ -24,12 +34,10 @@ def _architecture_from_checkpoint(ckpt: Mapping[str, Any]) -> str | None:
 
     model = ckpt.get("ema") or ckpt.get("model")
     yaml_file: str | None = None
-    if model is not None:
-        yaml_file = getattr(model, "yaml_file", None)
-        if not yaml_file:
-            yaml_attr = getattr(model, "yaml", None)
-            if isinstance(yaml_attr, Mapping):
-                yaml_file = yaml_attr.get("yaml_file")
+    if isinstance(model, _CheckpointModelWithYamlFile):
+        yaml_file = model.yaml_file
+    elif isinstance(model, _CheckpointModelWithYamlMapping):
+        yaml_file = model.yaml.get("yaml_file")
     if yaml_file:
         return Path(str(yaml_file)).stem
     return None

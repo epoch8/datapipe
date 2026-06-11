@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
+from dataclasses import fields, is_dataclass
 from typing import Any, Callable, Iterable, Mapping, Optional
 
 import pandas as pd
@@ -34,6 +34,12 @@ def build_train_config_id(
     return f"{summary}-cfg{digest}"
 
 
+def _dataclass_params(instance: object) -> dict[str, Any]:
+    if isinstance(instance, type) or not is_dataclass(instance):
+        raise TypeError(f"Expected dataclass config instance, got {type(instance)!r}")
+    return {field.name: getattr(instance, field.name) for field in fields(instance)}
+
+
 def build_yolo_train_config_summary(
     params: Mapping[str, Any],
     *,
@@ -58,10 +64,7 @@ def train_configs_to_dataframe(
 ) -> pd.DataFrame:
     rows = []
     for config in configs:
-        item: Any = config
-        if isinstance(item, type) or not hasattr(item, "__dataclass_fields__"):
-            raise TypeError(f"Expected dataclass config instance, got {type(item)!r}")
-        params = asdict(item)
+        params = _dataclass_params(config)
         summary = summary_builder(params)
         config_id = build_train_config_id(params, summary=summary)
         row = {id_column: config_id, params_column: params}

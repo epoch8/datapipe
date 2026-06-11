@@ -13,6 +13,30 @@ from tests.fixtures.smoke_data import SmokeDataset, make_smoke_dataset
 from tests.helpers.dbconn import get_sqlite_dbconnstr
 
 
+@pytest.fixture(
+    params=[
+        pytest.param("local", id="local-path"),
+        pytest.param("file", id="file-url"),
+    ]
+)
+def storage_case(request):
+    selected = os.environ.get("DATAPIPE_ML_STORAGE_CASES")
+    if selected:
+        allowed = {item.strip() for item in selected.split(",") if item.strip()}
+        if request.param not in allowed:
+            pytest.skip(f"Storage case {request.param!r} is not selected")
+    return request.param
+
+
+@pytest.fixture
+def storage_workdir(tmp_path: Path, storage_case: str) -> str:
+    path = (tmp_path / "datapipe_ml").resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    if storage_case == "file":
+        return f"file://{path}"
+    return str(path)
+
+
 @pytest.fixture
 def tmp_dir() -> Path:
     with tempfile.TemporaryDirectory() as d:

@@ -35,7 +35,7 @@ from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig as _V8Config
 from datapipe_ml.frameworks.yolo.yolov8.runner import train_process as _v8_train_process
 from datapipe_ml.training.orchestrator import orchestrate
-from datapipe_ml.training.specs import TrainingLauncherConfig
+from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
 logger = logging.getLogger("datapipe.ml.yolov8.script")
 
@@ -63,7 +63,7 @@ def train_yolov8_segmentation(
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     kwargs = kwargs or {}
     (
         dt__segmentation_frozen_dataset,
@@ -92,7 +92,7 @@ def train_yolov8_segmentation(
 
     algo = YoloV8SegmentationAlgo()
     out = orchestrate(idx, ctx, algo)
-    return (out.df__model, out.df__link)
+    return (out.df__model, out.df__link, out.df__training_status)
 
 
 def get_yolov8_segmentation_train_configs(yolov8_train_configs: List[YoloV8_TrainingConfig]):
@@ -115,6 +115,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     output__segmentation_frozen_dataset__yolo_txt: str
     output__segmentation_model: str
     output__segm_model_is_trained_on_segm_frozen_dataset: str
+    output__training_status: str
     working_dir: str
     yolov8_train_configs: List[YoloV8_TrainingConfig]
     primary_keys: List[str]
@@ -127,13 +128,14 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     executor_config: Optional[ExecutorConfig] = None
     prepare_data_executor_config: Optional[ExecutorConfig] = None
     resize_images: bool = True
-    save_checkpoints_to_cloud: bool = False
     segmentation_model_primary_keys: Optional[List[str]] = None
     segmentation_model_id__name: str = "segmentation_model_id"
     segmentation_frozen_dataset_id__name: str = "segmentation_frozen_dataset_id"
     tmp_folder: str = "/tmp/"
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
+    sync_config: Optional[TrainingSyncConfig] = None
+    resume_config: Optional[TrainingResumeConfig] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -162,7 +164,6 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
             prepare_data_executor_config=self.prepare_data_executor_config,
             resize_images=self.resize_images,
             max_within_time=self.max_within_time,
-            save_checkpoints_to_cloud=self.save_checkpoints_to_cloud,
             tmp_folder=self.tmp_folder,
             model_suffix=self.model_suffix,
             ignore_errors_sample_sizes=False,
@@ -180,4 +181,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
             ),
             train_configs_list=dict(yolov8_train_configs=self.yolov8_train_configs),
             training_launcher_config=self.training_launcher_config,
+            sync_config=self.sync_config,
+            resume_config=self.resume_config,
+            output__training_status=self.output__training_status,
         )

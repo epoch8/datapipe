@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import pickle
-from dataclasses import replace
+from dataclasses import fields, is_dataclass, replace
 from typing import Any
 
 from datapipe_ml.training.specs import TrainingLaunchRequest
@@ -20,9 +20,9 @@ def rewrite_value(value: Any, rewrites: tuple[tuple[str, str], ...]) -> Any:
         return [rewrite_value(item, rewrites) for item in value]
     if isinstance(value, dict):
         return {rewrite_value(key, rewrites): rewrite_value(item, rewrites) for key, item in value.items()}
-    if hasattr(value, "__dataclass_fields__"):
+    if is_dataclass(value) and not isinstance(value, type):
         updates = {
-            field_name: rewrite_value(getattr(value, field_name), rewrites) for field_name in value.__dataclass_fields__
+            field.name: rewrite_value(value.__dict__[field.name], rewrites) for field in fields(value)
         }
         return replace(value, **updates)
     return value

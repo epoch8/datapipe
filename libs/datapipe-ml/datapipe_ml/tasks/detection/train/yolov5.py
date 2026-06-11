@@ -40,6 +40,8 @@ from datapipe_ml.training.specs import (
     TrainingLauncherConfig,
     TrainingLaunchRequest,
     TrainingPathMap,
+    TrainingResumeConfig,
+    TrainingSyncConfig,
     build_training_launcher,
 )
 
@@ -92,7 +94,7 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
                     data.class_names,
                     data.image_filepaths,
                     data.yolo_txt_filepaths,
-                    ctx.save_checkpoints_to_cloud,
+                    ctx.sync_config,
                 ),
                 cluster_suffix=model_id,
                 inputs=(TrainingPathMap(data.data_src_path, "/workspace/datapipe_ml/input/data"),),
@@ -107,7 +109,7 @@ def train_yolov5(
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     kwargs = kwargs or {}
     (
         dt__detection_frozen_dataset,
@@ -136,7 +138,7 @@ def train_yolov5(
     )
     algo = YoloV5DetectionAlgo()
     out = orchestrate(idx, ctx, algo)
-    return (out.df__model, out.df__link)
+    return (out.df__model, out.df__link, out.df__training_status)
 
 
 def get_yolov5_detection_train_configs(yolov5_train_configs: List[YoloV5_TrainingConfig]):
@@ -164,6 +166,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     output__detection_frozen_dataset__yolo_txt: str
     output__detection_model: str
     output__detection_model_is_trained_on_detection_frozen_dataset: str
+    output__training_status: str
     working_dir: str
     yolov5_train_configs: List[YoloV5_TrainingConfig]
     primary_keys: List[str]
@@ -177,7 +180,6 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     prepare_data_executor_config: Optional[ExecutorConfig] = None
     yolov5_script_file: Optional[str] = None
     resize_images: bool = True
-    save_checkpoints_to_cloud: bool = False
     detection_model_primary_keys: Optional[List[str]] = None
     detection_model_id__name: str = "detection_model_id"
     detection_frozen_dataset_id__name: str = "detection_frozen_dataset_id"
@@ -185,6 +187,8 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     ignore_errors_sample_sizes: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
+    sync_config: Optional[TrainingSyncConfig] = None
+    resume_config: Optional[TrainingResumeConfig] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -213,7 +217,6 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             prepare_data_executor_config=self.prepare_data_executor_config,
             resize_images=self.resize_images,
             max_within_time=self.max_within_time,
-            save_checkpoints_to_cloud=self.save_checkpoints_to_cloud,
             tmp_folder=self.tmp_folder,
             model_suffix=self.model_suffix,
             ignore_errors_sample_sizes=self.ignore_errors_sample_sizes,
@@ -231,5 +234,8 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             ),
             train_configs_list=dict(yolov5_train_configs=self.yolov5_train_configs),
             training_launcher_config=self.training_launcher_config,
+            sync_config=self.sync_config,
+            resume_config=self.resume_config,
+            output__training_status=self.output__training_status,
             extra_train_kwargs=dict(yolov5_script_file=self.yolov5_script_file),
         )

@@ -6,6 +6,7 @@ from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
 from tests.helpers.training_smoke import (
+    assert_completed_training_status_with_manifest,
     assert_metrics_have_values,
     assert_model_artifact,
     assert_table_has_rows,
@@ -15,6 +16,7 @@ from tests.helpers.training_smoke import (
     keypoints_train_step,
     make_runtime,
     run_pipeline,
+    SMOKE_DEVICE,
 )
 
 
@@ -33,6 +35,7 @@ def test_yolov8_keypoints_training_smoke_cpu(tmp_path):
         "keypoints_model__model_path",
         "yolov8_pose",
     )
+    assert_completed_training_status_with_manifest(runtime, "keypoints_training_status")
 
 
 @pytest.mark.torch
@@ -162,9 +165,10 @@ def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, sm
                     output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
                     output__keypoints_model="keypoints_model",
                     output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
+                    output__training_status="keypoints_training_status",
                     working_dir=str(tmp_path),
                     yolov8_train_configs=[
-                        YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device=None)
+                        YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device=SMOKE_DEVICE)
                     ],
                     primary_keys=["image_id"],
                     bbox_id__name=None,

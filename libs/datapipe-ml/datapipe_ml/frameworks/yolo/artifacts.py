@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -16,6 +15,7 @@ from typing import (
     Type,
     Union,
     cast,
+    runtime_checkable,
 )
 
 import fsspec
@@ -24,7 +24,13 @@ import pandas as pd
 import yaml
 from pathy import FluidPath, Pathy
 
-from datapipe_ml.core.files import copy_url_to_url, parallel_copy_filepaths_to_folder
+from datapipe_ml.core.files import copy_url_to_url
+from datapipe_ml.training.staging import (
+    LocalStagingDir,
+    copy_file_to_local_staging,
+    make_local_staging_dir,
+    stage_files_to_local_folder,
+)
 
 
 class YoloTrainingConfigForCloud(Protocol):
@@ -71,10 +77,6 @@ def yolo_count_objects(cfg: YoloDataYAMLConfig) -> int:
     return train_cnt + val_cnt + test_cnt
 
 
-def yolo_copy_tree(src_directory: str, out_directory: str) -> None:
-    copy_url_to_url(src_directory, out_directory, label="YOLO tree", concurrency=8)
-
-
 def yolo_best_threshold_from_curve(
     x: Sequence[float],
     y: Union[Sequence[Sequence[float]], np.ndarray],
@@ -112,16 +114,28 @@ def _yolo_smooth(y: np.ndarray, f: float = 0.05) -> np.ndarray:
     return np.convolve(yp, np.ones(nf) / nf, mode="valid")
 
 
+_YoloCurveValues = tuple[Sequence[float], Union[Sequence[Sequence[float]], np.ndarray]]
+
+
+@runtime_checkable
+class _UltralyticsCurveMetrics(Protocol):
+    curves: Sequence[str]
+    curves_results: Sequence[_YoloCurveValues]
+
+
 def yolo_best_threshold_from_ultralytics_metrics(metrics: Any, curve_name_part: str = "F1-Confidence") -> float:
     best_threshold = 0.45
-    curves = getattr(metrics, "curves", None)
-    curves_results = getattr(metrics, "curves_results", None)
+    if not isinstance(metrics, _UltralyticsCurveMetrics):
+        return best_threshold
+    curves = metrics.curves
+    curves_results = metrics.curves_results
     if not curves or not curves_results:
         return best_threshold
 
     for name, values in zip(curves, curves_results):
-        if curve_name_part in str(name) and len(values) >= 2:
-            return yolo_best_threshold_from_curve(values[0], values[1])
+        if curve_name_part in str(name):
+            x_vals, y_vals = values
+            return yolo_best_threshold_from_curve(x_vals, y_vals)
     return best_threshold
 
 
@@ -173,9 +187,9 @@ def yolo_prepare_tmp_dirs_for_cloud_yolov5(
     Optional[str],
     Optional[str],
     Optional[str],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
 ]:
     return _yolo_prepare_tmp_dirs_for_cloud(
         training_config=training_config,
@@ -194,9 +208,9 @@ def yolo_prepare_tmp_dirs_for_cloud_yolov8(
     Optional[str],
     Optional[str],
     Optional[str],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
 ]:
     return _yolo_prepare_tmp_dirs_for_cloud(
         training_config=training_config,
@@ -216,9 +230,9 @@ def _yolo_prepare_tmp_dirs_for_cloud(
     Optional[str],
     Optional[str],
     Optional[str],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
-    Optional[tempfile.TemporaryDirectory],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
+    Optional[LocalStagingDir],
 ]:
     assert isinstance(training_config.data, YoloDataYAMLConfig)
     tmp_folder = training_config.tmp_folder
@@ -230,14 +244,18 @@ def _yolo_prepare_tmp_dirs_for_cloud(
     tmp_dir_images = None
     tmp_dir_images_cls = None
     if not (protocol_images is None or protocol_images == "file"):
-        if tmp_folder == "/tmp/":
-            tmp_dir_images_cls = tempfile.TemporaryDirectory()
-            tmp_dir_images = tmp_dir_images_cls.name
-        else:
-            tmp_dir_images = str(Path(tmp_folder) / f"tmp_images_{training_config.name}")
-            Path(tmp_dir_images).mkdir(exist_ok=True, parents=True)
-        print(f"Copying dataset files to {tmp_dir_images}")
-        parallel_copy_filepaths_to_folder(image_filepaths + coco_txt_filepaths, tmp_dir_images)
+        tmp_dir_images_cls = make_local_staging_dir(
+            tmp_folder=tmp_folder,
+            name=f"tmp_images_{training_config.name}",
+            use_managed_tmp=tmp_folder == "/tmp/",
+            remove_on_cleanup=True,
+        )
+        tmp_dir_images = str(tmp_dir_images_cls.path)
+        stage_files_to_local_folder(
+            image_filepaths + coco_txt_filepaths,
+            tmp_dir_images_cls.path,
+            label="YOLO dataset files",
+        )
         training_config.data.path = tmp_dir_images
 
     tmp_dir_model_cls = None
@@ -245,15 +263,17 @@ def _yolo_prepare_tmp_dirs_for_cloud(
     if initial_weights_path is not None:
         protocol_weights, _ = fsspec.core.split_protocol(initial_weights_path)
         if not (protocol_weights is None or protocol_weights == "file"):
-            if tmp_folder == "/tmp/":
-                tmp_dir_model_cls = tempfile.TemporaryDirectory()
-                tmp_dir_model = tmp_dir_model_cls.name
-            else:
-                tmp_dir_model = str(Path(tmp_folder) / f"tmp_model_{training_config.name}")
-                Path(tmp_dir_model).mkdir(exist_ok=True, parents=True)
-            model_path = Path(tmp_dir_model) / Pathy.fluid(initial_weights_path).name
-            print(f"Copying weight to {tmp_dir_model}")
-            copy_url_to_url(str(initial_weights_path), str(model_path), label="YOLO initial weights", concurrency=1)
+            tmp_dir_model_cls = make_local_staging_dir(
+                tmp_folder=tmp_folder,
+                name=f"tmp_model_{training_config.name}",
+                use_managed_tmp=tmp_folder == "/tmp/",
+                remove_on_cleanup=True,
+            )
+            model_path = copy_file_to_local_staging(
+                str(initial_weights_path),
+                tmp_dir_model_cls,
+                label="YOLO initial weights",
+            )
             _set_training_weight_path(training_config, str(model_path), model_weight_field)
         else:
             _set_training_weight_path(training_config, str(initial_weights_path), model_weight_field)
@@ -261,12 +281,13 @@ def _yolo_prepare_tmp_dirs_for_cloud(
     tmp_dir_project = None
     tmp_dir_project_cls = None
     if not (protocol_project is None or protocol_project == "file"):
-        if tmp_folder == "/tmp/":
-            tmp_dir_project_cls = tempfile.TemporaryDirectory()
-            tmp_dir_project = tmp_dir_project_cls.name
-        else:
-            tmp_dir_project = str(Path(tmp_folder) / f"tmp_project_{training_config.name}")
-            Path(tmp_dir_project).mkdir(exist_ok=True, parents=True)
+        tmp_dir_project_cls = make_local_staging_dir(
+            tmp_folder=tmp_folder,
+            name=f"tmp_project_{training_config.name}",
+            use_managed_tmp=tmp_folder == "/tmp/",
+            remove_on_cleanup=True,
+        )
+        tmp_dir_project = str(tmp_dir_project_cls.path)
         training_config.project = tmp_dir_project
 
     return (
@@ -296,26 +317,19 @@ def yolo_copy_back_and_cleanup(
     src_project_path: Optional[str],
     tmp_dir_images: Optional[str],
     tmp_dir_project: Optional[str],
-    tmp_dir_images_cls: Optional[tempfile.TemporaryDirectory],
-    tmp_dir_project_cls: Optional[tempfile.TemporaryDirectory],
-    tmp_dir_model_cls: Optional[tempfile.TemporaryDirectory],
+    tmp_dir_images_cls: Optional[LocalStagingDir],
+    tmp_dir_project_cls: Optional[LocalStagingDir],
+    tmp_dir_model_cls: Optional[LocalStagingDir],
 ) -> FluidPath:
     final_exp_folder = exp_folder
     if tmp_dir_images is not None and tmp_dir_project is not None and src_project_path is not None:
         src_exp_folder = exp_folder
         final_exp_folder = Pathy.fluid(src_project_path) / exp_folder.name
-        yolo_copy_tree(str(src_exp_folder), str(final_exp_folder))
+        copy_url_to_url(str(src_exp_folder), str(final_exp_folder), label="YOLO tree")
 
-        # cleanup
-        if tmp_dir_images_cls is not None and tmp_dir_project_cls is not None:
-            tmp_dir_images_cls.cleanup()
-            tmp_dir_project_cls.cleanup()
-        else:
-            print(f"Cleanup {tmp_dir_images=} and {tmp_dir_project=} ...")
-            shutil.rmtree(tmp_dir_images, ignore_errors=True)
-            shutil.rmtree(tmp_dir_project, ignore_errors=True)
-        if tmp_dir_model_cls is not None:
-            tmp_dir_model_cls.cleanup()
+    for staging_dir in (tmp_dir_images_cls, tmp_dir_project_cls, tmp_dir_model_cls):
+        if staging_dir is not None:
+            staging_dir.cleanup()
 
     return Pathy.fluid(str(final_exp_folder))
 

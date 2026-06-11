@@ -37,10 +37,16 @@ from natsort import natsorted
 from pathy import FluidPath, Pathy
 from sklearn.utils.class_weight import compute_class_weight
 
-from datapipe_ml.core.files import copy_url_to_url, parallel_copy_filepaths_to_folder
 from datapipe_ml.frameworks.tensorflow.callbacks import (
     FsspecModelCheckpoint,
 )
+from datapipe_ml.training.staging import (
+    copied_file_to_local_temp,
+    make_local_staging_dir,
+    stage_files_to_local_folder,
+)
+from datapipe_ml.training.sync import PeriodicTrainingSync
+from datapipe_ml.training.specs import TrainingSyncConfig
 
 
 @dataclass
@@ -99,7 +105,10 @@ def import_from_string(path: str) -> Callable[..., tf.keras.Model]:
     if not separator or not module_name or not attr_name:
         raise ValueError(f"Expected factory path in 'module:function' format, got {path!r}")
     module = importlib.import_module(module_name)
-    factory = getattr(module, attr_name)
+    try:
+        factory: object = module.__dict__[attr_name]
+    except KeyError as exc:
+        raise AttributeError(f"Module {module_name!r} has no attribute {attr_name!r}") from exc
     if not callable(factory):
         raise TypeError(f"Model factory {path!r} is not callable")
     return cast(Callable[..., tf.keras.Model], factory)
@@ -236,11 +245,12 @@ def get_model(
             )
 
     else:
-        with tempfile.NamedTemporaryFile(suffix=".keras") as tmpfile:
-            copy_url_to_url(
-                resume_checkpoint_filepath, tmpfile.name, label="TensorFlow resume checkpoint", concurrency=1
-            )
-            model = tf.keras.models.load_model(tmpfile.name)
+        with copied_file_to_local_temp(
+            resume_checkpoint_filepath,
+            suffix=".keras",
+            label="TensorFlow resume checkpoint",
+        ) as checkpoint_path:
+            model = tf.keras.models.load_model(str(checkpoint_path))
 
     return model
 
@@ -469,6 +479,8 @@ def train_on_tensorflow(
     preprocess_input_script_str: str,
     class_weight: Optional[Dict[int, float]],
     clean_checkpoints_after_train: bool,
+    resume_checkpoint_filepath: Optional[str],
+    sync_config: Optional[TrainingSyncConfig],
 ) -> Tuple[FluidPath, Optional[str], Optional[str], str]:
     protocol, logdir_exp_str_path = fsspec.core.split_protocol(str(logdir_exp))
     fs = fsspec.filesystem(protocol)
@@ -487,11 +499,10 @@ def train_on_tensorflow(
     try:
         strategy = tf.distribute.MirroredStrategy()
         print("Number of devices: {}".format(strategy.num_replicas_in_sync))
-        RESUME_CHECKPOINT_FILEPATH = os.environ.get("TRAIN__RESUME_CHECKPOINT_FILEPATH", None)
 
-        if RESUME_CHECKPOINT_FILEPATH is not None:
-            print(f"Getting model: {RESUME_CHECKPOINT_FILEPATH=}")
-            initial_epoch = int(Pathy.fluid(RESUME_CHECKPOINT_FILEPATH).name.split("__")[0])  # xxx__<name>...<>.h5
+        if resume_checkpoint_filepath is not None:
+            print(f"Getting model: {resume_checkpoint_filepath=}")
+            initial_epoch = int(Pathy.fluid(resume_checkpoint_filepath).name.split("__")[0])
         else:
             print("Getting raw model")
             initial_epoch = 0
@@ -503,7 +514,7 @@ def train_on_tensorflow(
                 image_size=config.image_size,
                 arch=config.arch,
                 class_names_len=len(class_names),
-                resume_checkpoint_filepath=RESUME_CHECKPOINT_FILEPATH,
+                resume_checkpoint_filepath=resume_checkpoint_filepath,
                 model_spec=config.model_spec,
                 class_names=class_names,
             )
@@ -517,15 +528,36 @@ def train_on_tensorflow(
                     tf.keras.metrics.F1Score(average="macro", name="f1_score"),
                 ],
             )
-        print("Fit...")
-        model.fit(
-            x=train_dataset,
-            epochs=config.epochs,
-            callbacks=callbacks,
-            validation_data=val_dataset,
-            initial_epoch=initial_epoch,
-            class_weight=class_weight,
+        output_sync = (
+            PeriodicTrainingSync(
+                src=str(logdir_exp.parent),
+                dst=str(logdir_exp.parent),
+                config=sync_config,
+                model_id=logdir_exp.name,
+            )
+            if sync_config is not None and sync_config.enabled
+            else None
         )
+        print("Fit...")
+        if output_sync is None:
+            model.fit(
+                x=train_dataset,
+                epochs=config.epochs,
+                callbacks=callbacks,
+                validation_data=val_dataset,
+                initial_epoch=initial_epoch,
+                class_weight=class_weight,
+            )
+        else:
+            with output_sync:
+                model.fit(
+                    x=train_dataset,
+                    epochs=config.epochs,
+                    callbacks=callbacks,
+                    validation_data=val_dataset,
+                    initial_epoch=initial_epoch,
+                    class_weight=class_weight,
+                )
     except Exception as e:
         from traceback_with_variables import format_exc
 
@@ -594,16 +626,19 @@ def train_model_main(
     models_dir: str,
     clean_checkpoints_after_train: bool,
     tmp_folder: str,
+    resume_checkpoint_filepath: Optional[str],
+    sync_config: Optional[TrainingSyncConfig],
 ) -> TrainModelResult:
     get_seed(seed=config.seed)
-    if tmp_folder.startswith("/tmp"):
-        folder = tempfile.TemporaryDirectory()
-        folder_path = Path(folder.name)
-    else:
-        folder_path = Path(tmp_folder)
-    print(f"Parallel: copying images to local tmp folder {folder_path=}...")
-    df__data["image__image_path_local"] = parallel_copy_filepaths_to_folder(
-        cast(List[str], df__data["image__image_path"]), str(folder_path)
+    image_staging = make_local_staging_dir(
+        tmp_folder=tmp_folder,
+        name=f"tmp_images_{classification_model_id}",
+        use_managed_tmp=tmp_folder.startswith("/tmp"),
+    )
+    df__data["image__image_path_local"] = stage_files_to_local_folder(
+        cast(List[str], df__data["image__image_path"]),
+        image_staging.path,
+        label="TensorFlow images",
     )
     df__train = df__data[df__data["subset_id"] == "train"]
     class_names_set = set(df__train["label"])
@@ -683,6 +718,8 @@ def train_model_main(
         preprocess_input_script_str=preprocess_input_script_str,
         class_weight=class_weight,
         clean_checkpoints_after_train=clean_checkpoints_after_train,
+        resume_checkpoint_filepath=resume_checkpoint_filepath,
+        sync_config=sync_config,
     )
     if best_model_path is not None:
         return TrainModelResult(
@@ -704,6 +741,8 @@ def train_process(
     models_dir: str,
     clean_checkpoints_after_train: bool,
     tmp_folder: str,
+    resume_checkpoint_filepath: Optional[str],
+    sync_config: Optional[TrainingSyncConfig],
 ):
     print("Training process begin!")
     train_model_result = None
@@ -716,6 +755,8 @@ def train_process(
             models_dir=models_dir,
             clean_checkpoints_after_train=clean_checkpoints_after_train,
             tmp_folder=tmp_folder,
+            resume_checkpoint_filepath=resume_checkpoint_filepath,
+            sync_config=sync_config,
         )
     except Exception as e:
         from traceback_with_variables import format_exc

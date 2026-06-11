@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import List, Optional, Union
@@ -26,6 +27,8 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     yolo_select_last_exp,
     yolo_write_data_yaml_if_needed,
 )
+from datapipe_ml.training.specs import TrainingSyncConfig
+from datapipe_ml.training.sync import PeriodicTrainingSync
 
 logger = logging.getLogger("datapipe.ml.yolov5.script")
 os.environ["WANDB_DISABLED"] = "true"  # запретить wandb
@@ -200,9 +203,9 @@ def _resolve_yolov5_root_expr(value: str, root: Path) -> Optional[str]:
 
 def _apply_yolov5_hyp_overrides(cfg: YoloV5_TrainingConfig) -> None:
     overrides = {
-        name: getattr(cfg, name)
-        for name in YOLOV5_HYP_OVERRIDE_FIELD_NAMES
-        if getattr(cfg, name) is not None
+        field.name: cfg.__dict__[field.name]
+        for field in fields(cfg)
+        if field.name in YOLOV5_HYP_OVERRIDE_FIELD_NAMES and cfg.__dict__[field.name] is not None
     }
     if not overrides:
         return
@@ -261,7 +264,7 @@ def train_model(
     class_names_in: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
-    save_checkpoints_to_cloud: bool,
+    sync_config: Optional[TrainingSyncConfig],
 ) -> Optional[List[TrainingResult]]:
     if yolov5_script_file is None:
         yolov5_module = resolve_installed_yolov5_train_script()
@@ -287,9 +290,6 @@ def train_model(
         coco_txt_filepaths=coco_txt_filepaths,
     )
 
-    if save_checkpoints_to_cloud and src_project_path is not None:
-        os.environ["YOLOV5__SAVE_WEIGHTS_DIRECTORY"] = str(src_project_path)
-
     # Если data — объект, пишем временный yaml и подменяем путь
     class_names, tmp_yaml_path = yolo_write_data_yaml_if_needed(yolov5_training_config)
     if not class_names and isinstance(yolov5_training_config.data, str):
@@ -306,7 +306,16 @@ def train_model(
     logger.info("Running %s", command)
     env = os.environ.copy()
     env.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
-    process = subprocess.run(command, env=env)
+    output_sync = None
+    if sync_config is not None and sync_config.enabled:
+        output_sync = PeriodicTrainingSync(
+            src=str(tmp_dir_project or yolov5_training_config.project),
+            dst=str(src_project_path or yolov5_training_config.project),
+            config=sync_config,
+            model_id=yolov5_training_config.name,
+        )
+    with output_sync if output_sync is not None else nullcontext():
+        process = subprocess.run(command, env=env)
     logger.info("Process ended with returncode=%s.", process.returncode)
     if process.returncode != 0:
         raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
@@ -381,7 +390,7 @@ def train_process(
     class_names: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
-    save_checkpoints_to_cloud: bool,
+    sync_config: Optional[TrainingSyncConfig],
 ) -> List[TrainingResult]:
     training_results = None
     traceback_logs = None
@@ -393,7 +402,7 @@ def train_process(
             class_names_in=class_names,
             image_filepaths=image_filepaths,
             coco_txt_filepaths=coco_txt_filepaths,
-            save_checkpoints_to_cloud=save_checkpoints_to_cloud,
+            sync_config=sync_config,
         )
     except Exception as e:
         from traceback_with_variables import format_exc
