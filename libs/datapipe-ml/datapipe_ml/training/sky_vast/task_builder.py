@@ -8,17 +8,58 @@ from datapipe_ml.training.sky_vast.constants import (
     REMOTE_SIGNALS,
     REMOTE_SOURCE,
     REMOTE_SOURCE_ARCHIVE,
+    REMOTE_VENV,
     REMOTE_WORKER_ENTRYPOINT,
 )
 from datapipe_ml.training.specs import SkyVastTrainingLauncherConfig
 
 
+DATAPIPE_CORE_SOURCE_INSTALL_EXTRAS = ("gcsfs", "s3fs", "ray")
+
+
+def _source_install_commands(
+    config: SkyVastTrainingLauncherConfig,
+    datapipe_core_install_target: str,
+    datapipe_ml_install_target: str,
+) -> list[str]:
+    dependency_flag = "" if config.source_install_deps else " --no-deps"
+    if config.source_install_backend == "pip":
+        return [
+            f"python3 -m pip install --user{dependency_flag} -e '{datapipe_core_install_target}'",
+            f"python3 -m pip install --user{dependency_flag} -e '{datapipe_ml_install_target}'",
+        ]
+    if config.source_install_backend == "uv":
+        return [
+            "python3 -m pip install --user uv",
+            f"python3 -m uv venv {REMOTE_VENV} --seed",
+            f"python3 -m uv pip install --python {REMOTE_VENV / 'bin/python'}{dependency_flag} -e '{datapipe_core_install_target}'",
+            f"python3 -m uv pip install --python {REMOTE_VENV / 'bin/python'} --no-sources{dependency_flag} -e '{datapipe_ml_install_target}'",
+        ]
+    raise ValueError(f"Unsupported source install backend: {config.source_install_backend!r}")
+
+
+def _worker_python(config: SkyVastTrainingLauncherConfig) -> str:
+    if config.source_install_backend == "uv":
+        return str(REMOTE_VENV / "bin/python")
+    return "python3"
+
+
+def _datapipe_core_install_target() -> str:
+    return f"{REMOTE_SOURCE / 'datapipe-core'}[{','.join(DATAPIPE_CORE_SOURCE_INSTALL_EXTRAS)}]"
+
+
+def _datapipe_ml_install_target(config: SkyVastTrainingLauncherConfig) -> str:
+    source_install_target = str(REMOTE_SOURCE / "datapipe-ml")
+    if config.source_install_extras:
+        source_install_target = f"{source_install_target}[{','.join(config.source_install_extras)}]"
+    return source_install_target
+
+
 def build_task(config: SkyVastTrainingLauncherConfig):
     import sky.task
 
-    source_install_target = str(REMOTE_SOURCE)
-    if config.source_install_extras:
-        source_install_target = f"{source_install_target}[{','.join(config.source_install_extras)}]"
+    datapipe_core_install_target = _datapipe_core_install_target()
+    datapipe_ml_install_target = _datapipe_ml_install_target(config)
     resources = {
         "infra": config.infra,
         "cpus": config.cpus,
@@ -49,8 +90,9 @@ def build_task(config: SkyVastTrainingLauncherConfig):
                 f"rm -rf {REMOTE_SOURCE}",
                 f"mkdir -p {REMOTE_SOURCE}",
                 f"tar -xzf {REMOTE_SOURCE_ARCHIVE} -C {REMOTE_SOURCE}",
-                f"python3 -m pip install --user -e '{source_install_target}'",
-                f"python3 {REMOTE_WORKER_ENTRYPOINT}",
+                f"cp {REMOTE_SOURCE / 'README.md'} {REMOTE_SOURCE / '../README.md'}",
+                *_source_install_commands(config, datapipe_core_install_target, datapipe_ml_install_target),
+                f"{_worker_python(config)} {REMOTE_WORKER_ENTRYPOINT}",
                 f"while [ ! -f {REMOTE_SIGNALS / 'SHUTDOWN'} ]; do sleep 5; done",
             ]
         ),

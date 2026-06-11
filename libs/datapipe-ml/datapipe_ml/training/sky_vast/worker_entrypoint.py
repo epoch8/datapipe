@@ -25,6 +25,10 @@ def loads_from_text(value: str):
     return pickle.loads(base64.b64decode(value.encode("ascii")))
 
 
+def remote_smoke_process(queue) -> None:
+    queue.put({"ok": True})
+
+
 def main() -> int:
     SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
     try:

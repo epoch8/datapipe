@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -55,7 +56,7 @@ _BAD_OFFER_IDS: set[str] = set()
 
 
 def _sky_cli() -> str:
-    return str(Path(sys.executable).with_name("sky"))
+    return shutil.which("sky") or "sky"
 
 
 def _live_vast_offer_query() -> str:
@@ -65,6 +66,18 @@ def _live_vast_offer_query() -> str:
         "num_gpus=1 "
         f'cpu_ram>="{float(os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY_GB", "16"))}"'
     )
+
+
+def _sky_vast_country_filter() -> str:
+    return os.getenv("DATAPIPE_ML_SKY_VAST_COUNTRY", "US").strip().upper()
+
+
+def _offer_matches_country(offer: dict[str, Any]) -> bool:
+    country = _sky_vast_country_filter()
+    if not country:
+        return True
+    geolocation = str(offer.get("geolocation") or "").strip().upper()
+    return geolocation.endswith(f", {country}") or geolocation == country
 
 
 def _sky_vast_instance_type(offer: dict[str, Any]) -> str:
@@ -93,6 +106,8 @@ def _write_live_sky_vast_catalog(sky_home: Path) -> None:
     rows = []
     seen = set()
     for offer in offers:
+        if not _offer_matches_country(offer):
+            continue
         gpu_name = offer.get("gpu_name")
         if not gpu_name:
             continue
@@ -167,11 +182,21 @@ def _patch_sky_vast_launch() -> None:
         create_instance_kwargs=None,
         ssh_public_key=None,
     ):
+        country = str(region or "").strip().split(",")[-1].strip().upper()
+
         original_vast_factory = vast_utils.vast.vast
 
         class LiveVastClient:
             def __init__(self, client):
                 self._client = client
+                api_key = (
+                    getattr(client, "api_key_access", None)
+                    or getattr(client, "api_key", None)
+                    or getattr(getattr(client, "client", None), "api_key", None)
+                )
+                if api_key is not None:
+                    self.api_key_access = api_key
+                    self.client = type("VastClientShim", (), {"api_key": api_key})()
 
             def __getattr__(self, name):
                 return getattr(self._client, name)
@@ -192,7 +217,14 @@ def _patch_sky_vast_launch() -> None:
                 if secure_only:
                     live_query.extend(["datacenter=true", "hosting_type>=1"])
                 kwargs.setdefault("order", "dph_total+")
-                return self._client.search_offers(query=" ".join(live_query), *args, **kwargs)
+                offers = self._client.search_offers(query=" ".join(live_query), *args, **kwargs)
+                if isinstance(offers, int) or not country:
+                    return offers
+                return [
+                    offer
+                    for offer in offers
+                    if str(offer.get("geolocation") or "").strip().upper().endswith(f", {country}")
+                ]
 
         def live_vast_factory():
             return LiveVastClient(original_vast_factory())
@@ -331,21 +363,12 @@ def _sky_vast_catalog_accelerators() -> set[str]:
     }
 
 
-def _vast_region_code_from_infra(infra: str) -> str | None:
-    if "/" not in infra:
-        return None
-    return infra.split("/", 1)[1].strip().split(",")[-1].strip()
-
-
 def _candidate_first_offer_id(infra: str, accelerator: str) -> str | None:
     try:
         import vastai_sdk
 
         gpu_name, gpu_count = _split_accelerator(accelerator)
         query = ["chunked=true"]
-        region_code = _vast_region_code_from_infra(infra)
-        if region_code:
-            query.extend(["georegion=true", f'geolocation="{region_code}"'])
         query.extend(
             [
                 f"disk_space>={int(os.getenv('DATAPIPE_ML_SKY_VAST_DISK_SIZE_GB', '20'))}",
@@ -354,9 +377,10 @@ def _candidate_first_offer_id(infra: str, accelerator: str) -> str | None:
                 f'cpu_ram>="{float(os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY_GB", "16"))}"',
             ]
         )
-        offers: list[dict[str, Any]] = vastai_sdk.VastAI().search_offers(query=" ".join(query), limit=1)
+        offers: list[dict[str, Any]] = vastai_sdk.VastAI().search_offers(query=" ".join(query), limit=200)
     except Exception:
         return None
+    offers = [offer for offer in offers if _offer_matches_country(offer)]
     if not offers:
         return None
     offer_id = offers[0].get("id")
@@ -391,6 +415,8 @@ def _live_vast_candidates(
     candidates = []
     seen = set()
     for offer in offers:
+        if not _offer_matches_country(offer):
+            continue
         offer_id = str(offer.get("id"))
         if not offer_id or offer_id in bad_offer_ids:
             continue
@@ -407,12 +433,11 @@ def _live_vast_candidates(
             continue
         accelerator = f"{sky_gpu_name}:{gpu_count}"
         infra = "vast"
-        instance_type = _sky_vast_instance_type(offer)
-        candidate = (infra, accelerator, instance_type)
+        candidate = (infra, accelerator, None)
         if candidate in seen:
             continue
         seen.add(candidate)
-        candidates.append((infra, accelerator, offer_id, instance_type))
+        candidates.append((infra, accelerator, offer_id, None))
         if len(candidates) >= limit:
             break
     return tuple(candidates)
@@ -475,12 +500,19 @@ def _is_sky_vast_resource_unavailable(exc: BaseException) -> bool:
         for marker in [
             "ResourcesUnavailableError",
             "Failed to acquire resources",
+            "ConnectionRefusedError",
+            "Connection refused",
             "Error response from daemon",
             "context deadline exceeded",
             "Client.Timeout exceeded",
             "manifest unknown",
             "No resource satisfying",
+            "Timed out while calling sky.launch",
+            "Timed out while calling sky.stream_and_get(launch)",
+            "SSH did not become ready for Sky/Vast cluster",
+            "Remote VM did not signal boot",
             "Sky job failed before remote VM boot signal",
+            "Timed out waiting for remote Sky/Vast training result",
             "FAILED_DRIVER",
             "FAILED_SETUP",
         ]
@@ -526,16 +558,18 @@ def _sky_vast_config(
         sky_status_timeout_s=int(os.getenv("DATAPIPE_ML_SKY_STATUS_TIMEOUT_S", "60")),
         source_install_extras=tuple(
             extra.strip()
-            for extra in os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_EXTRAS", "torch").split(",")
+            for extra in os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_EXTRAS", "").split(",")
             if extra.strip()
         ),
+        source_install_backend=os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_BACKEND", "uv"),
+        source_install_deps=os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_DEPS", "1") == "1",
         stream_logs=os.getenv("DATAPIPE_ML_SKY_VAST_STREAM_LOGS", "1") == "1",
         down_on_finish=True,
     )
 
 
 def _launch_minimal_worker_with_candidates(candidates: Iterable[SkyVastCandidate]) -> dict:
-    from datapipe_ml.training.sky_vast.smoke import remote_smoke_process
+    from datapipe_ml.training.sky_vast.worker_entrypoint import remote_smoke_process
 
     resource_errors = []
     for infra, accelerator, offer_id, instance_type in candidates:
@@ -591,6 +625,119 @@ def test_sky_vast_config_builds_launcher_without_credentials():
     config = SkyVastTrainingLauncherConfig(cluster_name="test-sky-vast")
     launcher = build_training_launcher(config)
     assert launcher.__class__.__name__ == "SkyVastTrainingLauncher"
+
+
+def test_sky_vast_source_install_uses_uv_by_default():
+    from datapipe_ml.training.sky_vast.task_builder import _source_install_commands
+
+    config = SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=())
+    assert _source_install_commands(
+        config,
+        "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]",
+        "/workspace/datapipe_ml/source/datapipe-ml",
+    ) == [
+        "python3 -m pip install --user uv",
+        "python3 -m uv venv /workspace/datapipe_ml/.venv --seed",
+        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python -e '/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]'",
+        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-sources -e '/workspace/datapipe_ml/source/datapipe-ml'",
+    ]
+
+
+def test_sky_vast_source_install_can_skip_dependencies():
+    from datapipe_ml.training.sky_vast.task_builder import _source_install_commands
+
+    config = SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_deps=False, source_install_extras=())
+    assert _source_install_commands(
+        config,
+        "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]",
+        "/workspace/datapipe_ml/source/datapipe-ml",
+    ) == [
+        "python3 -m pip install --user uv",
+        "python3 -m uv venv /workspace/datapipe_ml/.venv --seed",
+        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-deps -e '/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]'",
+        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-sources --no-deps -e '/workspace/datapipe_ml/source/datapipe-ml'",
+    ]
+
+
+def test_sky_vast_source_install_targets_point_to_separate_packages():
+    from datapipe_ml.training.sky_vast.task_builder import _datapipe_core_install_target, _datapipe_ml_install_target
+
+    assert _datapipe_core_install_target() == "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]"
+    assert (
+        _datapipe_ml_install_target(SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=()))
+        == "/workspace/datapipe_ml/source/datapipe-ml"
+    )
+    assert (
+        _datapipe_ml_install_target(SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=("torch",)))
+        == "/workspace/datapipe_ml/source/datapipe-ml[torch]"
+    )
+
+
+def test_sky_vast_source_archive_contains_core_and_ml_packages():
+    import io
+    import tarfile
+
+    import fsspec
+
+    from datapipe_ml.training.sky_vast.transport import copy_project_source_to_remote
+
+    fs = fsspec.filesystem("memory")
+    copy_project_source_to_remote(fs, "/source.tar.gz")
+
+    with fs.open("/source.tar.gz", "rb") as archive_file:
+        archive_bytes = archive_file.read()
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+        names = set(archive.getnames())
+
+    assert "README.md" in names
+    assert "datapipe-core/pyproject.toml" in names
+    assert "datapipe-ml/pyproject.toml" in names
+    assert "datapipe-ml/README.md" in names
+    assert any(name.startswith("datapipe-core/datapipe/") for name in names)
+    assert any(name.startswith("datapipe-ml/datapipe_ml/") for name in names)
+    assert "datapipe-ml/tests/test_training_sky_vast.py" not in names
+    assert not any(name.startswith("libs/") for name in names)
+    assert not any(".pytest_cache" in name for name in names)
+
+
+def test_sky_vast_worker_runs_from_uv_venv_by_default():
+    from datapipe_ml.training.sky_vast.task_builder import _worker_python
+
+    config = SkyVastTrainingLauncherConfig(cluster_name="unit")
+    assert _worker_python(config) == "/workspace/datapipe_ml/.venv/bin/python"
+
+
+def test_sky_vast_source_install_can_use_pip():
+    from datapipe_ml.training.sky_vast.task_builder import _source_install_commands, _worker_python
+
+    config = SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_backend="pip")
+    assert _source_install_commands(config, "/workspace/core", "/workspace/ml") == [
+        "python3 -m pip install --user -e '/workspace/core'",
+        "python3 -m pip install --user -e '/workspace/ml'",
+    ]
+    assert _worker_python(config) == "python3"
+
+
+def test_sky_vast_wait_result_fails_when_sky_job_failed():
+    from datapipe_ml.training.sky_vast.launcher import SkyVastTrainingError, SkyVastTrainingLauncher
+
+    class EmptySignalFS:
+        def exists(self, path: str) -> bool:
+            return False
+
+    launcher = SkyVastTrainingLauncher(
+        SkyVastTrainingLauncherConfig(
+            cluster_name="unit",
+            poll_s=0,
+            run_timeout_s=60,
+            output_sync_interval_s=None,
+        )
+    )
+    launcher._current_cluster_name = "unit-worker"
+    launcher._job_failed = lambda cluster_name: True  # type: ignore[method-assign]
+
+    with pytest.raises(SkyVastTrainingError, match="Sky job failed before remote training result"):
+        launcher._wait_for_result(EmptySignalFS(), TrainingLaunchRequest(target=str, args=(), cluster_suffix="worker"))  # type: ignore[arg-type]
 
 
 def test_sky_vast_remote_request_rewrites_paths():

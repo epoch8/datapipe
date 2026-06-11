@@ -301,6 +301,7 @@ class SkyVastTrainingLauncher:
     def _wait_for_result(self, sshfs: AbstractFileSystem, request: TrainingLaunchRequest) -> None:
         deadline = None if self.config.run_timeout_s is None else time.time() + self.config.run_timeout_s
         output_sync = _PeriodicOutputSync(self, sshfs, request)
+        cluster_name = getattr(self, "_current_cluster_name", None)
         while deadline is None or time.time() < deadline:
             if sshfs.exists(str(REMOTE_SIGNALS / "TRAIN_DONE")):
                 return
@@ -310,6 +311,8 @@ class SkyVastTrainingLauncher:
                 if sshfs.exists(str(traceback_path)):
                     details = self._read_remote_text(sshfs, str(traceback_path), label="traceback")
                 raise SkyVastTrainingError(f"Remote Sky/Vast training failed.\n{details}")
+            if cluster_name and self._job_failed(cluster_name):
+                raise SkyVastTrainingError(f"Sky job failed before remote training result for {cluster_name!r}")
             output_sync.maybe_sync()
             time.sleep(self.config.poll_s)
         raise SkyVastTrainingError("Timed out waiting for remote Sky/Vast training result")

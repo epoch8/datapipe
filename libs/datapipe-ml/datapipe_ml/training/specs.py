@@ -90,6 +90,8 @@ class SkyVastTrainingLauncherConfig:
     image_id: str = "vastai/base-image:@vastai-automatic-tag"
     setup_commands: Tuple[str, ...] = ()
     source_install_extras: Tuple[str, ...] = ("torch", "tensorflow")
+    source_install_backend: str = "uv"
+    source_install_deps: bool = True
     envs: Dict[str, str] = field(default_factory=dict)
     max_reconnect: int = 10
     reconnect_sleep_s: int = 30
