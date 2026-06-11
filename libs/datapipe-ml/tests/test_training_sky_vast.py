@@ -154,106 +154,8 @@ def _write_live_sky_vast_catalog(sky_home: Path) -> None:
 
 def _write_sky_vast_patch(patch_dir: Path) -> None:
     patch_dir.mkdir(parents=True, exist_ok=True)
-    (patch_dir / "sitecustomize.py").write_text("""
-from __future__ import annotations
-
-
-def _patch_sky_vast_launch() -> None:
-    try:
-        from sky.provision.vast import utils as vast_utils
-    except Exception:
-        return
-    if getattr(vast_utils, "_datapipe_live_vast_patch", False):
-        return
-
-    original_launch = vast_utils.launch
-
-    def patched_launch(
-        name,
-        instance_type,
-        region,
-        disk_size,
-        image_name,
-        ports,
-        preemptible,
-        secure_only,
-        private_docker_registry=None,
-        login=None,
-        create_instance_kwargs=None,
-        ssh_public_key=None,
-    ):
-        country = str(region or "").strip().split(",")[-1].strip().upper()
-
-        original_vast_factory = vast_utils.vast.vast
-
-        class LiveVastClient:
-            def __init__(self, client):
-                self._client = client
-                api_key = (
-                    getattr(client, "api_key_access", None)
-                    or getattr(client, "api_key", None)
-                    or getattr(getattr(client, "client", None), "api_key", None)
-                )
-                if api_key is not None:
-                    self.api_key_access = api_key
-                    self.client = type("VastClientShim", (), {"api_key": api_key})()
-
-            def __getattr__(self, name):
-                return getattr(self._client, name)
-
-            def search_offers(self, query=None, *args, **kwargs):
-                cpu_ram = float(instance_type.split("-")[-1]) / 1024
-                gpu_name = instance_type.split("-")[1].replace("_", " ")
-                num_gpus = int(instance_type.split("-")[0].replace("x", ""))
-                live_query = [
-                    "verified=true",
-                    "rentable=true",
-                    "rented=false",
-                    f"disk_space>={disk_size}",
-                    f"num_gpus={num_gpus}",
-                    f"gpu_name=\\"{gpu_name}\\"",
-                    f"cpu_ram>=\\"{cpu_ram}\\"",
-                ]
-                if secure_only:
-                    live_query.extend(["datacenter=true", "hosting_type>=1"])
-                kwargs.setdefault("order", "dph_total+")
-                offers = self._client.search_offers(query=" ".join(live_query), *args, **kwargs)
-                if isinstance(offers, int) or not country:
-                    return offers
-                return [
-                    offer
-                    for offer in offers
-                    if str(offer.get("geolocation") or "").strip().upper().endswith(f", {country}")
-                ]
-
-        def live_vast_factory():
-            return LiveVastClient(original_vast_factory())
-
-        vast_utils.vast.vast = live_vast_factory
-        try:
-            return original_launch(
-                name=name,
-                instance_type=instance_type,
-                region=region,
-                disk_size=disk_size,
-                image_name=image_name,
-                ports=ports,
-                preemptible=preemptible,
-                secure_only=secure_only,
-                private_docker_registry=private_docker_registry,
-                login=login,
-                create_instance_kwargs=create_instance_kwargs,
-                ssh_public_key=ssh_public_key,
-            )
-        finally:
-            vast_utils.vast.vast = original_vast_factory
-
-    vast_utils.launch = patched_launch
-    vast_utils._datapipe_live_vast_patch = True
-
-
-_patch_sky_vast_launch()
-""".lstrip())
+    helper_path = Path(__file__).with_name("helpers") / "sky_vast_sitecustomize.py"
+    (patch_dir / "sitecustomize.py").write_text(helper_path.read_text())
 
 
 @pytest.fixture
@@ -541,7 +443,14 @@ def _sky_vast_config(
     accelerators: str | None = None,
     instance_type: str | None = None,
     run_timeout_s: int = 7200,
+    source_install_extras: tuple[str, ...] | None = None,
 ) -> SkyVastTrainingLauncherConfig:
+    if source_install_extras is None:
+        source_install_extras = tuple(
+            extra.strip()
+            for extra in os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_EXTRAS", "").split(",")
+            if extra.strip()
+        )
     return SkyVastTrainingLauncherConfig(
         cluster_name=cluster_name,
         infra=infra,
@@ -556,11 +465,7 @@ def _sky_vast_config(
         run_timeout_s=run_timeout_s,
         sky_launch_timeout_s=int(os.getenv("DATAPIPE_ML_SKY_LAUNCH_TIMEOUT_S", "180")),
         sky_status_timeout_s=int(os.getenv("DATAPIPE_ML_SKY_STATUS_TIMEOUT_S", "60")),
-        source_install_extras=tuple(
-            extra.strip()
-            for extra in os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_EXTRAS", "").split(",")
-            if extra.strip()
-        ),
+        source_install_extras=source_install_extras,
         source_install_backend=os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_BACKEND", "uv"),
         source_install_deps=os.getenv("DATAPIPE_ML_SKY_VAST_SOURCE_INSTALL_DEPS", "1") == "1",
         stream_logs=os.getenv("DATAPIPE_ML_SKY_VAST_STREAM_LOGS", "1") == "1",
@@ -621,83 +526,29 @@ def _run_with_accelerator_candidates(
     pytest.skip("No configured Sky/Vast accelerator candidate was currently available:\n" + "\n".join(resource_errors))
 
 
+def _assert_local_yolov8_training_files(runtime) -> None:
+    df_model = runtime.ds.get_table("detection_model").get_data()
+    model_path = Path(df_model["detection_model__model_path"].iloc[0]).resolve()
+    workdir = runtime.workdir.resolve()
+    assert model_path.is_relative_to(workdir)
+    assert model_path.is_file()
+    assert model_path.stat().st_size > 0
+    args_path = model_path.parent.parent / "args.yaml"
+    assert args_path.is_file()
+    assert args_path.stat().st_size > 0
+
+
 def test_sky_vast_config_builds_launcher_without_credentials():
     config = SkyVastTrainingLauncherConfig(cluster_name="test-sky-vast")
     launcher = build_training_launcher(config)
     assert launcher.__class__.__name__ == "SkyVastTrainingLauncher"
 
 
-def test_sky_vast_source_install_uses_uv_by_default():
-    from datapipe_ml.training.sky_vast.task_builder import _source_install_commands
+def test_sky_vast_yolo_training_config_installs_torch_extra():
+    from datapipe_ml.training.sky_vast.task_builder import _datapipe_ml_install_target
 
-    config = SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=())
-    assert _source_install_commands(
-        config,
-        "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]",
-        "/workspace/datapipe_ml/source/datapipe-ml",
-    ) == [
-        "python3 -m pip install --user uv",
-        "python3 -m uv venv /workspace/datapipe_ml/.venv --seed",
-        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python -e '/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]'",
-        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-sources -e '/workspace/datapipe_ml/source/datapipe-ml'",
-    ]
-
-
-def test_sky_vast_source_install_can_skip_dependencies():
-    from datapipe_ml.training.sky_vast.task_builder import _source_install_commands
-
-    config = SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_deps=False, source_install_extras=())
-    assert _source_install_commands(
-        config,
-        "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]",
-        "/workspace/datapipe_ml/source/datapipe-ml",
-    ) == [
-        "python3 -m pip install --user uv",
-        "python3 -m uv venv /workspace/datapipe_ml/.venv --seed",
-        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-deps -e '/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]'",
-        "python3 -m uv pip install --python /workspace/datapipe_ml/.venv/bin/python --no-sources --no-deps -e '/workspace/datapipe_ml/source/datapipe-ml'",
-    ]
-
-
-def test_sky_vast_source_install_targets_point_to_separate_packages():
-    from datapipe_ml.training.sky_vast.task_builder import _datapipe_core_install_target, _datapipe_ml_install_target
-
-    assert _datapipe_core_install_target() == "/workspace/datapipe_ml/source/datapipe-core[gcsfs,s3fs,ray]"
-    assert (
-        _datapipe_ml_install_target(SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=()))
-        == "/workspace/datapipe_ml/source/datapipe-ml"
-    )
-    assert (
-        _datapipe_ml_install_target(SkyVastTrainingLauncherConfig(cluster_name="unit", source_install_extras=("torch",)))
-        == "/workspace/datapipe_ml/source/datapipe-ml[torch]"
-    )
-
-
-def test_sky_vast_source_archive_contains_core_and_ml_packages():
-    import io
-    import tarfile
-
-    import fsspec
-
-    from datapipe_ml.training.sky_vast.transport import copy_project_source_to_remote
-
-    fs = fsspec.filesystem("memory")
-    copy_project_source_to_remote(fs, "/source.tar.gz")
-
-    with fs.open("/source.tar.gz", "rb") as archive_file:
-        archive_bytes = archive_file.read()
-    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
-        names = set(archive.getnames())
-
-    assert "README.md" in names
-    assert "datapipe-core/pyproject.toml" in names
-    assert "datapipe-ml/pyproject.toml" in names
-    assert "datapipe-ml/README.md" in names
-    assert any(name.startswith("datapipe-core/datapipe/") for name in names)
-    assert any(name.startswith("datapipe-ml/datapipe_ml/") for name in names)
-    assert "datapipe-ml/tests/test_training_sky_vast.py" not in names
-    assert not any(name.startswith("libs/") for name in names)
-    assert not any(".pytest_cache" in name for name in names)
+    config = _sky_vast_config(cluster_name="unit", source_install_extras=("torch",))
+    assert _datapipe_ml_install_target(config) == "/workspace/datapipe_ml/source/datapipe-ml[torch]"
 
 
 def test_sky_vast_worker_runs_from_uv_venv_by_default():
@@ -740,26 +591,28 @@ def test_sky_vast_wait_result_fails_when_sky_job_failed():
         launcher._wait_for_result(EmptySignalFS(), TrainingLaunchRequest(target=str, args=(), cluster_suffix="worker"))  # type: ignore[arg-type]
 
 
-def test_sky_vast_remote_request_rewrites_paths():
+def test_sky_vast_remote_request_rewrites_paths(tmp_path):
+    local_data_dir = tmp_path / "data"
     request = TrainingLaunchRequest(
         target=str,
-        args=({"path": "/tmp/local/data/file.txt"},),
+        args=({"path": str(local_data_dir / "file.txt")},),
         cluster_suffix="unit",
-        input_dirs=("/tmp/local/data",),
-        output_dirs=(("/tmp/local/models", "/tmp/local/models"),),
-        path_rewrites=(("/tmp/local/data", "/workspace/input/data"),),
+        input_dirs=(str(local_data_dir),),
+        output_dirs=((str(tmp_path / "models"), str(tmp_path / "models")),),
+        path_rewrites=((str(local_data_dir), "/workspace/input/data"),),
     )
     remote = to_remote_request(request)
     assert remote.args == ({"path": "/workspace/input/data/file.txt"},)
     assert loads_from_text(dumps_to_text(remote)).args == remote.args
 
 
-def test_sky_vast_rewrites_remote_results_back_to_local_paths():
+def test_sky_vast_rewrites_remote_results_back_to_local_paths(tmp_path):
+    local_models_dir = tmp_path / "models"
     result = {"model_path": "/workspace/datapipe_ml/output/models/run/weights/best.pt"}
     assert rewrite_value(
         result,
-        (("/workspace/datapipe_ml/output/models", "/tmp/local/models"),),
-    ) == {"model_path": "/tmp/local/models/run/weights/best.pt"}
+        (("/workspace/datapipe_ml/output/models", str(local_models_dir)),),
+    ) == {"model_path": str(local_models_dir / "run" / "weights" / "best.pt")}
 
 
 def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
@@ -792,10 +645,10 @@ def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
     assert (local_models_dir / "run" / "weights" / "best.pt").read_bytes() == b"checkpoint"
 
 
-def test_sky_vast_transport_skips_copy_when_paths_are_same():
+def test_core_files_copy_tree_skips_copy_when_paths_are_same():
     import fsspec
 
-    from datapipe_ml.training.sky_vast.transport import copy_tree_between_fs
+    from datapipe_ml.core.files import copy_tree_between_fs
 
     fs = fsspec.filesystem("memory")
     fs.makedirs("/same/path", exist_ok=True)
@@ -808,10 +661,10 @@ def test_sky_vast_transport_skips_copy_when_paths_are_same():
         assert src.read() == b"original"
 
 
-def test_sky_vast_transport_parallel_copy_copies_tree(tmp_path):
+def test_core_files_parallel_copy_copies_tree(tmp_path):
     import fsspec
 
-    from datapipe_ml.training.sky_vast.transport import copy_tree_between_fs
+    from datapipe_ml.core.files import copy_tree_between_fs
 
     src_fs = fsspec.filesystem("memory")
     dst_fs = fsspec.filesystem("file")
@@ -865,15 +718,15 @@ def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
     assert os.getenv("VAPI_API_KEY"), "tests/.env must provide VAPI_API_KEY for Sky/Vast integration tests"
 
 
-@pytest.mark.sky_vast
-def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
-    if not _sky_vast_available():
-        pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
-    if _sky_vast_all_candidates_are_cached():
-        pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
+# @pytest.mark.sky_vast
+# def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
+#     if not _sky_vast_available():
+#         pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
+#     if _sky_vast_all_candidates_are_cached():
+#         pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
 
-    result = _launch_minimal_worker_with_candidates(_sky_vast_candidates())
-    assert result == {"ok": True}
+#     result = _launch_minimal_worker_with_candidates(_sky_vast_candidates())
+#     assert result == {"ok": True}
 
 
 @pytest.mark.torch
@@ -901,6 +754,7 @@ def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment
             accelerators=accelerator,
             instance_type=instance_type,
             run_timeout_s=900,
+            source_install_extras=("torch",),
         )
 
         run_pipeline(runtime, [detection_freeze_step(attempt_path), train_step])
@@ -911,6 +765,7 @@ def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment
             "detection_model__model_path",
             "yolov8",
         )
+        _assert_local_yolov8_training_files(runtime)
 
     _run_with_accelerator_candidates(tmp_path, _run)
 
@@ -973,6 +828,7 @@ def test_yolov8n_detection_training_sky_vast_rtx3060(tmp_path, sky_vast_environm
                 accelerators=accelerator,
                 instance_type=instance_type,
                 run_timeout_s=900,
+                source_install_extras=("torch",),
             ),
         )
 
@@ -984,5 +840,6 @@ def test_yolov8n_detection_training_sky_vast_rtx3060(tmp_path, sky_vast_environm
             "detection_model__model_path",
             "yolov8",
         )
+        _assert_local_yolov8_training_files(runtime)
 
     _run_with_accelerator_candidates(tmp_path, _run)

@@ -12,6 +12,10 @@ from typing import Any, Callable, Optional
 
 from fsspec import AbstractFileSystem
 
+from datapipe_ml.core.files import (
+    copy_fs_to_url,
+    copy_url_to_fs,
+)
 from datapipe_ml.training.sky_vast.constants import (
     REMOTE_INPUT,
     REMOTE_OUTPUT,
@@ -28,12 +32,10 @@ from datapipe_ml.training.sky_vast.serialization import (
     rewrite_value,
     to_remote_request,
 )
+from datapipe_ml.training.sky_vast.source_archive import copy_project_source_to_remote
 from datapipe_ml.training.sky_vast.task_builder import build_task
-from datapipe_ml.training.sky_vast.transport import (
+from datapipe_ml.training.sky_vast.utils import (
     Timeout,
-    copy_fs_to_local_or_cloud,
-    copy_local_or_cloud_to_fs,
-    copy_project_source_to_remote,
     retry,
 )
 from datapipe_ml.training.specs import (
@@ -268,7 +270,7 @@ class SkyVastTrainingLauncher:
             if src in request.input_dirs or any(src.startswith(input_dir) for input_dir in request.input_dirs):
 
                 def _copy_input(src: str = src, dst: str = dst) -> None:
-                    copy_local_or_cloud_to_fs(
+                    copy_url_to_fs(
                         src,
                         sshfs,
                         dst,
@@ -323,7 +325,7 @@ class SkyVastTrainingLauncher:
         for local_path, remote_path in request.output_dirs:
 
             def _copy_output(local_path: str = local_path, remote_path: str = remote_path) -> None:
-                copy_fs_to_local_or_cloud(
+                copy_fs_to_url(
                     sshfs,
                     remote_path,
                     local_path,
