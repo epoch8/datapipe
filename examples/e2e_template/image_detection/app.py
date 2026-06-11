@@ -147,6 +147,7 @@ pipeline = Pipeline(
             output__detection_model_is_trained_on_detection_frozen_dataset=(
                 "detection_model_is_trained_on_detection_frozen_dataset"
             ),
+            output__training_status="detection_training_status",
             output__detection_frozen_dataset__class_names="detection_frozen_dataset__class_names",
             max_within_time="1w",
             working_dir=str(DATAPIPE_DIR),

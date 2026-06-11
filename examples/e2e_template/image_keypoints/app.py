@@ -146,6 +146,7 @@ pipeline = Pipeline(
             output__keypoints_model_is_trained_on_keypoints_frozen_dataset=(
                 "keypoints_model_is_trained_on_keypoints_frozen_dataset"
             ),
+            output__training_status="keypoints_training_status",
             output__keypoints_frozen_dataset__class_names="keypoints_frozen_dataset__class_names",
             max_within_time="1w",
             working_dir=str(DATAPIPE_DIR),
