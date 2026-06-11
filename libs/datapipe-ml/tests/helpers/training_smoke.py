@@ -36,7 +36,7 @@ SMOKE_IMAGES = 8
 SMOKE_EPOCHS = int(os.environ.get("DATAPIPE_ML_SMOKE_EPOCHS", "2"))
 SMOKE_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_IMGSZ", "16"))
 SMOKE_YOLOV5_IMGSZ = int(os.environ.get("DATAPIPE_ML_SMOKE_YOLOV5_IMGSZ", str(max(64, SMOKE_IMGSZ))))
-SMOKE_DEVICE = os.environ.get("DATAPIPE_ML_SMOKE_DEVICE", "cpu")
+SMOKE_DEVICE = os.environ.get("DATAPIPE_ML_SMOKE_DEVICE")
 PRIMARY_KEYS = ["image_id"]
 
 

@@ -46,7 +46,7 @@ fiftyone = [
     "fiftyone",
 ]
 sky-vast = [
-    "skypilot[vast]==0.12.2.post1",
+    "skypilot[vast]==0.12.3.post1",
     "vastai-sdk>=0.1.20,<0.2",
     "sshfs",
     "asyncssh",

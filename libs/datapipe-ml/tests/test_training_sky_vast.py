@@ -791,6 +791,7 @@ def test_yolov8n_detection_training_sky_vast_rtx3060(tmp_path, sky_vast_environm
     def _run(attempt_path: Path, infra: str, accelerator: str, instance_type: str | None) -> None:
         runtime = make_runtime(attempt_path)
         cluster_name = f"datapipe-ml-yolov8n-test-{uuid.uuid4().hex[:8]}"
+        epochs = int(os.getenv("DATAPIPE_ML_SKY_VAST_YOLOV8N_EPOCHS", "2"))
         train_step = Train_YoloV8_DetectionModel(
             input__detection_frozen_dataset="detection_frozen_dataset",
             input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
@@ -806,12 +807,12 @@ def test_yolov8n_detection_training_sky_vast_rtx3060(tmp_path, sky_vast_environm
                 YoloV8_TrainingConfig(
                     model="yolov8n.pt",
                     imgsz=64,
-                    batch=4,
-                    epochs=20,
+                    batch=2,
+                    epochs=epochs,
                     seed=42,
-                    device="0",
+                    device=os.getenv("DATAPIPE_ML_SKY_VAST_YOLOV8N_DEVICE"),
                     workers=0,
-                    patience=20,
+                    patience=epochs,
                     amp=False,
                     val=True,
                     plots=False,

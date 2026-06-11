@@ -164,7 +164,7 @@ def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, sm
                     output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
                     working_dir=str(tmp_path),
                     yolov8_train_configs=[
-                        YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device="cpu")
+                        YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device=None)
                     ],
                     primary_keys=["image_id"],
                     bbox_id__name=None,
