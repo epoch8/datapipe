@@ -36,12 +36,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
-          pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk==2.65.0" "flake8" "mypy"
-          pip install pandas-stubs pytest-cases types-setuptools types-requests
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "flake8" "mypy"
+          uv pip install --system pandas-stubs pytest-cases types-setuptools types-requests
 
       - name: Lint with flake8
         run: |
@@ -66,11 +71,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
-          pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases"
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "pytest<8" "pytest_cases"
 
       - name: Import smoke test
         run: |
@@ -86,6 +96,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Start CVAT
         run: |
@@ -105,11 +120,11 @@ jobs:
         run: |
           docker exec cvat_server bash -lc "DJANGO_SUPERUSER_PASSWORD=admin python3 ~/manage.py createsuperuser --username admin --email admin@example.com --noinput || true"
 
-      - name: Install dependencies
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
-          pip install -e "libs/datapipe-cvat" --no-deps
-          pip install "cvat-sdk==2.65.0" "pytest<8" "pytest_cases" "requests"
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "pytest<8" "pytest_cases" "requests"
 
       - name: Test with real CVAT
         run: |

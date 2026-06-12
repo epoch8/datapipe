@@ -32,6 +32,8 @@ from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.types import InputSpec, OutputSpec
 
+from examples.datapipe_core._sqlite import sqlite_connstr
+
 
 class Base(DeclarativeBase):
     pass
@@ -133,7 +135,7 @@ pipeline = Pipeline(
 )
 
 
-dbconn = DBConn("sqlite+pysqlite3:///db.sqlite", sqla_metadata=Base.metadata)
+dbconn = DBConn(sqlite_connstr(), sqla_metadata=Base.metadata)
 ds = DataStore(dbconn)
 app = DatapipeApp(ds, Catalog({}), pipeline)
 

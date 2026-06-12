@@ -34,12 +34,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[sqlite]"
-          pip install -e "libs/datapipe-label-studio" --no-deps
-          pip install "label-studio-sdk>=2.0.16,<2.0.20" "flake8" "mypy"
-          pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML types-requests
+          uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-label-studio" --no-deps
+          uv pip install --system "label-studio-sdk>=2.0.16,<2.0.20" "flake8" "mypy"
+          uv pip install --system pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML types-requests
 
       - name: Lint with flake8
         run: |
@@ -108,11 +113,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[sqlite]"
-          pip install -e "libs/datapipe-label-studio" --no-deps
-          pip install "label-studio-sdk>=2.0.16,<2.0.20" "pytest<8" "pytest_cases" "python-dotenv"
+          uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-label-studio" --no-deps
+          uv pip install --system "label-studio-sdk>=2.0.16,<2.0.20" "pytest<8" "pytest_cases" "python-dotenv"
 
       - name: Test with pytest
         run: |

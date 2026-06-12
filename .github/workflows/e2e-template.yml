@@ -61,10 +61,9 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
+      - name: Install dependencies with uv
         working-directory: .
         run: |
-          python -m pip install --upgrade pip
           uv pip install --system \
             -e "libs/datapipe-core[s3fs]" \
             -e "libs/datapipe-label-studio" \

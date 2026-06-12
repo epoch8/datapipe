@@ -308,7 +308,7 @@ class TableStoreFiledir(TableStore):
         """
 
         self.fsspec_kwargs = fsspec_kwargs or {}
-        self.protocol, path = fsspec.core.split_protocol(filename_pattern)
+        self.protocol, path = fsspec.core.split_protocol(str(filename_pattern))
         if "protocol" in self.fsspec_kwargs:
             self.protocol = self.fsspec_kwargs["protocol"]
         else:

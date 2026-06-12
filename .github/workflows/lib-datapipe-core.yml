@@ -40,10 +40,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "flake8" "mypy"
-          pip install pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
+          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "flake8" "mypy"
+          uv pip install --system pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
 
       - name: Lint with flake8
         run: |
@@ -130,9 +135,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow]" "pytest<8" "pytest_cases" "elasticsearch<9"
+          uv pip install --system ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow]" "pytest<8" "pytest_cases" "elasticsearch<9"
 
       - name: Test with pytest
         run: |
@@ -154,6 +164,7 @@ jobs:
         example:
           - datatable_batch_transform
           - image_resize
+          - key_mapping
           - many_to_zero
           - model_inference
           - one_to_many_pipeline
@@ -169,9 +180,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
         run: |
-          pip install -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray,elastic]"
+          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray,elastic]"
 
       - name: Test example
         working-directory: examples/datapipe_core/${{ matrix.example }}

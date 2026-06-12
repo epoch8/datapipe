@@ -16,6 +16,7 @@ All commands below assume the current directory is **`examples/datapipe_cvat/sim
 ## Prerequisites
 
 - Python 3.10–3.12
+- [uv](https://docs.astral.sh/uv/) for installing workspace packages
 - Docker and Docker Compose (for local CVAT)
 - Git
 - Installed monorepo packages: `datapipe-core` and `datapipe-cvat`
@@ -23,12 +24,13 @@ All commands below assume the current directory is **`examples/datapipe_cvat/sim
 
 ## Installation
 
-From the monorepo root (`datapipe/`):
+Install workspace packages with `uv` from this directory:
 
 ```bash
-pip install -e "libs/datapipe-core[sqlite]"
-pip install -e "libs/datapipe-cvat" --no-deps
-pip install "cvat-sdk==2.65.0" requests pillow tqdm
+uv pip install \
+  -e "../../../libs/datapipe-core[sqlite]" \
+  -e "../../../libs/datapipe-cvat" --no-deps \
+  "cvat-sdk==2.65.0" requests pillow tqdm
 ```
 
 ## Run CVAT locally
