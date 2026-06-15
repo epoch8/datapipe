@@ -488,20 +488,29 @@ def test_batch_transform_max_records_per_run_keeps_boundary_timestamp_records(db
     first_run_output = output_dt.get_data().sort_values("profile_id").reset_index(drop=True)
     assert first_run_output["profile_id"].tolist() == ["p1", "p2", "p3"]
 
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: offset НЕ должен обновиться когда лимит сработал!
+    # У нас 6 записей, но max_records_per_run=3, значит 3 остались необработанными
     offsets_after_first = ds.offset_table.get_offsets_for_transformation(step.get_name())
-    offset_after_first = offsets_after_first["test_input_max_records"]
-    assert first_ts <= offset_after_first < second_ts
-    assert step.get_changed_idx_count(ds) == 3
+    # Offset не должен быть записан вообще (первый запуск с лимитом)
+    assert "test_input_max_records" not in offsets_after_first, (
+        "Offset не должен обновляться при срабатывании max_records_per_run лимита"
+    )
+    # Проверяем что в очереди остались необработанные записи
+    assert step.get_changed_idx_count(ds) == 3, "Должны остаться 3 необработанные записи"
 
     step.run_full(ds)
 
     final_output = output_dt.get_data().sort_values("profile_id").reset_index(drop=True)
     assert final_output["profile_id"].tolist() == ["p1", "p2", "p3", "p4", "p5", "p6"]
 
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: offset ДОЛЖЕН обновиться теперь (все обработано, лимит не сработал)
     offsets_after_second = ds.offset_table.get_offsets_for_transformation(step.get_name())
+    assert "test_input_max_records" in offsets_after_second, (
+        "Offset должен обновиться когда все записи обработаны"
+    )
     offset_after_second = offsets_after_second["test_input_max_records"]
-    assert offset_after_second >= second_ts
-    assert step.get_changed_idx_count(ds) == 0
+    assert offset_after_second >= second_ts, "Offset должен указывать на последние обработанные данные"
+    assert step.get_changed_idx_count(ds) == 0, "Все записи должны быть обработаны"
 
 
 def test_batch_transform_offset_with_empty_output_filter(dbconn: DBConn):
@@ -629,3 +638,4 @@ def test_batch_transform_offset_with_empty_output_filter(dbconn: DBConn):
     second_offset = offsets["test_input_filter"]
     assert second_offset >= second_ts
     assert second_offset > first_offset, "Offset должен продвинуться после второй партии"
+
