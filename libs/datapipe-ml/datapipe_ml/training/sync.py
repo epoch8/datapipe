@@ -58,12 +58,11 @@ def plan_orchestrator_output_sync(
     if not owns_output_sync or sync_config is None or not sync_config.enabled:
         return None
     remote_dst = str(Pathy.fluid(models_dir))
-    if storage_url_is_remote(remote_dst):
-        from pathlib import Path
+    if not storage_url_is_remote(remote_dst):
+        return None
+    from pathlib import Path
 
-        local_src = str(Path(tmp_folder) / LOCAL_TRAIN_OUTPUT_SUBDIR)
-    else:
-        local_src = remote_dst
+    local_src = str(Path(tmp_folder) / LOCAL_TRAIN_OUTPUT_SUBDIR)
     return OrchestratorOutputSync(local_src=local_src, remote_dst=remote_dst)
 
 
