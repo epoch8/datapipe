@@ -26,22 +26,12 @@ from datapipe_ml.training.specs import (
 )
 from tests.helpers.training_smoke import assert_yolov8_training_artifacts
 
+from tests.helpers.test_env import load_test_env
+
 pytestmark = [pytest.mark.slow, pytest.mark.training]
 
 
-def _load_tests_env() -> None:
-    env_path = Path(__file__).with_name(".env")
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text().splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
-
-
-_load_tests_env()
+load_test_env()
 
 DEFAULT_SKY_VAST_CANDIDATE_LIMIT = 5
 DEFAULT_SKY_VAST_ACCELERATOR_CANDIDATES = (
@@ -161,7 +151,7 @@ def _write_sky_vast_patch(patch_dir: Path) -> None:
 
 @pytest.fixture
 def sky_vast_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _load_tests_env()
+    load_test_env()
     api_key = os.getenv("VAPI_API_KEY")
     original_home = Path.home()
     sky_home = tmp_path / "sky-home"
@@ -715,7 +705,7 @@ def test_sky_vast_transport_retry_recovers_after_transient_error():
 
 @pytest.mark.sky_vast
 def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
-    _load_tests_env()
+    load_test_env()
     missing = [
         name
         for name, module_name in [
@@ -726,7 +716,7 @@ def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
         if importlib.util.find_spec(module_name) is None
     ]
     assert missing == []
-    assert os.getenv("VAPI_API_KEY"), "tests/.env must provide VAPI_API_KEY for Sky/Vast integration tests"
+    assert os.getenv("VAPI_API_KEY"), "tests/.env.test must provide VAPI_API_KEY for Sky/Vast integration tests"
 
 
 @pytest.mark.sky_vast

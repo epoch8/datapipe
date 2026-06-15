@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
@@ -137,6 +137,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
+    filedir_fsspec_kwargs: dict[str, Any] | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -152,6 +153,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
             output__model=self.output__keypoints_model,
             output__model_is_trained_on_frozen_dataset=self.output__keypoints_model_is_trained_on_keypoints_frozen_dataset,
             working_dir=self.working_dir,
+            filedir_fsspec_kwargs=self.filedir_fsspec_kwargs,
             primary_keys=self.primary_keys,
             model_primary_keys=self.keypoints_model_primary_keys,
             model_id__name=self.keypoints_model_id__name,

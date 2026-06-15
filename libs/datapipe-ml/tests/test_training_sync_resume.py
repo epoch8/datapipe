@@ -16,13 +16,19 @@ from datapipe_ml.training.runs import (
 from datapipe_ml.training.resume import select_resume_checkpoint
 from datapipe_ml.training.specs import Algo, TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import (
+    LOCAL_TRAIN_OUTPUT_SUBDIR,
     PeriodicTrainingSync,
     copy_tree_best_effort,
     discover_checkpoint_paths,
+    dst_sync_lock,
     manifest_path_for_run,
+    orchestrator_owns_output_sync,
+    plan_orchestrator_output_sync,
     read_checkpoint_manifest,
+    sync_training_tree_and_manifest,
     write_checkpoint_manifest,
 )
+from datapipe_ml.training.specs import TrainContext
 
 
 def test_write_manifest_and_select_latest_epoch_checkpoint(tmp_path: Path) -> None:
@@ -174,6 +180,103 @@ def test_discover_checkpoint_paths_finds_yolo_and_tf_checkpoints(tmp_path: Path)
     paths = {Path(path).name for path in discover_checkpoint_paths(str(run_dir))}
 
     assert paths == {"epoch1.pt", "last.pt", "02__model.keras"}
+
+
+def test_plan_orchestrator_output_sync_uses_local_staging_for_remote_models_dir(tmp_path: Path) -> None:
+    plan = plan_orchestrator_output_sync(
+        models_dir="s3://bucket/models",
+        tmp_folder=str(tmp_path),
+        sync_config=TrainingSyncConfig(enabled=True, interval_s=1),
+        owns_output_sync=True,
+    )
+
+    assert plan is not None
+    assert plan.remote_dst.endswith("/models")
+    assert plan.local_src.endswith(LOCAL_TRAIN_OUTPUT_SUBDIR)
+
+
+def test_plan_orchestrator_output_sync_skips_local_models_dir(tmp_path: Path) -> None:
+    plan = plan_orchestrator_output_sync(
+        models_dir=str(tmp_path / "models"),
+        tmp_folder=str(tmp_path),
+        sync_config=TrainingSyncConfig(enabled=True, interval_s=1),
+        owns_output_sync=True,
+    )
+
+    assert plan is None
+
+
+def test_orchestrator_owns_output_sync_only_for_local_launcher() -> None:
+    ctx = TrainContext(
+        models_dir="/tmp/models",
+        max_within_time="1d",
+        tmp_folder="/tmp",
+        model_suffix="_smoke",
+        dt__model=None,  # type: ignore[arg-type]
+        dt__link=None,  # type: ignore[arg-type]
+        dt__training_status=None,  # type: ignore[arg-type]
+        dt__frozen_dataset=None,  # type: ignore[arg-type]
+        dt__frozen_dataset__has__image_gt=None,
+        dt__train_config=None,  # type: ignore[arg-type]
+        model_other_primary_keys=[],
+        model_id__name="model_id",
+        frozen_dataset_id__name="frozen_dataset_id",
+    )
+    assert orchestrator_owns_output_sync(ctx) is True
+
+
+def test_dst_sync_lock_serializes_concurrent_tree_copies(tmp_path: Path) -> None:
+    import threading
+    import time
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    order: list[str] = []
+    start = threading.Barrier(2)
+
+    def worker(name: str) -> None:
+        src = tmp_path / f"src-{name}"
+        src.mkdir()
+        (src / "weights.pt").write_bytes(name.encode())
+        start.wait()
+        with dst_sync_lock(str(dst)):
+            order.append(f"{name}-enter")
+            time.sleep(0.05)
+            copy_tree_best_effort(str(src), str(dst / name), retries=1, retry_sleep_s=0)
+            order.append(f"{name}-exit")
+
+    threads = [threading.Thread(target=worker, args=(name,)) for name in ("a", "b")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert order in (
+        ["a-enter", "a-exit", "b-enter", "b-exit"],
+        ["b-enter", "b-exit", "a-enter", "a-exit"],
+    )
+
+
+def test_sync_training_tree_and_manifest_includes_post_training_files(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    run_dir = src / "model-a"
+    weights = run_dir / "weights"
+    weights.mkdir(parents=True)
+    (weights / "epoch1.pt").write_bytes(b"epoch")
+    (run_dir / "class_names.json").write_text('["cat"]')
+
+    sync_training_tree_and_manifest(
+        src=str(src),
+        dst=str(dst),
+        config=TrainingSyncConfig(enabled=True, interval_s=None, retries=1, retry_sleep_s=0),
+        model_id="model-a",
+    )
+
+    assert (dst / "model-a" / "class_names.json").read_text() == '["cat"]'
+    manifest = read_checkpoint_manifest(str(dst / "model-a" / "datapipe_ml_training_sync.json"))
+    assert manifest is not None
+    assert [Path(item.path).name for item in manifest.checkpoints] == ["epoch1.pt"]
 
 
 def test_periodic_training_sync_publishes_manifest_after_copy(tmp_path: Path) -> None:

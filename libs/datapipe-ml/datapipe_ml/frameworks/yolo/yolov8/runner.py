@@ -5,7 +5,7 @@ import os
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 import numpy as np
 import ultralytics
@@ -15,7 +15,7 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     YoloDataYAMLConfig,
     yolo_best_threshold_from_ultralytics_metrics,
     yolo_collect_results_generic,
-    yolo_copy_back_and_cleanup,
+    yolo_finalize_training_output,
     yolo_count_objects,
     yolo_load_data_config,
     yolo_prepare_tmp_dirs_for_cloud_yolov8,
@@ -34,6 +34,7 @@ class YoloV8_TrainingConfig:
     # datapipe-ml arguments:
     tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
     initial_weights_path: Optional[str] = None
+    persisted_project_dir: Optional[str] = None
 
     # yolov8 arguments
     model: str = "yolov8l-seg.pt"  # Specifies the model file for training
@@ -303,8 +304,8 @@ def train_model(
     task: Literal["detect", "segment", "pose"],
 ) -> Optional[Union[List[TrainingSegmentationResult], List[TrainingResult], List[TrainingKeypointsResult]]]:
 
-    if yolov8_training_config.project is None:
-        yolov8_training_config.project = "/tmp/runs/train"
+    project_dir = yolov8_training_config.project or "/tmp/runs/train"
+    yolov8_training_config.project = project_dir
     if yolov8_training_config.data is None:
         yolov8_training_config.data = "coco128.yaml"
 
@@ -347,27 +348,30 @@ def train_model(
             config=sync_config,
             model_id=yolov8_training_config.name,
         )
-    if output_sync is None:
+
+    def _train_and_collect_metadata() -> tuple[Optional[Path], Any, Any]:
         model = ultralytics.YOLO(yolov8_training_config.model)
         logger.info("Train %s model", yolov8_training_config.model)
         _ = model.train(**yolov8_training_config.to_yolo_kwargs())
+        trainer = model.trainer
+        validator = trainer.validator if trainer is not None else None
+        metrics = validator.metrics if validator is not None else None
+        selected_exp_folder = yolo_select_last_exp(project_dir, yolov8_training_config.name)
+        if selected_exp_folder is not None:
+            if tmp_yaml_path and tmp_yaml_path.exists():
+                shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
+            with open(selected_exp_folder / "class_names.json", "w") as out:
+                json.dump(class_names, out, indent=4, ensure_ascii=False)
+        return selected_exp_folder, trainer, metrics
+
+    if output_sync is None:
+        exp_folder, trainer, metrics = _train_and_collect_metadata()
     else:
         with output_sync:
-            model = ultralytics.YOLO(yolov8_training_config.model)
-            logger.info("Train %s model", yolov8_training_config.model)
-            _ = model.train(**yolov8_training_config.to_yolo_kwargs())
-    trainer = model.trainer
-    validator = trainer.validator if trainer is not None else None
-    metrics = validator.metrics if validator is not None else None
+            exp_folder, trainer, metrics = _train_and_collect_metadata()
 
-    exp_folder = yolo_select_last_exp(yolov8_training_config.project, yolov8_training_config.name)
     if exp_folder is None:
         return None
-
-    if tmp_yaml_path and tmp_yaml_path.exists():
-        shutil.copy(str(tmp_yaml_path), exp_folder / "training_data.yaml")
-    with open(exp_folder / "class_names.json", "w") as out:
-        json.dump(class_names, out, indent=4, ensure_ascii=False)
 
     # F1 картинки
     f1_curve_image = None
@@ -391,11 +395,9 @@ def train_model(
             f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
         best_threshold = yolo_best_threshold_from_ultralytics_metrics(metrics, "F1-Confidence(P)")
 
-    exp_folder = yolo_copy_back_and_cleanup(
-        exp_folder=exp_folder,
-        src_project_path=src_project_path,
-        tmp_dir_images=tmp_dir_images,
-        tmp_dir_project=tmp_dir_project,
+    exp_folder = yolo_finalize_training_output(
+        exp_folder,
+        persisted_project_dir=yolov8_training_config.persisted_project_dir or src_project_path,
         tmp_dir_images_cls=tmp_dir_images_cls,
         tmp_dir_project_cls=tmp_dir_project_cls,
         tmp_dir_model_cls=tmp_dir_model_cls,

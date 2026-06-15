@@ -297,6 +297,7 @@ def _register_yolo_tables(
     create_table: bool,
     mode: YoloModeSpec,
     dt__input_has_gt,
+    filedir_fsspec_kwargs: dict[str, Any] | None = None,
 ) -> None:
     catalog.add_datatable(
         output__train_config,
@@ -387,6 +388,7 @@ def _register_yolo_tables(
                     enable_rm=False,
                     read_data=False,
                     primary_schema=file_primary_schema,
+                    fsspec_kwargs=filedir_fsspec_kwargs or None,
                 ),
             ).table_store
         ),
@@ -397,7 +399,7 @@ def _register_yolo_tables(
             ds.get_or_create_table(
                 output__frozen_dataset__yolo_txt,
                 TableStoreFiledir(
-                    (
+                    str(
                         Pathy.fluid(working_dir)
                         / mode.fd_folder_name
                         / model_context_dir
@@ -412,6 +414,7 @@ def _register_yolo_tables(
                     read_data=False,
                     enable_rm=False,
                     primary_schema=file_primary_schema,
+                    fsspec_kwargs=filedir_fsspec_kwargs or None,
                 ),
             ).table_store
         ),
@@ -534,6 +537,7 @@ def build_yolo_compute(
     sync_config: Optional[TrainingSyncConfig] = None,
     resume_config: Optional[TrainingResumeConfig] = None,
     extra_train_kwargs: Optional[Dict[str, Any]] = None,
+    filedir_fsspec_kwargs: dict[str, Any] | None = None,
 ) -> List[ComputeStep]:
     """
     Constructs the whole YOLO pipeline (DB schemas + filedir tables + steps) for any v5/v8 detect/segment mode.
@@ -580,6 +584,7 @@ def build_yolo_compute(
         create_table=create_table,
         mode=mode,
         dt__input_has_gt=dt__input_has_gt,
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
     )
 
     # ==== Pipeline ===============================================================

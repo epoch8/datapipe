@@ -32,6 +32,7 @@ from tests.helpers.training_recovery import (
     make_recovery_runtime,
     recovery_case_by_id,
 )
+from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     assert_completed_training_status_with_manifest,
     assert_model_artifact,
@@ -116,6 +117,7 @@ def test_cloud_working_dir_training_with_cloud_preset_checkpoint(tmp_path) -> No
                 workdir,
                 "yolo11n.pt",
                 local_scratch=tmp_path,
+                filedir_fsspec_kwargs=s3_filedir_fsspec_kwargs(),
             ),
         ],
     )

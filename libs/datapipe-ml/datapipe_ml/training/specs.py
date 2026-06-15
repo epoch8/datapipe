@@ -161,6 +161,8 @@ class TrainContext:
     training_launcher_config: Optional[TrainingLauncherConfig] = field(default=None, kw_only=True)
     sync_config: Optional[TrainingSyncConfig] = field(default=None, kw_only=True)
     resume_config: Optional[TrainingResumeConfig] = field(default=None, kw_only=True)
+    # Local write root for training artifacts; orchestrator mirrors this to models_dir.
+    training_output_write_dir: Optional[str] = field(default=None, kw_only=True)
 
 
 @dataclass

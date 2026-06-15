@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from contextlib import nullcontext
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import List, Optional, Union
@@ -19,7 +18,7 @@ from PIL import Image
 from datapipe_ml.frameworks.yolo.artifacts import (
     YoloDataYAMLConfig,
     yolo_collect_results_generic,
-    yolo_copy_back_and_cleanup,
+    yolo_finalize_training_output,
     yolo_count_objects,
     yolo_load_best_threshold_from_curve_csv,
     yolo_load_data_config,
@@ -117,6 +116,7 @@ class YoloV5_TrainingConfig:
     # Mine Epoch8 arguments:
     tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
     initial_weights_path: Optional[str] = None
+    persisted_project_dir: Optional[str] = None
 
     # Optional hyp.yaml augmentation overrides (None = use value from hyp file)
     hsv_h: Optional[float] = None  # HSV-Hue augmentation (fraction)
@@ -135,7 +135,7 @@ class YoloV5_TrainingConfig:
 
     def get_arguments(self) -> List[str]:
         arguments = []
-        skip_fields = {"tmp_folder", "initial_weights_path", *YOLOV5_HYP_OVERRIDE_FIELD_NAMES}
+        skip_fields = {"tmp_folder", "initial_weights_path", "persisted_project_dir", *YOLOV5_HYP_OVERRIDE_FIELD_NAMES}
         for field_ in fields(self):
             if field_.name in skip_fields:
                 continue
@@ -314,35 +314,40 @@ def train_model(
             config=sync_config,
             model_id=yolov5_training_config.name,
         )
-    with output_sync if output_sync is not None else nullcontext():
-        process = subprocess.run(command, env=env)
-    logger.info("Process ended with returncode=%s.", process.returncode)
-    if process.returncode != 0:
-        raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
-    if yolov5_training_config.project is None:
-        return None
 
-    exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
+    def _train_and_collect_metadata() -> Optional[Path]:
+        process = subprocess.run(command, env=env)
+        logger.info("Process ended with returncode=%s.", process.returncode)
+        if process.returncode != 0:
+            raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
+        if yolov5_training_config.project is None:
+            return None
+        selected_exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
+        if selected_exp_folder is None:
+            return None
+        if tmp_yaml_path and tmp_yaml_path.exists():
+            shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
+        with open(selected_exp_folder / "class_names.json", "w") as out:
+            json.dump(class_names, out, indent=4, ensure_ascii=False)
+        return selected_exp_folder
+
+    if output_sync is None:
+        exp_folder = _train_and_collect_metadata()
+    else:
+        with output_sync:
+            exp_folder = _train_and_collect_metadata()
+
     if exp_folder is None:
         return None
-
-    # приложим training_data.yaml и class_names.json
-    if tmp_yaml_path and tmp_yaml_path.exists():
-        shutil.copy(str(tmp_yaml_path), exp_folder / "training_data.yaml")
-    with open(exp_folder / "class_names.json", "w") as out:
-        json.dump(class_names, out, indent=4, ensure_ascii=False)
 
     f1_curve_image = None
     if (exp_folder / "F1_curve.png").exists():
         f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
     best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
 
-    # если тренировались в tmp — копируем назад в облако и чистим
-    exp_folder = yolo_copy_back_and_cleanup(
-        exp_folder=exp_folder,
-        src_project_path=src_project_path,
-        tmp_dir_images=tmp_dir_images,
-        tmp_dir_project=tmp_dir_project,
+    exp_folder = yolo_finalize_training_output(
+        exp_folder,
+        persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
         tmp_dir_images_cls=tmp_dir_images_cls,
         tmp_dir_project_cls=tmp_dir_project_cls,
         tmp_dir_model_cls=tmp_dir_model_cls,

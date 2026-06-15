@@ -90,7 +90,9 @@ class SmokeRuntime:
 def assert_yolov8_training_artifacts(runtime: SmokeRuntime) -> None:
     df_model = runtime.ds.get_table("detection_model").get_data()
     model_path = str(df_model["detection_model__model_path"].iloc[0])
-    fs, stripped_model_path = fsspec.core.url_to_fs(model_path)
+    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
+    fs, stripped_model_path = fsspec.core.url_to_fs(model_path, **fsspec_storage_options(model_path))
     assert fs.isfile(stripped_model_path)
     assert int(fs.info(stripped_model_path).get("size") or 0) > 0
     args_path = str(Path(stripped_model_path).parent.parent / "args.yaml")
@@ -457,7 +459,7 @@ def detection_freeze_step(workdir: Workdir):
     )
 
 
-def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
+def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -475,6 +477,7 @@ def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None)
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
         output__training_status="detection_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
                 model="yolo11n.pt",
@@ -515,7 +518,11 @@ def _yolov8_smoke_train_kwargs(model: str) -> dict:
 
 
 def detection_train_step_with_local_checkpoint(
-    workdir: Workdir, preset: str = "yolo11n.pt", *, local_scratch: Path | None = None
+    workdir: Workdir,
+    preset: str = "yolo11n.pt",
+    *,
+    local_scratch: Path | None = None,
+    filedir_fsspec_kwargs: dict | None = None,
 ):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
@@ -535,6 +542,7 @@ def detection_train_step_with_local_checkpoint(
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
         output__training_status="detection_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
@@ -544,7 +552,7 @@ def detection_train_step_with_local_checkpoint(
     )
 
 
-def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None):
+def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -562,6 +570,7 @@ def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: 
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
         output__training_status="detection_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
                 model="yolo11n.pt",
@@ -595,7 +604,7 @@ def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: 
     )
 
 
-def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
+def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -613,6 +622,7 @@ def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None 
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
         output__training_status="detection_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov5_train_configs=[
             YoloV5_TrainingConfig(
                 weights="",
@@ -636,7 +646,7 @@ def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None 
     )
 
 
-def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None):
+def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -654,6 +664,7 @@ def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_sc
         output__detection_model_is_trained_on_detection_frozen_dataset="detection_model_link",
         output__training_status="detection_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov5_train_configs=[
             YoloV5_TrainingConfig(
                 weights="",
@@ -731,7 +742,7 @@ def segmentation_freeze_step(workdir: Workdir):
     )
 
 
-def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
+def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.segmentation.train.yolov8 import (
         Train_YoloV8_SegmentationModel,
         YoloV8_TrainingConfig,
@@ -749,6 +760,7 @@ def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = No
         output__segm_model_is_trained_on_segm_frozen_dataset="segmentation_model_link",
         output__training_status="segmentation_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
                 model="yolov8n-seg.pt",
@@ -772,7 +784,11 @@ def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = No
 
 
 def segmentation_train_step_with_local_checkpoint(
-    workdir: Workdir, preset: str = "yolov8n-seg.pt", *, local_scratch: Path | None = None
+    workdir: Workdir,
+    preset: str = "yolov8n-seg.pt",
+    *,
+    local_scratch: Path | None = None,
+    filedir_fsspec_kwargs: dict | None = None,
 ):
     from datapipe_ml.tasks.segmentation.train.yolov8 import (
         Train_YoloV8_SegmentationModel,
@@ -792,6 +808,7 @@ def segmentation_train_step_with_local_checkpoint(
         output__segm_model_is_trained_on_segm_frozen_dataset="segmentation_model_link",
         output__training_status="segmentation_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
@@ -834,7 +851,7 @@ def keypoints_freeze_step(workdir: Workdir):
     )
 
 
-def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
+def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
         YoloV8_TrainingConfig,
@@ -852,6 +869,7 @@ def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None)
         output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
         output__training_status="keypoints_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[
             YoloV8_TrainingConfig(
                 model="yolo11n-pose.pt",
@@ -877,7 +895,11 @@ def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None)
 
 
 def keypoints_train_step_with_local_checkpoint(
-    workdir: Workdir, preset: str = "yolo11n-pose.pt", *, local_scratch: Path | None = None
+    workdir: Workdir,
+    preset: str = "yolo11n-pose.pt",
+    *,
+    local_scratch: Path | None = None,
+    filedir_fsspec_kwargs: dict | None = None,
 ):
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
@@ -897,6 +919,7 @@ def keypoints_train_step_with_local_checkpoint(
         output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
         output__training_status="keypoints_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
@@ -957,7 +980,7 @@ def classification_freeze_step(workdir: Workdir):
     )
 
 
-def classification_train_step(workdir: Workdir, *, local_scratch: Path | None = None):
+def classification_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
     from datapipe_ml.tasks.classification.train.tensorflow import (
         TF_ClassificationTrainingConfig,
         Train_Tensorflow_ClassificationModel,
@@ -971,6 +994,7 @@ def classification_train_step(workdir: Workdir, *, local_scratch: Path | None = 
         output__classification_model_is_trained_on_cls_frozen_dataset="classification_model_link",
         output__training_status="classification_training_status",
         working_dir=str(workdir),
+        filedir_fsspec_kwargs=filedir_fsspec_kwargs,
         tf_classification_train_configs=[
             TF_ClassificationTrainingConfig(
                 image_size=(SMOKE_IMGSZ, SMOKE_IMGSZ),

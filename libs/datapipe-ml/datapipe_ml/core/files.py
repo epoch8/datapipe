@@ -7,6 +7,8 @@ import fsspec
 from fsspec import AbstractFileSystem
 from pathy import Pathy
 
+from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
 
 def same_filesystem_path(src_fs: AbstractFileSystem, src: str, dst_fs: AbstractFileSystem, dst: str) -> bool:
     src_path = src_fs._strip_protocol(src)
@@ -75,7 +77,7 @@ def copy_url_to_fs(
     label: str = "file",
     concurrency: int = 8,
 ) -> None:
-    src_fs, src_path = fsspec.core.url_to_fs(src)
+    src_fs, src_path = fsspec.core.url_to_fs(src, **fsspec_storage_options(src))
     _copy_between_fs(src_fs, src_path, dst_fs, dst, label=label, concurrency=concurrency)
 
 
@@ -87,13 +89,13 @@ def copy_fs_to_url(
     label: str = "file",
     concurrency: int = 8,
 ) -> None:
-    dst_fs, dst_path = fsspec.core.url_to_fs(dst)
+    dst_fs, dst_path = fsspec.core.url_to_fs(dst, **fsspec_storage_options(dst))
     _copy_between_fs(src_fs, src, dst_fs, dst_path, label=label, concurrency=concurrency)
 
 
 def copy_url_to_url(src: str, dst: str, *, label: str = "file", concurrency: int = 8) -> None:
-    src_fs, src_path = fsspec.core.url_to_fs(src)
-    dst_fs, dst_path = fsspec.core.url_to_fs(dst)
+    src_fs, src_path = fsspec.core.url_to_fs(src, **fsspec_storage_options(src))
+    dst_fs, dst_path = fsspec.core.url_to_fs(dst, **fsspec_storage_options(dst))
     _copy_between_fs(src_fs, src_path, dst_fs, dst_path, label=label, concurrency=concurrency)
 
 

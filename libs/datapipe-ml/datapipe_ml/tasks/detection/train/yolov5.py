@@ -74,6 +74,25 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
     threshold_mode = "best_threshold"
     task = None  # v5 train_process has different signature
 
+    def apply_resume_checkpoint(
+        self,
+        ctx: TrainContext,
+        train_params: Dict[str, Any],
+        checkpoint_path: Optional[str],
+    ) -> Dict[str, Any]:
+        params = dict(train_params)
+        if checkpoint_path is None:
+            return params
+        from pathlib import Path
+
+        checkpoint = Path(checkpoint_path)
+        last_pt = checkpoint.parent / "last.pt"
+        params["initial_weights_path"] = str(last_pt) if last_pt.exists() else checkpoint_path
+        params["resume"] = True
+        params["exist_ok"] = True
+        params["save_period"] = max(1, int(params.get("save_period", -1)))
+        return params
+
     # v5 has different train_process signature: add yolov5_script_file
     def launch_training(
         self, ctx: TrainContext, idx: IndexDF, model_id: str, train_params: Dict[str, Any], data: PreparedData
@@ -81,6 +100,7 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         assert isinstance(ctx, YoloV5TrainContext)
         assert isinstance(data, YoloPreparedData)
         yolov5_train_config = self._build_training_config(ctx, idx, model_id, train_params, data)
+        subprocess_sync_config = None if ctx.training_output_write_dir else ctx.sync_config
         launcher = build_training_launcher(ctx.training_launcher_config)
         return launcher.launch(
             TrainingLaunchRequest.from_path_maps(
@@ -92,7 +112,7 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
                     data.class_names,
                     data.image_filepaths,
                     data.yolo_txt_filepaths,
-                    ctx.sync_config,
+                    subprocess_sync_config,
                 ),
                 cluster_suffix=model_id,
                 inputs=(TrainingPathMap(data.data_src_path, "/workspace/datapipe_ml/input/data"),),
@@ -187,6 +207,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
+    filedir_fsspec_kwargs: dict[str, Any] | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -202,6 +223,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             output__model=self.output__detection_model,
             output__model_is_trained_on_frozen_dataset=self.output__detection_model_is_trained_on_detection_frozen_dataset,
             working_dir=self.working_dir,
+            filedir_fsspec_kwargs=self.filedir_fsspec_kwargs,
             primary_keys=self.primary_keys,
             model_primary_keys=self.detection_model_primary_keys,
             model_id__name=self.detection_model_id__name,

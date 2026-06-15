@@ -2,6 +2,10 @@ import os
 
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
+from tests.helpers.test_env import load_test_env
+
+load_test_env()
+
 import tempfile
 from pathlib import Path
 

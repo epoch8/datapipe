@@ -24,7 +24,6 @@ import pandas as pd
 import yaml
 from pathy import FluidPath, Pathy
 
-from datapipe_ml.core.files import copy_url_to_url
 from datapipe_ml.training.staging import (
     LocalStagingDir,
     copy_file_to_local_staging,
@@ -151,10 +150,14 @@ def yolo_best_threshold_from_ultralytics_metrics(metrics: Any, curve_name_part: 
 def yolo_load_best_threshold_from_curve_csv(path: Union[str, Path, Pathy]) -> float:
     best_threshold = 0.45
     try:
+        from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
         pathy = Pathy.fluid(str(path))
-        if not fsspec.open(str(pathy)).fs.exists(str(pathy)):
+        path_str = str(pathy)
+        storage_options = fsspec_storage_options(path_str)
+        if not fsspec.open(path_str, **storage_options).fs.exists(path_str):
             return best_threshold
-        with fsspec.open(str(pathy), "r") as src:
+        with fsspec.open(path_str, "r", **storage_options) as src:
             df = pd.read_csv(src)
         if "best_threshold" not in df.columns or df.empty:
             return best_threshold
@@ -268,9 +271,15 @@ def _yolo_prepare_tmp_dirs_for_cloud(
         training_config.data.path = tmp_dir_images
 
     tmp_dir_model_cls = None
-    initial_weights_path = training_config.initial_weights_path
-    if initial_weights_path is not None:
-        protocol_weights, _ = fsspec.core.split_protocol(initial_weights_path)
+    weight_path = training_config.initial_weights_path
+    if weight_path is None:
+        if model_weight_field == "weights":
+            weight_path = cast(YoloV5TrainingConfigForCloud, training_config).weights
+        else:
+            weight_path = cast(YoloV8TrainingConfigForCloud, training_config).model
+
+    if weight_path is not None:
+        protocol_weights, _ = fsspec.core.split_protocol(str(weight_path))
         if not (protocol_weights is None or protocol_weights == "file"):
             tmp_dir_model_cls = make_local_staging_dir(
                 tmp_folder=tmp_folder,
@@ -279,13 +288,13 @@ def _yolo_prepare_tmp_dirs_for_cloud(
                 remove_on_cleanup=True,
             )
             model_path = copy_file_to_local_staging(
-                str(initial_weights_path),
+                str(weight_path),
                 tmp_dir_model_cls,
                 label="YOLO initial weights",
             )
             _set_training_weight_path(training_config, str(model_path), model_weight_field)
-        else:
-            _set_training_weight_path(training_config, str(initial_weights_path), model_weight_field)
+        elif training_config.initial_weights_path is not None:
+            _set_training_weight_path(training_config, str(training_config.initial_weights_path), model_weight_field)
 
     tmp_dir_project = None
     tmp_dir_project_cls = None
@@ -321,6 +330,32 @@ def _set_training_weight_path(
         cast(YoloV8TrainingConfigForCloud, training_config).model = model_path
 
 
+def yolo_finalize_training_output(
+    exp_folder: Path,
+    *,
+    persisted_project_dir: Optional[str],
+    tmp_dir_images_cls: Optional[LocalStagingDir],
+    tmp_dir_project_cls: Optional[LocalStagingDir],
+    tmp_dir_model_cls: Optional[LocalStagingDir],
+) -> FluidPath:
+    if persisted_project_dir and tmp_dir_project_cls is not None:
+        from datapipe_ml.training.sync import copy_tree_snapshot
+
+        dst_exp = str(Pathy.fluid(persisted_project_dir) / exp_folder.name)
+        copy_tree_snapshot(str(exp_folder), dst_exp)
+        final_exp_folder: FluidPath = Pathy.fluid(dst_exp)
+    elif persisted_project_dir:
+        final_exp_folder = Pathy.fluid(persisted_project_dir) / exp_folder.name
+    else:
+        final_exp_folder = Pathy.fluid(str(exp_folder))
+
+    for staging_dir in (tmp_dir_images_cls, tmp_dir_project_cls, tmp_dir_model_cls):
+        if staging_dir is not None:
+            staging_dir.cleanup()
+
+    return final_exp_folder
+
+
 def yolo_copy_back_and_cleanup(
     exp_folder: Path,
     src_project_path: Optional[str],
@@ -329,18 +364,16 @@ def yolo_copy_back_and_cleanup(
     tmp_dir_images_cls: Optional[LocalStagingDir],
     tmp_dir_project_cls: Optional[LocalStagingDir],
     tmp_dir_model_cls: Optional[LocalStagingDir],
+    output_synced: bool = False,
 ) -> FluidPath:
-    final_exp_folder = exp_folder
-    if tmp_dir_images is not None and tmp_dir_project is not None and src_project_path is not None:
-        src_exp_folder = exp_folder
-        final_exp_folder = Pathy.fluid(src_project_path) / exp_folder.name
-        copy_url_to_url(str(src_exp_folder), str(final_exp_folder), label="YOLO tree")
-
-    for staging_dir in (tmp_dir_images_cls, tmp_dir_project_cls, tmp_dir_model_cls):
-        if staging_dir is not None:
-            staging_dir.cleanup()
-
-    return Pathy.fluid(str(final_exp_folder))
+    del tmp_dir_images, tmp_dir_project, output_synced
+    return yolo_finalize_training_output(
+        exp_folder,
+        persisted_project_dir=src_project_path,
+        tmp_dir_images_cls=tmp_dir_images_cls,
+        tmp_dir_project_cls=tmp_dir_project_cls,
+        tmp_dir_model_cls=tmp_dir_model_cls,
+    )
 
 
 def yolo_collect_results_generic(
@@ -358,9 +391,13 @@ def yolo_collect_results_generic(
     best_metric_col: str,
     weights_subdir: str = "weights",
 ) -> List[Any]:
+    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
     exp_pathy = Pathy.fluid(str(exp_folder))
     df_results_path = exp_pathy / "results.csv"
-    with fsspec.open(df_results_path, "r") as src:
+    df_results_path_str = str(df_results_path)
+    storage_options = fsspec_storage_options(df_results_path_str)
+    with fsspec.open(df_results_path_str, "r", **storage_options) as src:
         df = pd.read_csv(src, skipinitialspace=True)
 
     df = df.rename(columns=rename_map)
@@ -382,8 +419,9 @@ def yolo_collect_results_generic(
     for idx in df.index:
         epoch = int(float(cast(Any, df.loc[idx, "epoch"])))
         model_path = Pathy.fluid(str(exp_pathy / weights_subdir / f"epoch{epoch}.pt"))
-        filesystem = fsspec.open(str(model_path)).fs
-        if not filesystem.exists(str(model_path)):
+        model_path_str = str(model_path)
+        filesystem = fsspec.open(model_path_str, **storage_options).fs
+        if not filesystem.exists(model_path_str):
             if epoch == best_epoch:
                 model_path = exp_pathy / weights_subdir / "best.pt"
             elif epoch == last_epoch:

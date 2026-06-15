@@ -484,7 +484,7 @@ def train_on_tensorflow(
 ) -> Tuple[FluidPath, Optional[str], Optional[str], str]:
     protocol, logdir_exp_str_path = fsspec.core.split_protocol(str(logdir_exp))
     fs = fsspec.filesystem(protocol)
-    fs.makedirs(logdir_exp_str_path)
+    fs.makedirs(logdir_exp_str_path, exist_ok=True)
     if protocol is None or protocol == "file":
         protocol_str = "" if protocol is None else "file://"
     else:
@@ -628,6 +628,7 @@ def train_model_main(
     tmp_folder: str,
     resume_checkpoint_filepath: Optional[str],
     sync_config: Optional[TrainingSyncConfig],
+    persisted_models_dir: Optional[str] = None,
 ) -> TrainModelResult:
     get_seed(seed=config.seed)
     image_staging = make_local_staging_dir(
@@ -721,6 +722,15 @@ def train_model_main(
         resume_checkpoint_filepath=resume_checkpoint_filepath,
         sync_config=sync_config,
     )
+    if persisted_models_dir and best_model_path is not None:
+        from datapipe_ml.training.sync import remap_path_under_root
+
+        best_model_path = remap_path_under_root(str(best_model_path), models_dir, persisted_models_dir)
+        preprocess_input_script_path = remap_path_under_root(
+            preprocess_input_script_path,
+            models_dir,
+            persisted_models_dir,
+        )
     if best_model_path is not None:
         return TrainModelResult(
             classification_model_id=classification_model_id,
@@ -743,6 +753,7 @@ def train_process(
     tmp_folder: str,
     resume_checkpoint_filepath: Optional[str],
     sync_config: Optional[TrainingSyncConfig],
+    persisted_models_dir: Optional[str] = None,
 ):
     print("Training process begin!")
     train_model_result = None
@@ -757,6 +768,7 @@ def train_process(
             tmp_folder=tmp_folder,
             resume_checkpoint_filepath=resume_checkpoint_filepath,
             sync_config=sync_config,
+            persisted_models_dir=persisted_models_dir,
         )
     except Exception as e:
         from traceback_with_variables import format_exc

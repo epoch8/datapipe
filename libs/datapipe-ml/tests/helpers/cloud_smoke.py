@@ -5,6 +5,7 @@ from typing import Callable
 
 import pytest
 
+from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     Workdir,
     classification_freeze_step,
@@ -28,40 +29,62 @@ CLOUD_SMOKE_CASE_PARAMS = [
     pytest.param("tensorflow_classification", marks=[pytest.mark.tensorflow, pytest.mark.training, pytest.mark.slow]),
 ]
 
+_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
+
 _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
     "yolov8_detection": (
         dict(),
         lambda workdir, scratch: [
             detection_freeze_step(workdir),
-            detection_train_step(workdir, local_scratch=scratch),
+            detection_train_step(
+                workdir,
+                local_scratch=scratch,
+                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+            ),
         ],
     ),
     "yolov5_detection": (
         dict(),
         lambda workdir, scratch: [
             detection_freeze_step(workdir),
-            detection_yolov5_train_step(workdir, local_scratch=scratch),
+            detection_yolov5_train_step(
+                workdir,
+                local_scratch=scratch,
+                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+            ),
         ],
     ),
     "yolov8_segmentation": (
         dict(),
         lambda workdir, scratch: [
             segmentation_freeze_step(workdir),
-            segmentation_train_step(workdir, local_scratch=scratch),
+            segmentation_train_step(
+                workdir,
+                local_scratch=scratch,
+                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+            ),
         ],
     ),
     "yolov8_keypoints": (
         dict(include_keypoints_gt=True),
         lambda workdir, scratch: [
             keypoints_freeze_step(workdir),
-            keypoints_train_step(workdir, local_scratch=scratch),
+            keypoints_train_step(
+                workdir,
+                local_scratch=scratch,
+                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+            ),
         ],
     ),
     "tensorflow_classification": (
         dict(include_classification_gt=True),
         lambda workdir, scratch: [
             classification_freeze_step(workdir),
-            classification_train_step(workdir, local_scratch=scratch),
+            classification_train_step(
+                workdir,
+                local_scratch=scratch,
+                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+            ),
         ],
     ),
 }

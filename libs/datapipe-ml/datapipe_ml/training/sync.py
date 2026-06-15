@@ -13,10 +13,69 @@ from typing import Callable, Iterable, Optional, Type
 import fsspec
 from pathy import Pathy
 
-from datapipe_ml.training.specs import TrainingSyncConfig
+from datapipe_ml.training.specs import TrainingSyncConfig, TrainContext
 
 MANIFEST_FILENAME = "datapipe_ml_training_sync.json"
+LOCAL_TRAIN_OUTPUT_SUBDIR = "datapipe_ml_train_output"
 logger = logging.getLogger("datapipe.ml.training.sync")
+
+@dataclass(frozen=True)
+class OrchestratorOutputSync:
+    local_src: str
+    remote_dst: str
+
+
+_dst_sync_locks: dict[str, threading.RLock] = {}
+_dst_sync_locks_guard = threading.Lock()
+
+
+def storage_url_is_remote(url: str) -> bool:
+    protocol, _ = fsspec.core.split_protocol(str(Pathy.fluid(url)))
+    return protocol not in (None, "file")
+
+
+def orchestrator_owns_output_sync(ctx: TrainContext) -> bool:
+    """Local launcher: parent process can mirror training output while the child runs."""
+    return ctx.training_launcher_config is None
+
+
+def remap_path_under_root(path: str, write_root: str, persisted_root: str) -> str:
+    write_prefix = str(Pathy.fluid(write_root)).rstrip("/")
+    persisted_prefix = str(Pathy.fluid(persisted_root)).rstrip("/")
+    normalized = str(Pathy.fluid(path))
+    if normalized == write_prefix or normalized.startswith(f"{write_prefix}/"):
+        return f"{persisted_prefix}{normalized[len(write_prefix):]}"
+    return normalized
+
+
+def plan_orchestrator_output_sync(
+    *,
+    models_dir: str,
+    tmp_folder: str,
+    sync_config: Optional[TrainingSyncConfig],
+    owns_output_sync: bool,
+) -> Optional[OrchestratorOutputSync]:
+    if not owns_output_sync or sync_config is None or not sync_config.enabled:
+        return None
+    remote_dst = str(Pathy.fluid(models_dir))
+    if storage_url_is_remote(remote_dst):
+        from pathlib import Path
+
+        local_src = str(Path(tmp_folder) / LOCAL_TRAIN_OUTPUT_SUBDIR)
+    else:
+        local_src = remote_dst
+    return OrchestratorOutputSync(local_src=local_src, remote_dst=remote_dst)
+
+
+def dst_sync_lock(dst: str) -> threading.RLock:
+    """Serialize all writes to the same training output destination."""
+    normalized = str(Pathy.fluid(dst))
+    with _dst_sync_locks_guard:
+        lock = _dst_sync_locks.get(normalized)
+        if lock is None:
+            lock = threading.RLock()
+            _dst_sync_locks[normalized] = lock
+        return lock
 
 
 @dataclass
@@ -41,10 +100,9 @@ def _relative_posix_path(path: str, base: str) -> str:
 
 
 def _storage_options(url: str) -> dict:
-    protocol, _path = fsspec.core.split_protocol(url)
-    if protocol == "s3" and os.environ.get("S3_ENDPOINT_URL"):
-        return {"client_kwargs": {"endpoint_url": os.environ["S3_ENDPOINT_URL"]}}
-    return {}
+    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
+    return fsspec_storage_options(url)
 
 
 def manifest_path_for_run(run_dir: str) -> str:
@@ -63,15 +121,20 @@ def _stat_url(url: str) -> tuple[int, Optional[float]]:
     return size, mtime
 
 
-def _stable_stat(url: str) -> tuple[int, Optional[float]]:
-    first = _stat_url(url)
-    # A short second read catches the common case where a mutable checkpoint is
-    # being overwritten while we are publishing the manifest.
-    time.sleep(0.01)
-    second = _stat_url(url)
-    if first != second:
-        raise RuntimeError(f"Checkpoint changed while being inspected: {url}")
-    return second
+def _stable_stat(url: str, *, max_attempts: int = 8) -> tuple[int, Optional[float]]:
+    last_error: Optional[RuntimeError] = None
+    for attempt in range(max_attempts):
+        first = _stat_url(url)
+        # A short second read catches the common case where a mutable checkpoint is
+        # being overwritten while we are publishing the manifest.
+        time.sleep(0.01 * (attempt + 1))
+        second = _stat_url(url)
+        if first == second:
+            return second
+        last_error = RuntimeError(f"Checkpoint changed while being inspected: {url}")
+        time.sleep(0.02 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def infer_epoch_from_path(path: str) -> Optional[int]:
@@ -94,6 +157,9 @@ def write_checkpoint_manifest(
         try:
             size, mtime = _stable_stat(checkpoint_path)
         except FileNotFoundError:
+            continue
+        except RuntimeError:
+            logger.info("Skipping unstable checkpoint during manifest write: %s", checkpoint_path)
             continue
         entries.append(
             TrainingCheckpointEntry(
@@ -195,11 +261,17 @@ def _publish_tmp(dst_url: str, tmp_url: str) -> None:
 def _copy_stable_file(src_url: str, dst_url: str) -> bool:
     from datapipe_ml.core.files import copy_url_to_url
 
-    before = _stable_stat(src_url)
+    try:
+        before = _stable_stat(src_url)
+    except RuntimeError:
+        return False
     tmp_url = f"{dst_url}.tmp.{os.getpid()}.{time.time_ns()}"
     try:
         copy_url_to_url(src_url, tmp_url, label="training sync file", concurrency=1)
-        after = _stable_stat(src_url)
+        try:
+            after = _stable_stat(src_url)
+        except RuntimeError:
+            return False
         if before != after:
             return False
         _publish_tmp(dst_url, tmp_url)
@@ -250,6 +322,35 @@ def copy_tree_best_effort(src: str, dst: str, *, retries: int, retry_sleep_s: in
             time.sleep(retry_sleep_s)
 
 
+def sync_training_tree_and_manifest(
+    *,
+    src: str,
+    dst: str,
+    config: TrainingSyncConfig,
+    model_id: Optional[str] = None,
+) -> None:
+    """Copy src->dst and publish manifest under a per-destination lock."""
+    with dst_sync_lock(dst):
+        if src != dst:
+            copy_tree_best_effort(
+                src,
+                dst,
+                retries=config.retries,
+                retry_sleep_s=config.retry_sleep_s,
+            )
+        if model_id is None:
+            return
+        dst_run_dir = str(Pathy.fluid(dst) / model_id)
+        checkpoint_paths = discover_checkpoint_paths(dst_run_dir)
+        if not checkpoint_paths:
+            return
+        write_checkpoint_manifest(
+            run_dir=dst_run_dir,
+            model_id=model_id,
+            checkpoint_paths=checkpoint_paths,
+        )
+
+
 class PeriodicTrainingSync:
     def __init__(self, *, src: str, dst: str, config: TrainingSyncConfig, model_id: Optional[str] = None):
         self.src = src
@@ -259,34 +360,25 @@ class PeriodicTrainingSync:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-    def _publish_manifest_non_fatal(self) -> None:
-        if self.model_id is None:
+    def _sync_once(self, label: str) -> None:
+        if not self.config.enabled:
             return
-        dst_run_dir = str(Pathy.fluid(self.dst) / self.model_id)
-        checkpoint_paths = discover_checkpoint_paths(dst_run_dir)
-        if not checkpoint_paths:
-            return
-        try:
-            write_checkpoint_manifest(
-                run_dir=dst_run_dir,
-                model_id=self.model_id,
-                checkpoint_paths=checkpoint_paths,
-            )
-        except Exception:
-            logger.exception("Training manifest publish failed during sync")
+        sync_training_tree_and_manifest(
+            src=self.src,
+            dst=self.dst,
+            config=self.config,
+            model_id=self.model_id,
+        )
 
     def _sync_once_non_fatal(self, label: str) -> None:
         try:
-            if self.src != self.dst:
-                copy_tree_best_effort(
-                    self.src,
-                    self.dst,
-                    retries=self.config.retries,
-                    retry_sleep_s=self.config.retry_sleep_s,
-                )
-            self._publish_manifest_non_fatal()
+            self._sync_once(label)
         except Exception:
             logger.exception("Training output sync failed during %s; will retry later", label)
+
+    def sync_once(self, *, label: str = "sync") -> None:
+        """Run one serialized sync+manifest publish (safe after post-training writes)."""
+        self._sync_once_non_fatal(label)
 
     def _loop(self) -> None:
         interval_s = self.config.interval_s
@@ -306,9 +398,9 @@ class PeriodicTrainingSync:
     def stop(self, *, final_sync: bool = True) -> None:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=5)
+            self._thread.join()
             self._thread = None
-        if self.config.enabled and final_sync:
+        if final_sync:
             self._sync_once_non_fatal("final sync")
 
     def __enter__(self) -> "PeriodicTrainingSync":

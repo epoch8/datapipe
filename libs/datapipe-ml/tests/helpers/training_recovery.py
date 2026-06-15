@@ -17,6 +17,7 @@ from datapipe.types import IndexDF
 from datapipe_ml.training.runs import active_lease
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest, verify_manifest_checkpoint
+from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     SmokeRuntime,
     Workdir,
@@ -59,6 +60,8 @@ REAL_RECOVERY_CASE_PARAMS = [
     *[pytest.param(case_id, marks=pytest.mark.torch) for case_id in TORCH_RECOVERY_CASE_IDS],
     pytest.param("tensorflow_classification", marks=pytest.mark.tensorflow),
 ]
+
+_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
 
 _LINK_TABLE_BY_MODE = dict(
     detection="detection_model_link",
@@ -132,7 +135,11 @@ def real_recovery_torch_cases() -> list:
             models_subdir="models",
             steps_factory=lambda workdir, scratch: [
                 detection_freeze_step(workdir),
-                detection_train_step(workdir, local_scratch=scratch),
+                detection_train_step(
+                    workdir,
+                    local_scratch=scratch,
+                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+                ),
             ],
             train_fn=train_yolov8,
             input_tables=(
@@ -152,7 +159,11 @@ def real_recovery_torch_cases() -> list:
             models_subdir="models",
             steps_factory=lambda workdir, scratch: [
                 detection_freeze_step(workdir),
-                detection_yolov5_train_step(workdir, local_scratch=scratch),
+                detection_yolov5_train_step(
+                    workdir,
+                    local_scratch=scratch,
+                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+                ),
             ],
             train_fn=train_yolov5,
             input_tables=(
@@ -172,7 +183,11 @@ def real_recovery_torch_cases() -> list:
             models_subdir="segmentation_models",
             steps_factory=lambda workdir, scratch: [
                 segmentation_freeze_step(workdir),
-                segmentation_train_step(workdir, local_scratch=scratch),
+                segmentation_train_step(
+                    workdir,
+                    local_scratch=scratch,
+                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+                ),
             ],
             train_fn=train_yolov8_segmentation,
             input_tables=(
@@ -192,7 +207,11 @@ def real_recovery_torch_cases() -> list:
             models_subdir="keypoints_models",
             steps_factory=lambda workdir, scratch: [
                 keypoints_freeze_step(workdir),
-                keypoints_train_step(workdir, local_scratch=scratch),
+                keypoints_train_step(
+                    workdir,
+                    local_scratch=scratch,
+                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+                ),
             ],
             train_fn=train_yolov8_keypoints,
             input_tables=(
@@ -561,19 +580,29 @@ def _yolov5_train_kwargs(runtime: SmokeRuntime, case: RealRecoveryCase, step: Re
     return kwargs
 
 
-def _train_kwargs_builders(extra_builders: dict[type, TrainKwargsFn] | None = None) -> dict[type, TrainKwargsFn]:
+def _train_kwargs_builders(
+    extra_builders: dict[type, TrainKwargsFn] | None = None,
+    *,
+    include_torch: bool = True,
+) -> dict[type, TrainKwargsFn]:
+    builders: dict[type, TrainKwargsFn] = dict(extra_builders or dict())
+    if not include_torch:
+        return builders
+
     from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
     from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
     from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel
     from datapipe_ml.tasks.segmentation.train.yolov8 import Train_YoloV8_SegmentationModel
 
-    return {
-        Train_YoloV8_DetectionModel: _yolo_train_kwargs,
-        Train_YoloV8_SegmentationModel: _yolo_train_kwargs,
-        Train_YoloV8_KeypointsModel: _yolo_train_kwargs,
-        Train_YoloV5_DetectionModel: _yolov5_train_kwargs,
-        **(extra_builders or dict()),
-    }
+    builders.update(
+        {
+            Train_YoloV8_DetectionModel: _yolo_train_kwargs,
+            Train_YoloV8_SegmentationModel: _yolo_train_kwargs,
+            Train_YoloV8_KeypointsModel: _yolo_train_kwargs,
+            Train_YoloV5_DetectionModel: _yolov5_train_kwargs,
+        }
+    )
+    return builders
 
 
 def direct_train_kwargs(
@@ -582,8 +611,9 @@ def direct_train_kwargs(
     step: RecoveryTrainStep,
     *,
     extra_builders: dict[type, TrainKwargsFn] | None = None,
+    include_torch_builders: bool = True,
 ) -> dict[str, object]:
-    builder = _train_kwargs_builders(extra_builders).get(type(step))
+    builder = _train_kwargs_builders(extra_builders, include_torch=include_torch_builders).get(type(step))
     if builder is None:
         raise TypeError(f"Unsupported recovery train step: {type(step)!r}")
     return builder(runtime, case, step)

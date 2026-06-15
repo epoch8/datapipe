@@ -134,6 +134,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
+    filedir_fsspec_kwargs: dict[str, Any] | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -149,6 +150,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
             output__model=self.output__segmentation_model,
             output__model_is_trained_on_frozen_dataset=self.output__segm_model_is_trained_on_segm_frozen_dataset,
             working_dir=self.working_dir,
+            filedir_fsspec_kwargs=self.filedir_fsspec_kwargs,
             primary_keys=self.primary_keys,
             model_primary_keys=self.segmentation_model_primary_keys,
             model_id__name=self.segmentation_model_id__name,

@@ -272,8 +272,9 @@ class YoloBaseAlgo(Algo):
         if "flip_idx" in yctx.extra_class_names_to_yaml_fields:
             data_yaml.flip_idx = class_names_row.get("flip_idx")
         cfg.data = data_yaml
-        cfg.project = str(yctx.models_dir)
+        cfg.project = ctx.training_output_write_dir or str(yctx.models_dir)
         cfg.name = model_id
+        cfg.persisted_project_dir = str(yctx.models_dir)
         return cfg
 
     def apply_resume_checkpoint(
@@ -303,6 +304,7 @@ class YoloBaseAlgo(Algo):
         cfg = self._build_training_config(ctx, idx, model_id, train_params, d)
         train_proc = cast(Callable[..., Any], self.train_process_func)
         yctx = cast(YoloTrainContext, ctx)
+        subprocess_sync_config = None if ctx.training_output_write_dir else yctx.sync_config
         launcher = build_training_launcher(ctx.training_launcher_config)
         return launcher.launch(
             TrainingLaunchRequest.from_path_maps(
@@ -313,7 +315,7 @@ class YoloBaseAlgo(Algo):
                     d.class_names,
                     d.image_filepaths,
                     d.yolo_txt_filepaths,
-                    yctx.sync_config,
+                    subprocess_sync_config,
                     self.task,
                 ),
                 cluster_suffix=model_id,

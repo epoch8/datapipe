@@ -21,10 +21,9 @@ def is_cloud_url(path: CloudPath) -> bool:
 
 
 def _storage_options(url: CloudPath) -> dict:
-    protocol, _ = fsspec.core.split_protocol(str(url))
-    if protocol == "s3" and os.environ.get("S3_ENDPOINT_URL"):
-        return {"client_kwargs": {"endpoint_url": os.environ["S3_ENDPOINT_URL"]}}
-    return {}
+    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
+    return fsspec_storage_options(str(url))
 
 
 def s3_storage_options() -> dict:

@@ -19,7 +19,10 @@ from tests.helpers.training_recovery import (
     direct_train_kwargs,
     make_runtime,
 )
+from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import Workdir, classification_freeze_step, classification_train_step
+
+_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
@@ -84,10 +87,18 @@ def real_recovery_tensorflow_cases() -> list:
                 make_runtime_kwargs=dict(include_classification_gt=True),
                 steps_factory=lambda workdir, scratch: [
                     classification_freeze_step(workdir),
-                    classification_train_step(workdir, local_scratch=scratch),
+                    classification_train_step(
+                        workdir,
+                        local_scratch=scratch,
+                        filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
+                    ),
                 ],
                 train_fn=train_tf_classification_model,
-                input_tables=("classification_frozen_dataset", "tf_classification_train_config"),
+                input_tables=(
+                    "classification_frozen_dataset",
+                    "classification_frozen_dataset__has__image_gt",
+                    "tf_classification_train_config",
+                ),
             ),
             id="tensorflow_classification",
             marks=(pytest.mark.tensorflow,),
@@ -127,5 +138,11 @@ def invoke_real_train_callable_for_backfill(
         runtime.ds,
         idx,
         input_dts,
-        kwargs=direct_train_kwargs(runtime, case, step, extra_builders=tensorflow_train_kwargs_builders()),
+        kwargs=direct_train_kwargs(
+            runtime,
+            case,
+            step,
+            extra_builders=tensorflow_train_kwargs_builders(),
+            include_torch_builders=False,
+        ),
     )

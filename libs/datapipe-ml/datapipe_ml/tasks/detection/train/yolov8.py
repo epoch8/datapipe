@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
 from datapipe.datatable import DataStore
@@ -117,6 +117,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
+    filedir_fsspec_kwargs: dict[str, Any] | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         return build_yolo_compute(
@@ -132,6 +133,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
             output__model=self.output__detection_model,
             output__model_is_trained_on_frozen_dataset=self.output__detection_model_is_trained_on_detection_frozen_dataset,
             working_dir=self.working_dir,
+            filedir_fsspec_kwargs=self.filedir_fsspec_kwargs,
             primary_keys=self.primary_keys,
             model_primary_keys=self.detection_model_primary_keys,
             model_id__name=self.detection_model_id__name,

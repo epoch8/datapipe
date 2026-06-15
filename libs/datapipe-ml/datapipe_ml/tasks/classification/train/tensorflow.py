@@ -183,6 +183,9 @@ class TFClassificationAlgo(Algo):
         image_rewrites = tuple(
             (path, f"/workspace/datapipe_ml/input/classification_images/{Path(path).name}") for path in image_paths
         )
+        write_models_dir = ctx.training_output_write_dir or ctx.models_dir
+        subprocess_sync_config = None if ctx.training_output_write_dir else ctx.sync_config
+        persisted_models_dir = ctx.models_dir if ctx.training_output_write_dir else None
         launcher = build_training_launcher(ctx.training_launcher_config)
         return launcher.launch(
             TrainingLaunchRequest.from_path_maps(
@@ -191,11 +194,12 @@ class TFClassificationAlgo(Algo):
                     d.df__frozen_dataset__has__image_gt,
                     cfg,
                     model_id,
-                    ctx.models_dir,
+                    write_models_dir,
                     tctx.clean_checkpoints_after_train,
                     str(ctx.tmp_folder),
                     resume_checkpoint_filepath,
-                    ctx.sync_config,
+                    subprocess_sync_config,
+                    persisted_models_dir,
                 ),
                 cluster_suffix=model_id,
                 inputs=tuple(TrainingPathMap(local_path, remote_path) for local_path, remote_path in image_rewrites),
@@ -341,6 +345,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
+    filedir_fsspec_kwargs: dict[str, Any] | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.classification_model_primary_keys is None:

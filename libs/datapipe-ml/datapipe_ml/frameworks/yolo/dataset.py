@@ -15,6 +15,7 @@ from natsort import natsorted
 from pathy import Pathy
 
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
 
 
 class CustomYOLOLabelsFile(ItemStoreFileAdapter):
@@ -202,7 +203,8 @@ def get_class_names_from_det_frozen_dataset_gt(
         / detection_frozen_dataset_id
         / "class_names.json"
     )
-    with fsspec.open(str(filepath), "w") as out:
+    filepath_str = str(filepath)
+    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
         json.dump(class_names, out, ensure_ascii=False)
     return pd.DataFrame(
         [
@@ -272,7 +274,8 @@ def get_class_names_from_kps_frozen_dataset_gt(
         / frozen_dataset_id
         / "class_names.json"
     )
-    with fsspec.open(str(filepath), "w") as out:
+    filepath_str = str(filepath)
+    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
         json.dump(class_names, out, ensure_ascii=False)
     return pd.DataFrame(
         [

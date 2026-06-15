@@ -19,9 +19,13 @@ from datapipe_ml.training.runs import (
 )
 from datapipe_ml.training.resume import select_resume_checkpoint
 from datapipe_ml.training.sync import (
+    PeriodicTrainingSync,
     discover_checkpoint_paths,
     manifest_path_for_run,
+    orchestrator_owns_output_sync,
+    plan_orchestrator_output_sync,
     read_checkpoint_manifest,
+    remap_path_under_root,
     write_checkpoint_manifest,
 )
 
@@ -228,6 +232,10 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
             )
             if resume_checkpoint is not None:
                 train_params = algo.apply_resume_checkpoint(ctx, train_params, resume_checkpoint.path)
+        else:
+            previous_model_id = existing_status.get(ctx.model_id__name)
+            if previous_model_id and model_id == str(previous_model_id):
+                model_id = f"{model_id}_attempt{attempt}"
 
     run_dir = algo.run_dir_from_model_id(ctx, model_id)
     running_row = base_status_row(
@@ -247,11 +255,30 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         status="running",
     )
     manifest_path = None
+    output_sync = None
+    output_sync_plan = plan_orchestrator_output_sync(
+        models_dir=ctx.models_dir,
+        tmp_folder=ctx.tmp_folder,
+        sync_config=ctx.sync_config,
+        owns_output_sync=orchestrator_owns_output_sync(ctx),
+    )
+    if output_sync_plan is not None:
+        ctx.training_output_write_dir = output_sync_plan.local_src
     status_manager = TrainingStatusManager(dt=ctx.dt__training_status, row=running_row)
     with status_manager:
         try:
             logger.info("Launching training")
+            if output_sync_plan is not None and ctx.sync_config is not None:
+                output_sync = PeriodicTrainingSync(
+                    src=output_sync_plan.local_src,
+                    dst=output_sync_plan.remote_dst,
+                    config=ctx.sync_config,
+                    model_id=model_id,
+                )
+                output_sync.start()
             raw_result = algo.launch_training(ctx=ctx, idx=idx, model_id=model_id, train_params=train_params, data=prep)
+            if output_sync is not None:
+                output_sync.sync_once(label="post-training")
             checkpoint_paths = algo.collect_checkpoint_paths(raw_result)
             if checkpoint_paths:
                 run_dir = algo.run_dir_from_model_path(checkpoint_paths[0])
@@ -263,16 +290,32 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
             logger.info("Selecting best from training")
             best = algo.select_best(raw_result=raw_result, idx=idx)
         except Exception:
+            if output_sync is not None:
+                output_sync.stop(final_sync=True)
+                output_sync = None
             if manifest_path is None:
-                checkpoint_paths = discover_checkpoint_paths(run_dir)
-                if checkpoint_paths:
-                    manifest_path = write_checkpoint_manifest(
-                        run_dir=run_dir,
-                        model_id=model_id,
-                        checkpoint_paths=checkpoint_paths,
+                discover_run_dir = run_dir
+                if ctx.training_output_write_dir:
+                    discover_run_dir = remap_path_under_root(
+                        run_dir,
+                        ctx.models_dir,
+                        ctx.training_output_write_dir,
                     )
+                checkpoint_paths = discover_checkpoint_paths(discover_run_dir)
+                if checkpoint_paths:
+                    try:
+                        manifest_path = write_checkpoint_manifest(
+                            run_dir=run_dir,
+                            model_id=model_id,
+                            checkpoint_paths=checkpoint_paths,
+                        )
+                    except Exception:
+                        logger.exception("Failed to write checkpoint manifest while marking training failed")
             status_manager.mark_failed(error=format_exc(), manifest_path=manifest_path)
             raise
+        finally:
+            if output_sync is not None:
+                output_sync.stop(final_sync=True)
 
     logger.info("Building outputs")
     # Build outputs
