@@ -471,6 +471,7 @@ def _initial_epoch_from_resume(
     resume_checkpoint_filepath: Optional[str],
     resume_checkpoint_epoch: Optional[int],
 ) -> int:
+    """Prefer manifest epoch; fall back to checkpoint filename only when manifest has no epoch."""
     if resume_checkpoint_epoch is not None:
         return int(resume_checkpoint_epoch)
     if resume_checkpoint_filepath is None:

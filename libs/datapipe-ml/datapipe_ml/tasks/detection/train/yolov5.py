@@ -1,5 +1,6 @@
 # algos/yolov5.py
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -70,12 +71,11 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         params = dict(train_params)
         if checkpoint_path is None:
             return params
-        from pathlib import Path
-
-        checkpoint = Path(checkpoint_path)
+        resolved_path = self._resolve_yolo_resume_checkpoint_path(checkpoint_path, checkpoint_epoch)
+        checkpoint = Path(resolved_path)
         last_pt = checkpoint.parent / "last.pt"
         # YOLOv5 expects `--resume /path/to/last.pt`, not `--weights` + boolean `--resume`.
-        params["resume"] = str(last_pt) if last_pt.exists() else checkpoint_path
+        params["resume"] = str(last_pt) if last_pt.exists() else resolved_path
         params.pop("initial_weights_path", None)
         params["exist_ok"] = True
         params["save_period"] = max(1, int(params.get("save_period", -1)))
@@ -199,7 +199,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     detection_model_id__name: str = "detection_model_id"
     detection_frozen_dataset_id__name: str = "detection_frozen_dataset_id"
     tmp_folder: str = field(default_factory=default_tmp_folder)
-    ignore_errors_sample_sizes: bool = False
+    allow_sample_size_mismatch: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None
@@ -236,7 +236,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             max_within_time=self.max_within_time,
             tmp_folder=self.tmp_folder,
             model_suffix=self.model_suffix,
-            ignore_errors_sample_sizes=self.ignore_errors_sample_sizes,
+            allow_sample_size_mismatch=self.allow_sample_size_mismatch,
             mode=YoloModeSpec(
                 fd_folder_name="detection_frozen_dataset",
                 model_prefix="detection_model",

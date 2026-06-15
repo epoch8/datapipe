@@ -491,7 +491,7 @@ def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None,
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
@@ -542,7 +542,7 @@ def detection_train_step_with_local_checkpoint(
         yolov8_train_configs=[YoloV8_TrainingConfig(**_yolov8_smoke_train_kwargs(str(checkpoint)))],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_ckpt",
     )
@@ -594,7 +594,7 @@ def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: 
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_aug",
     )
@@ -636,7 +636,7 @@ def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None 
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
@@ -683,7 +683,7 @@ def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_sc
         ],
         primary_keys=PRIMARY_KEYS,
         create_table=True,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_aug",
     )
@@ -884,7 +884,7 @@ def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None,
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         bbox_id__name=None,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke",
     )
@@ -920,7 +920,7 @@ def keypoints_train_step_with_local_checkpoint(
         primary_keys=PRIMARY_KEYS,
         create_table=True,
         bbox_id__name=None,
-        ignore_errors_sample_sizes=True,
+        allow_sample_size_mismatch=True,
         tmp_folder=_smoke_tmp_folder(workdir, local_scratch),
         model_suffix="_smoke_ckpt",
     )

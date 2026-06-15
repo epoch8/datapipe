@@ -114,7 +114,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     segmentation_model_id__name: str = "segmentation_model_id"
     segmentation_frozen_dataset_id__name: str = "segmentation_frozen_dataset_id"
     tmp_folder: str = field(default_factory=default_tmp_folder)
-    ignore_errors_sample_sizes: bool = False
+    allow_sample_size_mismatch: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None

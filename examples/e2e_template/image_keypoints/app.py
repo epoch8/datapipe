@@ -181,7 +181,7 @@ pipeline = Pipeline(
             bbox_id__name=None,
             labels=[("stage", "train")],
             create_table=True,
-            ignore_errors_sample_sizes=True,
+            allow_sample_size_mismatch=True,
             model_suffix="_e2e",
         ),
         Inference_KeypointsModel(

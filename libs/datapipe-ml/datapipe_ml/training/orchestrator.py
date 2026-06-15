@@ -1,4 +1,5 @@
 import logging
+from dataclasses import replace
 from traceback import format_exc
 from typing import Any, Dict, Optional, Tuple, cast
 
@@ -124,17 +125,19 @@ def _discover_manifest_path(
     manifest_path: Optional[str],
     run_dir: str,
     model_id: str,
+    models_dir: str,
+    training_output_write_dir: Optional[str],
     ctx: TrainContext,
     algo: Algo,
 ) -> Optional[str]:
     if manifest_path is not None:
         return manifest_path
     discover_run_dir = run_dir
-    if ctx.training_output_write_dir:
+    if training_output_write_dir:
         discover_run_dir = remap_path_under_root(
             run_dir,
-            ctx.models_dir,
-            ctx.training_output_write_dir,
+            models_dir,
+            training_output_write_dir,
         )
     checkpoint_paths = algo.discover_checkpoint_paths_in_run_dir(discover_run_dir)
     if not checkpoint_paths:
@@ -144,8 +147,8 @@ def _discover_manifest_path(
             run_dir=run_dir,
             model_id=model_id,
             checkpoint_paths=checkpoint_paths,
-            local_write_root=ctx.training_output_write_dir,
-            persisted_root=ctx.models_dir if ctx.training_output_write_dir else None,
+            local_write_root=training_output_write_dir,
+            persisted_root=models_dir if training_output_write_dir else None,
             epoch_for_path=algo.infer_epoch_from_checkpoint_path,
         )
     except Exception:
@@ -161,6 +164,7 @@ def _abort_training_run(
     manifest_path: Optional[str],
     run_dir: str,
     model_id: str,
+    training_output_write_dir: Optional[str],
     ctx: TrainContext,
     algo: Algo,
 ) -> None:
@@ -171,6 +175,8 @@ def _abort_training_run(
         manifest_path=manifest_path,
         run_dir=run_dir,
         model_id=model_id,
+        models_dir=ctx.models_dir,
+        training_output_write_dir=training_output_write_dir,
         ctx=ctx,
         algo=algo,
     )
@@ -193,7 +199,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         return TrainOutputs(
             ctx.dt__model.get_data(idx),
             ctx.dt__link.get_data(idx),
-            ctx.dt__training_status.get_data(),
+            pd.DataFrame(),
         )
 
     train_config_id = df_tc.iloc[0][algo.train_config_id_col]
@@ -239,7 +245,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         return TrainOutputs(
             ctx.dt__model.get_data(idx),
             ctx.dt__link.get_data(idx),
-            ctx.dt__training_status.get_data(),
+            get_status_rows(ctx.dt__training_status, run_key),
         )
 
     # Dataset age check
@@ -250,7 +256,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         return TrainOutputs(
             ctx.dt__model.get_data(idx),
             ctx.dt__link.get_data(idx),
-            ctx.dt__training_status.get_data(),
+            get_status_rows(ctx.dt__training_status, run_key),
         )
 
     # Prepare data + build model_id + train + select best
@@ -329,8 +335,8 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         sync_config=ctx.sync_config,
         owns_output_sync=orchestrator_owns_output_sync(ctx),
     )
-    if output_sync_plan is not None:
-        ctx.training_output_write_dir = output_sync_plan.local_src
+    training_output_write_dir = output_sync_plan.local_src if output_sync_plan is not None else None
+    train_ctx = replace(ctx, training_output_write_dir=training_output_write_dir) if training_output_write_dir else ctx
     status_manager = TrainingStatusManager(
         dt=ctx.dt__training_status,
         row=running_row,
@@ -351,7 +357,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 )
                 output_sync.start()
             raw_result = algo.launch_training(
-                ctx=ctx,
+                ctx=train_ctx,
                 idx=idx,
                 model_id=model_id,
                 train_params=train_params,
@@ -379,6 +385,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 manifest_path=manifest_path,
                 run_dir=run_dir,
                 model_id=model_id,
+                training_output_write_dir=training_output_write_dir,
                 ctx=ctx,
                 algo=algo,
             )

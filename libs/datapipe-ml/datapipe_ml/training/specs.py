@@ -71,6 +71,7 @@ class TrainingSyncConfig:
     interval_s: Optional[int] = 600
     retries: int = 3
     retry_sleep_s: int = 30
+    max_consecutive_sync_failures: int = 10
 
 
 @dataclass

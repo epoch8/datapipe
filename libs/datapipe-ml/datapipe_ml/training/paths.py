@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REMOTE_ROOT_ENV = "DATAPIPE_ML_REMOTE_ROOT"
 DEFAULT_REMOTE_ROOT = "/workspace/datapipe_ml"
@@ -35,3 +35,7 @@ def default_train_project_dir() -> str:
 def is_default_tmp_folder(tmp_folder: str) -> bool:
     normalized = str(tmp_folder).rstrip("/") + "/"
     return normalized == default_tmp_folder()
+
+
+def relative_posix_path(path: str, base: str) -> str:
+    return str(PurePosixPath(path).relative_to(PurePosixPath(base)))

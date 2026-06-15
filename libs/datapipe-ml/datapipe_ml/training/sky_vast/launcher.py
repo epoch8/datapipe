@@ -111,33 +111,33 @@ class SkyVastTrainingLauncher:
         cluster_name = f"{_safe_cluster_part(self.config.cluster_name)}-{_safe_cluster_part(request.cluster_suffix)}"
         cluster_name = cluster_name[:63].strip("-")
         self._current_cluster_name = cluster_name
-        print(f"[sky-vast] build task: {cluster_name}", flush=True)
+        logger.info("[sky-vast] build task: %s", cluster_name)
         task = self._build_task()
-        print(f"[sky-vast] launch cluster: {cluster_name}", flush=True)
+        logger.info("[sky-vast] launch cluster: %s", cluster_name)
         try:
             self._launch_cluster(task, cluster_name)
         except BaseException:
             if self.config.down_on_finish:
                 self._down_cluster(cluster_name)
             raise
-        print(f"[sky-vast] connect ssh: {cluster_name}", flush=True)
+        logger.info("[sky-vast] connect ssh: %s", cluster_name)
         sshfs = self._connect_ssh(cluster_name)
         try:
             with _SkyLogsStreamer(cluster_name, enabled=self.config.stream_logs):
-                print(f"[sky-vast] prepare remote: {cluster_name}", flush=True)
+                logger.info("[sky-vast] prepare remote: %s", cluster_name)
                 self._prepare_remote(sshfs, request)
-                print(f"[sky-vast] wait result: {cluster_name}", flush=True)
+                logger.info("[sky-vast] wait result: %s", cluster_name)
                 self._wait_for_result(sshfs, request)
-            print(f"[sky-vast] copy outputs: {cluster_name}", flush=True)
+            logger.info("[sky-vast] copy outputs: %s", cluster_name)
             self._copy_outputs(sshfs, request)
-            print(f"[sky-vast] read result: {cluster_name}", flush=True)
+            logger.info("[sky-vast] read result: %s", cluster_name)
             result_text = self._read_remote_text(sshfs, str(REMOTE_RESULT), label="read result")
             result = loads_from_text(result_text)
             result = rewrite_value(result, tuple((remote, local) for local, remote in request.path_rewrites))
-            print(f"[sky-vast] done: {cluster_name}", flush=True)
+            logger.info("[sky-vast] done: %s", cluster_name)
             return result
         except BaseException:
-            print(f"[sky-vast] failed: {cluster_name}", flush=True)
+            logger.info("[sky-vast] failed: %s", cluster_name)
             self._print_remote_diagnostics(sshfs)
             self._copy_failed_outputs_best_effort(sshfs, request)
             raise
@@ -305,7 +305,7 @@ class SkyVastTrainingLauncher:
             if cluster_name and self._job_failed(cluster_name):
                 raise SkyVastTrainingError(f"Sky job failed before remote training result for {cluster_name!r}")
             def _periodic_output_sync() -> None:
-                print("[sky-vast] periodic output sync", flush=True)
+                logger.info("[sky-vast] periodic output sync")
                 self._copy_outputs(sshfs, request, label="periodic output")
 
             output_sync.maybe_run(_periodic_output_sync, label="periodic output")
@@ -353,7 +353,7 @@ class SkyVastTrainingLauncher:
             try:
                 if sshfs.exists(str(path)):
                     details = self._read_remote_text(sshfs, str(path), label=f"diagnostic {path.name}")
-                    print(f"[sky-vast] remote {path.name}:\n{details}", flush=True)
+                    logger.info("[sky-vast] remote %s:\n%s", path.name, details)
             except Exception:
                 logger.exception("Failed to read remote diagnostic file %s", path)
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, cast
 
 import pandas as pd
@@ -24,6 +26,8 @@ from datapipe_ml.training.specs import (
     TrainingSyncConfig,
     build_training_launcher,
 )
+
+logger = logging.getLogger("datapipe.ml.yolo")
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.yolo.yolov5.runner import TrainModelResult as YoloV5TrainModelResult
@@ -53,7 +57,7 @@ class YoloTrainContext(TrainContext):
     dt__class_names: DataTable
     dt__resized_image_file: DataTable
     dt__yolo_txt: DataTable
-    ignore_errors_sample_sizes: bool
+    allow_sample_size_mismatch: bool
     extra_class_names_to_yaml_fields: List[str] = field(default_factory=list)
 
 
@@ -72,7 +76,7 @@ class YoloTrainRuntimeConfig:
     model_other_primary_keys: List[str]
     model_id__name: str
     frozen_dataset_id__name: str
-    ignore_errors_sample_sizes: bool
+    allow_sample_size_mismatch: bool
     training_launcher_config: Any = None
     sync_config: Optional[TrainingSyncConfig] = None
     resume_config: Optional[TrainingResumeConfig] = None
@@ -100,7 +104,7 @@ class YoloTrainRuntimeConfig:
             model_other_primary_keys=kwargs[model_other_primary_keys_key],
             model_id__name=kwargs[model_id_key],
             frozen_dataset_id__name=kwargs[frozen_dataset_id_key],
-            ignore_errors_sample_sizes=kwargs["ignore_errors_sample_sizes"],
+            allow_sample_size_mismatch=kwargs["allow_sample_size_mismatch"],
             training_launcher_config=kwargs.get("training_launcher_config"),
             sync_config=kwargs.get("sync_config"),
             resume_config=kwargs.get("resume_config"),
@@ -135,7 +139,7 @@ class YoloTrainRuntimeConfig:
             dt__class_names=dt__class_names,
             dt__resized_image_file=dt__resized_image_file,
             dt__yolo_txt=dt__yolo_txt,
-            ignore_errors_sample_sizes=self.ignore_errors_sample_sizes,
+            allow_sample_size_mismatch=self.allow_sample_size_mismatch,
             extra_class_names_to_yaml_fields=self.extra_class_names_to_yaml_fields,
             training_launcher_config=self.training_launcher_config,
             sync_config=self.sync_config,
@@ -192,7 +196,7 @@ class YoloBaseAlgo(Algo):
         df_txt = pd.merge(df_fd, df_txt)
 
         if len(df_img) != len(df_txt):
-            raise ValueError("Images and yolo's txt lengts must be same")
+            raise ValueError("Images and yolo txt lengths must be same")
 
         paths_train = df_txt[df_txt["subset_id"] == "train"]["filepath"].tolist()
         paths_val = df_txt[df_txt["subset_id"] == "val"]["filepath"].tolist()
@@ -212,8 +216,16 @@ class YoloBaseAlgo(Algo):
         if self.images_count_col is None:
             raise ValueError("images_count_col must be set in YOLO algo")
         images_count = df_fd.iloc[0][self.images_count_col]
-        if total != images_count and not (yctx.ignore_errors_sample_sizes or False):
-            raise ValueError(f"Total images length {total} != {self.images_count_col}={images_count}")
+        if total != images_count:
+            if yctx.allow_sample_size_mismatch:
+                logger.warning(
+                    "YOLO sample size mismatch: total images %s != %s=%s (allow_sample_size_mismatch=True)",
+                    total,
+                    self.images_count_col,
+                    images_count,
+                )
+            else:
+                raise ValueError(f"Total images length {total} != {self.images_count_col}={images_count}")
 
         return YoloPreparedData(
             data_src_path=data_src_path,
@@ -271,6 +283,18 @@ class YoloBaseAlgo(Algo):
         cfg.persisted_project_dir = str(yctx.models_dir)
         return cfg
 
+    @staticmethod
+    def _resolve_yolo_resume_checkpoint_path(
+        checkpoint_path: str,
+        checkpoint_epoch: Optional[int],
+    ) -> str:
+        path = Path(checkpoint_path)
+        if checkpoint_epoch is not None:
+            epoch_path = path.parent / f"epoch{checkpoint_epoch}.pt"
+            if epoch_path.exists():
+                return str(epoch_path)
+        return checkpoint_path
+
     def apply_resume_checkpoint(
         self,
         ctx: TrainContext,
@@ -281,7 +305,8 @@ class YoloBaseAlgo(Algo):
         params = dict(train_params)
         if checkpoint_path is None:
             return params
-        params["initial_weights_path"] = checkpoint_path
+        resolved_path = self._resolve_yolo_resume_checkpoint_path(checkpoint_path, checkpoint_epoch)
+        params["initial_weights_path"] = resolved_path
         params["resume"] = True
         params["exist_ok"] = True
         params["save_period"] = max(1, int(params.get("save_period", -1)))

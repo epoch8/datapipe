@@ -14,6 +14,7 @@ import pandas as pd
 from datapipe.datatable import DataTable
 from datapipe.types import IndexDF
 
+from datapipe_ml.core.multiprocessing import TrainingSubprocessError
 from datapipe_ml.training.paths import remote_output_models_path, remote_signals_path, remote_training_root
 from datapipe_ml.training.specs import (
     LocalTrainingLauncher,
@@ -40,6 +41,8 @@ RESUMABLE_TRAINING_STATUSES = frozenset(
 )
 
 _USER_INTERRUPT_SUBPROCESS_EXITCODES = frozenset({-2, 130, 2})
+_MAX_RUN_KEY_STATUS_ATTEMPTS = 128
+_EMPTY_ATTEMPT_GAP_TOLERANCE = 2
 
 
 def utc_now() -> datetime:
@@ -80,6 +83,8 @@ def owner_id() -> str:
 
 
 def subprocess_exitcode_from_runtime_error(exc: RuntimeError) -> Optional[int]:
+    if isinstance(exc, TrainingSubprocessError):
+        return exc.exitcode
     message = str(exc)
     marker = "exitcode="
     if marker not in message:
@@ -94,6 +99,8 @@ def subprocess_exitcode_from_runtime_error(exc: RuntimeError) -> Optional[int]:
 def is_training_user_interrupt(exc: BaseException) -> bool:
     if isinstance(exc, KeyboardInterrupt):
         return True
+    if isinstance(exc, TrainingSubprocessError):
+        return exc.exitcode in _USER_INTERRUPT_SUBPROCESS_EXITCODES
     if isinstance(exc, RuntimeError):
         exitcode = subprocess_exitcode_from_runtime_error(exc)
         return exitcode in _USER_INTERRUPT_SUBPROCESS_EXITCODES
@@ -202,11 +209,30 @@ def status_id_for_attempt(run_key: str, attempt: int) -> str:
     return f"{run_key}__attempt_{attempt}"
 
 
+def run_key_status_idx(run_key: str, attempt: int) -> IndexDF:
+    return status_idx(status_id_for_attempt(run_key, attempt))
+
+
+def _iter_run_key_attempt_rows(dt: DataTable, run_key: str) -> list[pd.Series]:
+    rows: list[pd.Series] = []
+    empty_streak = 0
+    for attempt in range(_MAX_RUN_KEY_STATUS_ATTEMPTS):
+        df = dt.get_data(idx=run_key_status_idx(run_key, attempt))
+        if df.empty:
+            empty_streak += 1
+            if rows and empty_streak >= _EMPTY_ATTEMPT_GAP_TOLERANCE:
+                break
+            continue
+        empty_streak = 0
+        rows.append(df.iloc[0])
+    return rows
+
+
 def get_status_rows(dt: DataTable, run_key: str) -> pd.DataFrame:
-    df = dt.get_data()
-    if df.empty or "training_status__run_key" not in df.columns:
+    rows = _iter_run_key_attempt_rows(dt, run_key)
+    if not rows:
         return pd.DataFrame()
-    return df[df["training_status__run_key"] == run_key].reset_index(drop=True)
+    return pd.DataFrame(rows).reset_index(drop=True)
 
 
 def _status_sort_key(row: pd.Series) -> tuple[int, str]:

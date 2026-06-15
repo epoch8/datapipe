@@ -564,7 +564,7 @@ def _yolo_train_kwargs(
             segmentation_frozen_dataset_id__name="segmentation_frozen_dataset_id",
             keypoints_frozen_dataset_id__name="keypoints_frozen_dataset_id",
             extra_class_names_to_yaml_fields=dict(),
-            ignore_errors_sample_sizes=getattr(step, "ignore_errors_sample_sizes", False),
+            allow_sample_size_mismatch=getattr(step, "allow_sample_size_mismatch", False),
         )
     )
     return kwargs

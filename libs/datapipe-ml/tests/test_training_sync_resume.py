@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from datapipe_ml.core.multiprocessing import TrainingSubprocessError
 from datapipe_ml.training.runs import (
     RESUMABLE_TRAINING_STATUSES,
     TrainingStatus,
@@ -91,6 +92,10 @@ def test_resumable_training_statuses_include_interrupted() -> None:
 )
 def test_subprocess_exitcode_from_runtime_error_parses_sigint_codes(message: str, expected: int | None) -> None:
     assert subprocess_exitcode_from_runtime_error(RuntimeError(message)) == expected
+    if expected is not None:
+        assert subprocess_exitcode_from_runtime_error(
+            TrainingSubprocessError(message, exitcode=expected)
+        ) == expected
 
 
 def test_get_active_status_row_ignores_interrupted_status() -> None:

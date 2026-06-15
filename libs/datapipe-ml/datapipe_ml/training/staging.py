@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 import shutil
 from contextlib import contextmanager
@@ -10,6 +11,8 @@ from typing import Iterator, Iterable, Optional
 from pathy import Pathy
 
 from datapipe_ml.core.files import copy_url_to_url, parallel_copy_filepaths_to_folder
+
+logger = logging.getLogger("datapipe.ml.training.staging")
 
 
 @dataclass
@@ -42,7 +45,7 @@ def make_local_staging_dir(
 
 
 def stage_files_to_local_folder(filepaths: Iterable[str], dst_folder: Path, *, label: str) -> list[str]:
-    print(f"Parallel: copying {label} to local tmp folder {dst_folder=}...")
+    logger.info("Parallel: copying %s to local tmp folder dst_folder=%s", label, dst_folder)
     return parallel_copy_filepaths_to_folder(list(filepaths), str(dst_folder))
 
 

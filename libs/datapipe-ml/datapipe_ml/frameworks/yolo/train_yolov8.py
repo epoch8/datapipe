@@ -176,7 +176,7 @@ def build_yolov8_train_compute(
         max_within_time=step.max_within_time,
         tmp_folder=step.tmp_folder,
         model_suffix=step.model_suffix,
-        ignore_errors_sample_sizes=step.ignore_errors_sample_sizes,
+        allow_sample_size_mismatch=step.allow_sample_size_mismatch,
         mode=YoloModeSpec(**mode_kwargs),
         train_configs_list=dict(yolov8_train_configs=yolov8_train_configs),
         training_launcher_config=getattr(step, "training_launcher_config", None),

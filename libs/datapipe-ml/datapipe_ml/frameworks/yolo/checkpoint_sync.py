@@ -6,9 +6,7 @@ from typing import Optional
 import fsspec
 from pathy import Pathy
 
-
-def _relative_posix_path(path: str, base: str) -> str:
-    return str(PurePosixPath(path).relative_to(PurePosixPath(base)))
+from datapipe_ml.training.paths import relative_posix_path
 
 
 def discover_checkpoint_paths_in_run_dir(run_dir: str) -> list[str]:
@@ -21,7 +19,7 @@ def discover_checkpoint_paths_in_run_dir(run_dir: str) -> list[str]:
             continue
         name = PurePosixPath(path).name
         if (name.startswith("epoch") and name.endswith(".pt")) or name in {"last.pt", "best.pt"}:
-            paths.append(str(Pathy.fluid(run_dir) / _relative_posix_path(path, stripped_run_dir)))
+            paths.append(str(Pathy.fluid(run_dir) / relative_posix_path(path, stripped_run_dir)))
     return sorted(paths)
 
 

@@ -13,6 +13,7 @@ from typing import Callable, Iterable, Optional, Type
 import fsspec
 from pathy import Pathy
 
+from datapipe_ml.training.paths import relative_posix_path
 from datapipe_ml.training.specs import TrainingSyncConfig, TrainContext
 
 MANIFEST_FILENAME = "datapipe_ml_training_sync.json"
@@ -100,8 +101,20 @@ class TrainingCheckpointManifest:
     checkpoints: list[TrainingCheckpointEntry]
 
 
-def _relative_posix_path(path: str, base: str) -> str:
-    return str(PurePosixPath(path).relative_to(PurePosixPath(base)))
+class _SyncFailureTracker:
+    def __init__(self, max_failures: int) -> None:
+        self._max_failures = max(1, max_failures)
+        self._consecutive_failures = 0
+
+    def record_success(self) -> None:
+        self._consecutive_failures = 0
+
+    def record_failure(self, *, label: str) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._max_failures:
+            raise RuntimeError(
+                f"Training output sync failed {self._consecutive_failures} consecutive times during {label}"
+            )
 
 
 def manifest_path_for_run(run_dir: str) -> str:
@@ -228,7 +241,7 @@ def _iter_relative_files(src: str) -> list[str]:
     if src_fs.isfile(src_path):
         return [PurePosixPath(src_path).name]
     files = [file_path for file_path in src_fs.find(src_path) if src_fs.isfile(file_path)]
-    return [_relative_posix_path(file_path, src_path) for file_path in files]
+    return [relative_posix_path(file_path, src_path) for file_path in files]
 
 
 def _publish_tmp(dst_url: str, tmp_url: str) -> None:
@@ -295,8 +308,14 @@ def copy_tree_snapshot(src: str, dst: str, *, require_stable: bool = True) -> No
 class PeriodicSyncScheduler:
     """Poll-friendly gate for non-fatal periodic sync (Sky/Vast host pull, etc.)."""
 
-    def __init__(self, interval_s: Optional[int]) -> None:
+    def __init__(
+        self,
+        interval_s: Optional[int],
+        *,
+        max_consecutive_sync_failures: int = 10,
+    ) -> None:
         self.interval_s = interval_s
+        self._failure_tracker = _SyncFailureTracker(max_consecutive_sync_failures)
         self._next_sync_at: Optional[float] = None
         if interval_s is not None and interval_s > 0:
             self._next_sync_at = time.time() + interval_s
@@ -309,6 +328,9 @@ class PeriodicSyncScheduler:
             sync_fn()
         except Exception:
             logger.exception("Training output sync failed during %s; will retry later", label)
+            self._failure_tracker.record_failure(label=label)
+        else:
+            self._failure_tracker.record_success()
 
 
 def copy_tree_best_effort(src: str, dst: str, *, retries: int, retry_sleep_s: int) -> None:
@@ -386,6 +408,7 @@ class PeriodicTrainingSync:
         self.epoch_for_path = epoch_for_path
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._failure_tracker = _SyncFailureTracker(config.max_consecutive_sync_failures)
 
     def _sync_once(self, label: str) -> None:
         if not self.config.enabled:
@@ -404,6 +427,9 @@ class PeriodicTrainingSync:
             self._sync_once(label)
         except Exception:
             logger.exception("Training output sync failed during %s; will retry later", label)
+            self._failure_tracker.record_failure(label=label)
+        else:
+            self._failure_tracker.record_success()
 
     def sync_once(self, *, label: str = "sync") -> None:
         """Run one serialized sync+manifest publish (safe after post-training writes)."""
