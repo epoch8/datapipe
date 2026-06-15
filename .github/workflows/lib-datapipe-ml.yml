@@ -149,6 +149,8 @@ jobs:
           python -m pytest libs/datapipe-ml/tests -m "tensorflow and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
         env:
           TEST_DB_ENV: sqlite
+          CUDA_VISIBLE_DEVICES: ""
+          NVIDIA_VISIBLE_DEVICES: ""
           DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
           DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES: "12"
           DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ: "1"
@@ -185,6 +187,8 @@ jobs:
           python -m pytest libs/datapipe-ml/tests -m "torch and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
         env:
           TEST_DB_ENV: sqlite
+          CUDA_VISIBLE_DEVICES: ""
+          NVIDIA_VISIBLE_DEVICES: ""
           DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
           DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES: "12"
           DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ: "1"

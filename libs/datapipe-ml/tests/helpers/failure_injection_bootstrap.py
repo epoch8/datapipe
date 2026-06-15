@@ -93,6 +93,27 @@ def checkpoint_for_epoch_exists(run_dir: str | Path, epoch: int, *, strict: bool
     return (weights_dir / "last.pt").exists()
 
 
+def _yolov5_training_run_dir(yolov5_training_config) -> Path:
+    project = Path(str(yolov5_training_config.project))
+    run_dir = project / yolov5_training_config.name
+    if (run_dir / "weights").exists():
+        return run_dir
+    from datapipe_ml.frameworks.yolo.artifacts import yolo_select_last_exp
+
+    selected = yolo_select_last_exp(str(project), yolov5_training_config.name)
+    return selected if selected is not None else run_dir
+
+
+def _abort_yolov5_training_after_epoch(*, run_dir: Path, fail_after: int) -> None:
+    mode = configured_fail_mode()
+    if mode == "kill_pipe":
+        record_run_dir_for_pipe_death(run_dir)
+        os._exit(137)
+    if mode in {"kill9", "error"}:
+        os._exit(137 if mode == "kill9" else 1)
+    raise RuntimeError(f"Injected training failure after epoch {fail_after}")
+
+
 def install_training_failure_hooks(patcher: _AttrPatcher) -> None:
     _install_yolov8_failure_hook(patcher)
     _install_yolov5_failure_hook(patcher)
@@ -165,21 +186,15 @@ def _install_yolov5_failure_hook(patcher: _AttrPatcher) -> None:
             import threading
 
             fail_after = configured_fail_after_epoch()
-            run_dir = Path(str(yolov5_training_config.project)) / yolov5_training_config.name
             stop = threading.Event()
 
             def monitor() -> None:
                 while not stop.wait(1):
                     if fail_after is None:
                         continue
-                    strict_checkpoint = configured_fail_mode() == "kill_pipe"
-                    if checkpoint_for_epoch_exists(run_dir, fail_after, strict=strict_checkpoint):
-                        if configured_fail_mode() == "kill_pipe":
-                            record_run_dir_for_pipe_death(run_dir)
-                            os._exit(137)
-                        if configured_fail_mode() == "kill9":
-                            os._exit(137)
-                        raise RuntimeError(f"Injected training failure after epoch {fail_after}")
+                    run_dir = _yolov5_training_run_dir(yolov5_training_config)
+                    if checkpoint_for_epoch_exists(run_dir, fail_after, strict=True):
+                        _abort_yolov5_training_after_epoch(run_dir=run_dir, fail_after=fail_after)
 
             thread = threading.Thread(target=monitor, daemon=True)
             thread.start()
@@ -190,6 +205,7 @@ def _install_yolov5_failure_hook(patcher: _AttrPatcher) -> None:
                 thread.join(timeout=1)
 
         patcher.setattr(yolov5_train_in_process, "run_yolov5_train_in_process", run_with_failure_monitor)
+        patcher.setattr(runner, "run_yolov5_train_in_process", run_with_failure_monitor)
         return original_train_model(*args, **kwargs)
 
     patcher.setattr(runner, "train_model", train_model_with_optional_failure)
