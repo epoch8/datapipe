@@ -60,7 +60,7 @@ def _spawn_with_pipe_death(target, *args):  # noqa: ANN001
     try:
         while True:
             try:
-                res = q.get(timeout=1)
+                res = q.get(timeout=0.2)
                 break
             except queue.Empty:
                 if not p.is_alive():

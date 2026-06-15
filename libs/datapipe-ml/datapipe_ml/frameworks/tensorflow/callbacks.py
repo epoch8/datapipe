@@ -1,7 +1,11 @@
 import inspect
+import os
+import shutil
 import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pathy import Pathy
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
@@ -11,6 +15,19 @@ from datapipe_ml.core.files import copy_url_to_url
 
 def _copy_file_fsspec(src_path: str, dst_url: str, chunk_bytes: int = 64 * 1024 * 1024) -> None:
     copy_url_to_url(src_path, dst_url, label="TensorFlow checkpoint", concurrency=1)
+
+
+def _stage_checkpoint_for_upload(local_path: Path, staging_root: Path) -> Path:
+    """Pin checkpoint bytes for background upload (hardlink when possible)."""
+    staging_root.mkdir(parents=True, exist_ok=True)
+    staged_path = staging_root / local_path.name
+    if staged_path.exists():
+        staged_path = staging_root / f"{time.time_ns()}_{local_path.name}"
+    try:
+        os.link(local_path, staged_path)
+    except OSError:
+        shutil.copy2(local_path, staged_path)
+    return staged_path
 
 
 def _safe_format(pattern: str, epoch: int, logs: Optional[Dict[str, Any]]) -> str:
@@ -43,6 +60,7 @@ class FsspecModelCheckpoint(Callback):
         save_freq: Union[str, int] = "epoch",
         initial_value_threshold: Optional[float] = None,
         options: Optional[Any] = None,  # будет проигнорирован, если не поддерживается
+        mirror_async: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -81,6 +99,10 @@ class FsspecModelCheckpoint(Callback):
 
         self._inner_ckpt = ModelCheckpoint(**inner_kwargs)
         self._chunk_bytes = 64 * 1024 * 1024
+        self._mirror_async = mirror_async
+        self._staging_root = Path(self._tmpdir.name) / "mirror_staging"
+        self._copy_threads: List[threading.Thread] = []
+        self._copy_threads_lock = threading.Lock()
 
     # Делегирование жизненного цикла
     def set_model(self, model):
@@ -92,7 +114,18 @@ class FsspecModelCheckpoint(Callback):
 
     def on_train_end(self, logs=None):
         self._inner_ckpt.on_train_end(logs)
+        self._wait_for_mirror_threads()
         self._tmpdir.cleanup()
+
+    def _wait_for_mirror_threads(self) -> None:
+        with self._copy_threads_lock:
+            pending_threads = list(self._copy_threads)
+        if pending_threads and self.verbose:
+            print("FsspecModelCheckpoint: waiting for mirror copy threads...")
+        for thread in pending_threads:
+            thread.join()
+        with self._copy_threads_lock:
+            self._copy_threads.clear()
 
     def on_epoch_end(self, epoch, logs=None):
         self._inner_ckpt.on_epoch_end(epoch, logs)
@@ -125,4 +158,22 @@ class FsspecModelCheckpoint(Callback):
         if self.verbose:
             print(f"FsspecModelCheckpoint: mirroring '{local_path}' -> '{remote_url}'")
 
-        _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)
+        if self._mirror_async:
+            staged_path = _stage_checkpoint_for_upload(local_path, self._staging_root)
+
+            def _upload() -> None:
+                try:
+                    _copy_file_fsspec(str(staged_path), remote_url, self._chunk_bytes)
+                finally:
+                    staged_path.unlink(missing_ok=True)
+
+            thread = threading.Thread(
+                target=_upload,
+                name="fsspec-checkpoint-mirror",
+                daemon=False,
+            )
+            with self._copy_threads_lock:
+                self._copy_threads.append(thread)
+            thread.start()
+        else:
+            _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)

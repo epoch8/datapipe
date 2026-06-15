@@ -342,7 +342,7 @@ def yolo_finalize_training_output(
         from datapipe_ml.training.sync import copy_tree_snapshot
 
         dst_exp = str(Pathy.fluid(persisted_project_dir) / exp_folder.name)
-        copy_tree_snapshot(str(exp_folder), dst_exp)
+        copy_tree_snapshot(str(exp_folder), dst_exp, require_stable=False)
         final_exp_folder: FluidPath = Pathy.fluid(dst_exp)
     elif persisted_project_dir:
         final_exp_folder = Pathy.fluid(persisted_project_dir) / exp_folder.name

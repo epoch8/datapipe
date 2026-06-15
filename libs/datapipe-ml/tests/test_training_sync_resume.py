@@ -164,6 +164,20 @@ def test_copy_tree_best_effort_retries_after_transient_failure(monkeypatch: pyte
     assert (dst / "weights.pt").read_bytes() == b"weights"
 
 
+def test_copy_tree_snapshot_can_force_copy_mutable_files(tmp_path: Path) -> None:
+    from datapipe_ml.training.sync import copy_tree_snapshot
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.mkdir()
+    results = src / "results.csv"
+    results.write_text("epoch,loss\n0,1.0\n")
+
+    copy_tree_snapshot(str(src), str(dst), require_stable=False)
+
+    assert (dst / "results.csv").read_text() == results.read_text()
+
+
 def test_manifest_path_for_run_is_stable(tmp_path: Path) -> None:
     assert manifest_path_for_run(str(tmp_path / "run")).endswith("/datapipe_ml_training_sync.json")
 

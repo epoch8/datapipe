@@ -53,6 +53,25 @@ def run_dir_for_pipe_death_poll() -> str | None:
     return text or None
 
 
+def _try_refresh_pipe_death_manifest(run_dir: str | Path | None) -> None:
+    fail_after = configured_fail_after_epoch()
+    if fail_after is None or configured_fail_mode() != "kill_pipe" or not run_dir:
+        return
+    run_dir_str = str(run_dir)
+    if not checkpoint_for_epoch_exists(run_dir_str, fail_after, strict=True):
+        return
+    from datapipe_ml.training.sync import discover_checkpoint_paths, write_checkpoint_manifest
+
+    try:
+        write_checkpoint_manifest(
+            run_dir=run_dir_str,
+            model_id=Path(run_dir_str).name,
+            checkpoint_paths=discover_checkpoint_paths(run_dir_str),
+        )
+    except Exception:
+        return
+
+
 def maybe_fail_after_epoch(epoch: int) -> None:
     fail_after = configured_fail_after_epoch()
     if fail_after is None or epoch < fail_after:
@@ -107,7 +126,12 @@ def _install_yolov8_failure_hook(patcher: _AttrPatcher) -> None:
                 save_dir = getattr(trainer, "save_dir", None)
                 if save_dir:
                     record_run_dir_for_pipe_death(save_dir)
-                maybe_fail_after_epoch(int(trainer.epoch) + 1)
+                epoch = int(trainer.epoch) + 1
+                if configured_fail_mode() == "kill_pipe":
+                    fail_after = configured_fail_after_epoch()
+                    if fail_after is not None and epoch >= fail_after:
+                        _try_refresh_pipe_death_manifest(save_dir)
+                maybe_fail_after_epoch(epoch)
 
             model.add_callback("on_model_save", on_model_save)
         return model

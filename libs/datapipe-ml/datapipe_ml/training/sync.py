@@ -257,6 +257,19 @@ def _publish_tmp(dst_url: str, tmp_url: str) -> None:
     dst_fs.rm(tmp_path)
 
 
+def _copy_file_via_tmp(src_url: str, dst_url: str) -> None:
+    from datapipe_ml.core.files import copy_url_to_url
+
+    tmp_url = f"{dst_url}.tmp.{os.getpid()}.{time.time_ns()}"
+    try:
+        copy_url_to_url(src_url, tmp_url, label="training sync file", concurrency=1)
+        _publish_tmp(dst_url, tmp_url)
+    finally:
+        tmp_fs, tmp_path = fsspec.core.url_to_fs(tmp_url, **_storage_options(tmp_url))
+        if tmp_fs.exists(tmp_path):
+            tmp_fs.rm(tmp_path)
+
+
 def _copy_stable_file(src_url: str, dst_url: str) -> bool:
     from datapipe_ml.core.files import copy_url_to_url
 
@@ -281,12 +294,15 @@ def _copy_stable_file(src_url: str, dst_url: str) -> bool:
             tmp_fs.rm(tmp_path)
 
 
-def copy_tree_snapshot(src: str, dst: str) -> None:
+def copy_tree_snapshot(src: str, dst: str, *, require_stable: bool = True) -> None:
     for relative_path in _iter_relative_files(src):
         src_url = str(Pathy.fluid(src) / relative_path)
         dst_url = str(Pathy.fluid(dst) / relative_path)
-        if not _copy_stable_file(src_url, dst_url):
-            logger.info("Skipping unstable training artifact during sync: %s", src_url)
+        if require_stable:
+            if not _copy_stable_file(src_url, dst_url):
+                logger.info("Skipping unstable training artifact during sync: %s", src_url)
+        else:
+            _copy_file_via_tmp(src_url, dst_url)
 
 
 class PeriodicSyncScheduler:
