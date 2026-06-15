@@ -23,6 +23,9 @@ def test_fsspec_model_checkpoint_mirrors_asynchronously(monkeypatch: pytest.Monk
         copied_urls.append(dst)
         started.set()
         assert release.wait(timeout=5.0)
+        dst_path = Path(dst)
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        dst_path.write_bytes(Path(src).read_bytes())
 
     monkeypatch.setattr(
         "datapipe_ml.frameworks.tensorflow.callbacks.copy_url_to_url",
