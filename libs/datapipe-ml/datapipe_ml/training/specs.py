@@ -251,6 +251,12 @@ class Algo(ABC):
     def collect_checkpoint_paths(self, raw_result: Any) -> List[str]:
         return []
 
+    def discover_checkpoint_paths_in_run_dir(self, run_dir: str) -> List[str]:
+        return []
+
+    def infer_epoch_from_checkpoint_path(self, path: str) -> Optional[int]:
+        return None
+
     def apply_resume_checkpoint(
         self,
         ctx: TrainContext,

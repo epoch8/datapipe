@@ -4,6 +4,7 @@ from datapipe_ml.frameworks.tensorflow.checkpoint_selection import (
     select_best_classification_checkpoint,
     select_tf_resume_checkpoint,
 )
+from datapipe_ml.frameworks.tensorflow.checkpoint_sync import infer_epoch_from_checkpoint_path as tf_epoch_for_path
 from datapipe_ml.training.specs import TrainingResumeConfig
 from datapipe_ml.training.sync import write_checkpoint_manifest
 
@@ -46,6 +47,7 @@ def test_select_tf_resume_checkpoint_uses_highest_epoch_for_last(tmp_path) -> No
         run_dir=str(run_dir),
         model_id="model-a",
         checkpoint_paths=[str(epoch1), str(epoch3)],
+        epoch_for_path=tf_epoch_for_path,
     )
 
     selected = select_tf_resume_checkpoint(
@@ -69,6 +71,7 @@ def test_select_tf_resume_checkpoint_uses_best_val_f1_for_best(tmp_path) -> None
         run_dir=str(run_dir),
         model_id="model-a",
         checkpoint_paths=[str(lower), str(higher)],
+        epoch_for_path=tf_epoch_for_path,
     )
 
     selected = select_tf_resume_checkpoint(

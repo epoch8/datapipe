@@ -18,13 +18,16 @@ from datapipe_ml.training.runs import (
     utc_iso,
     utc_now,
 )
-from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo
+from datapipe_ml.frameworks.tensorflow.checkpoint_sync import infer_epoch_from_checkpoint_path as tf_epoch_for_path
+from datapipe_ml.frameworks.yolo.checkpoint_sync import (
+    discover_checkpoint_paths_in_run_dir as discover_yolo_checkpoint_paths,
+    infer_epoch_from_checkpoint_path as yolo_epoch_for_path,
+)
 from datapipe_ml.training.specs import Algo, TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import (
     LOCAL_TRAIN_OUTPUT_SUBDIR,
     PeriodicTrainingSync,
     copy_tree_best_effort,
-    discover_checkpoint_paths,
     dst_sync_lock,
     manifest_path_for_run,
     orchestrator_owns_output_sync,
@@ -37,7 +40,9 @@ from datapipe_ml.training.specs import TrainContext
 
 
 def _select_yolo_resume(manifest_path: str, config: TrainingResumeConfig):
-    return YoloV8DetectionAlgo().select_resume_checkpoint(manifest_path=manifest_path, config=config)
+    from datapipe_ml.frameworks.yolo.checkpoint_selection import select_yolo_resume_checkpoint
+
+    return select_yolo_resume_checkpoint(manifest_path=manifest_path, config=config)
 
 
 class _MemoryStatusTable:
@@ -172,6 +177,7 @@ def test_write_manifest_and_select_last_checkpoint(tmp_path: Path) -> None:
         run_dir=str(run_dir),
         model_id="model-a",
         checkpoint_paths=[str(epoch2), str(last)],
+        epoch_for_path=yolo_epoch_for_path,
     )
 
     selected = _select_yolo_resume(
@@ -195,6 +201,7 @@ def test_select_last_checkpoint_ignores_epoch_files_when_last_pt_is_present(tmp_
         run_dir=str(run_dir),
         model_id="model-a",
         checkpoint_paths=[str(weights_dir / "epoch1.pt"), str(weights_dir / "epoch9.pt")],
+        epoch_for_path=yolo_epoch_for_path,
     )
 
     selected = _select_yolo_resume(
@@ -303,6 +310,7 @@ def test_default_resume_checkpoint_selects_highest_epoch(tmp_path: Path) -> None
         run_dir=str(run_dir),
         model_id="model-a",
         checkpoint_paths=[str(epoch1), str(epoch3)],
+        epoch_for_path=tf_epoch_for_path,
     )
 
     selected = select_default_resume_checkpoint(
@@ -358,18 +366,30 @@ def test_manifest_path_for_run_is_stable(tmp_path: Path) -> None:
     assert manifest_path_for_run(str(tmp_path / "run")).endswith("/datapipe_ml_training_sync.json")
 
 
-def test_discover_checkpoint_paths_finds_yolo_and_tf_checkpoints(tmp_path: Path) -> None:
+def test_discover_yolo_checkpoint_paths_in_run_dir(tmp_path: Path) -> None:
     run_dir = tmp_path / "model-a"
     weights = run_dir / "weights"
     weights.mkdir(parents=True)
     (weights / "epoch1.pt").write_bytes(b"1")
     (weights / "last.pt").write_bytes(b"last")
+    (run_dir / "args.yaml").write_text("not a checkpoint")
+
+    paths = {Path(path).name for path in discover_yolo_checkpoint_paths(str(run_dir))}
+
+    assert paths == {"epoch1.pt", "last.pt"}
+
+
+def test_discover_tensorflow_checkpoint_paths_in_run_dir(tmp_path: Path) -> None:
+    from datapipe_ml.frameworks.tensorflow.checkpoint_sync import discover_checkpoint_paths_in_run_dir
+
+    run_dir = tmp_path / "model-a"
+    run_dir.mkdir(parents=True)
     (run_dir / "02__model.keras").write_bytes(b"keras")
     (run_dir / "args.yaml").write_text("not a checkpoint")
 
-    paths = {Path(path).name for path in discover_checkpoint_paths(str(run_dir))}
+    paths = {Path(path).name for path in discover_checkpoint_paths_in_run_dir(str(run_dir))}
 
-    assert paths == {"epoch1.pt", "last.pt", "02__model.keras"}
+    assert paths == {"02__model.keras"}
 
 
 def test_plan_orchestrator_output_sync_uses_local_staging_for_remote_models_dir(tmp_path: Path) -> None:
@@ -462,6 +482,8 @@ def test_sync_training_tree_and_manifest_scopes_copy_to_model_id(tmp_path: Path)
         dst=str(dst),
         config=TrainingSyncConfig(enabled=True, interval_s=None, retries=1, retry_sleep_s=0),
         model_id="model-a",
+        discover_checkpoints=discover_yolo_checkpoint_paths,
+        epoch_for_path=yolo_epoch_for_path,
     )
 
     assert (dst / "model-a" / "weights" / "epoch1.pt").exists()
@@ -482,6 +504,8 @@ def test_sync_training_tree_and_manifest_includes_post_training_files(tmp_path: 
         dst=str(dst),
         config=TrainingSyncConfig(enabled=True, interval_s=None, retries=1, retry_sleep_s=0),
         model_id="model-a",
+        discover_checkpoints=discover_yolo_checkpoint_paths,
+        epoch_for_path=yolo_epoch_for_path,
     )
 
     assert (dst / "model-a" / "class_names.json").read_text() == '["cat"]'
@@ -503,6 +527,8 @@ def test_periodic_training_sync_publishes_manifest_after_copy(tmp_path: Path) ->
         dst=str(dst),
         config=TrainingSyncConfig(enabled=True, interval_s=None, retries=1, retry_sleep_s=0),
         model_id="model-a",
+        discover_checkpoints=discover_yolo_checkpoint_paths,
+        epoch_for_path=yolo_epoch_for_path,
     )
 
     sync.stop(final_sync=True)
@@ -526,6 +552,8 @@ def test_periodic_training_sync_stop_on_interrupt_skips_blocking_final_sync(
         dst=str(dst),
         config=TrainingSyncConfig(enabled=True, interval_s=1, retries=1, retry_sleep_s=0),
         model_id="model-a",
+        discover_checkpoints=discover_yolo_checkpoint_paths,
+        epoch_for_path=yolo_epoch_for_path,
     )
     sync.start()
     final_sync_calls: list[str] = []

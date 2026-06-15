@@ -353,6 +353,16 @@ class YoloBaseAlgo(Algo):
             return []
         return sorted({str(item.model_path) for item in raw_result.training_results if item.model_path})
 
+    def discover_checkpoint_paths_in_run_dir(self, run_dir: str) -> List[str]:
+        from datapipe_ml.frameworks.yolo.checkpoint_sync import discover_checkpoint_paths_in_run_dir
+
+        return discover_checkpoint_paths_in_run_dir(run_dir)
+
+    def infer_epoch_from_checkpoint_path(self, path: str) -> Optional[int]:
+        from datapipe_ml.frameworks.yolo.checkpoint_sync import infer_epoch_from_checkpoint_path
+
+        return infer_epoch_from_checkpoint_path(path)
+
     @staticmethod
     def _input_size_from_params(train_params: Dict[str, Any]) -> Tuple[int, int]:
         imgsz = train_params.get("imgsz")

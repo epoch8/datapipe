@@ -60,13 +60,18 @@ def _try_refresh_pipe_death_manifest(run_dir: str | Path | None) -> None:
     run_dir_str = str(run_dir)
     if not checkpoint_for_epoch_exists(run_dir_str, fail_after, strict=True):
         return
-    from datapipe_ml.training.sync import discover_checkpoint_paths, write_checkpoint_manifest
+    from datapipe_ml.frameworks.yolo.checkpoint_sync import (
+        discover_checkpoint_paths_in_run_dir,
+        infer_epoch_from_checkpoint_path,
+    )
+    from datapipe_ml.training.sync import write_checkpoint_manifest
 
     try:
         write_checkpoint_manifest(
             run_dir=run_dir_str,
             model_id=Path(run_dir_str).name,
-            checkpoint_paths=discover_checkpoint_paths(run_dir_str),
+            checkpoint_paths=discover_checkpoint_paths_in_run_dir(run_dir_str),
+            epoch_for_path=infer_epoch_from_checkpoint_path,
         )
     except Exception:
         return
@@ -85,12 +90,14 @@ def maybe_fail_after_epoch(epoch: int) -> None:
 
 
 def checkpoint_for_epoch_exists(run_dir: str | Path, epoch: int, *, strict: bool = False) -> bool:
-    weights_dir = Path(run_dir) / "weights"
-    if (weights_dir / f"epoch{epoch}.pt").exists():
+    from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
+
+    max_epoch = max_completed_epoch_from_run_dir(run_dir)
+    if max_epoch is not None and max_epoch >= epoch:
         return True
     if strict:
         return False
-    return (weights_dir / "last.pt").exists()
+    return (Path(run_dir) / "weights" / "last.pt").exists()
 
 
 def _yolov5_training_run_dir(yolov5_training_config) -> Path:
@@ -189,11 +196,11 @@ def _install_yolov5_failure_hook(patcher: _AttrPatcher) -> None:
             stop = threading.Event()
 
             def monitor() -> None:
-                while not stop.wait(1):
+                while not stop.wait(0.2):
                     if fail_after is None:
                         continue
                     run_dir = _yolov5_training_run_dir(yolov5_training_config)
-                    if checkpoint_for_epoch_exists(run_dir, fail_after, strict=True):
+                    if checkpoint_for_epoch_exists(run_dir, fail_after):
                         _abort_yolov5_training_after_epoch(run_dir=run_dir, fail_after=fail_after)
 
             thread = threading.Thread(target=monitor, daemon=True)

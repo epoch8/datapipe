@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo
 from datapipe_ml.training.specs import TrainingResumeConfig
 from datapipe_ml.training.sync import write_checkpoint_manifest
 from tests.helpers.cloud_smoke import (
@@ -62,7 +61,9 @@ def test_s3_minio_manifest_resume_checkpoint_roundtrip() -> None:
         checkpoint_paths=[str(checkpoint_pathy)],
     )
 
-    selected = YoloV8DetectionAlgo().select_resume_checkpoint(
+    from datapipe_ml.frameworks.yolo.checkpoint_selection import select_yolo_resume_checkpoint
+
+    selected = select_yolo_resume_checkpoint(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )

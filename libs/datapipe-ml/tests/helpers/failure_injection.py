@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest
 
 from tests.helpers.failure_injection_bootstrap import (
@@ -42,13 +43,15 @@ def enable_failure_after_epoch(monkeypatch: MonkeyPatch, *, epoch: int, mode: st
 
 
 def _pipe_death_checkpoint_ready(run_dir: str, fail_after: int) -> bool:
-    if not checkpoint_for_epoch_exists(run_dir, fail_after, strict=True):
+    if not checkpoint_for_epoch_exists(run_dir, fail_after):
         return False
     manifest = read_checkpoint_manifest(manifest_path_for_run(run_dir))
-    if manifest is None:
-        return False
-    epochs = [item.epoch for item in manifest.checkpoints if item.epoch is not None]
-    return bool(epochs) and max(int(epoch) for epoch in epochs) >= fail_after
+    if manifest is not None:
+        epochs = [item.epoch for item in manifest.checkpoints if item.epoch is not None]
+        if epochs and max(int(epoch) for epoch in epochs) >= fail_after:
+            return True
+    max_epoch = max_completed_epoch_from_run_dir(run_dir)
+    return max_epoch is not None and int(max_epoch) >= fail_after
 
 
 def _spawn_with_pipe_death(target, *args):  # noqa: ANN001

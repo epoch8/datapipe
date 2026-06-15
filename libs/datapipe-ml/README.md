@@ -76,8 +76,6 @@ DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ=1 \
 pytest tests -m "tensorflow and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
 ```
 
-In CI this runs inside `tensorflow/tensorflow:latest`.
-
 ### Sky/Vast integration tests
 
 Optional: add `VAPI_API_KEY=...` to `tests/.env.test`.

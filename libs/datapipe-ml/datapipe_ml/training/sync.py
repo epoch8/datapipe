@@ -6,7 +6,7 @@ import os
 import threading
 import time
 from dataclasses import asdict, dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import TracebackType
 from typing import Callable, Iterable, Optional, Type
 
@@ -21,6 +21,9 @@ STABLE_STAT_MAX_ATTEMPTS = 8
 STABLE_STAT_INITIAL_SLEEP_S = 0.01
 STABLE_STAT_RETRY_SLEEP_S = 0.02
 logger = logging.getLogger("datapipe.ml.training.sync")
+
+EpochForPath = Callable[[str], Optional[int]]
+DiscoverCheckpointsInRunDir = Callable[[str], list[str]]
 
 @dataclass(frozen=True)
 class OrchestratorOutputSync:
@@ -133,15 +136,6 @@ def _stable_stat(url: str, *, max_attempts: int = STABLE_STAT_MAX_ATTEMPTS) -> t
     raise last_error
 
 
-def infer_epoch_from_path(path: str) -> Optional[int]:
-    name = PurePosixPath(path).name
-    if name.startswith("epoch") and name.endswith(".pt"):
-        raw = name[len("epoch") : -len(".pt")]
-        return int(raw) if raw.isdigit() else None
-    prefix = name.split("__", 1)[0]
-    return int(prefix) if prefix.isdigit() else None
-
-
 def write_checkpoint_manifest(
     *,
     run_dir: str,
@@ -149,6 +143,7 @@ def write_checkpoint_manifest(
     checkpoint_paths: Iterable[str],
     local_write_root: Optional[str] = None,
     persisted_root: Optional[str] = None,
+    epoch_for_path: Optional[EpochForPath] = None,
 ) -> str:
     entries: list[TrainingCheckpointEntry] = []
     for checkpoint_path in checkpoint_paths:
@@ -166,7 +161,7 @@ def write_checkpoint_manifest(
         entries.append(
             TrainingCheckpointEntry(
                 path=stored_path,
-                epoch=infer_epoch_from_path(source_path),
+                epoch=epoch_for_path(source_path) if epoch_for_path is not None else None,
                 size=size,
                 mtime=mtime,
             )
@@ -191,29 +186,18 @@ def write_checkpoint_manifest(
     return path
 
 
-def discover_checkpoint_paths(run_dir: str) -> list[str]:
-    fs, stripped_run_dir = fsspec.core.url_to_fs(run_dir)
-    if not fs.exists(stripped_run_dir):
-        return []
-    paths: list[str] = []
-    for path in fs.find(stripped_run_dir):
-        if not fs.isfile(path):
-            continue
-        name = PurePosixPath(path).name
-        if (name.startswith("epoch") and name.endswith(".pt")) or name in {"last.pt", "best.pt"}:
-            paths.append(str(Pathy.fluid(run_dir) / _relative_posix_path(path, stripped_run_dir)))
-            continue
-        if name.endswith(".keras"):
-            paths.append(str(Pathy.fluid(run_dir) / _relative_posix_path(path, stripped_run_dir)))
-    return sorted(paths)
-
-
 def read_checkpoint_manifest(path: str) -> Optional[TrainingCheckpointManifest]:
     fs, stripped = fsspec.core.url_to_fs(path)
     if not fs.exists(stripped):
         return None
     with fs.open(stripped, "r") as src:
-        raw = json.load(src)
+        content = src.read()
+    if not content.strip():
+        return None
+    try:
+        raw = json.loads(content)
+    except json.JSONDecodeError:
+        return None
     return TrainingCheckpointManifest(
         run_id=raw["run_id"],
         model_id=raw["model_id"],
@@ -352,6 +336,8 @@ def sync_training_tree_and_manifest(
     dst: str,
     config: TrainingSyncConfig,
     model_id: Optional[str] = None,
+    discover_checkpoints: Optional[DiscoverCheckpointsInRunDir] = None,
+    epoch_for_path: Optional[EpochForPath] = None,
 ) -> None:
     """Copy src->dst and publish manifest under a per-destination lock."""
     sync_src, sync_dst = _sync_tree_paths(src, dst, model_id)
@@ -369,22 +355,35 @@ def sync_training_tree_and_manifest(
             )
         if model_id is None:
             return
-        checkpoint_paths = discover_checkpoint_paths(sync_dst)
+        discover = discover_checkpoints or (lambda _run_dir: [])
+        checkpoint_paths = discover(sync_dst)
         if not checkpoint_paths:
             return
         write_checkpoint_manifest(
             run_dir=sync_dst,
             model_id=model_id,
             checkpoint_paths=checkpoint_paths,
+            epoch_for_path=epoch_for_path,
         )
 
 
 class PeriodicTrainingSync:
-    def __init__(self, *, src: str, dst: str, config: TrainingSyncConfig, model_id: Optional[str] = None):
+    def __init__(
+        self,
+        *,
+        src: str,
+        dst: str,
+        config: TrainingSyncConfig,
+        model_id: Optional[str] = None,
+        discover_checkpoints: Optional[DiscoverCheckpointsInRunDir] = None,
+        epoch_for_path: Optional[EpochForPath] = None,
+    ):
         self.src = src
         self.dst = dst
         self.config = config
         self.model_id = model_id
+        self.discover_checkpoints = discover_checkpoints
+        self.epoch_for_path = epoch_for_path
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -396,6 +395,8 @@ class PeriodicTrainingSync:
             dst=self.dst,
             config=self.config,
             model_id=self.model_id,
+            discover_checkpoints=self.discover_checkpoints,
+            epoch_for_path=self.epoch_for_path,
         )
 
     def _sync_once_non_fatal(self, label: str) -> None:

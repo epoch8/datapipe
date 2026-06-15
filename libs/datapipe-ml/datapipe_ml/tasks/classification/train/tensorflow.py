@@ -242,6 +242,16 @@ class TFClassificationAlgo(Algo):
             return []
         return [str(raw_result.model_path)]
 
+    def discover_checkpoint_paths_in_run_dir(self, run_dir: str) -> List[str]:
+        from datapipe_ml.frameworks.tensorflow.checkpoint_sync import discover_checkpoint_paths_in_run_dir
+
+        return discover_checkpoint_paths_in_run_dir(run_dir)
+
+    def infer_epoch_from_checkpoint_path(self, path: str) -> Optional[int]:
+        from datapipe_ml.frameworks.tensorflow.checkpoint_sync import infer_epoch_from_checkpoint_path
+
+        return infer_epoch_from_checkpoint_path(path)
+
     def build_model_row(
         self,
         ctx: TrainContext,

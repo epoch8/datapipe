@@ -16,7 +16,12 @@ from datapipe.types import IndexDF
 
 from datapipe_ml.training.runs import active_lease
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
-from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest, verify_manifest_checkpoint
+from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
+from datapipe_ml.training.sync import (
+    manifest_path_for_run,
+    read_checkpoint_manifest,
+    verify_manifest_checkpoint,
+)
 from tests.helpers.training_smoke import (
     SmokeRuntime,
     Workdir,
@@ -412,10 +417,15 @@ def assert_stale_running_after_pipe_death(
     run_dir = row.get("training_status__run_dir")
     assert isinstance(run_dir, str) and run_dir
     manifest = read_checkpoint_manifest(manifest_path_for_run(run_dir))
-    assert manifest is not None
-    epoch_candidates = [item for item in manifest.checkpoints if item.epoch is not None]
-    assert epoch_candidates
-    assert max(int(item.epoch) for item in epoch_candidates) >= min_epoch
+    manifest_epochs = (
+        [item.epoch for item in manifest.checkpoints if item.epoch is not None] if manifest is not None else []
+    )
+    max_from_manifest = max(manifest_epochs) if manifest_epochs else None
+    max_from_run_dir = max_completed_epoch_from_run_dir(run_dir)
+    epoch_candidates = [value for value in (max_from_manifest, max_from_run_dir) if value is not None]
+    max_epoch = max(epoch_candidates) if epoch_candidates else None
+    assert max_epoch is not None
+    assert int(max_epoch) >= min_epoch
     return row
 
 

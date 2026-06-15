@@ -10,14 +10,11 @@ def _install_short_lease_status_manager() -> None:
     import datapipe_ml.training.orchestrator as orchestrator_module
     import datapipe_ml.training.runs as runs_module
 
-    original = runs_module.TrainingStatusManager
+    def short_training_lease_settings(resume_config):  # noqa: ANN001
+        return 1, 2
 
-    class ShortLeaseTrainingStatusManager(original):
-        def __init__(self, *, dt, row, heartbeat_interval_s: int = 1, lease_ttl_s: int = 2):  # noqa: ANN001
-            super().__init__(dt=dt, row=row, heartbeat_interval_s=heartbeat_interval_s, lease_ttl_s=lease_ttl_s)
-
-    runs_module.TrainingStatusManager = ShortLeaseTrainingStatusManager
-    orchestrator_module.TrainingStatusManager = ShortLeaseTrainingStatusManager
+    runs_module.training_lease_settings = short_training_lease_settings
+    orchestrator_module.training_lease_settings = short_training_lease_settings
 
 
 def main(argv: list[str] | None = None) -> int:

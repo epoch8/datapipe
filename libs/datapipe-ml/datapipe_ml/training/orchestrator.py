@@ -25,7 +25,6 @@ from datapipe_ml.training.runs import (
 )
 from datapipe_ml.training.sync import (
     PeriodicTrainingSync,
-    discover_checkpoint_paths,
     manifest_path_for_run,
     orchestrator_owns_output_sync,
     plan_orchestrator_output_sync,
@@ -126,6 +125,7 @@ def _discover_manifest_path(
     run_dir: str,
     model_id: str,
     ctx: TrainContext,
+    algo: Algo,
 ) -> Optional[str]:
     if manifest_path is not None:
         return manifest_path
@@ -136,7 +136,7 @@ def _discover_manifest_path(
             ctx.models_dir,
             ctx.training_output_write_dir,
         )
-    checkpoint_paths = discover_checkpoint_paths(discover_run_dir)
+    checkpoint_paths = algo.discover_checkpoint_paths_in_run_dir(discover_run_dir)
     if not checkpoint_paths:
         return None
     try:
@@ -146,6 +146,7 @@ def _discover_manifest_path(
             checkpoint_paths=checkpoint_paths,
             local_write_root=ctx.training_output_write_dir,
             persisted_root=ctx.models_dir if ctx.training_output_write_dir else None,
+            epoch_for_path=algo.infer_epoch_from_checkpoint_path,
         )
     except Exception:
         logger.exception("Failed to write checkpoint manifest while finalizing training run")
@@ -161,6 +162,7 @@ def _abort_training_run(
     run_dir: str,
     model_id: str,
     ctx: TrainContext,
+    algo: Algo,
 ) -> None:
     if output_sync is not None:
         interrupted = is_training_user_interrupt(exc)
@@ -170,6 +172,7 @@ def _abort_training_run(
         run_dir=run_dir,
         model_id=model_id,
         ctx=ctx,
+        algo=algo,
     )
     if is_training_user_interrupt(exc):
         status_manager.mark_interrupted(manifest_path=manifest_path)
@@ -343,6 +346,8 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                     dst=output_sync_plan.remote_dst,
                     config=ctx.sync_config,
                     model_id=model_id,
+                    discover_checkpoints=algo.discover_checkpoint_paths_in_run_dir,
+                    epoch_for_path=algo.infer_epoch_from_checkpoint_path,
                 )
                 output_sync.start()
             raw_result = algo.launch_training(
@@ -362,6 +367,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                     run_dir=run_dir,
                     model_id=model_id,
                     checkpoint_paths=checkpoint_paths,
+                    epoch_for_path=algo.infer_epoch_from_checkpoint_path,
                 )
             logger.info("Selecting best from training")
             best = algo.select_best(raw_result=raw_result, idx=idx)
@@ -374,6 +380,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 run_dir=run_dir,
                 model_id=model_id,
                 ctx=ctx,
+                algo=algo,
             )
             output_sync = None
             raise

@@ -140,6 +140,16 @@ class FakeAlgo(Algo):
     def collect_checkpoint_paths(self, raw_result: FakeRawResult) -> list[str]:
         return [raw_result.model_path] if raw_result.model_path is not None else []
 
+    def discover_checkpoint_paths_in_run_dir(self, run_dir: str) -> list[str]:
+        from datapipe_ml.frameworks.yolo.checkpoint_sync import discover_checkpoint_paths_in_run_dir
+
+        return discover_checkpoint_paths_in_run_dir(run_dir)
+
+    def infer_epoch_from_checkpoint_path(self, path: str):
+        from datapipe_ml.frameworks.yolo.checkpoint_sync import infer_epoch_from_checkpoint_path
+
+        return infer_epoch_from_checkpoint_path(path)
+
     def select_resume_checkpoint(self, *, manifest_path, config):  # noqa: ANN001
         from datapipe_ml.frameworks.yolo.checkpoint_selection import select_yolo_resume_checkpoint
 
