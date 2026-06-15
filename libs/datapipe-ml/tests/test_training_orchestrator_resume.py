@@ -8,9 +8,16 @@ import pandas as pd
 import pytest
 
 from datapipe_ml.training.orchestrator import orchestrate
-from datapipe_ml.training.runs import status_id_for_attempt, training_run_key, utc_iso, utc_now
+from datapipe_ml.training.runs import (
+    TrainingStatus,
+    is_training_user_interrupt,
+    status_id_for_attempt,
+    training_run_key,
+    utc_iso,
+    utc_now,
+)
 from datapipe_ml.training.specs import Algo, PreparedData, TrainContext, TrainingResumeConfig
-from datapipe_ml.training.sync import write_checkpoint_manifest
+from datapipe_ml.training.sync import read_checkpoint_manifest, write_checkpoint_manifest
 
 
 class FakeTable:
@@ -387,3 +394,138 @@ def test_orchestrator_suffixes_model_id_when_resume_disabled(tmp_path: Path) -> 
 
     assert algo.launch_calls[0]["model_id"] == "same-model_attempt2"
     assert outputs.df__model.iloc[-1]["model_id"] == "same-model_attempt2"
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (KeyboardInterrupt(), True),
+        (RuntimeError("Training subprocess exited before returning a result. exitcode=-2"), True),
+        (RuntimeError("Training subprocess exited before returning a result. exitcode=130"), True),
+        (RuntimeError("Training subprocess exited before returning a result. exitcode=2"), True),
+        (RuntimeError("Training subprocess exited before returning a result. exitcode=1"), False),
+        (RuntimeError("boom"), False),
+    ],
+)
+def test_is_training_user_interrupt_detects_ctrl_c_and_subprocess_sigint(
+    exc: KeyboardInterrupt | RuntimeError,
+    expected: bool,
+) -> None:
+    assert is_training_user_interrupt(exc) is expected
+
+
+def test_orchestrator_marks_failed_on_non_interrupt_exception(tmp_path: Path) -> None:
+    class FailingAlgo(FakeAlgo):
+        def launch_training(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise RuntimeError("training crashed")
+
+    ctx = _ctx(tmp_path)
+    algo = FailingAlgo()
+
+    with pytest.raises(RuntimeError, match="training crashed"):
+        orchestrate(_idx(), ctx, algo)
+
+    row = ctx.dt__training_status.df.iloc[-1]
+    assert row["training_status__status"] == TrainingStatus.FAILED.value
+    assert row["training_status__lease_expires_at"] is None
+    assert "training crashed" in row["training_status__error"]
+
+
+def test_orchestrator_does_not_create_model_rows_on_keyboard_interrupt(tmp_path: Path) -> None:
+    class InterruptingAlgo(FakeAlgo):
+        def launch_training(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise KeyboardInterrupt
+
+    ctx = _ctx(tmp_path)
+
+    with pytest.raises(KeyboardInterrupt):
+        orchestrate(_idx(), ctx, InterruptingAlgo())
+
+    assert ctx.dt__model.df.empty
+    assert ctx.dt__link.df.empty
+
+
+def test_orchestrator_discovers_manifest_on_keyboard_interrupt_when_checkpoints_exist(tmp_path: Path) -> None:
+    class InterruptAfterCheckpointAlgo(FakeAlgo):
+        def launch_training(self, ctx, idx, model_id, train_params, data, resume_checkpoint=None):  # noqa: ANN001
+            weights_dir = Path(ctx.models_dir) / model_id / "weights"
+            weights_dir.mkdir(parents=True, exist_ok=True)
+            (weights_dir / "epoch1.pt").write_bytes(b"checkpoint")
+            raise KeyboardInterrupt
+
+    ctx = _ctx(tmp_path)
+
+    with pytest.raises(KeyboardInterrupt):
+        orchestrate(_idx(), ctx, InterruptAfterCheckpointAlgo())
+
+    row = ctx.dt__training_status.df.iloc[-1]
+    assert row["training_status__status"] == TrainingStatus.INTERRUPTED.value
+    assert row["training_status__manifest_path"] is not None
+    manifest = read_checkpoint_manifest(row["training_status__manifest_path"])
+    assert manifest is not None
+    assert [Path(item.path).name for item in manifest.checkpoints] == ["epoch1.pt"]
+
+
+def test_orchestrator_marks_interrupted_on_keyboard_interrupt(tmp_path: Path) -> None:
+    class InterruptingAlgo(FakeAlgo):
+        def launch_training(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise KeyboardInterrupt
+
+    ctx = _ctx(tmp_path)
+    algo = InterruptingAlgo()
+
+    with pytest.raises(KeyboardInterrupt):
+        orchestrate(_idx(), ctx, algo)
+
+    row = ctx.dt__training_status.df.iloc[-1]
+    assert row["training_status__status"] == TrainingStatus.INTERRUPTED.value
+    assert row["training_status__lease_expires_at"] is None
+    assert row["training_status__error"] == "Training interrupted by user."
+
+
+def test_orchestrator_marks_interrupted_on_subprocess_sigint_runtime_error(tmp_path: Path) -> None:
+    class SubprocessInterruptAlgo(FakeAlgo):
+        def launch_training(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise RuntimeError("Training subprocess exited before returning a result. exitcode=-2")
+
+    ctx = _ctx(tmp_path)
+    algo = SubprocessInterruptAlgo()
+
+    with pytest.raises(RuntimeError, match="exitcode=-2"):
+        orchestrate(_idx(), ctx, algo)
+
+    row = ctx.dt__training_status.df.iloc[-1]
+    assert row["training_status__status"] == TrainingStatus.INTERRUPTED.value
+
+
+def test_orchestrator_resumes_interrupted_status_from_manifest(tmp_path: Path) -> None:
+    run_key = _run_key()
+    checkpoint = tmp_path / "models" / "old-model" / "weights" / "epoch1.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"checkpoint")
+    manifest = write_checkpoint_manifest(
+        run_dir=str(checkpoint.parent.parent),
+        model_id="old-model",
+        checkpoint_paths=[str(checkpoint)],
+    )
+    ctx = _ctx(
+        tmp_path,
+        status_rows=[
+            {
+                "training_status_id": status_id_for_attempt(run_key, 1),
+                "training_status__run_key": run_key,
+                "training_status__status": TrainingStatus.INTERRUPTED.value,
+                "training_status__attempt": 1,
+                "training_status__manifest_path": manifest,
+                "model_id": "old-model",
+            }
+        ],
+        resume_config=TrainingResumeConfig(continue_train_failed_models=True, max_attempts=3),
+    )
+    algo = FakeAlgo()
+
+    orchestrate(_idx(), ctx, algo)
+
+    assert algo.launch_calls[0]["model_id"] == "old-model"
+    assert algo.launch_calls[0]["resume_checkpoint"].path == str(checkpoint)
+    assert set(ctx.dt__training_status.df["training_status__attempt"]) == {1, 2}

@@ -19,6 +19,42 @@ def _assert_yolo_resume_params(algo) -> None:  # noqa: ANN001
 
 
 @pytest.mark.torch
+def test_yolov8_detection_resume_adapter_applies_after_user_interrupt_checkpoint(tmp_path: Path) -> None:
+    """Checkpoint left on disk after Ctrl+C uses the same resume adapter hook as failed runs."""
+    pytest.importorskip("ultralytics")
+    from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo
+
+    checkpoint = tmp_path / "models" / "run-a" / "weights" / "epoch3.pt"
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint.write_bytes(b"checkpoint")
+
+    params = {"epochs": 10, "save_period": -1}
+    updated = YoloV8DetectionAlgo().apply_resume_checkpoint(None, params, str(checkpoint))
+
+    assert updated["initial_weights_path"] == str(checkpoint)
+    assert updated["resume"] is True
+    assert updated["exist_ok"] is True
+    assert updated["save_period"] == 1
+
+
+@pytest.mark.torch
+def test_yolov5_detection_resume_adapter_applies_after_user_interrupt_checkpoint(tmp_path: Path) -> None:
+    pytest.importorskip("yolov5")
+    from datapipe_ml.tasks.detection.train.yolov5 import YoloV5DetectionAlgo
+
+    checkpoint = tmp_path / "models" / "run-a" / "weights" / "epoch3.pt"
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint.write_bytes(b"checkpoint")
+
+    params = {"epochs": 10, "save_period": -1}
+    updated = YoloV5DetectionAlgo().apply_resume_checkpoint(None, params, str(checkpoint))
+
+    assert updated["resume"] == str(checkpoint)
+    assert updated["exist_ok"] is True
+    assert updated["save_period"] == 1
+
+
+@pytest.mark.torch
 def test_yolov8_detection_resume_adapter_sets_typed_params() -> None:
     pytest.importorskip("ultralytics")
     from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo

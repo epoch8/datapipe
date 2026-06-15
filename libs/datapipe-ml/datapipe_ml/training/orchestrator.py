@@ -7,12 +7,14 @@ from datapipe.types import IndexDF
 
 from datapipe_ml.core.datapipe import is_frozen_dataset_old
 from datapipe_ml.training.runs import (
+    TrainingStatus,
     TrainingStatusManager,
     attempts_reset_allowed,
     base_status_row,
     get_active_status_row,
     get_status_row,
     get_status_rows,
+    is_training_user_interrupt,
     launcher_type,
     launcher_config_json,
     initial_launcher_state,
@@ -100,7 +102,7 @@ def _backfill_completed_status_if_missing(
         training_status__launcher_state=initial_launcher_state(ctx.training_launcher_config),
         training_status__models_dir=ctx.models_dir,
         training_status__run_dir=run_dir,
-        training_status__status="completed",
+        training_status__status=TrainingStatus.COMPLETED.value,
         training_status__started_at=None,
         training_status__finished_at=None,
         training_status__attempt=0,
@@ -116,6 +118,60 @@ def _backfill_completed_status_if_missing(
     for key in ctx.model_other_primary_keys:
         status_row[key] = idx.loc[0][key]
     store_status_row(ctx.dt__training_status, status_row)
+
+
+def _discover_manifest_path(
+    *,
+    manifest_path: Optional[str],
+    run_dir: str,
+    model_id: str,
+    ctx: TrainContext,
+) -> Optional[str]:
+    if manifest_path is not None:
+        return manifest_path
+    discover_run_dir = run_dir
+    if ctx.training_output_write_dir:
+        discover_run_dir = remap_path_under_root(
+            run_dir,
+            ctx.models_dir,
+            ctx.training_output_write_dir,
+        )
+    checkpoint_paths = discover_checkpoint_paths(discover_run_dir)
+    if not checkpoint_paths:
+        return None
+    try:
+        return write_checkpoint_manifest(
+            run_dir=run_dir,
+            model_id=model_id,
+            checkpoint_paths=checkpoint_paths,
+        )
+    except Exception:
+        logger.exception("Failed to write checkpoint manifest while finalizing training run")
+        return None
+
+
+def _abort_training_run(
+    *,
+    exc: BaseException,
+    status_manager: TrainingStatusManager,
+    output_sync: Optional[PeriodicTrainingSync],
+    manifest_path: Optional[str],
+    run_dir: str,
+    model_id: str,
+    ctx: TrainContext,
+) -> None:
+    if output_sync is not None:
+        output_sync.stop(final_sync=True)
+    manifest_path = _discover_manifest_path(
+        manifest_path=manifest_path,
+        run_dir=run_dir,
+        model_id=model_id,
+        ctx=ctx,
+    )
+    if is_training_user_interrupt(exc):
+        status_manager.mark_interrupted(manifest_path=manifest_path)
+    else:
+        status_manager.mark_failed(error=format_exc(), manifest_path=manifest_path)
 
 
 def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
@@ -214,7 +270,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
             ):
                 error = f"Max training attempts exceeded for training run {run_key!r}"
                 failed_row = dict(existing_status)
-                failed_row["training_status__status"] = "failed"
+                failed_row["training_status__status"] = TrainingStatus.FAILED.value
                 failed_row["training_status__error"] = error
                 ctx.dt__training_status.store_chunk(pd.DataFrame([failed_row]))
                 raise RuntimeError(error)
@@ -255,7 +311,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         run_dir=run_dir,
         launcher_config=ctx.training_launcher_config,
         attempt=attempt,
-        status="running",
+        status=TrainingStatus.RUNNING,
     )
     manifest_path = None
     output_sync = None
@@ -299,29 +355,17 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 )
             logger.info("Selecting best from training")
             best = algo.select_best(raw_result=raw_result, idx=idx)
-        except Exception:
-            if output_sync is not None:
-                output_sync.stop(final_sync=True)
-                output_sync = None
-            if manifest_path is None:
-                discover_run_dir = run_dir
-                if ctx.training_output_write_dir:
-                    discover_run_dir = remap_path_under_root(
-                        run_dir,
-                        ctx.models_dir,
-                        ctx.training_output_write_dir,
-                    )
-                checkpoint_paths = discover_checkpoint_paths(discover_run_dir)
-                if checkpoint_paths:
-                    try:
-                        manifest_path = write_checkpoint_manifest(
-                            run_dir=run_dir,
-                            model_id=model_id,
-                            checkpoint_paths=checkpoint_paths,
-                        )
-                    except Exception:
-                        logger.exception("Failed to write checkpoint manifest while marking training failed")
-            status_manager.mark_failed(error=format_exc(), manifest_path=manifest_path)
+        except (KeyboardInterrupt, Exception) as exc:
+            _abort_training_run(
+                exc=exc,
+                status_manager=status_manager,
+                output_sync=output_sync,
+                manifest_path=manifest_path,
+                run_dir=run_dir,
+                model_id=model_id,
+                ctx=ctx,
+            )
+            output_sync = None
             raise
         finally:
             if output_sync is not None:

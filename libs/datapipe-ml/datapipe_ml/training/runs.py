@@ -6,6 +6,7 @@ import socket
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from types import TracebackType
 from typing import Any, Optional, Type
 
@@ -20,6 +21,25 @@ from datapipe_ml.training.specs import (
     TrainingLauncherConfig,
     TrainingResumeConfig,
 )
+
+
+class TrainingStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+# Statuses from which resume_config may continue an in-flight run.
+RESUMABLE_TRAINING_STATUSES = frozenset(
+    {
+        TrainingStatus.FAILED,
+        TrainingStatus.INTERRUPTED,
+        TrainingStatus.RUNNING,
+    }
+)
+
+_USER_INTERRUPT_SUBPROCESS_EXITCODES = frozenset({-2, 130, 2})
 
 
 def utc_now() -> datetime:
@@ -57,6 +77,27 @@ def parse_datetime(value: Any) -> Optional[datetime]:
 
 def owner_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def subprocess_exitcode_from_runtime_error(exc: RuntimeError) -> Optional[int]:
+    message = str(exc)
+    marker = "exitcode="
+    if marker not in message:
+        return None
+    raw = message.rsplit(marker, 1)[-1].strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def is_training_user_interrupt(exc: BaseException) -> bool:
+    if isinstance(exc, KeyboardInterrupt):
+        return True
+    if isinstance(exc, RuntimeError):
+        exitcode = subprocess_exitcode_from_runtime_error(exc)
+        return exitcode in _USER_INTERRUPT_SUBPROCESS_EXITCODES
+    return False
 
 
 def training_run_key(
@@ -185,7 +226,7 @@ def get_status_row(dt: DataTable, run_key: str) -> Optional[pd.Series]:
 def get_active_status_row(dt: DataTable, run_key: str) -> Optional[pd.Series]:
     df = get_status_rows(dt, run_key)
     for _, row in df.iterrows():
-        if row.get("training_status__status") == "running" and active_lease(row):
+        if row.get("training_status__status") == TrainingStatus.RUNNING and active_lease(row):
             return row
     return None
 
@@ -209,7 +250,7 @@ def base_status_row(
     run_dir: str,
     launcher_config: Optional[TrainingLauncherConfig],
     attempt: int,
-    status: str,
+    status: TrainingStatus,
     manifest_path: Optional[str] = None,
     error: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -222,7 +263,7 @@ def base_status_row(
         training_status__launcher_state=initial_launcher_state(launcher_config),
         training_status__models_dir=models_dir,
         training_status__run_dir=run_dir,
-        training_status__status=status,
+        training_status__status=status.value,
         training_status__started_at=utc_iso(now),
         training_status__finished_at=None,
         training_status__attempt=attempt,
@@ -254,7 +295,7 @@ class TrainingStatusManager:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        self.row["training_status__status"] = "running"
+        self.row["training_status__status"] = TrainingStatus.RUNNING.value
         self._touch_lease()
         self._store()
         self._thread = threading.Thread(target=self._heartbeat_loop, name="datapipe-training-status", daemon=True)
@@ -278,7 +319,7 @@ class TrainingStatusManager:
     def _finalize_status(
         self,
         *,
-        status: str,
+        status: TrainingStatus,
         manifest_path: Optional[str] = None,
         error: Optional[str] = None,
         run_dir: Optional[str] = None,
@@ -288,7 +329,7 @@ class TrainingStatusManager:
             self.row["training_status__run_dir"] = run_dir
         self.row.update(
             dict(
-                training_status__status=status,
+                training_status__status=status.value,
                 training_status__finished_at=utc_iso(),
                 training_status__manifest_path=manifest_path,
                 training_status__error=error,
@@ -299,10 +340,17 @@ class TrainingStatusManager:
         self._store()
 
     def mark_failed(self, *, error: str, manifest_path: Optional[str] = None) -> None:
-        self._finalize_status(status="failed", manifest_path=manifest_path, error=error)
+        self._finalize_status(status=TrainingStatus.FAILED, manifest_path=manifest_path, error=error)
+
+    def mark_interrupted(self, *, error: Optional[str] = None, manifest_path: Optional[str] = None) -> None:
+        self._finalize_status(
+            status=TrainingStatus.INTERRUPTED,
+            manifest_path=manifest_path,
+            error=error or "Training interrupted by user.",
+        )
 
     def mark_completed(self, *, run_dir: str, manifest_path: Optional[str] = None) -> None:
-        self._finalize_status(status="completed", run_dir=run_dir, manifest_path=manifest_path)
+        self._finalize_status(status=TrainingStatus.COMPLETED, run_dir=run_dir, manifest_path=manifest_path)
 
     def _stop_heartbeat(self) -> None:
         self._stop.set()

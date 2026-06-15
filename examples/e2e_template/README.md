@@ -47,12 +47,6 @@ What each piece is for:
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
   `datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
 
-If `datapipe db create-all` fails with `No module named 'jsf'`, reinstall label-studio integration:
-
-```bash
-uv pip install -e "../../libs/datapipe-label-studio"
-```
-
 ### Local services
 
 Start Postgres, MinIO, and Label Studio from this directory:

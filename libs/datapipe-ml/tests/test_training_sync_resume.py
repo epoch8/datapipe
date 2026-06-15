@@ -6,9 +6,14 @@ import pandas as pd
 import pytest
 
 from datapipe_ml.training.runs import (
+    RESUMABLE_TRAINING_STATUSES,
+    TrainingStatus,
+    TrainingStatusManager,
+    base_status_row,
     get_active_status_row,
     get_status_row,
     status_id_for_attempt,
+    subprocess_exitcode_from_runtime_error,
     training_run_key,
     utc_iso,
     utc_now,
@@ -29,6 +34,125 @@ from datapipe_ml.training.sync import (
     write_checkpoint_manifest,
 )
 from datapipe_ml.training.specs import TrainContext
+
+
+class _MemoryStatusTable:
+    def __init__(self, df: pd.DataFrame):
+        self.df = df
+
+    def get_data(self, idx=None):  # noqa: ANN001
+        if idx is None:
+            return self.df.copy()
+        ids = set(idx["training_status_id"].tolist())
+        return self.df[self.df["training_status_id"].isin(ids)].copy()
+
+    def store_chunk(self, data_df, processed_idx=None, now=None, run_config=None):  # noqa: ANN001
+        if data_df is None or data_df.empty:
+            return pd.DataFrame()
+        data_df = data_df.reset_index(drop=True).copy()
+        if self.df.empty:
+            self.df = data_df
+            return data_df
+        keys = ["training_status_id"]
+        keep = self.df.copy()
+        for _, row in data_df.iterrows():
+            mask = pd.Series([True] * len(keep))
+            for key in keys:
+                if key in keep.columns:
+                    mask &= keep[key] == row[key]
+            keep = keep[~mask]
+        self.df = pd.concat([keep, data_df], ignore_index=True)
+        return data_df
+
+
+def test_resumable_training_statuses_include_interrupted() -> None:
+    assert TrainingStatus.INTERRUPTED in RESUMABLE_TRAINING_STATUSES
+    assert TrainingStatus.FAILED in RESUMABLE_TRAINING_STATUSES
+    assert TrainingStatus.COMPLETED not in RESUMABLE_TRAINING_STATUSES
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Training subprocess exited before returning a result. exitcode=-2", -2),
+        ("Training subprocess exited before returning a result. exitcode=130", 130),
+        ("Training subprocess exited before returning a result. exitcode=2", 2),
+        ("no exit code here", None),
+    ],
+)
+def test_subprocess_exitcode_from_runtime_error_parses_sigint_codes(message: str, expected: int | None) -> None:
+    assert subprocess_exitcode_from_runtime_error(RuntimeError(message)) == expected
+
+
+def test_get_active_status_row_ignores_interrupted_status() -> None:
+    dt = _MemoryStatusTable(
+        pd.DataFrame(
+            [
+                {
+                    "training_status_id": "run__attempt_1",
+                    "training_status__run_key": "run",
+                    "training_status__status": TrainingStatus.INTERRUPTED.value,
+                    "training_status__lease_expires_at": utc_iso(utc_now().replace(year=utc_now().year + 1)),
+                }
+            ]
+        )
+    )
+
+    assert get_active_status_row(dt, "run") is None  # type: ignore[arg-type]
+
+
+def test_select_resume_checkpoint_works_for_interrupted_run_manifest(tmp_path: Path) -> None:
+    run_dir = tmp_path / "models" / "model-a"
+    weights_dir = run_dir / "weights"
+    weights_dir.mkdir(parents=True)
+    epoch1 = weights_dir / "epoch1.pt"
+    epoch2 = weights_dir / "epoch2.pt"
+    epoch1.write_bytes(b"epoch-1")
+    epoch2.write_bytes(b"epoch-2")
+
+    manifest_path = write_checkpoint_manifest(
+        run_dir=str(run_dir),
+        model_id="model-a",
+        checkpoint_paths=[str(epoch1), str(epoch2)],
+    )
+
+    selected = select_resume_checkpoint(
+        manifest_path=manifest_path,
+        config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
+    )
+
+    assert selected is not None
+    assert selected.path == str(epoch2)
+    assert selected.epoch == 2
+
+
+def test_training_status_manager_mark_interrupted_clears_lease() -> None:
+    table = _MemoryStatusTable(pd.DataFrame())
+    row = base_status_row(
+        run_key="run",
+        idx=pd.DataFrame([{}]),
+        model_other_primary_keys=[],
+        frozen_dataset_id_col="frozen_dataset_id",
+        frozen_dataset_id="fd",
+        train_config_id_col="train_config_id",
+        train_config_id="cfg",
+        model_id_col="model_id",
+        model_id="model-a",
+        models_dir="/tmp/models",
+        run_dir="/tmp/models/model-a",
+        launcher_config=None,
+        attempt=1,
+        status=TrainingStatus.RUNNING,
+    )
+    manager = TrainingStatusManager(dt=table, row=row)  # type: ignore[arg-type]
+    manager.start()
+    manager.mark_interrupted(manifest_path="/tmp/models/model-a/datapipe_ml_training_sync.json")
+
+    stored = table.df.iloc[0]
+    assert stored["training_status__status"] == TrainingStatus.INTERRUPTED.value
+    assert stored["training_status__lease_expires_at"] is None
+    assert stored["training_status__error"] == "Training interrupted by user."
+    assert stored["training_status__manifest_path"] == "/tmp/models/model-a/datapipe_ml_training_sync.json"
 
 
 def test_write_manifest_and_select_latest_epoch_checkpoint(tmp_path: Path) -> None:
@@ -393,17 +517,6 @@ def test_yolo_resume_hook_sets_typed_training_params() -> None:
     assert updated["exist_ok"] is True
     assert updated["save_period"] == 1
     assert "initial_weights_path" not in params
-
-
-class _MemoryStatusTable:
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
-
-    def get_data(self, idx=None):  # noqa: ANN001
-        if idx is None:
-            return self.df.copy()
-        ids = set(idx["training_status_id"].tolist())
-        return self.df[self.df["training_status_id"].isin(ids)].copy()
 
 
 def test_status_attempt_ids_are_distinct_for_same_run_key() -> None:
