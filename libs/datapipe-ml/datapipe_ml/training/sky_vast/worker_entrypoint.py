@@ -9,9 +9,9 @@ from pathlib import Path
 from datapipe_ml.training.sky_vast.constants import (
     REMOTE_PAYLOAD,
     REMOTE_RESULT,
-    REMOTE_ROOT,
     REMOTE_SIGNALS,
     REMOTE_TRACEBACK,
+    TrainingSignal,
 )
 from datapipe_ml.training.sky_vast.serialization import dumps_to_text, loads_from_text
 
@@ -58,7 +58,7 @@ def main() -> int:
             logger.warning("Training process exited with code %s after returning a result", process.exitcode)
         RESULT_PATH.write_text(dumps_to_text(result))
         print(f"[sky-vast-worker] wrote result to {RESULT_PATH}", flush=True)
-        (SIGNALS_DIR / "TRAIN_DONE").touch()
+        (SIGNALS_DIR / TrainingSignal.TRAIN_DONE).touch()
         print("[sky-vast-worker] signaled TRAIN_DONE", flush=True)
         return 0
     except Exception as exc:
@@ -66,7 +66,7 @@ def main() -> int:
 
         details = format_exc(exc)
         TRACEBACK_PATH.write_text(details)
-        (SIGNALS_DIR / "SCRIPT_FAILED").touch()
+        (SIGNALS_DIR / TrainingSignal.SCRIPT_FAILED).touch()
         print(f"[sky-vast-worker] failed: {exc!r}", file=sys.stderr, flush=True)
         print(details, file=sys.stderr, flush=True)
         logger.exception("Remote training failed")

@@ -205,8 +205,6 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
             create_table=True,
-            yolo_validation_batch=1,
-            yolo_validation_device="cpu",
         ),
         FindBestModel(
             input__model="keypoints_model_train",

@@ -1,3 +1,4 @@
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -8,6 +9,8 @@ from fsspec import AbstractFileSystem
 from pathy import Pathy
 
 from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
+
+logger = logging.getLogger(__name__)
 
 
 def same_filesystem_path(src_fs: AbstractFileSystem, src: str, dst_fs: AbstractFileSystem, dst: str) -> bool:
@@ -26,9 +29,9 @@ def _copy_between_fs(
     concurrency: int = 8,
 ) -> None:
     if same_filesystem_path(src_fs, src, dst_fs, dst):
-        print(f"Skipping copy {label}: {src} already at {dst}", flush=True)
+        logger.info("Skipping copy %s: %s already at %s", label, src, dst)
         return
-    print(f"Copying {label}: {src} -> {dst}", flush=True)
+    logger.info("Copying %s: %s -> %s", label, src, dst)
     src_path = src_fs._strip_protocol(src)
     dst_path = dst_fs._strip_protocol(dst)
 
@@ -123,7 +126,7 @@ def parallel_copy_filepaths_to_folder(
     buf_size: int = 16 * 10**6,
     max_workers: int = 16,
 ) -> List[str]:
-    print(f"Copying {len(src_filepaths)} files...")
+    logger.info("Copying %s files...", len(src_filepaths))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         return list(
             executor.map(

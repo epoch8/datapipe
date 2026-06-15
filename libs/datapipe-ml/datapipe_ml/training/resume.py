@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional
 
-from datapipe_ml.training.specs import TrainingResumeConfig
+from datapipe_ml.training.specs import TrainingResumeCheckpoint, TrainingResumeConfig
 from datapipe_ml.training.sync import read_checkpoint_manifest, verify_manifest_checkpoint
-
-
-@dataclass(frozen=True)
-class TrainingResumeCheckpoint:
-    path: str
-    epoch: Optional[int]
 
 
 def select_resume_checkpoint(

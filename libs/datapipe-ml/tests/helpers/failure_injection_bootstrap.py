@@ -157,29 +157,40 @@ def _install_yolov5_failure_hook(patcher: _AttrPatcher) -> None:
         if yolov5_training_config is None:
             raise TypeError("yolov5 failure hook expected yolov5_training_config")
 
-        def subprocess_run_with_failure_monitor(command, env=None):
-            process = subprocess.Popen(command, env=env)
+        from datapipe_ml.frameworks.yolo.yolov5 import train_in_process as yolov5_train_in_process
+
+        original_run = yolov5_train_in_process.run_yolov5_train_in_process
+
+        def run_with_failure_monitor(yolov5_train_script, arguments):
+            import threading
+
             fail_after = configured_fail_after_epoch()
-            while process.poll() is None:
-                if fail_after is not None:
-                    run_dir = Path(str(yolov5_training_config.project)) / yolov5_training_config.name
+            run_dir = Path(str(yolov5_training_config.project)) / yolov5_training_config.name
+            stop = threading.Event()
+
+            def monitor() -> None:
+                while not stop.wait(1):
+                    if fail_after is None:
+                        continue
                     strict_checkpoint = configured_fail_mode() == "kill_pipe"
                     if checkpoint_for_epoch_exists(run_dir, fail_after, strict=strict_checkpoint):
                         if configured_fail_mode() == "kill_pipe":
                             record_run_dir_for_pipe_death(run_dir)
-                        if configured_fail_mode() == "kill9":
-                            process.kill()
                             os._exit(137)
-                        if configured_fail_mode() == "kill_pipe":
-                            continue
-                        process.terminate()
-                        process.wait(timeout=30)
+                        if configured_fail_mode() == "kill9":
+                            os._exit(137)
                         raise RuntimeError(f"Injected training failure after epoch {fail_after}")
-                time.sleep(1)
-            return subprocess.CompletedProcess(command, process.returncode or 0)
 
-        with patch.object(runner.subprocess, "run", side_effect=subprocess_run_with_failure_monitor):
-            return original_train_model(*args, **kwargs)
+            thread = threading.Thread(target=monitor, daemon=True)
+            thread.start()
+            try:
+                return original_run(yolov5_train_script, arguments)
+            finally:
+                stop.set()
+                thread.join(timeout=1)
+
+        patcher.setattr(yolov5_train_in_process, "run_yolov5_train_in_process", run_with_failure_monitor)
+        return original_train_model(*args, **kwargs)
 
     patcher.setattr(runner, "train_model", train_model_with_optional_failure)
 

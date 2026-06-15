@@ -102,7 +102,7 @@ def yolo_best_threshold_from_curve(
             return best_threshold
 
         # Mirrors Ultralytics' plot_mc_curve/ap_per_class logic for the "all classes" F1 curve.
-        best_threshold = max(min_threshold, float(x_array[int(_yolo_smooth(y_mean, 0.1).argmax())]))
+        best_threshold = max(min_threshold, float(x_array[int(yolo_smooth_f1_curve(y_mean, 0.1).argmax())]))
     except KeyboardInterrupt:
         raise
     except Exception:
@@ -110,11 +110,15 @@ def yolo_best_threshold_from_curve(
     return best_threshold
 
 
-def _yolo_smooth(y: np.ndarray, f: float = 0.05) -> np.ndarray:
+def yolo_smooth_f1_curve(y: np.ndarray, f: float = 0.05) -> np.ndarray:
+    """Smooth a 1D F1 curve the same way Ultralytics plot_mc_curve does."""
     nf = round(len(y) * f * 2) // 2 + 1
     p = np.ones(nf // 2)
     yp = np.concatenate((p * y[0], y, p * y[-1]), 0)
     return np.convolve(yp, np.ones(nf) / nf, mode="valid")
+
+
+_yolo_smooth = yolo_smooth_f1_curve
 
 
 _YoloCurveValues = Sequence[Union[Sequence[float], np.ndarray]]
@@ -360,6 +364,37 @@ def yolo_finalize_training_output(
     return final_exp_folder
 
 
+def _resolve_yolo_epoch_weight_path(
+    *,
+    exp_pathy: Pathy,
+    weights_subdir: str,
+    epoch: int,
+    best_epoch: int,
+    last_epoch: int,
+    filesystem: Any,
+) -> Optional[Pathy]:
+    weights_dir = exp_pathy / weights_subdir
+
+    epoch_pt = weights_dir / f"epoch{epoch}.pt"
+    epoch_pt_str = str(epoch_pt)
+    if filesystem.exists(epoch_pt_str):
+        return cast(Pathy, Pathy.fluid(epoch_pt_str))
+
+    if epoch == best_epoch:
+        best_pt = weights_dir / "best.pt"
+        best_pt_str = str(best_pt)
+        if filesystem.exists(best_pt_str):
+            return cast(Pathy, Pathy.fluid(best_pt_str))
+
+    if epoch == last_epoch:
+        last_pt = weights_dir / "last.pt"
+        last_pt_str = str(last_pt)
+        if filesystem.exists(last_pt_str):
+            return cast(Pathy, Pathy.fluid(last_pt_str))
+
+    return None
+
+
 def yolo_collect_results_generic(
     *,
     exp_folder: Union[str, Path, Pathy],
@@ -377,7 +412,7 @@ def yolo_collect_results_generic(
 ) -> List[Any]:
     from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
 
-    exp_pathy = Pathy.fluid(str(exp_folder))
+    exp_pathy = cast(Pathy, Pathy.fluid(str(exp_folder)))
     df_results_path = exp_pathy / "results.csv"
     df_results_path_str = str(df_results_path)
     storage_options = fsspec_storage_options(df_results_path_str)
@@ -400,18 +435,27 @@ def yolo_collect_results_generic(
 
     results: List[Any] = []
     ann = result_cls.__annotations__
+    filesystem = fsspec.open(str(exp_pathy / weights_subdir / "best.pt"), **storage_options).fs
+    best_epoch_resolved = False
     for idx in df.index:
         epoch = int(float(cast(Any, df.loc[idx, "epoch"])))
-        model_path = Pathy.fluid(str(exp_pathy / weights_subdir / f"epoch{epoch}.pt"))
-        model_path_str = str(model_path)
-        filesystem = fsspec.open(model_path_str, **storage_options).fs
-        if not filesystem.exists(model_path_str):
-            if epoch == best_epoch:
-                model_path = exp_pathy / weights_subdir / "best.pt"
-            elif epoch == last_epoch:
-                model_path = exp_pathy / weights_subdir / "last.pt"
-            else:
-                model_path = exp_pathy / weights_subdir / "best.pt"
+        model_path = _resolve_yolo_epoch_weight_path(
+            exp_pathy=exp_pathy,
+            weights_subdir=weights_subdir,
+            epoch=epoch,
+            best_epoch=best_epoch,
+            last_epoch=last_epoch,
+            filesystem=filesystem,
+        )
+        if model_path is None:
+            logger.warning(
+                "Skipping epoch %s: no weight file in %s",
+                epoch,
+                exp_pathy / weights_subdir,
+            )
+            continue
+        if epoch == best_epoch:
+            best_epoch_resolved = True
 
         special_fields = [
             id_field_name,
@@ -435,5 +479,10 @@ def yolo_collect_results_generic(
             **missing_values,
         }
         results.append(result_cls(**payload))  # type: ignore
+
+    if not best_epoch_resolved:
+        raise FileNotFoundError(
+            f"No weight file found for best epoch {best_epoch} in {exp_pathy / weights_subdir}"
+        )
 
     return results

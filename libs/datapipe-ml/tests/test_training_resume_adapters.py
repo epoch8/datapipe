@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
 import pytest
 
 
@@ -55,25 +58,150 @@ def test_yolov8_keypoints_resume_adapter_sets_typed_params() -> None:
 
 
 @pytest.mark.tensorflow
-def test_tensorflow_resume_adapter_sets_explicit_checkpoint_param() -> None:
+def test_tensorflow_launch_training_passes_resume_checkpoint(monkeypatch, tmp_path: Path) -> None:
     pytest.importorskip("tensorflow")
-    from datapipe_ml.tasks.classification.train.tensorflow import TFClassificationAlgo
+    from datapipe_ml.frameworks.tensorflow.classification_runner import TrainModelResult
+    from datapipe_ml.tasks.classification.train.tensorflow import (
+        TFClassificationAlgo,
+        TensorflowClassificationPreparedData,
+        TensorflowClassificationTrainContext,
+    )
+    from datapipe_ml.training.specs import TrainingResumeCheckpoint
 
-    params = {"epochs": 2}
-    updated = TFClassificationAlgo().apply_resume_checkpoint(None, params, "model.keras", checkpoint_epoch=7)
+    captured_args: list[tuple] = []
 
-    assert updated["__resume_checkpoint_filepath"] == "model.keras"
-    assert "__resume_checkpoint_filepath" not in params
-    assert "__resume_checkpoint_epoch" not in params
+    class FakeLauncher:
+        def launch(self, request):
+            captured_args.append(request.args)
+            return TrainModelResult(
+                classification_model_id="cls-id",
+                model_path=str(tmp_path / "model.keras"),
+                class_names=["a"],
+                preprocess_input_script_path=None,
+            )
+
+    monkeypatch.setattr(
+        "datapipe_ml.tasks.classification.train.tensorflow.build_training_launcher",
+        lambda _: FakeLauncher(),
+    )
+
+    ctx = TensorflowClassificationTrainContext(
+        models_dir=str(tmp_path / "models"),
+        max_within_time="1d",
+        tmp_folder=str(tmp_path / "tmp"),
+        model_suffix="_s",
+        dt__model=None,  # type: ignore[arg-type]
+        dt__link=None,  # type: ignore[arg-type]
+        dt__training_status=None,  # type: ignore[arg-type]
+        dt__frozen_dataset=None,  # type: ignore[arg-type]
+        dt__frozen_dataset__has__image_gt=None,
+        dt__train_config=None,  # type: ignore[arg-type]
+        model_other_primary_keys=[],
+        model_id__name="model_id",
+        frozen_dataset_id__name="frozen_dataset_id",
+        clean_checkpoints_after_train=False,
+    )
+    data = TensorflowClassificationPreparedData(
+        df__frozen_dataset__has__image_gt=pd.DataFrame({"image__image_path": [str(tmp_path / "img.jpg")]})
+    )
+    train_params = {
+        "image_size": (32, 32),
+        "seed": 0,
+        "batch_size": 1,
+        "arch": "resnet50",
+        "init_lr": 0.001,
+        "reduce_lr_patience": 1,
+        "reduce_lr_factor": 0.5,
+        "early_stopping_patience": 1,
+        "epochs": 1,
+        "label_smoothing": 0.0,
+        "augmentations": False,
+        "augment_func_file": None,
+        "class_weight": False,
+    }
+
+    TFClassificationAlgo().launch_training(
+        ctx,
+        pd.DataFrame([{}]),
+        "model-id",
+        train_params,
+        data,
+        resume_checkpoint=TrainingResumeCheckpoint(path="model.keras", epoch=7),
+    )
+
+    assert captured_args[0][6] == "model.keras"
+    assert captured_args[0][7] == 7
 
 
 @pytest.mark.tensorflow
-def test_tensorflow_resume_adapter_omits_epoch_when_not_provided() -> None:
+def test_tensorflow_launch_training_omits_resume_when_not_provided(monkeypatch, tmp_path: Path) -> None:
     pytest.importorskip("tensorflow")
-    from datapipe_ml.tasks.classification.train.tensorflow import TFClassificationAlgo
+    from datapipe_ml.frameworks.tensorflow.classification_runner import TrainModelResult
+    from datapipe_ml.tasks.classification.train.tensorflow import (
+        TFClassificationAlgo,
+        TensorflowClassificationPreparedData,
+        TensorflowClassificationTrainContext,
+    )
 
-    params = {"epochs": 2}
-    updated = TFClassificationAlgo().apply_resume_checkpoint(None, params, "model.keras")
+    captured_args: list[tuple] = []
 
-    assert updated["__resume_checkpoint_filepath"] == "model.keras"
-    assert "__resume_checkpoint_epoch" not in updated
+    class FakeLauncher:
+        def launch(self, request):
+            captured_args.append(request.args)
+            return TrainModelResult(
+                classification_model_id="cls-id",
+                model_path=str(tmp_path / "model.keras"),
+                class_names=["a"],
+                preprocess_input_script_path=None,
+            )
+
+    monkeypatch.setattr(
+        "datapipe_ml.tasks.classification.train.tensorflow.build_training_launcher",
+        lambda _: FakeLauncher(),
+    )
+
+    ctx = TensorflowClassificationTrainContext(
+        models_dir=str(tmp_path / "models"),
+        max_within_time="1d",
+        tmp_folder=str(tmp_path / "tmp"),
+        model_suffix="_s",
+        dt__model=None,  # type: ignore[arg-type]
+        dt__link=None,  # type: ignore[arg-type]
+        dt__training_status=None,  # type: ignore[arg-type]
+        dt__frozen_dataset=None,  # type: ignore[arg-type]
+        dt__frozen_dataset__has__image_gt=None,
+        dt__train_config=None,  # type: ignore[arg-type]
+        model_other_primary_keys=[],
+        model_id__name="model_id",
+        frozen_dataset_id__name="frozen_dataset_id",
+        clean_checkpoints_after_train=False,
+    )
+    data = TensorflowClassificationPreparedData(
+        df__frozen_dataset__has__image_gt=pd.DataFrame({"image__image_path": [str(tmp_path / "img.jpg")]})
+    )
+    train_params = {
+        "image_size": (32, 32),
+        "seed": 0,
+        "batch_size": 1,
+        "arch": "resnet50",
+        "init_lr": 0.001,
+        "reduce_lr_patience": 1,
+        "reduce_lr_factor": 0.5,
+        "early_stopping_patience": 1,
+        "epochs": 1,
+        "label_smoothing": 0.0,
+        "augmentations": False,
+        "augment_func_file": None,
+        "class_weight": False,
+    }
+
+    TFClassificationAlgo().launch_training(
+        ctx,
+        pd.DataFrame([{}]),
+        "model-id",
+        train_params,
+        data,
+    )
+
+    assert captured_args[0][6] is None
+    assert captured_args[0][7] is None

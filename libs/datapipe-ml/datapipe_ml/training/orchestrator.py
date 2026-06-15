@@ -13,6 +13,9 @@ from datapipe_ml.training.runs import (
     get_active_status_row,
     get_status_row,
     get_status_rows,
+    launcher_type,
+    launcher_config_json,
+    initial_launcher_state,
     status_id_for_attempt,
     store_status_row,
     training_run_key,
@@ -92,9 +95,9 @@ def _backfill_completed_status_if_missing(
     status_row: dict[str, Any] = dict(
         training_status_id=status_id_for_attempt(run_key, 0),
         training_status__run_key=run_key,
-        training_status__launcher_type="unknown",
-        training_status__launcher_config=dict(),
-        training_status__launcher_state=dict(),
+        training_status__launcher_type=launcher_type(ctx.training_launcher_config),
+        training_status__launcher_config=launcher_config_json(ctx.training_launcher_config),
+        training_status__launcher_state=initial_launcher_state(ctx.training_launcher_config),
         training_status__models_dir=ctx.models_dir,
         training_status__run_dir=run_dir,
         training_status__status="completed",
@@ -199,6 +202,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
 
     attempt = 1
     model_id = algo.build_model_id(ctx=ctx, idx=idx, train_params=train_params)
+    resume_checkpoint = None
     resume_enabled = bool(ctx.resume_config and ctx.resume_config.continue_train_failed_models)
     if existing_status is not None:
         previous_attempt = int(existing_status.get("training_status__attempt") or 0)
@@ -230,14 +234,8 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 manifest_path=manifest_path,
                 config=ctx.resume_config,
             )
-            if resume_checkpoint is not None:
-                train_params = algo.apply_resume_checkpoint(
-                    ctx,
-                    train_params,
-                    resume_checkpoint.path,
-                    resume_checkpoint.epoch,
-                )
         else:
+            # Fresh retry without resume: keep status history but avoid model_id collisions.
             previous_model_id = existing_status.get(ctx.model_id__name)
             if previous_model_id and model_id == str(previous_model_id):
                 model_id = f"{model_id}_attempt{attempt}"
@@ -281,7 +279,14 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                     model_id=model_id,
                 )
                 output_sync.start()
-            raw_result = algo.launch_training(ctx=ctx, idx=idx, model_id=model_id, train_params=train_params, data=prep)
+            raw_result = algo.launch_training(
+                ctx=ctx,
+                idx=idx,
+                model_id=model_id,
+                train_params=train_params,
+                data=prep,
+                resume_checkpoint=resume_checkpoint,
+            )
             if output_sync is not None:
                 output_sync.sync_once(label="post-training")
             checkpoint_paths = algo.collect_checkpoint_paths(raw_result)

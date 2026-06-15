@@ -13,3 +13,14 @@ REMOTE_PAYLOAD = REMOTE_ROOT / "payload.txt"
 REMOTE_RESULT = REMOTE_ROOT / "result.txt"
 REMOTE_TRACEBACK = REMOTE_ROOT / "traceback.txt"
 REMOTE_WORKER_ENTRYPOINT = REMOTE_ROOT / "worker_entrypoint.py"
+
+
+class TrainingSignal:
+    VM_BOOT = "VM_BOOT"
+    TRAIN_DONE = "TRAIN_DONE"
+    SCRIPT_FAILED = "SCRIPT_FAILED"
+    SHUTDOWN = "SHUTDOWN"
+
+    @classmethod
+    def path(cls, signal: str) -> Path:
+        return REMOTE_SIGNALS / signal

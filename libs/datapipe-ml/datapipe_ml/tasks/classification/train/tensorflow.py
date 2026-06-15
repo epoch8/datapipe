@@ -45,6 +45,7 @@ from datapipe_ml.training.specs import (
     TrainingLauncherConfig,
     TrainingLaunchRequest,
     TrainingPathMap,
+    TrainingResumeCheckpoint,
     TrainingResumeConfig,
     TrainingSyncConfig,
     build_training_launcher,
@@ -170,16 +171,16 @@ class TFClassificationAlgo(Algo):
         model_id: str,
         train_params: Dict[str, Any],
         data: PreparedData,
+        resume_checkpoint: Optional[TrainingResumeCheckpoint] = None,
     ) -> Any:
         from datapipe_ml.frameworks.tensorflow.classification_runner import (
             TF_ClassificationTrainingConfig,
             train_process,
         )
 
-        train_params = dict(train_params)
-        resume_checkpoint_filepath = train_params.pop("__resume_checkpoint_filepath", None)
-        resume_checkpoint_epoch = train_params.pop("__resume_checkpoint_epoch", None)
         cfg = TF_ClassificationTrainingConfig(**train_params)
+        resume_checkpoint_filepath = resume_checkpoint.path if resume_checkpoint is not None else None
+        resume_checkpoint_epoch = resume_checkpoint.epoch if resume_checkpoint is not None else None
         # ctx has an extra field clean_checkpoints_after_train in TensorflowClassificationTrainContext
         from typing import cast as _cast
 
@@ -221,7 +222,6 @@ class TFClassificationAlgo(Algo):
         return dict(
             model_path=raw_result.model_path,
             class_names=raw_result.class_names,
-            score_threshold=0.5,  # not used in TF classification, placeholder
             type_name="tf.keras",
             classification_model_id=raw_result.classification_model_id,
             preprocess_input_script_path=raw_result.preprocess_input_script_path,
@@ -231,20 +231,6 @@ class TFClassificationAlgo(Algo):
         if raw_result.model_path is None:
             return []
         return [str(raw_result.model_path)]
-
-    def apply_resume_checkpoint(
-        self,
-        ctx: TrainContext,
-        train_params: Dict[str, Any],
-        checkpoint_path: Optional[str],
-        checkpoint_epoch: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        params = dict(train_params)
-        if checkpoint_path is not None:
-            params["__resume_checkpoint_filepath"] = checkpoint_path
-        if checkpoint_epoch is not None:
-            params["__resume_checkpoint_epoch"] = checkpoint_epoch
-        return params
 
     def build_model_row(
         self,

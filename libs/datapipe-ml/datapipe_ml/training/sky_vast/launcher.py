@@ -25,6 +25,7 @@ from datapipe_ml.training.sky_vast.constants import (
     REMOTE_SIGNALS,
     REMOTE_SOURCE_ARCHIVE,
     REMOTE_WORKER_ENTRYPOINT,
+    TrainingSignal,
 )
 from datapipe_ml.training.sky_vast.serialization import (
     dumps_to_text,
@@ -142,7 +143,7 @@ class SkyVastTrainingLauncher:
             raise
         finally:
             try:
-                self._write_remote_text(sshfs, str(REMOTE_SIGNALS / "SHUTDOWN"), "", label="shutdown signal")
+                self._write_remote_text(sshfs, str(TrainingSignal.path(TrainingSignal.SHUTDOWN)), "", label="shutdown signal")
             except Exception:
                 logger.exception("Failed to write Sky/Vast shutdown signal")
             if self.config.down_on_finish:
@@ -239,7 +240,7 @@ class SkyVastTrainingLauncher:
         cluster_name = self._current_cluster_name
         deadline = time.time() + self.config.ssh_connect_timeout_s
         while time.time() < deadline:
-            if sshfs.exists(str(REMOTE_SIGNALS / "VM_BOOT")):
+            if sshfs.exists(str(TrainingSignal.path(TrainingSignal.VM_BOOT))):
                 break
             if cluster_name and self._job_failed(cluster_name):
                 raise SkyVastTrainingError(f"Sky job failed before remote VM boot signal for {cluster_name!r}")
@@ -293,9 +294,9 @@ class SkyVastTrainingLauncher:
         output_sync = PeriodicSyncScheduler(self.config.output_sync_interval_s)
         cluster_name = self._current_cluster_name
         while deadline is None or time.time() < deadline:
-            if sshfs.exists(str(REMOTE_SIGNALS / "TRAIN_DONE")):
+            if sshfs.exists(str(TrainingSignal.path(TrainingSignal.TRAIN_DONE))):
                 return
-            if sshfs.exists(str(REMOTE_SIGNALS / "SCRIPT_FAILED")):
+            if sshfs.exists(str(TrainingSignal.path(TrainingSignal.SCRIPT_FAILED))):
                 traceback_path = REMOTE_ROOT / "traceback.txt"
                 details = ""
                 if sshfs.exists(str(traceback_path)):

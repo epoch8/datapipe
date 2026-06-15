@@ -537,8 +537,6 @@ def _yolo_train_kwargs(
     runtime: SmokeRuntime,
     case: RealRecoveryCase,
     step: RecoveryTrainStep,
-    *,
-    yolov5_script_file: str | None = None,
 ) -> dict[str, object]:
     kwargs = dict(_shared_train_runtime_kwargs(runtime, case, step))
     kwargs.update(
@@ -566,18 +564,11 @@ def _yolo_train_kwargs(
             ignore_errors_sample_sizes=getattr(step, "ignore_errors_sample_sizes", False),
         )
     )
-    if yolov5_script_file is not None:
-        kwargs["yolov5_script_file"] = yolov5_script_file
     return kwargs
 
 
 def _yolov5_train_kwargs(runtime: SmokeRuntime, case: RealRecoveryCase, step: RecoveryTrainStep) -> dict[str, object]:
-    from datapipe_ml.tasks.detection.train.yolov5 import Train_YoloV5_DetectionModel
-
-    assert isinstance(step, Train_YoloV5_DetectionModel)
-    kwargs = _yolo_train_kwargs(runtime, case, step)
-    kwargs["yolov5_script_file"] = step.yolov5_script_file
-    return kwargs
+    return _yolo_train_kwargs(runtime, case, step)
 
 
 def _train_kwargs_builders(

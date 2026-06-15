@@ -4,7 +4,6 @@ import logging
 import multiprocessing as mp
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field, fields
@@ -16,6 +15,7 @@ import yaml
 from PIL import Image
 
 from datapipe_ml.core.multiprocessing import finish_training_subprocess
+from datapipe_ml.core.training_subprocess import run_training_subprocess_body
 from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.frameworks.yolo.artifacts import (
     YoloDataYAMLConfig,
@@ -26,13 +26,15 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     yolo_load_data_config,
     yolo_prepare_tmp_dirs_for_cloud_yolov5,
     yolo_select_last_exp,
-    yolo_write_data_yaml_if_needed,
 )
+from datapipe_ml.frameworks.yolo.train_session import (
+    YoloTrainSession,
+    yolo_write_exp_metadata,
+)
+from datapipe_ml.frameworks.yolo.yolov5.train_in_process import run_yolov5_train_in_process
 from datapipe_ml.training.specs import TrainingSyncConfig
-from datapipe_ml.training.sync import PeriodicTrainingSync
 
 logger = logging.getLogger("datapipe.ml.yolov5.script")
-os.environ["WANDB_DISABLED"] = "true"  # disable Weights & Biases logging
 
 YOLOV5_DEFAULT_PROJECT = "yolov5.ROOT / 'runs/train'"
 YOLOV5_DEFAULT_DATA = "yolov5.ROOT / 'data/coco128.yaml'"
@@ -188,7 +190,9 @@ class TrainModelResult:
 def resolve_installed_yolov5_train_script() -> Path:
     package_spec = importlib.util.find_spec("yolov5")
     if package_spec is None or package_spec.submodule_search_locations is None:
-        raise ValueError("YOLOv5 package is not installed. Install the 'YOLOv5' package or pass yolov5_script_file.")
+        raise ValueError(
+            "YOLOv5 package is not installed. Install the optional 'torch' extra: pip install 'datapipe-ml[torch]'."
+        )
 
     train_script = Path(next(iter(package_spec.submodule_search_locations))) / "train.py"
     if not train_script.exists():
@@ -264,17 +268,13 @@ def _resolve_defaults_and_objects_count(
 
 def train_model(
     yolov5_training_config: YoloV5_TrainingConfig,
-    yolov5_script_file: Optional[Union[str, Path]],
     objects_count: Optional[int],
     class_names_in: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
     sync_config: Optional[TrainingSyncConfig],
 ) -> Optional[List[TrainingResult]]:
-    if yolov5_script_file is None:
-        yolov5_module = resolve_installed_yolov5_train_script()
-    else:
-        yolov5_module = Path(yolov5_script_file)
+    yolov5_module = resolve_installed_yolov5_train_script()
     ROOT = yolov5_module.parent
 
     # Defaults plus objects_count calculation.
@@ -295,137 +295,107 @@ def train_model(
         coco_txt_filepaths=coco_txt_filepaths,
     )
 
-    # If data is an object, write a temp yaml and replace the path.
-    class_names, tmp_yaml_path = yolo_write_data_yaml_if_needed(yolov5_training_config)
-    try:
-        if not class_names and isinstance(yolov5_training_config.data, str):
-            # If data is a path string, try to read class names for class_names.json.
-            try:
-                cfg = yolo_load_data_config(yolov5_training_config.data)
-                class_names = cfg.names
-            except Exception:
-                class_names = []
+    session = YoloTrainSession(
+        training_config=yolov5_training_config,
+        sync_config=sync_config,
+        src_project_path=src_project_path,
+        tmp_dir_project=tmp_dir_project,
+        extra_temp_paths=(tmp_hyp_path,),
+    )
 
+    def _launch(class_names: List[str], tmp_yaml_path: Optional[Path]) -> Optional[Path]:
         logger.info("yolov5_training_config=%s", yolov5_training_config)
         arguments = yolov5_training_config.get_arguments()
-        command: List[str] = [sys.executable, str(yolov5_module)] + arguments
-        logger.info("Running %s", command)
-        env = os.environ.copy()
-        env.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
-        output_sync = None
-        if sync_config is not None and sync_config.enabled:
-            output_sync = PeriodicTrainingSync(
-                src=str(tmp_dir_project or yolov5_training_config.project),
-                dst=str(src_project_path or yolov5_training_config.project),
-                config=sync_config,
-                model_id=yolov5_training_config.name,
-            )
-
-        def _train_and_collect_metadata() -> Optional[Path]:
-            process = subprocess.run(command, env=env)
-            logger.info("Process ended with returncode=%s.", process.returncode)
-            if process.returncode != 0:
-                raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
-            if yolov5_training_config.project is None:
-                return None
-            selected_exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
-            if selected_exp_folder is None:
-                return None
-            if tmp_yaml_path and tmp_yaml_path.exists():
-                shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
-            with open(selected_exp_folder / "class_names.json", "w") as out:
-                json.dump(class_names, out, indent=4, ensure_ascii=False)
-            return selected_exp_folder
-
-        if output_sync is None:
-            exp_folder = _train_and_collect_metadata()
-        else:
-            with output_sync:
-                exp_folder = _train_and_collect_metadata()
-
-        if exp_folder is None:
+        logger.info("Running in-process YOLOv5 train with arguments %s", arguments)
+        run_yolov5_train_in_process(yolov5_module, arguments)
+        if yolov5_training_config.project is None:
             return None
+        selected_exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
+        if selected_exp_folder is None:
+            return None
+        yolo_write_exp_metadata(selected_exp_folder, tmp_yaml_path, class_names)
+        return selected_exp_folder
 
-        f1_curve_image = None
-        if (exp_folder / "F1_curve.png").exists():
-            f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
-        best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
+    exp_folder, class_names = session.run(_launch)
 
-        exp_folder = yolo_finalize_training_output(
-            exp_folder,
-            persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
-            tmp_dir_images_cls=tmp_dir_images_cls,
-            tmp_dir_project_cls=tmp_dir_project_cls,
-            tmp_dir_model_cls=tmp_dir_model_cls,
-        )
+    if exp_folder is None:
+        return None
 
-        # Collect results (column map -> dataclass fields).
-        rename_map = {
-            "epoch": "epoch",
-            "train/box_loss": "train_box_loss",
-            "train/obj_loss": "train_obj_loss",
-            "train/cls_loss": "train_cls_loss",
-            "metrics/precision": "metrics_precision",
-            "metrics/recall": "metrics_recall",
-            "metrics/mAP_0.5": "metrics_mAP_0_5",
-            "metrics/mAP_0.5:0.95": "metrics_mAP_0_5_to_0_95",
-            "val/box_loss": "val_box_loss",
-            "val/obj_loss": "val_obj_loss",
-            "val/cls_loss": "val_cls_loss",
-            "x/lr0": "x_lr0",
-            "x/lr1": "x_lr1",
-            "x/lr2": "x_lr2",
-        }
-        return yolo_collect_results_generic(
-            exp_folder=str(exp_folder),
-            result_cls=TrainingResult,
-            id_field_name="detection_model_id",
-            id_field_value=yolov5_training_config.name,
-            class_names=class_names,
-            objects_count=objects_count,
-            f1_image_field_name="f1_curve_image",
-            f1_image=f1_curve_image,
-            best_threshold=best_threshold,
-            rename_map=rename_map,
-            best_metric_col="metrics_mAP_0_5_to_0_95",
-            weights_subdir="weights",
-        )
-    finally:
-        for temp_path in (tmp_yaml_path, tmp_hyp_path):
-            if temp_path and temp_path.exists():
-                temp_path.unlink(missing_ok=True)
+    f1_curve_image = None
+    if (exp_folder / "F1_curve.png").exists():
+        f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
+    best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
+
+    exp_folder = yolo_finalize_training_output(
+        exp_folder,
+        persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
+        tmp_dir_images_cls=tmp_dir_images_cls,
+        tmp_dir_project_cls=tmp_dir_project_cls,
+        tmp_dir_model_cls=tmp_dir_model_cls,
+    )
+
+    # Collect results (column map -> dataclass fields).
+    rename_map = {
+        "epoch": "epoch",
+        "train/box_loss": "train_box_loss",
+        "train/obj_loss": "train_obj_loss",
+        "train/cls_loss": "train_cls_loss",
+        "metrics/precision": "metrics_precision",
+        "metrics/recall": "metrics_recall",
+        "metrics/mAP_0.5": "metrics_mAP_0_5",
+        "metrics/mAP_0.5:0.95": "metrics_mAP_0_5_to_0_95",
+        "val/box_loss": "val_box_loss",
+        "val/obj_loss": "val_obj_loss",
+        "val/cls_loss": "val_cls_loss",
+        "x/lr0": "x_lr0",
+        "x/lr1": "x_lr1",
+        "x/lr2": "x_lr2",
+    }
+    return yolo_collect_results_generic(
+        exp_folder=str(exp_folder),
+        result_cls=TrainingResult,
+        id_field_name="detection_model_id",
+        id_field_value=yolov5_training_config.name,
+        class_names=class_names,
+        objects_count=objects_count,
+        f1_image_field_name="f1_curve_image",
+        f1_image=f1_curve_image,
+        best_threshold=best_threshold,
+        rename_map=rename_map,
+        best_metric_col="metrics_mAP_0_5_to_0_95",
+        weights_subdir="weights",
+    )
 
 
 def train_process(
     queue: mp.Queue,
     yolov5_training_config: YoloV5_TrainingConfig,
-    yolov5_script_file: Optional[str],
     objects_count: int,
     class_names: List[str],
     image_filepaths: List[str],
     coco_txt_filepaths: List[str],
     sync_config: Optional[TrainingSyncConfig],
-) -> List[TrainingResult]:
+) -> None:
     training_results = None
     traceback_logs = None
-    try:
-        training_results = train_model(
+
+    def _on_failure(logs: str) -> None:
+        nonlocal traceback_logs
+        traceback_logs = logs
+        logger.error("%s", logs)
+
+    training_results, traceback_logs = run_training_subprocess_body(
+        action=lambda: train_model(
             yolov5_training_config=yolov5_training_config,
-            yolov5_script_file=yolov5_script_file,
             objects_count=objects_count,
             class_names_in=class_names,
             image_filepaths=image_filepaths,
             coco_txt_filepaths=coco_txt_filepaths,
             sync_config=sync_config,
-        )
-    except Exception as e:
-        from traceback_with_variables import format_exc
-
-        traceback_logs = format_exc(e)
-        logger.error("%s", traceback_logs)
-        logger.error("Training model failed.")
-    finally:
-        train_model_result = TrainModelResult(training_results=training_results, traceback_logs=traceback_logs)
-        failed = traceback_logs is not None or training_results is None
-        logger.info("Training process exited!")
-        finish_training_subprocess(queue, train_model_result, failed=failed)
+        ),
+        on_failure=_on_failure,
+    )
+    train_model_result = TrainModelResult(training_results=training_results, traceback_logs=traceback_logs)
+    failed = traceback_logs is not None or training_results is None
+    logger.info("Training process exited!")
+    finish_training_subprocess(queue, train_model_result, failed=failed)

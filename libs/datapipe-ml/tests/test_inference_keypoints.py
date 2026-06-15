@@ -81,10 +81,10 @@ def test_keypoints_inference_outputs_keypoints_and_scores(base_datastore, dbconn
     _require_runtime()
     from datapipe.compute import Pipeline, build_compute, run_steps
 
-    from datapipe_ml.tasks.keypoints import inference as keypoints_inference_module
+    from datapipe_ml.inference import bbox_pipeline as bbox_pipeline_module
     from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
 
-    monkeypatch.setattr(keypoints_inference_module, "PipelineModelSpec", _FakePipelineModelSpec)
+    monkeypatch.setattr(bbox_pipeline_module, "PipelineModelSpec", _FakePipelineModelSpec)
     catalog = _make_catalog(dbconn)
     catalog.get_datatable(base_datastore, "image").store_chunk(smoke_dataset.image.iloc[:1].copy())
     catalog.get_datatable(base_datastore, "keypoints_model").store_chunk(

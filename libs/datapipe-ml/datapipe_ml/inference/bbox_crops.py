@@ -149,7 +149,7 @@ def predict_bbox_like_by_crops(
                 if isinstance(keypoint_scores, np.ndarray):
                     keypoint_scores = keypoint_scores.tolist()
                 if keypoint_scores is not None:
-                    kwargs["additional_info"] = {"prediction__keypoint_scores": keypoint_scores}
+                    kwargs["additional_info"] = {"prediction__keypoints_scores": keypoint_scores}
             bboxes_data.append(
                 BboxData(
                     image_path=bbox_data.image_path,
@@ -168,3 +168,40 @@ def predict_bbox_like_by_crops(
             )
 
     return ImageData(image_path=image_data.image_path, bboxes_data=bboxes_data)
+
+
+def predict_by_crops(
+    image_data: ImageData,
+    inferencer: PipelineInferencer,
+    detection_score_threshold: float,
+    hCrossing: int,
+    vCrossing: int,
+    thresholdSpace: int,
+    blockWidth: int,
+    blockHeight: int,
+    model_input_size: Tuple[int, int] = (640, 640),
+    *,
+    threseholdSpace: Optional[int] = None,
+    include_masks: bool = False,
+    include_keypoints: bool = False,
+) -> ImageData:
+    from datapipe_ml.inference.common import resolve_threshold_space
+
+    resolved_threshold_space = resolve_threshold_space(
+        threshold_space=thresholdSpace,
+        thresehold_space=threseholdSpace,
+    )
+    assert resolved_threshold_space is not None
+    return predict_bbox_like_by_crops(
+        image_data=image_data,
+        inferencer=inferencer,
+        detection_score_threshold=detection_score_threshold,
+        h_crossing=hCrossing,
+        v_crossing=vCrossing,
+        threshold_space=resolved_threshold_space,
+        block_width=blockWidth,
+        block_height=blockHeight,
+        model_input_size=model_input_size,
+        include_masks=include_masks,
+        include_keypoints=include_keypoints,
+    )

@@ -40,7 +40,7 @@ from datapipe_ml.metrics.common import (
     stable_unique,
 )
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
-from datapipe_ml.tasks.segmentation.inference import Inference_SegmentationModel
+from datapipe_ml.tasks.segmentation.inference import Inference_SegmentationModel, SEGMENTATION_INFERENCE_SPEC
 
 
 def _required_with_keys(table_name: PipelineInput, keys: Dict[str, str]):
@@ -835,6 +835,174 @@ def filter_prediction_by_cls_best_thresholds(
 
 
 @dataclass
+class _ThresholdSearchTailParams:
+    model_primary_keys: List[str]
+    model_class_names__name: str
+    input__model: PipelineInput
+    output__prediction_raw: PipelineOutput
+    output__model_thresholds: PipelineOutput
+    output__prediction: PipelineOutput
+    output__pipeline_model__metrics_by_cls_and_thresholds: PipelineOutput
+    input__images: Sequence[PipelineInput]
+    primary_keys: List[str]
+    chunk_size: int
+    create_table: bool
+    labels: Optional[Labels]
+    bbox_id__name: Optional[str]
+    class_name_to_threshold__name: str
+    metric__name: str
+    count_by_thresholds: List[float]
+    threshold_sort_values_ascending: bool
+    count_metrics_executor_config: Optional[ExecutorConfig]
+    prediction_extra_columns_bbox_id: List[Column] = field(default_factory=list)
+    prediction_extra_columns_json: List[Column] = field(default_factory=list)
+
+
+def _build_threshold_search_tail_compute(
+    ds: DataStore,
+    catalog: Catalog,
+    params: _ThresholdSearchTailParams,
+) -> List[ComputeStep]:
+    dt__input__images = [get_datatable(ds, input__image) for input__image in params.input__images]
+    dt__input_model = get_datatable(ds, params.input__model)
+    catalog.add_datatable(
+        get_pipeline_table_name(params.output__model_thresholds),
+        Table(
+            ds.get_or_create_table(
+                get_pipeline_table_name(params.output__model_thresholds),
+                TableStoreDB(
+                    dbconn=ds.meta_dbconn,
+                    name=get_pipeline_table_name(params.output__model_thresholds),
+                    data_sql_schema=[
+                        column
+                        for column in dt__input_model.primary_schema
+                        if column.name in params.model_primary_keys
+                    ]
+                    + [
+                        Column(params.class_name_to_threshold__name, JSON),
+                    ],
+                    create_table=params.create_table,
+                ),
+            ).table_store
+        ),
+    )
+    if params.bbox_id__name is not None:
+        catalog.add_datatable(
+            get_pipeline_table_name(params.output__prediction),
+            Table(
+                ds.get_or_create_table(
+                    get_pipeline_table_name(params.output__prediction),
+                    TableStoreDB(
+                        dbconn=ds.meta_dbconn,
+                        name=get_pipeline_table_name(params.output__prediction),
+                        data_sql_schema=[
+                            column
+                            for column in dt__input__images[0].primary_schema
+                            if column.name in params.primary_keys
+                        ]
+                        + [
+                            column
+                            for column in dt__input_model.primary_schema
+                            if column.name not in params.primary_keys
+                        ]
+                        + [
+                            Column(params.bbox_id__name, String, primary_key=True),
+                            Column("x_min", Integer),
+                            Column("y_min", Integer),
+                            Column("x_max", Integer),
+                            Column("y_max", Integer),
+                            Column("label", String),
+                            *params.prediction_extra_columns_bbox_id,
+                            Column("prediction__detection_score", Float),
+                        ],
+                        create_table=params.create_table,
+                    ),
+                ).table_store
+            ),
+        )
+    else:
+        catalog.add_datatable(
+            get_pipeline_table_name(params.output__prediction),
+            Table(
+                ds.get_or_create_table(
+                    get_pipeline_table_name(params.output__prediction),
+                    TableStoreDB(
+                        dbconn=ds.meta_dbconn,
+                        name=get_pipeline_table_name(params.output__prediction),
+                        data_sql_schema=[
+                            column
+                            for column in dt__input__images[0].primary_schema
+                            if column.name in params.primary_keys
+                        ]
+                        + [
+                            column
+                            for column in dt__input_model.primary_schema
+                            if column.name not in params.primary_keys
+                        ]
+                        + [
+                            Column("bboxes", JSON),
+                            Column("labels", JSON),
+                            *params.prediction_extra_columns_json,
+                            Column("prediction__detection_scores", JSON),
+                        ],
+                        create_table=params.create_table,
+                    ),
+                ).table_store
+            ),
+        )
+    pipeline = Pipeline(
+        [
+            BatchTransform(
+                func=get_classes_best_thresholds,
+                inputs=[
+                    params.input__model,
+                    _required_with_keys(
+                        pipeline_output_as_input(params.output__pipeline_model__metrics_by_cls_and_thresholds),
+                        keys={key: key for key in params.model_primary_keys},
+                    ),
+                ],
+                outputs=[params.output__model_thresholds],
+                transform_keys=params.model_primary_keys,
+                chunk_size=params.chunk_size,
+                labels=params.labels,
+                order_by=params.model_primary_keys,
+                order="desc",
+                kwargs=dict(
+                    model_primary_keys=params.model_primary_keys,
+                    metric__name=params.metric__name,
+                    class_name_to_threshold__name=params.class_name_to_threshold__name,
+                    model_class_names__name=params.model_class_names__name,
+                    count_by_thresholds=params.count_by_thresholds,
+                    threshold_sort_values_ascending=params.threshold_sort_values_ascending,
+                ),
+                executor_config=params.count_metrics_executor_config,
+            ),
+            BatchTransform(
+                func=filter_prediction_by_cls_best_thresholds,
+                inputs=[
+                    pipeline_output_as_input(params.output__prediction_raw),
+                    pipeline_output_as_input(params.output__model_thresholds),
+                ],
+                outputs=[params.output__prediction],
+                transform_keys=stable_unique(params.primary_keys + params.model_primary_keys),
+                chunk_size=params.chunk_size,
+                labels=params.labels,
+                order_by=params.model_primary_keys,
+                order="desc",
+                kwargs=dict(
+                    primary_keys=params.primary_keys,
+                    model_primary_keys=params.model_primary_keys,
+                    bbox_id__name=params.bbox_id__name,
+                    class_name_to_threshold__name=params.class_name_to_threshold__name,
+                ),
+                executor_config=params.count_metrics_executor_config,
+            ),
+        ]
+    )
+    return build_compute(ds, catalog, pipeline)
+
+
+@dataclass
 class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
     input__image__ground_truth: PipelineInput
@@ -904,144 +1072,32 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
             subset_ids=self.subset_ids,
             image_data_matching_class=self.image_data_matching_class,
         )
-        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
-        dt__input_detection_model = get_datatable(ds, self.input__detection_model)
-        catalog.add_datatable(
-            get_pipeline_table_name(self.output__detection_model_thresholds),
-            Table(
-                ds.get_or_create_table(
-                    get_pipeline_table_name(self.output__detection_model_thresholds),
-                    TableStoreDB(
-                        dbconn=ds.meta_dbconn,
-                        name=get_pipeline_table_name(self.output__detection_model_thresholds),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input_detection_model.primary_schema
-                            if column.name in self.detection_model_primary_keys
-                        ]
-                        + [
-                            Column(self.class_name_to_threshold__name, JSON),
-                        ],
-                        create_table=self.create_table,
-                    ),
-                ).table_store
+        tail_params = _ThresholdSearchTailParams(
+            model_primary_keys=self.detection_model_primary_keys,
+            model_class_names__name="detection_model__class_names",
+            input__model=self.input__detection_model,
+            output__prediction_raw=self.output__detection_prediction_raw,
+            output__model_thresholds=self.output__detection_model_thresholds,
+            output__prediction=self.output__detection_prediction,
+            output__pipeline_model__metrics_by_cls_and_thresholds=(
+                self.output__pipeline_model__metrics_by_cls_and_thresholds
             ),
-        )
-        if self.bbox_id__name is not None:
-            catalog.add_datatable(
-                get_pipeline_table_name(self.output__detection_prediction),
-                Table(
-                    ds.get_or_create_table(
-                        get_pipeline_table_name(self.output__detection_prediction),
-                        TableStoreDB(
-                            dbconn=ds.meta_dbconn,
-                            name=get_pipeline_table_name(self.output__detection_prediction),
-                            data_sql_schema=[
-                                column
-                                for column in dt__input__images[0].primary_schema
-                                if column.name in self.primary_keys
-                            ]
-                            + [
-                                column
-                                for column in dt__input_detection_model.primary_schema
-                                if column.name not in self.primary_keys
-                            ]
-                            + [
-                                Column(self.bbox_id__name, String, primary_key=True),
-                                Column("x_min", Integer),
-                                Column("y_min", Integer),
-                                Column("x_max", Integer),
-                                Column("y_max", Integer),
-                                Column("label", String),
-                                Column("prediction__detection_score", Float),
-                            ],
-                            create_table=self.create_table,
-                        ),
-                    ).table_store
-                ),
-            )
-        else:
-            catalog.add_datatable(
-                get_pipeline_table_name(self.output__detection_prediction),
-                Table(
-                    ds.get_or_create_table(
-                        get_pipeline_table_name(self.output__detection_prediction),
-                        TableStoreDB(
-                            dbconn=ds.meta_dbconn,
-                            name=get_pipeline_table_name(self.output__detection_prediction),
-                            data_sql_schema=[
-                                column
-                                for column in dt__input__images[0].primary_schema
-                                if column.name in self.primary_keys
-                            ]
-                            + [
-                                column
-                                for column in dt__input_detection_model.primary_schema
-                                if column.name not in self.primary_keys
-                            ]
-                            + [
-                                Column("bboxes", JSON),
-                                Column("labels", JSON),
-                                Column("prediction__detection_scores", JSON),
-                            ],
-                            create_table=self.create_table,
-                        ),
-                    ).table_store
-                ),
-            )
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=get_classes_best_thresholds,
-                    inputs=[
-                        self.input__detection_model,
-                        _required_with_keys(
-                            pipeline_output_as_input(self.output__pipeline_model__metrics_by_cls_and_thresholds),
-                            keys={key: key for key in self.detection_model_primary_keys},
-                        ),
-                    ],
-                    outputs=[self.output__detection_model_thresholds],
-                    transform_keys=self.detection_model_primary_keys,
-                    chunk_size=self.chunk_size,
-                    labels=self.labels,
-                    order_by=self.detection_model_primary_keys,
-                    order="desc",
-                    kwargs=dict(
-                        model_primary_keys=self.detection_model_primary_keys,
-                        metric__name=self.metric__name,
-                        class_name_to_threshold__name=self.class_name_to_threshold__name,
-                        model_class_names__name="detection_model__class_names",
-                        count_by_thresholds=self.count_by_thresholds,
-                        threshold_sort_values_ascending=self.threshold_sort_values_ascending,
-                    ),
-                    executor_config=self.count_metrics_executor_config,
-                ),
-                BatchTransform(
-                    func=filter_prediction_by_cls_best_thresholds,
-                    inputs=[
-                        pipeline_output_as_input(self.output__detection_prediction_raw),
-                        pipeline_output_as_input(self.output__detection_model_thresholds),
-                    ],
-                    outputs=[self.output__detection_prediction],
-                    transform_keys=stable_unique(self.primary_keys + self.detection_model_primary_keys),
-                    chunk_size=self.chunk_size,
-                    labels=self.labels,
-                    order_by=self.detection_model_primary_keys,
-                    order="desc",
-                    kwargs=dict(
-                        primary_keys=self.primary_keys,
-                        model_primary_keys=self.detection_model_primary_keys,
-                        bbox_id__name=self.bbox_id__name,
-                        class_name_to_threshold__name=self.class_name_to_threshold__name,
-                    ),
-                    executor_config=self.count_metrics_executor_config,
-                ),
-            ]
+            input__images=input__images,
+            primary_keys=self.primary_keys,
+            chunk_size=self.chunk_size,
+            create_table=self.create_table,
+            labels=self.labels,
+            bbox_id__name=self.bbox_id__name,
+            class_name_to_threshold__name=self.class_name_to_threshold__name,
+            metric__name=self.metric__name,
+            count_by_thresholds=self.count_by_thresholds,
+            threshold_sort_values_ascending=self.threshold_sort_values_ascending,
+            count_metrics_executor_config=self.count_metrics_executor_config,
         )
         return (
             inference_pipeline.build_compute(ds, catalog)
             + raw_count_metrics_pipeline.build_compute(ds, catalog)
-            + build_compute(ds, catalog, pipeline)
+            + _build_threshold_search_tail_compute(ds, catalog, tail_params)
         )
 
 
@@ -1117,144 +1173,32 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_SegmentationModel(Pipeli
             subset_ids=self.subset_ids,
             image_data_matching_class=self.image_data_matching_class,
         )
-        dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
-        dt__input_segmentation_model = get_datatable(ds, self.input__segmentation_model)
-        catalog.add_datatable(
-            get_pipeline_table_name(self.output__segmentation_model_thresholds),
-            Table(
-                ds.get_or_create_table(
-                    get_pipeline_table_name(self.output__segmentation_model_thresholds),
-                    TableStoreDB(
-                        dbconn=ds.meta_dbconn,
-                        name=get_pipeline_table_name(self.output__segmentation_model_thresholds),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input_segmentation_model.primary_schema
-                            if column.name in self.segmentation_model_primary_keys
-                        ]
-                        + [
-                            Column(self.class_name_to_threshold__name, JSON),
-                        ],
-                        create_table=self.create_table,
-                    ),
-                ).table_store
+        tail_params = _ThresholdSearchTailParams(
+            model_primary_keys=self.segmentation_model_primary_keys,
+            model_class_names__name="segmentation_model__class_names",
+            input__model=self.input__segmentation_model,
+            output__prediction_raw=self.output__segmentation_prediction_raw,
+            output__model_thresholds=self.output__segmentation_model_thresholds,
+            output__prediction=self.output__segmentation_prediction,
+            output__pipeline_model__metrics_by_cls_and_thresholds=(
+                self.output__pipeline_model__metrics_by_cls_and_thresholds
             ),
-        )
-        if self.bbox_id__name is not None:
-            catalog.add_datatable(
-                get_pipeline_table_name(self.output__segmentation_prediction),
-                Table(
-                    ds.get_or_create_table(
-                        get_pipeline_table_name(self.output__segmentation_prediction),
-                        TableStoreDB(
-                            dbconn=ds.meta_dbconn,
-                            name=get_pipeline_table_name(self.output__segmentation_prediction),
-                            data_sql_schema=[
-                                column
-                                for column in dt__input__images[0].primary_schema
-                                if column.name in self.primary_keys
-                            ]
-                            + [
-                                column
-                                for column in dt__input_segmentation_model.primary_schema
-                                if column.name not in self.primary_keys
-                            ]
-                            + [
-                                Column(self.bbox_id__name, String, primary_key=True),
-                                Column("x_min", Integer),
-                                Column("y_min", Integer),
-                                Column("x_max", Integer),
-                                Column("y_max", Integer),
-                                Column("label", String),
-                                Column("mask", JSON),
-                                Column("prediction__detection_score", Float),
-                            ],
-                            create_table=self.create_table,
-                        ),
-                    ).table_store
-                ),
-            )
-        else:
-            catalog.add_datatable(
-                get_pipeline_table_name(self.output__segmentation_prediction),
-                Table(
-                    ds.get_or_create_table(
-                        get_pipeline_table_name(self.output__segmentation_prediction),
-                        TableStoreDB(
-                            dbconn=ds.meta_dbconn,
-                            name=get_pipeline_table_name(self.output__segmentation_prediction),
-                            data_sql_schema=[
-                                column
-                                for column in dt__input__images[0].primary_schema
-                                if column.name in self.primary_keys
-                            ]
-                            + [
-                                column
-                                for column in dt__input_segmentation_model.primary_schema
-                                if column.name not in self.primary_keys
-                            ]
-                            + [
-                                Column("bboxes", JSON),
-                                Column("labels", JSON),
-                                Column("masks", JSON),
-                                Column("prediction__detection_scores", JSON),
-                            ],
-                            create_table=self.create_table,
-                        ),
-                    ).table_store
-                ),
-            )
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=get_classes_best_thresholds,
-                    inputs=[
-                        self.input__segmentation_model,
-                        _required_with_keys(
-                            pipeline_output_as_input(self.output__pipeline_model__metrics_by_cls_and_thresholds),
-                            keys={key: key for key in self.segmentation_model_primary_keys},
-                        ),
-                    ],
-                    outputs=[self.output__segmentation_model_thresholds],
-                    transform_keys=self.segmentation_model_primary_keys,
-                    chunk_size=self.chunk_size,
-                    labels=self.labels,
-                    order_by=self.segmentation_model_primary_keys,
-                    order="desc",
-                    kwargs=dict(
-                        model_primary_keys=self.segmentation_model_primary_keys,
-                        metric__name=self.metric__name,
-                        class_name_to_threshold__name=self.class_name_to_threshold__name,
-                        model_class_names__name="segmentation_model__class_names",
-                        count_by_thresholds=self.count_by_thresholds,
-                        threshold_sort_values_ascending=self.threshold_sort_values_ascending,
-                    ),
-                    executor_config=self.count_metrics_executor_config,
-                ),
-                BatchTransform(
-                    func=filter_prediction_by_cls_best_thresholds,
-                    inputs=[
-                        pipeline_output_as_input(self.output__segmentation_prediction_raw),
-                        pipeline_output_as_input(self.output__segmentation_model_thresholds),
-                    ],
-                    outputs=[self.output__segmentation_prediction],
-                    transform_keys=stable_unique(self.primary_keys + self.segmentation_model_primary_keys),
-                    chunk_size=self.chunk_size,
-                    labels=self.labels,
-                    order_by=self.segmentation_model_primary_keys,
-                    order="desc",
-                    kwargs=dict(
-                        primary_keys=self.primary_keys,
-                        model_primary_keys=self.segmentation_model_primary_keys,
-                        bbox_id__name=self.bbox_id__name,
-                        class_name_to_threshold__name=self.class_name_to_threshold__name,
-                    ),
-                    executor_config=self.count_metrics_executor_config,
-                ),
-            ]
+            input__images=input__images,
+            primary_keys=self.primary_keys,
+            chunk_size=self.chunk_size,
+            create_table=self.create_table,
+            labels=self.labels,
+            bbox_id__name=self.bbox_id__name,
+            class_name_to_threshold__name=self.class_name_to_threshold__name,
+            metric__name=self.metric__name,
+            count_by_thresholds=self.count_by_thresholds,
+            threshold_sort_values_ascending=self.threshold_sort_values_ascending,
+            count_metrics_executor_config=self.count_metrics_executor_config,
+            prediction_extra_columns_bbox_id=list(SEGMENTATION_INFERENCE_SPEC.extra_bbox_id_after_coords),
+            prediction_extra_columns_json=list(SEGMENTATION_INFERENCE_SPEC.extra_json_after_labels),
         )
         return (
             inference_pipeline.build_compute(ds, catalog)
             + raw_count_metrics_pipeline.build_compute(ds, catalog)
-            + build_compute(ds, catalog, pipeline)
+            + _build_threshold_search_tail_compute(ds, catalog, tail_params)
         )

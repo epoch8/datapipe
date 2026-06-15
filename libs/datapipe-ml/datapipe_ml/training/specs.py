@@ -82,6 +82,12 @@ class TrainingResumeConfig:
     reset_attempts_after: Optional[str] = "1d"
 
 
+@dataclass(frozen=True)
+class TrainingResumeCheckpoint:
+    path: str
+    epoch: Optional[int] = None
+
+
 class TrainingLauncher(Protocol):
     def launch(self, request: TrainingLaunchRequest) -> Any: ...
 
@@ -213,6 +219,7 @@ class Algo(ABC):
         model_id: str,
         train_params: Dict[str, Any],
         data: PreparedData,
+        resume_checkpoint: Optional[TrainingResumeCheckpoint] = None,
     ) -> Any:
         """Start (spawn) training process and return raw TrainModelResult."""
         ...

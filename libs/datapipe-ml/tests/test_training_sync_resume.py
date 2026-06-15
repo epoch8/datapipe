@@ -362,7 +362,7 @@ def test_base_algo_resume_hook_does_not_mutate_train_params() -> None:
         def build_model_id(self, ctx, idx, train_params):
             return "model"
 
-        def launch_training(self, ctx, idx, model_id, train_params, data):
+        def launch_training(self, ctx, idx, model_id, train_params, data, resume_checkpoint=None):
             raise NotImplementedError
 
         def select_best(self, raw_result, idx):

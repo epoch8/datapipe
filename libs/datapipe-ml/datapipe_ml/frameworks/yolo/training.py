@@ -19,6 +19,7 @@ from datapipe_ml.training.specs import (
     TrainContext,
     TrainingLaunchRequest,
     TrainingPathMap,
+    TrainingResumeCheckpoint,
     TrainingResumeConfig,
     TrainingSyncConfig,
     build_training_launcher,
@@ -29,20 +30,10 @@ if TYPE_CHECKING:
     from datapipe_ml.frameworks.yolo.yolov8.runner import TrainModelResult as YoloV8TrainModelResult
 
 
-def get_best_models(df_models: pd.DataFrame, model_id_column: str) -> pd.DataFrame:
-    """
-    input: ["model_id", "epoch", "model_path", "metrics...", "best_threshold", ...]
-    output: ["model_id", "model_path", "metrics..", "best_threshold"]
-    """
-    df_results = []
-    for _, df_models_by_name in df_models.groupby(model_id_column):
-        # https://github.com/ultralytics/yolov8/issues/8701
-        df_models_by_name["fitness"] = df_models_by_name.apply(
-            lambda row: 0.1 * row["metrics_mAP_0_5"] + 0.9 * row["metrics_mAP_0_5_to_0_95"], axis=1
-        )
-        best_idx = int(df_models_by_name["fitness"].argmax())
-        df_results.append(df_models_by_name.iloc[[best_idx]][[model_id_column, "class_names", "model_path"]])
-    return pd.concat(df_results, ignore_index=True)
+def yolo_fitness(mAP50: float, mAP5095: float) -> float:
+    """Ultralytics-style epoch fitness used to pick the best checkpoint."""
+    # https://github.com/ultralytics/yolov8/issues/8701
+    return 0.1 * mAP50 + 0.9 * mAP5095
 
 
 @dataclass
@@ -297,13 +288,26 @@ class YoloBaseAlgo(Algo):
         return params
 
     def launch_training(
-        self, ctx: TrainContext, idx: IndexDF, model_id: str, train_params: Dict[str, Any], data: PreparedData
+        self,
+        ctx: TrainContext,
+        idx: IndexDF,
+        model_id: str,
+        train_params: Dict[str, Any],
+        data: PreparedData,
+        resume_checkpoint: Optional[TrainingResumeCheckpoint] = None,
     ) -> Any:
         """
         Default launcher for YOLOv8-style train_process:
         train_process(queue, cfg, objects_count, class_names, image_filepaths, yolo_txt_filepaths, sync_config, task)
         Subclasses can override for YOLOv5.
         """
+        if resume_checkpoint is not None:
+            train_params = self.apply_resume_checkpoint(
+                ctx,
+                train_params,
+                resume_checkpoint.path,
+                resume_checkpoint.epoch,
+            )
         d = cast(YoloPreparedData, data)
         cfg = self._build_training_config(ctx, idx, model_id, train_params, d)
         train_proc = cast(Callable[..., Any], self.train_process_func)
@@ -374,7 +378,7 @@ class YoloBaseAlgo(Algo):
             raise ValueError(f"Train failed: '{raw_result.traceback_logs}'")
         df = pd.DataFrame(raw_result.training_results)
         df["fitness"] = df.apply(
-            lambda r: 0.1 * r[self.metrics_mAP_05_col] + 0.9 * r[self.metrics_mAP_0595_col], axis=1
+            lambda r: yolo_fitness(r[self.metrics_mAP_05_col], r[self.metrics_mAP_0595_col]), axis=1
         )
         best = df.iloc[[int(df["fitness"].argmax())]]
 

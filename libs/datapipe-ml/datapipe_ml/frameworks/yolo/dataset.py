@@ -18,34 +18,62 @@ from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_da
 from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
 
 
-class CustomYOLOLabelsFile(ItemStoreFileAdapter):
+def _hash_rows(df: DataDF, keys: List[str]) -> HashDF:
+    hash_df = df[keys]
+    hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
+        lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
+    )
+    return cast(HashDF, hash_df)
+
+
+def _read_class_names(f: fsspec.core.OpenFile) -> List[str]:
+    filepath = Pathy.fluid(f.path)
+    class_names_path = str(filepath.parent.parent.parent.parent / "class_names.json")
+    assert f.fs.exists(class_names_path)
+    with f.fs.open(class_names_path, "r") as src:
+        return json.load(src)
+
+
+def _fsspec_prefix(f: fsspec.core.OpenFile) -> str:
+    if f.fs.protocol in ["file"] or f.fs.protocol is None:
+        return ""
+    protocol = f.fs.protocol
+    if isinstance(protocol, tuple):
+        protocol = protocol[0]
+    return f"{protocol}://"
+
+
+def _write_sorted_class_names_json(
+    *,
+    filedir: Pathy,
+    path_parts: List[str],
+    frozen_dataset_id: str,
+    class_names: List[str],
+) -> str:
+    filepath = filedir / ("/".join(path_parts)) / frozen_dataset_id / "class_names.json"
+    filepath_str = str(filepath)
+    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
+        json.dump(class_names, out, ensure_ascii=False)
+    return filepath_str
+
+
+class BaseYoloLabelsFile(ItemStoreFileAdapter):
     mode = "b"
+    converter_cls: type
 
     def __init__(self, img_format: str):
         self.img_format = img_format
 
     def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
-        hash_df = df[keys]
-        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
-            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
-        )
-        return cast(HashDF, hash_df)
+        return _hash_rows(df, keys)
 
     def load(self, f: fsspec.core.OpenFile) -> Dict[str, Tuple[int, int]]:
         filepath = Pathy.fluid(f.path)
-        assert filepath.parent.name == "labels"  # labels
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
+        assert filepath.parent.name == "labels"
+        class_names = _read_class_names(f)
         image_path = filepath.parent.parent / "images" / f"{filepath.stem}.{self.img_format}"
-        yolo_converter = YOLODataConverter(class_names)
-        if f.fs.protocol in ["file"] or f.fs.protocol is None:
-            prefix = ""
-        else:
-            protocol = f.fs.protocol
-            if isinstance(protocol, tuple):
-                protocol = protocol[0]
-            prefix = f"{protocol}://"
+        yolo_converter = self.converter_cls(class_names)
+        prefix = _fsspec_prefix(f)
         image_data = yolo_converter.get_image_data_from_annot(image_path=f"{prefix}{image_path}", annot=f)
         return {"image_size": image_data, "class_names": class_names}
 
@@ -53,98 +81,18 @@ class CustomYOLOLabelsFile(ItemStoreFileAdapter):
         image_data: ImageData = obj["image_data"]
         filepath = Pathy.fluid(f.path)
         assert filepath.parent.name == "labels"
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
-        yolo_converter = YOLODataConverter(class_names)
-        coco_data = yolo_converter.get_annot_from_image_data(image_data)
-        f.write("\n".join(coco_data).encode())
+        class_names = _read_class_names(f)
+        yolo_converter = self.converter_cls(class_names)
+        annot_data = yolo_converter.get_annot_from_image_data(image_data)
+        f.write("\n".join(annot_data).encode())
 
 
-class CustomYOLOV8SegmentatorLabelsFile(ItemStoreFileAdapter):
-    mode = "b"
-
-    def __init__(self, img_format: str):
-        self.img_format = img_format
-
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
-        hash_df = df[keys]
-        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
-            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
-        )
-        return cast(HashDF, hash_df)
-
-    def load(self, f: fsspec.core.OpenFile) -> Dict[str, Tuple[int, int]]:
-        filepath = Pathy.fluid(f.path)
-        assert filepath.parent.name == "labels"  # labels
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
-        image_path = filepath.parent.parent / "images" / f"{filepath.stem}.{self.img_format}"
-        yolo_converter = YOLOMasksDataConverter(class_names)
-        if f.fs.protocol in ["file"] or f.fs.protocol is None:
-            prefix = ""
-        else:
-            protocol = f.fs.protocol
-            if isinstance(protocol, tuple):
-                protocol = protocol[0]
-            prefix = f"{protocol}://"
-        image_data = yolo_converter.get_image_data_from_annot(image_path=f"{prefix}{image_path}", annot=f)
-        return {"image_size": image_data, "class_names": class_names}
-
-    def dump(self, obj: Dict[str, Tuple[int, int]], f: fsspec.core.OpenFile) -> None:
-        image_data: ImageData = obj["image_data"]
-        filepath = Pathy.fluid(f.path)
-        assert filepath.parent.name == "labels"
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
-        yolo_converter = YOLOMasksDataConverter(class_names)
-        coco_segmentation_data = yolo_converter.get_annot_from_image_data(image_data)
-        f.write("\n".join(coco_segmentation_data).encode())
+class CustomYOLOLabelsFile(BaseYoloLabelsFile):
+    converter_cls = YOLODataConverter
 
 
-class CustomYOLOV8PoseLabelsFile(ItemStoreFileAdapter):
-    mode = "b"
-
-    def __init__(self, img_format: str):
-        self.img_format = img_format
-
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
-        hash_df = df[keys]
-        hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
-            lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
-        )
-        return cast(HashDF, hash_df)
-
-    def load(self, f: fsspec.core.OpenFile) -> Dict[str, Tuple[int, int]]:
-        filepath = Pathy.fluid(f.path)
-        assert filepath.parent.name == "labels"
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
-        image_path = filepath.parent.parent / "images" / f"{filepath.stem}.{self.img_format}"
-        yolo_converter = YOLOPoseDataConverter(class_names)
-        if f.fs.protocol in ["file"] or f.fs.protocol is None:
-            prefix = ""
-        else:
-            protocol = f.fs.protocol
-            if isinstance(protocol, tuple):
-                protocol = protocol[0]
-            prefix = f"{protocol}://"
-        image_data = yolo_converter.get_image_data_from_annot(image_path=f"{prefix}{image_path}", annot=f)
-        return {"image_size": image_data, "class_names": class_names}
-
-    def dump(self, obj: Dict[str, Tuple[int, int]], f: fsspec.core.OpenFile) -> None:
-        image_data: ImageData = obj["image_data"]
-        filepath = Pathy.fluid(f.path)
-        assert filepath.parent.name == "labels"
-        assert f.fs.exists(str(filepath.parent.parent.parent.parent / "class_names.json"))
-        with f.fs.open(str(filepath.parent.parent.parent.parent / "class_names.json"), "r") as src:
-            class_names = json.load(src)
-        yolo_converter = YOLOPoseDataConverter(class_names)
-        pose_data = yolo_converter.get_annot_from_image_data(image_data)
-        f.write("\n".join(pose_data).encode())
+class CustomYOLOV8SegmentatorLabelsFile(BaseYoloLabelsFile):
+    converter_cls = YOLOMasksDataConverter
 
 
 class YOLOPoseDataConverter(YOLODataConverter):
@@ -176,6 +124,10 @@ class YOLOPoseDataConverter(YOLODataConverter):
         return txt_results
 
 
+class CustomYOLOV8PoseLabelsFile(BaseYoloLabelsFile):
+    converter_cls = YOLOPoseDataConverter
+
+
 def get_class_names_from_det_frozen_dataset_gt(
     df__detection_frozen_dataset__has__image_gt: pd.DataFrame,
     bbox_id__name: Optional[str],
@@ -197,15 +149,13 @@ def get_class_names_from_det_frozen_dataset_gt(
     assert len(detection_frozen_dataset_ids) == 1
     detection_frozen_dataset_id = list(detection_frozen_dataset_ids)[0]
     class_names = natsorted(list(set(df__detection_frozen_dataset__has__image_gt["label"])))
-    filepath = (
-        filedir
-        / ("/".join([idx.iloc[0][primary_key] for primary_key in detection_model_other_primary_keys]))
-        / detection_frozen_dataset_id
-        / "class_names.json"
+    path_parts = [idx.iloc[0][primary_key] for primary_key in detection_model_other_primary_keys]
+    _write_sorted_class_names_json(
+        filedir=filedir,
+        path_parts=path_parts,
+        frozen_dataset_id=detection_frozen_dataset_id,
+        class_names=class_names,
     )
-    filepath_str = str(filepath)
-    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
-        json.dump(class_names, out, ensure_ascii=False)
     return pd.DataFrame(
         [
             {
@@ -268,15 +218,13 @@ def get_class_names_from_kps_frozen_dataset_gt(
             if len(unique_flip_idx) > 1:
                 raise ValueError("Different flip_idx values found in single keypoints frozen dataset.")
 
-    filepath = (
-        filedir
-        / ("/".join([idx.iloc[0][primary_key] for primary_key in detection_model_other_primary_keys]))
-        / frozen_dataset_id
-        / "class_names.json"
+    path_parts = [idx.iloc[0][primary_key] for primary_key in detection_model_other_primary_keys]
+    _write_sorted_class_names_json(
+        filedir=filedir,
+        path_parts=path_parts,
+        frozen_dataset_id=frozen_dataset_id,
+        class_names=class_names,
     )
-    filepath_str = str(filepath)
-    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
-        json.dump(class_names, out, ensure_ascii=False)
     return pd.DataFrame(
         [
             {

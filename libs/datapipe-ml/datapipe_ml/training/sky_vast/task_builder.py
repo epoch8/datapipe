@@ -10,6 +10,7 @@ from datapipe_ml.training.sky_vast.constants import (
     REMOTE_SOURCE_ARCHIVE,
     REMOTE_VENV,
     REMOTE_WORKER_ENTRYPOINT,
+    TrainingSignal,
 )
 from datapipe_ml.training.specs import SkyVastTrainingLauncherConfig
 
@@ -80,7 +81,7 @@ def build_task(config: SkyVastTrainingLauncherConfig):
                 "set -euo pipefail",
                 f"mkdir -p {REMOTE_INPUT} {REMOTE_OUTPUT} {REMOTE_SIGNALS}",
                 *config.setup_commands,
-                f"touch {REMOTE_SIGNALS / 'VM_BOOT'}",
+                f"touch {TrainingSignal.path(TrainingSignal.VM_BOOT)}",
             ]
         ),
         "run": "\n".join(
@@ -93,7 +94,7 @@ def build_task(config: SkyVastTrainingLauncherConfig):
                 f"cp {REMOTE_SOURCE / 'README.md'} {REMOTE_SOURCE / '../README.md'}",
                 *_source_install_commands(config, datapipe_core_install_target, datapipe_ml_install_target),
                 f"{_worker_python(config)} {REMOTE_WORKER_ENTRYPOINT}",
-                f"while [ ! -f {REMOTE_SIGNALS / 'SHUTDOWN'} ]; do sleep 5; done",
+                f"while [ ! -f {TrainingSignal.path(TrainingSignal.SHUTDOWN)} ]; do sleep 5; done",
             ]
         ),
     }

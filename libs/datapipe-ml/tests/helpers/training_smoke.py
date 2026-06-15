@@ -958,8 +958,6 @@ def keypoints_metrics_step():
         primary_keys=PRIMARY_KEYS,
         bbox_id__name=None,
         create_table=True,
-        yolo_validation_batch=1,
-        yolo_validation_device=SMOKE_DEVICE,
     )
 
 

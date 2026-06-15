@@ -1,4 +1,5 @@
 import inspect
+import logging
 import os
 import shutil
 import tempfile
@@ -11,6 +12,8 @@ from pathy import Pathy
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
 
 from datapipe_ml.core.files import copy_url_to_url
+
+logger = logging.getLogger(__name__)
 
 
 def _copy_file_fsspec(src_path: str, dst_url: str, chunk_bytes: int = 64 * 1024 * 1024) -> None:
@@ -136,30 +139,29 @@ class FsspecModelCheckpoint(Callback):
         epoch = self.params.get("epoch", 0) if isinstance(self.params, dict) else 0
         self._mirror_if_exists(epoch, logs)
 
-    # Mirror checkpoints to remote storage.
-    def _mirror_if_exists(self, epoch: int, logs: Optional[Dict[str, Any]]):
+    def _resolve_local_checkpoint_path(self, epoch: int, logs: Optional[Dict[str, Any]]) -> Optional[Path]:
         inner_path = getattr(self._inner_ckpt, "filepath", None)
         if inner_path:
             candidate = Path(inner_path)
             if candidate.exists():
-                local_path = candidate
-            else:
-                local_path = None
-        else:
-            local_path = None
+                return candidate
 
+        formatted_name = _safe_format(Path(self._local_pattern).name, epoch, logs)
+        candidate = Path(self._tmpdir.name) / formatted_name
+        if candidate.exists():
+            return candidate
+
+        logger.debug(
+            "FsspecModelCheckpoint: no local checkpoint resolved for epoch=%s",
+            epoch,
+        )
+        return None
+
+    # Mirror checkpoints to remote storage.
+    def _mirror_if_exists(self, epoch: int, logs: Optional[Dict[str, Any]]):
+        local_path = self._resolve_local_checkpoint_path(epoch, logs)
         if local_path is None:
-            local_filename = _safe_format(Path(self._local_pattern).name, epoch, logs)
-            local_path = Path(self._tmpdir.name) / local_filename
-
-            if not local_path.exists():
-                try:
-                    candidates = [path for path in Path(self._tmpdir.name).iterdir() if path.is_file()]
-                    if not candidates:
-                        return
-                    local_path = max(candidates, key=lambda path: path.stat().st_mtime)
-                except Exception:
-                    return
+            return
 
         assert isinstance(
             self.remote_filepath_pattern, str

@@ -89,3 +89,26 @@ def test_fsspec_model_checkpoint_waits_for_pending_uploads_on_train_end(
     release.set()
     thread.join(timeout=5.0)
     assert train_end_finished.is_set()
+
+
+def test_fsspec_model_checkpoint_skips_mirror_when_checkpoint_unresolved(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tensorflow")
+    from datapipe_ml.frameworks.tensorflow.callbacks import FsspecModelCheckpoint
+
+    remote_url = str(tmp_path / "remote" / "best.keras")
+    copied_urls: list[str] = []
+
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.tensorflow.callbacks.copy_url_to_url",
+        lambda src, dst, **kwargs: copied_urls.append(dst),
+    )
+
+    callback = FsspecModelCheckpoint(remote_filepath_pattern=remote_url, mirror_async=False)
+    fallback_ckpt = Path(callback._tmpdir.name) / "fallback.keras"
+    fallback_ckpt.write_bytes(b"fallback")
+    callback._mirror_if_exists(epoch=0, logs={})
+
+    assert copied_urls == []

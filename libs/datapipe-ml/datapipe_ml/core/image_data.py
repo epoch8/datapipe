@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Any, List, Optional, cast
 
@@ -5,6 +6,9 @@ import numpy as np
 import pandas as pd
 from cv_pipeliner.core.data import BboxData, ImageData
 from joblib import Parallel, delayed
+from PIL import UnidentifiedImageError
+
+logger = logging.getLogger(__name__)
 
 
 def check_if_images_opens(image_paths: List[str], max_workers: int = 16) -> List[bool]:
@@ -14,8 +18,8 @@ def check_if_images_opens(image_paths: List[str], max_workers: int = 16) -> List
             return True
         except KeyboardInterrupt:
             raise
-        except Exception as e:  # some files may be corrupted
-            print(f"Exception catched for {image_path=}: {e=}")
+        except (OSError, UnidentifiedImageError) as e:
+            logger.warning("Failed to open image %s: %s", image_path, e)
             return False
 
     return Parallel(n_jobs=max_workers, prefer="threads")(
@@ -79,8 +83,14 @@ def _convert_df_with_bbox_rows_to_df_with_image_data(
                             detection_score=row.get("prediction__detection_score"),
                             classification_score=row.get("prediction__classification_score"),
                             additional_info=(
-                                {"prediction__keypoint_scores": row.get("prediction__keypoint_scores")}
-                                if row.get("prediction__keypoint_scores") is not None
+                                {
+                                    "prediction__keypoints_scores": row.get("prediction__keypoints_scores")
+                                    or row.get("prediction__keypoint_scores")
+                                }
+                                if (
+                                    row.get("prediction__keypoints_scores") is not None
+                                    or row.get("prediction__keypoint_scores") is not None
+                                )
                                 else {}
                             ),
                         )
@@ -132,8 +142,8 @@ def get_bboxes_data_from_json(row: pd.Series):
             detection_score=prediction__detection_score,
             classification_score=prediction__classification_score,
             additional_info=(
-                {"prediction__keypoint_scores": prediction__keypoint_scores}
-                if prediction__keypoint_scores is not None
+                {"prediction__keypoints_scores": prediction__keypoints_score}
+                if prediction__keypoints_score is not None
                 else {}
             ),
         )
@@ -144,7 +154,7 @@ def get_bboxes_data_from_json(row: pd.Series):
             label,
             prediction__detection_score,
             prediction__classification_score,
-            prediction__keypoint_scores,
+            prediction__keypoints_score,
         ) in zip(
             bboxes,
             all_keypoints,
@@ -230,7 +240,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     label=bbox_data.label,
                     prediction__detection_score=bbox_data.detection_score,
                     prediction__classification_score=bbox_data.classification_score,
-                    prediction__keypoint_scores=_get_prediction_keypoint_scores(bbox_data),
+                    prediction__keypoints_scores=_get_prediction_keypoint_scores(bbox_data),
                 )
                 for bbox_data in cast(List[BboxData], row["image_data"].bboxes_data)
             ]
@@ -253,7 +263,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     label=None,
                     prediction__detection_score=None,
                     prediction__classification_score=None,
-                    prediction__keypoint_scores=None,
+                    prediction__keypoints_scores=None,
                 )
             ]
         )
@@ -275,7 +285,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
             "mask",
             "prediction__detection_score",
             "prediction__classification_score",
-            "prediction__keypoint_scores",
+            "prediction__keypoints_scores",
         ],
     )
 

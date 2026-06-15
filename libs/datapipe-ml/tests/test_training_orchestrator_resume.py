@@ -84,8 +84,22 @@ class FakeAlgo(Algo):
     def build_model_id(self, ctx: TrainContext, idx, train_params: dict[str, Any]) -> str:
         return "new-model"
 
-    def launch_training(self, ctx: TrainContext, idx, model_id: str, train_params: dict[str, Any], data: PreparedData):
-        self.launch_calls.append({"model_id": model_id, "train_params": dict(train_params)})
+    def launch_training(
+        self,
+        ctx: TrainContext,
+        idx,
+        model_id: str,
+        train_params: dict[str, Any],
+        data: PreparedData,
+        resume_checkpoint=None,
+    ):
+        self.launch_calls.append(
+            {
+                "model_id": model_id,
+                "train_params": dict(train_params),
+                "resume_checkpoint": resume_checkpoint,
+            }
+        )
         return FakeRawResult(model_path=str(Path(ctx.models_dir) / model_id / "weights" / "epoch1.pt"))
 
     def select_best(self, raw_result: FakeRawResult, idx) -> dict[str, Any]:
@@ -115,17 +129,6 @@ class FakeAlgo(Algo):
 
     def collect_checkpoint_paths(self, raw_result: FakeRawResult) -> list[str]:
         return [raw_result.model_path] if raw_result.model_path is not None else []
-
-    def apply_resume_checkpoint(
-        self,
-        ctx: TrainContext,
-        train_params: dict[str, Any],
-        checkpoint_path: str | None,
-        checkpoint_epoch: int | None = None,
-    ) -> dict[str, Any]:
-        updated = dict(train_params)
-        updated["resume_checkpoint"] = checkpoint_path
-        return updated
 
 
 def _ctx(
@@ -256,7 +259,8 @@ def test_orchestrator_resumes_stale_running_lease_from_run_dir_manifest(tmp_path
     orchestrate(_idx(), ctx, algo)
 
     assert algo.launch_calls[0]["model_id"] == "old-model"
-    assert algo.launch_calls[0]["train_params"]["resume_checkpoint"] == str(checkpoint)
+    assert algo.launch_calls[0]["resume_checkpoint"].path == str(checkpoint)
+    assert algo.launch_calls[0]["train_params"].get("resume_checkpoint") is None
     assert set(ctx.dt__training_status.df["training_status__attempt"]) == {1, 2}
 
 
@@ -289,7 +293,8 @@ def test_orchestrator_resumes_failed_status_from_manifest(tmp_path: Path) -> Non
     orchestrate(_idx(), ctx, algo)
 
     assert algo.launch_calls[0]["model_id"] == "old-model"
-    assert algo.launch_calls[0]["train_params"]["resume_checkpoint"] == str(checkpoint)
+    assert algo.launch_calls[0]["resume_checkpoint"].path == str(checkpoint)
+    assert algo.launch_calls[0]["train_params"].get("resume_checkpoint") is None
     assert set(ctx.dt__training_status.df["training_status__attempt"]) == {1, 2}
 
 
@@ -354,3 +359,31 @@ def test_orchestrator_creates_distinct_status_rows_for_source_id_groups(tmp_path
     assert set(statuses["source_id"]) == {"first", "second"}
     assert len(set(statuses["training_status__run_key"])) == 2
     assert set(statuses["training_status__status"]) == {"completed"}
+
+
+def test_orchestrator_suffixes_model_id_when_resume_disabled(tmp_path: Path) -> None:
+    run_key = _run_key()
+
+    class ReusedIdAlgo(FakeAlgo):
+        def build_model_id(self, ctx: TrainContext, idx, train_params: dict[str, Any]) -> str:
+            return "same-model"
+
+    ctx = _ctx(
+        tmp_path,
+        status_rows=[
+            {
+                "training_status_id": status_id_for_attempt(run_key, 1),
+                "training_status__run_key": run_key,
+                "training_status__status": "failed",
+                "training_status__attempt": 1,
+                "model_id": "same-model",
+            }
+        ],
+        resume_config=TrainingResumeConfig(continue_train_failed_models=False, max_attempts=3),
+    )
+
+    algo = ReusedIdAlgo()
+    outputs = orchestrate(_idx(), ctx, algo)
+
+    assert algo.launch_calls[0]["model_id"] == "same-model_attempt2"
+    assert outputs.df__model.iloc[-1]["model_id"] == "same-model_attempt2"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Float
 from sqlalchemy.sql.sqltypes import String
 
 
@@ -48,8 +48,10 @@ def _make_catalog(dbconn):
                     "keypoints_model",
                     [
                         Column("keypoints_model_id", String, primary_key=True),
-                        Column("keypoints_model__input_size", JSON),
-                        Column("keypoints_model__model_path", String),
+                        Column("keypoints_model__pose_P", Float),
+                        Column("keypoints_model__pose_R", Float),
+                        Column("keypoints_model__pose_mAP50", Float),
+                        Column("keypoints_model__pose_mAP50_95", Float),
                     ],
                     True,
                 )
@@ -91,8 +93,6 @@ def test_keypoints_metrics_for_perfect_prediction(base_datastore, dbconn):
         pd.DataFrame(
             {
                 "keypoints_model_id": ["m1"],
-                "keypoints_model__input_size": [[32, 32]],
-                "keypoints_model__model_path": ["missing.pt"],
             }
         )
     )
@@ -140,3 +140,23 @@ def test_keypoints_metrics_for_perfect_prediction(base_datastore, dbconn):
     assert row["calc__precision"] == pytest.approx(1.0)
     assert row["calc__recall"] == pytest.approx(1.0)
     assert pd.isna(row["calc__pose_mAP50"])
+
+
+def test_pose_metrics_are_copied_from_model_row():
+    from datapipe_ml.tasks.keypoints.metrics import _pose_metrics_from_model_row
+
+    df__keypoints_model = pd.DataFrame(
+        {
+            "keypoints_model__pose_P": [0.91],
+            "keypoints_model__pose_R": [0.82],
+            "keypoints_model__pose_mAP50": [0.77],
+            "keypoints_model__pose_mAP50_95": [0.55],
+        }
+    )
+
+    assert _pose_metrics_from_model_row(df__keypoints_model) == {
+        "calc__pose_P": 0.91,
+        "calc__pose_R": 0.82,
+        "calc__pose_mAP50": 0.77,
+        "calc__pose_mAP50_95": 0.55,
+    }

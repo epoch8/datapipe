@@ -1,11 +1,9 @@
 import importlib
-
-# from tensorflow.io import read_file, decode_image
+import importlib.util
 import multiprocessing as mp
 import os
 import random
 import shutil
-import sys
 import tempfile
 from dataclasses import dataclass, field
 from functools import partial
@@ -38,9 +36,11 @@ from pathy import FluidPath, Pathy
 from sklearn.utils.class_weight import compute_class_weight
 
 from datapipe_ml.core.multiprocessing import finish_training_subprocess
+from datapipe_ml.core.training_subprocess import run_training_subprocess_body
 from datapipe_ml.frameworks.tensorflow.callbacks import (
     FsspecModelCheckpoint,
 )
+from datapipe_ml.frameworks.tensorflow.checkpoint_selection import select_best_classification_checkpoint
 from datapipe_ml.training.staging import (
     copied_file_to_local_temp,
     make_local_staging_dir,
@@ -292,7 +292,7 @@ def get_default_augmentations_train():
                 scale_limit=0.2,
                 rotate_limit=30,
                 p=0.5,
-                border_mode=cv2.BORDER_CONSTANT,  # todo: research
+                border_mode=cv2.BORDER_CONSTANT,  # constant border avoids reflection artifacts at crop edges
                 fill=0,
             ),
         ]
@@ -327,15 +327,15 @@ def get_augment_from_script_file(script_file: Union[str, Path, Pathy]) -> Callab
         script_code = src.read()
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmpdirname_path = Path(tmpdirname)
-        module_folder = tmpdirname_path / "module"
-        module_folder.mkdir()
-        script_file_tmp = module_folder / f"augment_{tmpdirname_path.name}.py"
+        script_file_tmp = tmpdirname_path / f"augment_{tmpdirname_path.name}.py"
         with open(str(script_file_tmp), "w") as out:
             out.write(script_code)
-        sys.path.append(str(script_file_tmp.parent.absolute()))
-        module = importlib.import_module(script_file_tmp.stem)
-        importlib.reload(module)
-        sys.path.pop()
+        module_name = f"datapipe_ml_augment_{tmpdirname_path.name}"
+        spec = importlib.util.spec_from_file_location(module_name, script_file_tmp)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load augment module from {script_file_tmp}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     return module.augment
 
 
@@ -589,7 +589,9 @@ def train_on_tensorflow(
     finally:
         best_model_paths: List[str] = sorted(fs.glob(str(logdir_exp / "*.keras")))
         if len(best_model_paths) >= 1:
-            best_model_path = best_model_paths[-1]
+            selected_best = select_best_classification_checkpoint(best_model_paths)
+            assert selected_best is not None
+            best_model_path = selected_best
             best_model_path = f"{protocol_str}{best_model_path}"
             print(f"Best model: {best_model_path}")
             if clean_checkpoints_after_train and len(best_model_paths) > 3:
@@ -630,7 +632,7 @@ class TF_ClassificationTrainingConfig:
     label_smoothing: float
     augmentations: bool
     augment_func_file: Optional[str]
-    class_weight: bool  # TODO: support custom per-class weight dictionaries
+    class_weight: bool  # TODO: support custom Dict[str, float] per-class weight dictionaries
     model_spec: Optional[TFModelSpec] = None
 
     def __post_init__(self):
@@ -783,8 +785,15 @@ def train_process(
     print("Training process begin!")
     train_model_result = None
     traceback_logs = None
-    try:
-        train_model_result = train_model_main(
+
+    def _on_failure(logs: str) -> None:
+        nonlocal traceback_logs
+        traceback_logs = logs
+        print(logs)
+        print("Training model failed.")
+
+    train_model_result, traceback_logs = run_training_subprocess_body(
+        action=lambda: train_model_main(
             df__data=df__data,
             config=config,
             classification_model_id=classification_model_id,
@@ -795,16 +804,11 @@ def train_process(
             resume_checkpoint_epoch=resume_checkpoint_epoch,
             sync_config=sync_config,
             persisted_models_dir=persisted_models_dir,
-        )
-    except Exception as e:
-        from traceback_with_variables import format_exc
-
-        traceback_logs = format_exc(e)
-        print(traceback_logs)
-        print("Training model failed.")
-    finally:
-        if train_model_result is None:
-            train_model_result = TrainModelResult(traceback_logs=traceback_logs)
-        failed = train_model_result.classification_model_id is None
-        print("Training process exited!")
-        finish_training_subprocess(queue, train_model_result, failed=failed)
+        ),
+        on_failure=_on_failure,
+    )
+    if train_model_result is None:
+        train_model_result = TrainModelResult(traceback_logs=traceback_logs)
+    failed = train_model_result.classification_model_id is None
+    print("Training process exited!")
+    finish_training_subprocess(queue, train_model_result, failed=failed)

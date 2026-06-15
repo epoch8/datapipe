@@ -17,6 +17,9 @@ from datapipe_ml.training.specs import TrainingSyncConfig, TrainContext
 
 MANIFEST_FILENAME = "datapipe_ml_training_sync.json"
 LOCAL_TRAIN_OUTPUT_SUBDIR = "datapipe_ml_train_output"
+STABLE_STAT_MAX_ATTEMPTS = 8
+STABLE_STAT_INITIAL_SLEEP_S = 0.01
+STABLE_STAT_RETRY_SLEEP_S = 0.02
 logger = logging.getLogger("datapipe.ml.training.sync")
 
 @dataclass(frozen=True)
@@ -120,18 +123,18 @@ def _stat_url(url: str) -> tuple[int, Optional[float]]:
     return size, mtime
 
 
-def _stable_stat(url: str, *, max_attempts: int = 8) -> tuple[int, Optional[float]]:
+def _stable_stat(url: str, *, max_attempts: int = STABLE_STAT_MAX_ATTEMPTS) -> tuple[int, Optional[float]]:
     last_error: Optional[RuntimeError] = None
     for attempt in range(max_attempts):
         first = _stat_url(url)
         # A short second read catches the common case where a mutable checkpoint is
         # being overwritten while we are publishing the manifest.
-        time.sleep(0.01 * (attempt + 1))
+        time.sleep(STABLE_STAT_INITIAL_SLEEP_S * (attempt + 1))
         second = _stat_url(url)
         if first == second:
             return second
         last_error = RuntimeError(f"Checkpoint changed while being inspected: {url}")
-        time.sleep(0.02 * (attempt + 1))
+        time.sleep(STABLE_STAT_RETRY_SLEEP_S * (attempt + 1))
     assert last_error is not None
     raise last_error
 

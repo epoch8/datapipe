@@ -1,6 +1,7 @@
 from collections.abc import Sequence
+import logging
 from datetime import timezone
-from typing import Any, List, Protocol, Tuple, TypeAlias, cast
+from typing import Any, List, Protocol, Tuple, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,8 @@ from datapipe.types import (
     get_pipeline_output_table,
     get_pipeline_output_name,
 )
+
+logger = logging.getLogger(__name__)
 
 PipelineInputOrList: TypeAlias = PipelineInput | Sequence[PipelineInput]
 PipelineTableOrList: TypeAlias = PipelineInput | PipelineOutput | Sequence[PipelineInput | PipelineOutput]
@@ -111,9 +114,11 @@ def is_frozen_dataset_old(
     current_timestamp = df__frozen_dataset.loc[frozen_dataset_ids, frozen_dataset__created_at__name]
     if last_timestamp - current_timestamp >= pd.Timedelta(max_within_time):
         if print_skipping:
-            print(
-                f"Frozen Dataset {frozen_dataset_ids} is older more than "
-                f"last available frozen dataset {last_frozen_dataset_id} for {max_within_time}. Skipping"
+            logger.info(
+                "Frozen Dataset %s is older more than last available frozen dataset %s for %s. Skipping",
+                frozen_dataset_ids,
+                last_frozen_dataset_id,
+                max_within_time,
             )
         return True
     return False
@@ -136,33 +141,10 @@ def is_last_frozen_dataset_old_enough(
     current_timestamp = pd.Timestamp.now(timezone.utc)
     if current_timestamp - last_timestamp <= pd.Timedelta(min_within_time):
         if print_skipping:
-            print(
-                f"Last Frozen Dataset {last_frozen_dataset_id} is not older more than {min_within_time}." f" Skipping."
+            logger.info(
+                "Last Frozen Dataset %s is not older more than %s. Skipping.",
+                last_frozen_dataset_id,
+                min_within_time,
             )
         return False
     return True
-
-
-def get_data_split_by_batches(dt: DataTable, idx: IndexDF, batch_size: int = 1000) -> pd.DataFrame:
-    return pd.concat(
-        [dt.get_data(idx=cast(IndexDF, idx_batch)) for idx_batch in np.array_split(idx, batch_size)],
-        ignore_index=True,
-    )
-
-
-def get_table_store_filedir_existing_idx_split_by_batches(
-    dt: DataTable, idx: IndexDF, batch_size: int = 1000
-) -> pd.DataFrame:
-    assert isinstance(dt.table_store, TableStoreFiledir)
-    return pd.concat(
-        [
-            cast(
-                pd.DataFrame,
-                dt.table_store.read_rows(
-                    _get_datatable_meta(dt).get_existing_idx(idx=cast(IndexDF, idx_batch)), read_data=False
-                ),
-            )
-            for idx_batch in np.array_split(idx, batch_size)
-        ],
-        ignore_index=True,
-    )

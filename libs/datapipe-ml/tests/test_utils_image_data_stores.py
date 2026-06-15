@@ -458,6 +458,18 @@ def test_fiftyone_images_data_table_store_read_empty_idx():
     assert all(column in empty_df.columns for column in store.primary_keys)
 
 
+def test_fiftyone_images_data_table_store_raises_when_dataset_missing_and_create_disabled():
+    store = FiftyOneImagesDataTableStore(
+        dataset="missing_dataset",
+        fo_session=_FakeFiftyOneSession(),
+        create_dataset_if_empty=False,
+        rm_only_fo_fields=False,
+    )
+
+    with pytest.raises(ValueError, match="Dataset missing_dataset not found"):
+        store.read_rows(pd.DataFrame([{"filepath": "/tmp/image.jpg"}]))
+
+
 @pytest.mark.fiftyone
 def test_fiftyone_images_data_table_store_real_fiftyone_table_store_ops(tmp_dir):
     if importlib.util.find_spec("fiftyone") is None:

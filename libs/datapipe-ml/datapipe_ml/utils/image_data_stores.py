@@ -107,36 +107,7 @@ class GetImageSizeFile(ItemStoreFileAdapter):
         return _hash_rows(df, keys)
 
 
-class YOLOLabelsFile(ItemStoreFileAdapter):
-    mode = "b"
-
-    def __init__(self, class_names: List[str], img_format: str):
-        from cv_pipeliner.data_converters.yolo import YOLODataConverter
-
-        self.yolo_converter = YOLODataConverter(class_names)
-        self.img_format = img_format
-
-    def load(self, f: fsspec.core.OpenFile) -> Dict[str, ImageData]:
-        filepath = Path(f.path)
-        assert filepath.parent.name == "labels"
-        image_path = filepath.parent.parent / "images" / f"{filepath.stem}.{self.img_format}"
-        if f.fs.protocol in ["file"] or f.fs.protocol is None:
-            prefix = ""
-        else:
-            protocol = f.fs.protocol
-            if isinstance(protocol, tuple):
-                protocol = protocol[0]
-            prefix = f"{protocol}://"
-        image_data = self.yolo_converter.get_image_data_from_annot(image_path=f"{prefix}{image_path}", annot=f)
-        return {"image_data": image_data}
-
-    def dump(self, obj: Dict[str, Any], f: fsspec.core.OpenFile) -> None:
-        image_data: ImageData = obj["image_data"]
-        yolo_data = self.yolo_converter.get_annot_from_image_data(image_data)
-        f.write("\n".join(yolo_data).encode())
-
-    def hash_rows(self, df: DataDF, keys: List[str]) -> HashDF:
-        return _hash_rows(df, keys)
+from datapipe_ml.frameworks.yolo.labels_file import YOLOLabelsFile
 
 
 class ImageDataTableStoreDB(TableStoreDB):
@@ -353,7 +324,7 @@ class FiftyOneImagesDataTableStore(TableStore):
                 assert self.fo_dataset is not None
                 self.fo_dataset.persistent = True
             else:
-                return ValueError("Dataset {self.dataset} not found.")
+                raise ValueError(f"Dataset {self.dataset} not found.")
         return self.fo_dataset
 
     def _get_df_sample(self, idx: Optional[IndexDF] = None) -> pd.DataFrame:

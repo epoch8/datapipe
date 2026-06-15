@@ -21,6 +21,7 @@ from datapipe_ml.frameworks.yolo.dataset import (
     resize_and_prepare_yolo_images,
 )
 from datapipe_ml.training.paths import default_tmp_folder, remote_input_path, remote_output_models_path
+from datapipe_ml.training.specs import TrainingResumeCheckpoint
 from datapipe_ml.frameworks.yolo.training import (
     YoloBaseAlgo,
     YoloPreparedData,
@@ -43,22 +44,6 @@ from datapipe_ml.training.specs import (
     TrainingSyncConfig,
     build_training_launcher,
 )
-
-
-def resolve_yolov5_train_script(yolov5_script_file: Optional[str]) -> Optional[str]:
-    if yolov5_script_file is not None:
-        from pathlib import Path
-
-        script_path = Path(yolov5_script_file)
-        if not script_path.exists():
-            raise ValueError(f"Train script yolov5 not found at {yolov5_script_file}.")
-        return str(script_path)
-    return yolov5_script_file
-
-
-@dataclass
-class YoloV5TrainContext(YoloTrainContext):
-    yolov5_script_file: Optional[str] = None
 
 
 class YoloV5DetectionAlgo(YoloBaseAlgo):
@@ -96,12 +81,24 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
-    # v5 has different train_process signature: add yolov5_script_file
     def launch_training(
-        self, ctx: TrainContext, idx: IndexDF, model_id: str, train_params: Dict[str, Any], data: PreparedData
+        self,
+        ctx: TrainContext,
+        idx: IndexDF,
+        model_id: str,
+        train_params: Dict[str, Any],
+        data: PreparedData,
+        resume_checkpoint: Optional[TrainingResumeCheckpoint] = None,
     ):
-        assert isinstance(ctx, YoloV5TrainContext)
+        assert isinstance(ctx, YoloTrainContext)
         assert isinstance(data, YoloPreparedData)
+        if resume_checkpoint is not None:
+            train_params = self.apply_resume_checkpoint(
+                ctx,
+                train_params,
+                resume_checkpoint.path,
+                resume_checkpoint.epoch,
+            )
         yolov5_train_config = self._build_training_config(ctx, idx, model_id, train_params, data)
         subprocess_sync_config = None if ctx.training_output_write_dir else ctx.sync_config
         launcher = build_training_launcher(ctx.training_launcher_config)
@@ -110,7 +107,6 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
                 target=_v5_train_process,
                 args=(
                     yolov5_train_config,
-                    resolve_yolov5_train_script(ctx.yolov5_script_file),
                     data.objects_count,
                     data.class_names,
                     data.image_filepaths,
@@ -149,13 +145,12 @@ def train_yolov5(
         frozen_dataset_id_key="detection_frozen_dataset_id__name",
     )
     ctx = runtime.build_context(
-        YoloV5TrainContext,
+        YoloTrainContext,
         dt__frozen_dataset=dt__detection_frozen_dataset,
         dt__train_config=dt__yolov5_train_config,
         dt__class_names=dt__detection_frozen_dataset__class_names,
         dt__resized_image_file=dt__detection_frozen_dataset__resized_image_file,
         dt__yolo_txt=dt__detection_frozen_dataset__yolo_txt,
-        yolov5_script_file=kwargs["yolov5_script_file"],
     )
     algo = YoloV5DetectionAlgo()
     out = orchestrate(idx, ctx, algo)
@@ -199,7 +194,6 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     labels: Optional[Labels] = None
     executor_config: Optional[ExecutorConfig] = None
     prepare_data_executor_config: Optional[ExecutorConfig] = None
-    yolov5_script_file: Optional[str] = None
     resize_images: bool = True
     detection_model_primary_keys: Optional[List[str]] = None
     detection_model_id__name: str = "detection_model_id"
@@ -260,5 +254,4 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             sync_config=self.sync_config,
             resume_config=self.resume_config,
             output__training_status=self.output__training_status,
-            extra_train_kwargs=dict(yolov5_script_file=self.yolov5_script_file),
         )
