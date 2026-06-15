@@ -14,7 +14,7 @@ def check_if_images_opens(image_paths: List[str], max_workers: int = 16) -> List
             return True
         except KeyboardInterrupt:
             raise
-        except Exception as e:  # Некоторые файлы могут быть поломанными
+        except Exception as e:  # some files may be corrupted
             print(f"Exception catched for {image_path=}: {e=}")
             return False
 

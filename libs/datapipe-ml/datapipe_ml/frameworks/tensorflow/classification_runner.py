@@ -37,6 +37,7 @@ from natsort import natsorted
 from pathy import FluidPath, Pathy
 from sklearn.utils.class_weight import compute_class_weight
 
+from datapipe_ml.core.multiprocessing import finish_training_subprocess
 from datapipe_ml.frameworks.tensorflow.callbacks import (
     FsspecModelCheckpoint,
 )
@@ -260,7 +261,7 @@ def read_image_filepath(filepath: bytes):
         return imageio.imread(src)
 
 
-# Аугментации
+# Augmentations
 
 
 def get_default_augmentations_train():
@@ -313,7 +314,7 @@ def transforms_func(img: np.ndarray, transforms: Callable):
     return transforms(image=img)["image"]
 
 
-# Датасет
+# Dataset
 
 
 def default_transform(**kwargs):
@@ -466,7 +467,22 @@ def get_callbacks(
     return callbacks
 
 
-# Само обучение
+def _initial_epoch_from_resume(
+    resume_checkpoint_filepath: Optional[str],
+    resume_checkpoint_epoch: Optional[int],
+) -> int:
+    if resume_checkpoint_epoch is not None:
+        return int(resume_checkpoint_epoch)
+    if resume_checkpoint_filepath is None:
+        return 0
+    try:
+        return int(Pathy.fluid(resume_checkpoint_filepath).name.split("__")[0])
+    except (TypeError, ValueError):
+        print(f"Could not parse initial epoch from checkpoint filename: {resume_checkpoint_filepath!r}")
+        return 0
+
+
+# Training loop
 
 
 def train_on_tensorflow(
@@ -480,6 +496,7 @@ def train_on_tensorflow(
     class_weight: Optional[Dict[int, float]],
     clean_checkpoints_after_train: bool,
     resume_checkpoint_filepath: Optional[str],
+    resume_checkpoint_epoch: Optional[int],
     sync_config: Optional[TrainingSyncConfig],
 ) -> Tuple[FluidPath, Optional[str], Optional[str], str]:
     protocol, logdir_exp_str_path = fsspec.core.split_protocol(str(logdir_exp))
@@ -496,13 +513,14 @@ def train_on_tensorflow(
 
     best_model_path = None
     traceback_logs = None
+    interrupted = False
     try:
         strategy = tf.distribute.MirroredStrategy()
         print("Number of devices: {}".format(strategy.num_replicas_in_sync))
 
         if resume_checkpoint_filepath is not None:
             print(f"Getting model: {resume_checkpoint_filepath=}")
-            initial_epoch = int(Pathy.fluid(resume_checkpoint_filepath).name.split("__")[0])
+            initial_epoch = _initial_epoch_from_resume(resume_checkpoint_filepath, resume_checkpoint_epoch)
         else:
             print("Getting raw model")
             initial_epoch = 0
@@ -566,7 +584,8 @@ def train_on_tensorflow(
         print("Training model failed.")
         raise e
     except KeyboardInterrupt:
-        print("Catched KeyboardInterrupt in train process. Stopping the train...")
+        interrupted = True
+        print("Caught KeyboardInterrupt in train process. Stopping the train...")
     finally:
         best_model_paths: List[str] = sorted(fs.glob(str(logdir_exp / "*.keras")))
         if len(best_model_paths) >= 1:
@@ -575,12 +594,15 @@ def train_on_tensorflow(
             print(f"Best model: {best_model_path}")
             if clean_checkpoints_after_train and len(best_model_paths) > 3:
                 for model_path in best_model_paths[:-2]:
-                    # Удаляем все кроме последних 2
-                    # Тк возможен случай, когда отменили обучение во время сохранения модели
+                    # Keep only the last two checkpoints.
+                    # Training may be interrupted while a checkpoint is being written.
                     fs.rm(model_path)
         else:
             print(f"Exp failed. Removing {logdir_exp}.")
             shutil.rmtree(logdir_exp, ignore_errors=True)
+
+    if interrupted:
+        raise KeyboardInterrupt
 
     return logdir_exp, best_model_path, traceback_logs, preprocess_input_script_path
 
@@ -608,7 +630,7 @@ class TF_ClassificationTrainingConfig:
     label_smoothing: float
     augmentations: bool
     augment_func_file: Optional[str]
-    class_weight: bool  # TODO: внедрить кастомную логику
+    class_weight: bool  # TODO: support custom per-class weight dictionaries
     model_spec: Optional[TFModelSpec] = None
 
     def __post_init__(self):
@@ -627,6 +649,7 @@ def train_model_main(
     clean_checkpoints_after_train: bool,
     tmp_folder: str,
     resume_checkpoint_filepath: Optional[str],
+    resume_checkpoint_epoch: Optional[int],
     sync_config: Optional[TrainingSyncConfig],
     persisted_models_dir: Optional[str] = None,
 ) -> TrainModelResult:
@@ -720,6 +743,7 @@ def train_model_main(
         class_weight=class_weight,
         clean_checkpoints_after_train=clean_checkpoints_after_train,
         resume_checkpoint_filepath=resume_checkpoint_filepath,
+        resume_checkpoint_epoch=resume_checkpoint_epoch,
         sync_config=sync_config,
     )
     if persisted_models_dir and best_model_path is not None:
@@ -752,6 +776,7 @@ def train_process(
     clean_checkpoints_after_train: bool,
     tmp_folder: str,
     resume_checkpoint_filepath: Optional[str],
+    resume_checkpoint_epoch: Optional[int],
     sync_config: Optional[TrainingSyncConfig],
     persisted_models_dir: Optional[str] = None,
 ):
@@ -767,6 +792,7 @@ def train_process(
             clean_checkpoints_after_train=clean_checkpoints_after_train,
             tmp_folder=tmp_folder,
             resume_checkpoint_filepath=resume_checkpoint_filepath,
+            resume_checkpoint_epoch=resume_checkpoint_epoch,
             sync_config=sync_config,
             persisted_models_dir=persisted_models_dir,
         )
@@ -776,10 +802,9 @@ def train_process(
         traceback_logs = format_exc(e)
         print(traceback_logs)
         print("Training model failed.")
-        # os.kill(os.getppid(), signal.SIGKILL)
     finally:
         if train_model_result is None:
             train_model_result = TrainModelResult(traceback_logs=traceback_logs)
-        queue.put(train_model_result)
+        failed = train_model_result.classification_model_id is None
         print("Training process exited!")
-        exit(0)
+        finish_training_subprocess(queue, train_model_result, failed=failed)

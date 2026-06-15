@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 from datapipe.compute import Catalog, ComputeStep, PipelineStep
@@ -29,6 +29,7 @@ from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig as _V8Config
 from datapipe_ml.frameworks.yolo.yolov8.runner import train_process as _v8_train_process
 from datapipe_ml.training.orchestrator import orchestrate
+from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
 
@@ -85,7 +86,7 @@ def get_yolov8_detection_train_configs(yolov8_train_configs: List[YoloV8_Trainin
 
 @dataclass
 class Train_YoloV8_DetectionModel(PipelineStep):
-    # те же поля, что и раньше…
+    # same fields as before
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
@@ -111,7 +112,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
     detection_model_primary_keys: Optional[List[str]] = None
     detection_model_id__name: str = "detection_model_id"
     detection_frozen_dataset_id__name: str = "detection_frozen_dataset_id"
-    tmp_folder: str = "/tmp/"
+    tmp_folder: str = field(default_factory=default_tmp_folder)
     ignore_errors_sample_sizes: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None

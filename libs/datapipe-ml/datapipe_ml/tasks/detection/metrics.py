@@ -141,7 +141,7 @@ def count_detection_metrics_on_subset(
 
     group_cols = [tbl.c[k] for k in detection_model_primary_keys] + [col_subset_id]
 
-    # количество изображений = число строк per-image таблицы (по группе)
+    # image count = number of per-image rows in the group
     img_count = func.count().label("calc__images_support")
 
     sum_support = func.sum(col_support).label("calc__support")
@@ -149,12 +149,12 @@ def count_detection_metrics_on_subset(
     sum_FP = func.sum(col_FP).label("calc__FP")
     sum_FN = func.sum(col_FN).label("calc__FN")
 
-    # Взвешенное по support среднее IoU
+    # support-weighted mean IoU
     weighted_iou_num = func.sum(sql_cast(col_iou_mean, Float) * sql_cast(col_support, Float))
     weighted_iou_den = func.nullif(sql_cast(func.sum(col_support), Float), sql_cast(0, Float))
     agg_iou_mean = (weighted_iou_num / weighted_iou_den).label("calc__iou_mean")
 
-    # Метрики (float-деление)
+    # metrics with float division
     prec = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP, Float), sql_cast(0, Float))
     rec = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FN, Float), sql_cast(0, Float))
     acc = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP + sum_FN, Float), sql_cast(0, Float))

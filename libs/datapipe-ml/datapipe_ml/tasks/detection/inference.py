@@ -1,8 +1,5 @@
-import importlib
 import os
-import sys
 from collections.abc import Callable, Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -38,23 +35,17 @@ from datapipe_ml.inference.bbox_crops import predict_bbox_like_by_crops
 from datapipe_ml.metrics.common import stable_unique
 
 
-@contextmanager
-def hide_modules(modules: Optional[List[str]]):
-    if modules is None:
-        yield
-        return
-    saved = {n: m for n, m in sys.modules.items() if n in modules}
-    for n in saved:
-        sys.modules.pop(n, None)
-
-    try:
-        yield
-    finally:
-        for n in list(sys.modules):
-            if n in modules:
-                sys.modules.pop(n, None)
-        sys.modules.update(saved)
-        importlib.invalidate_caches()
+def min_prediction_threshold_from_class_thresholds(
+    df: pd.DataFrame,
+    class_name_to_threshold__name: str,
+    *,
+    default: float = 0.01,
+) -> float:
+    mins: list[float] = []
+    for mapping in df[class_name_to_threshold__name]:
+        if isinstance(mapping, dict) and mapping:
+            mins.append(min(float(value) for value in mapping.values()))
+    return min(mins) if mins else default
 
 
 # @cachetools.func.ttl_cache(maxsize=1, ttl=300)
@@ -120,7 +111,6 @@ def detection_inference(
     blockHeight: Optional[int] = None,
     prediction_threshold: Optional[float] = None,
     class_name_to_threshold__name: Optional[str] = None,
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None,
 ):
     df__image: pd.DataFrame = dfs[0]
     if len(dfs) >= 3:
@@ -178,10 +168,9 @@ def detection_inference(
             ),
             detection_model__type=df_grouped.iloc[0]["detection_model__type"],
         )
-        with hide_modules(modules=modules_to_hide_when_loading_detection_model):
-            detection_model = PipelineModelSpec(
-                detection_model_spec=detection_model_spec, classification_model_spec=None
-            ).load_pipeline_inferencer()
+        detection_model = PipelineModelSpec(
+            detection_model_spec=detection_model_spec, classification_model_spec=None
+        ).load_pipeline_inferencer()
         images_data = [ImageData(image_path=image_path) for image_path in df_grouped[image__image_path__name]]
         if inference_by_crops:
             assert hCrossing is not None
@@ -256,7 +245,6 @@ class Inference_DetectionModel(PipelineStep):
     filters: Union[LabelDict, Callable[[], LabelDict], None] = None
     detection_model_primary_keys: Optional[List[str]] = None
     prediction_threshold: Optional[float] = None
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.detection_model_primary_keys is None:
@@ -368,7 +356,6 @@ class Inference_DetectionModel(PipelineStep):
                         batch_size_default=self.batch_size_default,
                         detection_model_primary_keys=self.detection_model_primary_keys,
                         prediction_threshold=self.prediction_threshold,
-                        modules_to_hide_when_loading_detection_model=self.modules_to_hide_when_loading_detection_model,
                     ),
                     executor_config=self.executor_config,
                     filters=self.filters,
@@ -391,7 +378,6 @@ def detection_inference_by_crops(
     blockWidth: int,
     blockHeight: int,
     prediction_threshold: Optional[float],
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None,
 ):
     return detection_inference(
         *dfs,
@@ -407,7 +393,6 @@ def detection_inference_by_crops(
         blockWidth=blockWidth,
         blockHeight=blockHeight,
         prediction_threshold=prediction_threshold,
-        modules_to_hide_when_loading_detection_model=modules_to_hide_when_loading_detection_model,
     )
 
 
@@ -432,7 +417,6 @@ class InferenceBySplitOnCrops_DetectionModel(PipelineStep):
     filters: Union[LabelDict, Callable[[], LabelDict], None] = None
     detection_model_primary_keys: Optional[List[str]] = None
     prediction_threshold: Optional[float] = None
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.detection_model_primary_keys is None:
@@ -549,7 +533,6 @@ class InferenceBySplitOnCrops_DetectionModel(PipelineStep):
                         blockHeight=self.blockHeight,
                         detection_model_primary_keys=self.detection_model_primary_keys,
                         prediction_threshold=self.prediction_threshold,
-                        modules_to_hide_when_loading_detection_model=self.modules_to_hide_when_loading_detection_model,
                     ),
                     executor_config=self.executor_config,
                     filters=self.filters,
@@ -567,10 +550,13 @@ def detection_inference_using_thresholds(
     batch_size_default: int,
     detection_model_primary_keys: List[str],
     class_name_to_threshold__name: str,
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None,
 ):
     df__detection_model = pd.merge(dfs[-2], dfs[-1], on=detection_model_primary_keys)
     dfs_list = list(dfs)[:-2] + [df__detection_model]
+    prediction_threshold = min_prediction_threshold_from_class_thresholds(
+        df__detection_model,
+        class_name_to_threshold__name,
+    )
     return detection_inference(
         *dfs_list,
         image__image_path__name=image__image_path__name,
@@ -578,9 +564,8 @@ def detection_inference_using_thresholds(
         bbox_id__name=bbox_id__name,
         batch_size_default=batch_size_default,
         detection_model_primary_keys=detection_model_primary_keys,
-        prediction_threshold=0.01,
+        prediction_threshold=prediction_threshold,
         class_name_to_threshold__name=class_name_to_threshold__name,
-        modules_to_hide_when_loading_detection_model=modules_to_hide_when_loading_detection_model,
     )
 
 
@@ -601,7 +586,6 @@ class Inference_UsingThresholdsPerClasss_DetectionModel(PipelineStep):
     filters: Union[LabelDict, Callable[[], LabelDict], None] = None
     detection_model_primary_keys: Optional[List[str]] = None
     class_name_to_threshold__name: str = "class_name_to_threshold"
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.detection_model_primary_keys is None:
@@ -722,7 +706,6 @@ class Inference_UsingThresholdsPerClasss_DetectionModel(PipelineStep):
                         batch_size_default=self.batch_size_default,
                         detection_model_primary_keys=self.detection_model_primary_keys,
                         class_name_to_threshold__name=self.class_name_to_threshold__name,
-                        modules_to_hide_when_loading_detection_model=self.modules_to_hide_when_loading_detection_model,
                     ),
                     executor_config=self.executor_config,
                     filters=self.filters,

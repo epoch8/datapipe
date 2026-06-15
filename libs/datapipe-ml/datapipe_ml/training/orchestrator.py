@@ -231,7 +231,12 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 config=ctx.resume_config,
             )
             if resume_checkpoint is not None:
-                train_params = algo.apply_resume_checkpoint(ctx, train_params, resume_checkpoint.path)
+                train_params = algo.apply_resume_checkpoint(
+                    ctx,
+                    train_params,
+                    resume_checkpoint.path,
+                    resume_checkpoint.epoch,
+                )
         else:
             previous_model_id = existing_status.get(ctx.model_id__name)
             if previous_model_id and model_id == str(previous_model_id):

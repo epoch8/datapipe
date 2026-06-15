@@ -8,6 +8,7 @@ from datapipe_label_studio.types import S3Bucket
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
+from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
 from datapipe_ml.tasks.keypoints.metrics import CountMetrics_FrozenDataset_KeypointsModel
@@ -161,8 +162,21 @@ pipeline = Pipeline(
                     batch=8,
                     epochs=30,
                     exist_ok=True,
+                    save_period=1,
                 )
             ],
+            sync_config=TrainingSyncConfig(
+                enabled=True,
+                interval_s=600,
+                retries=3,
+                retry_sleep_s=30,
+            ),
+            resume_config=TrainingResumeConfig(
+                continue_train_failed_models=True,
+                min_completed_epochs=1,
+                max_attempts=3,
+                reset_attempts_after="1d",
+            ),
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],

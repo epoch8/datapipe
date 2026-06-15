@@ -15,6 +15,8 @@ import numpy as np
 import yaml
 from PIL import Image
 
+from datapipe_ml.core.multiprocessing import finish_training_subprocess
+from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.frameworks.yolo.artifacts import (
     YoloDataYAMLConfig,
     yolo_collect_results_generic,
@@ -30,7 +32,7 @@ from datapipe_ml.training.specs import TrainingSyncConfig
 from datapipe_ml.training.sync import PeriodicTrainingSync
 
 logger = logging.getLogger("datapipe.ml.yolov5.script")
-os.environ["WANDB_DISABLED"] = "true"  # запретить wandb
+os.environ["WANDB_DISABLED"] = "true"  # disable Weights & Biases logging
 
 YOLOV5_DEFAULT_PROJECT = "yolov5.ROOT / 'runs/train'"
 YOLOV5_DEFAULT_DATA = "yolov5.ROOT / 'data/coco128.yaml'"
@@ -114,7 +116,7 @@ class YoloV5_TrainingConfig:
     artifact_alias: str = "latest"  # W&B: Version of dataset artifact to use
 
     # Mine Epoch8 arguments:
-    tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
+    tmp_folder: str = field(default_factory=default_tmp_folder)  # When used cloud images, store them to this folder
     initial_weights_path: Optional[str] = None
     persisted_project_dir: Optional[str] = None
 
@@ -201,29 +203,32 @@ def _resolve_yolov5_root_expr(value: str, root: Path) -> Optional[str]:
     return None
 
 
-def _apply_yolov5_hyp_overrides(cfg: YoloV5_TrainingConfig) -> None:
+def _apply_yolov5_hyp_overrides(cfg: YoloV5_TrainingConfig) -> Optional[Path]:
     overrides = {
         field.name: cfg.__dict__[field.name]
         for field in fields(cfg)
         if field.name in YOLOV5_HYP_OVERRIDE_FIELD_NAMES and cfg.__dict__[field.name] is not None
     }
     if not overrides:
-        return
+        return None
 
     hyp_path = Path(cfg.hyp)
     with open(hyp_path) as f:
         hyp = yaml.safe_load(f) or {}
     hyp.update(overrides)
 
-    tmp_hyp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
-    yaml.safe_dump(hyp, tmp_hyp, sort_keys=False)
-    tmp_hyp.close()
-    cfg.hyp = tmp_hyp.name
+    tmp_hyp_path = Path(tempfile.mkstemp(suffix=".yaml")[1])
+    with open(tmp_hyp_path, "w") as tmp_hyp:
+        yaml.safe_dump(hyp, tmp_hyp, sort_keys=False)
+    cfg.hyp = str(tmp_hyp_path)
     logger.info("Applied YOLOv5 hyp overrides %s -> %s", overrides, cfg.hyp)
+    return tmp_hyp_path
 
 
-def _resolve_defaults_and_objects_count(cfg: YoloV5_TrainingConfig, ROOT: Path, objects_count: Optional[int]) -> int:
-    # Привязка путей по умолчанию к корню скрипта
+def _resolve_defaults_and_objects_count(
+    cfg: YoloV5_TrainingConfig, ROOT: Path, objects_count: Optional[int]
+) -> tuple[int, Optional[Path]]:
+    # Bind default paths to the training script root.
     if cfg.project is None:
         cfg.project = str(ROOT / "runs/train")
     else:
@@ -249,12 +254,12 @@ def _resolve_defaults_and_objects_count(cfg: YoloV5_TrainingConfig, ROOT: Path, 
         if resolved_hyp is not None:
             cfg.hyp = resolved_hyp
 
+    tmp_hyp_path = _apply_yolov5_hyp_overrides(cfg)
     if objects_count is None:
         data_cfg = yolo_load_data_config(cfg.data) if isinstance(cfg.data, (str, Path)) else cfg.data
         objects_count = yolo_count_objects(data_cfg)
 
-    _apply_yolov5_hyp_overrides(cfg)
-    return objects_count
+    return objects_count, tmp_hyp_path
 
 
 def train_model(
@@ -272,10 +277,10 @@ def train_model(
         yolov5_module = Path(yolov5_script_file)
     ROOT = yolov5_module.parent
 
-    # Значения по умолчанию + рассчёт objects_count
-    objects_count = _resolve_defaults_and_objects_count(yolov5_training_config, ROOT, objects_count)
+    # Defaults plus objects_count calculation.
+    objects_count, tmp_hyp_path = _resolve_defaults_and_objects_count(yolov5_training_config, ROOT, objects_count)
 
-    # Облачные пути -> локальные tmp
+    # Cloud paths -> local temp copies.
     (
         src_images_dir_path,
         src_project_path,
@@ -290,101 +295,105 @@ def train_model(
         coco_txt_filepaths=coco_txt_filepaths,
     )
 
-    # Если data — объект, пишем временный yaml и подменяем путь
+    # If data is an object, write a temp yaml and replace the path.
     class_names, tmp_yaml_path = yolo_write_data_yaml_if_needed(yolov5_training_config)
-    if not class_names and isinstance(yolov5_training_config.data, str):
-        # если это строка — попробуем прочитать имена классов (для class_names.json)
-        try:
-            cfg = yolo_load_data_config(yolov5_training_config.data)
-            class_names = cfg.names
-        except Exception:
-            class_names = []
+    try:
+        if not class_names and isinstance(yolov5_training_config.data, str):
+            # If data is a path string, try to read class names for class_names.json.
+            try:
+                cfg = yolo_load_data_config(yolov5_training_config.data)
+                class_names = cfg.names
+            except Exception:
+                class_names = []
 
-    logger.info("yolov5_training_config=%s", yolov5_training_config)
-    arguments = yolov5_training_config.get_arguments()
-    command: List[str] = [sys.executable, str(yolov5_module)] + arguments
-    logger.info("Running %s", command)
-    env = os.environ.copy()
-    env.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
-    output_sync = None
-    if sync_config is not None and sync_config.enabled:
-        output_sync = PeriodicTrainingSync(
-            src=str(tmp_dir_project or yolov5_training_config.project),
-            dst=str(src_project_path or yolov5_training_config.project),
-            config=sync_config,
-            model_id=yolov5_training_config.name,
+        logger.info("yolov5_training_config=%s", yolov5_training_config)
+        arguments = yolov5_training_config.get_arguments()
+        command: List[str] = [sys.executable, str(yolov5_module)] + arguments
+        logger.info("Running %s", command)
+        env = os.environ.copy()
+        env.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+        output_sync = None
+        if sync_config is not None and sync_config.enabled:
+            output_sync = PeriodicTrainingSync(
+                src=str(tmp_dir_project or yolov5_training_config.project),
+                dst=str(src_project_path or yolov5_training_config.project),
+                config=sync_config,
+                model_id=yolov5_training_config.name,
+            )
+
+        def _train_and_collect_metadata() -> Optional[Path]:
+            process = subprocess.run(command, env=env)
+            logger.info("Process ended with returncode=%s.", process.returncode)
+            if process.returncode != 0:
+                raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
+            if yolov5_training_config.project is None:
+                return None
+            selected_exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
+            if selected_exp_folder is None:
+                return None
+            if tmp_yaml_path and tmp_yaml_path.exists():
+                shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
+            with open(selected_exp_folder / "class_names.json", "w") as out:
+                json.dump(class_names, out, indent=4, ensure_ascii=False)
+            return selected_exp_folder
+
+        if output_sync is None:
+            exp_folder = _train_and_collect_metadata()
+        else:
+            with output_sync:
+                exp_folder = _train_and_collect_metadata()
+
+        if exp_folder is None:
+            return None
+
+        f1_curve_image = None
+        if (exp_folder / "F1_curve.png").exists():
+            f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
+        best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
+
+        exp_folder = yolo_finalize_training_output(
+            exp_folder,
+            persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
+            tmp_dir_images_cls=tmp_dir_images_cls,
+            tmp_dir_project_cls=tmp_dir_project_cls,
+            tmp_dir_model_cls=tmp_dir_model_cls,
         )
 
-    def _train_and_collect_metadata() -> Optional[Path]:
-        process = subprocess.run(command, env=env)
-        logger.info("Process ended with returncode=%s.", process.returncode)
-        if process.returncode != 0:
-            raise RuntimeError(f"YOLOv5 training process failed with returncode={process.returncode}.")
-        if yolov5_training_config.project is None:
-            return None
-        selected_exp_folder = yolo_select_last_exp(yolov5_training_config.project, yolov5_training_config.name)
-        if selected_exp_folder is None:
-            return None
-        if tmp_yaml_path and tmp_yaml_path.exists():
-            shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
-        with open(selected_exp_folder / "class_names.json", "w") as out:
-            json.dump(class_names, out, indent=4, ensure_ascii=False)
-        return selected_exp_folder
-
-    if output_sync is None:
-        exp_folder = _train_and_collect_metadata()
-    else:
-        with output_sync:
-            exp_folder = _train_and_collect_metadata()
-
-    if exp_folder is None:
-        return None
-
-    f1_curve_image = None
-    if (exp_folder / "F1_curve.png").exists():
-        f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
-    best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
-
-    exp_folder = yolo_finalize_training_output(
-        exp_folder,
-        persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
-        tmp_dir_images_cls=tmp_dir_images_cls,
-        tmp_dir_project_cls=tmp_dir_project_cls,
-        tmp_dir_model_cls=tmp_dir_model_cls,
-    )
-
-    # Сбор результатов (карта колонок -> поля dataclass)
-    rename_map = {
-        "epoch": "epoch",
-        "train/box_loss": "train_box_loss",
-        "train/obj_loss": "train_obj_loss",
-        "train/cls_loss": "train_cls_loss",
-        "metrics/precision": "metrics_precision",
-        "metrics/recall": "metrics_recall",
-        "metrics/mAP_0.5": "metrics_mAP_0_5",
-        "metrics/mAP_0.5:0.95": "metrics_mAP_0_5_to_0_95",
-        "val/box_loss": "val_box_loss",
-        "val/obj_loss": "val_obj_loss",
-        "val/cls_loss": "val_cls_loss",
-        "x/lr0": "x_lr0",
-        "x/lr1": "x_lr1",
-        "x/lr2": "x_lr2",
-    }
-    results = yolo_collect_results_generic(
-        exp_folder=str(exp_folder),
-        result_cls=TrainingResult,
-        id_field_name="detection_model_id",
-        id_field_value=yolov5_training_config.name,
-        class_names=class_names,
-        objects_count=objects_count,
-        f1_image_field_name="f1_curve_image",
-        f1_image=f1_curve_image,
-        best_threshold=best_threshold,
-        rename_map=rename_map,
-        best_metric_col="metrics_mAP_0_5_to_0_95",
-        weights_subdir="weights",
-    )
-    return results
+        # Collect results (column map -> dataclass fields).
+        rename_map = {
+            "epoch": "epoch",
+            "train/box_loss": "train_box_loss",
+            "train/obj_loss": "train_obj_loss",
+            "train/cls_loss": "train_cls_loss",
+            "metrics/precision": "metrics_precision",
+            "metrics/recall": "metrics_recall",
+            "metrics/mAP_0.5": "metrics_mAP_0_5",
+            "metrics/mAP_0.5:0.95": "metrics_mAP_0_5_to_0_95",
+            "val/box_loss": "val_box_loss",
+            "val/obj_loss": "val_obj_loss",
+            "val/cls_loss": "val_cls_loss",
+            "x/lr0": "x_lr0",
+            "x/lr1": "x_lr1",
+            "x/lr2": "x_lr2",
+        }
+        return yolo_collect_results_generic(
+            exp_folder=str(exp_folder),
+            result_cls=TrainingResult,
+            id_field_name="detection_model_id",
+            id_field_value=yolov5_training_config.name,
+            class_names=class_names,
+            objects_count=objects_count,
+            f1_image_field_name="f1_curve_image",
+            f1_image=f1_curve_image,
+            best_threshold=best_threshold,
+            rename_map=rename_map,
+            best_metric_col="metrics_mAP_0_5_to_0_95",
+            weights_subdir="weights",
+        )
+    finally:
+        for temp_path in (tmp_yaml_path, tmp_hyp_path):
+            if temp_path and temp_path.exists():
+                temp_path.unlink(missing_ok=True)
 
 
 def train_process(
@@ -417,6 +426,6 @@ def train_process(
         logger.error("Training model failed.")
     finally:
         train_model_result = TrainModelResult(training_results=training_results, traceback_logs=traceback_logs)
-        queue.put(train_model_result)
+        failed = traceback_logs is not None or training_results is None
         logger.info("Training process exited!")
-        exit(0)
+        finish_training_subprocess(queue, train_model_result, failed=failed)

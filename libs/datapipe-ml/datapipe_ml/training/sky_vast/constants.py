@@ -1,6 +1,8 @@
 from pathlib import Path
 
-REMOTE_ROOT = Path("/workspace/datapipe_ml")
+from datapipe_ml.training.paths import remote_training_root
+
+REMOTE_ROOT = Path(remote_training_root())
 REMOTE_INPUT = REMOTE_ROOT / "input"
 REMOTE_OUTPUT = REMOTE_ROOT / "output"
 REMOTE_SIGNALS = REMOTE_ROOT / "signals"
@@ -9,4 +11,5 @@ REMOTE_VENV = REMOTE_ROOT / ".venv"
 REMOTE_SOURCE_ARCHIVE = REMOTE_ROOT / "source.tar.gz"
 REMOTE_PAYLOAD = REMOTE_ROOT / "payload.txt"
 REMOTE_RESULT = REMOTE_ROOT / "result.txt"
+REMOTE_TRACEBACK = REMOTE_ROOT / "traceback.txt"
 REMOTE_WORKER_ENTRYPOINT = REMOTE_ROOT / "worker_entrypoint.py"

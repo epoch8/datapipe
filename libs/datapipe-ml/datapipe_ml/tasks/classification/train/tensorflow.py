@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -37,6 +37,7 @@ from datapipe_ml.frameworks.tensorflow.classification_runner import (
 
 # Import concrete pieces for v5
 from datapipe_ml.training.orchestrator import orchestrate
+from datapipe_ml.training.paths import default_tmp_folder, remote_input_path, remote_output_models_path
 from datapipe_ml.training.specs import (
     Algo,
     PreparedData,
@@ -135,11 +136,15 @@ class TFClassificationAlgo(Algo):
     model_row_prefix = "classification_model"
 
     def check_accelerator(self, train_params: Dict[str, Any]) -> None:
-        pass
-        # import tensorflow as tf
+        from datapipe_ml.training.accelerator import cpu_training_allowed
 
-        # if not tf.test.is_gpu_available():
-        #     raise ValueError("GPU not found.")
+        if cpu_training_allowed(train_params):
+            return
+
+        import tensorflow as tf
+
+        if not tf.config.list_physical_devices("GPU"):
+            raise ValueError("GPU not found.")
 
     def prepare_data(self, ctx: TrainContext, idx: IndexDF) -> TensorflowClassificationPreparedData:
         if ctx.dt__frozen_dataset__has__image_gt is None:
@@ -173,6 +178,7 @@ class TFClassificationAlgo(Algo):
 
         train_params = dict(train_params)
         resume_checkpoint_filepath = train_params.pop("__resume_checkpoint_filepath", None)
+        resume_checkpoint_epoch = train_params.pop("__resume_checkpoint_epoch", None)
         cfg = TF_ClassificationTrainingConfig(**train_params)
         # ctx has an extra field clean_checkpoints_after_train in TensorflowClassificationTrainContext
         from typing import cast as _cast
@@ -181,7 +187,7 @@ class TFClassificationAlgo(Algo):
         d = _cast(TensorflowClassificationPreparedData, data)
         image_paths = tuple(str(path) for path in d.df__frozen_dataset__has__image_gt["image__image_path"].tolist())
         image_rewrites = tuple(
-            (path, f"/workspace/datapipe_ml/input/classification_images/{Path(path).name}") for path in image_paths
+            (path, remote_input_path("classification_images", Path(path).name)) for path in image_paths
         )
         write_models_dir = ctx.training_output_write_dir or ctx.models_dir
         subprocess_sync_config = None if ctx.training_output_write_dir else ctx.sync_config
@@ -198,12 +204,13 @@ class TFClassificationAlgo(Algo):
                     tctx.clean_checkpoints_after_train,
                     str(ctx.tmp_folder),
                     resume_checkpoint_filepath,
+                    resume_checkpoint_epoch,
                     subprocess_sync_config,
                     persisted_models_dir,
                 ),
                 cluster_suffix=model_id,
                 inputs=tuple(TrainingPathMap(local_path, remote_path) for local_path, remote_path in image_rewrites),
-                outputs=(TrainingPathMap(str(ctx.models_dir), "/workspace/datapipe_ml/output/models"),),
+                outputs=(TrainingPathMap(str(ctx.models_dir), remote_output_models_path()),),
             )
         )
 
@@ -230,10 +237,13 @@ class TFClassificationAlgo(Algo):
         ctx: TrainContext,
         train_params: Dict[str, Any],
         checkpoint_path: Optional[str],
+        checkpoint_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
         params = dict(train_params)
         if checkpoint_path is not None:
             params["__resume_checkpoint_filepath"] = checkpoint_path
+        if checkpoint_epoch is not None:
+            params["__resume_checkpoint_epoch"] = checkpoint_epoch
         return params
 
     def build_model_row(
@@ -340,7 +350,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     classification_model_id__name: str = "classification_model_id"
     classification_frozen_dataset_id__name: str = "classification_frozen_dataset_id"
     clean_checkpoints_after_train: bool = False
-    tmp_folder: str = "/tmp/"  # When used cloud images, store them to this folder
+    tmp_folder: str = field(default_factory=default_tmp_folder)  # When used cloud images, store them to this folder
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None

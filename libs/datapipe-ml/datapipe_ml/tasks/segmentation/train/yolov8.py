@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -33,6 +33,7 @@ from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig as _V8Config
 from datapipe_ml.frameworks.yolo.yolov8.runner import train_process as _v8_train_process
 from datapipe_ml.training.orchestrator import orchestrate
+from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
 logger = logging.getLogger("datapipe.ml.yolov8.script")
@@ -129,7 +130,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     segmentation_model_primary_keys: Optional[List[str]] = None
     segmentation_model_id__name: str = "segmentation_model_id"
     segmentation_frozen_dataset_id__name: str = "segmentation_frozen_dataset_id"
-    tmp_folder: str = "/tmp/"
+    tmp_folder: str = field(default_factory=default_tmp_folder)
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None
     sync_config: Optional[TrainingSyncConfig] = None

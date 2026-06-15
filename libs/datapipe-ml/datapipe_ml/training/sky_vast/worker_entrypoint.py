@@ -1,28 +1,26 @@
 from __future__ import annotations
 
-import base64
 import logging
 import multiprocessing as mp
-import pickle
 import queue as queue_module
 import sys
 from pathlib import Path
 
-ROOT = Path("/workspace/datapipe_ml")
-SIGNALS_DIR = ROOT / "signals"
-PAYLOAD_PATH = ROOT / "payload.txt"
-RESULT_PATH = ROOT / "result.txt"
-TRACEBACK_PATH = ROOT / "traceback.txt"
+from datapipe_ml.training.sky_vast.constants import (
+    REMOTE_PAYLOAD,
+    REMOTE_RESULT,
+    REMOTE_ROOT,
+    REMOTE_SIGNALS,
+    REMOTE_TRACEBACK,
+)
+from datapipe_ml.training.sky_vast.serialization import dumps_to_text, loads_from_text
 
 logger = logging.getLogger("datapipe.ml.sky_vast.worker_entrypoint")
 
-
-def dumps_to_text(value):
-    return base64.b64encode(pickle.dumps(value)).decode("ascii")
-
-
-def loads_from_text(value: str):
-    return pickle.loads(base64.b64decode(value.encode("ascii")))
+SIGNALS_DIR = REMOTE_SIGNALS
+PAYLOAD_PATH = REMOTE_PAYLOAD
+RESULT_PATH = REMOTE_RESULT
+TRACEBACK_PATH = REMOTE_TRACEBACK
 
 
 def remote_smoke_process(queue) -> None:
@@ -57,7 +55,7 @@ def main() -> int:
         process.join()
         print(f"[sky-vast-worker] training process exitcode={process.exitcode}", flush=True)
         if process.exitcode not in (0, None):
-            raise RuntimeError(f"Remote training process exited with code {process.exitcode}")
+            logger.warning("Training process exited with code %s after returning a result", process.exitcode)
         RESULT_PATH.write_text(dumps_to_text(result))
         print(f"[sky-vast-worker] wrote result to {RESULT_PATH}", flush=True)
         (SIGNALS_DIR / "TRAIN_DONE").touch()

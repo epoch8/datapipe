@@ -1,5 +1,5 @@
 # algos/yolov5.py
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -20,6 +20,7 @@ from datapipe_ml.frameworks.yolo.dataset import (
     get_class_names_from_det_frozen_dataset_gt,
     resize_and_prepare_yolo_images,
 )
+from datapipe_ml.training.paths import default_tmp_folder, remote_input_path, remote_output_models_path
 from datapipe_ml.frameworks.yolo.training import (
     YoloBaseAlgo,
     YoloPreparedData,
@@ -79,6 +80,7 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         ctx: TrainContext,
         train_params: Dict[str, Any],
         checkpoint_path: Optional[str],
+        checkpoint_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
         params = dict(train_params)
         if checkpoint_path is None:
@@ -116,8 +118,8 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
                     subprocess_sync_config,
                 ),
                 cluster_suffix=model_id,
-                inputs=(TrainingPathMap(data.data_src_path, "/workspace/datapipe_ml/input/data"),),
-                outputs=(TrainingPathMap(str(ctx.models_dir), "/workspace/datapipe_ml/output/models"),),
+                inputs=(TrainingPathMap(data.data_src_path, remote_input_path("data")),),
+                outputs=(TrainingPathMap(str(ctx.models_dir), remote_output_models_path()),),
             )
         )
 
@@ -175,7 +177,7 @@ def get_yolov5_detection_train_configs(yolov5_train_configs: List[YoloV5_Trainin
 
 @dataclass
 class Train_YoloV5_DetectionModel(PipelineStep):
-    # --- общие поля оставляем как есть ---
+    # --- keep shared fields unchanged ---
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov5_train_config: str
@@ -202,7 +204,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     detection_model_primary_keys: Optional[List[str]] = None
     detection_model_id__name: str = "detection_model_id"
     detection_frozen_dataset_id__name: str = "detection_frozen_dataset_id"
-    tmp_folder: str = "/tmp/"
+    tmp_folder: str = field(default_factory=default_tmp_folder)
     ignore_errors_sample_sizes: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None

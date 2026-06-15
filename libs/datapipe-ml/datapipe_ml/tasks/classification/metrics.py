@@ -103,11 +103,11 @@ def count_classification_metrics_on_subset(
     kwargs: Optional[Dict] = None,
 ):
     """
-    Агрегирует per-image строки до:
-      1) по классам: (model_keys, subset_id, label, ... P/R/F1)
-      2) общий:      (model_keys, subset_id, images_support, support, accuracy, macro/weighted и *_without_pseudo_classes)
-         Если задан known_class_names, дополнительно считаются macro/weighted метрики
-         для known_* и known_*_without_pseudo_classes (12 колонок).
+    Aggregates per-image rows into:
+      1) per-class: (model_keys, subset_id, label, ... P/R/F1)
+      2) overall:   (model_keys, subset_id, images_support, support, accuracy, macro/weighted and *_without_pseudo_classes)
+         When known_class_names is set, macro/weighted metrics are also computed
+         for known_* and known_*_without_pseudo_classes (12 columns).
     """
     from sqlalchemy import cast as sql_cast
 

@@ -13,6 +13,7 @@ import pandas as pd
 from datapipe.datatable import DataTable
 from datapipe.types import IndexDF
 
+from datapipe_ml.training.paths import remote_output_models_path, remote_signals_path, remote_training_root
 from datapipe_ml.training.specs import (
     LocalTrainingLauncher,
     SkyVastTrainingLauncherConfig,
@@ -100,9 +101,9 @@ class LocalTrainingRunState(TrainingLauncherRunState):
 class SkyVastTrainingRunState(TrainingLauncherRunState):
     launcher_type: str = "sky_vast"
     cluster_name: str = ""
-    remote_root: str = "/workspace/datapipe_ml"
-    remote_output_dir: str = "/workspace/datapipe_ml/output/models"
-    remote_signals_dir: str = "/workspace/datapipe_ml/signals"
+    remote_root: str = remote_training_root()
+    remote_output_dir: str = remote_output_models_path()
+    remote_signals_dir: str = remote_signals_path()
 
 
 def launcher_type(config: Optional[TrainingLauncherConfig]) -> str:

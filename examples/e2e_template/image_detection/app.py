@@ -8,6 +8,7 @@ from datapipe_label_studio.types import S3Bucket
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
+from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
 from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
@@ -58,7 +59,6 @@ pipeline = Pipeline(
                 bbox_id__name="bbox_id",
                 batch_size_default=1,
                 detection_model_primary_keys=["detection_model_id"],
-                modules_to_hide_when_loading_detection_model=[],
             ),
             labels=[("stage", "annotation")],
         ),
@@ -162,8 +162,21 @@ pipeline = Pipeline(
                     batch=8,
                     epochs=30,
                     exist_ok=True,
+                    save_period=1,
                 )
             ],
+            sync_config=TrainingSyncConfig(
+                enabled=True,
+                interval_s=600,
+                retries=3,
+                retry_sleep_s=30,
+            ),
+            resume_config=TrainingResumeConfig(
+                continue_train_failed_models=True,
+                min_completed_epochs=1,
+                max_attempts=3,
+                reset_attempts_after="1d",
+            ),
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],
@@ -181,7 +194,6 @@ pipeline = Pipeline(
             image__image_path__name="image_url",
             batch_size_default=1,
             create_table=True,
-            modules_to_hide_when_loading_detection_model=[],
         ),
         CountMetrics_Subset_DetectionModel(
             input__image__ground_truth="image__ground_truth",

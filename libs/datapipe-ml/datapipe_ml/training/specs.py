@@ -247,6 +247,7 @@ class Algo(ABC):
         ctx: TrainContext,
         train_params: Dict[str, Any],
         checkpoint_path: Optional[str],
+        checkpoint_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
         return dict(train_params)
 

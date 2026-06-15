@@ -175,11 +175,11 @@ def count_pipeline_metrics_on_subset(
     kwargs: Optional[Dict[str, Any]] = None,
 ):
     """
-    Возвращает два DataFrame:
-      1) По классам: (model_keys, subset_id, [threshold], label, calc__images_support, calc__support, calc__TP, calc__FP, calc__FN, calc__precision, calc__recall, calc__f1_score)
-      2) Общий:      (model_keys, subset_id, [threshold], calc__images_support, calc__support, calc__accuracy, macro/weighted и *_without_pseudo_classes)
-         Если задан known_class_names, то добавляются ещё 12 колонок:
-         macro/weighted для known_* и known_*_without_pseudo_classes.
+    Returns two DataFrames:
+      1) Per class: (model_keys, subset_id, [threshold], label, calc__images_support, calc__support, calc__TP, calc__FP, calc__FN, calc__precision, calc__recall, calc__f1_score)
+      2) Overall:   (model_keys, subset_id, [threshold], calc__images_support, calc__support, calc__accuracy, macro/weighted and *_without_pseudo_classes)
+         When known_class_names is set, 12 additional columns are added:
+         macro/weighted for known_* and known_*_without_pseudo_classes.
     """
     from sqlalchemy import cast as sql_cast
 
@@ -865,7 +865,6 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
     threshold_sort_values_ascending: bool = True
     image_data_matching_class: Type[ImageDataMatching] = ImageDataMatching
     minimum_detection_score: float = 0.10
-    modules_to_hide_when_loading_detection_model: Optional[List[str]] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
         if self.detection_model_primary_keys is None:
@@ -886,7 +885,6 @@ class Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel(PipelineS
             executor_config=self.inference_executor_config,
             detection_model_primary_keys=self.detection_model_primary_keys,
             prediction_threshold=self.minimum_detection_score,
-            modules_to_hide_when_loading_detection_model=self.modules_to_hide_when_loading_detection_model,
         )
         raw_count_metrics_pipeline = CountMetrics_Subset_PipelineModel(
             input__image__ground_truth=self.input__image__ground_truth,

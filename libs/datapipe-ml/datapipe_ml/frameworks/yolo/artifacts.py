@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -24,12 +25,15 @@ import pandas as pd
 import yaml
 from pathy import FluidPath, Pathy
 
+from datapipe_ml.training.paths import is_default_tmp_folder
 from datapipe_ml.training.staging import (
     LocalStagingDir,
     copy_file_to_local_staging,
     make_local_staging_dir,
     stage_files_to_local_folder,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class YoloTrainingConfigForCloud(Protocol):
@@ -102,7 +106,7 @@ def yolo_best_threshold_from_curve(
     except KeyboardInterrupt:
         raise
     except Exception:
-        print("get_best_threshold: skipping due to exception")
+        logger.exception("Failed to compute best threshold from curve; using default %.2f", best_threshold)
     return best_threshold
 
 
@@ -165,7 +169,7 @@ def yolo_load_best_threshold_from_curve_csv(path: Union[str, Path, Pathy]) -> fl
     except KeyboardInterrupt:
         raise
     except Exception:
-        print("get_best_threshold: skipping due to exception")
+        logger.exception("Failed to compute best threshold from curve; using default %.2f", best_threshold)
     return best_threshold
 
 
@@ -182,7 +186,7 @@ def yolo_write_data_yaml_if_needed(training_config) -> Tuple[List[str], Path]:
         training_config.data = str(tmp_path)
         return class_names, tmp_path
     else:
-        return class_names, Path("")  # ничего не писали
+        return class_names, Path("")  # no temp yaml was written
 
 
 def yolo_select_last_exp(project: str, name_prefix: str) -> Optional[Path]:
@@ -259,7 +263,7 @@ def _yolo_prepare_tmp_dirs_for_cloud(
         tmp_dir_images_cls = make_local_staging_dir(
             tmp_folder=tmp_folder,
             name=f"tmp_images_{training_config.name}",
-            use_managed_tmp=tmp_folder == "/tmp/",
+            use_managed_tmp=is_default_tmp_folder(tmp_folder),
             remove_on_cleanup=True,
         )
         tmp_dir_images = str(tmp_dir_images_cls.path)
@@ -284,7 +288,7 @@ def _yolo_prepare_tmp_dirs_for_cloud(
             tmp_dir_model_cls = make_local_staging_dir(
                 tmp_folder=tmp_folder,
                 name=f"tmp_model_{training_config.name}",
-                use_managed_tmp=tmp_folder == "/tmp/",
+                use_managed_tmp=is_default_tmp_folder(tmp_folder),
                 remove_on_cleanup=True,
             )
             model_path = copy_file_to_local_staging(
@@ -302,7 +306,7 @@ def _yolo_prepare_tmp_dirs_for_cloud(
         tmp_dir_project_cls = make_local_staging_dir(
             tmp_folder=tmp_folder,
             name=f"tmp_project_{training_config.name}",
-            use_managed_tmp=tmp_folder == "/tmp/",
+            use_managed_tmp=is_default_tmp_folder(tmp_folder),
             remove_on_cleanup=True,
         )
         tmp_dir_project = str(tmp_dir_project_cls.path)
@@ -354,26 +358,6 @@ def yolo_finalize_training_output(
             staging_dir.cleanup()
 
     return final_exp_folder
-
-
-def yolo_copy_back_and_cleanup(
-    exp_folder: Path,
-    src_project_path: Optional[str],
-    tmp_dir_images: Optional[str],
-    tmp_dir_project: Optional[str],
-    tmp_dir_images_cls: Optional[LocalStagingDir],
-    tmp_dir_project_cls: Optional[LocalStagingDir],
-    tmp_dir_model_cls: Optional[LocalStagingDir],
-    output_synced: bool = False,
-) -> FluidPath:
-    del tmp_dir_images, tmp_dir_project, output_synced
-    return yolo_finalize_training_output(
-        exp_folder,
-        persisted_project_dir=src_project_path,
-        tmp_dir_images_cls=tmp_dir_images_cls,
-        tmp_dir_project_cls=tmp_dir_project_cls,
-        tmp_dir_model_cls=tmp_dir_model_cls,
-    )
 
 
 def yolo_collect_results_generic(

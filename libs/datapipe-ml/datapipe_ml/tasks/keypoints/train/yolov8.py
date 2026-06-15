@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -31,6 +31,7 @@ from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig as _V8Config
 from datapipe_ml.frameworks.yolo.yolov8.runner import train_process as _v8_train_process
 from datapipe_ml.training.orchestrator import orchestrate
+from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
 logger = logging.getLogger("datapipe.ml.yolov8.keypoints.script")
@@ -131,7 +132,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
     keypoints_model_primary_keys: Optional[List[str]] = None
     keypoints_model_id__name: str = "keypoints_model_id"
     keypoints_frozen_dataset_id__name: str = "keypoints_frozen_dataset_id"
-    tmp_folder: str = "/tmp/"
+    tmp_folder: str = field(default_factory=default_tmp_folder)
     ignore_errors_sample_sizes: bool = False
     model_suffix: str = "_default"
     training_launcher_config: Optional[TrainingLauncherConfig] = None

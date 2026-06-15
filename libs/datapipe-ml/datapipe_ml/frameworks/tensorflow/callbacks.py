@@ -59,25 +59,25 @@ class FsspecModelCheckpoint(Callback):
         mode: str = "auto",
         save_freq: Union[str, int] = "epoch",
         initial_value_threshold: Optional[float] = None,
-        options: Optional[Any] = None,  # будет проигнорирован, если не поддерживается
+        options: Optional[Any] = None,  # ignored when the installed Keras version does not support it
         mirror_async: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        # Поддерживаем оба имени параметра для совместимости с твоим кодом
+        # Support both parameter names for backward compatibility.
         self.remote_filepath_pattern = remote_filepath_pattern or filepath
         if not self.remote_filepath_pattern:
             raise ValueError("You must pass `filepath` (alias: `remote_filepath_pattern`).")
 
         self.verbose = int(verbose)
 
-        # temp-директория на весь ран
+        # Temp directory for the full training run.
         self._tmpdir = tempfile.TemporaryDirectory()
         base_name = Pathy.fluid(self.remote_filepath_pattern).name
         self._local_pattern = str(Path(self._tmpdir.name) / base_name)
 
-        # Аккуратно прокидываем только поддерживаемые аргументы
+        # Forward only arguments supported by the installed ModelCheckpoint.
         params = inspect.signature(ModelCheckpoint.__init__).parameters
         inner_kwargs = dict(
             filepath=self._local_pattern,
@@ -92,7 +92,7 @@ class FsspecModelCheckpoint(Callback):
             inner_kwargs["initial_value_threshold"] = initial_value_threshold
         if "options" in params and options is not None:
             inner_kwargs["options"] = options
-        # Прокидываем из **kwargs только то, что поддерживается текущей версией
+        # Forward only kwargs supported by the installed Keras version.
         for k, v in list(kwargs.items()):
             if k in params:
                 inner_kwargs[k] = v
@@ -104,7 +104,7 @@ class FsspecModelCheckpoint(Callback):
         self._copy_threads: List[threading.Thread] = []
         self._copy_threads_lock = threading.Lock()
 
-    # Делегирование жизненного цикла
+    # Lifecycle delegation
     def set_model(self, model):
         self._inner_ckpt.set_model(model)
         return super().set_model(model)
@@ -136,19 +136,30 @@ class FsspecModelCheckpoint(Callback):
         epoch = self.params.get("epoch", 0) if isinstance(self.params, dict) else 0
         self._mirror_if_exists(epoch, logs)
 
-    # Внутреннее зеркалирование
+    # Mirror checkpoints to remote storage.
     def _mirror_if_exists(self, epoch: int, logs: Optional[Dict[str, Any]]):
-        local_filename = _safe_format(Path(self._local_pattern).name, epoch, logs)
-        local_path = Path(self._tmpdir.name) / local_filename
+        inner_path = getattr(self._inner_ckpt, "filepath", None)
+        if inner_path:
+            candidate = Path(inner_path)
+            if candidate.exists():
+                local_path = candidate
+            else:
+                local_path = None
+        else:
+            local_path = None
 
-        if not local_path.exists():
-            try:
-                candidates = [path for path in Path(self._tmpdir.name).iterdir() if path.is_file()]
-                if not candidates:
+        if local_path is None:
+            local_filename = _safe_format(Path(self._local_pattern).name, epoch, logs)
+            local_path = Path(self._tmpdir.name) / local_filename
+
+            if not local_path.exists():
+                try:
+                    candidates = [path for path in Path(self._tmpdir.name).iterdir() if path.is_file()]
+                    if not candidates:
+                        return
+                    local_path = max(candidates, key=lambda path: path.stat().st_mtime)
+                except Exception:
                     return
-                local_path = max(candidates, key=lambda path: path.stat().st_mtime)
-            except Exception:
-                return
 
         assert isinstance(
             self.remote_filepath_pattern, str

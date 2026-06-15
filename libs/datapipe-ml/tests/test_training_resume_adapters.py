@@ -60,7 +60,20 @@ def test_tensorflow_resume_adapter_sets_explicit_checkpoint_param() -> None:
     from datapipe_ml.tasks.classification.train.tensorflow import TFClassificationAlgo
 
     params = {"epochs": 2}
-    updated = TFClassificationAlgo().apply_resume_checkpoint(None, params, "model.keras")
+    updated = TFClassificationAlgo().apply_resume_checkpoint(None, params, "model.keras", checkpoint_epoch=7)
 
     assert updated["__resume_checkpoint_filepath"] == "model.keras"
     assert "__resume_checkpoint_filepath" not in params
+    assert "__resume_checkpoint_epoch" not in params
+
+
+@pytest.mark.tensorflow
+def test_tensorflow_resume_adapter_omits_epoch_when_not_provided() -> None:
+    pytest.importorskip("tensorflow")
+    from datapipe_ml.tasks.classification.train.tensorflow import TFClassificationAlgo
+
+    params = {"epochs": 2}
+    updated = TFClassificationAlgo().apply_resume_checkpoint(None, params, "model.keras")
+
+    assert updated["__resume_checkpoint_filepath"] == "model.keras"
+    assert "__resume_checkpoint_epoch" not in updated

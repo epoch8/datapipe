@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 from typing import Any, Mapping, Protocol, runtime_checkable
 
 import fsspec
+
+_ROOT_YAML_PATH_RE = re.compile(r"""^\s*[\w.]+\.ROOT\s*/\s*['"]([^'"]+)['"]\s*$""")
 
 
 def _path_stem(value: str) -> str:
@@ -77,8 +80,9 @@ def resolve_yolo_model_label(value: str) -> str:
         return _path_stem(normalized)
 
     if ".yaml" in normalized or ".yml" in normalized:
-        if "'" in normalized:
-            normalized = normalized.split("'")[-2]
+        root_path_match = _ROOT_YAML_PATH_RE.match(normalized)
+        if root_path_match is not None:
+            normalized = root_path_match.group(1)
         return _path_stem(normalized)
 
     if _is_checkpoint_path(normalized):

@@ -12,6 +12,7 @@ from pathy import Pathy
 from datapipe_ml.frameworks.yolo.artifacts import YoloDataYAMLConfig
 from datapipe_ml.frameworks.yolo.checkpoint_label import build_yolo_train_config_summary
 from datapipe_ml.training.train_config_id import build_train_config_id
+from datapipe_ml.training.paths import remote_input_path, remote_output_models_path
 from datapipe_ml.training.specs import (
     Algo,
     PreparedData,
@@ -178,7 +179,9 @@ class YoloBaseAlgo(Algo):
     def check_accelerator(self, train_params: Dict[str, Any]) -> None:
         import torch
 
-        if train_params.get("device") == "cpu":
+        from datapipe_ml.training.accelerator import cpu_training_allowed
+
+        if cpu_training_allowed(train_params):
             return
 
         if not torch.cuda.is_available():
@@ -282,6 +285,7 @@ class YoloBaseAlgo(Algo):
         ctx: TrainContext,
         train_params: Dict[str, Any],
         checkpoint_path: Optional[str],
+        checkpoint_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
         params = dict(train_params)
         if checkpoint_path is None:
@@ -319,8 +323,8 @@ class YoloBaseAlgo(Algo):
                     self.task,
                 ),
                 cluster_suffix=model_id,
-                inputs=(TrainingPathMap(d.data_src_path, "/workspace/datapipe_ml/input/data"),),
-                outputs=(TrainingPathMap(str(yctx.models_dir), "/workspace/datapipe_ml/output/models"),),
+                inputs=(TrainingPathMap(d.data_src_path, remote_input_path("data")),),
+                outputs=(TrainingPathMap(str(yctx.models_dir), remote_output_models_path()),),
             )
         )
 

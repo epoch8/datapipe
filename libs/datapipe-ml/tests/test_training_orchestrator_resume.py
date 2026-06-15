@@ -121,6 +121,7 @@ class FakeAlgo(Algo):
         ctx: TrainContext,
         train_params: dict[str, Any],
         checkpoint_path: str | None,
+        checkpoint_epoch: int | None = None,
     ) -> dict[str, Any]:
         updated = dict(train_params)
         updated["resume_checkpoint"] = checkpoint_path

@@ -64,9 +64,6 @@ def predict_by_crops(
     blockWidth: int,
     blockHeight: int,
 ) -> ImageData:
-    hCrossing, vCrossing = 400, 400
-    threseholdSpace = 160
-    blockWidth, blockHeight = 1024, 1024
     return predict_bbox_like_by_crops(
         image_data=image_data,
         inferencer=inferencer,

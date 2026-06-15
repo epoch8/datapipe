@@ -1,5 +1,12 @@
 import multiprocessing as mp
 import queue
+from typing import Any
+
+
+def finish_training_subprocess(queue: mp.Queue, result: Any, *, failed: bool) -> None:
+    """Deliver training result to the parent and exit with a meaningful status code."""
+    queue.put(result)
+    raise SystemExit(1 if failed else 0)
 
 
 def _spawn(target, *args):
