@@ -158,14 +158,11 @@ def yolo_best_threshold_from_ultralytics_metrics(metrics: Any, curve_name_part: 
 def yolo_load_best_threshold_from_curve_csv(path: Union[str, Path, Pathy]) -> float:
     best_threshold = 0.45
     try:
-        from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
-
         pathy = Pathy.fluid(str(path))
         path_str = str(pathy)
-        storage_options = fsspec_storage_options(path_str)
-        if not fsspec.open(path_str, **storage_options).fs.exists(path_str):
+        if not fsspec.open(path_str).fs.exists(path_str):
             return best_threshold
-        with fsspec.open(path_str, "r", **storage_options) as src:
+        with fsspec.open(path_str, "r") as src:
             df = pd.read_csv(src)
         if "best_threshold" not in df.columns or df.empty:
             return best_threshold
@@ -410,13 +407,10 @@ def yolo_collect_results_generic(
     best_metric_col: str,
     weights_subdir: str = "weights",
 ) -> List[Any]:
-    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
-
     exp_pathy = cast(Pathy, Pathy.fluid(str(exp_folder)))
     df_results_path = exp_pathy / "results.csv"
     df_results_path_str = str(df_results_path)
-    storage_options = fsspec_storage_options(df_results_path_str)
-    with fsspec.open(df_results_path_str, "r", **storage_options) as src:
+    with fsspec.open(df_results_path_str, "r") as src:
         df = pd.read_csv(src, skipinitialspace=True)
 
     df = df.rename(columns=rename_map)
@@ -435,7 +429,7 @@ def yolo_collect_results_generic(
 
     results: List[Any] = []
     ann = result_cls.__annotations__
-    filesystem = fsspec.open(str(exp_pathy / weights_subdir / "best.pt"), **storage_options).fs
+    filesystem = fsspec.open(str(exp_pathy / weights_subdir / "best.pt")).fs
     best_epoch_resolved = False
     for idx in df.index:
         epoch = int(float(cast(Any, df.loc[idx, "epoch"])))

@@ -164,6 +164,16 @@ class TFClassificationAlgo(Algo):
         config_id = build_train_config_id(train_params, summary=summary)
         return f"{prefix + ('-' if prefix else '')}{date}_{config_id}{ctx.model_suffix}"
 
+    def select_resume_checkpoint(
+        self,
+        *,
+        manifest_path: Optional[str],
+        config: Optional[TrainingResumeConfig],
+    ) -> Optional[TrainingResumeCheckpoint]:
+        from datapipe_ml.frameworks.tensorflow.checkpoint_selection import select_tf_resume_checkpoint
+
+        return select_tf_resume_checkpoint(manifest_path=manifest_path, config=config)
+
     def launch_training(
         self,
         ctx: TrainContext,

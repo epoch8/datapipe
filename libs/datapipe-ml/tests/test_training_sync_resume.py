@@ -18,7 +18,7 @@ from datapipe_ml.training.runs import (
     utc_iso,
     utc_now,
 )
-from datapipe_ml.training.resume import select_resume_checkpoint
+from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo
 from datapipe_ml.training.specs import Algo, TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import (
     LOCAL_TRAIN_OUTPUT_SUBDIR,
@@ -34,6 +34,10 @@ from datapipe_ml.training.sync import (
     write_checkpoint_manifest,
 )
 from datapipe_ml.training.specs import TrainContext
+
+
+def _select_yolo_resume(manifest_path: str, config: TrainingResumeConfig):
+    return YoloV8DetectionAlgo().select_resume_checkpoint(manifest_path=manifest_path, config=config)
 
 
 class _MemoryStatusTable:
@@ -105,25 +109,25 @@ def test_select_resume_checkpoint_works_for_interrupted_run_manifest(tmp_path: P
     run_dir = tmp_path / "models" / "model-a"
     weights_dir = run_dir / "weights"
     weights_dir.mkdir(parents=True)
-    epoch1 = weights_dir / "epoch1.pt"
-    epoch2 = weights_dir / "epoch2.pt"
-    epoch1.write_bytes(b"epoch-1")
-    epoch2.write_bytes(b"epoch-2")
+    last = weights_dir / "last.pt"
+    best = weights_dir / "best.pt"
+    last.write_bytes(b"last")
+    best.write_bytes(b"best")
 
     manifest_path = write_checkpoint_manifest(
         run_dir=str(run_dir),
         model_id="model-a",
-        checkpoint_paths=[str(epoch1), str(epoch2)],
+        checkpoint_paths=[str(best), str(last)],
     )
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )
 
     assert selected is not None
-    assert selected.path == str(epoch2)
-    assert selected.epoch == 2
+    assert selected.path == str(last)
+    assert selected.epoch is None
 
 
 def test_training_status_manager_mark_interrupted_clears_lease() -> None:
@@ -144,7 +148,7 @@ def test_training_status_manager_mark_interrupted_clears_lease() -> None:
         attempt=1,
         status=TrainingStatus.RUNNING,
     )
-    manager = TrainingStatusManager(dt=table, row=row)  # type: ignore[arg-type]
+    manager = TrainingStatusManager(dt=table, row=row, heartbeat_interval_s=15, lease_ttl_s=120)  # type: ignore[arg-type]
     manager.start()
     manager.mark_interrupted(manifest_path="/tmp/models/model-a/datapipe_ml_training_sync.json")
 
@@ -155,29 +159,50 @@ def test_training_status_manager_mark_interrupted_clears_lease() -> None:
     assert stored["training_status__manifest_path"] == "/tmp/models/model-a/datapipe_ml_training_sync.json"
 
 
-def test_write_manifest_and_select_latest_epoch_checkpoint(tmp_path: Path) -> None:
+def test_write_manifest_and_select_last_checkpoint(tmp_path: Path) -> None:
     run_dir = tmp_path / "models" / "model-a"
     weights_dir = run_dir / "weights"
     weights_dir.mkdir(parents=True)
-    epoch1 = weights_dir / "epoch1.pt"
+    last = weights_dir / "last.pt"
     epoch2 = weights_dir / "epoch2.pt"
-    epoch1.write_bytes(b"epoch-1")
+    last.write_bytes(b"last")
     epoch2.write_bytes(b"epoch-2")
 
     manifest_path = write_checkpoint_manifest(
         run_dir=str(run_dir),
         model_id="model-a",
-        checkpoint_paths=[str(epoch1), str(epoch2)],
+        checkpoint_paths=[str(epoch2), str(last)],
     )
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=2),
     )
 
     assert selected is not None
-    assert selected.path == str(epoch2)
-    assert selected.epoch == 2
+    assert selected.path == str(last)
+    assert selected.epoch is None
+
+
+def test_select_last_checkpoint_ignores_epoch_files_when_last_pt_is_present(tmp_path: Path) -> None:
+    run_dir = tmp_path / "models" / "model-a"
+    weights_dir = run_dir / "weights"
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "epoch1.pt").write_bytes(b"epoch-1")
+    (weights_dir / "epoch9.pt").write_bytes(b"epoch-9")
+
+    manifest_path = write_checkpoint_manifest(
+        run_dir=str(run_dir),
+        model_id="model-a",
+        checkpoint_paths=[str(weights_dir / "epoch1.pt"), str(weights_dir / "epoch9.pt")],
+    )
+
+    selected = _select_yolo_resume(
+        manifest_path=manifest_path,
+        config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
+    )
+
+    assert selected is None
 
 
 def test_resume_ignores_unmanifested_checkpoint(tmp_path: Path) -> None:
@@ -193,7 +218,7 @@ def test_resume_ignores_unmanifested_checkpoint(tmp_path: Path) -> None:
         checkpoint_paths=[],
     )
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True),
     )
@@ -214,7 +239,7 @@ def test_resume_ignores_checkpoint_with_mismatched_size(tmp_path: Path) -> None:
     )
     checkpoint.write_bytes(b"changed-size")
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True),
     )
@@ -222,24 +247,25 @@ def test_resume_ignores_checkpoint_with_mismatched_size(tmp_path: Path) -> None:
     assert selected is None
 
 
-def test_resume_ignores_epochless_alias_when_min_epoch_required(tmp_path: Path) -> None:
+def test_resume_selects_last_pt_when_min_epoch_required(tmp_path: Path) -> None:
     run_dir = tmp_path / "models" / "model-a"
     weights_dir = run_dir / "weights"
     weights_dir.mkdir(parents=True)
-    best = weights_dir / "best.pt"
-    best.write_bytes(b"best")
+    last = weights_dir / "last.pt"
+    last.write_bytes(b"last")
     manifest_path = write_checkpoint_manifest(
         run_dir=str(run_dir),
         model_id="model-a",
-        checkpoint_paths=[str(best)],
+        checkpoint_paths=[str(last)],
     )
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )
 
-    assert selected is None
+    assert selected is not None
+    assert selected.path == str(last)
 
 
 def test_resume_allows_epochless_alias_when_min_epoch_is_zero(tmp_path: Path) -> None:
@@ -254,13 +280,39 @@ def test_resume_allows_epochless_alias_when_min_epoch_is_zero(tmp_path: Path) ->
         checkpoint_paths=[str(best)],
     )
 
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=0, checkpoint="best"),
     )
 
     assert selected is not None
     assert selected.path == str(best)
+
+
+def test_default_resume_checkpoint_selects_highest_epoch(tmp_path: Path) -> None:
+    from datapipe_ml.training.resume import select_default_resume_checkpoint
+
+    run_dir = tmp_path / "models" / "model-a"
+    run_dir.mkdir(parents=True)
+    epoch1 = run_dir / "01__model.keras"
+    epoch3 = run_dir / "03__model.keras"
+    epoch1.write_bytes(b"1")
+    epoch3.write_bytes(b"3")
+
+    manifest_path = write_checkpoint_manifest(
+        run_dir=str(run_dir),
+        model_id="model-a",
+        checkpoint_paths=[str(epoch1), str(epoch3)],
+    )
+
+    selected = select_default_resume_checkpoint(
+        manifest_path=manifest_path,
+        config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
+    )
+
+    assert selected is not None
+    assert selected.path == str(epoch3)
+    assert selected.epoch == 3
 
 
 def test_copy_tree_best_effort_retries_after_transient_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -395,6 +447,27 @@ def test_dst_sync_lock_serializes_concurrent_tree_copies(tmp_path: Path) -> None
     )
 
 
+def test_sync_training_tree_and_manifest_scopes_copy_to_model_id(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    active = src / "model-a" / "weights"
+    stale = src / "model-b" / "weights"
+    active.mkdir(parents=True)
+    stale.mkdir(parents=True)
+    (active / "epoch1.pt").write_bytes(b"epoch")
+    (stale / "epoch9.pt").write_bytes(b"stale")
+
+    sync_training_tree_and_manifest(
+        src=str(src),
+        dst=str(dst),
+        config=TrainingSyncConfig(enabled=True, interval_s=None, retries=1, retry_sleep_s=0),
+        model_id="model-a",
+    )
+
+    assert (dst / "model-a" / "weights" / "epoch1.pt").exists()
+    assert not (dst / "model-b").exists()
+
+
 def test_sync_training_tree_and_manifest_includes_post_training_files(tmp_path: Path) -> None:
     src = tmp_path / "src"
     dst = tmp_path / "dst"
@@ -415,6 +488,8 @@ def test_sync_training_tree_and_manifest_includes_post_training_files(tmp_path: 
     manifest = read_checkpoint_manifest(str(dst / "model-a" / "datapipe_ml_training_sync.json"))
     assert manifest is not None
     assert [Path(item.path).name for item in manifest.checkpoints] == ["epoch1.pt"]
+    assert manifest.checkpoints[0].path == str(dst / "model-a" / "weights" / "epoch1.pt")
+    assert manifest.run_dir == str(dst / "model-a")
 
 
 def test_periodic_training_sync_publishes_manifest_after_copy(tmp_path: Path) -> None:
@@ -437,9 +512,73 @@ def test_periodic_training_sync_publishes_manifest_after_copy(tmp_path: Path) ->
     assert [Path(item.path).name for item in manifest.checkpoints] == ["epoch1.pt"]
 
 
+def test_periodic_training_sync_stop_on_interrupt_skips_blocking_final_sync(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    weights = src / "model-a" / "weights"
+    weights.mkdir(parents=True)
+    (weights / "epoch1.pt").write_bytes(b"epoch")
+    sync = PeriodicTrainingSync(
+        src=str(src),
+        dst=str(dst),
+        config=TrainingSyncConfig(enabled=True, interval_s=1, retries=1, retry_sleep_s=0),
+        model_id="model-a",
+    )
+    sync.start()
+    final_sync_calls: list[str] = []
+
+    def _track_final_sync(label: str) -> None:
+        final_sync_calls.append(label)
+
+    monkeypatch.setattr(sync, "_sync_once_non_fatal", _track_final_sync)
+
+    sync.stop(final_sync=False, wait_for_thread=False)
+
+    assert final_sync_calls == []
+
+
+def test_write_manifest_remaps_local_checkpoint_paths_to_persisted_root(tmp_path: Path) -> None:
+    local_root = tmp_path / "local_out"
+    persisted_root = tmp_path / "persisted_models"
+    model_id = "model-a"
+    run_dir_local = local_root / model_id
+    weights = run_dir_local / "weights"
+    weights.mkdir(parents=True)
+    last_pt = weights / "last.pt"
+    last_pt.write_bytes(b"last")
+
+    persisted_run_dir = persisted_root / model_id
+    persisted_weights = persisted_run_dir / "weights"
+    persisted_weights.mkdir(parents=True)
+    (persisted_weights / "last.pt").write_bytes(b"last")
+
+    manifest_path = write_checkpoint_manifest(
+        run_dir=str(persisted_run_dir),
+        model_id=model_id,
+        checkpoint_paths=[str(last_pt)],
+        local_write_root=str(local_root),
+        persisted_root=str(persisted_root),
+    )
+
+    manifest = read_checkpoint_manifest(manifest_path)
+    assert manifest is not None
+    assert manifest.run_dir == str(persisted_run_dir)
+    assert manifest.checkpoints[0].path == str(persisted_weights / "last.pt")
+
+    selected = _select_yolo_resume(
+        manifest_path=manifest_path,
+        config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
+    )
+    assert selected is not None
+    assert selected.path == str(persisted_weights / "last.pt")
+
+
 def test_manifest_resume_roundtrip_on_storage_matrix(storage_workdir: str) -> None:
     run_dir = f"{storage_workdir.rstrip('/')}/models/model-a"
-    checkpoint = f"{run_dir}/weights/epoch1.pt"
+    checkpoint = f"{run_dir}/weights/last.pt"
     import fsspec
 
     fs, stripped = fsspec.core.url_to_fs(checkpoint)
@@ -452,7 +591,7 @@ def test_manifest_resume_roundtrip_on_storage_matrix(storage_workdir: str) -> No
         model_id="model-a",
         checkpoint_paths=[checkpoint],
     )
-    selected = select_resume_checkpoint(
+    selected = _select_yolo_resume(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )

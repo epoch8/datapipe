@@ -235,6 +235,12 @@ def store_status_row(dt: DataTable, row: dict[str, Any]) -> None:
     dt.store_chunk(pd.DataFrame([row]))
 
 
+def training_lease_settings(resume_config: Optional[TrainingResumeConfig] = None) -> tuple[int, int]:
+    if resume_config is None:
+        return 60, 600
+    return resume_config.heartbeat_interval_s, resume_config.lease_ttl_s
+
+
 def base_status_row(
     *,
     run_key: str,
@@ -253,6 +259,7 @@ def base_status_row(
     status: TrainingStatus,
     manifest_path: Optional[str] = None,
     error: Optional[str] = None,
+    lease_ttl_s: int = 600,
 ) -> dict[str, Any]:
     now = utc_now()
     row: dict[str, Any] = dict(
@@ -271,7 +278,7 @@ def base_status_row(
         training_status__error=error,
         training_status__owner_id=owner_id(),
         training_status__heartbeat_at=utc_iso(now),
-        training_status__lease_expires_at=utc_iso(now + timedelta(minutes=10)),
+        training_status__lease_expires_at=utc_iso(now + timedelta(seconds=lease_ttl_s)),
     )
     row[frozen_dataset_id_col] = frozen_dataset_id
     row[train_config_id_col] = train_config_id

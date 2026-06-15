@@ -10,9 +10,12 @@ import pytest
 from datapipe_ml.training.orchestrator import orchestrate
 from datapipe_ml.training.runs import (
     TrainingStatus,
+    base_status_row,
     is_training_user_interrupt,
+    parse_datetime,
     status_id_for_attempt,
     training_run_key,
+    training_lease_settings,
     utc_iso,
     utc_now,
 )
@@ -137,6 +140,11 @@ class FakeAlgo(Algo):
     def collect_checkpoint_paths(self, raw_result: FakeRawResult) -> list[str]:
         return [raw_result.model_path] if raw_result.model_path is not None else []
 
+    def select_resume_checkpoint(self, *, manifest_path, config):  # noqa: ANN001
+        from datapipe_ml.frameworks.yolo.checkpoint_selection import select_yolo_resume_checkpoint
+
+        return select_yolo_resume_checkpoint(manifest_path=manifest_path, config=config)
+
 
 def _ctx(
     tmp_path: Path,
@@ -236,7 +244,7 @@ def test_orchestrator_blocks_active_running_lease(tmp_path: Path) -> None:
 def test_orchestrator_resumes_stale_running_lease_from_run_dir_manifest(tmp_path: Path) -> None:
     run_key = _run_key()
     run_dir = tmp_path / "models" / "old-model"
-    checkpoint = run_dir / "weights" / "epoch6.pt"
+    checkpoint = run_dir / "weights" / "last.pt"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_bytes(b"checkpoint")
     write_checkpoint_manifest(
@@ -273,7 +281,7 @@ def test_orchestrator_resumes_stale_running_lease_from_run_dir_manifest(tmp_path
 
 def test_orchestrator_resumes_failed_status_from_manifest(tmp_path: Path) -> None:
     run_key = _run_key()
-    checkpoint = tmp_path / "models" / "old-model" / "weights" / "epoch1.pt"
+    checkpoint = tmp_path / "models" / "old-model" / "weights" / "last.pt"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_bytes(b"checkpoint")
     manifest = write_checkpoint_manifest(
@@ -414,6 +422,36 @@ def test_is_training_user_interrupt_detects_ctrl_c_and_subprocess_sigint(
     assert is_training_user_interrupt(exc) is expected
 
 
+def test_training_lease_settings_use_resume_config_defaults() -> None:
+    assert training_lease_settings(None) == (60, 600)
+    assert training_lease_settings(TrainingResumeConfig(lease_ttl_s=120, heartbeat_interval_s=15)) == (15, 120)
+
+
+def test_base_status_row_uses_custom_lease_ttl() -> None:
+    row = base_status_row(
+        run_key="run",
+        idx=pd.DataFrame([{}]),
+        model_other_primary_keys=[],
+        frozen_dataset_id_col="frozen_dataset_id",
+        frozen_dataset_id="fd",
+        train_config_id_col="train_config_id",
+        train_config_id="cfg",
+        model_id_col="model_id",
+        model_id="model-a",
+        models_dir="/tmp/models",
+        run_dir="/tmp/models/model-a",
+        launcher_config=None,
+        attempt=1,
+        status=TrainingStatus.RUNNING,
+        lease_ttl_s=45,
+    )
+    started_at = parse_datetime(row["training_status__started_at"])
+    lease_expires_at = parse_datetime(row["training_status__lease_expires_at"])
+    assert started_at is not None
+    assert lease_expires_at is not None
+    assert int((lease_expires_at - started_at).total_seconds()) == 45
+
+
 def test_orchestrator_marks_failed_on_non_interrupt_exception(tmp_path: Path) -> None:
     class FailingAlgo(FakeAlgo):
         def launch_training(self, *args, **kwargs):  # noqa: ANN002, ANN003
@@ -450,7 +488,7 @@ def test_orchestrator_discovers_manifest_on_keyboard_interrupt_when_checkpoints_
         def launch_training(self, ctx, idx, model_id, train_params, data, resume_checkpoint=None):  # noqa: ANN001
             weights_dir = Path(ctx.models_dir) / model_id / "weights"
             weights_dir.mkdir(parents=True, exist_ok=True)
-            (weights_dir / "epoch1.pt").write_bytes(b"checkpoint")
+            (weights_dir / "last.pt").write_bytes(b"checkpoint")
             raise KeyboardInterrupt
 
     ctx = _ctx(tmp_path)
@@ -463,7 +501,7 @@ def test_orchestrator_discovers_manifest_on_keyboard_interrupt_when_checkpoints_
     assert row["training_status__manifest_path"] is not None
     manifest = read_checkpoint_manifest(row["training_status__manifest_path"])
     assert manifest is not None
-    assert [Path(item.path).name for item in manifest.checkpoints] == ["epoch1.pt"]
+    assert [Path(item.path).name for item in manifest.checkpoints] == ["last.pt"]
 
 
 def test_orchestrator_marks_interrupted_on_keyboard_interrupt(tmp_path: Path) -> None:
@@ -500,7 +538,7 @@ def test_orchestrator_marks_interrupted_on_subprocess_sigint_runtime_error(tmp_p
 
 def test_orchestrator_resumes_interrupted_status_from_manifest(tmp_path: Path) -> None:
     run_key = _run_key()
-    checkpoint = tmp_path / "models" / "old-model" / "weights" / "epoch1.pt"
+    checkpoint = tmp_path / "models" / "old-model" / "weights" / "last.pt"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_bytes(b"checkpoint")
     manifest = write_checkpoint_manifest(

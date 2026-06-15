@@ -20,16 +20,6 @@ def is_cloud_url(path: CloudPath) -> bool:
     return protocol not in (None, "file")
 
 
-def _storage_options(url: CloudPath) -> dict:
-    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
-
-    return fsspec_storage_options(str(url))
-
-
-def s3_storage_options() -> dict:
-    return _storage_options("s3://")
-
-
 def _require_s3_bucket() -> str:
     bucket = os.environ.get("S3_BUCKET")
     if not bucket:
@@ -61,14 +51,14 @@ def join_cloud_path(base: CloudPath, *parts: str) -> Pathy:
 def upload_local_file(local_path: CloudPath, dest: CloudPath) -> Pathy:
     dest_pathy = _pathy(dest)
     payload = Path(local_path).read_bytes()
-    with fsspec.open(str(dest_pathy), "wb", **_storage_options(dest_pathy)) as out:
+    with fsspec.open(str(dest_pathy), "wb") as out:
         out.write(payload)
     return dest_pathy
 
 
 def assert_url_exists(url: CloudPath, *, is_file: bool = True) -> None:
     url_str = str(_pathy(url))
-    fs, stripped = fsspec.core.url_to_fs(url_str, **_storage_options(url_str))
+    fs, stripped = fsspec.core.url_to_fs(url_str)
     if is_file:
         assert fs.isfile(stripped), url_str
         assert int(fs.info(stripped).get("size") or 0) > 0

@@ -77,9 +77,11 @@ class TrainingSyncConfig:
 class TrainingResumeConfig:
     continue_train_failed_models: bool = False
     min_completed_epochs: int = 1
-    checkpoint: Literal["last", "best", "latest_epoch"] = "last"
+    checkpoint: Literal["last", "best"] = "last"
     max_attempts: int = 3
     reset_attempts_after: Optional[str] = "1d"
+    lease_ttl_s: int = 600
+    heartbeat_interval_s: int = 60
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,16 @@ class Algo(ABC):
         checkpoint_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
         return dict(train_params)
+
+    def select_resume_checkpoint(
+        self,
+        *,
+        manifest_path: Optional[str],
+        config: Optional[TrainingResumeConfig],
+    ) -> Optional[TrainingResumeCheckpoint]:
+        from datapipe_ml.training.resume import select_default_resume_checkpoint
+
+        return select_default_resume_checkpoint(manifest_path=manifest_path, config=config)
 
     def build_link_row(
         self, ctx: TrainContext, idx: IndexDF, model_id: str, train_config_id: str, train_params: Dict[str, Any]

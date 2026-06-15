@@ -105,14 +105,6 @@ def datapipe_working_dir() -> str:
 DATAPIPE_DIR = datapipe_working_dir()
 
 
-def datapipe_filedir_fsspec_kwargs() -> dict | None:
-    if not _is_cloud_path(DATAPIPE_DIR):
-        return None
-    from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
-
-    return s3_filedir_fsspec_kwargs()
-
-
 def datapipe_tmp_folder() -> str:
     if _is_cloud_path(DATAPIPE_DIR):
         return str(Path(os.environ.get("DATAPIPE_E2E_TMP_DIR", "/tmp/datapipe-e2e")).resolve())

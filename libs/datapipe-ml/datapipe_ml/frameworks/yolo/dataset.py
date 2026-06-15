@@ -15,7 +15,6 @@ from natsort import natsorted
 from pathy import Pathy
 
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
 
 
 def _hash_rows(df: DataDF, keys: List[str]) -> HashDF:
@@ -52,7 +51,7 @@ def _write_sorted_class_names_json(
 ) -> str:
     filepath = filedir / ("/".join(path_parts)) / frozen_dataset_id / "class_names.json"
     filepath_str = str(filepath)
-    with fsspec.open(filepath_str, "w", **fsspec_storage_options(filepath_str)) as out:
+    with fsspec.open(filepath_str, "w") as out:
         json.dump(class_names, out, ensure_ascii=False)
     return filepath_str
 

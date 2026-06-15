@@ -220,7 +220,7 @@ jobs:
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data
+            minio/minio:RELEASE.2025-10-15T17-29-55Z server /data
           for i in {1..30}; do
             curl -f http://localhost:9000/minio/health/live && exit 0
             sleep 2
@@ -237,6 +237,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_REGION: us-east-1
           S3_ENDPOINT_URL: http://localhost:9000
+          FSSPEC_S3_ENDPOINT_URL: http://localhost:9000
           S3_BUCKET: datapipe-e2e
           S3_PREFIX: datapipe-ml-tests/${{ github.run_id }}
 

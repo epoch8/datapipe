@@ -17,7 +17,6 @@ from datapipe.types import IndexDF
 from datapipe_ml.training.runs import active_lease
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest, verify_manifest_checkpoint
-from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     SmokeRuntime,
     Workdir,
@@ -60,8 +59,6 @@ REAL_RECOVERY_CASE_PARAMS = [
     *[pytest.param(case_id, marks=pytest.mark.torch) for case_id in TORCH_RECOVERY_CASE_IDS],
     pytest.param("tensorflow_classification", marks=pytest.mark.tensorflow),
 ]
-
-_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
 
 _LINK_TABLE_BY_MODE = dict(
     detection="detection_model_link",
@@ -138,7 +135,6 @@ def real_recovery_torch_cases() -> list:
                 detection_train_step(
                     workdir,
                     local_scratch=scratch,
-                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
                 ),
             ],
             train_fn=train_yolov8,
@@ -162,7 +158,6 @@ def real_recovery_torch_cases() -> list:
                 detection_yolov5_train_step(
                     workdir,
                     local_scratch=scratch,
-                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
                 ),
             ],
             train_fn=train_yolov5,
@@ -186,7 +181,6 @@ def real_recovery_torch_cases() -> list:
                 segmentation_train_step(
                     workdir,
                     local_scratch=scratch,
-                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
                 ),
             ],
             train_fn=train_yolov8_segmentation,
@@ -210,7 +204,6 @@ def real_recovery_torch_cases() -> list:
                 keypoints_train_step(
                     workdir,
                     local_scratch=scratch,
-                    filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
                 ),
             ],
             train_fn=train_yolov8_keypoints,

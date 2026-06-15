@@ -287,6 +287,16 @@ class YoloBaseAlgo(Algo):
         params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
+    def select_resume_checkpoint(
+        self,
+        *,
+        manifest_path: Optional[str],
+        config: Optional[TrainingResumeConfig],
+    ) -> Optional[TrainingResumeCheckpoint]:
+        from datapipe_ml.frameworks.yolo.checkpoint_selection import select_yolo_resume_checkpoint
+
+        return select_yolo_resume_checkpoint(manifest_path=manifest_path, config=config)
+
     def launch_training(
         self,
         ctx: TrainContext,

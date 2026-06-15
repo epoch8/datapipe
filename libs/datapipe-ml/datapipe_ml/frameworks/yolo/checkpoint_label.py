@@ -49,9 +49,7 @@ def _architecture_from_checkpoint(ckpt: Mapping[str, Any]) -> str | None:
 def _read_checkpoint_architecture_label(path: str) -> str | None:
     import torch
 
-    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
-
-    with fsspec.open(path, "rb", **fsspec_storage_options(path)) as src:
+    with fsspec.open(path, "rb") as src:
         ckpt = torch.load(io.BytesIO(src.read()), map_location="cpu", weights_only=False)
     if isinstance(ckpt, Mapping):
         return _architecture_from_checkpoint(ckpt)

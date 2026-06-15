@@ -19,10 +19,7 @@ from tests.helpers.training_recovery import (
     direct_train_kwargs,
     make_runtime,
 )
-from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import Workdir, classification_freeze_step, classification_train_step
-
-_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
@@ -90,7 +87,6 @@ def real_recovery_tensorflow_cases() -> list:
                     classification_train_step(
                         workdir,
                         local_scratch=scratch,
-                        filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
                     ),
                 ],
                 train_fn=train_tf_classification_model,

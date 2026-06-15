@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.cloud_storage import assert_model_path_under_working_dir
 from tests.helpers.training_smoke import (
     assert_model_artifact,
@@ -130,7 +129,6 @@ def test_yolov8_detection_cloud_working_dir_with_cloud_preset_checkpoint(tmp_pat
                 workdir,
                 "yolo11n.pt",
                 local_scratch=tmp_path,
-                filedir_fsspec_kwargs=s3_filedir_fsspec_kwargs(),
             ),
         ],
     )
@@ -165,7 +163,6 @@ def test_yolov8_segmentation_cloud_working_dir_with_cloud_preset_checkpoint(tmp_
                 workdir,
                 "yolov8n-seg.pt",
                 local_scratch=tmp_path,
-                filedir_fsspec_kwargs=s3_filedir_fsspec_kwargs(),
             ),
         ],
     )
@@ -200,7 +197,6 @@ def test_yolov8_keypoints_cloud_working_dir_with_cloud_preset_checkpoint(tmp_pat
                 workdir,
                 "yolo11n-pose.pt",
                 local_scratch=tmp_path,
-                filedir_fsspec_kwargs=s3_filedir_fsspec_kwargs(),
             ),
         ],
     )

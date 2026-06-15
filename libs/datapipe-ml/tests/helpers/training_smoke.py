@@ -13,7 +13,6 @@ from tests.helpers.cloud_storage import (
     assert_url_exists,
     is_cloud_url,
     join_cloud_path,
-    s3_storage_options,
     upload_local_file,
 )
 
@@ -90,9 +89,7 @@ class SmokeRuntime:
 def assert_yolov8_training_artifacts(runtime: SmokeRuntime) -> None:
     df_model = runtime.ds.get_table("detection_model").get_data()
     model_path = str(df_model["detection_model__model_path"].iloc[0])
-    from datapipe_ml.utils.fsspec_storage import fsspec_storage_options
-
-    fs, stripped_model_path = fsspec.core.url_to_fs(model_path, **fsspec_storage_options(model_path))
+    fs, stripped_model_path = fsspec.core.url_to_fs(model_path)
     assert fs.isfile(stripped_model_path)
     assert int(fs.info(stripped_model_path).get("size") or 0) > 0
     args_path = str(Path(stripped_model_path).parent.parent / "args.yaml")
@@ -374,8 +371,7 @@ def assert_training_yaml_values(yaml_path: str | Path, expected: dict[str, objec
     import yaml
 
     yaml_path_str = str(yaml_path)
-    storage_options = s3_storage_options() if is_cloud_url(yaml_path_str) else {}
-    with fsspec.open(yaml_path_str, "r", **storage_options) as handle:
+    with fsspec.open(yaml_path_str, "r") as handle:
         data = yaml.safe_load(handle) or {}
     for key, value in expected.items():
         assert key in data, f"Missing key {key!r} in {yaml_path}"

@@ -49,7 +49,7 @@ What each piece is for:
 
 ### Local services
 
-Start Postgres, MinIO, and Label Studio from this directory:
+Start Postgres, MinIO, MongoDB (FiftyOne), and Label Studio from this directory:
 
 ```bash
 docker compose up
@@ -60,6 +60,7 @@ Services:
 
 - Postgres — `localhost:5432` (`postgres` / `password`)
 - MinIO — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e`
+- MongoDB — `localhost:27017` (FiftyOne dataset metadata; set `FIFTYONE_DATABASE_URI` in `.env`)
 - Label Studio — `http://localhost:8080`
 
 `.env` uses two MinIO endpoints: `S3_ENDPOINT_URL=http://localhost:9000` for datapipe on the host, and `LABEL_STUDIO_S3_ENDPOINT_URL=http://minio:9000` for Label Studio inside Docker (same compose network as the `minio` service). Task `image_url` values use `S3_PUBLIC_URL` (`http://localhost:9000/...`) so the browser can load images directly; the bucket is configured for anonymous read in `docker-compose.yml`.
@@ -124,6 +125,13 @@ datapipe step --labels=stage=train run
 datapipe step --labels=stage=fiftyone run
 ```
 
+After the FiftyOne stage, open the dataset in the FiftyOne App (with `.env` loaded and `mongo` running):
+
+```bash
+set -a && source ../.env && set +a   # from image_detection/
+fiftyone app launch datapipe_detection_e2e
+```
+
 Keypoints:
 
 ```bash
@@ -138,6 +146,11 @@ After tasks appear in Label Studio, annotate them and sync back:
 datapipe step --labels=stage=ls-sync run
 datapipe step --labels=stage=train run
 datapipe step --labels=stage=fiftyone run
+```
+
+```bash
+set -a && source ../.env && set +a   # from image_keypoints/
+fiftyone app launch datapipe_keypoints_e2e
 ```
 
 The service-backed test path in `tests/e2e_template/` uses the same stack. See `.github/workflows/e2e-template.yml`.

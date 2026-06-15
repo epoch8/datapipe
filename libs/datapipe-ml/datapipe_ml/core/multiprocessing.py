@@ -28,6 +28,14 @@ def _spawn(target, *args):
                     )
         p.join()
         return res
+    except KeyboardInterrupt:
+        if p.is_alive():
+            p.terminate()
+            p.join(timeout=5)
+            if p.is_alive():
+                p.kill()
+                p.join()
+        raise
     finally:
         if p.is_alive():
             p.join()

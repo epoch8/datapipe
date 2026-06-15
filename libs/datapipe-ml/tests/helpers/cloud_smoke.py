@@ -5,7 +5,6 @@ from typing import Callable
 
 import pytest
 
-from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     Workdir,
     classification_freeze_step,
@@ -29,8 +28,6 @@ CLOUD_SMOKE_CASE_PARAMS = [
     pytest.param("tensorflow_classification", marks=[pytest.mark.tensorflow, pytest.mark.training, pytest.mark.slow]),
 ]
 
-_FILEDIR_FSSPEC_KWARGS = s3_filedir_fsspec_kwargs()
-
 _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
     "yolov8_detection": (
         dict(),
@@ -39,7 +36,6 @@ _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
             detection_train_step(
                 workdir,
                 local_scratch=scratch,
-                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
             ),
         ],
     ),
@@ -50,7 +46,6 @@ _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
             detection_yolov5_train_step(
                 workdir,
                 local_scratch=scratch,
-                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
             ),
         ],
     ),
@@ -61,7 +56,6 @@ _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
             segmentation_train_step(
                 workdir,
                 local_scratch=scratch,
-                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
             ),
         ],
     ),
@@ -72,7 +66,6 @@ _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
             keypoints_train_step(
                 workdir,
                 local_scratch=scratch,
-                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
             ),
         ],
     ),
@@ -83,7 +76,6 @@ _CLOUD_SMOKE_CASES: dict[str, tuple[dict, SmokeStepsFactory]] = {
             classification_train_step(
                 workdir,
                 local_scratch=scratch,
-                filedir_fsspec_kwargs=_FILEDIR_FSSPEC_KWARGS,
             ),
         ],
     ),

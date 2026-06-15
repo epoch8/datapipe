@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from datapipe_ml.training.resume import select_resume_checkpoint
+from datapipe_ml.tasks.detection.train.yolov8 import YoloV8DetectionAlgo
 from datapipe_ml.training.specs import TrainingResumeConfig
 from datapipe_ml.training.sync import write_checkpoint_manifest
 from tests.helpers.cloud_smoke import (
@@ -18,7 +18,6 @@ from tests.helpers.cloud_storage import (
     cloud_working_dir,
     join_cloud_path,
     s3_base_url,
-    s3_storage_options,
     upload_local_file,
 )
 from tests.helpers.failure_injection import (
@@ -32,7 +31,6 @@ from tests.helpers.training_recovery import (
     make_recovery_runtime,
     recovery_case_by_id,
 )
-from datapipe_ml.utils.fsspec_storage import s3_filedir_fsspec_kwargs
 from tests.helpers.training_smoke import (
     assert_completed_training_status_with_manifest,
     assert_model_artifact,
@@ -51,10 +49,9 @@ pytestmark = [pytest.mark.cloud_storage, pytest.mark.service_e2e]
 
 def test_s3_minio_manifest_resume_checkpoint_roundtrip() -> None:
     base = s3_base_url()
-    storage_options = s3_storage_options()
     run_pathy = base / "model-a"
-    checkpoint_pathy = run_pathy / "weights" / "epoch1.pt"
-    fs, checkpoint_key = fsspec.core.url_to_fs(str(checkpoint_pathy), **storage_options)
+    checkpoint_pathy = run_pathy / "weights" / "last.pt"
+    fs, checkpoint_key = fsspec.core.url_to_fs(str(checkpoint_pathy))
     fs.makedirs(str(checkpoint_pathy.parent), exist_ok=True)
     with fs.open(checkpoint_key, "wb") as out:
         out.write(b"checkpoint")
@@ -65,7 +62,7 @@ def test_s3_minio_manifest_resume_checkpoint_roundtrip() -> None:
         checkpoint_paths=[str(checkpoint_pathy)],
     )
 
-    selected = select_resume_checkpoint(
+    selected = YoloV8DetectionAlgo().select_resume_checkpoint(
         manifest_path=manifest_path,
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )
@@ -117,7 +114,6 @@ def test_cloud_working_dir_training_with_cloud_preset_checkpoint(tmp_path) -> No
                 workdir,
                 "yolo11n.pt",
                 local_scratch=tmp_path,
-                filedir_fsspec_kwargs=s3_filedir_fsspec_kwargs(),
             ),
         ],
     )

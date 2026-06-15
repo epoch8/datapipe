@@ -20,9 +20,9 @@ from datapipe_ml.training.runs import (
     initial_launcher_state,
     status_id_for_attempt,
     store_status_row,
+    training_lease_settings,
     training_run_key,
 )
-from datapipe_ml.training.resume import select_resume_checkpoint
 from datapipe_ml.training.sync import (
     PeriodicTrainingSync,
     discover_checkpoint_paths,
@@ -144,6 +144,8 @@ def _discover_manifest_path(
             run_dir=run_dir,
             model_id=model_id,
             checkpoint_paths=checkpoint_paths,
+            local_write_root=ctx.training_output_write_dir,
+            persisted_root=ctx.models_dir if ctx.training_output_write_dir else None,
         )
     except Exception:
         logger.exception("Failed to write checkpoint manifest while finalizing training run")
@@ -161,7 +163,8 @@ def _abort_training_run(
     ctx: TrainContext,
 ) -> None:
     if output_sync is not None:
-        output_sync.stop(final_sync=True)
+        interrupted = is_training_user_interrupt(exc)
+        output_sync.stop(final_sync=not interrupted, wait_for_thread=not interrupted)
     manifest_path = _discover_manifest_path(
         manifest_path=manifest_path,
         run_dir=run_dir,
@@ -286,7 +289,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                     candidate = manifest_path_for_run(run_dir_for_manifest)
                     if read_checkpoint_manifest(candidate) is not None:
                         manifest_path = candidate
-            resume_checkpoint = select_resume_checkpoint(
+            resume_checkpoint = algo.select_resume_checkpoint(
                 manifest_path=manifest_path,
                 config=ctx.resume_config,
             )
@@ -297,6 +300,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 model_id = f"{model_id}_attempt{attempt}"
 
     run_dir = algo.run_dir_from_model_id(ctx, model_id)
+    heartbeat_interval_s, lease_ttl_s = training_lease_settings(ctx.resume_config)
     running_row = base_status_row(
         run_key=run_key,
         idx=idx,
@@ -312,6 +316,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
         launcher_config=ctx.training_launcher_config,
         attempt=attempt,
         status=TrainingStatus.RUNNING,
+        lease_ttl_s=lease_ttl_s,
     )
     manifest_path = None
     output_sync = None
@@ -323,7 +328,12 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
     )
     if output_sync_plan is not None:
         ctx.training_output_write_dir = output_sync_plan.local_src
-    status_manager = TrainingStatusManager(dt=ctx.dt__training_status, row=running_row)
+    status_manager = TrainingStatusManager(
+        dt=ctx.dt__training_status,
+        row=running_row,
+        heartbeat_interval_s=heartbeat_interval_s,
+        lease_ttl_s=lease_ttl_s,
+    )
     with status_manager:
         try:
             logger.info("Launching training")
