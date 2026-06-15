@@ -28,7 +28,14 @@ def test_yolov5_detection_resume_adapter_sets_typed_params() -> None:
     pytest.importorskip("yolov5")
     from datapipe_ml.tasks.detection.train.yolov5 import YoloV5DetectionAlgo
 
-    _assert_yolo_resume_params(YoloV5DetectionAlgo())
+    params = {"epochs": 2, "save_period": -1}
+    updated = YoloV5DetectionAlgo().apply_resume_checkpoint(None, params, "checkpoint.pt")
+
+    assert updated["resume"] == "checkpoint.pt"
+    assert "initial_weights_path" not in updated
+    assert updated["exist_ok"] is True
+    assert updated["save_period"] == 1
+    assert "initial_weights_path" not in params
 
 
 @pytest.mark.torch

@@ -84,7 +84,7 @@ class YoloV5_TrainingConfig:
     cfg: str = ""  # model.yaml path
     hyp: str = YOLOV5_DEFAULT_HYP  # hyperparameters path (ROOT relative)
     rect: bool = False  # rectangular training
-    resume: bool = False  # resume most recent training
+    resume: Union[bool, str] = False  # resume most recent training or checkpoint path
     nosave: bool = False  # only save final checkpoint
     noval: bool = False  # only validate final epoch
     noautoanchor: bool = False  # disable AutoAnchor

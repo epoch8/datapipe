@@ -1,8 +1,7 @@
 import inspect
-import multiprocessing
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from pathy import Pathy
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
@@ -81,10 +80,7 @@ class FsspecModelCheckpoint(Callback):
                 inner_kwargs[k] = v
 
         self._inner_ckpt = ModelCheckpoint(**inner_kwargs)
-
-        self._copy_processes: List[multiprocessing.Process] = []
         self._chunk_bytes = 64 * 1024 * 1024
-        self._async_ok = multiprocessing.get_start_method(allow_none=True) == "spawn"
 
     # Делегирование жизненного цикла
     def set_model(self, model):
@@ -96,10 +92,6 @@ class FsspecModelCheckpoint(Callback):
 
     def on_train_end(self, logs=None):
         self._inner_ckpt.on_train_end(logs)
-        if self._copy_processes:
-            print("FsspecModelCheckpoint: waiting for mirror copy processes...")
-        for p in self._copy_processes:
-            p.join()
         self._tmpdir.cleanup()
 
     def on_epoch_end(self, epoch, logs=None):
@@ -133,9 +125,4 @@ class FsspecModelCheckpoint(Callback):
         if self.verbose:
             print(f"FsspecModelCheckpoint: mirroring '{local_path}' -> '{remote_url}'")
 
-        if self._async_ok:
-            p = multiprocessing.Process(target=_copy_file_fsspec, args=(str(local_path), remote_url, self._chunk_bytes))
-            p.start()
-            self._copy_processes.append(p)
-        else:
-            _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)
+        _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)

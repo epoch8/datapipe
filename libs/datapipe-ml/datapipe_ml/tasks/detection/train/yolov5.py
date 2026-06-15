@@ -87,8 +87,9 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
 
         checkpoint = Path(checkpoint_path)
         last_pt = checkpoint.parent / "last.pt"
-        params["initial_weights_path"] = str(last_pt) if last_pt.exists() else checkpoint_path
-        params["resume"] = True
+        # YOLOv5 expects `--resume /path/to/last.pt`, not `--weights` + boolean `--resume`.
+        params["resume"] = str(last_pt) if last_pt.exists() else checkpoint_path
+        params.pop("initial_weights_path", None)
         params["exist_ok"] = True
         params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params

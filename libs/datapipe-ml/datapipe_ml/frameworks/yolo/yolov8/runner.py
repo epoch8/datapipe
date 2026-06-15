@@ -330,6 +330,7 @@ def train_model(
         image_filepaths=image_filepaths,
         coco_txt_filepaths=coco_txt_filepaths,
     )
+    train_project_dir: str = yolov8_training_config.project or project_dir
 
     class_names, tmp_yaml_path = yolo_write_data_yaml_if_needed(yolov8_training_config)
     if not class_names and isinstance(yolov8_training_config.data, str):
@@ -356,7 +357,7 @@ def train_model(
         trainer = model.trainer
         validator = trainer.validator if trainer is not None else None
         metrics = validator.metrics if validator is not None else None
-        selected_exp_folder = yolo_select_last_exp(project_dir, yolov8_training_config.name)
+        selected_exp_folder = yolo_select_last_exp(train_project_dir, yolov8_training_config.name)
         if selected_exp_folder is not None:
             if tmp_yaml_path and tmp_yaml_path.exists():
                 shutil.copy(str(tmp_yaml_path), selected_exp_folder / "training_data.yaml")
