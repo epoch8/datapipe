@@ -12,6 +12,13 @@ EMBEDDINGS_DIR = Path(os.environ.get("EMBEDDINGS_DIR", "./data/embeddings")).res
 
 EMBEDDERS = [
     {
+        "embedder_id": "dinov2_base",
+        "cls": "HFDinoModel",
+        "init_kwargs": {"ckpt": "facebook/dinov2-base"},
+        "batch_size": 32,
+        "max_size": 512,
+    },
+    {
         "embedder_id": "dinov2_large",
         "cls": "HFDinoModel",
         "init_kwargs": {"ckpt": "facebook/dinov2-large"},
