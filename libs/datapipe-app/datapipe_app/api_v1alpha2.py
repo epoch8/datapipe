@@ -16,6 +16,7 @@ from sqlalchemy.sql.expression import and_, or_, select, text
 from sqlalchemy.sql.functions import count, func
 
 from datapipe_app import models
+from datapipe_app.meta_sql import require_sql_transform_meta
 from datapipe_app.settings import API_SETTINGS
 
 
@@ -67,14 +68,15 @@ def get_table_data(ds: DataStore, catalog: Catalog, req: models.GetDataRequest) 
 
 
 def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest) -> models.GetDataResponse:
-    sql_table = step.meta_table.sql_table
-    sql_schema = step.meta_table.sql_schema
+    transform_meta = require_sql_transform_meta(step.meta)
+    sql_table = transform_meta.sql_table
+    sql_schema = transform_meta.sql_schema
 
     sql = select(*sql_schema).select_from(sql_table)
 
     if req.focus is not None:
         filtered_focus_idx = [
-            {k: v for k, v in row.items() if k in step.meta_table.primary_keys} for row in req.focus.items_idx
+            {k: v for k, v in row.items() if k in transform_meta.transform_keys} for row in req.focus.items_idx
         ]
         primary_key_selectors = [and_(*[sql_table.c[k] == v for k, v in row.items()]) for row in filtered_focus_idx]
         sql = sql.where(or_(*primary_key_selectors))
@@ -95,12 +97,12 @@ def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest)
 
     sql = sql.offset(req.page * req.page_size).limit(req.page_size)
 
-    transform_data = pd.read_sql_query(sql, con=step.meta_table.dbconn.con)
+    transform_data = pd.read_sql_query(sql, con=transform_meta.dbconn.con)
 
     transform_data = transform_data.drop("priority", axis=1)
     transform_data["process_ts"] = pd.to_datetime(transform_data["process_ts"], unit="s", utc=True)
 
-    with step.meta_table.dbconn.con.begin() as conn:
+    with transform_meta.dbconn.con.begin() as conn:
         total = conn.execute(sql_count).scalar_one_or_none()
         assert total is not None
 
@@ -192,8 +194,9 @@ def run_step(
 ) -> None:
     # Before we progress callback to datapipe-core we need to do this shenanigans 💀
     _step = copy.copy(step)
+    transform_meta = require_sql_transform_meta(_step.meta)
     if filters is not None:
-        selected_data = [{k: v for k, v in row.items() if k in _step.meta_table.primary_keys} for row in filters]
+        selected_data = [{k: v for k, v in row.items() if k in transform_meta.transform_keys} for row in filters]
         idx = pd.DataFrame.from_records(selected_data)
         transform_state.total = len(selected_data)
         transform_state.status = "running"

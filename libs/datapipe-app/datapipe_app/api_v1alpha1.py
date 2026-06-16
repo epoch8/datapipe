@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.sql.expression import and_, asc, desc, select, text
 from sqlalchemy.sql.functions import count
 
+from datapipe_app.meta_sql import require_sql_table_meta
 from datapipe_app.settings import API_SETTINGS
 
 
@@ -137,9 +138,10 @@ def get_data_get_pd(
     order: Literal["asc", "desc"],
 ) -> Tuple[int, pd.DataFrame, pd.DataFrame]:
     dt = catalog.get_datatable(ds, table)
+    table_meta = require_sql_table_meta(dt.meta)
 
-    meta_schema = dt.meta_table.sql_schema
-    meta_tbl = dt.meta_table.sql_table
+    meta_schema = table_meta.sql_schema
+    meta_tbl = table_meta.sql_table
 
     sql: Any = select(*meta_schema)  # type: ignore
     sql = sql.where(meta_tbl.c.delete_ts.is_(None))
@@ -368,7 +370,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
         else:
             idx = None
 
-        existing_idx = dt.meta_table.get_existing_idx(idx=idx)
+        existing_idx = dt.meta.get_existing_idx(idx=idx)
 
         start_index = req.page * req.page_size
         end_index = (req.page + 1) * req.page_size

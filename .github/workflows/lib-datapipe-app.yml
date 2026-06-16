@@ -54,7 +54,7 @@ jobs:
 
       - name: Lint with mypy
         run: |
-          mypy -p datapipe_app --ignore-missing-imports --follow-imports=silent --namespace-packages
+          mypy -p datapipe_app --ignore-missing-imports --follow-imports=silent --namespace-packages --check-untyped-defs
 
   test:
     runs-on: ubuntu-latest
