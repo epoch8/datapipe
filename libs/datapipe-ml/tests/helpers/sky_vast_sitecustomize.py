@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 
 def _patch_sky_vast_launch() -> None:
     try:
@@ -57,8 +59,8 @@ def _patch_sky_vast_launch() -> None:
                     f'gpu_name="{gpu_name}"',
                     f'cpu_ram>="{cpu_ram}"',
                 ]
-                if secure_only:
-                    live_query.extend(["datacenter=true", "hosting_type>=1"])
+                if secure_only or os.getenv("DATAPIPE_ML_SKY_VAST_SECURE_ONLY", "1") == "1":
+                    live_query.append("datacenter=true")
                 kwargs.setdefault("order", "dph_total+")
                 offers = self._client.search_offers(query=" ".join(live_query), *args, **kwargs)
                 if isinstance(offers, int) or not country:

@@ -78,8 +78,16 @@ pytest tests -m "tensorflow and not sky_vast and not e2e_examples and not servic
 
 ### Sky/Vast integration tests
 
-Optional: add `VAPI_API_KEY=...` to `tests/.env.test`.
+Needs `sky-vast` extra and a Vast API key. **Do not** put the key in tracked `tests/.env.test`.
 
 ```bash
-pytest tests -m sky_vast -v
+cp tests/.env.test.local.example tests/.env.test.local
+# edit tests/.env.test.local — this file is gitignored
+pytest tests -m sky_vast -v -s --log-cli-level=INFO
+```
+
+One-off run without a local file:
+
+```bash
+DATAPIPE_ML_RUN_SKY_VAST=1 VAPI_API_KEY=... pytest tests -m sky_vast -v
 ```

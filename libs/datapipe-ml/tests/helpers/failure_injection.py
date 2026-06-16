@@ -110,15 +110,27 @@ def remote_failure_hooks_bootstrap_source() -> str:
     return Path(__file__).with_name("failure_injection_bootstrap.py").read_text()
 
 
+def _insert_after_future_imports(source: str, block: str) -> str:
+    lines = source.splitlines(keepends=True)
+    idx = 0
+    while idx < len(lines) and lines[idx].strip() == "":
+        idx += 1
+    while idx < len(lines) and lines[idx].startswith("from __future__"):
+        idx += 1
+        while idx < len(lines) and lines[idx].strip() == "":
+            idx += 1
+    return "".join(lines[:idx]) + block + "".join(lines[idx:])
+
+
 def prepend_remote_failure_hooks_to_worker_entrypoint(worker_source: str) -> str:
     bootstrap = remote_failure_hooks_bootstrap_source()
-    return (
+    bootstrap_block = (
         f"_DATAPPIPE_FAILURE_HOOKS = {bootstrap!r}\n"
         "_DATAPPIPE_FAILURE_HOOK_SCOPE = {}\n"
         "exec(_DATAPPIPE_FAILURE_HOOKS, _DATAPPIPE_FAILURE_HOOK_SCOPE)\n"
         "_DATAPPIPE_FAILURE_HOOK_SCOPE['install_training_failure_hooks_direct']()\n"
-        f"{worker_source}"
     )
+    return _insert_after_future_imports(worker_source, bootstrap_block)
 
 
 def patch_sky_vast_worker_entrypoint_for_failure_hooks(monkeypatch: MonkeyPatch) -> None:
