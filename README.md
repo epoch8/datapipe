@@ -29,6 +29,7 @@ This repository contains the Datapipe Python packages as a `uv` monorepo workspa
 - `libs/datapipe-ml` - ML addon for Datapipe, import package `datapipe_ml`.
 - `libs/datapipe-label-studio` - Label Studio integration, import package `datapipe_label_studio`.
 - `libs/datapipe-cvat` - CVAT integration, import package `datapipe_cvat`.
+- `libs/datapipe-app` - REST API, debug UI, and CLI extensions, import package `datapipe_app`.
 
 ## Development
 
@@ -43,6 +44,7 @@ uv sync --all-packages
 uv run pytest libs/datapipe-core/tests
 uv run pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not tensorflow and not torch"
 uv run pytest -vv -x libs/datapipe-label-studio/tests
+uv run pytest libs/datapipe-app/tests
 uv run python -c "import datapipe_cvat.cvat_step, datapipe_cvat.utils"
 ```
 

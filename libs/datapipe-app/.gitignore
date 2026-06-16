@@ -1,0 +1,17 @@
+__pycache__
+.mypy_cache
+venv
+.venv
+
+.env-local
+.idea
+node_modules
+.DS_Store
+
+build/
+dist/
+*.egg-info/
+
+poetry.lock
+
+.env
