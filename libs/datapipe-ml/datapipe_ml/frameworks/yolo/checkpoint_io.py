@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from collections.abc import Buffer, Callable
+from collections.abc import Callable
+from typing_extensions import Buffer
 from pathlib import Path
 from typing import Iterator, Optional
 
