@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from datapipe_ml.training.specs import TrainingResumeConfig
 from datapipe_ml.training.sync import write_checkpoint_manifest
+from tests.helpers.checkpoint_fixtures import write_valid_zip_checkpoint
 from tests.helpers.cloud_smoke import (
     CLOUD_SMOKE_CASE_PARAMS,
     cloud_smoke_artifact,
@@ -52,8 +56,12 @@ def test_s3_minio_manifest_resume_checkpoint_roundtrip() -> None:
     checkpoint_pathy = run_pathy / "weights" / "last.pt"
     fs, checkpoint_key = fsspec.core.url_to_fs(str(checkpoint_pathy))
     fs.makedirs(str(checkpoint_pathy.parent), exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_checkpoint = Path(tmpdir) / "last.pt"
+        write_valid_zip_checkpoint(local_checkpoint)
+        payload = local_checkpoint.read_bytes()
     with fs.open(checkpoint_key, "wb") as out:
-        out.write(b"checkpoint")
+        out.write(payload)
 
     manifest_path = write_checkpoint_manifest(
         run_dir=str(run_pathy),
