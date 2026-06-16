@@ -6,6 +6,7 @@ Datapipe example for:
 - running multiple embedders
 - uploading samples to FiftyOne via `FiftyOneImagesDataTableStore`
 - computing `compute_visualization` and `compute_similarity` per embedder
+- visualizing embedding clusters and similarity search results in FiftyOne UI
 
 ## Data format
 
@@ -25,15 +26,6 @@ Optional labels JSON (`LABELS_JSON`):
 
 Keys must match `image_name` (file stem). Missing keys -> unlabeled sample.
 
-## Pipeline tables
-
-- `local_images`: image path inventory
-- `image_labels`: optional labels
-- `embedder`: embedder configs (`cls`, `init_kwargs`, batch params)
-- `fiftyone_samples`: images + optional `ground_truth` classification
-- `embeddings`: `.npy` vectors in filedir store
-- `brain_status`: status marker for FiftyOne brain computations
-
 ## Run
 
 1. Copy env file:
@@ -42,5 +34,3 @@ Keys must match `image_name` (file stem). Missing keys -> unlabeled sample.
 3. Install deps:
    - `uv sync`
 4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import, so `.env` loads automatically.
-
-Manual `source .env` only needed if you run `steps.py` / `config.py` outside `app.py`.
