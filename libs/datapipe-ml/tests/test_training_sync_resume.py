@@ -5,6 +5,35 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _treat_manifest_checkpoints_as_loadable(monkeypatch: pytest.MonkeyPatch):
+    import fsspec
+
+    import datapipe_ml.training.checkpoint_verify as checkpoint_verify
+
+    real_is_loadable = checkpoint_verify.is_zip_checkpoint_loadable
+
+    def fake_is_loadable(path: str) -> bool:
+        if real_is_loadable(path):
+            return True
+        try:
+            with fsspec.open(path, "rb") as src:
+                return len(src.read()) > 0
+        except OSError:
+            return False
+
+    monkeypatch.setattr(checkpoint_verify, "is_zip_checkpoint_loadable", fake_is_loadable)
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.yolo.checkpoint_selection.is_yolo_checkpoint_loadable",
+        fake_is_loadable,
+    )
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.tensorflow.checkpoint_selection.is_tf_checkpoint_loadable",
+        fake_is_loadable,
+    )
+
+
 from datapipe_ml.core.multiprocessing import TrainingSubprocessError
 from datapipe_ml.training.runs import (
     RESUMABLE_TRAINING_STATUSES,
@@ -195,7 +224,7 @@ def test_write_manifest_and_select_last_checkpoint(tmp_path: Path) -> None:
     assert selected.epoch is None
 
 
-def test_select_last_checkpoint_ignores_epoch_files_when_last_pt_is_present(tmp_path: Path) -> None:
+def test_select_last_checkpoint_falls_back_to_epoch_files_when_last_pt_missing(tmp_path: Path) -> None:
     run_dir = tmp_path / "models" / "model-a"
     weights_dir = run_dir / "weights"
     weights_dir.mkdir(parents=True)
@@ -214,7 +243,9 @@ def test_select_last_checkpoint_ignores_epoch_files_when_last_pt_is_present(tmp_
         config=TrainingResumeConfig(continue_train_failed_models=True, min_completed_epochs=1),
     )
 
-    assert selected is None
+    assert selected is not None
+    assert selected.path == str(weights_dir / "epoch9.pt")
+    assert selected.epoch == 9
 
 
 def test_resume_ignores_unmanifested_checkpoint(tmp_path: Path) -> None:

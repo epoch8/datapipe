@@ -8,6 +8,12 @@ from pathy import Pathy
 
 from datapipe_ml.training.paths import relative_posix_path
 
+TF_LAST_CHECKPOINT_SUFFIX = "__last.keras"
+
+
+def is_tf_last_checkpoint_path(path: str) -> bool:
+    return PurePosixPath(path).name.endswith(TF_LAST_CHECKPOINT_SUFFIX)
+
 
 def discover_checkpoint_paths_in_run_dir(run_dir: str) -> list[str]:
     fs, stripped_run_dir = fsspec.core.url_to_fs(run_dir)

@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import List
 
+from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ def run_yolov5_train_in_process(yolov5_train_script: Path, arguments: List[str])
         sys.argv = [str(yolov5_train_script), *arguments]
         opt = train_mod.parse_opt()
         logger.info("Starting in-process YOLOv5 training with %s", arguments)
-        train_mod.main(opt)
+        with atomic_yolo_checkpoint_io():
+            train_mod.main(opt)
     finally:
         sys.argv = old_argv
