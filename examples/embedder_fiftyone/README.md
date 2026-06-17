@@ -34,20 +34,9 @@ First run downloads dataset (network + disk).
 
 Env vars: `ZOO_DATASET`, `ZOO_LABEL_FIELD`, `ZOO_NUM_CLASSES`.
 
-## Pipeline tables
-
-- `local_images`: image path inventory
-- `image_labels`: labels (from JSON or zoo)
-- `embedder`: embedder configs
-- `fiftyone_samples`: images + optional `ground_truth` classification
-- `embeddings`: `.npy` vectors in filedir store
-- `brain_status`: status marker for FiftyOne brain computations
-
 ## Run
 
 1. Copy env file: `cp .env.example .env`
 2. Edit `.env` (paths, `DB_URL`, `FIFTYONE_DATASET_NAME`, etc.)
 3. Install deps: `uv sync`
 4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import.
-
-Manual `source .env` only needed if you run `steps.py` / `config.py` outside `app.py`.
