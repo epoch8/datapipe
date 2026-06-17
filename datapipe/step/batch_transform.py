@@ -791,12 +791,20 @@ class BaseBatchTransformStep(ComputeStep):
         logger.info(f"Running: {self.name}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
+        # Получаем реальное количество записей требующих обработки ДО применения лимита
+        actual_changed_count = self.get_changed_idx_count(ds=ds, run_config=run_config)
+
         (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
 
         logger.info(f"Batches to process {idx_count}")
 
         if idx_count is not None and idx_count == 0:
             return
+
+        # Определяем сработал ли max_records_per_run лимит
+        # Если actual_changed_count > idx_count, значит часть записей была срезана лимитом
+        limit_hit = (self.max_records_per_run is not None and
+                     actual_changed_count > self.max_records_per_run)
 
         # Получаем результат с offset'ами из executor'а
         changes = executor.run_process_batch(
@@ -816,17 +824,29 @@ class BaseBatchTransformStep(ComputeStep):
         # 1. "Полудвиги" окна при падении mid-batch
         # 2. Порчу offset'ов при вызове run_changelist (он вообще не должен трогать offset'ы)
         # 3. Потерю offset'ов в RayExecutor (т.к. они теперь возвращаются через результат)
+        # 4. Потерю данных при срабатывании max_records_per_run (offset прыгает, срезанные записи теряются)
         if changes.offsets:
-            try:
-                ds.offset_table.update_offsets_bulk(changes.offsets)
-                logger.info(f"Updated offsets for {self.get_name()}: {changes.offsets}")
-            except Exception as e:
-                # Таблица offset'ов может не существовать (create_meta_table=False)
-                # Логируем warning но не прерываем выполнение
+            if limit_hit:
+                # max_records_per_run лимит сработал - НЕ обновляем offset
+                # Это предотвращает потерю данных когда offset вычисляется по всем событиям
+                # обработанных пар (composite keys), а не только по событиям из батча
                 logger.warning(
-                    f"Failed to update offsets for {self.get_name()}: {e}. "
-                    "Offset table may not exist (create_meta_table=False)"
+                    f"[{self.get_name()}] Skipping offset update: max_records_per_run limit hit. "
+                    f"Processed {idx_count} of {actual_changed_count} records. "
+                    f"Offset will be updated after all records are processed."
                 )
+            else:
+                # Обычный путь - обновляем offset
+                try:
+                    ds.offset_table.update_offsets_bulk(changes.offsets)
+                    logger.info(f"Updated offsets for {self.get_name()}: {changes.offsets}")
+                except Exception as e:
+                    # Таблица offset'ов может не существовать (create_meta_table=False)
+                    # Логируем warning но не прерываем выполнение
+                    logger.warning(
+                        f"Failed to update offsets for {self.get_name()}: {e}. "
+                        "Offset table may not exist (create_meta_table=False)"
+                    )
         else:
             # Диагностика: логируем если offset не был вычислен ни для одного input
             logger.warning(
