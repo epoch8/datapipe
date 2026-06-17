@@ -40,3 +40,14 @@ Env vars: `ZOO_DATASET`, `ZOO_LABEL_FIELD`, `ZOO_NUM_CLASSES`.
 2. Edit `.env` (paths, `DB_URL`, `FIFTYONE_DATASET_NAME`, etc.)
 3. Install deps: `uv sync`
 4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import.
+5. Run FiftyOne instance on the same server using 
+```shell
+fiftyone app launch  --remote --address 0.0.0.0 --port 5151 --wait -1
+```
+
+
+## Visualize in FiftyOne
+
+When you enter FiftyOne UI on host:port, you can:
+1. Visualize embeddings - instructions [here](https://docs.voxel51.com/user_guide/app.html#embeddings-panel)
+2. Search similar images by each embedder - instructions [here](https://docs.voxel51.com/user_guide/app.html#similarity-search-panel-sub-new)
