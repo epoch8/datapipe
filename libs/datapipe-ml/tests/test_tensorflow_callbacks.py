@@ -28,7 +28,7 @@ def test_fsspec_model_checkpoint_mirrors_asynchronously(monkeypatch: pytest.Monk
         dst_path.write_bytes(Path(src).read_bytes())
 
     monkeypatch.setattr(
-        "datapipe_ml.frameworks.tensorflow.callbacks.copy_url_to_url",
+        "datapipe_ml.frameworks.tensorflow.callbacks.publish_file_atomically",
         slow_copy,
     )
 
@@ -64,7 +64,7 @@ def test_fsspec_model_checkpoint_waits_for_pending_uploads_on_train_end(
         assert release.wait(timeout=5.0)
 
     monkeypatch.setattr(
-        "datapipe_ml.frameworks.tensorflow.callbacks.copy_url_to_url",
+        "datapipe_ml.frameworks.tensorflow.callbacks.publish_file_atomically",
         slow_copy,
     )
 
@@ -102,7 +102,7 @@ def test_fsspec_model_checkpoint_skips_mirror_when_checkpoint_unresolved(
     copied_urls: list[str] = []
 
     monkeypatch.setattr(
-        "datapipe_ml.frameworks.tensorflow.callbacks.copy_url_to_url",
+        "datapipe_ml.frameworks.tensorflow.callbacks.publish_file_atomically",
         lambda src, dst, **kwargs: copied_urls.append(dst),
     )
 
@@ -112,3 +112,34 @@ def test_fsspec_model_checkpoint_skips_mirror_when_checkpoint_unresolved(
     callback._mirror_if_exists(epoch=0, logs={})
 
     assert copied_urls == []
+
+
+def test_fsspec_model_checkpoint_deletes_previous_last_checkpoint_after_upload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tensorflow")
+    from datapipe_ml.frameworks.tensorflow.callbacks import FsspecModelCheckpoint
+
+    remote_dir = tmp_path / "remote"
+    remote_dir.mkdir()
+    stale_last = remote_dir / "001__last.keras"
+    stale_last.write_bytes(b"stale")
+    remote_url = str(remote_dir / "002__last.keras")
+
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.tensorflow.callbacks.publish_file_atomically",
+        lambda src, dst, **kwargs: Path(dst).write_bytes(Path(src).read_bytes()),
+    )
+
+    callback = FsspecModelCheckpoint(
+        remote_filepath_pattern=remote_url,
+        mirror_async=False,
+        rolling_last=True,
+    )
+    local_ckpt = Path(callback._tmpdir.name) / "002__last.keras"
+    local_ckpt.write_bytes(b"fresh")
+    callback._mirror_if_exists(epoch=1, logs={})
+
+    assert stale_last.exists() is False
+    assert Path(remote_url).read_bytes() == b"fresh"

@@ -186,16 +186,17 @@ def write_checkpoint_manifest(
         checkpoints=entries,
     )
     path = manifest_path_for_run(run_dir)
-    with fsspec.open(path, "w") as out:
-        json.dump(
-            {
-                **asdict(manifest),
-                "checkpoints": [asdict(item) for item in manifest.checkpoints],
-            },
-            out,
-            indent=2,
-            sort_keys=True,
-        )
+    payload = json.dumps(
+        {
+            **asdict(manifest),
+            "checkpoints": [asdict(item) for item in manifest.checkpoints],
+        },
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8")
+    from datapipe_ml.core.atomic_io import write_bytes_atomically
+
+    write_bytes_atomically(path, payload, label="checkpoint manifest")
     return path
 
 
@@ -258,16 +259,9 @@ def _publish_tmp(dst_url: str, tmp_url: str) -> None:
 
 
 def _copy_file_via_tmp(src_url: str, dst_url: str) -> None:
-    from datapipe_ml.core.files import copy_url_to_url
+    from datapipe_ml.core.atomic_io import publish_file_atomically
 
-    tmp_url = f"{dst_url}.tmp.{os.getpid()}.{time.time_ns()}"
-    try:
-        copy_url_to_url(src_url, tmp_url, label="training sync file", concurrency=1)
-        _publish_tmp(dst_url, tmp_url)
-    finally:
-        tmp_fs, tmp_path = fsspec.core.url_to_fs(tmp_url)
-        if tmp_fs.exists(tmp_path):
-            tmp_fs.rm(tmp_path)
+    publish_file_atomically(src_url, dst_url, label="training sync file")
 
 
 def _copy_stable_file(src_url: str, dst_url: str) -> bool:

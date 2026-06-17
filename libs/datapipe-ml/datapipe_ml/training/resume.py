@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import logging
 from typing import Callable, Optional
 
+from datapipe_ml.training import checkpoint_verify
 from datapipe_ml.training.specs import TrainingResumeCheckpoint, TrainingResumeConfig
 from datapipe_ml.training.sync import (
     TrainingCheckpointEntry,
     read_checkpoint_manifest,
     verify_manifest_checkpoint,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _default_meets_min_epochs(item: TrainingCheckpointEntry, config: TrainingResumeConfig) -> bool:
@@ -31,6 +35,20 @@ def read_manifest_verified_candidates(
     ]
 
 
+def select_first_loadable_checkpoint(
+    ordered_candidates: list[TrainingCheckpointEntry],
+    *,
+    is_loadable: Callable[[str], bool] | None = None,
+) -> Optional[TrainingCheckpointEntry]:
+    loadable = is_loadable or checkpoint_verify.is_zip_checkpoint_loadable
+    for item in ordered_candidates:
+        if not loadable(item.path):
+            logger.warning("Resume checkpoint is not loadable, trying next candidate: %s", item.path)
+            continue
+        return item
+    return None
+
+
 def select_default_resume_checkpoint(
     *,
     manifest_path: Optional[str],
@@ -46,7 +64,10 @@ def select_default_resume_checkpoint(
         return None
     with_epoch = [item for item in candidates if item.epoch is not None]
     if with_epoch:
-        selected = max(with_epoch, key=lambda item: item.epoch or 0)
+        ordered = sorted(with_epoch, key=lambda item: item.epoch or 0, reverse=True)
     else:
-        selected = candidates[-1]
+        ordered = list(candidates)
+    selected = select_first_loadable_checkpoint(ordered)
+    if selected is None:
+        return None
     return TrainingResumeCheckpoint(path=selected.path, epoch=selected.epoch)

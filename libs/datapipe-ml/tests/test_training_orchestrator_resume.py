@@ -23,6 +23,34 @@ from datapipe_ml.training.specs import Algo, PreparedData, TrainContext, Trainin
 from datapipe_ml.training.sync import read_checkpoint_manifest, write_checkpoint_manifest
 
 
+@pytest.fixture(autouse=True)
+def _treat_manifest_checkpoints_as_loadable(monkeypatch: pytest.MonkeyPatch):
+    import fsspec
+
+    import datapipe_ml.training.checkpoint_verify as checkpoint_verify
+
+    real_is_loadable = checkpoint_verify.is_zip_checkpoint_loadable
+
+    def fake_is_loadable(path: str) -> bool:
+        if real_is_loadable(path):
+            return True
+        try:
+            with fsspec.open(path, "rb") as src:
+                return len(src.read()) > 0
+        except OSError:
+            return False
+
+    monkeypatch.setattr(checkpoint_verify, "is_zip_checkpoint_loadable", fake_is_loadable)
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.yolo.checkpoint_selection.is_yolo_checkpoint_loadable",
+        fake_is_loadable,
+    )
+    monkeypatch.setattr(
+        "datapipe_ml.frameworks.tensorflow.checkpoint_selection.is_tf_checkpoint_loadable",
+        fake_is_loadable,
+    )
+
+
 class FakeTable:
     def __init__(self, rows: list[dict[str, Any]] | None = None, primary_keys: list[str] | None = None):
         self.df = pd.DataFrame(rows or [])

@@ -1,0 +1,5 @@
+venv/
+.mypy_cache/
+__pycache__/
+dist/
+frontend/node_modules/

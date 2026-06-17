@@ -34,15 +34,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.training]
 load_test_env()
 
 DEFAULT_SKY_VAST_CANDIDATE_LIMIT = 5
-DEFAULT_SKY_VAST_ACCELERATOR_CANDIDATES = (
-    "RTX4060:1",
-    "RTX3060:1",
-    "RTX3070:1",
-    "RTXA4000:1",
-    "T4:1",
-    "P100:1",
-)
-DEFAULT_SKY_VAST_PREFERRED_GPUS = {"RTX4060", "RTX3060", "RTX3070", "RTXA4000", "T4", "P100"}
 _BAD_OFFER_IDS: set[str] = set()
 
 
@@ -51,12 +42,17 @@ def _sky_cli() -> str:
 
 
 def _live_vast_offer_query() -> str:
-    return (
-        "verified=true rentable=true rented=false "
-        f"disk_space>={int(os.getenv('DATAPIPE_ML_SKY_VAST_DISK_SIZE_GB', '20'))} "
-        "num_gpus=1 "
-        f'cpu_ram>="{float(os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY_GB", "16"))}"'
-    )
+    parts = [
+        "verified=true",
+        "rentable=true",
+        "rented=false",
+        f"disk_space>={int(os.getenv('DATAPIPE_ML_SKY_VAST_DISK_SIZE_GB', '20'))}",
+        "num_gpus=1",
+        f'cpu_ram>="{float(os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY_GB", "16"))}"',
+    ]
+    if os.getenv("DATAPIPE_ML_SKY_VAST_SECURE_ONLY", "1") == "1":
+        parts.append("datacenter=true")
+    return " ".join(parts)
 
 
 def _sky_vast_country_filter() -> str:
@@ -140,13 +136,37 @@ def _write_live_sky_vast_catalog(sky_home: Path) -> None:
         )
     catalog_path = sky_home / ".sky" / "catalogs" / "v8" / "vast" / "vms.csv"
     catalog_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(catalog_path, index=False)
+    frame = pd.DataFrame(rows)
+    if not frame.empty:
+        frame = frame.sort_values("Price", ascending=True)
+    frame.to_csv(catalog_path, index=False)
+
+
+def _write_skypilot_config(sky_home: Path) -> None:
+    config_dir = sky_home / ".sky"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    datacenter_only = os.getenv("DATAPIPE_ML_SKY_VAST_SECURE_ONLY", "1") == "1"
+    (config_dir / "config.yaml").write_text(f"vast:\n  datacenter_only: {str(datacenter_only).lower()}\n")
+
+
+def _refresh_sky_vast_catalog() -> None:
+    sky_home = Path(os.environ.get("HOME", Path.home()))
+    if _sky_vast_available():
+        _write_live_sky_vast_catalog(sky_home)
 
 
 def _write_sky_vast_patch(patch_dir: Path) -> None:
     patch_dir.mkdir(parents=True, exist_ok=True)
     helper_path = Path(__file__).with_name("helpers") / "sky_vast_sitecustomize.py"
     (patch_dir / "sitecustomize.py").write_text(helper_path.read_text())
+    # PYTHONPATH alone does not auto-import sitecustomize; a .pth hook does.
+    (patch_dir / "datapipe_sky_vast.pth").write_text("import sitecustomize\n")
+
+
+def _apply_sky_vast_runtime_patches() -> None:
+    from tests.helpers import sky_vast_sitecustomize
+
+    sky_vast_sitecustomize._patch_sky_vast_launch()
 
 
 @pytest.fixture
@@ -158,6 +178,7 @@ def sky_vast_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     sky_home.mkdir()
     patch_dir = tmp_path / "sky-patches"
     _write_sky_vast_patch(patch_dir)
+    _apply_sky_vast_runtime_patches()
     pythonpath = str(patch_dir)
     if os.getenv("PYTHONPATH"):
         pythonpath = pythonpath + os.pathsep + os.environ["PYTHONPATH"]
@@ -170,6 +191,7 @@ def sky_vast_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         vast_credentials_path = sky_home / ".config" / "vastai" / "vast_api_key"
         vast_credentials_path.parent.mkdir(parents=True, exist_ok=True)
         vast_credentials_path.write_text(api_key)
+    _write_skypilot_config(sky_home)
     _write_live_sky_vast_catalog(sky_home)
     yield
     if use_isolated_sky:
@@ -270,6 +292,8 @@ def _candidate_first_offer_id(infra: str, accelerator: str) -> str | None:
                 f'cpu_ram>="{float(os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY_GB", "16"))}"',
             ]
         )
+        if os.getenv("DATAPIPE_ML_SKY_VAST_SECURE_ONLY", "1") == "1":
+            query.append("datacenter=true")
         offers: list[dict[str, Any]] = vastai_sdk.VastAI().search_offers(query=" ".join(query), limit=200)
     except Exception:
         return None
@@ -299,22 +323,18 @@ def _live_vast_candidates(
     except Exception:
         return ()
     bad_offer_ids = _read_bad_offer_ids()
-    if accelerators is None:
-        preferred_gpus = set(
-            os.getenv("DATAPIPE_ML_SKY_VAST_PREFERRED_GPUS", ",".join(DEFAULT_SKY_VAST_PREFERRED_GPUS)).split(",")
-        )
-    else:
-        preferred_gpus = {_split_accelerator(accelerator)[0] for accelerator in accelerators}
+    allowed_gpus = (
+        {_split_accelerator(accelerator)[0] for accelerator in accelerators} if accelerators is not None else None
+    )
     candidates = []
-    seen = set()
+    seen_offer_ids = set()
     for offer in offers:
         if not _offer_matches_country(offer):
             continue
         offer_id = str(offer.get("id"))
-        if not offer_id or offer_id in bad_offer_ids:
+        if not offer_id or offer_id in bad_offer_ids or offer_id in seen_offer_ids:
             continue
         gpu_name = offer.get("gpu_name")
-        gpu_count = int(offer.get("num_gpus") or 1)
         if not gpu_name:
             continue
         if re.search(r"\b(Ti|TI)\b", str(gpu_name)):
@@ -322,67 +342,32 @@ def _live_vast_candidates(
         sky_gpu_name = _sky_accelerator_name(str(gpu_name))
         if sky_gpu_name not in _sky_vast_catalog_accelerators():
             continue
-        if preferred_gpus and sky_gpu_name not in preferred_gpus:
+        if allowed_gpus is not None and sky_gpu_name not in allowed_gpus:
             continue
+        gpu_count = int(offer.get("num_gpus") or 1)
         accelerator = f"{sky_gpu_name}:{gpu_count}"
-        infra = "vast"
-        candidate = (infra, accelerator, None)
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        candidates.append((infra, accelerator, offer_id, None))
+        candidates.append(("vast", accelerator, offer_id, None))
+        seen_offer_ids.add(offer_id)
         if len(candidates) >= limit:
             break
     return tuple(candidates)
 
 
 def _sky_vast_candidates() -> tuple[SkyVastCandidate, ...]:
+    _refresh_sky_vast_catalog()
     configured = _env_optional("DATAPIPE_ML_SKY_VAST_ACCELERATORS")
     if configured:
         live_candidates = _live_vast_candidates(accelerators=(configured,))
         if live_candidates:
             return live_candidates
-        raw_items = (f"{os.getenv('DATAPIPE_ML_SKY_VAST_INFRA', 'vast')}|{configured}",)
-    else:
-        raw_candidates = os.getenv("DATAPIPE_ML_SKY_VAST_CANDIDATES") or os.getenv(
-            "DATAPIPE_ML_SKY_VAST_ACCELERATOR_CANDIDATES"
-        )
-        if raw_candidates:
-            separator = ";" if ";" in raw_candidates else ","
-            raw_items = tuple(candidate.strip() for candidate in raw_candidates.split(separator) if candidate.strip())
-        else:
-            live_candidates = _live_vast_candidates()
-            if live_candidates:
-                return live_candidates
-            raw_items = tuple(
-                f"{os.getenv('DATAPIPE_ML_SKY_VAST_INFRA', 'vast')}|{candidate}"
-                for candidate in DEFAULT_SKY_VAST_ACCELERATOR_CANDIDATES
-            )
-    bad_offer_ids = _read_bad_offer_ids()
-    candidates = []
-    for item in raw_items:
-        if "|" in item:
-            infra, accelerator = item.split("|", 1)
-        else:
-            infra, accelerator = os.getenv("DATAPIPE_ML_SKY_VAST_INFRA", "vast"), item
-        infra, accelerator = infra.strip(), accelerator.strip()
-        offer_id = _candidate_first_offer_id(infra, accelerator) if infra and accelerator else None
-        if infra and accelerator and (offer_id is None or offer_id not in bad_offer_ids):
-            candidates.append((infra, accelerator, offer_id, None))
-    return tuple(candidates)
+        offer_id = _candidate_first_offer_id("vast", configured)
+        if offer_id is None or offer_id in _read_bad_offer_ids():
+            return ()
+        return (("vast", configured, offer_id, None),)
+    return _live_vast_candidates()
 
 
 def _sky_vast_all_candidates_are_cached() -> bool:
-    configured = _env_optional("DATAPIPE_ML_SKY_VAST_ACCELERATORS")
-    if configured:
-        return not _sky_vast_candidates()
-    raw_candidates = os.getenv("DATAPIPE_ML_SKY_VAST_CANDIDATES") or os.getenv(
-        "DATAPIPE_ML_SKY_VAST_ACCELERATOR_CANDIDATES"
-    )
-    if raw_candidates:
-        separator = ";" if ";" in raw_candidates else ","
-        raw_items = tuple(candidate.strip() for candidate in raw_candidates.split(separator) if candidate.strip())
-        return bool(raw_items) and not _sky_vast_candidates()
     return not _sky_vast_candidates()
 
 
@@ -446,7 +431,7 @@ def _sky_vast_config(
         cluster_name=cluster_name,
         infra=infra,
         instance_type=instance_type,
-        accelerators=accelerators if accelerators is not None else os.getenv("DATAPIPE_ML_SKY_VAST_ACCELERATORS", ""),
+        accelerators="" if instance_type else (accelerators if accelerators is not None else os.getenv("DATAPIPE_ML_SKY_VAST_ACCELERATORS", "")),
         cpus=os.getenv("DATAPIPE_ML_SKY_VAST_CPUS", "1+"),
         memory=os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY", "1+"),
         disk_size=os.getenv("DATAPIPE_ML_SKY_VAST_DISK_SIZE", "20GB"),
@@ -493,7 +478,7 @@ def _launch_minimal_worker_with_candidates(candidates: Iterable[SkyVastCandidate
                 _remember_bad_offer(offer_id)
             resource_errors.append(f"{infra}|{accelerator}|{instance_type}: {exc}")
             print(f"[sky-vast] retry candidate after provisioning failure: {resource_errors[-1]}", flush=True)
-    pytest.skip("No configured Sky/Vast accelerator candidate was currently available:\n" + "\n".join(resource_errors))
+    pytest.skip("No US GPU offers were currently available on Vast:\n" + "\n".join(resource_errors))
 
 
 def _run_with_accelerator_candidates(
@@ -514,7 +499,7 @@ def _run_with_accelerator_candidates(
                 _remember_bad_offer(offer_id)
             resource_errors.append(f"{infra}|{accelerator}|{instance_type}: {exc}")
             print(f"[sky-vast] retry candidate after provisioning failure: {resource_errors[-1]}", flush=True)
-    pytest.skip("No configured Sky/Vast accelerator candidate was currently available:\n" + "\n".join(resource_errors))
+    pytest.skip("No US GPU offers were currently available on Vast:\n" + "\n".join(resource_errors))
 
 
 def test_sky_vast_config_builds_launcher_without_credentials():
@@ -716,15 +701,21 @@ def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
         if importlib.util.find_spec(module_name) is None
     ]
     assert missing == []
-    assert os.getenv("VAPI_API_KEY"), "tests/.env.test must provide VAPI_API_KEY for Sky/Vast integration tests"
+    assert os.getenv("VAPI_API_KEY"), (
+        "Set VAPI_API_KEY in tests/.env.test.local (see tests/.env.test.local.example) "
+        "or export it in the shell for Sky/Vast integration tests"
+    )
 
 
 @pytest.mark.sky_vast
 def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
     if not _sky_vast_available():
-        pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
+        pytest.skip(
+            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY "
+            "(tests/.env.test.local or shell env) to run this test."
+        )
     if _sky_vast_all_candidates_are_cached():
-        pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
+        pytest.skip("All US GPU offers on Vast were already marked bad in this test process.")
 
     result = _launch_minimal_worker_with_candidates(_sky_vast_candidates())
     assert result == {"ok": True}
@@ -734,9 +725,12 @@ def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
 @pytest.mark.sky_vast
 def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment):
     if not _sky_vast_available():
-        pytest.skip("Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY to run this test.")
+        pytest.skip(
+            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY "
+            "(tests/.env.test.local or shell env) to run this test."
+        )
     if _sky_vast_all_candidates_are_cached():
-        pytest.skip("All configured Sky/Vast candidates point to bad offers already seen in this test process.")
+        pytest.skip("All US GPU offers on Vast were already marked bad in this test process.")
 
     from tests.helpers.training_smoke import (
         assert_model_artifact,

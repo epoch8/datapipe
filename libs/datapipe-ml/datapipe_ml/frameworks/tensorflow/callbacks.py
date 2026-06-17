@@ -5,19 +5,23 @@ import shutil
 import tempfile
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Union
 
+import fsspec
 from pathy import Pathy
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
 
-from datapipe_ml.core.files import copy_url_to_url
+from datapipe_ml.core.atomic_io import publish_file_atomically
+from datapipe_ml.frameworks.tensorflow.checkpoint_sync import TF_LAST_CHECKPOINT_SUFFIX
 
 logger = logging.getLogger(__name__)
 
 
 def _copy_file_fsspec(src_path: str, dst_url: str, chunk_bytes: int = 64 * 1024 * 1024) -> None:
-    copy_url_to_url(src_path, dst_url, label="TensorFlow checkpoint", concurrency=1)
+    """Atomically publish a completed local checkpoint to its training destination."""
+    del chunk_bytes
+    publish_file_atomically(src_path, dst_url, label="TensorFlow checkpoint")
 
 
 def _stage_checkpoint_for_upload(local_path: Path, staging_root: Path) -> Path:
@@ -64,6 +68,7 @@ class FsspecModelCheckpoint(Callback):
         initial_value_threshold: Optional[float] = None,
         options: Optional[Any] = None,  # ignored when the installed Keras version does not support it
         mirror_async: bool = True,
+        rolling_last: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -74,6 +79,7 @@ class FsspecModelCheckpoint(Callback):
             raise ValueError("You must pass `filepath` (alias: `remote_filepath_pattern`).")
 
         self.verbose = int(verbose)
+        self.rolling_last = rolling_last
 
         # Temp directory for the full training run.
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -157,6 +163,17 @@ class FsspecModelCheckpoint(Callback):
         )
         return None
 
+    def _delete_stale_last_checkpoints(self, keep_remote_url: str) -> None:
+        if not self.rolling_last:
+            return
+        remote_fs, remote_path = fsspec.core.url_to_fs(keep_remote_url)
+        keep_name = PurePosixPath(remote_path).name
+        parent = str(PurePosixPath(remote_path).parent)
+        for candidate in remote_fs.glob(f"{parent}/*{TF_LAST_CHECKPOINT_SUFFIX}"):
+            if PurePosixPath(candidate).name == keep_name:
+                continue
+            remote_fs.rm(candidate)
+
     # Mirror checkpoints to remote storage.
     def _mirror_if_exists(self, epoch: int, logs: Optional[Dict[str, Any]]):
         local_path = self._resolve_local_checkpoint_path(epoch, logs)
@@ -177,6 +194,8 @@ class FsspecModelCheckpoint(Callback):
             def _upload() -> None:
                 try:
                     _copy_file_fsspec(str(staged_path), remote_url, self._chunk_bytes)
+                    if self.rolling_last:
+                        self._delete_stale_last_checkpoints(remote_url)
                 finally:
                     staged_path.unlink(missing_ok=True)
 
@@ -190,3 +209,5 @@ class FsspecModelCheckpoint(Callback):
             thread.start()
         else:
             _copy_file_fsspec(str(local_path), remote_url, self._chunk_bytes)
+            if self.rolling_last:
+                self._delete_stale_last_checkpoints(remote_url)

@@ -41,6 +41,7 @@ from datapipe_ml.frameworks.tensorflow.callbacks import (
     FsspecModelCheckpoint,
 )
 from datapipe_ml.frameworks.tensorflow.checkpoint_selection import select_best_classification_checkpoint
+from datapipe_ml.frameworks.tensorflow.checkpoint_sync import is_tf_last_checkpoint_path
 from datapipe_ml.training.staging import (
     copied_file_to_local_temp,
     make_local_staging_dir,
@@ -456,6 +457,13 @@ def get_callbacks(
             mode="max",
             verbose=True,
         ),
+        FsspecModelCheckpoint(
+            str(logdir_exp / "{epoch:03d}__last.keras"),
+            save_weights_only=False,
+            save_best_only=False,
+            verbose=True,
+            rolling_last=True,
+        ),
         tf.keras.callbacks.EarlyStopping(patience=early_stopping_patience, monitor="val_f1_score", mode="max"),
         tf.keras.callbacks.ReduceLROnPlateau(
             factor=reduce_lr_factor,
@@ -588,7 +596,8 @@ def train_on_tensorflow(
         interrupted = True
         print("Caught KeyboardInterrupt in train process. Stopping the train...")
     finally:
-        best_model_paths: List[str] = sorted(fs.glob(str(logdir_exp / "*.keras")))
+        all_model_paths: List[str] = sorted(fs.glob(str(logdir_exp / "*.keras")))
+        best_model_paths = [path for path in all_model_paths if not is_tf_last_checkpoint_path(path)]
         if len(best_model_paths) >= 1:
             selected_best = select_best_classification_checkpoint(best_model_paths)
             assert selected_best is not None
@@ -600,6 +609,10 @@ def train_on_tensorflow(
                     # Keep only the last two checkpoints.
                     # Training may be interrupted while a checkpoint is being written.
                     fs.rm(model_path)
+            if clean_checkpoints_after_train:
+                for model_path in all_model_paths:
+                    if is_tf_last_checkpoint_path(model_path):
+                        fs.rm(model_path)
         else:
             print(f"Exp failed. Removing {logdir_exp}.")
             shutil.rmtree(logdir_exp, ignore_errors=True)

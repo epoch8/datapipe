@@ -343,9 +343,12 @@ def train_model(
 
     def _launch(class_names: List[str], tmp_yaml_path: Optional[Path]) -> tuple[Optional[Path], Any, Any]:
         os.environ.setdefault("WANDB_DISABLED", "true")
+        from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
+
         model = ultralytics.YOLO(yolov8_training_config.model)
         logger.info("Train %s model", yolov8_training_config.model)
-        _ = model.train(**yolov8_training_config.to_yolo_kwargs())
+        with atomic_yolo_checkpoint_io():
+            _ = model.train(**yolov8_training_config.to_yolo_kwargs())
         trainer = model.trainer
         validator = trainer.validator if trainer is not None else None
         metrics = validator.metrics if validator is not None else None
