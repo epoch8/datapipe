@@ -354,6 +354,7 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                     model_id=model_id,
                     discover_checkpoints=algo.discover_checkpoint_paths_in_run_dir,
                     epoch_for_path=algo.infer_epoch_from_checkpoint_path,
+                    training_run_key=run_key,
                 )
                 output_sync.start()
             raw_result = algo.launch_training(

@@ -16,6 +16,7 @@ interface GraphData {
         [name: string]: PipeTable;
     };
     pipeline: Node[];
+    stages?: string[];
 }
 
 interface BaseNode {
@@ -29,11 +30,20 @@ interface TransformNode extends BaseNode {
     type: "transform";
     inputs: string[];
     outputs: string[];
+    labels?: string[][];
+    transform_type?: string;
+    indexes?: string[];
+    total_idx_count?: number;
+    changed_idx_count?: number;
 }
 
 interface MetaNode extends BaseNode {
     type: "meta";
     graph: GraphData;
+    inputs?: string[];
+    outputs?: string[];
+    transform_type?: string;
+    labels?: string[][];
 }
 
 interface GetDataReq {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datapipe.compute import DatapipeApp, Pipeline
+from datapipe.compute import Pipeline
+from datapipe_app import DatapipeAPI
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -249,4 +250,4 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN, create_meta_table=True)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeAPI(ds, catalog, pipeline)

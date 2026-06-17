@@ -1,0 +1,376 @@
+from __future__ import annotations
+
+import importlib.metadata
+from typing import Any, List, Literal, Optional
+
+from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
+from datapipe.types import Labels
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from pydantic import BaseModel, Field
+
+from datapipe_app.api_v1alpha1 import filter_steps_by_labels
+from datapipe_app.observability.db import ObservabilityStore, utc_now
+from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
+from datapipe_app.observability.queries import build_chart_specs, build_overview, build_training_curves
+from datapipe_app.observability.recorder import RunRecorder
+from datapipe_app.observability.registry import ObservabilityRegistry
+from datapipe_app.observability.settings import get_ops_settings
+
+
+class StartRunRequest(BaseModel):
+    labels: Labels = []
+    background: bool = False
+
+
+class StartRunResponse(BaseModel):
+    run_id: str
+    status: str = "running"
+
+
+class CapabilitiesResponse(BaseModel):
+    ml_metrics: bool
+    ml_training: bool
+    mode: str
+    pipeline_id: Optional[str] = None
+
+
+class SettingsResponse(BaseModel):
+    pipeline_id: Optional[str]
+    mode: str
+    observability_db_connected: bool
+    version: str
+
+
+def make_app(
+    store: ObservabilityStore,
+    registry: ObservabilityRegistry,
+    *,
+    ds: Optional[DataStore] = None,
+    catalog: Optional[Catalog] = None,
+    pipeline: Optional[Pipeline] = None,
+    steps: Optional[List[ComputeStep]] = None,
+    recorder: Optional[RunRecorder] = None,
+) -> FastAPI:
+    app = FastAPI(title="Datapipe Ops API v1alpha3")
+
+    def _pipeline_id() -> Optional[str]:
+        return get_ops_settings().pipeline_id
+
+    def _require_agent_pipeline(pipeline_id: str) -> None:
+        if get_ops_settings().mode == "central":
+            raise HTTPException(400, "Run triggers are not available in central mode")
+        if ds is None or steps is None:
+            raise HTTPException(503, "Local pipeline not available")
+
+    @app.get("/overview")
+    def get_overview() -> dict[str, Any]:
+        return build_overview(store, registry, ds=ds, catalog=catalog)
+
+    @app.get("/capabilities", response_model=CapabilitiesResponse)
+    def get_capabilities() -> CapabilitiesResponse:
+        has_ml_plugin = len(registry.enrichers) > 0 or len(registry.publishers) > 0
+        return CapabilitiesResponse(
+            ml_metrics=has_ml_plugin and store.has_metrics(),
+            ml_training=has_ml_plugin,
+            mode=get_ops_settings().mode,
+            pipeline_id=get_ops_settings().pipeline_id,
+        )
+
+    @app.get("/settings", response_model=SettingsResponse)
+    def get_settings() -> SettingsResponse:
+        try:
+            importlib.metadata.version("datapipe-app")
+            version = importlib.metadata.version("datapipe-app")
+        except Exception:
+            version = "unknown"
+        connected = False
+        try:
+            with store.session() as session:
+                session.connection()
+            connected = True
+        except Exception:
+            pass
+        return SettingsResponse(
+            pipeline_id=get_ops_settings().pipeline_id,
+            mode=get_ops_settings().mode,
+            observability_db_connected=connected,
+            version=version,
+        )
+
+    @app.get("/version")
+    def get_version() -> dict[str, str]:
+        try:
+            return {"version": importlib.metadata.version("datapipe-app")}
+        except Exception:
+            return {"version": "unknown"}
+
+    @app.get("/pipelines/{pipeline_id}")
+    def get_pipeline_detail(pipeline_id: str) -> dict[str, Any]:
+        reg = store.get_pipeline(pipeline_id)
+        if reg is None:
+            raise HTTPException(404, f"Pipeline {pipeline_id} not found")
+
+        last_run = store.get_last_run(pipeline_id)
+        recent_runs = store.list_recent_runs(pipeline_id)
+        schedule = store.get_schedule(pipeline_id)
+
+        stages: list[dict[str, Any]] = []
+        stage_edges: list[dict[str, Any]] = []
+        if ds is not None and steps is not None and get_ops_settings().pipeline_id == pipeline_id:
+            stages = build_stage_summary(steps, ds)
+            stage_edges = build_stage_edges(steps)
+        elif pipeline is not None:
+            stages = [{"stage": s, "status": "unknown", "steps": []} for s in discover_pipeline_stages(pipeline)]
+
+        enrichments: list[dict[str, Any]] = []
+        for enricher in registry.enrichers:
+            try:
+                enrichments.extend(
+                    enricher.enrich_pipeline_detail(
+                        pipeline_id=pipeline_id,
+                        ds=ds,
+                        catalog=catalog,
+                        store=store,
+                    )
+                )
+            except Exception:
+                pass
+
+        for collector in registry.collectors:
+            try:
+                rows = collector.collect_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    ds=ds,
+                    catalog=catalog,
+                )
+                if rows:
+                    enrichments.append({"type": "ml_training", "payload": {"rows": rows}})
+            except Exception:
+                pass
+
+        return {
+            "pipeline_id": pipeline_id,
+            "display_name": reg.display_name,
+            "task_type": reg.task_type,
+            "health": "failed" if last_run and last_run.status == "failed" else "healthy",
+            "stages": stages,
+            "stage_edges": stage_edges,
+            "recent_runs": [
+                {
+                    "run_id": r.run_id,
+                    "status": r.status,
+                    "started_at": r.started_at.isoformat() if r.started_at else None,
+                    "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                }
+                for r in recent_runs
+            ],
+            "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
+            "last_error": last_run.error if last_run else None,
+            "enrichments": enrichments,
+            "agent_mode": get_ops_settings().mode == "agent",
+        }
+
+    @app.get("/pipelines/{pipeline_id}/training/runs")
+    def list_training_runs(pipeline_id: str) -> dict[str, Any]:
+        enrichments: list[dict[str, Any]] = []
+        for enricher in registry.enrichers:
+            try:
+                enrichments.extend(
+                    enricher.enrich_pipeline_detail(
+                        pipeline_id=pipeline_id,
+                        ds=ds,
+                        catalog=catalog,
+                        store=store,
+                    )
+                )
+            except Exception:
+                pass
+        runs: list[dict[str, Any]] = []
+        for item in enrichments:
+            if item.get("type") == "ml_training_runs":
+                runs = item.get("payload", {}).get("rows", [])
+        return {"pipeline_id": pipeline_id, "runs": runs}
+
+    @app.get("/metrics/charts")
+    def get_metrics_charts(
+        pipeline_id: str,
+        model_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        if not pipeline_id:
+            raise HTTPException(400, "pipeline_id is required")
+        charts = build_chart_specs(store, pipeline_id, model_id=model_id)
+        return {"pipeline_id": pipeline_id, "charts": charts}
+
+    @app.get("/metrics/summary")
+    def get_metrics_summary(pipeline_id: str) -> dict[str, Any]:
+        rows = store.list_metrics(pipeline_id)
+        if not rows:
+            return {"pipeline_id": pipeline_id, "has_metrics": False}
+        latest = rows[-1]
+        return {
+            "pipeline_id": pipeline_id,
+            "has_metrics": True,
+            "model_id": latest.model_id,
+            "subset_id": latest.subset_id,
+            "computed_at": latest.computed_at.isoformat() if latest.computed_at else None,
+        }
+
+    @app.get("/runs/{run_id}")
+    def get_run(run_id: str) -> dict[str, Any]:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(404, f"Run {run_id} not found")
+        steps_rows = store.get_run_steps(run_id)
+        return {
+            "run_id": run.run_id,
+            "pipeline_id": run.pipeline_id,
+            "status": run.status,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "error": run.error,
+            "steps": [
+                {
+                    "step_name": s.step_name,
+                    "status": s.status,
+                    "started_at": s.started_at.isoformat() if s.started_at else None,
+                    "finished_at": s.finished_at.isoformat() if s.finished_at else None,
+                    "processed": s.processed,
+                    "total": s.total,
+                    "error": s.error,
+                }
+                for s in steps_rows
+            ],
+        }
+
+    @app.get("/runs/{run_id}/logs")
+    def get_run_logs(
+        run_id: str,
+        after: int = 0,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        run = store.get_run(run_id)
+        if run is None:
+            raise HTTPException(404, f"Run {run_id} not found")
+        from datapipe_app.observability.log_buffer import get_log_buffer
+
+        buf = get_log_buffer(store)
+        lines = buf.get_lines(run_id, after=after, limit=min(limit, 1000))
+        return {
+            "run_id": run_id,
+            "lines": [
+                {
+                    "seq": ln.seq,
+                    "logged_at": ln.logged_at,
+                    "level": ln.level,
+                    "message": ln.message,
+                }
+                for ln in lines
+            ],
+            "last_seq": lines[-1].seq if lines else after,
+        }
+
+    @app.post("/runs", response_model=StartRunResponse)
+    def start_run(req: StartRunRequest, background_tasks: BackgroundTasks) -> StartRunResponse:
+        pid = _pipeline_id()
+        if not pid:
+            raise HTTPException(400, "PIPELINE_ID not configured")
+        _require_agent_pipeline(pid)
+        assert ds is not None and steps is not None
+        assert recorder is not None
+
+        selected = filter_steps_by_labels(steps, labels=req.labels) if req.labels else steps
+
+        if req.background:
+            run_id = recorder.start_run(trigger="api")
+
+            def _execute() -> None:
+                try:
+                    for step in selected:
+                        recorder.start_step(step.name)
+                        try:
+                            step.run_full(ds=ds, run_config=None, executor=None)
+                            recorder.finish_step(step.name, status="completed")
+                        except Exception as exc:
+                            recorder.finish_step(step.name, status="failed", error=str(exc))
+                            recorder.finish_run(status="failed", error=str(exc))
+                            return
+                    recorder.finish_run(status="completed")
+                except Exception as exc:
+                    recorder.finish_run(status="failed", error=str(exc))
+
+            background_tasks.add_task(_execute)
+            return StartRunResponse(run_id=run_id, status="running")
+
+        run_id = recorder.start_run(trigger="api")
+        try:
+            for step in selected:
+                recorder.start_step(step.name)
+                try:
+                    step.run_full(ds=ds, run_config=None, executor=None)
+                    recorder.finish_step(step.name, status="completed")
+                except Exception as exc:
+                    recorder.finish_step(step.name, status="failed", error=str(exc))
+                    recorder.finish_run(status="failed", error=str(exc))
+                    raise HTTPException(500, str(exc)) from exc
+            recorder.finish_run(status="completed")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            recorder.finish_run(status="failed", error=str(exc))
+            raise HTTPException(500, str(exc)) from exc
+        return StartRunResponse(run_id=run_id, status="completed")
+
+    @app.get("/training/{run_key}")
+    def get_training_run(run_key: str, pipeline_id: Optional[str] = None) -> dict[str, Any]:
+        pid = pipeline_id or get_ops_settings().pipeline_id or ""
+        detail: dict[str, Any] = {"run_key": run_key, "pipeline_id": pid}
+        for enricher in registry.enrichers:
+            try:
+                items = enricher.enrich_pipeline_detail(
+                    pipeline_id=pid,
+                    ds=ds,
+                    catalog=catalog,
+                    store=store,
+                )
+                for item in items:
+                    if item.get("type") == "ml_training_detail":
+                        payload = item.get("payload", {})
+                        if payload.get("run_key") == run_key:
+                            detail.update(payload)
+            except Exception:
+                pass
+        detail["curves"] = build_training_curves(store, run_key)
+        return detail
+
+    @app.get("/training/{run_key}/curves")
+    def get_training_curves(
+        run_key: str,
+        limit_epochs: Optional[int] = None,
+    ) -> dict[str, Any]:
+        charts = build_training_curves(store, run_key, limit_epochs=limit_epochs)
+        return {"run_key": run_key, "charts": charts}
+
+    @app.get("/training/compare")
+    def compare_training_runs(
+        run_keys: str,
+        pipeline_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        keys = [k.strip() for k in run_keys.split(",") if k.strip()]
+        if len(keys) < 2 or len(keys) > 3:
+            raise HTTPException(400, "Provide 2-3 run_keys comma-separated")
+        charts_by_id: dict[str, dict[str, Any]] = {}
+        for key in keys:
+            for chart in build_training_curves(store, key):
+                charts_by_id.setdefault(chart["chart_id"].rsplit(":", 1)[-1], chart)
+                existing = charts_by_id.get(chart["title"], chart)
+                for series in chart.get("series", []):
+                    series = dict(series)
+                    series["key"] = f"{key}:{series['key']}"
+                    series["label"] = f"{key} · {series['label']}"
+                    existing.setdefault("series", []).append(series)
+                charts_by_id[chart["title"]] = existing
+        return {"run_keys": keys, "pipeline_id": pipeline_id, "charts": list(charts_by_id.values())}
+
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="docs")
+    return app

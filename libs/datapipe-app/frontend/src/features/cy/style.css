@@ -9,6 +9,20 @@
 
 .node-core {
     position: relative;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 0 6px;
+}
+
+.node-core-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.node-core-table {
+    padding-top: 2px;
 }
 
 .icon {
@@ -16,14 +30,14 @@
     background-repeat: no-repeat;
     background-position: center;
     border-radius: 50%;
-    border: 3px solid #ffffff;
-    background-size: 12px 12px;
+    border: 2px solid #ffffff;
+    background-size: 10px 10px;
     position: absolute;
-    left: -6px;
-    top: -4px;
+    left: -5px;
+    top: -3px;
     display: block;
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
 }
 
 .icon:hover {
@@ -39,36 +53,67 @@
 }
 
 .name {
-    padding-top: 6px;
+    padding-top: 4px;
     text-align: center;
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 600;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.indexes {
+
+.name-table-full {
+    white-space: normal;
+    word-break: break-all;
+    overflow: visible;
+    text-overflow: unset;
+    line-height: 1.15;
     font-size: 10px;
+}
+
+.indexes {
+    font-size: 9px;
     font-style: italic;
     text-align: center;
     color: #2C3333;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    margin-top: 2px;
 }
 
 .store {
     position: absolute;
     left: 50%;
     transform: translate(-50%);
-    bottom: -5px;
+    bottom: -4px;
     background: #fbdcb9;
-    border-radius: 5px;
-    padding: 0 10px;
-    font-size: 8px;
+    border-radius: 4px;
+    padding: 0 6px;
+    font-size: 7px;
+    max-width: calc(100% - 8px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .transform-type {
     position: absolute;
     left: 50%;
     transform: translate(-50%);
-    bottom: -5px;
+    bottom: -4px;
     background: #beddcd;
-    border-radius: 5px;
-    padding: 0 10px;
-    font-size: 8px;
+    border-radius: 4px;
+    padding: 0 6px;
+    font-size: 7px;
+    max-width: calc(100% - 8px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .custom-menu-item {
@@ -138,4 +183,136 @@
     z-index: 100;
     left: 8px;
     top: 8px
+}
+
+.pipeline-graph-embedded .cy-container-embedded {
+    height: 100%;
+    min-height: 320px;
+}
+
+.step-status {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: lowercase;
+    line-height: 1.4;
+}
+
+.step-status-completed {
+    background: #f6ffed;
+    color: #389e0d;
+    border: 1px solid #b7eb8f;
+}
+
+.step-status-pending,
+.step-status-running {
+    background: #fff7e6;
+    color: #d46b08;
+    border: 1px solid #ffd591;
+}
+
+.step-status-failed {
+    background: #fff2f0;
+    color: #cf1322;
+    border: 1px solid #ffccc7;
+}
+
+.step-status-unknown {
+    background: #fafafa;
+    color: #8c8c8c;
+    border: 1px solid #d9d9d9;
+}
+
+.node-compound-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+    box-sizing: border-box;
+    padding: 4px;
+}
+
+.node-core-subgraph .name {
+    font-size: 8px;
+    padding-top: 2px;
+    line-height: 1.1;
+}
+
+.node-core-subgraph .step-status {
+    font-size: 7px;
+    margin-top: 1px;
+    padding: 0 4px;
+    line-height: 1.2;
+}
+
+.node-core-subgraph .icon {
+    width: 12px;
+    height: 12px;
+    background-size: 7px 7px;
+    left: -3px;
+    top: -2px;
+}
+
+.node-compound-group .compound-title {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.node-compound-stage .compound-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #389e0d;
+}
+
+.compound-hint {
+    margin-top: 2px;
+    font-size: 8px;
+    color: #8c8c8c;
+}
+
+.compound-action {
+    margin-top: 2px;
+    font-size: 8px;
+    font-weight: 600;
+    color: #1677ff;
+}
+
+.meta-group-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-size: 7px;
+    color: #1677ff;
+    background: #e6f4ff;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin-bottom: 2px;
+    max-width: 100%;
+}
+
+.meta-group-badge-expanded {
+    background: #d6e4ff;
+    border: 1px solid #91caff;
+}
+
+.meta-group-badge-name {
+    font-weight: 700;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.meta-group-collapse-hint {
+    font-size: 6px;
+    font-weight: 600;
+    color: #0958d9;
+    text-transform: lowercase;
 }

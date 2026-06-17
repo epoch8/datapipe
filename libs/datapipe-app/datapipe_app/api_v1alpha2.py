@@ -5,19 +5,40 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
-from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
+from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep, run_steps
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, Labels
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from sqlalchemy.sql.expression import and_, or_, select, text
 from sqlalchemy.sql.functions import count, func
 
 from datapipe_app import models
+from datapipe_app.api_v1alpha1 import filter_steps_by_labels
 from datapipe_app.meta_sql import require_sql_transform_meta
+from datapipe_app.observability.recorder import RunRecorder
+from datapipe_app.observability.discovery import extract_stages
 from datapipe_app.settings import API_SETTINGS
+
+
+def _pipeline_step_group_name(pipeline_step: PipelineStep) -> str:
+    return pipeline_step.__class__.__name__
+
+
+def _tables_for_steps(step_list: List[ComputeStep]) -> Set[str]:
+    used: Set[str] = set()
+    for step in step_list:
+        used.update(i.dt.name for i in step.input_dts)
+        used.update(o.dt.name for o in step.output_dts)
+    return used
+
+
+def _group_boundaries(group_steps: List[ComputeStep]) -> tuple[Set[str], Set[str]]:
+    produced = {o.dt.name for step in group_steps for o in step.output_dts}
+    consumed = {i.dt.name for step in group_steps for i in step.input_dts}
+    return consumed - produced, produced - consumed
 
 
 def get_table_store_db_data(table_store: TableStoreDB, req: models.GetDataRequest) -> models.GetDataResponse:
@@ -191,6 +212,7 @@ def run_step(
     step: BaseBatchTransformStep,
     transform_state: models.RunStepResponse,
     filters: Optional[List[Dict]],
+    recorder: Optional[RunRecorder] = None,
 ) -> None:
     # Before we progress callback to datapipe-core we need to do this shenanigans 💀
     _step = copy.copy(step)
@@ -239,7 +261,20 @@ def run_step(
 
     # FIXME this should not be necessary
     _step.get_full_process_ids = get_full_process_ids  # type: ignore
-    run_steps(ds=ds, steps=[_step])
+    if recorder is not None:
+        run_id = recorder.start_run(trigger="websocket")
+        transform_state.run_id = run_id
+        recorder.start_step(_step.name)
+        try:
+            run_steps(ds=ds, steps=[_step])
+            recorder.finish_step(_step.name, status="completed")
+            recorder.finish_run(status="completed")
+        except Exception as exc:
+            recorder.finish_step(_step.name, status="failed", error=str(exc))
+            recorder.finish_run(status="failed", error=str(exc))
+            raise
+    else:
+        run_steps(ds=ds, steps=[_step])
 
 
 def make_app(
@@ -247,11 +282,16 @@ def make_app(
     catalog: Catalog,
     pipeline: Pipeline,
     steps: List[ComputeStep],
+    recorder: Optional[RunRecorder] = None,
 ) -> FastAPI:
     app = FastAPI()
 
     @app.get("/graph", response_model=models.GraphResponse)
-    def get_graph() -> models.GraphResponse:
+    def get_graph(stage: Optional[str] = Query(None)) -> models.GraphResponse:
+        selected_steps = (
+            filter_steps_by_labels(steps, labels=[("stage", stage)]) if stage else steps
+        )
+
         def table_response(table_name) -> models.TableResponse:
             tbl = catalog.get_datatable(ds, table_name)
 
@@ -264,10 +304,11 @@ def make_app(
 
         def pipeline_step_response(step: ComputeStep) -> models.PipelineStepResponse:
             inputs = [i.dt.name for i in step.input_dts]
-            outputs = [i.dt.name for i in step.output_dts]
+            outputs = [o.dt.name for o in step.output_dts]
+            step_labels = [[k, v] for k, v in (step.labels or [])]
 
             if isinstance(step, BaseBatchTransformStep):
-                step_status = step.get_status(ds=ds) if API_SETTINGS.show_step_status else None
+                step_status = step.get_status(ds=ds)
 
                 return models.PipelineStepResponse(
                     type="transform",
@@ -276,22 +317,67 @@ def make_app(
                     indexes=step.transform_keys,
                     inputs=inputs,
                     outputs=outputs,
+                    labels=step_labels,
                     total_idx_count=(step_status.total_idx_count if step_status else None),
                     changed_idx_count=(step_status.changed_idx_count if step_status else None),
                 )
 
-            else:
-                return models.PipelineStepResponse(
-                    type="transform",
-                    transform_type=step.__class__.__name__,
-                    name=step.get_name(),
-                    inputs=inputs,
-                    outputs=outputs,
+            return models.PipelineStepResponse(
+                type="transform",
+                transform_type=step.__class__.__name__,
+                name=step.get_name(),
+                inputs=inputs,
+                outputs=outputs,
+                labels=step_labels,
+            )
+
+        selected_names = {step.get_name() for step in selected_steps}
+        pipeline_nodes: List[models.PipelineNodeResponse] = []
+        top_level_tables: Set[str] = set()
+
+        for pipeline_step in pipeline.steps:
+            group_steps = pipeline_step.build_compute(ds, catalog)
+            visible = [step for step in group_steps if step.get_name() in selected_names]
+            if not visible:
+                continue
+
+            if len(group_steps) <= 1:
+                pipeline_nodes.append(pipeline_step_response(visible[0]))
+                top_level_tables.update(_tables_for_steps(visible))
+                continue
+
+            group_name = _pipeline_step_group_name(pipeline_step)
+            external_inputs, external_outputs = _group_boundaries(visible)
+            internal_tables = _tables_for_steps(visible)
+            subgroup = models.GraphResponse(
+                catalog={table_name: table_response(table_name) for table_name in sorted(internal_tables)},
+                pipeline=[pipeline_step_response(step) for step in visible],
+                stages=extract_stages(visible),
+            )
+            pipeline_nodes.append(
+                models.MetaPipelineStepResponse(
+                    type="meta",
+                    name=group_name,
+                    transform_type=group_name,
+                    inputs=sorted(external_inputs),
+                    outputs=sorted(external_outputs),
+                    labels=[[k, v] for k, v in (getattr(pipeline_step, "labels", None) or [])],
+                    graph=subgroup,
                 )
+            )
+            top_level_tables.update(external_inputs)
+            top_level_tables.update(external_outputs)
+
+        catalog_names = (
+            [name for name in catalog.catalog.keys() if name in top_level_tables]
+            if stage
+            else list(catalog.catalog.keys())
+        )
 
         return models.GraphResponse(
-            catalog={table_name: table_response(table_name) for table_name in catalog.catalog.keys()},
-            pipeline=[pipeline_step_response(step) for step in steps],
+            catalog={table_name: table_response(table_name) for table_name in catalog_names},
+            pipeline=pipeline_nodes,
+            stages=extract_stages(selected_steps),
         )
 
     @app.post("/get-table-data", response_model=models.GetDataResponse)
@@ -348,7 +434,12 @@ def make_app(
                     )
                     _ = asyncio.create_task(_running_steps_helper.update_transform_status(transform=transform))
                     run_step_thread = asyncio.to_thread(
-                        run_step, ds, step, _running_steps_helper[transform], json_data.filters
+                        run_step,
+                        ds,
+                        step,
+                        _running_steps_helper[transform],
+                        json_data.filters,
+                        recorder,
                     )
                     run_steps_task = asyncio.create_task(run_step_thread)
                     run_steps_task.add_done_callback(lambda _: _running_steps_helper.set_job_as_finished(transform))

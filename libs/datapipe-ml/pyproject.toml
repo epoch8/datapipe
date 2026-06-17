@@ -52,6 +52,12 @@ sky-vast = [
     "asyncssh",
     "s3fs",
 ]
+observability = [
+    "datapipe-app>=0.5.4",
+]
+
+[project.entry-points."datapipe.observability"]
+datapipe_ml = "datapipe_ml.observability.plugin:register"
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -72,10 +78,12 @@ dev = [
     "types-tqdm",
     "types-pillow",
     "types-PyYAML",
+    "datapipe-app",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-app = { workspace = true }
 cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "53bb43bf0fe5513e45a59a8a02bfb72c557133b8" }
 image-classifiers = { git = "https://github.com/qubvel/classification_models", rev = "a0f006e05485a34ccf871c421279864b0ccd220b" }
 

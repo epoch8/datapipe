@@ -442,6 +442,11 @@ def get_callbacks(
     early_stopping_patience: int,
 ):
     callbacks = [
+        tf.keras.callbacks.CSVLogger(
+            str(logdir_exp / "history.csv"),
+            separator=",",
+            append=True,
+        ),
         FsspecModelCheckpoint(
             str(
                 logdir_exp

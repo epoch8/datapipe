@@ -7,9 +7,134 @@ html,
     padding: 0;
     box-sizing: border-box;
     font-family: sans-serif;
-    overflow: hidden;
 }
 
 .react-flow__attribution {
     display: none;
+}
+
+.stage-stepper-title-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+}
+
+.stage-stepper-title-btn:hover {
+    color: #1890ff;
+}
+
+.stage-flow {
+    position: relative;
+    padding: 8px 0 0;
+}
+
+.stage-flow-svg {
+    display: block;
+    overflow: visible;
+}
+
+.stage-flow-edge {
+    fill: none;
+    stroke: #91caff;
+    stroke-width: 2;
+}
+
+.stage-flow-nodes {
+    display: flex;
+    gap: 40px;
+    margin-top: -72px;
+    position: relative;
+    z-index: 1;
+}
+
+.stage-flow-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    flex: 0 0 auto;
+}
+
+.stage-flow-title {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.stage-flow-tag {
+    margin-top: 6px;
+}
+
+.stage-flow-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    border: 2px solid #d9d9d9;
+    background: #fff;
+    color: #8c8c8c;
+}
+
+.stage-flow-icon-done {
+    border-color: #1890ff;
+    background: #1890ff;
+    color: #fff;
+}
+
+.stage-flow-icon-active {
+    border-color: #1890ff;
+    color: #1890ff;
+}
+
+.stage-flow-icon-error {
+    border-color: #ff4d4f;
+    background: #ff4d4f;
+    color: #fff;
+}
+
+.run-logs-viewer {
+    margin: 0;
+    max-height: 360px;
+    overflow: auto;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 12px;
+    border-radius: 4px;
+}
+
+.run-log-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.run-log-ts {
+    color: #858585;
+}
+
+.run-log-level {
+    color: #9cdcfe;
+}
+
+.run-log-error .run-log-level,
+.run-log-error {
+    color: #f48771;
+}
+
+.run-log-warning {
+    color: #dcdcaa;
 }

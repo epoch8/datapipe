@@ -71,3 +71,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+
+  # Ops UI: run agents on the host (one process per pipeline), e.g.:
+  #   cd image_detection && source ../.env && datapipe --pipeline app:app api --port 8001
+  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e datapipe --pipeline app:app api --port 8002

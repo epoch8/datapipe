@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class PipelineStepResponse(BaseModel):
     name: str
 
-    type_: str = Field(alias="type")
+    type_: Literal["transform"] = Field(alias="type", default="transform")
     transform_type: str
 
     indexes: Optional[List[str]] = None
@@ -14,8 +14,24 @@ class PipelineStepResponse(BaseModel):
     inputs: List[str]
     outputs: List[str]
 
+    labels: List[List[str]] = Field(default_factory=list)
+
     total_idx_count: Optional[int] = None
     changed_idx_count: Optional[int] = None
+
+
+class MetaPipelineStepResponse(BaseModel):
+    name: str
+
+    type_: Literal["meta"] = Field(alias="type")
+    transform_type: str = ""
+    inputs: List[str] = Field(default_factory=list)
+    outputs: List[str] = Field(default_factory=list)
+    labels: List[List[str]] = Field(default_factory=list)
+    graph: "GraphResponse"
+
+
+PipelineNodeResponse = Union[PipelineStepResponse, MetaPipelineStepResponse]
 
 
 class TableResponse(BaseModel):
@@ -29,7 +45,12 @@ class TableResponse(BaseModel):
 
 class GraphResponse(BaseModel):
     catalog: Dict[str, TableResponse]
-    pipeline: List[PipelineStepResponse]
+    pipeline: List[PipelineNodeResponse]
+    stages: List[str] = Field(default_factory=list)
+
+
+GraphResponse.model_rebuild()
+MetaPipelineStepResponse.model_rebuild()
 
 
 class FocusFilter(BaseModel):
@@ -64,3 +85,4 @@ class RunStepResponse(BaseModel):
     status: Literal["starting", "running", "finished"]
     processed: int
     total: int
+    run_id: Optional[str] = None

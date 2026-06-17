@@ -1,10 +1,5 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from datapipe_app.observability.settings import OPS_SETTINGS, OpsSettings, get_ops_settings
 
+API_SETTINGS = OPS_SETTINGS
 
-class APISettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DATAPIPE_APP_")
-
-    show_step_status: bool = False  # "DATAPIPE_APP_SHOW_STEP_STATUS" in .env
-
-
-API_SETTINGS = APISettings()
+__all__ = ["API_SETTINGS", "OPS_SETTINGS", "OpsSettings", "get_ops_settings"]

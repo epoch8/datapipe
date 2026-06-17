@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml README.md ./
 COPY libs/datapipe-core ./libs/datapipe-core
 COPY libs/datapipe-app ./libs/datapipe-app
 COPY examples/datapipe_app ./examples/datapipe_app

@@ -1,27 +1,98 @@
 import { omit } from "lodash";
-import { GraphData } from "../../types";
+import { GraphData, MetaNode, TransformNode } from "../../types";
 import Cytoscape from "cytoscape";
 
-function setCatalog(
+function ensureTable(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     data: GraphData,
-    grouped?: string,
+    tableName: string,
+    metaGroup?: string,
 ) {
-    for (const [table, properties] of Object.entries(data.catalog)) {
-        const tableData = nodes.get(table);
-        properties.type = "table";
-        nodes.set(table, {
-            ...tableData,
-            ...properties,
-        });
+    const properties = data.catalog[tableName];
+    if (!properties) return;
 
-        if (grouped) {
-            nodes.set(table, {
-                type: "group",
-                ...tableData,
-                parent: grouped,
-            });
+    const tableData = nodes.get(tableName);
+    nodes.set(tableName, {
+        ...tableData,
+        ...properties,
+        type: "table",
+        name: tableName,
+        ...(metaGroup ? { metaGroup } : {}),
+    });
+}
+
+function addTransformNode(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    data: GraphData,
+    pipe: TransformNode,
+    metaGroup?: string,
+) {
+    const nodeName = pipe.name;
+    nodes.set(nodeName, {
+        ...omit(pipe, ["inputs", "outputs"]),
+        type: "transform",
+        ...(metaGroup ? { metaGroup } : {}),
+    });
+
+    (pipe.inputs || []).forEach((input: string) => {
+        ensureTable(nodes, data, input, metaGroup);
+        edges.add({ source: input, target: nodeName });
+    });
+    (pipe.outputs || []).forEach((output: string) => {
+        ensureTable(nodes, data, output, metaGroup);
+        edges.add({ source: nodeName, target: output });
+    });
+}
+
+function addCollapsedMeta(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    data: GraphData,
+    pipe: MetaNode,
+) {
+    const childCount = pipe.graph?.pipeline?.length ?? 0;
+    nodes.set(pipe.name, {
+        type: "group",
+        name: pipe.name,
+        transform_type: pipe.transform_type || pipe.name,
+        labels: pipe.labels,
+        collapsed: true,
+        child_count: childCount,
+    });
+
+    (pipe.inputs || []).forEach((input: string) => {
+        ensureTable(nodes, data, input);
+        edges.add({ source: input, target: pipe.name });
+    });
+    (pipe.outputs || []).forEach((output: string) => {
+        ensureTable(nodes, data, output);
+        edges.add({ source: pipe.name, target: output });
+    });
+}
+
+function processMetaGraph(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    graph: GraphData,
+    expandedGroups: Set<string>,
+    metaGroup: string,
+) {
+    for (const child of graph.pipeline) {
+        if (child.type === "meta") {
+            if (expandedGroups.has(child.name)) {
+                processMetaGraph(nodes, edges, child.graph, expandedGroups, child.name);
+                for (const nested of child.graph.pipeline) {
+                    if (nested.type !== "meta") {
+                        addTransformNode(nodes, edges, child.graph, nested, child.name);
+                    }
+                }
+            } else {
+                addCollapsedMeta(nodes, edges, child.graph, child);
+            }
+            continue;
         }
+        addTransformNode(nodes, edges, graph, child, metaGroup);
     }
 }
 
@@ -29,51 +100,45 @@ function processData(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     edges: Set<Cytoscape.EdgeDataDefinition>,
     data: GraphData,
-    grouped?: string,
+    expandedGroups: Set<string>,
 ) {
-    if (grouped) {
-        nodes.set(grouped, {
-            selectable: false,
-        });
-    }
-
-    setCatalog(nodes, data, grouped);
-
     for (const pipe of data.pipeline) {
-        const nodeName = pipe.name;
         if (pipe.type !== "meta") {
-            nodes.set(nodeName, {
-                ...omit(pipe, ["inputs", "outputs"]),
-            });
+            addTransformNode(nodes, edges, data, pipe);
+            continue;
+        }
 
-            if (grouped) {
-                nodes.set(nodeName, {
-                    ...nodes.get(nodeName),
-                    parent: grouped,
-                });
-            }
-
-            (pipe.inputs || []).forEach((input: string) => {
-                edges.add({ source: input, target: nodeName });
-            });
-
-            (pipe.outputs || []).forEach((output: string) => {
-                edges.add({ source: nodeName, target: output });
-            });
+        if (expandedGroups.has(pipe.name)) {
+            processMetaGraph(nodes, edges, pipe.graph, expandedGroups, pipe.name);
         } else {
-            processData(nodes, edges, pipe.graph, pipe.name);
+            addCollapsedMeta(nodes, edges, data, pipe);
         }
     }
 }
 
-function reprocessData(data: GraphData) {
+function pruneDisconnectedTables(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+) {
+    const connected = new Set<string>();
+    edges.forEach((edge) => {
+        if (edge.source) connected.add(edge.source as string);
+        if (edge.target) connected.add(edge.target as string);
+    });
+
+    Array.from(nodes.entries()).forEach(([nodeId, nodeData]) => {
+        if (nodeData.type === "table" && !connected.has(nodeId)) {
+            nodes.delete(nodeId);
+        }
+    });
+}
+
+function reprocessData(data: GraphData, expandedGroups: Set<string> = new Set()) {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>();
     const edges = new Set<Cytoscape.EdgeDataDefinition>();
-    processData(nodes, edges, data);
-    return {
-        nodes,
-        edges,
-    };
+    processData(nodes, edges, data, expandedGroups);
+    pruneDisconnectedTables(nodes, edges);
+    return { nodes, edges };
 }
 
 export { reprocessData };

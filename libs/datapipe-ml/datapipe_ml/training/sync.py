@@ -393,6 +393,7 @@ class PeriodicTrainingSync:
         model_id: Optional[str] = None,
         discover_checkpoints: Optional[DiscoverCheckpointsInRunDir] = None,
         epoch_for_path: Optional[EpochForPath] = None,
+        training_run_key: Optional[str] = None,
     ):
         self.src = src
         self.dst = dst
@@ -400,6 +401,7 @@ class PeriodicTrainingSync:
         self.model_id = model_id
         self.discover_checkpoints = discover_checkpoints
         self.epoch_for_path = epoch_for_path
+        self.training_run_key = training_run_key
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._failure_tracker = _SyncFailureTracker(config.max_consecutive_sync_failures)
@@ -416,6 +418,17 @@ class PeriodicTrainingSync:
             epoch_for_path=self.epoch_for_path,
         )
 
+    def _publish_curves_after_sync(self) -> None:
+        if not self.training_run_key:
+            return
+        sync_src, sync_dst = _sync_tree_paths(self.src, self.dst, self.model_id)
+        from datapipe_ml.observability.hooks import maybe_publish_training_curves
+
+        maybe_publish_training_curves(
+            training_run_key=self.training_run_key,
+            run_dir=sync_dst if sync_src != sync_dst else sync_dst,
+        )
+
     def _sync_once_non_fatal(self, label: str) -> None:
         try:
             self._sync_once(label)
@@ -424,6 +437,7 @@ class PeriodicTrainingSync:
             self._failure_tracker.record_failure(label=label)
         else:
             self._failure_tracker.record_success()
+            self._publish_curves_after_sync()
 
     def sync_once(self, *, label: str = "sync") -> None:
         """Run one serialized sync+manifest publish (safe after post-training writes)."""

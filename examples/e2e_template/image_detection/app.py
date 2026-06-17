@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datapipe.compute import DatapipeApp, Pipeline
+from datapipe.compute import Pipeline
+from datapipe_app import DatapipeAPI
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -42,6 +43,7 @@ pipeline = Pipeline(
             steps.list_detection_models,
             outputs=["detection_model"],
             labels=[("stage", "annotation")],
+            delete_stale=False,
         ),
         BatchTransform(
             func=steps.untracked_inference,
@@ -50,7 +52,7 @@ pipeline = Pipeline(
             transform_keys=["image_name"],
             kwargs=dict(
                 best_model_table="best_detection_model",
-                trained_models_table="detection_model_train",
+                trained_models_table="detection_model",
                 fallback_model_table="detection_model",
                 model_id_column="detection_model_id",
                 primary_keys=["image_name"],
@@ -144,7 +146,7 @@ pipeline = Pipeline(
             output__detection_size_for_resize="detection_size_for_resize",
             output__detection_frozen_dataset__resized_image_file="detection_frozen_dataset__resized_image_file",
             output__detection_frozen_dataset__yolo_txt="detection_frozen_dataset__yolo_txt",
-            output__detection_model="detection_model_train",
+            output__detection_model="detection_model",
             output__detection_model_is_trained_on_detection_frozen_dataset=(
                 "detection_model_is_trained_on_detection_frozen_dataset"
             ),
@@ -186,8 +188,8 @@ pipeline = Pipeline(
         ),
         Inference_DetectionModel(
             input__image="s3_images",
-            input__detection_model="detection_model_train",
-            output__detection_prediction="detection_prediction_train",
+            input__detection_model="detection_model",
+            output__detection_prediction="detection_prediction",
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "inference")],
@@ -198,9 +200,9 @@ pipeline = Pipeline(
         CountMetrics_Subset_DetectionModel(
             input__image__ground_truth="image__ground_truth",
             input__subset__has__image="image__subset",
-            input__detection_prediction="detection_prediction_train",
-            output__detection_model__metrics__on__image="detection_model_train__metrics_on_image",
-            output__detection_model__metrics__on__subset="detection_model_train__metrics_on_subset",
+            input__detection_prediction="detection_prediction",
+            output__detection_model__metrics__on__image="detection_model__metrics_on_image",
+            output__detection_model__metrics__on__subset="detection_model__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],
@@ -208,8 +210,8 @@ pipeline = Pipeline(
             create_table=True,
         ),
         FindBestModel(
-            input__model="detection_model_train",
-            input__model__metrics_on__subset="detection_model_train__metrics_on_subset",
+            input__model="detection_model",
+            input__model__metrics_on__subset="detection_model__metrics_on_subset",
             output__attr__model__is_best="attr__detection_model__is_best",
             output__best_model="best_detection_model",
             subset_id="val",
@@ -233,7 +235,7 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone,
-            inputs=["local_images", "detection_prediction_train"],
+            inputs=["local_images", "detection_prediction"],
             outputs=["fiftyone_predictions"],
             labels=[("stage", "fiftyone")],
             kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
@@ -249,4 +251,4 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN, create_meta_table=True)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeAPI(ds, catalog, pipeline)

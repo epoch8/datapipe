@@ -19,7 +19,6 @@ import {
     AlertProps,
 } from "antd";
 import { ColumnsType } from "antd/lib/table";
-import ReactJson from "react-json-view";
 import {
     PipeTable,
     GetDataReq,
@@ -37,6 +36,32 @@ import {
     RunStepWebSocketComponentProps,
 } from "../../types";
 import { FilterValue, SorterResult } from "antd/lib/table/interface";
+
+function renderCellValue(value: unknown): React.ReactNode {
+    if (value === null || value === undefined) {
+        return value as null | undefined;
+    }
+    if (typeof value === "object") {
+        return (
+            <pre
+                style={{
+                    fontSize: 10,
+                    margin: 0,
+                    maxHeight: 120,
+                    overflow: "auto",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                }}
+            >
+                {JSON.stringify(value, null, 2)}
+            </pre>
+        );
+    }
+    if (typeof value === "boolean") {
+        return value ? "True" : "False";
+    }
+    return value as React.ReactNode;
+}
 
 const RunStepWebSocketComponent: FC<RunStepWebSocketComponentProps> = ({
     transform,
@@ -315,39 +340,40 @@ const loadTable = async (
         data = await response.json();
     } catch (er) {
         console.error(er);
+        setLoading(false);
+        setData([]);
+        return;
     }
-    if (!data?.data || data.data.length === 0) {
+    if (!data?.data) {
+        setLoading(false);
+        setData([]);
+        return;
+    }
+    if (data.data.length === 0) {
+        setLoading(false);
+        setData([]);
+        setOptions({
+            total: data.total ?? 0,
+            page: (data.page ?? 0) + 1,
+            pageSize: data.page_size ?? options.pageSize,
+        });
+        return;
+    }
+
+    const sampleRow = data.data[0];
+    if (!sampleRow || typeof sampleRow !== "object") {
         setLoading(false);
         setData([]);
         return;
     }
 
     setColumns(
-        Object.entries(data.data[0]).map(([column, colValue]) => {
+        Object.entries(sampleRow).map(([column, colValue]) => {
             return {
                 title: column,
                 dataIndex: column,
                 sorter: typeof colValue !== "object",
-                render: (value) => {
-                    if (value === null) {
-                        return value;
-                    }
-                    if (typeof value === "object") {
-                        return (
-                            <ReactJson
-                                name={false}
-                                collapsed
-                                enableClipboard={false}
-                                displayDataTypes={false}
-                                src={value}
-                            />
-                        );
-                    }
-                    if (typeof value === "boolean") {
-                        return value ? "True" : "False";
-                    }
-                    return value;
-                },
+                render: renderCellValue,
                 filterDropdown:
                     typeof colValue !== "object" &&
                     (({
@@ -452,7 +478,7 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
             }
             if (newPagination.current && newPagination.pageSize) {
                 setPagination({
-                    page: newPagination.current,
+                    page: Math.max(1, newPagination.current),
                     pageSize: newPagination.pageSize,
                 });
             }
@@ -472,7 +498,21 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
             page: 1,
             pageSize: 20,
         });
-    }, [current]);
+        setData([]);
+        setColumns([]);
+        skipRenderFlag.current = false;
+        loadTable(
+            searchInput,
+            setLoading,
+            setData,
+            setColumns,
+            setOptions,
+            current,
+            options,
+            { page: 1, pageSize: 20 },
+            tableFocus,
+        );
+    }, [current.id]);
 
     useEffect(() => {
         if (skipRenderFlag.current) {
@@ -496,7 +536,7 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
             },
             tableFocus,
         );
-    }, [filteredInfo, tableFocus, pagination, dataIsProcessed]);
+    }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order]);
 
     return (
         <>
@@ -549,11 +589,14 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
                 showHeader={!loading && data?.length > 0}
                 onChange={changeHandler}
                 rowKey={(record) => {
-                    const idx_string = current.indexes.reduce((acc, value) => {
-                        acc += value + "_" + record[value] + "_";
-                        return acc;
-                    }, "");
-                    return `${current.id}_${idx_string}`;
+                    if (current.indexes.length > 0) {
+                        const idx_string = current.indexes.reduce((acc, value) => {
+                            acc += value + "_" + record[value] + "_";
+                            return acc;
+                        }, "");
+                        return `${current.id}_${idx_string}`;
+                    }
+                    return `${current.id}_row_${record.index ?? JSON.stringify(record)}`;
                 }}
                 rowSelection={
                     tableFocus && current.id !== tableFocus.table_name
@@ -577,7 +620,7 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
                 }}
                 style={{ width: "100%" }}
                 columns={columns}
-                dataSource={loading ? [] : data}
+                dataSource={loading ? [] : (data ?? [])}
             />
         </>
     );

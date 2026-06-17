@@ -30,7 +30,19 @@ Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
 
 ## REST API + UI
 
-`DatapipeApp` inherits from `FastApi` app and can be started with datapipe CLI
+`DatapipeAPI` extends `DatapipeApp` with an **Ops dashboard** (default `/`) and **Debug UI** (`/debug`).
+
+Environment variables:
+
+- `DATAPIPE_APP_MODE=agent|central` — agent writes observability for one pipeline; central reads all
+- `DATAPIPE_APP_PIPELINE_ID` — registry key (agent mode)
+- `DATAPIPE_APP_OBSERVABILITY_DB_URL` — optional; defaults to pipeline DB
+
+Ops API: `/api/v1alpha3/overview`, `/metrics/charts`, `/runs`, `/training/{run_key}/curves`.
+
+ML metrics/training enrichments: install `datapipe-ml[observability]`.
+
+`DatapipeAPI` inherits from `FastApi` app and can be started with datapipe CLI
 or directly with server like `uvicorn`.
 
 ```

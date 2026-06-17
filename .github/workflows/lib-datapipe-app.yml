@@ -86,6 +86,12 @@ jobs:
         run: |
           pytest libs/datapipe-app/tests
 
+      - name: Test ML observability integration
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[sqlite,observability]" --no-deps
+          uv pip install --system -e "libs/datapipe-core[sqlite]"
+          pytest libs/datapipe-app/tests/test_observability_ml_integration.py
+
   test-example:
     runs-on: ubuntu-latest
     strategy:

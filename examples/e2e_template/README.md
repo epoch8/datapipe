@@ -153,4 +153,32 @@ set -a && source ../.env && set +a   # from image_keypoints/
 fiftyone app launch datapipe_keypoints_e2e
 ```
 
+## Running via Ops UI
+
+Install `datapipe-app` (in addition to the packages above):
+
+```bash
+uv pip install -e "../../libs/datapipe-app"
+```
+
+Set Ops env vars in `.env` (see `.env.example`). Each pipeline needs its own agent process and a unique `DATAPIPE_APP_PIPELINE_ID` (`image_detection_e2e` or `image_keypoints_e2e`).
+
+Start local services first:
+
+```bash
+docker compose up -d
+```
+
+Run a pipeline **agent** (with `.env` loaded). Use a distinct port per pipeline:
+
+```bash
+cd image_detection
+set -a && source ../.env && set +a
+datapipe --pipeline app:app api --port 8001
+```
+
+Open `http://localhost:8001` (title: `Datapipe Ops · image_detection_e2e`). From there you can run stages, view the pipeline graph (Debug), and inspect runs.
+
+For keypoints, use `image_keypoints_e2e` in `.env` (or override `DATAPIPE_APP_PIPELINE_ID`) and port `8002`.
+
 The service-backed test path in `tests/e2e_template/` uses the same stack. See `.github/workflows/e2e-template.yml`.

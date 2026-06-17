@@ -1,18 +1,94 @@
+# Secrets & local env
 .env
+.env.*
 
+# VCS & IDE
+.git/
+.github/
 .DS_Store
-.idea
+.idea/
+
+# Python
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
 .venv/
 venv/
 __pycache__/
 *.egg-info
 dist/
+*.pyc
 
-test_data/
-
+# Lock files (deps resolved inside the image)
 poetry.lock
 uv.lock
+
+# ML models & checkpoints
 *.pt
+*.pth
+*.onnx
+*.ckpt
+*.weights
+*.safetensors
+*.h5
+*.pb
+*.tflite
+
+# Databases & local stores
 *.sqlite
+*.sqlite3
+*.db
+
+# Images & media (keep .svg — used in datapipe-app frontend src)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.tif
+*.ico
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Tabular / binary datasets
+*.parquet
+*.feather
+*.arrow
+*.npy
+*.npz
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Node (frontend is rebuilt in the multi-stage Dockerfile)
+**/node_modules/
+
+# Prebuilt frontend static bundle (rebuilt in Docker)
+libs/datapipe-app/datapipe_app/frontend/
+
+# Test & sample data
+test_data/
+**/sample_data/
+datapipe-examples/
+examples/**/input/
+examples/**/output/
+
+# Not needed for datapipe-app / datapipe-central image
+examples/e2e_template/
+examples/datapipe_core/
+examples/datapipe_cvat/
+examples/datapipe_ml/
+libs/datapipe-ml/
+libs/datapipe-label-studio/
+libs/datapipe-cvat/
+tests/
+tools/
+docs/

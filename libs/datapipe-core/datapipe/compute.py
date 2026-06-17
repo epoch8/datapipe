@@ -366,6 +366,14 @@ def print_compute(steps: list[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
+_run_steps_hooks: list = []
+
+
+def register_run_steps_hook(hook) -> None:
+    """Optional callback(hook) with on_step_start(step) / on_step_end(step, error=None)."""
+    _run_steps_hooks.append(hook)
+
+
 def run_steps(
     ds: DataStore,
     steps: Sequence[ComputeStep],
@@ -373,14 +381,27 @@ def run_steps(
     executor: Executor | None = None,
 ) -> None:
     for step in steps:
-        with tracer.start_as_current_span(
-            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-        ):
-            logger.info(
-                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-            )
+        for hook in _run_steps_hooks:
+            if hasattr(hook, "on_step_start"):
+                hook.on_step_start(step)
+        try:
+            with tracer.start_as_current_span(
+                f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
+            ):
+                logger.info(
+                    f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
+                )
 
-            step.run_full(ds=ds, run_config=run_config, executor=executor)
+                step.run_full(ds=ds, run_config=run_config, executor=executor)
+        except Exception as exc:
+            for hook in _run_steps_hooks:
+                if hasattr(hook, "on_step_end"):
+                    hook.on_step_end(step, error=exc)
+            raise
+        else:
+            for hook in _run_steps_hooks:
+                if hasattr(hook, "on_step_end"):
+                    hook.on_step_end(step, error=None)
 
 
 def run_pipeline(

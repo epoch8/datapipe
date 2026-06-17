@@ -1,6 +1,6 @@
 [project]
 name = "datapipe-app"
-version = "0.5.4"
+version = "0.6.0"
 description = "REST API, debug UI, and CLI extensions for Datapipe pipelines"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
