@@ -1,0 +1,246 @@
+name: datapipe-ml
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-ml.yml"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-ml.yml"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[sqlite]" "flake8" "mypy"
+          uv pip install --system pandas-stubs types-setuptools types-tqdm types-pillow types-PyYAML
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-ml/datapipe_ml --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-ml/datapipe_ml --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        working-directory: libs/datapipe-ml
+        run: |
+          mypy --config-file mypy-config.toml -p datapipe_ml --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        test-db-env: ["sqlite"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[sqlite]" "pytest<8" "pytest-cases"
+
+      - name: Test with pytest
+        run: |
+          pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not e2e_examples and not service_e2e and not cloud_storage and not tensorflow and not torch and not fiftyone"
+        env:
+          TEST_DB_ENV: ${{ matrix.test-db-env }}
+
+  test-fiftyone:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[fiftyone,sqlite]" "pytest<8" "pytest-cases"
+
+      - name: Test FiftyOne extra with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests/test_utils_image_data_stores.py -m "fiftyone"
+        env:
+          TEST_DB_ENV: sqlite
+          FIFTYONE_DATABASE_URI: mongodb://localhost:27017
+
+  test-tensorflow:
+    runs-on: ubuntu-latest
+    container:
+      image: tensorflow/tensorflow:2.21.0
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y git libgl1 libglib2.0-0
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-ml[tensorflow,sqlite]" "pytest<8" "pytest-cases"
+          uv cache clean
+
+      - name: Test TensorFlow extra with pytest
+        run: |
+          trap 'rm -rf ~/.cache/datapipe/coco libs/datapipe-ml/tests/input libs/datapipe-ml/tests/input_kps libs/datapipe-ml/tests/output' EXIT
+          python -m pytest libs/datapipe-ml/tests -m "tensorflow and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
+        env:
+          TEST_DB_ENV: sqlite
+          CUDA_VISIBLE_DEVICES: ""
+          NVIDIA_VISIBLE_DEVICES: ""
+          DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
+          DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES: "12"
+          DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ: "1"
+
+  test-torch:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/pytorch/ci-image:pytorch-linux-jammy-py3.12-clang18
+      options: --user root
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y git libgl1 libglib2.0-0
+
+      - name: Install dependencies with uv
+        run: |
+          python tools/ci/generate_requirements.py --pyproject libs/datapipe-ml/pyproject.toml --extra torch --extra sqlite --exclude torch --exclude torchvision --output /tmp/datapipe-ml-requirements.txt
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-ml" --no-deps
+          uv pip install --system -r /tmp/datapipe-ml-requirements.txt "boto3" "pytest<8" "pytest-cases"
+          uv cache clean
+
+      - name: Test Torch extra with pytest
+        run: |
+          trap 'rm -rf ~/.cache/datapipe/coco libs/datapipe-ml/tests/input libs/datapipe-ml/tests/input_kps libs/datapipe-ml/tests/output' EXIT
+          python -m pytest libs/datapipe-ml/tests -m "torch and not sky_vast and not e2e_examples and not service_e2e and not cloud_storage"
+        env:
+          TEST_DB_ENV: sqlite
+          CUDA_VISIBLE_DEVICES: ""
+          NVIDIA_VISIBLE_DEVICES: ""
+          DATAPIPE_ML_DOWNLOAD_IMAGES: "12"
+          DATAPIPE_ML_DOWNLOAD_KEYPOINT_IMAGES: "12"
+          DATAPIPE_ML_DELETE_COCO_CACHE_AFTER_READ: "1"
+
+  test-cloud-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-ml[torch,sqlite]" "boto3" "pytest<8" "pytest-cases"
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name datapipe-ml-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for i in {1..30}; do
+            curl -f http://localhost:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          docker logs datapipe-ml-minio
+          exit 1
+
+      - name: Test cloud storage with pytest
+        run: |
+          python -m pytest libs/datapipe-ml/tests -m "cloud_storage and service_e2e" -v || test $? -eq 5
+        env:
+          TEST_DB_ENV: sqlite
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          S3_ENDPOINT_URL: http://localhost:9000
+          FSSPEC_S3_ENDPOINT_URL: http://localhost:9000
+          S3_BUCKET: datapipe-e2e
+          S3_PREFIX: datapipe-ml-tests/${{ github.run_id }}
+
+      - name: Stop MinIO
+        if: always()
+        run: docker rm -f datapipe-ml-minio || true

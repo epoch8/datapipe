@@ -1,0 +1,152 @@
+name: e2e-template
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/e2e-template.yml"
+      - "examples/e2e_template/**"
+      - "tests/e2e_template/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/e2e-template.yml"
+      - "examples/e2e_template/**"
+      - "tests/e2e_template/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-label-studio/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+
+env:
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: minioadmin
+  AWS_REGION: us-east-1
+  S3_ENDPOINT_URL: http://localhost:9000
+  FSSPEC_S3_ENDPOINT_URL: http://localhost:9000
+  S3_PUBLIC_URL: http://localhost:9000
+  S3_BUCKET: datapipe-e2e
+  S3_PREFIX: images
+  LABEL_STUDIO_URL: http://localhost:8080
+  LABEL_STUDIO_EMAIL: e2e@example.com
+  LABEL_STUDIO_PASSWORD: qwerty123
+  LABEL_STUDIO_S3_ENDPOINT_URL: http://minio:9000
+  DB_URL: postgresql://postgres:password@localhost:5432/postgres
+  DB_SCHEMA_DETECTION: datapipe_e2e_detection
+  DB_SCHEMA_KEYPOINTS: datapipe_e2e_keypoints
+  FIFTYONE_DATABASE_URI: mongodb://localhost:27017
+
+jobs:
+  test-e2e-template:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/e2e_template
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        working-directory: .
+        run: |
+          uv pip install --system \
+            -e "libs/datapipe-core[s3fs]" \
+            -e "libs/datapipe-label-studio" \
+            -e "libs/datapipe-ml[torch,fiftyone]" \
+            "boto3" "pytest<8" "pytest-cases" "requests" "tqdm"
+
+      - name: Cache COCO sample data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/datapipe/coco
+            examples/e2e_template/sample_data
+          key: e2e-coco-sample-${{ hashFiles('tools/sample_data/coco_cache.py', 'examples/e2e_template/scripts/seed_sample_data.py') }}
+
+      - name: Start local services (docker compose)
+        run: docker compose up -d --wait
+
+      - name: Wait for Label Studio
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS "http://localhost:8080/user/login/" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Label Studio didn't become ready in time"
+          docker compose logs label-studio --tail=200
+          exit 1
+
+      - name: Get Label Studio API token
+        run: echo "LABEL_STUDIO_API_KEY=$(python scripts/label_studio_token.py)" >> "$GITHUB_ENV"
+
+      - name: Prepare Postgres schemas
+        run: |
+          python - <<'PY'
+          import os
+
+          from sqlalchemy import create_engine, text
+
+          db_url = os.environ["DB_URL"]
+          engine = create_engine(db_url)
+          for schema in (
+              os.environ.get("DB_SCHEMA_DETECTION", "datapipe_e2e_detection"),
+              os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints"),
+          ):
+              with engine.begin() as conn:
+                  conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+              print(f'Postgres schema "{schema}" is ready')
+          PY
+
+      - name: Seed sample images to MinIO
+        run: |
+          args=(--detection-limit 2 --keypoints-limit 2)
+          if compgen -G "sample_data/images/*.jpg" > /dev/null; then
+            args+=(--skip-download)
+          fi
+          python scripts/seed_sample_data.py "${args[@]}"
+
+      - name: Cache YOLO weights
+        uses: actions/cache@v4
+        with:
+          path: |
+            yolo11n.pt
+            yolo11n-pose.pt
+          key: e2e-yolo-weights-${{ hashFiles('examples/e2e_template/image_detection/config.py', 'examples/e2e_template/image_keypoints/config.py') }}
+
+      - name: Pre-download YOLO weights for annotation stage
+        working-directory: .
+        run: |
+          python - <<'PY'
+          from ultralytics import YOLO
+
+          for model in ("yolo11n.pt", "yolo11n-pose.pt"):
+              YOLO(model)
+              print(f"Cached {model}")
+          PY
+
+      - name: Test e2e template with local services
+        working-directory: .
+        run: python -m pytest tests/e2e_template -m "e2e_template" -v
+
+      - name: Stop local services
+        if: always()
+        run: docker compose down

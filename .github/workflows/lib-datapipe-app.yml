@@ -1,0 +1,118 @@
+name: datapipe-app
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-app.yml"
+      - "examples/datapipe_app/**"
+      - "libs/datapipe-app/**"
+      - "libs/datapipe-core/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-app.yml"
+      - "examples/datapipe_app/**"
+      - "libs/datapipe-app/**"
+      - "libs/datapipe-core/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "flake8" "mypy" "httpx"
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-app/datapipe_app --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-app/datapipe_app --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        run: |
+          mypy -p datapipe_app --ignore-missing-imports --follow-imports=silent --namespace-packages --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        pip-extra: ['"sqlalchemy>2"', '"sqlalchemy>2" "pandas>=2.2"']
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "httpx" "pytest<8"
+
+      - name: Test with pytest
+        run: |
+          pytest libs/datapipe-app/tests
+
+  test-example:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "alembic"
+
+      - name: Test example
+        run: |
+          cd examples/datapipe_app
+          datapipe db create-all
+          datapipe run

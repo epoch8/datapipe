@@ -1,0 +1,40 @@
+[project]
+name = "datapipe-label-studio"
+version = "0.4.0"
+description = ""
+authors = [
+    { name = "Alexander Kozlov", email = "bobokvsky@epoch8.co" },
+    { name = "Andrey Tatarinov", email = "a@tatarinov.co" },
+]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "datapipe-core[sqlite]",
+    "label-studio-sdk>=2.0.16,<2.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "flake8",
+    "black",
+    "pytest",
+    "pytest-xdist",
+    "pytest-cases",
+    "python-dotenv",
+    "mypy",
+    "pandas-stubs",
+    "types-requests",
+    "types-setuptools",
+]
+
+[tool.uv.sources]
+datapipe-core = { workspace = true }
+
+[tool.hatch.build.targets.sdist]
+exclude = ["tests", "experiments"]
+
+[tool.hatch.build.targets.wheel]
+exclude = ["tests", "experiments"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,3 @@
+[submodule "datapipe_ml/image_detection/yolov5/yolov5-repository"]
+	path = datapipe_ml/image_detection/yolov5/yolov5-repository
+	url = https://github.com/epoch8/yolov5
