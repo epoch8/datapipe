@@ -9,7 +9,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "torch==2.6.0", 
     "torchvision==0.21.0",
-    "stringzilla==4.4.0"  # needed for albumentations
+    "stringzilla==4.4.0",  # needed for albumentations
+    "fiftyone==1.17.0"
 ]
 
 [[tool.uv.index]]

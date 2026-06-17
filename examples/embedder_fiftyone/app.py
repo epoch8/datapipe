@@ -18,16 +18,10 @@ from data import catalog
 
 pipeline = Pipeline(
     [
-        # Stage source: discover local images.
+        # Stage source: load images and labels (local folder or FiftyOne zoo fallback).
         BatchGenerate(
-            steps.list_local_images,
-            outputs=["local_images"],
-            labels=[("stage", "source")],
-        ),
-        # Stage source: load optional classification labels.
-        BatchGenerate(
-            steps.list_image_labels,
-            outputs=["image_labels"],
+            steps.list_images_and_labels,
+            outputs=["local_images", "image_labels"],
             labels=[("stage", "source")],
         ),
         # Stage embedder: publish embedder model configs.
@@ -51,6 +45,7 @@ pipeline = Pipeline(
             outputs=["embeddings"],
             transform_keys=["image_name", "embedder_id"],
             labels=[("stage", "embeddings")],
+            chunk_size=1000,
         ),
         # Stage fiftyone-brain: compute UMAP + similarity per embedder.
         BatchTransform(

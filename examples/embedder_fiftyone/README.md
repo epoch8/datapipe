@@ -1,19 +1,17 @@
 # Embedder + FiftyOne Pipeline
 
 Datapipe example for:
-- loading local images
-- loading optional image-level class labels from JSON
+- loading images + class labels (local folder or FiftyOne zoo fallback)
 - running multiple embedders
 - uploading samples to FiftyOne via `FiftyOneImagesDataTableStore`
 - computing `compute_visualization` and `compute_similarity` per embedder
 - visualizing embedding clusters and similarity search results in FiftyOne UI
 
-## Data format
+## Data sources
 
-Images:
-- place files under `LOCAL_IMAGES_DIR`
-- supported suffixes: `.jpg`, `.jpeg`, `.png`
-- `image_name` uses file stem
+### Local mode (default when folder has images)
+
+Set `LOCAL_IMAGES_DIR` with supported images inside (`.jpg`, `.jpeg`, `.png`).
 
 Optional labels JSON (`LABELS_JSON`):
 
@@ -24,13 +22,32 @@ Optional labels JSON (`LABELS_JSON`):
 }
 ```
 
-Keys must match `image_name` (file stem). Missing keys -> unlabeled sample.
+Keys must match `image_name` (file stem). Missing keys → unlabeled sample.
+
+### Zoo fallback
+
+Used when `LOCAL_IMAGES_DIR` is **unset**, missing, or **empty**.
+
+Loads `ZOO_DATASET` (default `caltech101`) via FiftyOne zoo, keeps last `ZOO_NUM_CLASSES` classes from `ZOO_LABEL_FIELD` (default `ground_truth`), emits paths + labels into datapipe tables.
+
+First run downloads dataset (network + disk).
+
+Env vars: `ZOO_DATASET`, `ZOO_LABEL_FIELD`, `ZOO_NUM_CLASSES`.
+
+## Pipeline tables
+
+- `local_images`: image path inventory
+- `image_labels`: labels (from JSON or zoo)
+- `embedder`: embedder configs
+- `fiftyone_samples`: images + optional `ground_truth` classification
+- `embeddings`: `.npy` vectors in filedir store
+- `brain_status`: status marker for FiftyOne brain computations
 
 ## Run
 
-1. Copy env file:
-   - `cp .env.example .env`
+1. Copy env file: `cp .env.example .env`
 2. Edit `.env` (paths, `DB_URL`, `FIFTYONE_DATASET_NAME`, etc.)
-3. Install deps:
-   - `uv sync`
-4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import, so `.env` loads automatically.
+3. Install deps: `uv sync`
+4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import.
+
+Manual `source .env` only needed if you run `steps.py` / `config.py` outside `app.py`.
