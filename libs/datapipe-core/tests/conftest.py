@@ -11,7 +11,10 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 
+from datapipe.settings import settings
 from datapipe.store.database import DBConn
+
+settings.fail_fast = True
 
 
 @pytest.fixture

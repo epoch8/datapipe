@@ -10,6 +10,7 @@ from sqlalchemy.sql.sqltypes import JSON, Integer
 
 from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.datatable import DataStore
+from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import do_batch_generate
 from datapipe.step.batch_transform import BatchTransformStep
 from datapipe.store.database import TableStoreDB
@@ -602,6 +603,7 @@ def test_error_handling(dbconn) -> None:
         func=partial(gen_bad1, chunk_size=CHUNKSIZE),
         ds=ds,
         output_dts=[tbl],
+        run_config=RunConfig(fail_fast=False),
     )
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
@@ -622,7 +624,10 @@ def test_error_handling(dbconn) -> None:
         output_dts=[ComputeOutput(dt=tbl_good)],
         chunk_size=1,
     )
-    step_bad.run_full(ds)
+    step_bad.run_full(
+        ds,
+        run_config=RunConfig(fail_fast=False),
+    )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[[0, 1, 2, 4, 5]])
 
@@ -648,7 +653,10 @@ def test_error_handling(dbconn) -> None:
 
     assert_datatable_equal(tbl, TEST_DF.loc[GOOD_IDXS1])
 
-    step_bad.run_full(ds)
+    step_bad.run_full(
+        ds,
+        run_config=RunConfig(fail_fast=False),
+    )
 
     assert_datatable_equal(tbl_good, TEST_DF.loc[GOOD_IDXS1])
 
