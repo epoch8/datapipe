@@ -7,6 +7,16 @@ Datapipe example for:
 - uploading images and preannotations to CVAT via `CVATStep`
 - syncing edited annotations back into datapipe tables
 
+## Hugging Face auth (required for SAM3)
+
+SAM3 weights are a **gated model** on Hugging Face. Before running inference:
+
+1. Accept the model license on the [SAM3 model page](https://huggingface.co/facebook/sam3) (or the checkpoint your `sam3` install pulls).
+2. Create a Hugging Face access token with read access.
+3. Set `HF_TOKEN` in `.env`.
+
+The pipeline runs a `huggingface_login` step (`stage=auth`) before SAM inference. Without a valid token and accepted terms, model download/load will fail.
+
 ## Data sources
 
 ### Local mode (default when folder has images)
@@ -23,7 +33,9 @@ Loads `HF_DATASET_NAME` (default `HZMD/cats-n-dogs`), filters by `HF_DATASET_LAB
 
 Images are materialized into `HF_DATASET_CACHE_FOLDER` (default `.hf_dataset_cache`) with stable basenames (`hf_000000.jpg`, …). Required because HF decodes images into temporary files with random paths; CVAT upload expects consistent filenames.
 
-Env vars: `HF_DATASET_NAME`, `HF_DATASET_SPLIT`, `HF_DATASET_LABEL`, `HF_DATASET_CACHE_FOLDER`, `HF_TOKEN`.
+Env vars: `HF_DATASET_NAME`, `HF_DATASET_SPLIT`, `HF_DATASET_LABEL`, `HF_DATASET_CACHE_FOLDER`.
+
+(`HF_TOKEN` is required for SAM3 — see above — not for the dataset itself.)
 
 ## Run
 
