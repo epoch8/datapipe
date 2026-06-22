@@ -4,13 +4,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from datapipe.compute import DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe_cvat.cvat_step import CVATStep
 
+import data
 import steps
 from config import (
     CVAT_ORGANIZATION,
@@ -22,24 +23,23 @@ from config import (
     FILES_BATCH,
     PRIMARY_KEYS,
 )
-from data import catalog
 
 pipeline = Pipeline(
     [
         BatchGenerate(
             steps.list_local_images,
-            outputs=["local_images"],
+            outputs=[data.local_images_tbl],
             labels=[("stage", "ingest")],
         ),
         BatchGenerate(
             steps.huggingface_login,
-            outputs=["hf_auth"],
+            outputs=[data.hf_auth_tbl],
             labels=[("stage", "auth")],
         ),
         BatchTransform(
             func=steps.sam_inference,
-            inputs=["local_images", "hf_auth"],
-            outputs=["sam_predictions"],
+            inputs=[data.local_images_tbl, data.hf_auth_tbl],
+            outputs=[data.sam_predictions_tbl],
             transform_keys=["image_id"],
             chunk_size=1,
             labels=[("stage", "sam")],
@@ -47,20 +47,20 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.sam_to_cvat_xml,
-            inputs=["sam_predictions"],
-            outputs=["sam_cvat_xml"],
+            inputs=[data.sam_predictions_tbl],
+            outputs=[data.sam_cvat_xml_tbl],
             transform_keys=["image_id"],
             labels=[("stage", "sam")],
         ),
         BatchTransform(
             func=steps.prepare_cvat_input,
-            inputs=["local_images", "sam_cvat_xml"],
-            outputs=["image"],
+            inputs=[data.local_images_tbl, data.sam_cvat_xml_tbl],
+            outputs=[data.image_tbl],
             transform_keys=["image_id"],
             labels=[("stage", "cvat")],
         ),
         CVATStep(
-            input="image",
+            input=data.image_tbl,
             output__input_batches="image_batches",
             output__cvat_task="cvat_task",
             output__cvat_files="cvat_images",
@@ -84,7 +84,7 @@ pipeline = Pipeline(
         BatchTransform(
             func=steps.parse_cvat_annotations,
             inputs=["cvat_annotation"],
-            outputs=["image__annotations"],
+            outputs=[data.image_annotations_tbl],
             transform_keys=["image_id", "task_queue_id", "inner_task_id"],
             labels=[("stage", "cvat")],
         ),
@@ -92,4 +92,4 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN, create_meta_table=True)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds, Catalog({}), pipeline)
