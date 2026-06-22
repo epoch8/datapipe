@@ -19,19 +19,6 @@ local_images_tbl = Table(
     ),
 )
 
-hf_auth_tbl = Table(
-    name="hf_auth",
-    store=TableStoreDB(
-        dbconn=DBCONN,
-        name="hf_auth",
-        data_sql_schema=[
-            Column("auth_id", String, primary_key=True),
-            Column("auth_ok", String),
-        ],
-        create_table=True,
-    ),
-)
-
 sam_predictions_tbl = Table(
     name="sam_predictions",
     store=TableStoreDB(

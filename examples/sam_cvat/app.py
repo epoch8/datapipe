@@ -31,14 +31,9 @@ pipeline = Pipeline(
             outputs=[data.local_images_tbl],
             labels=[("stage", "ingest")],
         ),
-        BatchGenerate(
-            steps.huggingface_login,
-            outputs=[data.hf_auth_tbl],
-            labels=[("stage", "auth")],
-        ),
         BatchTransform(
             func=steps.sam_inference,
-            inputs=[data.local_images_tbl, data.hf_auth_tbl],
+            inputs=[data.local_images_tbl],
             outputs=[data.sam_predictions_tbl],
             transform_keys=["image_id"],
             chunk_size=1,

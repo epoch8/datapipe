@@ -101,13 +101,8 @@ def list_local_images() -> Iterator[pd.DataFrame]:
         yield pd.DataFrame(columns=["image_id", "image_path"])
 
 
-def huggingface_login() -> Iterator[pd.DataFrame]:
+def sam_inference(df_local_images: pd.DataFrame) -> pd.DataFrame:
     ensure_hf_login()
-    yield pd.DataFrame([{"auth_id": "default", "auth_ok": "true"}])
-
-
-def sam_inference(df_local_images: pd.DataFrame, df_hf_auth: pd.DataFrame) -> pd.DataFrame:
-    del df_hf_auth
     if df_local_images.empty:
         return pd.DataFrame(
             columns=[

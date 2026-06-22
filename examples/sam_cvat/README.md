@@ -15,7 +15,7 @@ SAM3 weights are a **gated model** on Hugging Face. Before running inference:
 2. Create a Hugging Face access token with read access.
 3. Set `HF_TOKEN` in `.env`.
 
-The pipeline runs a `huggingface_login` step (`stage=auth`) before SAM inference. Without a valid token and accepted terms, model download/load will fail.
+`sam_inference` calls `ensure_hf_login()` before loading SAM3 weights. Without a valid token and accepted terms, model download/load will fail.
 
 ## Data sources
 
