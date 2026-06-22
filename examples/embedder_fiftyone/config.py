@@ -30,13 +30,14 @@ EMBEDDERS = [
         "batch_size": 8,
         "max_size": 512,
     },
-    {
-        "embedder_id": "dinov3_vitl16",
-        "cls": "HFDinoModel",
-        "init_kwargs": {"ckpt": "facebook/dinov3-vitl16-pretrain-lvd1689m"},
-        "batch_size": 8,
-        "max_size": 512,
-    },
+    # Need HF token for this to work because the model is gated
+    # {
+    #     "embedder_id": "dinov3_vitl16",
+    #     "cls": "HFDinoModel",
+    #     "init_kwargs": {"ckpt": "facebook/dinov3-vitl16-pretrain-lvd1689m"},
+    #     "batch_size": 8,
+    #     "max_size": 512,
+    # },
 ]
 
 BRAIN_METHODS = ["umap"]
