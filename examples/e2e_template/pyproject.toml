@@ -1,0 +1,26 @@
+[project]
+name = "datapipe-e2e-example"
+version = "0"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "datapipe-label-studio",
+    "datapipe-ml[torch,fiftyone]",
+    "torch==2.6.0", 
+    "torchvision==0.21.0",
+    "stringzilla==4.4.0",  # needed for albumentations
+    "fiftyone==1.17.0",
+    "polars-lts-cpu==1.33.1",  # for ultralytics on old CPUs
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+datapipe-label-studio = { path = "../../libs/datapipe-label-studio", editable = true }
+datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
+datapipe-core = { path = "../../libs/datapipe-core", editable = true }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }
