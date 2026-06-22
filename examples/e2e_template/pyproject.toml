@@ -24,3 +24,12 @@ datapipe-label-studio = { path = "../../libs/datapipe-label-studio", editable = 
 datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
 cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }
+
+[dependency-groups]
+dev = [
+    "pytest<8",
+    "pytest-cases",
+    "requests",
+    "tqdm",
+    "boto3",
+]
