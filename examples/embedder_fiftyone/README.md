@@ -97,6 +97,20 @@ Plain `datapipe run` executes all steps; `datapipe step --labels=... run` runs o
 
 ## Visualize in FiftyOne
 
-When you enter FiftyOne UI on host:port, you can:
-1. Visualize embeddings - instructions [here](https://docs.voxel51.com/user_guide/app.html#embeddings-panel)
-2. Search similar images by each embedder - instructions [here](https://docs.voxel51.com/user_guide/app.html#similarity-search-panel-sub-new)
+After `fiftyone-brain` stage, open dataset `FIFTYONE_DATASET_NAME` in the FiftyOne App (see Prerequisites). Pipeline already ran `compute_visualization` (2D UMAP per embedder) and `compute_similarity` (sklearn cosine index per embedder).
+
+### Embeddings panel
+
+**Why:** see how images cluster in embedding space — check class separation, find outliers, compare embedders side by side.
+
+**How:** open **Embeddings** panel (panels menu). Pick **Brain key** `{embedder_id}_umap` (e.g. `dinov2_base_umap`). Optionally **Color by** `ground_truth` to color points by label. Lasso regions to filter the sample grid to matching images.
+
+Details: [Embeddings panel](https://docs.voxel51.com/user_guide/app.html#embeddings-panel)
+
+### Similarity search
+
+**Why:** find nearest neighbors in embedding space — explore visually similar images, build subsets, sanity-check embedder quality.
+
+**How:** open **Similarity Search** panel (panels menu or similarity popover in grid toolbar). Pick index `{embedder_id}__sim` (e.g. `dinov2_base__sim`). Select one or more samples as query; results sort by cosine similarity. Reopen past runs from panel home page.
+
+Details: [Similarity Search panel](https://docs.voxel51.com/user_guide/app.html#similarity-search-panel-sub-new)
