@@ -34,17 +34,66 @@ First run downloads dataset (network + disk).
 
 Env vars: `ZOO_DATASET`, `ZOO_LABEL_FIELD`, `ZOO_NUM_CLASSES`.
 
+## Prerequisites
+
+### PostgreSQL
+
+Obtain a connection to a PostgreSQL database and set `DB_URL` in `.env` using SQLAlchemy format:
+
+```text
+postgresql+psycopg2://user:password@host:port/dbname
+```
+
+Example:
+
+```text
+DB_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+```
+
+The database can be empty on first run — datapipe creates all required tables automatically (`datapipe db create-all`).
+
+### FiftyOne App
+
+FiftyOne must run on the **same machine** as the datapipe pipeline (samples and brain results are stored in the local FiftyOne/MongoDB stack).
+
+On the server, launch the app bound to all interfaces:
+
+```shell
+fiftyone app launch --remote --address 0.0.0.0 --port 5151 --wait -1
+```
+
+If you work from another machine, either use SSH port forwarding to `localhost:5151` on the server, or keep `--address 0.0.0.0` and connect to `http://<server-host>:5151` directly.
+
 ## Run
 
 1. Copy env file: `cp .env.example .env`
 2. Edit `.env` (paths, `DB_URL`, `FIFTYONE_DATASET_NAME`, etc.)
 3. Install deps: `uv sync`
-4. Run pipeline from this folder — `app.py` calls `load_dotenv()` before config import.
-5. Run FiftyOne instance on the same server using 
+4. From this folder, run the pipeline (`app.py` calls `load_dotenv()` before config import).
+
+Create tables and metadata:
+
 ```shell
-fiftyone app launch  --remote --address 0.0.0.0 --port 5151 --wait -1
+datapipe db create-all
 ```
 
+Run the full pipeline:
+
+```shell
+datapipe run
+```
+
+Or run a single stage by label (stage names match `labels=[("stage", ...)]` in `app.py`):
+
+```shell
+datapipe step --labels=stage=source run
+datapipe step --labels=stage=embedder run
+datapipe step --labels=stage=fiftyone run
+datapipe step --labels=stage=embeddings run
+datapipe step --labels=stage=fiftyone-brain run
+```
+
+Plain `datapipe run` executes all steps; `datapipe step --labels=... run` runs only matching steps.
 
 ## Visualize in FiftyOne
 
