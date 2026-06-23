@@ -24,6 +24,8 @@ from config import (
 )
 from models import ensure_hf_login, infer_image
 
+SAM_CONFIG_ID = "default"
+
 
 def _polygon_points_from_bbox(bbox: BboxData) -> list[list[float]] | None:
     if not isinstance(bbox.mask, list) or not bbox.mask:
@@ -101,7 +103,11 @@ def list_local_images() -> Iterator[pd.DataFrame]:
         yield pd.DataFrame(columns=["image_id", "image_path"])
 
 
-def sam_inference(df_local_images: pd.DataFrame) -> pd.DataFrame:
+def list_sam_config() -> Iterator[pd.DataFrame]:
+    yield pd.DataFrame([{"config_id": SAM_CONFIG_ID, "text_prompt": SAM_TEXT_PROMPT}])
+
+
+def sam_inference(df_local_images: pd.DataFrame, df_sam_config: pd.DataFrame) -> pd.DataFrame:
     ensure_hf_login()
     if df_local_images.empty:
         return pd.DataFrame(
@@ -117,10 +123,15 @@ def sam_inference(df_local_images: pd.DataFrame) -> pd.DataFrame:
             ]
         )
 
+    if df_sam_config.empty:
+        text_prompt = SAM_TEXT_PROMPT
+    else:
+        text_prompt = str(df_sam_config.iloc[0]["text_prompt"])
+
     records = []
     for _, row in df_local_images.iterrows():
         image = Image.open(row["image_path"]).convert("RGB")
-        detections = infer_image(image, SAM_TEXT_PROMPT)
+        detections = infer_image(image, text_prompt)
         for detection in detections:
             records.append(
                 {

@@ -31,11 +31,16 @@ pipeline = Pipeline(
             outputs=[data.local_images_tbl],
             labels=[("stage", "ingest")],
         ),
+        BatchGenerate(
+            steps.list_sam_config,
+            outputs=[data.sam_config_tbl],
+            labels=[("stage", "ingest")],
+        ),
         BatchTransform(
             func=steps.sam_inference,
-            inputs=[data.local_images_tbl],
+            inputs=[data.local_images_tbl, data.sam_config_tbl],
             outputs=[data.sam_predictions_tbl],
-            transform_keys=["image_id"],
+            transform_keys=["image_id", "config_id"],
             chunk_size=1,
             labels=[("stage", "sam")],
             executor_config=ExecutorConfig(parallelism=0),

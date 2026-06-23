@@ -24,11 +24,11 @@ HF_DATASET_CACHE_FOLDER = (
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
-SAM_TEXT_PROMPT = os.environ.get("SAM_TEXT_PROMPT", "a dog")
+SAM_TEXT_PROMPT = os.environ.get("SAM_TEXT_PROMPT", "a cat")
 SAM_SCORE_THRESHOLD = float(os.environ.get("SAM_SCORE_THRESHOLD", "0.5"))
 SAM_MAX_DETECTIONS = int(os.environ.get("SAM_MAX_DETECTIONS", "10"))
 TASK_QUEUE_ID = os.environ.get("TASK_QUEUE_ID", "queue1")
-FILES_BATCH = int(os.environ.get("FILES_BATCH", "5"))
+FILES_BATCH = int(os.environ.get("FILES_BATCH", "100"))
 
 CVAT_URL = os.environ.get("CVAT_URL", "http://localhost:8080")
 CVAT_USERNAME = os.environ.get("CVAT_USERNAME", "admin")

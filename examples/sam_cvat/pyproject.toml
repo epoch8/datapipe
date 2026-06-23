@@ -30,4 +30,4 @@ torchvision = { index = "pytorch-cu124" }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
 datapipe-cvat = { path = "../../libs/datapipe-cvat", editable = true }
 cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }
-sam3 = { git = "https://github.com/facebookresearch/sam3.git", rev = "main" }
+sam3 = { git = "https://github.com/facebookresearch/sam3.git", rev = "5dd401d1c5c1d5c3eedff06d41b77af824517619" }

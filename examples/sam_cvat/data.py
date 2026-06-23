@@ -19,6 +19,19 @@ local_images_tbl = Table(
     ),
 )
 
+sam_config_tbl = Table(
+    name="sam_config",
+    store=TableStoreDB(
+        dbconn=DBCONN,
+        name="sam_config",
+        data_sql_schema=[
+            Column("config_id", String, primary_key=True),
+            Column("text_prompt", String),
+        ],
+        create_table=True,
+    ),
+)
+
 sam_predictions_tbl = Table(
     name="sam_predictions",
     store=TableStoreDB(
