@@ -12,7 +12,6 @@ from zipfile import ZipFile
 
 import fsspec
 import requests
-from sqlalchemy import create_engine, text
 from tqdm import tqdm
 
 for parent in Path(__file__).resolve().parents:
@@ -161,42 +160,17 @@ def upload_images(local_paths: list[Path]) -> None:
         fs.put(str(local_path), remote_key)
 
 
-def e2e_db_schemas() -> tuple[str, str]:
-    return (
-        os.environ.get("DB_SCHEMA_DETECTION", "datapipe_e2e_detection"),
-        os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints"),
-    )
-
-
-def init_postgres_schemas() -> None:
-    db_url = os.environ.get("DB_URL")
-    if not db_url:
-        raise SystemExit(
-            "DB_URL is required. Copy .env.example to .env, start docker compose, "
-            "and run: set -a && source .env && set +a (or pass --skip-db)"
-        )
-
-    engine = create_engine(db_url)
-    for schema in e2e_db_schemas():
-        with engine.begin() as conn:
-            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-        print(f'Postgres schema "{schema}" is ready')
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download sample COCO images and upload them to local MinIO.")
     parser.add_argument("--detection-limit", type=int, default=10, help="Number of cat/dog images")
     parser.add_argument("--keypoints-limit", type=int, default=10, help="Number of person keypoint images")
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
-    parser.add_argument("--skip-db", action="store_true", help="Do not create Postgres schema")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if not args.skip_db:
-        init_postgres_schemas()
 
     if args.skip_download:
         local_paths = sorted(SAMPLE_DIR.glob("*.jpg"))

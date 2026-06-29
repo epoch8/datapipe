@@ -101,7 +101,7 @@ Default quick start uses MinIO from `docker compose`. With services running and 
 uv run python scripts/seed_sample_data.py
 ```
 
-The first run creates both Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`.
+The first run downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `datapipe db create-all` (see [Running](#running)).
 
 Options:
 
