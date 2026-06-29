@@ -1642,6 +1642,7 @@ def _build_error_records_cte(
     transform_keys: List[str],
     all_select_keys: List[str],
     filters_idx: Optional[IndexDF],
+    input_dts: Optional[List["ComputeInput"]] = None,
 ) -> Any:
     """
     Строит CTE для записей с ошибками из TransformMetaTable.
@@ -1649,15 +1650,29 @@ def _build_error_records_cte(
     Returns:
         CTE object для error_records
     """
+    # Получаем типы колонок из первой входной таблицы для дополнительных колонок
+    column_types = {}
+    if input_dts and len(input_dts) > 0:
+        first_input = input_dts[0]
+        if hasattr(first_input.dt, 'meta_table') and first_input.dt.meta_table:
+            # Используем sql_table.c для получения колонок
+            sql_table = first_input.dt.meta_table.sql_table
+            for col_name in all_select_keys:
+                if col_name in sql_table.c:
+                    column_types[col_name] = sql_table.c[col_name].type
+
     tr_tbl = meta_table.sql_table
     error_select_cols: List[Any] = []
     for k in all_select_keys:
         if k in transform_keys:
             error_select_cols.append(sa.column(k))
         else:
-            # Для дополнительных колонок (включая update_ts) используем NULL
+            # Для дополнительных колонок (включая update_ts) используем NULL с правильным типом
             if k == 'update_ts':
                 error_select_cols.append(sa.cast(sa.literal(None), sa.Float).label(k))
+            elif k in column_types:
+                # Используем тип из входной таблицы
+                error_select_cols.append(sa.cast(sa.literal(None), column_types[k]).label(k))
             else:
                 error_select_cols.append(sa.literal(None).label(k))
 
@@ -1923,6 +1938,7 @@ def build_changed_idx_sql_v2(
         transform_keys=transform_keys,
         all_select_keys=all_select_keys,
         filters_idx=filters_idx,
+        input_dts=input_dts,
     )
 
     # 4. Объединить через UNION или CROSS JOIN
