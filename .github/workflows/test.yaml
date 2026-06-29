@@ -59,8 +59,10 @@ jobs:
 
           - python-version: "3.12"
             test-db-env: "postgres"
+            pip-extra: '"pandas<2.2"'
           - python-version: "3.12"
             test-db-env: "sqlite"
+            pip-extra: '"pandas<2.2"'
 
     services:
       # Label used to access the service container

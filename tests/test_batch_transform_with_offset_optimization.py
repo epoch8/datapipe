@@ -488,12 +488,19 @@ def test_batch_transform_max_records_per_run_keeps_boundary_timestamp_records(db
     first_run_output = output_dt.get_data().sort_values("profile_id").reset_index(drop=True)
     assert first_run_output["profile_id"].tolist() == ["p1", "p2", "p3"]
 
-    # КРИТИЧЕСКАЯ ПРОВЕРКА: offset НЕ должен обновиться когда лимит сработал!
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: со strict mode offset ДОЛЖЕН обновиться,
+    # но только до first_ts (не overshoot до second_ts)!
     # У нас 6 записей, но max_records_per_run=3, значит 3 остались необработанными
     offsets_after_first = ds.offset_table.get_offsets_for_transformation(step.get_name())
-    # Offset не должен быть записан вообще (первый запуск с лимитом)
-    assert "test_input_max_records" not in offsets_after_first, (
-        "Offset не должен обновляться при срабатывании max_records_per_run лимита"
+    # С strict mode: offset обновляется всегда, но без overshoot
+    assert "test_input_max_records" in offsets_after_first, (
+        "Со strict mode offset должен обновляться даже при срабатывании max_records_per_run"
+    )
+    offset_after_first = offsets_after_first["test_input_max_records"]
+    # Офсет должен быть first_ts (записи p1-p3), а не second_ts (записи p5-p6)
+    assert abs(offset_after_first - first_ts) < 0.1, (
+        f"Offset должен быть {first_ts}, но был {offset_after_first}. "
+        "Strict mode должен предотвращать overshoot!"
     )
     # Проверяем что в очереди остались необработанные записи
     assert step.get_changed_idx_count(ds) == 3, "Должны остаться 3 необработанные записи"

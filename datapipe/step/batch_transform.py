@@ -176,10 +176,13 @@ class BaseBatchTransformStep(ComputeStep):
 
     def _get_additional_idx_columns(self) -> List[str]:
         """
-        Собрать дополнительные колонки, необходимые для filtered join.
+        Собрать дополнительные колонки, необходимые для filtered join и strict mode.
 
         Возвращает список колонок из join_keys, которые нужно включить в idx
         для работы filtered join оптимизации.
+
+        Если max_records_per_run задан, также включает полный PK для поддержки
+        strict mode (чтобы можно было читать только конкретные записи, а не все события пар).
 
         Returns:
             Список имен колонок (без дубликатов)
@@ -193,6 +196,14 @@ class BaseBatchTransformStep(ComputeStep):
                 for idx_col in inp.join_keys.keys():
                     if idx_col not in self.transform_keys and idx_col not in additional_columns:
                         additional_columns.append(idx_col)
+
+        # Если max_records_per_run задан, добавляем полный PK для strict mode
+        if self.max_records_per_run is not None and len(self.input_dts) > 0:
+            # Берем primary_keys из первой входной таблицы
+            primary_keys = self.input_dts[0].dt.meta_table.primary_keys
+            for pk in primary_keys:
+                if pk not in self.transform_keys and pk not in additional_columns:
+                    additional_columns.append(pk)
 
         return additional_columns
 
@@ -402,7 +413,25 @@ class BaseBatchTransformStep(ComputeStep):
                             for k, v in extra_filters.items():
                                 df[k] = v
 
-                            yield cast(IndexDF, df)
+                            # Если max_records_per_run задан, оборачиваем в IndexDFWithMetadata
+                            if self.max_records_per_run is not None:
+                                from datapipe.index_metadata import IndexDFWithMetadata
+                                from datapipe.types import data_to_index
+
+                                # df содержит полный PK (благодаря _get_additional_idx_columns)
+                                changed_idx_full_pk = cast(IndexDF, df)
+
+                                # Группируем по transform_keys для обратной совместимости
+                                idx_grouped = data_to_index(df, self.transform_keys)
+
+                                # Оборачиваем
+                                yield IndexDFWithMetadata(
+                                    idx=idx_grouped,
+                                    changed_idx=changed_idx_full_pk
+                                )
+                            else:
+                                # Legacy: просто группируем по transform_keys
+                                yield cast(IndexDF, df)
 
                     query_exec_time = time.time() - start_time
                     logger.debug(
@@ -478,12 +507,16 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         compute_input: "ComputeInput",
         processed_idx: IndexDF,
+        changed_idx: Optional[IndexDF] = None,
     ) -> Optional[float]:
         """
         Получить максимальный update_ts из входной таблицы для УСПЕШНО обработанного батча.
 
         Важно: используем processed_idx который содержит только успешно обработанные записи
         из output_dfs (result.index), а не весь батч idx.
+
+        Если передан changed_idx (при max_records_per_run), используем его для вычисления offset
+        вместо запроса к БД. Это предотвращает overshoot когда transform_keys не совпадают с PK.
 
         Для JoinSpec таблиц (с join_keys) используем join_keys для фильтрации вместо primary_keys.
         Пример: profiles с join_keys={'user_id': 'id'} фильтруется по profiles.id IN (processed_idx.user_id)
@@ -492,6 +525,38 @@ class BaseBatchTransformStep(ComputeStep):
 
         if len(processed_idx) == 0:
             return None
+
+        # НОВОЕ: Если есть changed_idx - используем его для вычисления offset (strict mode)
+        # Это предотвращает overshoot при composite keys с max_records_per_run
+        if changed_idx is not None and 'update_ts' in changed_idx.columns:
+            # Фильтруем changed_idx: только успешно обработанные пары
+            # Merge по transform_keys чтобы оставить только те записи changed_idx,
+            # для которых пары были успешно обработаны
+            import pandas as pd
+
+            merged = changed_idx.merge(
+                processed_idx,
+                on=self.transform_keys,
+                how='inner'
+            )
+
+            if len(merged) == 0:
+                return None
+
+            max_update = merged['update_ts'].max()
+
+            # Учитываем delete_ts если есть
+            if 'delete_ts' in merged.columns:
+                max_delete = merged['delete_ts'].max()
+                if pd.notna(max_delete) and max_delete > max_update:
+                    max_update = max_delete
+
+            logger.info(
+                f"[{self.get_name()}] Offset from changed_idx (strict mode): {max_update}, "
+                f"input: {compute_input.dt.name}, records: {len(merged)}"
+            )
+
+            return float(max_update)
 
         input_dt = compute_input.dt
         tbl = input_dt.meta_table.sql_table
@@ -551,6 +616,11 @@ class BaseBatchTransformStep(ComputeStep):
         process_ts: float,
         run_config: Optional[RunConfig] = None,
     ) -> ChangeList:
+        from datapipe.index_metadata import unwrap_idx
+
+        # Извлекаем idx и changed_idx если есть
+        idx, changed_idx = unwrap_idx(idx)
+
         run_config = self._apply_filters_to_run_config(run_config)
 
         changes = ChangeList()
@@ -615,7 +685,7 @@ class BaseBatchTransformStep(ComputeStep):
 
             for inp in self.input_dts:
                 # Найти максимальный update_ts из УСПЕШНО обработанного батча
-                max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx)
+                max_update_ts = self._get_max_update_ts_for_batch(ds, inp, processed_idx, changed_idx)
 
                 if max_update_ts is not None:
                     offset_key = (self.get_name(), inp.dt.name)
@@ -685,11 +755,37 @@ class BaseBatchTransformStep(ComputeStep):
 
         Если у ComputeInput указаны join_keys, читаем только связанные записи
         для оптимизации производительности.
+
+        Если max_records_per_run задан и idx содержит метаданные (IndexDFWithMetadata),
+        используется strict mode: читаются только конкретные записи из changed_idx
+        вместо всех событий для пар.
         """
+        from datapipe.index_metadata import unwrap_idx
+
+        # Извлекаем idx и changed_idx если есть
+        idx, changed_idx = unwrap_idx(idx)
+
+        # Strict mode: если max_records_per_run задан и есть changed_idx
+        use_strict = (
+            self.max_records_per_run is not None and
+            changed_idx is not None
+        )
+
         result = []
 
         for inp in self.input_dts:
-            if inp.join_keys:
+            if use_strict:
+                # STRICT MODE: Читаем ТОЛЬКО конкретные записи из changed_idx
+                # Используется когда max_records_per_run задан для предотвращения overshoot.
+                # changed_idx содержит полный PK ограниченного батча, что позволяет
+                # читать именно те записи которые попали в LIMIT запроса.
+                assert changed_idx is not None  # for mypy
+                data = inp.dt.get_data(changed_idx)
+                logger.debug(
+                    f"[{self.get_name()}] Strict mode: reading {len(changed_idx)} records "
+                    f"for input {inp.dt.name} (max_records_per_run={self.max_records_per_run})"
+                )
+            elif inp.join_keys:
                 # FILTERED JOIN: Читаем только связанные записи
                 # Для composite key сохраняем реальные пары/кортежи ключей из idx,
                 # а не независимые множества значений по каждой колонке.
@@ -824,29 +920,25 @@ class BaseBatchTransformStep(ComputeStep):
         # 1. "Полудвиги" окна при падении mid-batch
         # 2. Порчу offset'ов при вызове run_changelist (он вообще не должен трогать offset'ы)
         # 3. Потерю offset'ов в RayExecutor (т.к. они теперь возвращаются через результат)
-        # 4. Потерю данных при срабатывании max_records_per_run (offset прыгает, срезанные записи теряются)
         if changes.offsets:
-            if limit_hit:
-                # max_records_per_run лимит сработал - НЕ обновляем offset
-                # Это предотвращает потерю данных когда offset вычисляется по всем событиям
-                # обработанных пар (composite keys), а не только по событиям из батча
-                logger.warning(
-                    f"[{self.get_name()}] Skipping offset update: max_records_per_run limit hit. "
-                    f"Processed {idx_count} of {actual_changed_count} records. "
-                    f"Offset will be updated after all records are processed."
-                )
-            else:
-                # Обычный путь - обновляем offset
-                try:
-                    ds.offset_table.update_offsets_bulk(changes.offsets)
-                    logger.info(f"Updated offsets for {self.get_name()}: {changes.offsets}")
-                except Exception as e:
-                    # Таблица offset'ов может не существовать (create_meta_table=False)
-                    # Логируем warning но не прерываем выполнение
-                    logger.warning(
-                        f"Failed to update offsets for {self.get_name()}: {e}. "
-                        "Offset table may not exist (create_meta_table=False)"
+            # Обновляем offset (даже если limit_hit, т.к. strict mode предотвращает overshoot)
+            try:
+                ds.offset_table.update_offsets_bulk(changes.offsets)
+                if limit_hit:
+                    logger.info(
+                        f"Updated offsets for {self.get_name()}: {changes.offsets}. "
+                        f"Processed {idx_count} of {actual_changed_count} records "
+                        f"(max_records_per_run={self.max_records_per_run})."
                     )
+                else:
+                    logger.info(f"Updated offsets for {self.get_name()}: {changes.offsets}")
+            except Exception as e:
+                # Таблица offset'ов может не существовать (create_meta_table=False)
+                # Логируем warning но не прерываем выполнение
+                logger.warning(
+                    f"Failed to update offsets for {self.get_name()}: {e}. "
+                    "Offset table may not exist (create_meta_table=False)"
+                )
         else:
             # Диагностика: логируем если offset не был вычислен ни для одного input
             logger.warning(
