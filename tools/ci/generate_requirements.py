@@ -14,9 +14,17 @@ def _requirement_name(requirement: str) -> str:
     return match.group(1).replace("_", "-").lower()
 
 
+def _get_source(sources: dict[str, object], name: str) -> object | None:
+    normalized = _requirement_name(name)
+    for key, value in sources.items():
+        if _requirement_name(str(key)) == normalized:
+            return value
+    return None
+
+
 def _source_requirement(requirement: str, sources: dict[str, object]) -> str:
     name = _requirement_name(requirement)
-    source = sources.get(name)
+    source = _get_source(sources, name)
     if not isinstance(source, dict):
         return requirement
     if source.get("workspace") is True:
@@ -24,10 +32,18 @@ def _source_requirement(requirement: str, sources: dict[str, object]) -> str:
 
     git = source.get("git")
     rev = source.get("rev")
+    tag = source.get("tag")
+    branch = source.get("branch")
     if not isinstance(git, str):
         return requirement
 
-    suffix = f"@{rev}" if isinstance(rev, str) else ""
+    suffix = ""
+    if isinstance(rev, str):
+        suffix = f"@{rev}"
+    elif isinstance(tag, str):
+        suffix = f"@{tag}"
+    elif isinstance(branch, str):
+        suffix = f"@{branch}"
     return f"{name} @ git+{git}{suffix}"
 
 

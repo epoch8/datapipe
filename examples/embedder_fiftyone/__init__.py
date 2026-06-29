@@ -1,0 +1,1 @@
+"""Embedder + FiftyOne pipeline example."""
