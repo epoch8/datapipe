@@ -133,14 +133,29 @@ def s3_storage_options() -> dict:
     }
 
 
-def upload_images(local_paths: list[Path]) -> None:
-    bucket = os.environ.get("S3_BUCKET", "datapipe-e2e")
-    prefix = os.environ.get("S3_PREFIX", "images").strip("/")
-    fs = fsspec.filesystem("s3", **s3_storage_options())
+def datapipe_e2e_dir() -> str:
+    return os.environ.get("DATAPIPE_E2E_DIR", "s3://datapipe-e2e").rstrip("/")
 
-    print(f"Uploading {len(local_paths)} images to s3://{bucket}/{prefix}/ ...")
+
+def _is_cloud_path(path: str) -> bool:
+    protocol, _ = fsspec.core.split_protocol(path)
+    return protocol not in (None, "file")
+
+
+def images_root() -> str:
+    return f"{datapipe_e2e_dir()}/images"
+
+
+def upload_images(local_paths: list[Path]) -> None:
+    dst_root = images_root()
+    options = s3_storage_options() if _is_cloud_path(dst_root) else {}
+    fs, root = fsspec.core.url_to_fs(dst_root, **options)
+    if not _is_cloud_path(dst_root):
+        fs.makedirs(root, exist_ok=True)
+
+    print(f"Uploading {len(local_paths)} images to {dst_root}/ ...")
     for local_path in tqdm(local_paths):
-        remote_key = f"{bucket}/{prefix}/{local_path.name}"
+        remote_key = f"{root}/{local_path.name}"
         if fs.exists(remote_key):
             continue
         fs.put(str(local_path), remote_key)
@@ -203,9 +218,7 @@ def main() -> int:
 
     if not args.skip_upload:
         upload_images(local_paths)
-        bucket = os.environ.get("S3_BUCKET", "datapipe-e2e")
-        prefix = os.environ.get("S3_PREFIX", "images").strip("/")
-        print(f"Uploaded to s3://{bucket}/{prefix}/")
+        print(f"Uploaded to {images_root()}/")
 
     return 0
 

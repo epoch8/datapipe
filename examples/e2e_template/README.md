@@ -89,7 +89,9 @@ The script reads `LABEL_STUDIO_URL`, `LABEL_STUDIO_EMAIL`, and `LABEL_STUDIO_PAS
 
 ## Data ingest
 
-Pipelines discover input images from S3. The first stage (`list_s3_images` in `steps.py`) lists objects under `s3://$S3_BUCKET/$S3_PREFIX/` with extensions `.jpg`, `.jpeg`, `.png`, or `.webp`.
+Everything is rooted at a single `DATAPIPE_E2E_DIR` (a local path or `s3://` URL). The first stage (`list_s3_images` in `steps.py`) lists images under `$DATAPIPE_E2E_DIR/images/` with extensions `.jpg`, `.jpeg`, `.png`, or `.webp`. The listing is **recursive**, so anything under `images/` is treated as input.
+
+The pipeline `working_dir` (models, resized images, training artifacts) is `$DATAPIPE_E2E_DIR/datapipe/` — a **sibling** of `images/`, never nested under it. This is why both share one root yet input listing never re-ingests its own crops (which would otherwise grow image counts, e.g. 72 instead of 20).
 
 ### Sample data (local MinIO)
 
@@ -114,12 +116,12 @@ uv run python scripts/seed_sample_data.py --skip-download   # upload existing sa
 
 Use this path when images already live in AWS S3 or another S3-compatible store. MinIO is not required.
 
-1. Upload images under `s3://<bucket>/<prefix>/`. Set `S3_BUCKET` and `S3_PREFIX` in `.env` to match (flat filenames under the prefix work best — subdirectory paths are flattened to `___` in `image_name`).
+1. Set `DATAPIPE_E2E_DIR=s3://<bucket>` in `.env` and upload images under `s3://<bucket>/images/` (flat filenames work best — subdirectory paths are flattened to `___` in `image_name`).
 2. Set valid credentials in `.env`:
    - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
-   - `S3_BUCKET`, `S3_PREFIX`
+   - `DATAPIPE_E2E_DIR` (e.g. `s3://my-bucket`; the Label Studio S3 storage bucket is derived from it)
    - For AWS S3, omit `S3_ENDPOINT_URL` and `LABEL_STUDIO_S3_ENDPOINT_URL` so datapipe and Label Studio use the default AWS endpoint.
-   - Set `S3_PUBLIC_URL` to a base URL the Label Studio browser can fetch. URLs are built as `$S3_PUBLIC_URL/$S3_BUCKET/<key>` (path-style), e.g. `https://s3.us-east-1.amazonaws.com` for a publicly readable bucket, or a CDN/proxy in front of your objects.
+   - Set `S3_PUBLIC_URL` to a base URL the Label Studio browser can fetch. URLs are built as `$S3_PUBLIC_URL/<bucket>/images/<key>` (path-style), e.g. `https://s3.us-east-1.amazonaws.com` for a publicly readable bucket, or a CDN/proxy in front of your objects.
 3. Remove MinIO from `docker-compose.yml`: delete the `minio` and `minio-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, and `label-studio`.
 4. Skip `scripts/seed_sample_data.py`. Create Postgres schemas before the first pipeline run:
 
@@ -134,6 +136,7 @@ For self-hosted S3-compatible storage (not AWS), keep `S3_ENDPOINT_URL` for data
 
 Most task-specific settings live in each template's `config.py`:
 
+- **Paths** — `DATAPIPE_E2E_DIR` is the single root: input images come from `$DATAPIPE_E2E_DIR/images/` and `working_dir` (models, derived images) is `$DATAPIPE_E2E_DIR/datapipe/`. They are siblings by construction (see [Data ingest](#data-ingest)).
 - **Label Studio UI** — `LABEL_CONFIG` (XML labeling interface) and `PROJECT_NAME`. Label names in `LABEL_CONFIG` must match `CLASSES_TO_KEEP` (and `KEYPOINTS_LABELS` for keypoints).
 - **Detection** — `CLASSES_TO_KEEP` filters predictions/annotations; `COCO_CLASSES` and `DETECTION_MODEL_CONFIG` set the YOLO class list and pretrained weights (`yolo11n.pt` by default).
 - **Keypoints** — `KEYPOINTS_LABELS` defines keypoint order for LS ↔ datapipe conversion; `CLASSES_TO_KEEP` filters bbox class; `KEYPOINTS_MODEL_CONFIG` and `COCO_PERSON_KEYPOINT_FLIP_IDX` configure the pose model and flip augmentation.
