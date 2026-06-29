@@ -370,11 +370,11 @@ def test_copy_tree_best_effort_retries_after_transient_failure(monkeypatch: pyte
 
     original_copy = sync_module.copy_tree_snapshot
 
-    def flaky_copy_tree_snapshot(src_url: str, dst_url: str) -> None:
+    def flaky_copy_tree_snapshot(src_url: str, dst_url: str, *, require_stable: bool = True) -> None:
         attempts["count"] += 1
         if attempts["count"] == 1:
             raise RuntimeError("network down")
-        original_copy(src_url, dst_url)
+        original_copy(src_url, dst_url, require_stable=require_stable)
 
     monkeypatch.setattr(sync_module, "copy_tree_snapshot", flaky_copy_tree_snapshot)
 

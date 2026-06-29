@@ -24,7 +24,9 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     yolo_count_objects,
     yolo_load_best_threshold_from_curve_csv,
     yolo_load_data_config,
+    yolo_persisted_exp_folder,
     yolo_prepare_tmp_dirs_for_cloud_yolov5,
+    yolo_remap_collected_model_paths,
     yolo_select_last_exp,
 )
 from datapipe_ml.frameworks.yolo.train_session import (
@@ -326,15 +328,11 @@ def train_model(
         f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
     best_threshold = yolo_load_best_threshold_from_curve_csv(exp_folder / "F1_curve.csv")
 
-    exp_folder = yolo_finalize_training_output(
-        exp_folder,
-        persisted_project_dir=yolov5_training_config.persisted_project_dir or src_project_path,
-        tmp_dir_images_cls=tmp_dir_images_cls,
-        tmp_dir_project_cls=tmp_dir_project_cls,
-        tmp_dir_model_cls=tmp_dir_model_cls,
-    )
+    local_exp_folder = exp_folder
+    persisted_project = yolov5_training_config.persisted_project_dir or src_project_path
+    persisted_exp = yolo_persisted_exp_folder(persisted_project, local_exp_folder) if persisted_project else None
 
-    # Collect results (column map -> dataclass fields).
+    # Collect from the local training output (complete and stable); remote mirrors may lag.
     rename_map = {
         "epoch": "epoch",
         "train/box_loss": "train_box_loss",
@@ -351,8 +349,8 @@ def train_model(
         "x/lr1": "x_lr1",
         "x/lr2": "x_lr2",
     }
-    return yolo_collect_results_generic(
-        exp_folder=str(exp_folder),
+    results = yolo_collect_results_generic(
+        exp_folder=str(local_exp_folder),
         result_cls=TrainingResult,
         id_field_name="detection_model_id",
         id_field_value=yolov5_training_config.name,
@@ -365,6 +363,21 @@ def train_model(
         best_metric_col="metrics_mAP_0_5_to_0_95",
         weights_subdir="weights",
     )
+    if persisted_exp is not None:
+        yolo_remap_collected_model_paths(
+            results,
+            local_exp_root=str(local_exp_folder),
+            persisted_exp_root=persisted_exp,
+        )
+
+    yolo_finalize_training_output(
+        local_exp_folder,
+        persisted_project_dir=persisted_project,
+        tmp_dir_images_cls=tmp_dir_images_cls,
+        tmp_dir_project_cls=tmp_dir_project_cls,
+        tmp_dir_model_cls=tmp_dir_model_cls,
+    )
+    return results
 
 
 def train_process(

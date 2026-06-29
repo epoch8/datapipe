@@ -57,25 +57,17 @@ def parse_duration(value: str) -> timedelta:
     value = value.strip()
     if not value:
         raise ValueError("Duration must not be empty")
-    unit = value[-1]
-    amount = float(value[:-1])
-    if unit == "s":
-        return timedelta(seconds=amount)
-    if unit == "m":
-        return timedelta(minutes=amount)
-    if unit == "h":
-        return timedelta(hours=amount)
-    if unit == "d":
-        return timedelta(days=amount)
-    raise ValueError(f"Unsupported duration: {value!r}")
+    try:
+        return pd.Timedelta(value).to_pytimedelta()
+    except ValueError as exc:
+        raise ValueError(f"Unsupported duration: {value!r}") from exc
 
 
 def parse_datetime(value: Any) -> Optional[datetime]:
     if value is None or pd.isna(value):
         return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    return datetime.fromisoformat(str(value))
+    dt = pd.to_datetime(value).to_pydatetime()
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def owner_id() -> str:
