@@ -173,7 +173,7 @@ pipeline = Pipeline(
                 min_completed_epochs=1,
                 checkpoint="last",
                 max_attempts=10,
-                reset_attempts_after="10min",
+                reset_attempts_after="10m",
                 lease_ttl_s=60,
                 heartbeat_interval_s=10,
             ),
