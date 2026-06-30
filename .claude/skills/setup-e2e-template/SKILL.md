@@ -54,7 +54,7 @@ one `tag_metrics` step; example logic unchanged): [tags-addon.md](tags-addon.md)
 `tag_metrics` shows the retrained model gaining recall on the tagged scenario.
 
 ## Troubleshooting (may already be fixed — verify against current files)
-- **No model after `train`, exit 0** → datapipe swallows step errors; check `detection_training_status`, not the exit code. Training auto-retries failed/raced attempts (`resume_config` resumes from `last` up to `max_attempts`), so a transient first-attempt checkpoint-sync hiccup recovers on its own.
+- **No model after `train`, exit 0** → datapipe swallows step errors; check `detection_training_status`, not the exit code.
 - **Demo pre-annotations are empty** → the fallback `DETECTION_MODEL_CONFIG` is a smoke model (`yolo11n`, `input_size:[16,16]`, `score_threshold:0.01`) used until a trained model exists, so it detects almost nothing. Expected for the demo; for useful pre-annotations set a real model + `input_size`/`score_threshold`.
 - **Training metrics ~0** → not a config bug: the trained model is `yolov8n` (imgsz 320, 30 ep), and the seed sample (~20 images) is simply too small to learn from. Real metrics need enough annotated data.
 - **`cv_pipeliner` keypoint pre-annotation is broken** (pinned rev): inferencer drops keypoints, LS parser doesn't apply them → keypoint `train` needs real keypoint GT injected.
