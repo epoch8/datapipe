@@ -1,7 +1,6 @@
 # SAM3 + CVAT Pipeline
 
-**Claude Code skill:** `/setup-sam-cvat` — auto-loads when relevant, or invoke it directly (see the
-repo root README).
+**Claude Code skill:** `/setup-sam-cvat` — auto-loads when relevant, or invoke it directly.
 
 Datapipe example for:
 

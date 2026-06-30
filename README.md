@@ -53,22 +53,6 @@ uv run python -c "import datapipe_cvat.cvat_step, datapipe_cvat.utils"
 Documentation lives in `libs/datapipe-core/docs`. Design notes live in
 `libs/datapipe-core/design-docs`.
 
-## Claude Code skills
-
-This repo ships [Claude Code skills](https://code.claude.com/docs/en/skills) for the example pipelines
-under `.claude/skills/`. They are **project skills**: open the repo in Claude Code and they are
-auto-discovered — no install. Claude loads the relevant one when your request matches it, or you can
-invoke it directly by name.
-
-| Skill | Example | Invoke |
-|---|---|---|
-| `setup-e2e-template` | `examples/e2e_template` — YOLO detection / keypoints + Label Studio → train → FiftyOne | `/setup-e2e-template` |
-| `setup-embedder-fiftyone` | `examples/embedder_fiftyone` — DINOv2/DINOv3 embeddings → FiftyOne UMAP + similarity | `/setup-embedder-fiftyone` |
-| `setup-sam-cvat` | `examples/sam_cvat` — SAM3 text-prompt boxes + masks → CVAT pre-annotations | `/setup-sam-cvat` |
-
-Each skill carries the example's external prerequisites, env knobs, and data-alignment gotchas.
-`setup-e2e-template` also bundles `tags-addon.md`, a recipe for per-scenario tag metrics.
-
 ## Version Compatibility
 
 * `master` — current development state, will become the `0.15.x` release
