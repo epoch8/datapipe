@@ -133,11 +133,66 @@ function pruneDisconnectedTables(
     });
 }
 
+/**
+ * Turn each expanded meta into a Cytoscape compound parent that wraps its sub-steps.
+ * Transforms and group-internal tables become children of the container; tables that
+ * also connect to nodes outside the group (boundary tables) stay external so the
+ * container does not swallow shared data and collapsing leaves no orphans.
+ */
+function assignCompoundParents(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    expandedGroups: Set<string>,
+) {
+    Array.from(expandedGroups).forEach((group) => {
+        const memberIds = new Set<string>();
+        nodes.forEach((data, id) => {
+            if (data.metaGroup === group) memberIds.add(id);
+        });
+        if (!memberIds.size) return;
+
+        const boundaryNodes = new Set<string>();
+        edges.forEach((edge) => {
+            const source = edge.source as string;
+            const target = edge.target as string;
+            const sourceIn = memberIds.has(source);
+            const targetIn = memberIds.has(target);
+            if (sourceIn !== targetIn) {
+                if (sourceIn) boundaryNodes.add(source);
+                if (targetIn) boundaryNodes.add(target);
+            }
+        });
+
+        let nested = 0;
+        memberIds.forEach((id) => {
+            const data = nodes.get(id);
+            if (!data) return;
+            if (data.type === "table" && boundaryNodes.has(id)) {
+                const { metaGroup, ...rest } = data;
+                nodes.set(id, rest);
+                return;
+            }
+            nodes.set(id, { ...data, parent: group });
+            nested += 1;
+        });
+
+        if (nested > 0) {
+            nodes.set(group, {
+                id: group,
+                type: "group-expanded",
+                name: group,
+                child_count: nested,
+            });
+        }
+    });
+}
+
 function reprocessData(data: GraphData, expandedGroups: Set<string> = new Set()) {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>();
     const edges = new Set<Cytoscape.EdgeDataDefinition>();
     processData(nodes, edges, data, expandedGroups);
     pruneDisconnectedTables(nodes, edges);
+    assignCompoundParents(nodes, edges, expandedGroups);
     return { nodes, edges };
 }
 

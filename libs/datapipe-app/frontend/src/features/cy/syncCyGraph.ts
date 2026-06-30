@@ -1,30 +1,35 @@
 import Cytoscape from "cytoscape";
 import { GraphData } from "../../types";
-import { applyViewport, captureViewport, runGraphLayout, type GraphViewport } from "./compound";
 import { reprocessData } from "./process";
-import { layoutCompactSubgraphAtAnchor } from "./subgraphLayout";
 
 export type CyElement = Cytoscape.ElementDefinition;
 
-export type SyncMode = "fit" | "preserve" | "local";
+export type SyncMode = "fit" | "preserve";
 
 export type SyncOptions = {
     mode: SyncMode;
     rankDir?: "TB" | "LR";
-    viewport?: GraphViewport | null;
     anchorGroup?: string | null;
+    expanding?: boolean;
 };
 
 function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
     const { nodes, edges } = reprocessData(data, expanded);
-    const elements: CyElement[] = Array.from(nodes.entries()).map(([nodeId, options]) => ({
-        selectable: true,
-        data: {
-            id: nodeId,
-            label: options.name || nodeId,
-            ...options,
-        },
-    }));
+    const elements: CyElement[] = Array.from(nodes.entries())
+        // Compound parents must be added before their children.
+        .sort(([, a], [, b]) => {
+            const aParent = a.type === "group-expanded" ? 0 : 1;
+            const bParent = b.type === "group-expanded" ? 0 : 1;
+            return aParent - bParent;
+        })
+        .map(([nodeId, options]) => ({
+            selectable: true,
+            data: {
+                id: nodeId,
+                label: options.name || nodeId,
+                ...options,
+            },
+        }));
     edges.forEach((edge) => {
         elements.push({
             grabbable: false,
@@ -36,32 +41,6 @@ function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
 
 function edgeKey(source: string, target: string): string {
     return `${source}->${target}`;
-}
-
-function snapshotPositions(cy: Cytoscape.Core): Map<string, Cytoscape.Position> {
-    const positions = new Map<string, Cytoscape.Position>();
-    cy.nodes().forEach((node) => {
-        positions.set(node.id(), { ...node.position() });
-    });
-    return positions;
-}
-
-function restorePositions(cy: Cytoscape.Core, positions: Map<string, Cytoscape.Position>) {
-    positions.forEach((pos, id) => {
-        const node = cy.getElementById(id);
-        if (node.nonempty()) {
-            node.position(pos);
-        }
-    });
-}
-
-function centroid(positions: Cytoscape.Position[]): Cytoscape.Position {
-    if (!positions.length) return { x: 0, y: 0 };
-    const sum = positions.reduce(
-        (acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }),
-        { x: 0, y: 0 },
-    );
-    return { x: sum.x / positions.length, y: sum.y / positions.length };
 }
 
 function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
@@ -89,7 +68,13 @@ function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
             const id = el.data.id as string;
             const existing = cy.getElementById(id);
             if (existing.nonempty()) {
-                existing.data(el.data);
+                const node = existing as unknown as Cytoscape.NodeSingular;
+                const nextParent = (el.data.parent as string) ?? null;
+                const currentParent = node.isChild() ? node.parent().first().id() : null;
+                node.data(el.data);
+                if (nextParent !== currentParent) {
+                    node.move({ parent: nextParent });
+                }
             } else {
                 cy.add(el);
             }
@@ -107,6 +92,30 @@ function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
     });
 }
 
+function runDagre(cy: Cytoscape.Core, rankDir: "TB" | "LR", animate: boolean, fit: boolean) {
+    const layout = cy.layout({
+        name: "dagre",
+        rankDir,
+        ranker: "network-simplex",
+        nodeDimensionsIncludeLabels: true,
+        nodeSep: 44,
+        rankSep: 70,
+        edgeSep: 16,
+        fit,
+        padding: 60,
+        animate,
+        animationDuration: 350,
+        animationEasing: "ease-out-cubic",
+    } as unknown as Cytoscape.LayoutOptions);
+    layout.run();
+}
+
+/**
+ * Re-derive the graph for the current expand/collapse state and lay it out compactly with
+ * dagre. Collapsed metas stay as large clickable rectangles; expanding one reflows the graph
+ * with a short animation and keeps the toggled group in view, so the overview stays compact
+ * and readable instead of reserving the full sub-step area for every collapsed step.
+ */
 export function syncCyGraph(
     cy: Cytoscape.Core,
     data: GraphData,
@@ -115,80 +124,40 @@ export function syncCyGraph(
 ) {
     const rankDir = options.rankDir ?? "TB";
     const target = buildElements(data, expanded);
-    const targetNodeIds = new Set(
-        target.filter((el) => el.data.id).map((el) => el.data.id as string),
-    );
-    const currentNodeIds = new Set(cy.nodes().map((node) => node.id()));
-    const sameStructure =
-        targetNodeIds.size === currentNodeIds.size &&
-        Array.from(targetNodeIds).every((id) => currentNodeIds.has(id));
-
-    const savedPositions = snapshotPositions(cy);
-    const viewport = options.viewport ?? captureViewport(cy);
-
-    if (options.mode === "preserve" && sameStructure) {
-        applyElementDiff(cy, target);
-        restorePositions(cy, savedPositions);
-        applyViewport(cy, viewport);
-        return;
-    }
+    applyElementDiff(cy, target);
 
     if (options.mode === "fit" || cy.nodes().empty()) {
-        applyElementDiff(cy, target);
-        runGraphLayout(cy, rankDir, { mode: "fit" });
+        runDagre(cy, rankDir, false, true);
+        const fitZoom = cy.zoom();
+        cy.minZoom(Math.min(0.05, fitZoom * 0.3));
+        cy.maxZoom(Math.max(2.5, fitZoom * 6));
+
+        // A whole pipeline of large nodes can't be read at fit-to-screen. If fitting drops
+        // the zoom below a legible level, start at a readable zoom anchored to the top of the
+        // pipeline instead; the user pans to explore the rest.
+        const READABLE_ZOOM = 0.4;
+        if (fitZoom < READABLE_ZOOM) {
+            const bb = cy.elements().boundingBox();
+            cy.zoom(READABLE_ZOOM);
+            cy.pan({
+                x: cy.width() / 2 - READABLE_ZOOM * (bb.x1 + bb.w / 2),
+                y: 90 - READABLE_ZOOM * bb.y1,
+            });
+        }
         return;
     }
 
-    const anchorGroup = options.anchorGroup;
-    if (options.mode === "local" && anchorGroup) {
-        applyViewport(cy, viewport);
+    runDagre(cy, rankDir, true, false);
 
-        const expanding = expanded.has(anchorGroup);
-        let anchorPos = expanding ? savedPositions.get(anchorGroup) : undefined;
-        if (!anchorPos && !expanding) {
-            const childPositions: Cytoscape.Position[] = [];
-            cy.nodes()
-                .filter((node) => node.data("metaGroup") === anchorGroup)
-                .forEach((node) => {
-                    childPositions.push(node.position());
-                });
-            anchorPos = centroid(childPositions);
-        }
-
-        const stablePositions = new Map(savedPositions);
-        if (expanding) {
-            stablePositions.delete(anchorGroup);
-        }
-
-        applyElementDiff(cy, target);
-
-        restorePositions(cy, stablePositions);
-
-        if (anchorPos) {
-            const anchor = anchorPos;
-            if (expanding) {
-                const newNodes = cy.nodes().filter((node) => node.data("metaGroup") === anchorGroup);
-                layoutCompactSubgraphAtAnchor(newNodes, anchor);
-            } else {
-                const groupNode = cy.getElementById(anchorGroup);
-                if (groupNode.nonempty()) {
-                    groupNode.position(anchor);
-                }
-            }
-        }
-
-        return;
+    // Keep the toggled group comfortably in view after the reflow.
+    const anchor = options.anchorGroup ? cy.getElementById(options.anchorGroup) : null;
+    if (anchor && anchor.nonempty()) {
+        const focus = options.expanding ? anchor.closedNeighborhood() : anchor;
+        cy.animate(
+            { center: { eles: focus } },
+            { duration: 350, easing: "ease-out-cubic" },
+        );
     }
-
-    if (options.mode === "preserve") {
-        applyElementDiff(cy, target);
-        restorePositions(cy, savedPositions);
-        applyViewport(cy, viewport);
-        return;
-    }
-
-    applyElementDiff(cy, target);
-    runGraphLayout(cy, rankDir, { mode: "preserve", viewport });
 }
 
 export { buildElements };

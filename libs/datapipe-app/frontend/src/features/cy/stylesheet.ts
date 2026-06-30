@@ -1,16 +1,33 @@
 import Cytoscape from "cytoscape";
-import {
-    NODE_STEP_HEIGHT,
-    SUBGRAPH_STEP_HEIGHT,
-    SUBGRAPH_STEP_WIDTH,
-    SUBGRAPH_TABLE_HEIGHT,
-    SUBGRAPH_TABLE_WIDTH,
-    groupNodeHeight,
-    groupNodeWidth,
-    nodeWidthFromLabel,
-    tableNodeHeight,
-    tableNodeWidth,
-} from "./graphNodeLayout";
+import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
+
+function nodeName(node: Cytoscape.NodeSingular): string {
+    return (node.data("name") as string) || (node.data("label") as string) || "";
+}
+
+function nodeWidth(node: Cytoscape.NodeSingular): number {
+    const name = nodeName(node);
+    const compact = Boolean(node.data("metaGroup"));
+    if (node.data("type") === "group") {
+        return (node.data("boxW") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1).w;
+    }
+    if (node.data("type") === "table") {
+        return tableNodeSize(name, node.data("indexes") || [], compact).w;
+    }
+    return stepNodeSize(name, compact).w;
+}
+
+function nodeHeight(node: Cytoscape.NodeSingular): number {
+    const name = nodeName(node);
+    const compact = Boolean(node.data("metaGroup"));
+    if (node.data("type") === "group") {
+        return (node.data("boxH") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1).h;
+    }
+    if (node.data("type") === "table") {
+        return tableNodeSize(name, node.data("indexes") || [], compact).h;
+    }
+    return stepNodeSize(name, compact).h;
+}
 
 export const stylesheet: Cytoscape.Stylesheet[] = [
     {
@@ -20,37 +37,12 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "text-wrap": "wrap",
             "text-valign": "center",
             "text-halign": "center",
-            width: (node: Cytoscape.NodeSingular) => {
-                const label = (node.data("label") as string) || "";
-                if (node.data("metaGroup")) {
-                    return node.data("type") === "table" ? SUBGRAPH_TABLE_WIDTH : SUBGRAPH_STEP_WIDTH;
-                }
-                if (node.data("type") === "table") {
-                    const label = (node.data("label") as string) || "";
-                    return tableNodeWidth(label, node.data("indexes") || [], Boolean(node.data("metaGroup")));
-                }
-                if (node.data("type") === "group") {
-                    return groupNodeWidth(node.data("child_count") ?? 1);
-                }
-                return nodeWidthFromLabel(label);
-            },
+            width: nodeWidth,
             ghost: "yes",
             "ghost-opacity": 0.12,
             "ghost-offset-x": 4,
             "ghost-offset-y": 4,
-            height: (node: Cytoscape.NodeSingular) => {
-                if (node.data("metaGroup")) {
-                    return node.data("type") === "table" ? SUBGRAPH_TABLE_HEIGHT : SUBGRAPH_STEP_HEIGHT;
-                }
-                if (node.data("type") === "table") {
-                    const label = (node.data("label") as string) || "";
-                    return tableNodeHeight(label, Boolean(node.data("metaGroup")));
-                }
-                if (node.data("type") === "group") {
-                    return groupNodeHeight(node.data("child_count") ?? 1);
-                }
-                return NODE_STEP_HEIGHT;
-            },
+            height: nodeHeight,
         },
     },
     {
@@ -81,12 +73,35 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
     {
+        selector: 'node[type = "group-expanded"]',
+        style: {
+            shape: "round-rectangle",
+            backgroundColor: "#eef6ff",
+            "background-opacity": 0.55,
+            "border-width": 1.5,
+            "border-color": "#91caff",
+            "border-style": "dashed",
+            label: "data(name)",
+            "text-valign": "top",
+            "text-halign": "center",
+            "text-wrap": "wrap",
+            "text-max-width": "600px",
+            "font-size": 24,
+            "font-weight": 700,
+            color: "#0958d9",
+            "text-margin-y": -18,
+            padding: "44px",
+            "z-compound-depth": "bottom",
+            ghost: "no",
+        } as any,
+    },
+    {
         selector: 'node[?metaGroup]',
         style: {
-            "border-width": 1.5,
-            "border-color": "#69b1ff",
-            "border-style": "dashed",
-            "background-opacity": 0.95,
+            "border-width": 1,
+            "border-color": "#bfbfbf",
+            "border-style": "solid",
+            "background-opacity": 1,
         },
     },
     {
@@ -97,7 +112,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "line-color": "#b0b0b0",
             "target-arrow-shape": "triangle",
             "target-arrow-color": "#b0b0b0",
-            width: 1.5,
+            "arrow-scale": 1.6,
+            width: 2.5,
         },
     },
     {

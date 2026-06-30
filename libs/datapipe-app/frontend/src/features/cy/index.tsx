@@ -10,20 +10,7 @@ import dagre from "cytoscape-dagre";
 import contextMenus from "cytoscape-context-menus";
 
 import "./style.css";
-import {
-    NODE_STEP_HEIGHT,
-    SUBGRAPH_STEP_HEIGHT,
-    SUBGRAPH_STEP_WIDTH,
-    displayNodeName,
-    groupNodeHeight,
-    groupNodeWidth,
-    nodeWidthFromLabel,
-    subgraphNameMaxLen,
-    tableDisplayName,
-    tableNodeHeight,
-    tableNodeWidth,
-} from "./graphNodeLayout";
-import { captureViewport, type LayoutMode } from "./compound";
+import { displayNodeName, groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { Alert, AlertProps, Spin } from "antd";
@@ -61,7 +48,6 @@ function statusClass(status: string): string {
 
 function refreshNodeLabels(
     cy: Cytoscape.Core,
-    expandedGroupsRef: React.MutableRefObject<Set<string>>,
     runStatusRef: React.MutableRefObject<Map<string, string> | undefined>,
 ) {
     // @ts-ignore
@@ -73,79 +59,72 @@ function refreshNodeLabels(
             halignBox: "center",
             valignBox: "center",
             tpl(data: Cytoscape.NodeDataDefinition) {
-                if (data.type === "group") {
-                    const childCount = data.child_count ?? 0;
-                    const width = groupNodeWidth(childCount);
-                    const height = groupNodeHeight(childCount);
-                    return `
-              <div class="node-compound-label node-compound-group" style="width:${width}px;height:${height}px" title="${data.name}">
-                  <div class="compound-title">${displayNodeName(data.name as string, 28)}</div>
-                  <div class="compound-hint">${childCount} steps</div>
-                  <div class="compound-action">right-click for options</div>
-              </div>
-            `;
+                if (data.type === "group-expanded") {
+                    return "";
                 }
 
+                const fullName = data.name as string;
                 const metaGroup = data.metaGroup as string | undefined;
                 const isSubgraph = Boolean(metaGroup);
-                const expanded = metaGroup
-                    ? expandedGroupsRef.current.has(metaGroup)
-                    : false;
-                const metaBadge = metaGroup
-                    ? `<div class="meta-group-badge ${expanded ? "meta-group-badge-expanded" : ""}">
-                  <span class="meta-group-badge-name">${displayNodeName(metaGroup, 14)}</span>
-                  ${expanded ? `<span class="meta-group-collapse-hint">zoom in · right-click</span>` : ""}
-               </div>`
-                    : "";
+                const renderName = (lines: string[]) => lines.join("<br>");
 
-                const status = resolveNodeStatus(
-                    data.name as string,
-                    data,
-                    runStatusRef.current,
-                );
-                const fullName = data.name as string;
+                if (data.type === "group") {
+                    const childCount = data.child_count ?? 0;
+                    const fallback = groupBoxSize(fullName, childCount);
+                    const w = (data.boxW as number) ?? fallback.w;
+                    const h = (data.boxH as number) ?? fallback.h;
+                    return `
+              <div class="node-compound-label node-compound-group" style="width:${w}px;height:${h}px" title="${fullName}">
+                  <div class="compound-title">${renderName(fallback.lines)}</div>
+                  <div class="compound-hint">${childCount} steps</div>
+                  <div class="compound-action">click to expand</div>
+              </div>
+            `;
+                }
+
+                const status = resolveNodeStatus(fullName, data, runStatusRef.current);
+                const coreClass = isSubgraph ? "node-core-subgraph" : "";
+
                 if (data.type === "table") {
                     const indexes = (data.indexes as string[]) || [];
-                    const width = tableNodeWidth(fullName, indexes, isSubgraph);
-                    const height = tableNodeHeight(fullName, isSubgraph);
-                    const coreClass = isSubgraph ? "node-core-subgraph" : "";
-                    const nameClass = isSubgraph ? "name" : "name name-table-full";
+                    const { w, h, lines } = tableNodeSize(fullName, indexes, isSubgraph);
+                    const tip = [
+                        fullName,
+                        indexes.length ? `PK: ${indexes.join(", ")}` : "",
+                        data.size != null ? `size: ${data.size}` : "",
+                        data.store_class ? String(data.store_class) : "",
+                        metaGroup ? `in ${metaGroup}` : "",
+                    ]
+                        .filter(Boolean)
+                        .join("\n");
                     return `
-              <div class="node-core node-core-table ${coreClass}" style="width: ${width}px; height: ${height}px" title="${fullName}">
-                  ${metaBadge}
+              <div class="node-core node-core-table ${coreClass}" style="width:${w}px;height:${h}px" title="${tip}">
                   <div class="icon icon-table"></div>
-                  <div class="${nameClass}">${tableDisplayName(fullName, isSubgraph)}</div>
+                  <div class="name">${renderName(lines)}</div>
                   ${
                       !isSubgraph && indexes.length
-                          ? `<div class="indexes">${displayNodeName(indexes.join(", "), 40)}</div>`
-                          : ""
-                  }
-                  ${!isSubgraph && data.size ? `<div class="indexes">size: ${data.size}</div>` : ""}
-                  ${
-                      !isSubgraph && data.store_class
-                          ? `<div class="store">${data.store_class}</div>`
+                          ? `<div class="indexes">${displayNodeName(indexes.join(", "), 44)}</div>`
                           : ""
                   }
               </div>
             `;
                 }
 
-                const width = isSubgraph ? SUBGRAPH_STEP_WIDTH : nodeWidthFromLabel(fullName);
-                const height = isSubgraph ? SUBGRAPH_STEP_HEIGHT : NODE_STEP_HEIGHT;
-                const coreClass = isSubgraph ? "node-core-subgraph" : "";
-                const nameMax = subgraphNameMaxLen(isSubgraph);
+                const { w, h, lines } = stepNodeSize(fullName, isSubgraph);
+                const tip = [
+                    fullName,
+                    data.transform_type ? String(data.transform_type) : "",
+                    data.total_idx_count != null || data.changed_idx_count != null
+                        ? `changed ${data.changed_idx_count ?? 0} / ${data.total_idx_count ?? 0}`
+                        : "",
+                    metaGroup ? `in ${metaGroup}` : "",
+                ]
+                    .filter(Boolean)
+                    .join("\n");
                 return `
-              <div class="node-core node-core-step ${coreClass}" style="width: ${width}px; height: ${height}px" title="${fullName}">
-                  ${metaBadge}
-                  <div class="name">${displayNodeName(fullName, nameMax)}</div>
+              <div class="node-core node-core-step ${coreClass}" style="width:${w}px;height:${h}px" title="${tip}">
+                  <div class="name">${renderName(lines)}</div>
                   <div class="step-status ${statusClass(status)}">${status}</div>
-                  ${
-                      !isSubgraph &&
-                      (data.total_idx_count != null || data.changed_idx_count != null)
-                          ? `<div class="indexes">${data.total_idx_count ?? 0}/${data.changed_idx_count ?? 0}</div>`
-                          : ""
-                  }
-                  ${!isSubgraph ? `<div class="transform-type">${data.transform_type ?? ""}</div>` : ""}
               </div>
             `;
             },
@@ -171,12 +150,10 @@ function PipelineGraphView({
     const [rawGraph, setRawGraph] = useState<GraphData | null>(null);
     const [pipelineId, setPipelineId] = useState<string | null>(pipelineIdProp ?? null);
 
-    const layoutModeRef = useRef<LayoutMode>("fit");
-    const viewportRef = useRef<ReturnType<typeof captureViewport> | null>(null);
-    const anchorGroupRef = useRef<string | null>(null);
+    const needFitRef = useRef(true);
     const stageInitKeyRef = useRef<string | null>(null);
-    const expandedGroupsRef = useRef(expandedGroups);
-    expandedGroupsRef.current = expandedGroups;
+    const anchorGroupRef = useRef<string | null>(null);
+    const expandingRef = useRef(false);
     const pipelineIdRef = useRef(pipelineId);
     pipelineIdRef.current = pipelineId;
 
@@ -203,15 +180,15 @@ function PipelineGraphView({
 
     const toggleGroupExpand = useCallback((groupName: string) => {
         if (!cy) return;
-        viewportRef.current = captureViewport(cy);
-        layoutModeRef.current = "local";
         anchorGroupRef.current = groupName;
         setExpandedGroups((prev) => {
             const next = new Set(prev);
             if (next.has(groupName)) {
                 next.delete(groupName);
+                expandingRef.current = false;
             } else {
                 next.add(groupName);
+                expandingRef.current = true;
             }
             return next;
         });
@@ -242,9 +219,9 @@ function PipelineGraphView({
 
     useEffect(() => {
         stageInitKeyRef.current = null;
-        layoutModeRef.current = "fit";
-        anchorGroupRef.current = null;
+        needFitRef.current = true;
         initialLoadRef.current = true;
+        anchorGroupRef.current = null;
         setShowInitialSpin(true);
     }, [graphUrl]);
 
@@ -263,8 +240,7 @@ function PipelineGraphView({
         } else {
             setExpandedGroups(new Set());
         }
-        layoutModeRef.current = "fit";
-        anchorGroupRef.current = null;
+        needFitRef.current = true;
     }, [rawGraph, graphUrl, stageFilter]);
 
     useEffect(() => {
@@ -273,10 +249,6 @@ function PipelineGraphView({
         async function loadGraph() {
             if (initialLoadRef.current) {
                 setLoading(true);
-            } else if (cy) {
-                viewportRef.current = captureViewport(cy);
-                layoutModeRef.current = "preserve";
-                anchorGroupRef.current = null;
             }
 
             try {
@@ -314,15 +286,15 @@ function PipelineGraphView({
         if (!cy || !rawGraph || loading) return;
 
         syncCyGraph(cy, rawGraph, expandedGroups, {
-            mode: layoutModeRef.current,
+            mode: needFitRef.current ? "fit" : "preserve",
             rankDir,
-            viewport: layoutModeRef.current !== "fit" ? viewportRef.current : null,
             anchorGroup: anchorGroupRef.current,
+            expanding: expandingRef.current,
         });
-        refreshNodeLabels(cy, expandedGroupsRef, runStatusRef);
-        layoutModeRef.current = "preserve";
+        refreshNodeLabels(cy, runStatusRef);
+        needFitRef.current = false;
         anchorGroupRef.current = null;
-    }, [cy, rawGraph, expandedGroups, loading, rankDir]);
+    }, [cy, rawGraph, expandedGroups, loading, rankDir, graphUrl]);
 
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
@@ -353,19 +325,32 @@ function PipelineGraphView({
                 {
                     id: "collapse-steps",
                     content: "Collapse into single step",
-                    selector: "node[?metaGroup]",
+                    selector: 'node[type = "group-expanded"], node[?metaGroup]',
                     onClickFunction: (event: { target?: Cytoscape.NodeSingular; cyTarget?: Cytoscape.NodeSingular }) => {
                         const node = event.target || event.cyTarget;
-                        const groupName = node?.data("metaGroup") as string | undefined;
+                        const groupName =
+                            (node?.data("type") === "group-expanded"
+                                ? (node?.data("name") as string)
+                                : (node?.data("metaGroup") as string)) || undefined;
                         if (groupName) toggleGroupExpandRef.current(groupName);
                     },
                 },
             ],
         });
 
+        // Left-click the collapsed rectangle to expand, click the container background to collapse.
+        const onTapGroup = (event: Cytoscape.EventObject) => {
+            const node = event.target as Cytoscape.NodeSingular;
+            toggleGroupExpandRef.current(node.data("name") as string);
+        };
+        cy.on("tap", 'node[type = "group"]', onTapGroup);
+        cy.on("tap", 'node[type = "group-expanded"]', onTapGroup);
+
         return () => {
             try {
                 if (!cy.destroyed()) {
+                    cy.off("tap", 'node[type = "group"]', onTapGroup);
+                    cy.off("tap", 'node[type = "group-expanded"]', onTapGroup);
                     // @ts-ignore
                     cy.contextMenus("destroy");
                 }

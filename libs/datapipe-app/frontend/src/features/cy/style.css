@@ -31,13 +31,13 @@
     background-position: center;
     border-radius: 50%;
     border: 2px solid #ffffff;
-    background-size: 10px 10px;
+    background-size: 15px 15px;
     position: absolute;
-    left: -5px;
-    top: -3px;
+    left: -7px;
+    top: -5px;
     display: block;
-    width: 18px;
-    height: 18px;
+    width: 26px;
+    height: 26px;
 }
 
 .icon:hover {
@@ -53,28 +53,19 @@
 }
 
 .name {
-    padding-top: 4px;
+    padding-top: 2px;
     text-align: center;
-    font-size: 11px;
-    line-height: 1.2;
+    font-size: 22px;
+    line-height: 30px;
     font-weight: 600;
     width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.name-table-full {
     white-space: normal;
-    word-break: break-all;
-    overflow: visible;
-    text-overflow: unset;
-    line-height: 1.15;
-    font-size: 10px;
+    word-break: normal;
+    overflow: hidden;
 }
 
 .indexes {
-    font-size: 9px;
+    font-size: 17px;
     font-style: italic;
     text-align: center;
     color: #2C3333;
@@ -82,8 +73,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.2;
-    margin-top: 2px;
+    line-height: 1.3;
+    margin-top: 4px;
 }
 
 .store {
@@ -192,13 +183,13 @@
 
 .step-status {
     display: inline-block;
-    margin-top: 2px;
-    padding: 0 6px;
-    border-radius: 8px;
-    font-size: 9px;
+    margin-top: 6px;
+    padding: 2px 12px;
+    border-radius: 11px;
+    font-size: 16px;
     font-weight: 600;
     text-transform: lowercase;
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 .step-status-completed {
@@ -237,48 +228,62 @@
     padding: 4px;
 }
 
+.node-core-subgraph {
+    justify-content: center;
+    padding: 2px 5px;
+}
+
 .node-core-subgraph .name {
-    font-size: 8px;
-    padding-top: 2px;
-    line-height: 1.1;
+    font-size: 19px;
+    padding-top: 0;
+    line-height: 28px;
+    white-space: normal;
+    word-break: normal;
+    overflow: hidden;
 }
 
 .node-core-subgraph .step-status {
-    font-size: 7px;
-    margin-top: 1px;
-    padding: 0 4px;
-    line-height: 1.2;
+    font-size: 15px;
+    margin-top: 5px;
+    padding: 1px 9px;
+    line-height: 1.4;
 }
 
 .node-core-subgraph .icon {
-    width: 12px;
-    height: 12px;
-    background-size: 7px 7px;
-    left: -3px;
-    top: -2px;
+    width: 24px;
+    height: 24px;
+    background-size: 13px 13px;
+    left: -6px;
+    top: -4px;
+}
+
+.node-compound-group {
+    justify-content: flex-start;
+    padding-top: 12px;
 }
 
 .node-compound-group .compound-title {
-    font-size: 11px;
+    font-size: 24px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.25;
+    color: #0958d9;
 }
 
 .node-compound-stage .compound-title {
-    font-size: 12px;
+    font-size: 24px;
     font-weight: 700;
     color: #389e0d;
 }
 
 .compound-hint {
-    margin-top: 2px;
-    font-size: 8px;
+    margin-top: 6px;
+    font-size: 18px;
     color: #8c8c8c;
 }
 
 .compound-action {
-    margin-top: 2px;
-    font-size: 8px;
+    margin-top: 6px;
+    font-size: 16px;
     font-weight: 600;
     color: #1677ff;
 }
