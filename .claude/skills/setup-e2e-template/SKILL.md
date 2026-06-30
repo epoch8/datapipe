@@ -13,8 +13,7 @@ This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR imag
 
 ## Run on YOUR data
 - **Align your class everywhere** (mismatch → 0 useful results): `LABEL_CONFIG` names == `CLASSES_TO_KEEP`. Detection also `COCO_CLASSES`/`DETECTION_MODEL_CONFIG`; keypoints also `KEYPOINTS_LABELS` (order matters), `COCO_PERSON_KEYPOINT_FLIP_IDX`, `KEYPOINTS_MODEL_CONFIG`.
-- **Working-dir overlap (fix this):** shipped `S3_PREFIX=images` + `S3_DATAPIPE_PREFIX=images/datapipe` is nested inside the input, and `list_s3_images` recurses `{bucket}/images` → pipeline re-ingests its own outputs. Set `S3_DATAPIPE_PREFIX` (or `DATAPIPE_E2E_DIR`) **outside** `S3_PREFIX`.
-- **Own S3 (where YOUR images go):** set `AWS_*`, `S3_BUCKET`, `S3_PREFIX`, `S3_PUBLIC_URL` (browser-reachable; LS loads from `$S3_PUBLIC_URL/$S3_BUCKET/<key>`). Two endpoints: `S3_ENDPOINT_URL` (host) vs `LABEL_STUDIO_S3_ENDPOINT_URL` (`minio:9000`).
+- **Where YOUR images go:** put them under `$DATAPIPE_E2E_DIR/images` (`DATAPIPE_E2E_DIR` defaults to `s3://datapipe-e2e`; the pipeline writes its own artifacts under `$DATAPIPE_E2E_DIR/datapipe`, a sibling — input and working dir don't overlap). Set `AWS_*`, `S3_ENDPOINT_URL`, and `S3_PUBLIC_URL` (browser-reachable — Label Studio loads images from it). Label Studio reaches S3 via its own `LABEL_STUDIO_S3_ENDPOINT_URL` (`minio:9000`), not `S3_ENDPOINT_URL`.
 
 ## Prerequisites
 - **Python 3.10–3.12** (hard pin `>=3.10,<3.13`). **Install:** `cd examples/e2e_template && uv sync`
@@ -30,7 +29,7 @@ This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR imag
 - Stages: `annotation`, `ls-sync`, `train`, `fiftyone`.
 
 ## Quick demo to verify setup
-Skip if you have data: `uv run python scripts/seed_sample_data.py` makes schemas, caches COCO (~241MB, override `DATAPIPE_CACHE_DIR`), uploads ~20 JPEGs to MinIO; then run §Run as-is.
+Skip if you have data: `uv run python scripts/seed_sample_data.py` downloads ~20 COCO images (10 cat/dog + 10 person keypoints; `--detection-limit`/`--keypoints-limit` to change) and uploads them to MinIO; then run §Run as-is.
 
 ## Run (from the project subdir)
 ```bash
@@ -58,6 +57,4 @@ one `tag_metrics` step; example logic unchanged): [tags-addon.md](tags-addon.md)
 - **Exit 0 but no model trained** → datapipe swallows step errors; check the `*_training_status` table, not the exit code.
 - **First `train` fails: `No weight file found for best epoch N`** → S3 sync/rename race (`best.pt` still `.tmp`). Just **re-run** `stage=train` — it finalizes from the synced checkpoint. (keypoints avoid it via `save_period:1`.)
 - **`detection` metrics all 0 / no best model** → the shipped `DETECTION_MODEL_CONFIG` is a smoke config (`input_size:[16,16]`, `score_threshold:0.01`) → model predicts nothing. For real metrics use `input_size:[320,320]`+`score_threshold:~0.25` and enough data.
-- **Dataset silently grows** → working-dir nested in input prefix (see "Working-dir overlap").
 - **`cv_pipeliner` keypoint pre-annotation is broken** (pinned rev): inferencer drops keypoints, LS parser doesn't apply them → keypoint `train` needs real keypoint GT injected.
-- **Offline / restricted-network / pre-AVX2 nodes:** the shipped `polars-lts-cpu` pin breaks on pre-AVX2 (`ImportError`, mixed runtimes) → `uv pip install "polars[rtcompat]==1.42.0"` (the `rtcompat` extra; bare `polars-runtime-compat` isn't directly installable). AMP-check hangs downloading `yolo26n.pt` (pre-place it from the **`v8.4.0`** assets tag + the YOLO weights). `/home` read-only → `UV_*`/`UV_UNMANAGED_INSTALL` on `/tmp`. `seed_sample_data.py` aborts on a single COCO timeout on a flaky link → per-image retry.
