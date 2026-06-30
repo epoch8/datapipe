@@ -1,5 +1,8 @@
 # SAM3 + CVAT Pipeline
 
+> **Using Claude Code?** This repo ships a setup skill (`.claude/skills/setup-sam-cvat`) — just
+> describe your task and it's auto-loaded with the prerequisites and gotchas. See the repo root README.
+
 Datapipe example for:
 
 - loading images (local folder or Hugging Face dataset fallback)

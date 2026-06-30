@@ -1,5 +1,8 @@
 # Embedder + FiftyOne Pipeline
 
+> **Using Claude Code?** This repo ships a setup skill (`.claude/skills/setup-embedder-fiftyone`) —
+> just describe your task and it's auto-loaded with the prerequisites and gotchas. See the repo root README.
+
 Datapipe example for:
 - loading images + class labels (local folder or FiftyOne zoo fallback)
 - running multiple embedders
