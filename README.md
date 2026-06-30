@@ -53,20 +53,24 @@ uv run python -c "import datapipe_cvat.cvat_step, datapipe_cvat.utils"
 Documentation lives in `libs/datapipe-core/docs`. Design notes live in
 `libs/datapipe-core/design-docs`.
 
-## Claude Code skill: e2e_template setup
+## Claude Code skills for the examples
 
-`.claude/skills/setup-e2e-template/` is a [Claude Code skill](https://code.claude.com/docs/en/skills)
-for setting up and running `examples/e2e_template` (YOLO detection / keypoints + Label Studio →
-train → FiftyOne) on your own data — external prerequisites, env knobs, and the data-alignment
-gotchas are baked in.
+`.claude/skills/` ships [Claude Code skills](https://code.claude.com/docs/en/skills) that help you set
+up and run the example pipelines on your own data — external prerequisites, env knobs, and the
+data-alignment gotchas are baked in:
 
-**Adding it:** nothing to install. It's a project skill committed to the repo, so anyone who clones
-this repo and opens it in Claude Code gets it auto-discovered.
+- `setup-e2e-template` — `examples/e2e_template`: YOLO detection / keypoints + Label Studio →
+  train → FiftyOne. Includes an optional `tags-addon.md` recipe for per-scenario tag metrics.
+- `setup-embedder-fiftyone` — `examples/embedder_fiftyone`: DINOv2/DINOv3 embeddings → FiftyOne
+  UMAP + similarity search.
+- `setup-sam-cvat` — `examples/sam_cvat`: SAM3 text-prompt boxes + masks → CVAT pre-annotations.
 
-**Using it:** just describe the task — e.g. *"set up the e2e_template detection example on my images"*
-or *"the model misses pallets in dark rooms — add a tag and measure it separately"*. Claude loads the
-skill when the request matches its triggers. The optional `setup-e2e-template/tags-addon.md` covers
-per-scenario tag metrics (tag images → part flows into training → a separate `tag_metrics` table).
+**Adding them:** nothing to install. They are project skills committed to the repo, so anyone who
+clones it and opens it in Claude Code gets them auto-discovered.
+
+**Using them:** just describe the task — e.g. *"set up the e2e_template detection example on my
+images"* or *"the model misses pallets in dark rooms — add a tag and measure it separately"*. Claude
+loads the matching skill when the request matches its triggers.
 
 ## Version Compatibility
 
