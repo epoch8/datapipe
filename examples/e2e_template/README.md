@@ -1,8 +1,7 @@
 # Datapipe E2E Template
 
-> **Using Claude Code?** This repo ships a setup skill (`.claude/skills/setup-e2e-template`) — just
-> describe your task (e.g. "run image_detection on my own images") and it's auto-loaded with the
-> prerequisites, env knobs, and gotchas. See the repo root README.
+**Claude Code skill:** `/setup-e2e-template` — auto-loads when relevant, or invoke it directly. It
+carries the prerequisites, env knobs, and gotchas below (see the repo root README).
 
 This example contains end-to-end Datapipe pipeline templates:
 
