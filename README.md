@@ -53,6 +53,21 @@ uv run python -c "import datapipe_cvat.cvat_step, datapipe_cvat.utils"
 Documentation lives in `libs/datapipe-core/docs`. Design notes live in
 `libs/datapipe-core/design-docs`.
 
+## Claude Code skill: e2e_template setup
+
+`.claude/skills/setup-e2e-template/` is a [Claude Code skill](https://code.claude.com/docs/en/skills)
+for setting up and running `examples/e2e_template` (YOLO detection / keypoints + Label Studio →
+train → FiftyOne) on your own data — external prerequisites, env knobs, and the data-alignment
+gotchas are baked in.
+
+**Adding it:** nothing to install. It's a project skill committed to the repo, so anyone who clones
+this repo and opens it in Claude Code gets it auto-discovered.
+
+**Using it:** just describe the task — e.g. *"set up the e2e_template detection example on my images"*
+or *"the model misses pallets in dark rooms — add a tag and measure it separately"*. Claude loads the
+skill when the request matches its triggers. The optional `setup-e2e-template/tags-addon.md` covers
+per-scenario tag metrics (tag images → part flows into training → a separate `tag_metrics` table).
+
 ## Version Compatibility
 
 * `master` — current development state, will become the `0.15.x` release
