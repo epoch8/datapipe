@@ -13,37 +13,25 @@ from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_da
 from datapipe_ml.tasks.keypoints.inference import keypoints_inference
 
 from config import (
-    AWS_KEY,
-    AWS_REGION,
-    AWS_SECRET,
     CLASSES_TO_KEEP,
     KEYPOINTS_LABELS,
     KEYPOINTS_MODEL_CONFIG,
     LOCAL_IMAGES_DIR,
-    S3_BUCKET,
-    S3_ENDPOINT_URL,
-    S3_PREFIX,
-    S3_PUBLIC_URL,
+    INPUT_IMAGES_DIR,
+    input_image_url,
+    input_storage_options,
 )
 
 
-def _s3_storage_options() -> dict:
-    client_kwargs: dict = {"region_name": AWS_REGION}
-    if S3_ENDPOINT_URL:
-        client_kwargs["endpoint_url"] = S3_ENDPOINT_URL
-    return {"key": AWS_KEY, "secret": AWS_SECRET, "client_kwargs": client_kwargs}
-
-
 def list_s3_images() -> Iterator[pd.DataFrame]:
-    fs = fsspec.filesystem("s3", **_s3_storage_options())
-    root = f"{S3_BUCKET}/{S3_PREFIX}".strip("/")
+    fs, root = fsspec.core.url_to_fs(INPUT_IMAGES_DIR, **input_storage_options())
     keys, urls = [], []
     for path in fs.find(root):
         if not path.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
             continue
-        key = path[len(S3_BUCKET) + 1 :]
-        keys.append(key.replace("/", "___"))
-        urls.append(f"{S3_PUBLIC_URL.rstrip('/')}/{S3_BUCKET}/{key}")
+        rel_key = path[len(root) :].lstrip("/")
+        keys.append(rel_key.replace("/", "___"))
+        urls.append(input_image_url(rel_key))
     yield pd.DataFrame({"image_name": keys, "image_url": urls})
 
 

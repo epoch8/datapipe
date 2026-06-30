@@ -176,9 +176,9 @@ jobs:
       - name: Install dependencies with uv
         run: |
           python tools/ci/generate_requirements.py --pyproject libs/datapipe-ml/pyproject.toml --extra torch --extra sqlite --exclude torch --exclude torchvision --output /tmp/datapipe-ml-requirements.txt
-          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
-          uv pip install --system -e "libs/datapipe-ml" --no-deps
-          uv pip install --system -r /tmp/datapipe-ml-requirements.txt "boto3" "pytest<8" "pytest-cases"
+          uv pip install -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install -e "libs/datapipe-ml" --no-deps
+          uv pip install -r /tmp/datapipe-ml-requirements.txt "boto3" "pytest<8" "pytest-cases"
           uv cache clean
 
       - name: Test Torch extra with pytest

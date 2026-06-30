@@ -225,7 +225,17 @@ def db():
 def create_all(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
-    app.ds.meta_dbconn.sqla_metadata.create_all(app.ds.meta_dbconn.con)
+    dbconn = app.ds.meta_dbconn
+
+    if dbconn.schema is not None:
+        from sqlalchemy import inspect
+        from sqlalchemy.schema import CreateSchema
+
+        if dbconn.schema not in inspect(dbconn.con).get_schema_names():
+            with dbconn.con.begin() as con:
+                con.execute(CreateSchema(dbconn.schema))
+
+    dbconn.sqla_metadata.create_all(dbconn.con)
 
 
 @cli.command()

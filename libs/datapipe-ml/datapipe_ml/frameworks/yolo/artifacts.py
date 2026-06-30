@@ -5,6 +5,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -14,10 +15,26 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypeVar,
     Union,
     cast,
     runtime_checkable,
 )
+
+if TYPE_CHECKING:
+    from datapipe_ml.frameworks.yolo.yolov5.runner import TrainingResult as YoloV5TrainingResult
+    from datapipe_ml.frameworks.yolo.yolov8.runner import (
+        TrainingKeypointsResult,
+        TrainingResult as YoloV8TrainingResult,
+        TrainingSegmentationResult,
+    )
+
+    YoloCollectedResult = Union[
+        YoloV5TrainingResult,
+        YoloV8TrainingResult,
+        TrainingSegmentationResult,
+        TrainingKeypointsResult,
+    ]
 
 import fsspec
 import numpy as np
@@ -350,7 +367,15 @@ def yolo_finalize_training_output(
         copy_tree_snapshot(str(exp_folder), dst_exp, require_stable=False)
         final_exp_folder: FluidPath = Pathy.fluid(dst_exp)
     elif persisted_project_dir:
-        final_exp_folder = Pathy.fluid(persisted_project_dir) / exp_folder.name
+        from datapipe_ml.training.sync import copy_tree_snapshot, storage_urls_equal
+
+        dst_exp = str(Pathy.fluid(persisted_project_dir) / exp_folder.name)
+        local_exp = str(Pathy.fluid(str(exp_folder)))
+        if not storage_urls_equal(local_exp, dst_exp):
+            local_fs, local_path = fsspec.core.url_to_fs(local_exp)
+            if local_fs.exists(local_path):
+                copy_tree_snapshot(local_exp, dst_exp, require_stable=False)
+        final_exp_folder = Pathy.fluid(dst_exp)
     else:
         final_exp_folder = Pathy.fluid(str(exp_folder))
 
@@ -359,6 +384,33 @@ def yolo_finalize_training_output(
             staging_dir.cleanup()
 
     return final_exp_folder
+
+
+def yolo_persisted_exp_folder(persisted_project_dir: str, local_exp_folder: Union[str, Path]) -> str:
+    return str(Pathy.fluid(persisted_project_dir) / Path(local_exp_folder).name)
+
+
+_YoloCollectedResultT = TypeVar("_YoloCollectedResultT", bound="YoloCollectedResult")
+
+
+def yolo_remap_collected_model_paths(
+    results: List[_YoloCollectedResultT],
+    *,
+    local_exp_root: str,
+    persisted_exp_root: str,
+) -> List[_YoloCollectedResultT]:
+    from datapipe_ml.training.sync import remap_path_under_root
+
+    for result in results:
+        model_path = result.model_path
+        if not model_path:
+            continue
+        result.model_path = remap_path_under_root(
+            model_path,
+            local_exp_root,
+            persisted_exp_root,
+        )
+    return results
 
 
 def _resolve_yolo_epoch_weight_path(

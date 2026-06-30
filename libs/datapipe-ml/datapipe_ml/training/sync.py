@@ -46,9 +46,17 @@ def orchestrator_owns_output_sync(ctx: TrainContext) -> bool:
     return ctx.training_launcher_config is None
 
 
+def storage_url(path: str) -> str:
+    return str(Pathy.fluid(path)).rstrip("/")
+
+
+def storage_urls_equal(left: str, right: str) -> bool:
+    return storage_url(left) == storage_url(right)
+
+
 def remap_path_under_root(path: str, write_root: str, persisted_root: str) -> str:
-    write_prefix = str(Pathy.fluid(write_root)).rstrip("/")
-    persisted_prefix = str(Pathy.fluid(persisted_root)).rstrip("/")
+    write_prefix = storage_url(write_root)
+    persisted_prefix = storage_url(persisted_root)
     normalized = str(Pathy.fluid(path))
     if normalized == write_prefix or normalized.startswith(f"{write_prefix}/"):
         return f"{persisted_prefix}{normalized[len(write_prefix):]}"
@@ -327,12 +335,19 @@ class PeriodicSyncScheduler:
             self._failure_tracker.record_success()
 
 
-def copy_tree_best_effort(src: str, dst: str, *, retries: int, retry_sleep_s: int) -> None:
+def copy_tree_best_effort(
+    src: str,
+    dst: str,
+    *,
+    retries: int,
+    retry_sleep_s: int,
+    require_stable: bool = True,
+) -> None:
 
     attempts = max(1, retries)
     for attempt in range(1, attempts + 1):
         try:
-            copy_tree_snapshot(src, dst)
+            copy_tree_snapshot(src, dst, require_stable=require_stable)
             return
         except Exception:
             if attempt >= attempts:
@@ -354,6 +369,7 @@ def sync_training_tree_and_manifest(
     model_id: Optional[str] = None,
     discover_checkpoints: Optional[DiscoverCheckpointsInRunDir] = None,
     epoch_for_path: Optional[EpochForPath] = None,
+    require_stable: bool = True,
 ) -> None:
     """Copy src->dst and publish manifest under a per-destination lock."""
     sync_src, sync_dst = _sync_tree_paths(src, dst, model_id)
@@ -368,6 +384,7 @@ def sync_training_tree_and_manifest(
                 sync_dst,
                 retries=config.retries,
                 retry_sleep_s=config.retry_sleep_s,
+                require_stable=require_stable,
             )
         if model_id is None:
             return
@@ -404,7 +421,7 @@ class PeriodicTrainingSync:
         self._thread: Optional[threading.Thread] = None
         self._failure_tracker = _SyncFailureTracker(config.max_consecutive_sync_failures)
 
-    def _sync_once(self, label: str) -> None:
+    def _sync_once(self, label: str, *, require_stable: bool = True) -> None:
         if not self.config.enabled:
             return
         sync_training_tree_and_manifest(
@@ -414,11 +431,12 @@ class PeriodicTrainingSync:
             model_id=self.model_id,
             discover_checkpoints=self.discover_checkpoints,
             epoch_for_path=self.epoch_for_path,
+            require_stable=require_stable,
         )
 
-    def _sync_once_non_fatal(self, label: str) -> None:
+    def _sync_once_non_fatal(self, label: str, *, require_stable: bool = True) -> None:
         try:
-            self._sync_once(label)
+            self._sync_once(label, require_stable=require_stable)
         except Exception:
             logger.exception("Training output sync failed during %s; will retry later", label)
             self._failure_tracker.record_failure(label=label)
@@ -427,14 +445,14 @@ class PeriodicTrainingSync:
 
     def sync_once(self, *, label: str = "sync") -> None:
         """Run one serialized sync+manifest publish (safe after post-training writes)."""
-        self._sync_once_non_fatal(label)
+        self._sync_once_non_fatal(label, require_stable=False)
 
     def _loop(self) -> None:
         interval_s = self.config.interval_s
         if interval_s is None:
             return
         while not self._stop.wait(interval_s):
-            self._sync_once_non_fatal("periodic sync")
+            self._sync_once_non_fatal("periodic sync", require_stable=True)
 
     def start(self) -> None:
         if not self.config.enabled or self.config.interval_s is None:
@@ -451,7 +469,7 @@ class PeriodicTrainingSync:
                 self._thread.join()
             self._thread = None
         if final_sync:
-            self._sync_once_non_fatal("final sync")
+            self._sync_once_non_fatal("final sync", require_stable=False)
 
     def __enter__(self) -> "PeriodicTrainingSync":
         self.start()

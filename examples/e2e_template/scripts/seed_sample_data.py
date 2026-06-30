@@ -12,7 +12,6 @@ from zipfile import ZipFile
 
 import fsspec
 import requests
-from sqlalchemy import create_engine, text
 from tqdm import tqdm
 
 for parent in Path(__file__).resolve().parents:
@@ -133,39 +132,32 @@ def s3_storage_options() -> dict:
     }
 
 
-def upload_images(local_paths: list[Path]) -> None:
-    bucket = os.environ.get("S3_BUCKET", "datapipe-e2e")
-    prefix = os.environ.get("S3_PREFIX", "images").strip("/")
-    fs = fsspec.filesystem("s3", **s3_storage_options())
+def datapipe_e2e_dir() -> str:
+    return os.environ.get("DATAPIPE_E2E_DIR", "s3://datapipe-e2e").rstrip("/")
 
-    print(f"Uploading {len(local_paths)} images to s3://{bucket}/{prefix}/ ...")
+
+def _is_cloud_path(path: str) -> bool:
+    protocol, _ = fsspec.core.split_protocol(path)
+    return protocol not in (None, "file")
+
+
+def images_root() -> str:
+    return f"{datapipe_e2e_dir()}/images"
+
+
+def upload_images(local_paths: list[Path]) -> None:
+    dst_root = images_root()
+    options = s3_storage_options() if _is_cloud_path(dst_root) else {}
+    fs, root = fsspec.core.url_to_fs(dst_root, **options)
+    if not _is_cloud_path(dst_root):
+        fs.makedirs(root, exist_ok=True)
+
+    print(f"Uploading {len(local_paths)} images to {dst_root}/ ...")
     for local_path in tqdm(local_paths):
-        remote_key = f"{bucket}/{prefix}/{local_path.name}"
+        remote_key = f"{root}/{local_path.name}"
         if fs.exists(remote_key):
             continue
         fs.put(str(local_path), remote_key)
-
-
-def e2e_db_schemas() -> tuple[str, str]:
-    return (
-        os.environ.get("DB_SCHEMA_DETECTION", "datapipe_e2e_detection"),
-        os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints"),
-    )
-
-
-def init_postgres_schemas() -> None:
-    db_url = os.environ.get("DB_URL")
-    if not db_url:
-        raise SystemExit(
-            "DB_URL is required. Copy .env.example to .env, start docker compose, "
-            "and run: set -a && source .env && set +a (or pass --skip-db)"
-        )
-
-    engine = create_engine(db_url)
-    for schema in e2e_db_schemas():
-        with engine.begin() as conn:
-            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-        print(f'Postgres schema "{schema}" is ready')
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,14 +166,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keypoints-limit", type=int, default=10, help="Number of person keypoint images")
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
-    parser.add_argument("--skip-db", action="store_true", help="Do not create Postgres schema")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if not args.skip_db:
-        init_postgres_schemas()
 
     if args.skip_download:
         local_paths = sorted(SAMPLE_DIR.glob("*.jpg"))
@@ -203,9 +192,7 @@ def main() -> int:
 
     if not args.skip_upload:
         upload_images(local_paths)
-        bucket = os.environ.get("S3_BUCKET", "datapipe-e2e")
-        prefix = os.environ.get("S3_PREFIX", "images").strip("/")
-        print(f"Uploaded to s3://{bucket}/{prefix}/")
+        print(f"Uploaded to {images_root()}/")
 
     return 0
 

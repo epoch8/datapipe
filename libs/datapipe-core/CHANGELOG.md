@@ -56,6 +56,8 @@ See [key-mapping.md](design-docs/2025-12-key-mapping.md) for motivation
 
 ## Improvements and fixes
 
+* `datapipe db create-all` now creates the configured (e.g. Postgres) schema when
+  missing, instead of requiring a manual `CREATE SCHEMA`
 * Fixed dtypes mapping for TableStoreExcel, TableStoreJsonLine
 * Fixed meta changes compute logic for `Required` tables
 
