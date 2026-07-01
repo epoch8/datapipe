@@ -35,14 +35,12 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         selector: "node",
         style: {
             shape: "round-rectangle",
-            "text-wrap": "wrap",
-            "text-valign": "center",
-            "text-halign": "center",
             width: nodeWidth,
             height: nodeHeight,
             "background-opacity": 0,
             "border-width": 0,
             "overlay-opacity": 0,
+            "z-index": 10,
             ghost: "no",
         },
     },
@@ -50,12 +48,6 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         selector: ":active",
         style: {
             "overlay-opacity": 0,
-        },
-    },
-    {
-        selector: 'node[type = "transform"], node[type = "table"], node[type = "group"]',
-        style: {
-            "z-index": 10,
         },
     },
     {
@@ -88,10 +80,10 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": "600px",
-            "font-size": 22,
-            "font-weight": 700,
+            "font-size": 13,
+            "font-weight": 800,
             color: graphColors.group.text,
-            "text-margin-y": -14,
+            "text-margin-y": -12,
             "z-index": 0,
             ghost: "no",
             events: "yes",
@@ -100,7 +92,7 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "node.focused",
         style: {
-            "z-index": 30,
+            "z-index": 50,
         },
     },
     {
@@ -112,10 +104,10 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "node:selected",
         style: {
-            "border-width": 4,
-            "border-color": edgeColors.active,
             "background-color": edgeColors.active,
             "background-opacity": 0.08,
+            "border-width": 4,
+            "border-color": edgeColors.active,
             "overlay-opacity": 0,
             "z-index": 40,
         },
@@ -126,20 +118,20 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "curve-style": "taxi",
             "taxi-direction": "vertical",
             "taxi-turn": "50%",
-            "taxi-turn-min-distance": 20,
-            width: 1.8,
+            "taxi-turn-min-distance": 22,
+            width: 2.15,
             "line-color": edgeColors.default,
             "target-arrow-color": edgeColors.default,
             "target-arrow-shape": "triangle",
-            "arrow-scale": 1.05,
-            opacity: 0.72,
+            "arrow-scale": 1.08,
+            opacity: 0.78,
             "z-index": 1,
         },
     },
     {
         selector: "edge.focused",
         style: {
-            width: 3,
+            width: 3.2,
             opacity: 1,
             "line-color": edgeColors.active,
             "target-arrow-color": edgeColors.active,
@@ -155,10 +147,11 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "edge.failed",
         style: {
-            width: 2.5,
+            width: 2.8,
             opacity: 1,
             "line-color": edgeColors.error,
             "target-arrow-color": edgeColors.error,
+            "z-index": 25,
         },
     },
 ];

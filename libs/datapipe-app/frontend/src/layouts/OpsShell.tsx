@@ -1,5 +1,4 @@
 import React from "react";
-import { Layout, Menu, Typography } from "antd";
 import {
     BugOutlined,
     DashboardOutlined,
@@ -11,19 +10,25 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
-const { Header, Sider, Content } = Layout;
-const { Title } = Typography;
+type NavItem = {
+    key: string;
+    href: string;
+    label: string;
+    icon: React.ReactNode;
+};
 
 export function OpsShell() {
     const location = useLocation();
     const [title, setTitle] = React.useState("Datapipe Ops");
     const [showMetrics, setShowMetrics] = React.useState(true);
     const [agentMode, setAgentMode] = React.useState(false);
+    const [pipelineId, setPipelineId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         opsApi.getCapabilities().then((c) => {
             setShowMetrics(c.ml_metrics || c.ml_training);
             setAgentMode(c.mode === "agent");
+            setPipelineId(c.pipeline_id ?? null);
             setTitle(
                 c.mode === "central"
                     ? "Datapipe Central Dashboard"
@@ -42,36 +47,50 @@ export function OpsShell() {
               ? "/settings"
               : "/";
 
-    const items = [
-        { key: "/", icon: <DashboardOutlined />, label: <Link to="/">Overview</Link> },
+    const items: NavItem[] = [
+        { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
         ...(showMetrics
-            ? [{ key: "/metrics", icon: <LineChartOutlined />, label: <Link to="/metrics">Metrics</Link> }]
+            ? [{ key: "/metrics", href: "/metrics", label: "Metrics", icon: <LineChartOutlined /> }]
             : []),
         ...(agentMode
-            ? [{ key: "/debug", icon: <BugOutlined />, label: <Link to="/debug">Debug</Link> }]
+            ? [{ key: "/debug", href: "/debug", label: "Debug", icon: <BugOutlined /> }]
             : []),
-        { key: "/help", icon: <QuestionCircleOutlined />, label: <Link to="/help">Help</Link> },
-        { key: "/settings", icon: <SettingOutlined />, label: <Link to="/settings">Settings</Link> },
+        { key: "/help", href: "/help", label: "Help", icon: <QuestionCircleOutlined /> },
+        { key: "/settings", href: "/settings", label: "Settings", icon: <SettingOutlined /> },
     ];
 
+    const isDebug = location.pathname.startsWith("/debug");
+
     return (
-        <Layout style={{ minHeight: "100vh" }}>
-            <Sider width={200} theme="light" style={{ borderRight: "1px solid #f0f0f0" }}>
-                <div style={{ padding: 16, fontWeight: 600 }}>Datapipe Ops</div>
-                <Menu mode="inline" selectedKeys={[selected]} items={items} />
-            </Sider>
-            <Layout>
-                <Header style={{ background: "#fff", padding: "0 24px", borderBottom: "1px solid #f0f0f0" }}>
-                    <Title level={4} style={{ margin: "16px 0" }}>
-                        {title}
-                    </Title>
-                </Header>
-                <Content style={{ padding: 24, overflow: "auto" }}>
+        <div className="datapipe-shell" style={{ display: "flex", minHeight: "100vh" }}>
+            <aside className="datapipe-sidebar">
+                <div className="datapipe-sidebar-logo">Datapipe Ops</div>
+                <nav className="datapipe-sidebar-nav">
+                    {items.map((item) => (
+                        <Link
+                            key={item.key}
+                            to={item.href}
+                            className={`datapipe-sidebar-item${selected === item.key ? " active" : ""}`}
+                        >
+                            <span className="sidebar-icon">{item.icon}</span>
+                            {item.label}
+                        </Link>
+                    ))}
+                </nav>
+            </aside>
+            <div className="datapipe-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <header className="datapipe-header">
+                    <h1 className="datapipe-title">{title}</h1>
+                    {agentMode && pipelineId && (
+                        <div className="run-status-pill">Running · {pipelineId}</div>
+                    )}
+                </header>
+                <main className={`datapipe-content${isDebug ? "" : " datapipe-content-padded"}`}>
                     <ErrorBoundary key={location.pathname}>
                         <Outlet />
                     </ErrorBoundary>
-                </Content>
-            </Layout>
-        </Layout>
+                </main>
+            </div>
+        </div>
     );
 }

@@ -1,9 +1,7 @@
 import React from "react";
-import { Card, Typography } from "antd";
 import { Link, useSearchParams } from "react-router-dom";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
-
-const { Text } = Typography;
+import { workflowIconSvg } from "../cy/nodeIcons";
 
 export function DebugPage() {
     const [searchParams] = useSearchParams();
@@ -13,22 +11,29 @@ export function DebugPage() {
 
     return (
         <div>
-            <Text type="secondary">
+            <div className="datapipe-breadcrumb">
                 <Link to="/">Overview</Link> / Debug
                 {stage ? ` / ${stage}` : ""}
-            </Text>
-            <Card
-                title={title}
-                style={{ marginTop: 16 }}
-                bodyStyle={{ padding: 0, height: "calc(100vh - 220px)", minHeight: 420 }}
-            >
-                <PipelineGraphAgentOnly
-                    stageFilter={stage}
-                    height="100%"
-                    rankDir="TB"
-                    refreshIntervalMs={0}
-                />
-            </Card>
+            </div>
+            <div className="pipeline-card">
+                <div className="pipeline-card-header">
+                    <div className="pipeline-card-title">
+                        <span
+                            className="pipeline-card-title-icon"
+                            dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                        />
+                        {title}
+                    </div>
+                </div>
+                <div className="pipeline-card-body">
+                    <PipelineGraphAgentOnly
+                        stageFilter={stage}
+                        height="100%"
+                        rankDir="TB"
+                        refreshIntervalMs={0}
+                    />
+                </div>
+            </div>
         </div>
     );
 }

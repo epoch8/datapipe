@@ -11,6 +11,7 @@ import contextMenus from "cytoscape-context-menus";
 
 import "./style.css";
 import { displayNodeName, groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
+import { groupIconSvg, tableIconSvg, transformIconSvg, slidersHorizontalIconSvg } from "./nodeIcons";
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
@@ -47,11 +48,11 @@ function resolveNodeStatus(
 }
 
 function statusClass(status: string): string {
-    if (status === "failed" || status === "error") return "step-status-failed";
-    if (status === "running") return "step-status-running";
-    if (status === "pending") return "step-status-pending";
-    if (status === "completed" || status === "finish") return "step-status-completed";
-    return "step-status-unknown";
+    if (status === "failed" || status === "error") return "failed";
+    if (status === "running") return "running";
+    if (status === "pending") return "pending";
+    if (status === "completed" || status === "finish") return "completed";
+    return "unknown";
 }
 
 const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
@@ -75,8 +76,13 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
             const h = (data.boxH as number) ?? fallback.h;
             return `
               <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${fullName}">
-                  <div class="compound-title">${renderName(fallback.lines)}</div>
-                  <div class="compound-hint">${childCount} steps</div>
+                  <div class="node-content">
+                      <div class="node-icon">${groupIconSvg}</div>
+                      <div class="node-body">
+                          <div class="node-title">${renderName(fallback.lines)}</div>
+                          <div class="node-group-steps">${childCount} steps</div>
+                      </div>
+                  </div>
               </div>
             `;
         }
@@ -98,18 +104,22 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
                 .join("\n");
             return `
               <div class="node-core node-core-table ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
-                  <div class="icon icon-table"></div>
-                  <div class="name">${renderName(lines)}</div>
-                  ${
-                      !isSubgraph && indexes.length
-                          ? `<div class="indexes">${displayNodeName(indexes.join(", "), 44)}</div>`
-                          : ""
-                  }
-                  ${
-                      !isSubgraph && data.store_class
-                          ? `<div class="store">${displayNodeName(String(data.store_class), 36)}</div>`
-                          : ""
-                  }
+                  <div class="node-content">
+                      <div class="node-icon">${tableIconSvg}</div>
+                      <div class="node-body">
+                          <div class="node-title">${renderName(lines)}</div>
+                          ${
+                              !isSubgraph && indexes.length
+                                  ? `<div class="node-meta">PK: ${displayNodeName(indexes.join(", "), 44)}</div>`
+                                  : ""
+                          }
+                          ${
+                              !isSubgraph && data.store_class
+                                  ? `<div class="node-subtitle">${displayNodeName(String(data.store_class), 36)}</div>`
+                                  : ""
+                          }
+                      </div>
+                  </div>
               </div>
             `;
         }
@@ -132,10 +142,15 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
 
         return `
               <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
-                  <div class="name">${renderName(lines)}</div>
-                  <div class="step-status ${statusClass(status)}">${status}</div>
-                  ${idxLine ? `<div class="idx-count">${idxLine}</div>` : ""}
-                  ${!isSubgraph && transformType ? `<div class="transform-type">${displayNodeName(transformType, 36)}</div>` : ""}
+                  <div class="node-content">
+                      <div class="node-icon">${transformIconSvg}</div>
+                      <div class="node-body">
+                          <div class="node-title">${renderName(lines)}</div>
+                          ${!isSubgraph && transformType ? `<div class="node-subtitle">${displayNodeName(transformType, 36)}</div>` : ""}
+                          ${idxLine ? `<div class="node-meta">${idxLine}</div>` : ""}
+                          <div class="step-status ${statusClass(status)}">${status}</div>
+                      </div>
+                  </div>
               </div>
             `;
     };
@@ -507,6 +522,21 @@ function PipelineGraphView({
 
     const closeAlert = () => setAlertMsg(null);
 
+    const handleZoomIn = useCallback(() => {
+        if (!cy || cy.destroyed()) return;
+        cy.zoom(cy.zoom() * 1.2);
+    }, [cy]);
+
+    const handleZoomOut = useCallback(() => {
+        if (!cy || cy.destroyed()) return;
+        cy.zoom(cy.zoom() / 1.2);
+    }, [cy]);
+
+    const handleFit = useCallback(() => {
+        if (!cy || cy.destroyed()) return;
+        cy.fit(undefined, 48);
+    }, [cy]);
+
     return (
         <div className="pipeline-graph-embedded" style={{ height, position: "relative" }}>
             {alertMsg && (
@@ -518,6 +548,24 @@ function PipelineGraphView({
                 />
             )}
             {showInitialSpin && loading && <Spin className="spin" spinning={true} />}
+            <div className="graph-toolbar graph-toolbar-floating">
+                <button type="button" className="graph-toolbar-button" onClick={handleZoomOut} title="Zoom out">
+                    −
+                </button>
+                <button type="button" className="graph-toolbar-button" onClick={handleZoomIn} title="Zoom in">
+                    +
+                </button>
+                <button type="button" className="graph-toolbar-segment" onClick={handleFit} title="Fit graph">
+                    Fit
+                </button>
+                <button
+                    type="button"
+                    className="graph-toolbar-button graph-toolbar-icon"
+                    title="Graph settings"
+                    aria-label="Graph settings"
+                    dangerouslySetInnerHTML={{ __html: slidersHorizontalIconSvg }}
+                />
+            </div>
             <CytoscapeComponent
                 stylesheet={stylesheet}
                 cy={setCy}

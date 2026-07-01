@@ -39,8 +39,8 @@ export type LayoutEntry = {
 export type GraphLayout = Map<string, LayoutEntry>;
 
 const GROUP_PADDING = { top: 56, bottom: 44, left: 44, right: 44 };
-const RANK_SEP = 70;
-const NODE_SEP = 44;
+const RANK_SEP = 68;
+const NODE_SEP = 58;
 function bboxFromCenter(cx: number, cy: number, w: number, h: number): BBox {
     return { x: cx - w / 2, y: cy - h / 2, w, h };
 }

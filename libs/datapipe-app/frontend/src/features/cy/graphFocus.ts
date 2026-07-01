@@ -15,60 +15,6 @@ export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     });
 }
 
-/** Shortest directed path (following edge direction) between two nodes. */
-export function findDirectedPathEdges(
-    cy: Cytoscape.Core,
-    sourceId: string,
-    targetId: string,
-): Cytoscape.EdgeCollection | null {
-    if (sourceId === targetId) return null;
-
-    type QueueItem = { nodeId: string; edges: Cytoscape.EdgeSingular[] };
-    const queue: QueueItem[] = [{ nodeId: sourceId, edges: [] }];
-    const visited = new Set<string>([sourceId]);
-
-    while (queue.length) {
-        const { nodeId, edges } = queue.shift()!;
-        if (nodeId === targetId) {
-            return edges.length ? cy.collection(edges) : null;
-        }
-
-        const node = cy.getElementById(nodeId);
-        if (node.empty()) continue;
-
-        node.outgoers("edge").forEach((edge) => {
-            const nextId = edge.target().id();
-            if (visited.has(nextId)) return;
-            visited.add(nextId);
-            queue.push({
-                nodeId: nextId,
-                edges: [...edges, edge as Cytoscape.EdgeSingular],
-            });
-        });
-    }
-    return null;
-}
-
-function collectPathsBetweenSelected(
-    cy: Cytoscape.Core,
-    selected: Cytoscape.NodeCollection,
-): { pathEdges: Cytoscape.EdgeCollection; pathNodes: Cytoscape.NodeCollection } {
-    let pathEdges = cy.collection();
-    let pathNodes = cy.collection();
-
-    selected.forEach((source) => {
-        selected.forEach((target) => {
-            if (source.id() === target.id()) return;
-            const edges = findDirectedPathEdges(cy, source.id(), target.id());
-            if (!edges || edges.empty()) return;
-            pathEdges = pathEdges.union(edges);
-            pathNodes = pathNodes.union(edges.connectedNodes());
-        });
-    });
-
-    return { pathEdges, pathNodes };
-}
-
 export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): void {
     const connectedEdges = node.connectedEdges();
     const neighborNodes = connectedEdges.connectedNodes();
@@ -94,9 +40,15 @@ export function focusSelection(cy: Cytoscape.Core): void {
         return;
     }
 
-    const { pathEdges, pathNodes } = collectPathsBetweenSelected(cy, selected);
-    const highlightedNodes = selected.union(pathNodes);
-    const highlightedEdges = pathEdges;
+    // OR: union of each selected node's neighborhood (not intersection of paths).
+    let highlightedEdges = cy.collection();
+    let highlightedNodes = selected;
+
+    selected.forEach((node) => {
+        const connectedEdges = node.connectedEdges();
+        highlightedEdges = highlightedEdges.union(connectedEdges);
+        highlightedNodes = highlightedNodes.union(connectedEdges.connectedNodes());
+    });
 
     cy.elements().removeClass("focused muted dimmed");
 

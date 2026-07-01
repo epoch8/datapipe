@@ -15,6 +15,7 @@ import { TableDetail } from "./features/ops/TableDetail";
 import { TransformDetail } from "./features/ops/TransformDetail";
 import { MetaStepDetail } from "./features/ops/MetaStepDetail";
 import "./App.css";
+import "./operatorLight.css";
 import "antd/dist/antd.css";
 
 function App() {
