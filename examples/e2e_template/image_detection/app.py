@@ -43,7 +43,7 @@ pipeline = Pipeline(
             steps.list_detection_models,
             outputs=["detection_model"],
             labels=[("stage", "annotation")],
-            delete_stale=False,
+            delete_stale=True,
         ),
         BatchTransform(
             func=steps.untracked_inference,

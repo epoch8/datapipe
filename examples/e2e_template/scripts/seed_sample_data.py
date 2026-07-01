@@ -27,6 +27,12 @@ from tools.sample_data.coco_cache import INSTANCES_JSON, KEYPOINTS_JSON, ensure_
 SCRIPT_DIR = Path(__file__).resolve().parent
 E2E_DIR = SCRIPT_DIR.parent
 SAMPLE_DIR = E2E_DIR / "sample_data" / "images"
+MODELS_DIR = E2E_DIR / "sample_data" / "models"
+YOLO_ASSETS_RELEASE = "https://github.com/ultralytics/assets/releases/download/v8.4.0"
+E2E_YOLO_WEIGHTS = {
+    "yolo11n.pt": f"{YOLO_ASSETS_RELEASE}/yolo11n.pt",
+    "yolo11n-pose.pt": f"{YOLO_ASSETS_RELEASE}/yolo11n-pose.pt",
+}
 
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
 
@@ -133,6 +139,16 @@ def s3_storage_options() -> dict:
     }
 
 
+def ensure_yolo_weights() -> None:
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Ensuring YOLO weights in {MODELS_DIR} ...")
+    for filename, url in E2E_YOLO_WEIGHTS.items():
+        dst = MODELS_DIR / filename
+        if dst.exists():
+            continue
+        download_file(url, dst, filename)
+
+
 def upload_images(local_paths: list[Path]) -> None:
     bucket = os.environ.get("S3_BUCKET", "datapipe-e2e")
     prefix = os.environ.get("S3_PREFIX", "images").strip("/")
@@ -175,6 +191,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
     parser.add_argument("--skip-db", action="store_true", help="Do not create Postgres schema")
+    parser.add_argument("--skip-models", action="store_true", help="Do not download YOLO smoke weights")
     return parser.parse_args()
 
 
@@ -182,6 +199,9 @@ def main() -> int:
     args = parse_args()
     if not args.skip_db:
         init_postgres_schemas()
+
+    if not args.skip_models:
+        ensure_yolo_weights()
 
     if args.skip_download:
         local_paths = sorted(SAMPLE_DIR.glob("*.jpg"))

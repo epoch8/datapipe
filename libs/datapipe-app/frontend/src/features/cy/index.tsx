@@ -18,7 +18,6 @@ import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpaci
 import {
     applyFailedEdgeStyles,
     clearFocus,
-    focusNode,
     focusSelection,
 } from "./graphFocus";
 import { Alert, AlertProps, Spin } from "antd";
@@ -377,8 +376,13 @@ function PipelineGraphView({
         const container = cy.container();
         if (!container) return;
 
+        const canSelectNode = (node: Cytoscape.NodeSingular): boolean => {
+            const type = node.data("type") as string;
+            return type !== "group" && type !== "group-expanded";
+        };
+
         const handleNodeSelect = (node: Cytoscape.NodeSingular, multi: boolean) => {
-            if (!node.selectable()) return;
+            if (!canSelectNode(node)) return;
             if (multi) {
                 if (node.selected()) {
                     node.unselect();
@@ -404,26 +408,10 @@ function PipelineGraphView({
 
         type BgPress = { x: number; y: number; moved: boolean; downAt: number };
         let bgPress: BgPress | null = null;
+        /** Snapshot while multi-select background gesture is active (pan / long-press). */
+        let multiSelectSnapshot: string[] | null = null;
 
-        const onWindowMouseUp = (event: MouseEvent) => {
-            if (!bgPress) return;
-            if (container.contains(event.target as Node)) return;
-            bgPress = null;
-        };
-
-        const onContainerMouseDown = (event: MouseEvent) => {
-            if (event.button !== 0) return;
-            if (resolveNodeFromLabel(event.target)) return;
-            if (!container.contains(event.target as Node)) return;
-            bgPress = {
-                x: event.clientX,
-                y: event.clientY,
-                moved: false,
-                downAt: performance.now(),
-            };
-        };
-
-        const onContainerMouseMove = (event: MouseEvent) => {
+        const onDocumentMouseMove = (event: MouseEvent) => {
             if (!bgPress) return;
             const dx = event.clientX - bgPress.x;
             const dy = event.clientY - bgPress.y;
@@ -432,39 +420,90 @@ function PipelineGraphView({
             }
         };
 
-        const tryClearMultiSelection = (event: MouseEvent) => {
-            if (event.button !== 0 || !bgPress) return;
+        const endBackgroundPress = (event: MouseEvent) => {
+            document.removeEventListener("mousemove", onDocumentMouseMove, true);
+            document.removeEventListener("mouseup", endBackgroundPress, true);
+
+            if (event.button !== 0 || !bgPress) {
+                bgPress = null;
+                multiSelectSnapshot = null;
+                return;
+            }
+
             const press = bgPress;
             bgPress = null;
+            const snapshot = multiSelectSnapshot;
+            multiSelectSnapshot = null;
 
-            if (resolveNodeFromLabel(event.target)) return;
-            if (!container.contains(event.target as Node)) return;
-            if (cy.nodes(":selected").length <= 1) return;
+            const releasedOnNode = Boolean(resolveNodeFromLabel(event.target));
+            const releasedOnCanvas = container.contains(event.target as Node);
 
             const duration = performance.now() - press.downAt;
             const isShortClick = !press.moved && duration <= BG_CLEAR_MAX_MS;
-            if (!isShortClick) return;
+            const shouldClear =
+                releasedOnCanvas &&
+                !releasedOnNode &&
+                isShortClick &&
+                cy.nodes(":selected").length > 0;
 
-            cy.$(":selected").unselect();
-            clearFocus(cy);
+            if (shouldClear) {
+                cy.$(":selected").unselect();
+                clearFocus(cy);
+                return;
+            }
+
+            // Cytoscape may unselect on pan/tap despite autounselectify — restore multi-select.
+            if (snapshot && snapshot.length > 1) {
+                const restore = () => {
+                    cy.batch(() => {
+                        snapshot.forEach((id) => {
+                            const node = cy.getElementById(id);
+                            if (!node.empty()) node.select();
+                        });
+                    });
+                    focusSelection(cy);
+                };
+                restore();
+                requestAnimationFrame(restore);
+            }
+        };
+
+        const onContainerMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            if (resolveNodeFromLabel(event.target)) return;
+            if (!container.contains(event.target as Node)) return;
+
+            const selected = cy.nodes(":selected");
+            multiSelectSnapshot =
+                selected.length > 1 ? selected.map((node) => node.id()) : null;
+
+            bgPress = {
+                x: event.clientX,
+                y: event.clientY,
+                moved: false,
+                downAt: performance.now(),
+            };
+
+            document.addEventListener("mousemove", onDocumentMouseMove, true);
+            document.addEventListener("mouseup", endBackgroundPress, true);
+        };
+
+        const onCyNodeTap = (event: Cytoscape.EventObject) => {
+            const node = event.target as Cytoscape.NodeSingular;
+            if (!canSelectNode(node)) return;
+            const original = event.originalEvent as MouseEvent | undefined;
+            if (original && resolveNodeFromLabel(original.target)) return;
+            if (original?.button != null && original.button !== 0) return;
+            handleNodeSelect(node, Boolean(original?.ctrlKey || original?.metaKey));
         };
 
         const onContainerClick = (event: MouseEvent) => {
             if (event.button !== 0) return;
             const node = resolveNodeFromLabel(event.target);
-            if (node) {
-                event.preventDefault();
-                event.stopPropagation();
-                handleNodeSelect(node, event.ctrlKey || event.metaKey);
-                return;
-            }
-            if (!container.contains(event.target as Node)) return;
-
-            // Multi-select clear is handled on mouseup (short click, no movement).
-            if (cy.nodes(":selected").length > 1) return;
-
-            cy.$(":selected").unselect();
-            clearFocus(cy);
+            if (!node) return;
+            event.preventDefault();
+            event.stopPropagation();
+            handleNodeSelect(node, event.ctrlKey || event.metaKey);
         };
 
         const onContainerMouseOver = (event: MouseEvent) => {
@@ -472,9 +511,7 @@ function PipelineGraphView({
             if (!node) return;
             if (cy.nodes(":selected").length > 0) {
                 focusSelection(cy);
-                return;
             }
-            focusNode(cy, node);
         };
 
         const onContainerMouseOut = (event: MouseEvent) => {
@@ -498,25 +535,25 @@ function PipelineGraphView({
             }
         };
 
+        cy.boxSelectionEnabled(false);
+        cy.on("tap", "node", onCyNodeTap);
+
         container.addEventListener("mousedown", onContainerMouseDown, true);
-        container.addEventListener("mousemove", onContainerMouseMove, true);
-        container.addEventListener("mouseup", tryClearMultiSelection, true);
         container.addEventListener("click", onContainerClick, true);
         container.addEventListener("mouseover", onContainerMouseOver, true);
         container.addEventListener("mouseout", onContainerMouseOut, true);
-        window.addEventListener("mouseup", onWindowMouseUp, true);
         cy.on("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
 
         return () => {
             try {
+                document.removeEventListener("mousemove", onDocumentMouseMove, true);
+                document.removeEventListener("mouseup", endBackgroundPress, true);
                 if (!cy.destroyed()) {
                     container.removeEventListener("mousedown", onContainerMouseDown, true);
-                    container.removeEventListener("mousemove", onContainerMouseMove, true);
-                    container.removeEventListener("mouseup", tryClearMultiSelection, true);
                     container.removeEventListener("click", onContainerClick, true);
                     container.removeEventListener("mouseover", onContainerMouseOver, true);
                     container.removeEventListener("mouseout", onContainerMouseOut, true);
-                    window.removeEventListener("mouseup", onWindowMouseUp, true);
+                    cy.off("tap", "node", onCyNodeTap);
                     cy.off("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
                 }
             } catch {
@@ -630,7 +667,6 @@ function PipelineGraphView({
                 stylesheet={stylesheet}
                 cy={setCy}
                 autoungrabify
-                autounselectify
                 maxZoom={3}
                 minZoom={0.08}
                 wheelSensitivity={0.2}

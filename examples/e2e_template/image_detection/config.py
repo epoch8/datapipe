@@ -48,10 +48,13 @@ COCO_CLASSES = [
 ]
 CLASSES_TO_KEEP = {"cat", "dog"}
 
+E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DETECTION_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n.pt"
+
 DETECTION_MODEL_CONFIG = {
     "detection_model_id": "cat_dog_yolo_smoke",
     "detection_model__type": "yolov8",
-    "detection_model__model_path": "yolo11n.pt",
+    "detection_model__model_path": str(DEFAULT_DETECTION_MODEL_PATH),
     "detection_model__input_size": [16, 16],
     "detection_model__class_names": COCO_CLASSES,
     "detection_model__score_threshold": 0.01,

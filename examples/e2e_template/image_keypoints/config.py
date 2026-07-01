@@ -71,10 +71,13 @@ KEYPOINTS_LABELS = [
 COCO_PERSON_KEYPOINT_FLIP_IDX = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
 CLASSES_TO_KEEP = {"person"}
 
+E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_KEYPOINTS_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n-pose.pt"
+
 KEYPOINTS_MODEL_CONFIG = {
     "keypoints_model_id": "person_yolo_pose_smoke",
     "keypoints_model__type": "yolov8_pose",
-    "keypoints_model__model_path": "yolo11n-pose.pt",
+    "keypoints_model__model_path": str(DEFAULT_KEYPOINTS_MODEL_PATH),
     "keypoints_model__input_size": [16, 16],
     "keypoints_model__class_names": ["person"],
     "keypoints_model__score_threshold": 0.01,
