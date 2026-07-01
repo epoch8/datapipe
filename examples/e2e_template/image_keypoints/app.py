@@ -123,7 +123,6 @@ pipeline = Pipeline(
             bbox_id__name=None,
             image__image_path__name="image_url",
             labels=[("stage", "train"), ("stage", "train-prepare")],
-            create_table=True,
         ),
         Train_YoloV8_KeypointsModel(  # type: ignore[list-item]
             input__keypoints_frozen_dataset="keypoints_frozen_dataset",
@@ -169,7 +168,6 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],
-            create_table=True,
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
         ),
@@ -182,7 +180,6 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
-            create_table=True,
         ),
         CountMetrics_FrozenDataset_KeypointsModel(
             input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
@@ -193,7 +190,6 @@ pipeline = Pipeline(
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
-            create_table=True,
         ),
         FindBestModel(
             input__model="keypoints_model_train",

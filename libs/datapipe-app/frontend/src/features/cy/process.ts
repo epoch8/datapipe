@@ -2,6 +2,24 @@ import { omit } from "lodash";
 import { GraphData, MetaNode, TransformNode } from "../../types";
 import Cytoscape from "cytoscape";
 
+function hasTransformPath(
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    source: string,
+    target: string,
+): boolean {
+    for (const edge of Array.from(edges)) {
+        if (edge.source === source && edge.target === target) return true;
+    }
+    for (const edge of Array.from(edges)) {
+        if (edge.source !== source) continue;
+        const mid = edge.target as string;
+        for (const hop of Array.from(edges)) {
+            if (hop.source === mid && hop.target === target) return true;
+        }
+    }
+    return false;
+}
+
 function ensureTable(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     data: GraphData,
@@ -154,7 +172,7 @@ function assignCompoundParents(
         );
         const metaOutputs = new Set(metaPipe?.type === "meta" ? metaPipe.outputs ?? [] : []);
 
-        const boundaryNodes = new Set<string>(metaOutputs);
+        const boundaryNodes = new Set<string>();
         edges.forEach((edge) => {
             const source = edge.source as string;
             const target = edge.target as string;
@@ -164,6 +182,19 @@ function assignCompoundParents(
                 if (sourceIn) boundaryNodes.add(source);
                 if (targetIn) boundaryNodes.add(target);
             }
+        });
+
+        metaOutputs.forEach((outputTable) => {
+            if (!memberIds.has(outputTable)) return;
+            if (boundaryNodes.has(outputTable)) return;
+            const producedByMember = Array.from(edges).some(
+                (edge) => edge.target === outputTable && memberIds.has(edge.source as string),
+            );
+            const consumedByMember = Array.from(edges).some(
+                (edge) => edge.source === outputTable && memberIds.has(edge.target as string),
+            );
+            if (producedByMember && consumedByMember) return;
+            boundaryNodes.add(outputTable);
         });
 
         let nested = 0;
@@ -191,13 +222,58 @@ function assignCompoundParents(
     });
 }
 
+function addSequentialMetaEdges(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    data: GraphData,
+    expandedGroups: Set<string>,
+) {
+    expandedGroups.forEach((groupId) => {
+        const meta = data.pipeline.find(
+            (pipe): pipe is MetaNode => pipe.type === "meta" && pipe.name === groupId,
+        );
+        if (!meta) return;
+
+        const transforms = meta.graph.pipeline
+            .filter((step) => step.type !== "meta")
+            .map((step) => step.name)
+            .filter((name) => nodes.get(name)?.type === "transform");
+
+        for (let index = 0; index < transforms.length - 1; index += 1) {
+            const source = transforms[index];
+            const target = transforms[index + 1];
+            if (hasTransformPath(edges, source, target)) continue;
+            edges.add({ source, target, internalMeta: groupId, sequential: true });
+        }
+    });
+}
+
+function markInternalMetaEdges(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+): Set<Cytoscape.EdgeDataDefinition> {
+    const marked = new Set<Cytoscape.EdgeDataDefinition>();
+    edges.forEach((edge) => {
+        const sourceMeta = nodes.get(edge.source as string)?.metaGroup;
+        const targetMeta = nodes.get(edge.target as string)?.metaGroup;
+        if (sourceMeta && sourceMeta === targetMeta) {
+            marked.add({ ...edge, internalMeta: sourceMeta });
+            return;
+        }
+        marked.add(edge);
+    });
+    return marked;
+}
+
 function reprocessData(data: GraphData, expandedGroups: Set<string> = new Set()) {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>();
     const edges = new Set<Cytoscape.EdgeDataDefinition>();
     processData(nodes, edges, data, expandedGroups);
     pruneDisconnectedTables(nodes, edges);
     assignCompoundParents(nodes, edges, expandedGroups, data);
-    return { nodes, edges };
+    addSequentialMetaEdges(nodes, edges, data, expandedGroups);
+    const markedEdges = markInternalMetaEdges(nodes, edges);
+    return { nodes, edges: markedEdges };
 }
 
 export { reprocessData };

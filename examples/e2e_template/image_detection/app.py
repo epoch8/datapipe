@@ -124,7 +124,6 @@ pipeline = Pipeline(
             bbox_id__name=None,
             image__image_path__name="image_url",
             labels=[("stage", "train"), ("stage", "train-prepare")],
-            create_table=True,
         ),
         Train_YoloV8_DetectionModel(  # type: ignore[list-item]
             input__detection_frozen_dataset="detection_frozen_dataset",
@@ -169,7 +168,6 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],
-            create_table=True,
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
         ),
@@ -182,7 +180,6 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
-            create_table=True,
         ),
         CountMetrics_Subset_DetectionModel(
             input__image__ground_truth="image__ground_truth",
@@ -194,7 +191,6 @@ pipeline = Pipeline(
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
-            create_table=True,
         ),
         FindBestModel(
             input__model="detection_model",

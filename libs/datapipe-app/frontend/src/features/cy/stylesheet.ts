@@ -113,6 +113,14 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
     {
+        selector: "edge[internalMeta]",
+        style: {
+            opacity: 0,
+            "z-index": 0,
+            events: "no",
+        },
+    },
+    {
         selector: "edge",
         style: {
             "curve-style": "taxi",

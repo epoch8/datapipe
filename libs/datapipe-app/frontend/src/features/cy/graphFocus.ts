@@ -1,5 +1,6 @@
 import Cytoscape from "cytoscape";
 import { getNodeHtmlLabelEl, nodeUsesHtmlLabel } from "./htmlLabelOpacity";
+import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 
 export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     cy.nodes().forEach((node) => {
@@ -27,6 +28,7 @@ export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): voi
     cy.nodes().not(neighborNodes.union(node)).addClass("dimmed");
 
     syncHtmlLabelInteractionState(cy);
+    refreshInternalEdgeOverlay(cy);
 }
 
 export function focusSelection(cy: Cytoscape.Core): void {
@@ -58,11 +60,13 @@ export function focusSelection(cy: Cytoscape.Core): void {
     cy.edges().not(highlightedEdges).addClass("muted");
 
     syncHtmlLabelInteractionState(cy);
+    refreshInternalEdgeOverlay(cy);
 }
 
 export function clearFocus(cy: Cytoscape.Core): void {
     cy.elements().removeClass("focused muted dimmed");
     syncHtmlLabelInteractionState(cy);
+    refreshInternalEdgeOverlay(cy);
 }
 
 export function applyFailedEdgeStyles(
@@ -71,6 +75,7 @@ export function applyFailedEdgeStyles(
 ): void {
     if (!runStatusByStep?.size) {
         cy.edges().removeClass("failed");
+        refreshInternalEdgeOverlay(cy);
         return;
     }
 
@@ -85,4 +90,5 @@ export function applyFailedEdgeStyles(
             edge.removeClass("failed");
         }
     });
+    refreshInternalEdgeOverlay(cy);
 }

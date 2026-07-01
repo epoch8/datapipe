@@ -15,6 +15,7 @@ import { groupIconSvg, tableIconSvg, transformIconSvg, slidersHorizontalIconSvg 
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
+import { initInternalEdgeOverlay, refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 import {
     applyFailedEdgeStyles,
     clearFocus,
@@ -171,6 +172,7 @@ function initNodeLabels(
     if (labelsInitStore.has(cy)) return;
     labelsInitStore.set(cy, true);
     initHtmlLabelOpacitySync(cy);
+    initInternalEdgeOverlay(cy);
     // @ts-ignore
     cy.nodeHtmlLabel([
         {
@@ -348,6 +350,7 @@ function PipelineGraphView({
             onLayoutComplete: () => {
                 refreshNodeLabelPositions(cy);
                 applyFailedEdgeStyles(cy, runStatusRef.current);
+                refreshInternalEdgeOverlay(cy);
             },
         });
         needFitRef.current = false;

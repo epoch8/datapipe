@@ -20,7 +20,6 @@ catalog = Catalog(
                     Column("image_name", String(), primary_key=True),
                     Column("image_url", String()),
                 ],
-                create_table=True,
             )
         ),
         "keypoints_model": Table(
@@ -35,7 +34,6 @@ catalog = Catalog(
                     Column("keypoints_model__class_names", JSON),
                     Column("keypoints_model__score_threshold", Float),
                 ],
-                create_table=True,
             )
         ),
         "images_with_predictions": Table(
@@ -47,7 +45,6 @@ catalog = Catalog(
                     Column("prediction", JSON),
                     Column("keypoints_model_id", String()),
                 ],
-                create_table=True,
             )
         ),
         "image__ground_truth": Table(
@@ -62,7 +59,6 @@ catalog = Catalog(
                     Column("flip_idx", JSON),
                     Column("labels", JSON),
                 ],
-                create_table=True,
             )
         ),
         "image__subset": Table(
@@ -73,7 +69,6 @@ catalog = Catalog(
                     Column("image_name", String, primary_key=True),
                     Column("subset_id", String, primary_key=True),
                 ],
-                create_table=True,
             )
         ),
         "keypoints_predictions": Table(
@@ -89,7 +84,6 @@ catalog = Catalog(
                     Column("prediction__detection_scores", JSON),
                     Column("prediction__keypoints_scores", JSON),
                 ],
-                create_table=True,
             )
         ),
         "local_images": Table(
@@ -100,7 +94,6 @@ catalog = Catalog(
                     Column("image_name", String(255), primary_key=True),
                     Column("local_path", String(1024)),
                 ],
-                create_table=True,
             )
         ),
         "fiftyone_predictions": Table(

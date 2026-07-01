@@ -228,6 +228,20 @@
     transform: scale(1.5);
 }
 
+.cy-internal-edges-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 11;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.cy-internal-edges-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
 .custom-menu-item {
     border: none !important;
     height: 32px !important;

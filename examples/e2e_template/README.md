@@ -39,6 +39,13 @@ cd examples/e2e_template
 uv sync
 ```
 
+On CPUs **without AVX2+** (ultralytics may crash on `import polars` during YOLO training), use the LTS polars build instead of the default one pulled in by ultralytics:
+
+```bash
+uv sync --extra old-cpu
+uv pip install --force-reinstall polars-lts-cpu==1.33.1
+```
+
 What each piece is for:
 
 - `datapipe-label-studio` — Label Studio pipeline steps.
@@ -192,12 +199,6 @@ fiftyone app launch datapipe_keypoints_e2e
 ```
 
 ## Running via Ops UI
-
-Install `datapipe-app` (in addition to the packages above):
-
-```bash
-uv pip install -e "../../libs/datapipe-app"
-```
 
 Set Ops env vars in `.env` (see `.env.example`). Each pipeline needs its own agent process and a unique `DATAPIPE_APP_PIPELINE_ID` (`image_detection_e2e` or `image_keypoints_e2e`).
 

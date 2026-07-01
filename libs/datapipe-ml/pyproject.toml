@@ -83,6 +83,7 @@ dev = [
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-app = { workspace = true }
 cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
 YOLOv5 = { git = "https://github.com/epoch8/yolov5", rev = "943ad3c43a981ff81b05c779d2e051641b714f4a" }
 image-classifiers = { git = "https://github.com/qubvel/classification_models", rev = "a0f006e05485a34ccf871c421279864b0ccd220b" }
