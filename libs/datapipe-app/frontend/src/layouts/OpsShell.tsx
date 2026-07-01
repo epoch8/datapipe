@@ -2,7 +2,6 @@ import React from "react";
 import {
     BugOutlined,
     DashboardOutlined,
-    LineChartOutlined,
     QuestionCircleOutlined,
     SettingOutlined,
 } from "@ant-design/icons";
@@ -20,13 +19,11 @@ type NavItem = {
 export function OpsShell() {
     const location = useLocation();
     const [title, setTitle] = React.useState("Datapipe Ops");
-    const [showMetrics, setShowMetrics] = React.useState(true);
     const [agentMode, setAgentMode] = React.useState(false);
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         opsApi.getCapabilities().then((c) => {
-            setShowMetrics(c.ml_metrics || c.ml_training);
             setAgentMode(c.mode === "agent");
             setPipelineId(c.pipeline_id ?? null);
             setTitle(
@@ -37,21 +34,16 @@ export function OpsShell() {
         }).catch(() => undefined);
     }, []);
 
-    const selected = location.pathname.startsWith("/metrics")
-        ? "/metrics"
-        : location.pathname.startsWith("/debug")
-          ? "/debug"
-          : location.pathname.startsWith("/help")
-            ? "/help"
-            : location.pathname.startsWith("/settings")
-              ? "/settings"
-              : "/";
+    const selected = location.pathname.startsWith("/debug")
+        ? "/debug"
+        : location.pathname.startsWith("/help")
+          ? "/help"
+          : location.pathname.startsWith("/settings")
+            ? "/settings"
+            : "/";
 
     const items: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
-        ...(showMetrics
-            ? [{ key: "/metrics", href: "/metrics", label: "Metrics", icon: <LineChartOutlined /> }]
-            : []),
         ...(agentMode
             ? [{ key: "/debug", href: "/debug", label: "Debug", icon: <BugOutlined /> }]
             : []),

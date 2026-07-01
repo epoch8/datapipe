@@ -2,7 +2,6 @@ import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { OpsShell } from "./layouts/OpsShell";
 import { Overview } from "./features/ops/Overview";
-import { Metrics } from "./features/ops/Metrics";
 import { PipelineDetail } from "./features/ops/PipelineDetail";
 import { RunDetail } from "./features/ops/RunDetail";
 import { TrainingDetail } from "./features/ops/TrainingDetail";
@@ -24,7 +23,7 @@ function App() {
             <Routes>
                 <Route element={<OpsShell />}>
                     <Route path="/" element={<Overview />} />
-                    <Route path="/metrics" element={<Metrics />} />
+                    <Route path="/metrics" element={<Navigate to="/" replace />} />
                     <Route path="/debug" element={<DebugPage />} />
                     <Route path="/help" element={<Help />} />
                     <Route path="/settings" element={<Settings />} />

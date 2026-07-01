@@ -1,35 +1,25 @@
 import React from "react";
 import { Alert, Spin } from "antd";
-import { opsApi, getRefreshIntervalMs } from "../../api/ops";
-import type { OverviewResponse } from "../../types/ops";
-import { PipelineCard } from "./components/PipelineCard";
+import { opsApi } from "../../api/ops";
+import { PipelineDetail } from "./PipelineDetail";
 
 export function Overview() {
-    const [data, setData] = React.useState<OverviewResponse | null>(null);
+    const [pipelineId, setPipelineId] = React.useState<string | null>(null);
+    const [showMetrics, setShowMetrics] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
-    const load = React.useCallback(() => {
+    React.useEffect(() => {
         opsApi
-            .getOverview()
-            .then(setData)
+            .getCapabilities()
+            .then((capabilities) => {
+                setPipelineId(capabilities.pipeline_id ?? null);
+                setShowMetrics(capabilities.ml_metrics);
+            })
             .catch((e) => setError(String(e)));
     }, []);
 
-    React.useEffect(() => {
-        load();
-        const id = setInterval(load, getRefreshIntervalMs());
-        return () => clearInterval(id);
-    }, [load]);
-
     if (error) return <Alert type="error" message={error} />;
-    if (!data) return <Spin />;
+    if (!pipelineId) return <Spin />;
 
-    return (
-        <div>
-            {data.pipelines.map((card) => (
-                <PipelineCard key={card.pipeline_id} card={card} />
-            ))}
-            {!data.pipelines.length && <Alert message="No pipelines registered yet" type="info" />}
-        </div>
-    );
+    return <PipelineDetail pipelineId={pipelineId} embedded includeMetrics={showMetrics} />;
 }

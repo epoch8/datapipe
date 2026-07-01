@@ -4,14 +4,26 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
 import { ChartGrid } from "./components/ChartGrid";
+import { PipelineMetrics } from "./components/PipelineMetrics";
 import { PluginSection } from "./components/PluginSection";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { StageStepper } from "./components/StageStepper";
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
-export function PipelineDetail() {
-    const { id = "" } = useParams();
+type PipelineDetailProps = {
+    pipelineId?: string;
+    embedded?: boolean;
+    includeMetrics?: boolean;
+};
+
+export function PipelineDetail({
+    pipelineId: pipelineIdProp,
+    embedded = false,
+    includeMetrics = false,
+}: PipelineDetailProps = {}) {
+    const { id: routeId = "" } = useParams();
+    const id = pipelineIdProp ?? routeId;
     const navigate = useNavigate();
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
     const [curves, setCurves] = React.useState<ChartSpec[]>([]);
@@ -19,6 +31,7 @@ export function PipelineDetail() {
     const [running, setRunning] = React.useState(false);
 
     const load = React.useCallback(() => {
+        if (!id) return;
         opsApi
             .getPipeline(id)
             .then(setDetail)
@@ -47,6 +60,7 @@ export function PipelineDetail() {
             .finally(() => setRunning(false));
     };
 
+    if (!id) return <Alert type="error" message="Pipeline id is required" />;
     if (error) return <Alert type="error" message={error} />;
     if (!detail) return <Spin />;
 
@@ -62,10 +76,16 @@ export function PipelineDetail() {
 
     return (
         <div>
-            <Text type="secondary">
-                <Link to="/">Overview</Link> / {detail.display_name}
-            </Text>
-            <div style={{ marginTop: 8, marginBottom: 16 }}>
+            {embedded ? (
+                <Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
+                    {detail.display_name}
+                </Title>
+            ) : (
+                <Text type="secondary">
+                    <Link to="/">Overview</Link> / {detail.display_name}
+                </Text>
+            )}
+            <div style={{ marginTop: embedded ? 0 : 8, marginBottom: 16 }}>
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
                 <Tag color={detail.health === "failed" ? "red" : "green"}>{detail.health}</Tag>
             </div>
@@ -101,6 +121,7 @@ export function PipelineDetail() {
                     <ChartGrid charts={curves} />
                 </Card>
             )}
+            {includeMetrics && <PipelineMetrics pipelineId={id} />}
             <PluginSection enrichments={detail.enrichments} />
             <Card title="Recent runs" style={{ marginTop: 16 }}>
                 <RecentRunsList runs={detail.recent_runs} />
