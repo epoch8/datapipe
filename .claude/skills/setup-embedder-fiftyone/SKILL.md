@@ -11,7 +11,7 @@ This skill = run the DINO→FiftyOne embedder on YOUR images. The FiftyOne-zoo d
 
 **Ask first — don't assume (only the unresolved):** demo (zoo) or your own data? **which Postgres + which database** for `DB_URL` — never point it at an existing DB or drop in a `localhost` default without confirming; reuse an existing venv / `uv` env or create a fresh one? GPU? surface stage logs or run quiet?
 
-**How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with logs surfaced (e.g. `datapipe run 2>&1 | tail -60`) unless told otherwise, and after each stage say what you did and what changed — don't run the whole pipeline silently.
+**How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with its logs shown and, after each, say what you did and what changed — don't run the pipeline silently. If a stage fails and the cause isn't clear from the normal logs, re-run it with `datapipe --debug … run` (or `--debug-sql` for SQL errors); debug is very verbose, so send it to a file and `grep` it (e.g. `datapipe --debug run > /tmp/dp_debug.log 2>&1; grep -nEi "error|traceback" /tmp/dp_debug.log`) rather than dumping it inline.
 
 ## Run on YOUR data
 - **Align `LABELS_JSON` keys to the file stem** (optional) — a mismatch silently yields an unlabeled
