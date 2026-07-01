@@ -35,12 +35,13 @@ export function initHtmlLabelOpacitySync(cy: Cytoscape.Core): void {
     cy.on("render", () => {
         if (cy.destroyed()) return;
         const store = opacityStore.get(cy);
-        if (!store) return;
-        store.forEach((opacity, nodeId) => {
-            const node = cy.getElementById(nodeId);
-            if (node.empty() || !nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) {
-                return;
-            }
+        cy.nodes().forEach((node) => {
+            if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
+            const nodeId = node.id();
+            const opacity =
+                store?.get(nodeId) ??
+                (node.data("htmlLabelOpacity") as number | undefined);
+            if (typeof opacity !== "number") return;
             const labelEl = getNodeHtmlLabelEl(cy, nodeId);
             if (labelEl) {
                 labelEl.style.opacity = String(opacity);
@@ -81,6 +82,7 @@ export function setNodeVisualOpacity(
     opacity: number,
 ): void {
     getOpacityStore(cy).set(node.id(), opacity);
+    node.data("htmlLabelOpacity", opacity);
 
     if (nodeUsesHtmlLabel(node)) {
         const labelEl = getNodeHtmlLabelEl(cy, node.id());
@@ -123,6 +125,7 @@ export function animateNodeVisualOpacity(
                 labelEl.style.opacity = String(opacity);
             }
             getOpacityStore(cy).set(nodeId, opacity);
+            nodeEl.data("htmlLabelOpacity", opacity);
             nodeEl.style("opacity", 0);
         } else {
             nodeEl.style("opacity", opacity);

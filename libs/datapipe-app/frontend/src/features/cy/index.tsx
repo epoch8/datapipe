@@ -57,6 +57,11 @@ function statusClass(status: string): string {
 
 const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
 
+function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
+    const opacity = typeof data.htmlLabelOpacity === "number" ? data.htmlLabelOpacity : 1;
+    return `opacity:${opacity};`;
+}
+
 function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, string> | undefined>) {
     return (data: Cytoscape.NodeDataDefinition) => {
         if (data.type === "group-expanded") {
@@ -75,7 +80,7 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
             const w = (data.boxW as number) ?? fallback.w;
             const h = (data.boxH as number) ?? fallback.h;
             return `
-              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${fullName}">
+              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${fullName}">
                   <div class="node-content">
                       <div class="node-icon">${groupIconSvg}</div>
                       <div class="node-body">
@@ -103,7 +108,7 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
                 .filter(Boolean)
                 .join("\n");
             return `
-              <div class="node-core node-core-table ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
+              <div class="node-core node-core-table ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${tip}">
                   <div class="node-content">
                       <div class="node-icon">${tableIconSvg}</div>
                       <div class="node-body">
@@ -141,7 +146,7 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
         const transformType = data.transform_type ? String(data.transform_type) : "";
 
         return `
-              <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
+              <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${tip}">
                   <div class="node-content">
                       <div class="node-icon">${transformIconSvg}</div>
                       <div class="node-body">
@@ -286,14 +291,7 @@ function PipelineGraphView({
         if (stageInitKeyRef.current === initKey) return;
         stageInitKeyRef.current = initKey;
 
-        if (stageFilter) {
-            const metaNames = rawGraph.pipeline
-                .filter((pipe) => pipe.type === "meta")
-                .map((pipe) => pipe.name);
-            setExpandedGroups(new Set(metaNames));
-        } else {
-            setExpandedGroups(new Set());
-        }
+        setExpandedGroups(new Set());
         needFitRef.current = true;
     }, [rawGraph, graphUrl, stageFilter]);
 

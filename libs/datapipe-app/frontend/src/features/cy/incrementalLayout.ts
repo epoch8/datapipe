@@ -696,6 +696,15 @@ export function animateLayoutTransition(
         }
     });
 
+    fadeOut.forEach((id) => {
+        const node = cy.getElementById(id);
+        if (node.empty()) return;
+        const n = node as Cytoscape.NodeSingular;
+        if (nodeUsesHtmlLabel(n)) {
+            setNodeVisualOpacity(cy, n, 1);
+        }
+    });
+
     applyLayoutToCy(cy, toLayout);
 
     type AnimSpec = {
@@ -758,7 +767,8 @@ export function animateLayoutTransition(
                 if (n.data("type") === "group-expanded") {
                     ensureGroupExpandedVisible(n);
                 } else if (nodeUsesHtmlLabel(n)) {
-                    setNodeVisualOpacity(cy, n, 1);
+                    const targetOpacity = fadeOut.has(node.id()) ? 0 : 1;
+                    setNodeVisualOpacity(cy, n, targetOpacity);
                 }
             });
             resetEdgeOpacities(cy);

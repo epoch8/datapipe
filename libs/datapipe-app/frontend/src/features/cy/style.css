@@ -29,7 +29,7 @@
         0 8px 18px rgba(16, 24, 40, 0.08);
     overflow: hidden;
     font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .node-content {

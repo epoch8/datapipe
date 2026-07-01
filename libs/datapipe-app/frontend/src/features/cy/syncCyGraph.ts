@@ -304,6 +304,11 @@ export function syncCyGraph(
         }
 
         const innerIds = getInnerNodeIdsFromLayout(previousLayout, anchorGroup);
+        getInnerNodeIds(nodes, anchorGroup).forEach((id) => {
+            if (previousLayout.get(id)?.node.metaGroup === anchorGroup) {
+                innerIds.add(id);
+            }
+        });
         const restored = takePreExpandLayout(cy, anchorGroup);
         const collapsedLayout = restored
             ?? collapseGroupInLayout(
