@@ -70,7 +70,6 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
               <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${fullName}">
                   <div class="compound-title">${renderName(fallback.lines)}</div>
                   <div class="compound-hint">${childCount} steps</div>
-                  <div class="compound-action">click to expand</div>
               </div>
             `;
         }
@@ -371,19 +370,9 @@ function PipelineGraphView({
             ],
         });
 
-        // Left-click the collapsed rectangle to expand, click the container background to collapse.
-        const onTapGroup = (event: Cytoscape.EventObject) => {
-            const node = event.target as Cytoscape.NodeSingular;
-            toggleGroupExpandRef.current(node.data("name") as string);
-        };
-        cy.on("tap", 'node[type = "group"]', onTapGroup);
-        cy.on("tap", 'node[type = "group-expanded"]', onTapGroup);
-
         return () => {
             try {
                 if (!cy.destroyed()) {
-                    cy.off("tap", 'node[type = "group"]', onTapGroup);
-                    cy.off("tap", 'node[type = "group-expanded"]', onTapGroup);
                     // @ts-ignore
                     cy.contextMenus("destroy");
                     labelsInitStore.delete(cy);

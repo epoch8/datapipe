@@ -6,10 +6,13 @@ import {
 } from "./graphNodeLayout";
 import {
     animateNodeVisualOpacity,
+    ensureGroupExpandedVisible,
+    nodeUsesHtmlLabel,
     setNodeVisualOpacity,
     stopHtmlOpacityAnimations,
 } from "./htmlLabelOpacity";
 import { ANIMATION_EASING, ANIMATION_MS } from "./animationConstants";
+import { animateEdgeOpacityTransitions, resetEdgeOpacities } from "./edgeTransition";
 
 export type BBox = { x: number; y: number; w: number; h: number };
 
@@ -649,6 +652,9 @@ export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {
                     boxH: entry.bbox.h,
                 });
             }
+            if (entry.node.type === "group-expanded") {
+                ensureGroupExpandedVisible(node);
+            }
         });
     });
 }
@@ -662,6 +668,11 @@ export function stopLayoutAnimations(cy: Cytoscape.Core): void {
 export type LayoutTransitionOptions = {
     fadeIn?: Set<string>;
     fadeOut?: Set<string>;
+    /** Animate width/height (e.g. group-expanded ↔ collapsed group). */
+    morphBoxes?: Map<string, { from: BBox; to: BBox }>;
+    /** Edge keys (`source->target`) to crossfade during the transition. */
+    edgeFadeIn?: Set<string>;
+    edgeFadeOut?: Set<string>;
     onComplete?: () => void;
 };
 
@@ -676,6 +687,7 @@ export function animateLayoutTransition(
     const toCenters = layoutToCenters(toLayout);
     const fadeIn = options?.fadeIn ?? new Set<string>();
     const fadeOut = options?.fadeOut ?? new Set<string>();
+    const morphBoxes = options?.morphBoxes ?? new Map<string, { from: BBox; to: BBox }>();
 
     fadeIn.forEach((id) => {
         const node = cy.getElementById(id);
@@ -692,6 +704,7 @@ export function animateLayoutTransition(
         fadeIn: boolean;
         fadeOut: boolean;
         move: boolean;
+        morph?: { from: BBox; to: BBox };
     };
 
     const specs: AnimSpec[] = [];
@@ -700,11 +713,26 @@ export function animateLayoutTransition(
         const from = fromCenters.get(id);
         const isFadeIn = fadeIn.has(id);
         const isFadeOut = fadeOut.has(id);
-        const move = Boolean(from);
+        const morph = morphBoxes.get(id);
+        const move = Boolean(from) || Boolean(morph);
         if (!move && !isFadeIn && !isFadeOut) {
             return;
         }
-        specs.push({ id, target, fadeIn: isFadeIn, fadeOut: isFadeOut, move });
+        specs.push({ id, target, fadeIn: isFadeIn, fadeOut: isFadeOut, move, morph });
+    });
+
+    morphBoxes.forEach((morph, id) => {
+        if (specs.some((spec) => spec.id === id)) return;
+        const target = toCenters.get(id);
+        if (!target) return;
+        specs.push({
+            id,
+            target,
+            fadeIn: fadeIn.has(id),
+            fadeOut: fadeOut.has(id),
+            move: true,
+            morph,
+        });
     });
 
     fadeOut.forEach((id) => {
@@ -712,7 +740,11 @@ export function animateLayoutTransition(
         specs.push({ id, fadeIn: false, fadeOut: true, move: false });
     });
 
-    if (!specs.length) {
+    const edgeFadeIn = options?.edgeFadeIn ?? new Set<string>();
+    const edgeFadeOut = options?.edgeFadeOut ?? new Set<string>();
+    const totalWork = specs.length + edgeFadeIn.size + edgeFadeOut.size;
+
+    if (!totalWork) {
         options?.onComplete?.();
         return;
     }
@@ -720,15 +752,27 @@ export function animateLayoutTransition(
     let completed = 0;
     const finishOne = () => {
         completed += 1;
-        if (completed >= specs.length) {
+        if (completed >= totalWork) {
             cy.nodes().forEach((node) => {
-                setNodeVisualOpacity(cy, node, 1);
+                const n = node as Cytoscape.NodeSingular;
+                if (n.data("type") === "group-expanded") {
+                    ensureGroupExpandedVisible(n);
+                } else if (nodeUsesHtmlLabel(n)) {
+                    setNodeVisualOpacity(cy, n, 1);
+                }
             });
+            resetEdgeOpacities(cy);
             options?.onComplete?.();
         }
     };
 
-    specs.forEach(({ id, target, fadeIn: isFadeIn, fadeOut: isFadeOut, move }) => {
+    animateEdgeOpacityTransitions(cy, edgeFadeIn, edgeFadeOut, finishOne);
+
+    if (!specs.length) {
+        return;
+    }
+
+    specs.forEach(({ id, target, fadeIn: isFadeIn, fadeOut: isFadeOut, move, morph }) => {
         const node = cy.getElementById(id);
         if (node.empty()) {
             finishOne();
@@ -737,7 +781,22 @@ export function animateLayoutTransition(
 
         const nodeEl = node as Cytoscape.NodeSingular;
         const from = fromCenters.get(id);
-        if (from) {
+
+        if (morph && target) {
+            const fromCenter = bboxCenter(morph.from);
+            const shrinking = morph.to.w * morph.to.h < morph.from.w * morph.from.h;
+            const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
+            nodeEl.position(fromCenter);
+            nodeEl.style("width", morph.from.w);
+            nodeEl.style("height", morph.from.h);
+            nodeEl.data("boxW", morph.from.w);
+            nodeEl.data("boxH", morph.from.h);
+            if (shrinking && isNativeGroupFrame) {
+                nodeEl.style("opacity", 1);
+            } else if (isNativeGroupFrame) {
+                ensureGroupExpandedVisible(nodeEl);
+            }
+        } else if (from) {
             nodeEl.position(from);
         } else if (target) {
             nodeEl.position(target);
@@ -745,7 +804,10 @@ export function animateLayoutTransition(
 
         const fromOpacity = isFadeIn ? 0 : 1;
         const toOpacity = isFadeOut ? 0 : 1;
-        setNodeVisualOpacity(cy, nodeEl, fromOpacity);
+        const isMorphingNativeGroup = Boolean(morph && nodeEl.data("type") === "group-expanded");
+        if (!isMorphingNativeGroup) {
+            setNodeVisualOpacity(cy, nodeEl, fromOpacity);
+        }
 
         let positionDone = !move || !target;
         let opacityDone = !isFadeIn && !isFadeOut;
@@ -756,7 +818,41 @@ export function animateLayoutTransition(
             }
         };
 
-        if (move && target) {
+        if (morph && target) {
+            const shrinking = morph.to.w * morph.to.h < morph.from.w * morph.from.h;
+            const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
+            const morphStyle: Record<string, number> = {
+                width: morph.to.w,
+                height: morph.to.h,
+            };
+            if (shrinking && isNativeGroupFrame) {
+                morphStyle.opacity = 0;
+            }
+
+            nodeEl.animate(
+                {
+                    position: target,
+                    style: morphStyle,
+                },
+                {
+                    duration: ANIMATION_MS,
+                    easing: ANIMATION_EASING,
+                    complete: () => {
+                        nodeEl.removeStyle("width");
+                        nodeEl.removeStyle("height");
+                        nodeEl.data("boxW", morph.to.w);
+                        nodeEl.data("boxH", morph.to.h);
+                        if (shrinking && isNativeGroupFrame) {
+                            nodeEl.style("opacity", 0);
+                        } else if (isNativeGroupFrame) {
+                            ensureGroupExpandedVisible(nodeEl);
+                        }
+                        positionDone = true;
+                        maybeFinish();
+                    },
+                },
+            );
+        } else if (move && target) {
             nodeEl.animate(
                 { position: target },
                 {
@@ -775,7 +871,7 @@ export function animateLayoutTransition(
                 opacityDone = true;
                 maybeFinish();
             });
-        } else if (move) {
+        } else if (move && !isMorphingNativeGroup) {
             setNodeVisualOpacity(cy, nodeEl, 1);
         }
     });

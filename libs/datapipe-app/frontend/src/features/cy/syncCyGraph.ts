@@ -4,6 +4,7 @@ import {
     ANIMATION_MS,
     animateLayoutTransition,
     applyLayoutToCy,
+    BBox,
     buildCollapsedLayout,
     cloneLayout,
     collapseGroupInLayout,
@@ -13,7 +14,12 @@ import {
     GraphLayout,
     stopLayoutAnimations,
 } from "./incrementalLayout";
-import { setNodeVisualOpacity } from "./htmlLabelOpacity";
+import { setNodeVisualOpacity, animateNodeVisualOpacity, ensureGroupExpandedVisible } from "./htmlLabelOpacity";
+import {
+    addEdgesFromTarget,
+    computeEdgeDiff,
+    makeEdgeKey,
+} from "./edgeTransition";
 import { reprocessData } from "./process";
 
 export type CyElement = Cytoscape.ElementDefinition;
@@ -42,7 +48,8 @@ function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
             return aParent - bParent;
         })
         .map(([nodeId, options]) => ({
-            selectable: true,
+            selectable: options.type !== "group" && options.type !== "group-expanded",
+            grabbable: options.type !== "group" && options.type !== "group-expanded",
             data: {
                 id: nodeId,
                 label: options.name || nodeId,
@@ -59,29 +66,21 @@ function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
 }
 
 function edgeKey(source: string, target: string): string {
-    return `${source}->${target}`;
+    return makeEdgeKey(source, target);
 }
 
-function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
+function applyNodeDiff(cy: Cytoscape.Core, target: CyElement[], removeAbsent = true) {
     const targetNodes = target.filter((el) => el.data.id);
-    const targetEdges = target.filter((el) => el.data.source && el.data.target);
     const targetNodeIds = new Set(targetNodes.map((el) => el.data.id as string));
-    const targetEdgeKeys = new Set(
-        targetEdges.map((el) => edgeKey(el.data.source as string, el.data.target as string)),
-    );
 
     cy.batch(() => {
-        cy.nodes().forEach((node) => {
-            if (!targetNodeIds.has(node.id())) {
-                node.remove();
-            }
-        });
-        cy.edges().forEach((edge) => {
-            const key = edgeKey(edge.source().id(), edge.target().id());
-            if (!targetEdgeKeys.has(key)) {
-                edge.remove();
-            }
-        });
+        if (removeAbsent) {
+            cy.nodes().forEach((node) => {
+                if (!targetNodeIds.has(node.id())) {
+                    node.remove();
+                }
+            });
+        }
 
         targetNodes.forEach((el) => {
             const id = el.data.id as string;
@@ -98,6 +97,22 @@ function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
                 cy.add(el);
             }
         });
+    });
+}
+
+function applyEdgeDiff(cy: Cytoscape.Core, target: CyElement[]) {
+    const targetEdges = target.filter((el) => el.data.source && el.data.target);
+    const targetEdgeKeys = new Set(
+        targetEdges.map((el) => edgeKey(el.data.source as string, el.data.target as string)),
+    );
+
+    cy.batch(() => {
+        cy.edges().forEach((edge) => {
+            const key = edgeKey(edge.source().id(), edge.target().id());
+            if (!targetEdgeKeys.has(key)) {
+                edge.remove();
+            }
+        });
 
         targetEdges.forEach((el) => {
             const key = edgeKey(el.data.source as string, el.data.target as string);
@@ -109,6 +124,11 @@ function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
             }
         });
     });
+}
+
+function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
+    applyNodeDiff(cy, target, true);
+    applyEdgeDiff(cy, target);
 }
 
 function captureCenters(cy: Cytoscape.Core): Map<string, { x: number; y: number }> {
@@ -249,7 +269,13 @@ export function syncCyGraph(
 
         if (options.expanding) {
             savePreExpandLayout(cy, anchorGroup, workingLayout);
-            applyElementDiff(cy, target);
+            const edgeDiff = computeEdgeDiff(cy, target);
+            applyNodeDiff(cy, target, false);
+            const expandedGroup = cy.getElementById(anchorGroup);
+            if (!expandedGroup.empty()) {
+                ensureGroupExpandedVisible(expandedGroup as Cytoscape.NodeSingular);
+            }
+            addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
             const nextLayout = expandGroupInLayout(
                 workingLayout,
                 anchorGroup,
@@ -261,8 +287,17 @@ export function syncCyGraph(
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
             layoutStore.set(cy, nextLayout);
             structureKeyStore.set(cy, currentStructureKey);
+            const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
+            const fromEntry = workingLayout.get(anchorGroup);
+            const toEntry = nextLayout.get(anchorGroup);
+            if (fromEntry && toEntry) {
+                morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+            }
             animateLayoutTransition(cy, fromCenters, nextLayout, {
                 fadeIn: innerIds,
+                morphBoxes,
+                edgeFadeIn: new Set(edgeDiff.toAdd),
+                edgeFadeOut: new Set(edgeDiff.toRemove),
                 onComplete: () => scheduleLayoutComplete(cy, options),
             });
             return;
@@ -282,12 +317,34 @@ export function syncCyGraph(
 
         layoutStore.set(cy, collapsedLayout);
         structureKeyStore.set(cy, currentStructureKey);
+        const edgeDiff = computeEdgeDiff(cy, target);
+        addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
+        const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
+        const fromEntry = previousLayout.get(anchorGroup);
+        const toEntry = collapsedLayout.get(anchorGroup);
+        if (fromEntry && toEntry) {
+            morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+        }
         animateLayoutTransition(cy, fromCenters, collapsedLayout, {
             fadeOut: innerIds,
+            morphBoxes,
+            edgeFadeIn: new Set(edgeDiff.toAdd),
+            edgeFadeOut: new Set(edgeDiff.toRemove),
             onComplete: () => {
                 applyElementDiff(cy, target);
-                cy.nodes().forEach((node) => setNodeVisualOpacity(cy, node, 1));
-                scheduleLayoutComplete(cy, options);
+                cy.nodes().forEach((node) => {
+                    const n = node as Cytoscape.NodeSingular;
+                    if (node.id() === anchorGroup) {
+                        setNodeVisualOpacity(cy, n, 0);
+                    } else {
+                        setNodeVisualOpacity(cy, n, 1);
+                    }
+                });
+                requestAnimationFrame(() => {
+                    animateNodeVisualOpacity(cy, anchorGroup, 0, 1, 180, () => {
+                        scheduleLayoutComplete(cy, options);
+                    });
+                });
             },
         });
         return;

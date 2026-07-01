@@ -69,6 +69,12 @@ export function nodeUsesHtmlLabel(node: Cytoscape.NodeSingular): boolean {
     return type === "transform" || type === "table" || type === "group";
 }
 
+export function ensureGroupExpandedVisible(node: Cytoscape.NodeSingular): void {
+    if (node.data("type") !== "group-expanded") return;
+    node.removeStyle("opacity");
+    node.style("opacity", 1);
+}
+
 export function setNodeVisualOpacity(
     cy: Cytoscape.Core,
     node: Cytoscape.NodeSingular,
