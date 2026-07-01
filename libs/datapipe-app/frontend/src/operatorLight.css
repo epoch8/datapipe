@@ -253,6 +253,52 @@
     height: calc(100vh - 250px);
 }
 
+.pipeline-card-with-sidebar {
+    display: flex;
+    align-items: stretch;
+}
+
+.pipeline-card-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.pipeline-stage-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    padding: 20px 16px;
+    border-right: 1px solid var(--dp-border-subtle);
+    background: #fafbfd;
+}
+
+.pipeline-stage-runs-card .ant-card-body {
+    padding: 12px;
+}
+
+.recent-runs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recent-run-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+
+.recent-run-link {
+    padding: 0;
+    height: auto;
+    font-weight: 600;
+}
+
+.recent-run-time {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .graph-toolbar {
     display: flex;
     align-items: center;

@@ -16,14 +16,21 @@ export function StageStepper({
     stages,
     edges,
     onStageSelect,
+    onStageRun,
 }: {
     stages: StageItem[];
     edges?: { from: string; to: string; count?: number }[];
     onStageSelect?: (stage: string) => void;
+    onStageRun?: (stage: string) => void;
 }) {
     return (
         <div style={{ marginBottom: 24, overflowX: "auto" }}>
-            <StageFlowDiagram stages={stages} edges={edges} onStageSelect={onStageSelect} />
+            <StageFlowDiagram
+                stages={stages}
+                edges={edges}
+                onStageSelect={onStageSelect}
+                onStageRun={onStageRun}
+            />
         </div>
     );
 }

@@ -105,6 +105,17 @@ def make_app(
         except Exception:
             return {"version": "unknown"}
 
+    def _serialize_recent_runs(runs: list[Any]) -> list[dict[str, Any]]:
+        return [
+            {
+                "run_id": r.run_id,
+                "status": r.status,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            }
+            for r in runs
+        ]
+
     @app.get("/pipelines/{pipeline_id}")
     def get_pipeline_detail(pipeline_id: str) -> dict[str, Any]:
         reg = store.get_pipeline(pipeline_id)
@@ -156,19 +167,35 @@ def make_app(
             "health": "failed" if last_run and last_run.status == "failed" else "healthy",
             "stages": stages,
             "stage_edges": stage_edges,
-            "recent_runs": [
-                {
-                    "run_id": r.run_id,
-                    "status": r.status,
-                    "started_at": r.started_at.isoformat() if r.started_at else None,
-                    "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                }
-                for r in recent_runs
-            ],
+            "recent_runs": _serialize_recent_runs(recent_runs),
             "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
             "last_error": last_run.error if last_run else None,
             "enrichments": enrichments,
             "agent_mode": get_ops_settings().mode == "agent",
+        }
+
+    @app.get("/pipelines/{pipeline_id}/stages/{stage_name}/recent-runs")
+    def get_stage_recent_runs(pipeline_id: str, stage_name: str, limit: int = 10) -> dict[str, Any]:
+        reg = store.get_pipeline(pipeline_id)
+        if reg is None:
+            raise HTTPException(404, f"Pipeline {pipeline_id} not found")
+        if ds is None or steps is None or get_ops_settings().pipeline_id != pipeline_id:
+            return {"pipeline_id": pipeline_id, "stage": stage_name, "recent_runs": []}
+
+        stage_steps = filter_steps_by_labels(steps, labels=[("stage", stage_name)])
+        if not stage_steps:
+            return {"pipeline_id": pipeline_id, "stage": stage_name, "recent_runs": []}
+
+        stage_step_names = [s.name for s in stage_steps]
+        runs = store.list_recent_runs_for_stage(
+            pipeline_id,
+            stage_step_names,
+            limit=min(limit, 50),
+        )
+        return {
+            "pipeline_id": pipeline_id,
+            "stage": stage_name,
+            "recent_runs": _serialize_recent_runs(runs),
         }
 
     @app.get("/pipelines/{pipeline_id}/training/runs")

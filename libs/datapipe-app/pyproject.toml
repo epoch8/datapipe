@@ -43,8 +43,14 @@ datapipe-core = { workspace = true }
 [tool.hatch.build.targets.sdist]
 exclude = ["tests", "frontend"]
 
+[tool.hatch.build.targets.sdist.force-include]
+"datapipe_app/frontend" = "datapipe_app/frontend"
+
 [tool.hatch.build.targets.wheel]
 exclude = ["tests", "frontend"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"datapipe_app/frontend" = "datapipe_app/frontend"
 
 [build-system]
 requires = ["hatchling"]

@@ -5,16 +5,10 @@ import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
 import { ChartGrid } from "./components/ChartGrid";
 import { PluginSection } from "./components/PluginSection";
+import { RecentRunsList } from "./components/RecentRunsList";
 import { StageStepper } from "./components/StageStepper";
 
-const { Title, Text } = Typography;
-
-const STAGES: [string, string][] = [
-    ["stage", "annotation"],
-    ["stage", "ls-sync"],
-    ["stage", "train"],
-    ["stage", "count-metrics"],
-];
+const { Text } = Typography;
 
 export function PipelineDetail() {
     const { id = "" } = useParams();
@@ -58,9 +52,9 @@ export function PipelineDetail() {
 
     const stageMenu = (
         <Menu>
-            {STAGES.map(([k, v]) => (
-                <Menu.Item key={v} onClick={() => runStage([[k, v]])}>
-                    {v}
+            {detail.stages.map((s) => (
+                <Menu.Item key={s.stage} onClick={() => runStage([["stage", s.stage]])}>
+                    {s.stage}
                 </Menu.Item>
             ))}
         </Menu>
@@ -80,6 +74,11 @@ export function PipelineDetail() {
                 edges={detail.stage_edges}
                 onStageSelect={(stage) =>
                     navigate(`/debug?stage=${encodeURIComponent(stage)}`)
+                }
+                onStageRun={
+                    detail.agent_mode
+                        ? (stage) => runStage([["stage", stage]])
+                        : undefined
                 }
             />
             {detail.agent_mode && (
@@ -104,13 +103,7 @@ export function PipelineDetail() {
             )}
             <PluginSection enrichments={detail.enrichments} />
             <Card title="Recent runs" style={{ marginTop: 16 }}>
-                {detail.recent_runs.map((r) => (
-                    <div key={r.run_id} style={{ marginBottom: 8 }}>
-                        <Button type="link" onClick={() => navigate(`/runs/${r.run_id}`)}>
-                            {r.run_id.slice(0, 8)}… — {r.status}
-                        </Button>
-                    </div>
-                ))}
+                <RecentRunsList runs={detail.recent_runs} />
             </Card>
         </div>
     );

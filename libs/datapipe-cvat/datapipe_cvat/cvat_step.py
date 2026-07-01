@@ -26,6 +26,7 @@ from datapipe.compute import (
     PipelineStep,
     Table,
     build_compute,
+    pipeline_input_to_compute_input,
 )
 from datapipe.datatable import DataTable
 from datapipe.executor import ExecutorConfig
@@ -39,7 +40,6 @@ from datapipe.types import (
     PipelineInput,
     PipelineOutput,
     data_to_index,
-    get_pipeline_input_name,
     get_pipeline_output_name,
     index_difference,
     index_to_data,
@@ -1207,13 +1207,12 @@ class CVATStep(PipelineStep):
                         f"files_batch ({value}) must be >= minimum_files_in_job ({self.minimum_files_in_job})"
                     )
 
-        input_name = get_pipeline_input_name(self.input)
+        dt_input = pipeline_input_to_compute_input(ds, catalog, self.input).dt
+        input_name = dt_input.name
         output_input_batches_name = get_pipeline_output_name(self.output__input_batches)
         output_cvat_task_name = get_pipeline_output_name(self.output__cvat_task)
         output_cvat_files_name = get_pipeline_output_name(self.output__cvat_files)
         output_cvat_annotation_name = get_pipeline_output_name(self.output__cvat_annotation)
-
-        dt_input = ds.get_table(input_name)
 
         assert isinstance(dt_input.table_store, TableStoreDB)
 

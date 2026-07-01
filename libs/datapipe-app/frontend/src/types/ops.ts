@@ -66,16 +66,24 @@ export interface PipelineDetail {
     health: string;
     stages: { stage: string; status: string; steps: unknown[] }[];
     stage_edges?: { from: string; to: string; count?: number }[];
-    recent_runs: {
-        run_id: string;
-        status: string;
-        started_at?: string;
-        finished_at?: string;
-    }[];
+    recent_runs: RecentRunSummary[];
     next_run_at?: string;
     last_error?: string;
     enrichments?: Enrichment[];
     agent_mode: boolean;
+}
+
+export interface RecentRunSummary {
+    run_id: string;
+    status: string;
+    started_at?: string;
+    finished_at?: string;
+}
+
+export interface StageRecentRunsResponse {
+    pipeline_id: string;
+    stage: string;
+    recent_runs: RecentRunSummary[];
 }
 
 export interface RunLogLine {

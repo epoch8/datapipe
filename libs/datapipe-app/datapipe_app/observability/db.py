@@ -344,6 +344,32 @@ class ObservabilityStore:
                 ).all()
             )
 
+    def list_recent_runs_for_stage(
+        self,
+        pipeline_id: str,
+        stage_step_names: list[str],
+        *,
+        limit: int = 10,
+    ) -> list[PipelineRunRow]:
+        """Runs that executed at least one step belonging to the stage."""
+        if not stage_step_names:
+            return []
+        with self.session() as session:
+            run_ids = select(PipelineRunStepRow.run_id).where(
+                PipelineRunStepRow.step_name.in_(stage_step_names)
+            )
+            return list(
+                session.scalars(
+                    select(PipelineRunRow)
+                    .where(
+                        PipelineRunRow.pipeline_id == pipeline_id,
+                        PipelineRunRow.run_id.in_(run_ids),
+                    )
+                    .order_by(PipelineRunRow.started_at.desc())
+                    .limit(limit)
+                ).all()
+            )
+
     def get_schedule(self, pipeline_id: str) -> Optional[PipelineScheduleRow]:
         with self.session() as session:
             return session.get(PipelineScheduleRow, pipeline_id)

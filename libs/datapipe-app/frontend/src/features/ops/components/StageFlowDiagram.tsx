@@ -1,5 +1,5 @@
 import React from "react";
-import { Tag } from "antd";
+import { Dropdown, Menu, Tag } from "antd";
 import { stepperCurrentIndex } from "./StageStepper";
 
 export type StageItem = { stage: string; status: string; steps: unknown[] };
@@ -48,14 +48,76 @@ function edgePath(
     return `M ${x1} ${y} C ${x1} ${controlY}, ${x2} ${controlY}, ${x2} ${y}`;
 }
 
+function StageNode({
+    stage,
+    index,
+    current,
+    onStageSelect,
+    onStageRun,
+}: {
+    stage: StageItem;
+    index: number;
+    current: number;
+    onStageSelect?: (stage: string) => void;
+    onStageRun?: (stage: string) => void;
+}) {
+    const hasContextMenu = Boolean(onStageSelect || onStageRun);
+    const menu = (
+        <Menu>
+            {onStageSelect && (
+                <Menu.Item key="details" onClick={() => onStageSelect(stage.stage)}>
+                    Details
+                </Menu.Item>
+            )}
+            {onStageRun && (
+                <Menu.Item key="run" onClick={() => onStageRun(stage.stage)}>
+                    Run
+                </Menu.Item>
+            )}
+        </Menu>
+    );
+
+    const node = (
+        <div className="stage-flow-node" style={{ width: NODE_WIDTH }}>
+            {stepIcon(index, current, stage.status)}
+            <div className="stage-flow-title">
+                {onStageSelect ? (
+                    <button
+                        type="button"
+                        className="stage-stepper-title-btn"
+                        onClick={() => onStageSelect(stage.stage)}
+                    >
+                        {stage.stage}
+                    </button>
+                ) : (
+                    stage.stage
+                )}
+            </div>
+            <Tag color={statusTagColor(stage.status)} className="stage-flow-tag">
+                {stage.status}
+            </Tag>
+        </div>
+    );
+
+    if (!hasContextMenu) return node;
+
+    return (
+        <Dropdown overlay={menu} trigger={["contextMenu"]}>
+            {node}
+        </Dropdown>
+    );
+}
+
 export function StageFlowDiagram({
     stages,
     edges,
     onStageSelect,
+    onStageRun,
 }: {
     stages: StageItem[];
     edges?: StageEdge[];
     onStageSelect?: (stage: string) => void;
+    onStageRun?: (stage: string) => void;
 }) {
     if (!stages.length) return null;
 
@@ -121,25 +183,14 @@ export function StageFlowDiagram({
             </svg>
             <div className="stage-flow-nodes" style={{ width }}>
                 {stages.map((stage, index) => (
-                    <div key={stage.stage} className="stage-flow-node" style={{ width: NODE_WIDTH }}>
-                        {stepIcon(index, current, stage.status)}
-                        <div className="stage-flow-title">
-                            {onStageSelect ? (
-                                <button
-                                    type="button"
-                                    className="stage-stepper-title-btn"
-                                    onClick={() => onStageSelect(stage.stage)}
-                                >
-                                    {stage.stage}
-                                </button>
-                            ) : (
-                                stage.stage
-                            )}
-                        </div>
-                        <Tag color={statusTagColor(stage.status)} className="stage-flow-tag">
-                            {stage.status}
-                        </Tag>
-                    </div>
+                    <StageNode
+                        key={stage.stage}
+                        stage={stage}
+                        index={index}
+                        current={current}
+                        onStageSelect={onStageSelect}
+                        onStageRun={onStageRun}
+                    />
                 ))}
             </div>
         </div>
