@@ -5,7 +5,6 @@ from datapipe_app import DatapipeAPI
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
-from datapipe_label_studio.types import S3Bucket
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
@@ -17,18 +16,14 @@ from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
 
 import steps
 from config import (
-    AWS_KEY,
-    AWS_REGION,
-    AWS_SECRET,
     DATAPIPE_DIR,
     datapipe_tmp_folder,
     DBCONN,
+    label_studio_storages,
     LABEL_CONFIG,
     LABEL_STUDIO_API_KEY,
-    LABEL_STUDIO_S3_ENDPOINT_URL,
     LABEL_STUDIO_URL,
     PROJECT_NAME,
-    S3_BUCKET,
 )
 from data import catalog
 
@@ -82,15 +77,7 @@ pipeline = Pipeline(
             project_label_config_at_create=LABEL_CONFIG,
             primary_keys=["image_name"],
             columns=["image_url"],
-            storages=[
-                S3Bucket(
-                    bucket=S3_BUCKET,
-                    key=AWS_KEY,
-                    secret=AWS_SECRET,
-                    region_name=AWS_REGION,
-                    endpoint_url=LABEL_STUDIO_S3_ENDPOINT_URL,
-                )
-            ],
+            storages=label_studio_storages(),
             chunk_size=100,
             labels=[("stage", "annotation"), ("stage", "ls-sync")],
         ),
@@ -175,7 +162,7 @@ pipeline = Pipeline(
                 min_completed_epochs=1,
                 checkpoint="last",
                 max_attempts=10,
-                reset_attempts_after="10min",
+                reset_attempts_after="10m",
                 lease_ttl_s=60,
                 heartbeat_interval_s=10,
             ),

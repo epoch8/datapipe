@@ -391,6 +391,27 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
                 algo=algo,
             )
             output_sync = None
+            if not is_training_user_interrupt(exc):
+                if resume_enabled:
+                    assert ctx.resume_config is not None
+                    logger.error(
+                        "Training FAILED for run %r (attempt %s/%s, model_id=%r): no model was produced. "
+                        "continue_train_failed_models=True, so this datapipe step still exits successfully "
+                        "and the run is retried on the next pipeline execution; "
+                        "RuntimeError is raised only once max_attempts=%s is exhausted.",
+                        run_key,
+                        attempt,
+                        ctx.resume_config.max_attempts,
+                        model_id,
+                        ctx.resume_config.max_attempts,
+                    )
+                else:
+                    logger.error(
+                        "Training FAILED for run %r (attempt %s, model_id=%r): no model was produced.",
+                        run_key,
+                        attempt,
+                        model_id,
+                    )
             raise
         finally:
             if output_sync is not None:

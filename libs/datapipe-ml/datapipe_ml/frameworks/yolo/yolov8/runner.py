@@ -21,7 +21,9 @@ from datapipe_ml.frameworks.yolo.artifacts import (
     yolo_finalize_training_output,
     yolo_count_objects,
     yolo_load_data_config,
+    yolo_persisted_exp_folder,
     yolo_prepare_tmp_dirs_for_cloud_yolov8,
+    yolo_remap_collected_model_paths,
     yolo_select_last_exp,
 )
 from datapipe_ml.frameworks.yolo.train_session import (
@@ -381,13 +383,9 @@ def train_model(
             f1_curve_image = np.array(Image.open(exp_folder / "F1_curve.png"))
         best_threshold = yolo_best_threshold_from_ultralytics_metrics(metrics, "F1-Confidence(P)")
 
-    exp_folder = yolo_finalize_training_output(
-        exp_folder,
-        persisted_project_dir=yolov8_training_config.persisted_project_dir or src_project_path,
-        tmp_dir_images_cls=tmp_dir_images_cls,
-        tmp_dir_project_cls=tmp_dir_project_cls,
-        tmp_dir_model_cls=tmp_dir_model_cls,
-    )
+    local_exp_folder = exp_folder
+    persisted_project = yolov8_training_config.persisted_project_dir or src_project_path
+    persisted_exp = yolo_persisted_exp_folder(persisted_project, local_exp_folder) if persisted_project else None
 
     if task == "detect":
         rename_map = {
@@ -406,8 +404,8 @@ def train_model(
             "lr/pg1": "lr_pg1",
             "lr/pg2": "lr_pg2",
         }
-        return yolo_collect_results_generic(
-            exp_folder=str(exp_folder),
+        results = yolo_collect_results_generic(
+            exp_folder=str(local_exp_folder),
             result_cls=TrainingResult,
             id_field_name="detection_model_id",
             id_field_value=yolov8_training_config.name,
@@ -420,7 +418,7 @@ def train_model(
             best_metric_col="metrics_mAP_0_5_to_0_95",
             weights_subdir="weights",
         )
-    if task == "segment":
+    elif task == "segment":
         rename_map = {
             "epoch": "epoch",
             "train/box_loss": "train_box_loss",
@@ -443,8 +441,8 @@ def train_model(
             "lr/pg1": "x_pg1",
             "lr/pg2": "x_pg2",
         }
-        return yolo_collect_results_generic(
-            exp_folder=str(exp_folder),
+        results = yolo_collect_results_generic(
+            exp_folder=str(local_exp_folder),
             result_cls=TrainingSegmentationResult,
             id_field_name="segmentation_model_id",
             id_field_value=yolov8_training_config.name,
@@ -457,40 +455,57 @@ def train_model(
             best_metric_col="metrics_mAP_0_5_to_0_95_mask",
             weights_subdir="weights",
         )
-    rename_map = {
-        "epoch": "epoch",
-        "train/box_loss": "train_box_loss",
-        "train/pose_loss": "train_pose_loss",
-        "train/kobj_loss": "train_kobj_loss",
-        "train/cls_loss": "train_cls_loss",
-        "train/dfl_loss": "train_dfl_loss",
-        "metrics/precision(P)": "metrics_precision_pose",
-        "metrics/recall(P)": "metrics_recall_pose",
-        "metrics/mAP50(P)": "metrics_mAP_0_5_pose",
-        "metrics/mAP50-95(P)": "metrics_mAP_0_5_to_0_95_pose",
-        "val/box_loss": "val_box_loss",
-        "val/pose_loss": "val_pose_loss",
-        "val/kobj_loss": "val_kobj_loss",
-        "val/cls_loss": "val_cls_loss",
-        "val/dfl_loss": "val_dfl_loss",
-        "lr/pg0": "x_pg0",
-        "lr/pg1": "x_pg1",
-        "lr/pg2": "x_pg2",
-    }
-    return yolo_collect_results_generic(
-        exp_folder=str(exp_folder),
-        result_cls=TrainingKeypointsResult,
-        id_field_name="keypoints_model_id",
-        id_field_value=yolov8_training_config.name,
-        class_names=class_names,
-        objects_count=objects_count,
-        f1_image_field_name="f1_curve_image",
-        f1_image=f1_curve_image,
-        best_threshold=best_threshold,
-        rename_map=rename_map,
-        best_metric_col="metrics_mAP_0_5_to_0_95_pose",
-        weights_subdir="weights",
+    else:
+        rename_map = {
+            "epoch": "epoch",
+            "train/box_loss": "train_box_loss",
+            "train/pose_loss": "train_pose_loss",
+            "train/kobj_loss": "train_kobj_loss",
+            "train/cls_loss": "train_cls_loss",
+            "train/dfl_loss": "train_dfl_loss",
+            "metrics/precision(P)": "metrics_precision_pose",
+            "metrics/recall(P)": "metrics_recall_pose",
+            "metrics/mAP50(P)": "metrics_mAP_0_5_pose",
+            "metrics/mAP50-95(P)": "metrics_mAP_0_5_to_0_95_pose",
+            "val/box_loss": "val_box_loss",
+            "val/pose_loss": "val_pose_loss",
+            "val/kobj_loss": "val_kobj_loss",
+            "val/cls_loss": "val_cls_loss",
+            "val/dfl_loss": "val_dfl_loss",
+            "lr/pg0": "x_pg0",
+            "lr/pg1": "x_pg1",
+            "lr/pg2": "x_pg2",
+        }
+        results = yolo_collect_results_generic(
+            exp_folder=str(local_exp_folder),
+            result_cls=TrainingKeypointsResult,
+            id_field_name="keypoints_model_id",
+            id_field_value=yolov8_training_config.name,
+            class_names=class_names,
+            objects_count=objects_count,
+            f1_image_field_name="f1_curve_image",
+            f1_image=f1_curve_image,
+            best_threshold=best_threshold,
+            rename_map=rename_map,
+            best_metric_col="metrics_mAP_0_5_to_0_95_pose",
+            weights_subdir="weights",
+        )
+
+    if persisted_exp is not None:
+        yolo_remap_collected_model_paths(
+            results,
+            local_exp_root=str(local_exp_folder),
+            persisted_exp_root=persisted_exp,
+        )
+
+    yolo_finalize_training_output(
+        local_exp_folder,
+        persisted_project_dir=persisted_project,
+        tmp_dir_images_cls=tmp_dir_images_cls,
+        tmp_dir_project_cls=tmp_dir_project_cls,
+        tmp_dir_model_cls=tmp_dir_model_cls,
     )
+    return results
 
 
 def train_process(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
 import fsspec
 from datapipe.store.database import DBConn
@@ -11,8 +12,6 @@ AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-S3_BUCKET = os.environ.get("S3_BUCKET", "")
-S3_PREFIX = os.environ.get("S3_PREFIX", "images")
 S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL")
 S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL", S3_ENDPOINT_URL or "http://localhost:9000")
 LABEL_STUDIO_S3_ENDPOINT_URL = os.environ.get("LABEL_STUDIO_S3_ENDPOINT_URL", S3_ENDPOINT_URL)
@@ -66,23 +65,64 @@ def _is_cloud_path(path: str) -> bool:
     return protocol not in (None, "file")
 
 
+# Single root for everything this example reads/writes. Local path or s3:// URL.
+# Input images live under <root>/images and the pipeline working_dir under <root>/datapipe
+# (siblings) so the recursive image listing in steps.py never re-ingests resized crops or
+# other artifacts written under the working_dir.
+DATAPIPE_E2E_DIR = os.environ.get("DATAPIPE_E2E_DIR", "s3://datapipe-e2e").rstrip("/")
+INPUT_IMAGES_DIR = f"{DATAPIPE_E2E_DIR}/images"
+
+
 def datapipe_working_dir() -> str:
-    explicit = os.environ.get("DATAPIPE_E2E_DIR")
-    if explicit:
-        if _is_cloud_path(explicit):
-            return explicit.rstrip("/")
-        local = Path(explicit).resolve()
-        local.mkdir(parents=True, exist_ok=True)
-        return str(local)
-    if S3_BUCKET:
-        prefix = Path(os.environ.get("S3_DATAPIPE_PREFIX", f"{S3_PREFIX}/datapipe"))
-        return str(Pathy(f"s3://{S3_BUCKET}").joinpath(*prefix.parts))
-    local = Path("datapipe").resolve()
+    if _is_cloud_path(DATAPIPE_E2E_DIR):
+        return f"{DATAPIPE_E2E_DIR}/datapipe"
+    local = Path(DATAPIPE_E2E_DIR).resolve() / "datapipe"
     local.mkdir(parents=True, exist_ok=True)
     return str(local)
 
 
 DATAPIPE_DIR = datapipe_working_dir()
+
+
+def input_storage_options() -> dict:
+    if not _is_cloud_path(INPUT_IMAGES_DIR):
+        return {}
+    client_kwargs: dict = {"region_name": AWS_REGION}
+    if S3_ENDPOINT_URL:
+        client_kwargs["endpoint_url"] = S3_ENDPOINT_URL
+    return {"key": AWS_KEY, "secret": AWS_SECRET, "client_kwargs": client_kwargs}
+
+
+def _input_s3_bucket() -> Optional[str]:
+    if not _is_cloud_path(DATAPIPE_E2E_DIR):
+        return None
+    return Pathy(DATAPIPE_E2E_DIR).root
+
+
+def input_image_url(rel_key: str) -> str:
+    """Browser- and fsspec-readable URL for an input image relative to INPUT_IMAGES_DIR."""
+    if _is_cloud_path(INPUT_IMAGES_DIR):
+        target = Pathy(INPUT_IMAGES_DIR) / rel_key
+        return f"{S3_PUBLIC_URL.rstrip('/')}/{target.root}/{target.key}"
+    return (Path(INPUT_IMAGES_DIR) / rel_key).resolve().as_uri()
+
+
+def label_studio_storages() -> list:
+    """S3 storage config for Label Studio when input lives on S3; empty for local roots."""
+    bucket = _input_s3_bucket()
+    if bucket is None:
+        return []
+    from datapipe_label_studio.types import S3Bucket
+
+    return [
+        S3Bucket(
+            bucket=bucket,
+            key=AWS_KEY,
+            secret=AWS_SECRET,
+            region_name=AWS_REGION,
+            endpoint_url=LABEL_STUDIO_S3_ENDPOINT_URL,
+        )
+    ]
 
 
 def datapipe_tmp_folder() -> str:

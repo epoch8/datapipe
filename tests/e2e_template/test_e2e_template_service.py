@@ -38,7 +38,7 @@ def _require_service_env() -> None:
             "LABEL_STUDIO_API_KEY",
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
-            "S3_BUCKET",
+            "DATAPIPE_E2E_DIR",
             "S3_ENDPOINT_URL",
         ]
         if not os.environ.get(name)

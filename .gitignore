@@ -17,11 +17,8 @@ venv/
 __pycache__/
 *.egg-info
 dist/
-<<<<<<< HEAD
 *.pyc
-=======
 .vscode/sftp.json
->>>>>>> master
 
 # Lock files (deps resolved inside the image)
 poetry.lock

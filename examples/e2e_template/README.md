@@ -23,7 +23,7 @@ Each template follows the same layout as a standalone project:
 Pipeline metadata is stored in Postgres. Set `DB_URL` in `.env` before running datapipe commands.
 Detection and keypoints use separate Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) so their tables do not collide when both pipelines share the same database.
 
-All commands below assume the current directory is **`examples/e2e_template/`**.
+All commands below assume the current directory is `examples/e2e_template/`.
 
 ## Installation
 
@@ -31,21 +31,19 @@ Python **3.10–3.12** is required (`datapipe-label-studio` and `datapipe-ml` do
 
 ### Python packages
 
-Install workspace packages with `uv` from this directory:
+Dependencies live in `pyproject.toml`. Install with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 cd examples/e2e_template
 
-uv pip install \
-  -e "../../libs/datapipe-label-studio" \
-  -e "../../libs/datapipe-ml[torch,fiftyone]"
+uv sync
 ```
 
 What each piece is for:
 
 - `datapipe-label-studio` — Label Studio pipeline steps.
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
-  `datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
+`datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
 
 ### Local services
 
@@ -54,16 +52,15 @@ Start Postgres, MinIO, MongoDB (FiftyOne), and Label Studio from this directory:
 ```bash
 docker compose up
 ```
+
 Wait until Label Studio is ready.
 
 Services:
 
 - Postgres — `localhost:5432` (`postgres` / `password`)
-- MinIO — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e`
+- MinIO — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e` (only needed for the sample-data quick start; see [Data ingest](#data-ingest))
 - MongoDB — `localhost:27017` (FiftyOne dataset metadata; set `FIFTYONE_DATABASE_URI` in `.env`)
 - Label Studio — `http://localhost:8080`
-
-`.env` uses two MinIO endpoints: `S3_ENDPOINT_URL=http://localhost:9000` for datapipe on the host, and `LABEL_STUDIO_S3_ENDPOINT_URL=http://minio:9000` for Label Studio inside Docker (same compose network as the `minio` service). Task `image_url` values use `S3_PUBLIC_URL` (`http://localhost:9000/...`) so the browser can load images directly; the bucket is configured for anonymous read in `docker-compose.yml`.
 
 Copy env vars and set the Label Studio API token (after `docker compose up`):
 
@@ -90,13 +87,21 @@ set -a && source .env && set +a
 
 The script reads `LABEL_STUDIO_URL`, `LABEL_STUDIO_EMAIL`, and `LABEL_STUDIO_PASSWORD` from `.env`; use it only if you prefer not to copy the token from the UI.
 
-Seed sample images (10 cat/dog + 10 person keypoint photos from COCO train2017, same source as ML smoke tests):
+## Data ingest
+
+Everything is rooted at a single `DATAPIPE_E2E_DIR` (a local path or `s3://` URL). The first stage (`list_s3_images` in `steps.py`) lists images under `$DATAPIPE_E2E_DIR/images/` with extensions `.jpg`, `.jpeg`, `.png`, or `.webp`. The listing is **recursive**, so anything under `images/` is treated as input.
+
+The pipeline `working_dir` (models, resized images, training artifacts) is `$DATAPIPE_E2E_DIR/datapipe/` — a **sibling** of `images/`, never nested under it. This is why both share one root yet input listing never re-ingests its own crops (which would otherwise grow image counts, e.g. 72 instead of 20).
+
+### Sample data (local MinIO)
+
+Default quick start uses MinIO from `docker compose`. With services running and `.env` loaded:
 
 ```bash
 uv run python scripts/seed_sample_data.py
 ```
 
-The first run creates both Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`), downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`.
+The first run downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `datapipe db create-all` (see [Running](#running)).
 
 Options:
 
@@ -104,6 +109,39 @@ Options:
 uv run python scripts/seed_sample_data.py --detection-limit 10 --keypoints-limit 10
 uv run python scripts/seed_sample_data.py --skip-download   # upload existing sample_data/
 ```
+
+`.env` uses two MinIO endpoints: `S3_ENDPOINT_URL=http://localhost:9000` for datapipe on the host, and `LABEL_STUDIO_S3_ENDPOINT_URL=http://minio:9000` for Label Studio inside Docker (same compose network as the `minio` service). Task `image_url` values use `S3_PUBLIC_URL` (`http://localhost:9000/...`) so the browser can load images directly; the bucket is configured for anonymous read in `docker-compose.yml`.
+
+### Your own S3 bucket
+
+Use this path when images already live in AWS S3 or another S3-compatible store. MinIO is not required.
+
+1. Set `DATAPIPE_E2E_DIR=s3://<bucket>` in `.env` and upload images under `s3://<bucket>/images/` (flat filenames work best — subdirectory paths are flattened to `___` in `image_name`).
+2. Set valid credentials in `.env`:
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
+   - `DATAPIPE_E2E_DIR` (e.g. `s3://my-bucket`; the Label Studio S3 storage bucket is derived from it)
+   - For AWS S3, omit `S3_ENDPOINT_URL` and `LABEL_STUDIO_S3_ENDPOINT_URL` so datapipe and Label Studio use the default AWS endpoint.
+   - Set `S3_PUBLIC_URL` to a base URL the Label Studio browser can fetch. URLs are built as `$S3_PUBLIC_URL/<bucket>/images/<key>` (path-style), e.g. `https://s3.us-east-1.amazonaws.com` for a publicly readable bucket, or a CDN/proxy in front of your objects.
+3. Remove MinIO from `docker-compose.yml`: delete the `minio` and `minio-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, and `label-studio`.
+4. Skip `scripts/seed_sample_data.py`. Create Postgres schemas before the first pipeline run:
+
+```bash
+cd image_detection && datapipe db create-all
+cd ../image_keypoints && datapipe db create-all
+```
+
+For self-hosted S3-compatible storage (not AWS), keep `S3_ENDPOINT_URL` for datapipe on the host and set `LABEL_STUDIO_S3_ENDPOINT_URL` to an endpoint reachable from the Label Studio container (same pattern as MinIO, but pointing at your store).
+
+## Customization
+
+Most task-specific settings live in each template's `config.py`:
+
+- **Paths** — `DATAPIPE_E2E_DIR` is the single root: input images come from `$DATAPIPE_E2E_DIR/images/` and `working_dir` (models, derived images) is `$DATAPIPE_E2E_DIR/datapipe/`. They are siblings by construction (see [Data ingest](#data-ingest)).
+- **Label Studio UI** — `LABEL_CONFIG` (XML labeling interface) and `PROJECT_NAME`. Label names in `LABEL_CONFIG` must match `CLASSES_TO_KEEP` (and `KEYPOINTS_LABELS` for keypoints).
+- **Detection** — `CLASSES_TO_KEEP` filters predictions/annotations; `COCO_CLASSES` and `DETECTION_MODEL_CONFIG` set the YOLO class list and pretrained weights (`yolo11n.pt` by default).
+- **Keypoints** — `KEYPOINTS_LABELS` defines keypoint order for LS ↔ datapipe conversion; `CLASSES_TO_KEEP` filters bbox class; `KEYPOINTS_MODEL_CONFIG` and `COCO_PERSON_KEYPOINT_FLIP_IDX` configure the pose model and flip augmentation.
+
+Training hyperparameters (`epochs`, `batch`, `imgsz`, base checkpoint) are in `app.py` inside `YoloV8_TrainingConfig`. If you rename LS control tags in `LABEL_CONFIG`, update the matching logic in `steps.py` (`bboxes_to_ls_prediction`, `parse_annotations_from_label_studio`).
 
 ## Running
 
