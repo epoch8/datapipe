@@ -185,6 +185,7 @@ function assignCompoundParents(
                 type: "group-expanded",
                 name: group,
                 child_count: nested,
+                frameLabel: `${group} · ${nested} step${nested === 1 ? "" : "s"}`,
             });
         }
     });

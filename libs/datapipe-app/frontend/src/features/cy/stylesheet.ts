@@ -1,4 +1,5 @@
 import Cytoscape from "cytoscape";
+import { edgeColors, graphColors } from "./graphColors";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 
 function nodeName(node: Cytoscape.NodeSingular): string {
@@ -38,11 +39,11 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "text-valign": "center",
             "text-halign": "center",
             width: nodeWidth,
-            ghost: "yes",
-            "ghost-opacity": 0.12,
-            "ghost-offset-x": 4,
-            "ghost-offset-y": 4,
             height: nodeHeight,
+            "background-opacity": 0,
+            "border-width": 0,
+            "overlay-opacity": 0,
+            ghost: "no",
         },
     },
     {
@@ -54,9 +55,6 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: 'node[type = "transform"], node[type = "table"], node[type = "group"]',
         style: {
-            "background-opacity": 0,
-            "border-width": 0,
-            ghost: "no",
             "z-index": 10,
         },
     },
@@ -73,10 +71,10 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         selector: 'node[type = "group-expanded"]',
         style: {
             shape: "round-rectangle",
-            backgroundColor: "#eef6ff",
-            "background-opacity": 0.45,
+            backgroundColor: graphColors.group.expandedBg,
+            "background-opacity": 1,
             "border-width": 2,
-            "border-color": "#91caff",
+            "border-color": graphColors.group.expandedBorder,
             "border-style": "dashed",
             width: (node: Cytoscape.NodeSingular) =>
                 (node.data("boxW") as number) ??
@@ -84,14 +82,15 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             height: (node: Cytoscape.NodeSingular) =>
                 (node.data("boxH") as number) ??
                 groupBoxSize(nodeName(node), node.data("child_count") ?? 1).h,
-            label: "data(name)",
+            label: (node: Cytoscape.NodeSingular) =>
+                (node.data("frameLabel") as string) || nodeName(node),
             "text-valign": "top",
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": "600px",
             "font-size": 22,
             "font-weight": 700,
-            color: "#0958d9",
+            color: graphColors.group.text,
             "text-margin-y": -14,
             "z-index": 0,
             ghost: "no",
@@ -99,23 +98,67 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         } as Cytoscape.Css.Node,
     },
     {
-        selector: "edge",
+        selector: "node.focused",
         style: {
-            "curve-style": "bezier",
-            "taxi-direction": "horizontal",
-            "line-color": "#b0b0b0",
-            "target-arrow-shape": "triangle",
-            "target-arrow-color": "#b0b0b0",
-            "arrow-scale": 1.6,
-            width: 2.5,
+            "z-index": 30,
         },
     },
     {
-        selector: ":selected",
+        selector: "node.dimmed",
         style: {
-            "border-width": 1,
-            "line-color": "#000",
-            "target-arrow-color": "#000",
+            opacity: 0.35,
+        },
+    },
+    {
+        selector: "node:selected",
+        style: {
+            "border-width": 4,
+            "border-color": edgeColors.active,
+            "background-color": edgeColors.active,
+            "background-opacity": 0.08,
+            "overlay-opacity": 0,
+            "z-index": 40,
+        },
+    },
+    {
+        selector: "edge",
+        style: {
+            "curve-style": "taxi",
+            "taxi-direction": "vertical",
+            "taxi-turn": "50%",
+            "taxi-turn-min-distance": 20,
+            width: 1.8,
+            "line-color": edgeColors.default,
+            "target-arrow-color": edgeColors.default,
+            "target-arrow-shape": "triangle",
+            "arrow-scale": 1.05,
+            opacity: 0.72,
+            "z-index": 1,
+        },
+    },
+    {
+        selector: "edge.focused",
+        style: {
+            width: 3,
+            opacity: 1,
+            "line-color": edgeColors.active,
+            "target-arrow-color": edgeColors.active,
+            "z-index": 20,
+        },
+    },
+    {
+        selector: "edge.muted",
+        style: {
+            opacity: 0.12,
+        },
+    },
+    {
+        selector: "edge.failed",
+        style: {
+            width: 2.5,
+            opacity: 1,
+            "line-color": edgeColors.error,
+            "target-arrow-color": edgeColors.error,
         },
     },
 ];

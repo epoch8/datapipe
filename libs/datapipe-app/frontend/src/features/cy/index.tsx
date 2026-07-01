@@ -14,6 +14,12 @@ import { displayNodeName, groupBoxSize, stepNodeSize, tableNodeSize } from "./gr
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
+import {
+    applyFailedEdgeStyles,
+    clearFocus,
+    focusNode,
+    focusSelection,
+} from "./graphFocus";
 import { Alert, AlertProps, Spin } from "antd";
 import { GraphData } from "../../types";
 import type { PipelineGraphProps } from "../../types/pipelineGraph";
@@ -42,7 +48,8 @@ function resolveNodeStatus(
 
 function statusClass(status: string): string {
     if (status === "failed" || status === "error") return "step-status-failed";
-    if (status === "running" || status === "pending") return "step-status-pending";
+    if (status === "running") return "step-status-running";
+    if (status === "pending") return "step-status-pending";
     if (status === "completed" || status === "finish") return "step-status-completed";
     return "step-status-unknown";
 }
@@ -98,6 +105,11 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
                           ? `<div class="indexes">${displayNodeName(indexes.join(", "), 44)}</div>`
                           : ""
                   }
+                  ${
+                      !isSubgraph && data.store_class
+                          ? `<div class="store">${displayNodeName(String(data.store_class), 36)}</div>`
+                          : ""
+                  }
               </div>
             `;
         }
@@ -113,10 +125,17 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
         ]
             .filter(Boolean)
             .join("\n");
+        const changed = data.changed_idx_count ?? 0;
+        const total = data.total_idx_count ?? 0;
+        const idxLine = total > 0 || changed > 0 ? `changed ${changed} / ${total}` : "";
+        const transformType = data.transform_type ? String(data.transform_type) : "";
+
         return `
               <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
                   <div class="name">${renderName(lines)}</div>
                   <div class="step-status ${statusClass(status)}">${status}</div>
+                  ${idxLine ? `<div class="idx-count">${idxLine}</div>` : ""}
+                  ${!isSubgraph && transformType ? `<div class="transform-type">${displayNodeName(transformType, 36)}</div>` : ""}
               </div>
             `;
     };
@@ -310,7 +329,10 @@ function PipelineGraphView({
             rankDir,
             anchorGroup: anchorGroupRef.current,
             expanding: expandingRef.current,
-            onLayoutComplete: () => refreshNodeLabelPositions(cy),
+            onLayoutComplete: () => {
+                refreshNodeLabelPositions(cy);
+                applyFailedEdgeStyles(cy, runStatusRef.current);
+            },
         });
         needFitRef.current = false;
         anchorGroupRef.current = null;
@@ -327,6 +349,106 @@ function PipelineGraphView({
             node.data("labelRefresh", ((node.data("labelRefresh") as number) ?? 0) + 1);
         });
     }, [cy, runStatusByStep]);
+
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        applyFailedEdgeStyles(cy, runStatusByStep);
+    }, [cy, runStatusByStep]);
+
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        const container = cy.container();
+        if (!container) return;
+
+        const handleNodeSelect = (node: Cytoscape.NodeSingular, multi: boolean) => {
+            if (!node.selectable()) return;
+            if (multi) {
+                if (node.selected()) {
+                    node.unselect();
+                } else {
+                    node.select();
+                }
+            } else {
+                cy.$(":selected").unselect();
+                node.select();
+            }
+            focusSelection(cy);
+        };
+
+        const resolveNodeFromLabel = (target: EventTarget | null): Cytoscape.NodeSingular | null => {
+            const label = (target as Element | null)?.closest?.("[data-cy-node-id]");
+            if (!label) return null;
+            const nodeId = label.getAttribute("data-cy-node-id");
+            if (!nodeId) return null;
+            const node = cy.getElementById(nodeId);
+            if (node.empty()) return null;
+            return node as Cytoscape.NodeSingular;
+        };
+
+        const onContainerClick = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            const node = resolveNodeFromLabel(event.target);
+            if (node) {
+                event.preventDefault();
+                event.stopPropagation();
+                handleNodeSelect(node, event.ctrlKey || event.metaKey);
+                return;
+            }
+            if (container.contains(event.target as Node)) {
+                cy.$(":selected").unselect();
+                clearFocus(cy);
+            }
+        };
+
+        const onContainerMouseOver = (event: MouseEvent) => {
+            const node = resolveNodeFromLabel(event.target);
+            if (!node) return;
+            if (cy.nodes(":selected").length > 0) {
+                focusSelection(cy);
+                return;
+            }
+            focusNode(cy, node);
+        };
+
+        const onContainerMouseOut = (event: MouseEvent) => {
+            const related = event.relatedTarget as Node | null;
+            if (related && container.contains(related)) {
+                const stillOnNode = resolveNodeFromLabel(related);
+                if (stillOnNode) return;
+            }
+            if (cy.nodes(":selected").length > 0) {
+                focusSelection(cy);
+                return;
+            }
+            clearFocus(cy);
+        };
+
+        const onDblTapGroup = (event: Cytoscape.EventObject) => {
+            const node = event.target as Cytoscape.NodeSingular;
+            const type = node.data("type") as string;
+            if (type === "group" || type === "group-expanded") {
+                toggleGroupExpandRef.current(node.data("name") as string);
+            }
+        };
+
+        container.addEventListener("click", onContainerClick, true);
+        container.addEventListener("mouseover", onContainerMouseOver, true);
+        container.addEventListener("mouseout", onContainerMouseOut, true);
+        cy.on("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
+
+        return () => {
+            try {
+                if (!cy.destroyed()) {
+                    container.removeEventListener("click", onContainerClick, true);
+                    container.removeEventListener("mouseover", onContainerMouseOver, true);
+                    container.removeEventListener("mouseout", onContainerMouseOut, true);
+                    cy.off("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
+                }
+            } catch {
+                /* cytoscape may already be torn down */
+            }
+        };
+    }, [cy]);
 
     useEffect(() => {
         if (!cy || cy.destroyed()) return;

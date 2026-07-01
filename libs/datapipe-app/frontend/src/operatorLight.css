@@ -1,0 +1,287 @@
+:root {
+    --dp-bg-app: #f5f8fc;
+    --dp-bg-surface: #ffffff;
+    --dp-border-subtle: #dbe3ef;
+    --dp-border-strong: #c8d3e1;
+
+    --dp-text-primary: #0b1220;
+    --dp-text-secondary: #5b6b82;
+    --dp-text-muted: #8a98aa;
+    --dp-text-inverse: #ffffff;
+
+    --dp-accent: #1677ff;
+    --dp-accent-hover: #0958d9;
+    --dp-accent-soft: #e8f2ff;
+
+    --dp-sidebar-bg: #071b3a;
+    --dp-sidebar-bg-2: #031126;
+    --dp-sidebar-border: rgba(255, 255, 255, 0.12);
+    --dp-sidebar-text: #d8e4f7;
+    --dp-sidebar-text-muted: #93a4bd;
+    --dp-sidebar-active-bg: #0f6fff;
+    --dp-sidebar-active-bg-2: #0057e7;
+
+    --dp-graph-bg: #fbfdff;
+    --dp-graph-dot: #dce7f5;
+
+    --dp-edge: #52677f;
+    --dp-edge-muted: #c7d1de;
+    --dp-edge-active: #1677ff;
+    --dp-edge-error: #d92d20;
+
+    --dp-table-bg: #fff3e5;
+    --dp-table-bg-2: #ffe5c7;
+    --dp-table-border: #ff7a1a;
+    --dp-table-icon: #ff6b00;
+    --dp-table-text: #3e2407;
+
+    --dp-transform-bg: #effff3;
+    --dp-transform-bg-2: #dcf8e5;
+    --dp-transform-border: #16a34a;
+    --dp-transform-icon: #0fa83d;
+    --dp-transform-text: #083b18;
+
+    --dp-group-bg: #edf5ff;
+    --dp-group-bg-2: #dbeafe;
+    --dp-group-border: #1677ff;
+    --dp-group-icon: #1677ff;
+    --dp-group-text: #074899;
+
+    --dp-status-completed-bg: #d9fbe7;
+    --dp-status-completed-text: #087a2a;
+    --dp-status-completed-border: #8ee2a8;
+
+    --dp-status-pending-bg: #fff3c4;
+    --dp-status-pending-text: #a15c00;
+    --dp-status-pending-border: #ffc84d;
+
+    --dp-status-running-bg: #dcecff;
+    --dp-status-running-text: #0958d9;
+    --dp-status-running-border: #83bfff;
+
+    --dp-status-failed-bg: #ffe1df;
+    --dp-status-failed-text: #b42318;
+    --dp-status-failed-border: #ff9b94;
+}
+
+.datapipe-shell {
+    min-height: 100vh;
+}
+
+.datapipe-sidebar {
+    width: 280px !important;
+    max-width: 280px !important;
+    min-width: 280px !important;
+    flex: 0 0 280px !important;
+    background:
+        radial-gradient(circle at top left, rgba(22, 119, 255, 0.22), transparent 34%),
+        linear-gradient(180deg, var(--dp-sidebar-bg), var(--dp-sidebar-bg-2)) !important;
+    color: var(--dp-sidebar-text);
+    border-right: 1px solid var(--dp-sidebar-border) !important;
+}
+
+.datapipe-sidebar-logo {
+    padding: 28px 24px 20px;
+    color: var(--dp-text-inverse);
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+}
+
+.datapipe-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 12px;
+}
+
+.datapipe-sidebar-item {
+    height: 56px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--dp-sidebar-text);
+    border-radius: 0 10px 10px 0;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+
+.datapipe-sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--dp-text-inverse);
+}
+
+.datapipe-sidebar-item.active {
+    color: #ffffff;
+    background: linear-gradient(90deg, var(--dp-sidebar-active-bg), var(--dp-sidebar-active-bg-2));
+    box-shadow: 0 8px 24px rgba(22, 119, 255, 0.32);
+}
+
+.datapipe-sidebar-item.active::after {
+    content: "";
+    width: 3px;
+    height: 28px;
+    margin-left: auto;
+    background: #38bdf8;
+    border-radius: 999px;
+}
+
+.datapipe-sidebar-item .sidebar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    color: inherit;
+}
+
+.datapipe-main {
+    background: var(--dp-bg-app);
+    color: var(--dp-text-primary);
+}
+
+.datapipe-header {
+    height: 96px;
+    background: var(--dp-bg-surface);
+    border-bottom: 1px solid var(--dp-border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 44px;
+}
+
+.datapipe-title {
+    margin: 0;
+    font-size: 30px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--dp-text-primary);
+}
+
+.datapipe-content {
+    padding: 0;
+    overflow: auto;
+    background: var(--dp-bg-app);
+}
+
+.datapipe-breadcrumb {
+    padding: 24px 44px 0;
+    font-size: 16px;
+    color: var(--dp-text-secondary);
+}
+
+.datapipe-breadcrumb a {
+    color: var(--dp-accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.run-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 18px;
+    border-radius: 10px;
+    border: 1px solid var(--dp-border-subtle);
+    background: #ffffff;
+    color: #087a2a;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.run-status-pill::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #08b83e;
+    box-shadow: 0 0 0 4px rgba(8, 184, 62, 0.12);
+}
+
+.pipeline-card {
+    margin: 16px 44px 44px;
+    background: var(--dp-bg-surface);
+    border: 1px solid var(--dp-border-subtle);
+    border-radius: 14px;
+    box-shadow:
+        0 1px 2px rgba(16, 24, 40, 0.06),
+        0 12px 32px rgba(16, 24, 40, 0.08);
+    overflow: hidden;
+}
+
+.pipeline-card-header {
+    height: 76px;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--dp-border-subtle);
+}
+
+.pipeline-card-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--dp-text-primary);
+}
+
+.pipeline-card-title-icon {
+    color: var(--dp-accent);
+    display: inline-flex;
+}
+
+.pipeline-card-body {
+    position: relative;
+    min-height: 680px;
+    height: calc(100vh - 250px);
+}
+
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.graph-toolbar-button,
+.graph-toolbar-segment {
+    height: 40px;
+    border-radius: 9px;
+    border: 1px solid var(--dp-border-subtle);
+    background: #ffffff;
+    color: #18324f;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 650;
+    font-size: 14px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    cursor: pointer;
+}
+
+.graph-toolbar-button {
+    width: 44px;
+    padding: 0;
+}
+
+.graph-toolbar-segment {
+    padding: 0 14px;
+    gap: 10px;
+}
+
+.graph-toolbar-button:hover,
+.graph-toolbar-segment:hover {
+    border-color: #b6c6db;
+    background: #f8fbff;
+}
+
+.graph-toolbar-floating {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 20;
+}
