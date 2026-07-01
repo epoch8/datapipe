@@ -103,6 +103,7 @@ export function animateNodeVisualOpacity(
     toOpacity: number,
     duration = ANIMATION_MS,
     onComplete?: () => void,
+    delay = 0,
 ): void {
     const node = cy.getElementById(nodeId);
     if (node.empty()) {
@@ -112,10 +113,15 @@ export function animateNodeVisualOpacity(
 
     const nodeEl = node as Cytoscape.NodeSingular;
     const usesHtml = nodeUsesHtmlLabel(nodeEl);
-    const start = performance.now();
+    const startAt = performance.now() + delay;
 
     const tick = (now: number) => {
-        const t = Math.min(1, (now - start) / duration);
+        if (now < startAt) {
+            trackRaf(cy, requestAnimationFrame(tick));
+            return;
+        }
+
+        const t = Math.min(1, (now - startAt) / duration);
         const eased = easeInOutCubic(t);
         const opacity = fromOpacity + (toOpacity - fromOpacity) * eased;
 
@@ -133,14 +139,12 @@ export function animateNodeVisualOpacity(
         }
 
         if (t < 1) {
-            const rafId = requestAnimationFrame(tick);
-            trackRaf(cy, rafId);
+            trackRaf(cy, requestAnimationFrame(tick));
         } else {
             setNodeVisualOpacity(cy, nodeEl, toOpacity);
             onComplete?.();
         }
     };
 
-    const rafId = requestAnimationFrame(tick);
-    trackRaf(cy, rafId);
+    trackRaf(cy, requestAnimationFrame(tick));
 }

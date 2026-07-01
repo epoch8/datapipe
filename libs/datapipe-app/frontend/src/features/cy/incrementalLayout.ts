@@ -665,6 +665,11 @@ export function stopLayoutAnimations(cy: Cytoscape.Core): void {
     cy.stop(true, true);
 }
 
+export type OpacityTiming = {
+    delay?: number;
+    duration?: number;
+};
+
 export type LayoutTransitionOptions = {
     fadeIn?: Set<string>;
     fadeOut?: Set<string>;
@@ -673,8 +678,19 @@ export type LayoutTransitionOptions = {
     /** Edge keys (`source->target`) to crossfade during the transition. */
     edgeFadeIn?: Set<string>;
     edgeFadeOut?: Set<string>;
+    fadeInTiming?: OpacityTiming | Map<string, OpacityTiming>;
+    fadeOutTiming?: OpacityTiming | Map<string, OpacityTiming>;
     onComplete?: () => void;
 };
+
+function resolveOpacityTiming(
+    id: string,
+    timing?: OpacityTiming | Map<string, OpacityTiming>,
+): OpacityTiming {
+    if (!timing) return {};
+    if (timing instanceof Map) return timing.get(id) ?? {};
+    return timing;
+}
 
 export function animateLayoutTransition(
     cy: Cytoscape.Core,
@@ -877,10 +893,22 @@ export function animateLayoutTransition(
         }
 
         if (isFadeIn || isFadeOut) {
-            animateNodeVisualOpacity(cy, id, fromOpacity, toOpacity, ANIMATION_MS, () => {
-                opacityDone = true;
-                maybeFinish();
-            });
+            const timing = resolveOpacityTiming(
+                id,
+                isFadeIn ? options?.fadeInTiming : options?.fadeOutTiming,
+            );
+            animateNodeVisualOpacity(
+                cy,
+                id,
+                fromOpacity,
+                toOpacity,
+                timing.duration ?? ANIMATION_MS,
+                () => {
+                    opacityDone = true;
+                    maybeFinish();
+                },
+                timing.delay ?? 0,
+            );
         } else if (move && !isMorphingNativeGroup) {
             setNodeVisualOpacity(cy, nodeEl, 1);
         }

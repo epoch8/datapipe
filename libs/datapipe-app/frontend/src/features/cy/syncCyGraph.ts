@@ -1,6 +1,11 @@
 import Cytoscape from "cytoscape";
 import { GraphData, MetaNode } from "../../types";
 import {
+    COLLAPSE_GROUP_FADE_DELAY,
+    COLLAPSE_GROUP_FADE_MS,
+    COLLAPSE_INNER_FADE_MS,
+} from "./animationConstants";
+import {
     ANIMATION_MS,
     animateLayoutTransition,
     applyLayoutToCy,
@@ -14,7 +19,7 @@ import {
     GraphLayout,
     stopLayoutAnimations,
 } from "./incrementalLayout";
-import { setNodeVisualOpacity, animateNodeVisualOpacity, ensureGroupExpandedVisible } from "./htmlLabelOpacity";
+import { setNodeVisualOpacity, ensureGroupExpandedVisible } from "./htmlLabelOpacity";
 import {
     addEdgesFromTarget,
     computeEdgeDiff,
@@ -324,32 +329,30 @@ export function syncCyGraph(
         structureKeyStore.set(cy, currentStructureKey);
         const edgeDiff = computeEdgeDiff(cy, target);
         addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
-        const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
-        const fromEntry = previousLayout.get(anchorGroup);
-        const toEntry = collapsedLayout.get(anchorGroup);
-        if (fromEntry && toEntry) {
-            morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+
+        // Switch to collapsed HTML group immediately (opacity 0) so it can crossfade
+        // with inner sub-steps instead of appearing after the blue frame disappears.
+        applyNodeDiff(cy, target, false);
+        const groupEle = cy.getElementById(anchorGroup);
+        if (!groupEle.empty()) {
+            const groupNode = groupEle as Cytoscape.NodeSingular;
+            setNodeVisualOpacity(cy, groupNode, 0);
+            groupNode.data(
+                "labelRefresh",
+                ((groupNode.data("labelRefresh") as number) ?? 0) + 1,
+            );
         }
+
         animateLayoutTransition(cy, fromCenters, collapsedLayout, {
             fadeOut: innerIds,
-            morphBoxes,
+            fadeIn: new Set([anchorGroup]),
+            fadeOutTiming: { duration: COLLAPSE_INNER_FADE_MS },
+            fadeInTiming: { delay: COLLAPSE_GROUP_FADE_DELAY, duration: COLLAPSE_GROUP_FADE_MS },
             edgeFadeIn: new Set(edgeDiff.toAdd),
             edgeFadeOut: new Set(edgeDiff.toRemove),
             onComplete: () => {
                 applyElementDiff(cy, target);
-                cy.nodes().forEach((node) => {
-                    const n = node as Cytoscape.NodeSingular;
-                    if (node.id() === anchorGroup) {
-                        setNodeVisualOpacity(cy, n, 0);
-                    } else {
-                        setNodeVisualOpacity(cy, n, 1);
-                    }
-                });
-                requestAnimationFrame(() => {
-                    animateNodeVisualOpacity(cy, anchorGroup, 0, 1, 180, () => {
-                        scheduleLayoutComplete(cy, options);
-                    });
-                });
+                scheduleLayoutComplete(cy, options);
             },
         });
         return;
