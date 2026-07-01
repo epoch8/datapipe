@@ -9,7 +9,9 @@ description: >
 
 This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR images. The COCO seed sample is just a smoke-test; the real goal is your own images — set the knobs below first.
 
-**Before starting, if not already provided, ask the user:** demo or your own data? bring up the `docker compose` services or reuse existing? GPU available? per-tag scenario metrics ([tags-addon.md](tags-addon.md))? — ask only what's unresolved, then do only what's needed.
+**Ask first — don't assume (only the unresolved):** demo or your own data? bring up the bundled `docker compose` services or reuse existing? **which Postgres + which database** for `DB_URL` — never point it at an existing DB without confirming; reuse an existing venv / `uv` env or create a fresh one? GPU? per-tag scenario metrics ([tags-addon.md](tags-addon.md))? surface stage logs or run quiet?
+
+**How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with logs surfaced (e.g. `datapipe run 2>&1 | tail -60`) unless told otherwise, and after each stage say what you did and what changed — don't run the whole pipeline silently.
 
 ## Run on YOUR data
 - **Align your class everywhere** (mismatch → 0 useful results): `LABEL_CONFIG` names == `CLASSES_TO_KEEP`. Detection also `COCO_CLASSES`/`DETECTION_MODEL_CONFIG`; keypoints also `KEYPOINTS_LABELS` (order matters), `COCO_PERSON_KEYPOINT_FLIP_IDX`, `KEYPOINTS_MODEL_CONFIG`.

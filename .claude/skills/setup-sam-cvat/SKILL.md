@@ -9,7 +9,9 @@ description: >
 
 This skill = run SAM3→CVAT pre-annotation on YOUR images. The HZMD/cats-n-dogs demo is just a smoke-test; the real goal is your own images — set the knobs below first.
 
-**Before starting, if not already provided, ask the user:** demo (cats-n-dogs) or your own data? external Postgres + CVAT ready or provision/point at them? GPU >8 GB? — ask only what's unresolved, then do only what's needed.
+**Ask first — don't assume (only the unresolved):** demo (cats-n-dogs) or your own data? **which Postgres + which database** for `DB_URL` — never point it at an existing DB or drop in a default without confirming; external CVAT ready or provision/point at it? reuse an existing venv / `uv` env or create a fresh one? GPU >8 GB? surface stage logs or run quiet?
+
+**How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with logs surfaced (e.g. `datapipe run 2>&1 | tail -60`) unless told otherwise, and after each stage say what you did and what changed — don't run the whole pipeline silently.
 
 ## Run on YOUR data
 - **Align across all three:** `SAM_TEXT_PROMPT` == the CVAT labels (`CVAT_BOX_LABEL` / `CVAT_POLYGON_LABEL`) == `HF_DATASET_LABEL` must all mean the same class — a mismatch runs clean but yields 0 useful results.

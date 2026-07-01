@@ -9,7 +9,9 @@ description: >
 
 This skill = run the DINO→FiftyOne embedder on YOUR images. The FiftyOne-zoo dataset (caltech101) is just a smoke-test; the real goal is your own images — set the knobs below first.
 
-**Before starting, if not already provided, ask the user:** demo (zoo) or your own data? external Postgres up or provision it? GPU? — ask only what's unresolved, then do only what's needed.
+**Ask first — don't assume (only the unresolved):** demo (zoo) or your own data? **which Postgres + which database** for `DB_URL` — never point it at an existing DB or drop in a `localhost` default without confirming; reuse an existing venv / `uv` env or create a fresh one? GPU? surface stage logs or run quiet?
+
+**How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with logs surfaced (e.g. `datapipe run 2>&1 | tail -60`) unless told otherwise, and after each stage say what you did and what changed — don't run the whole pipeline silently.
 
 ## Run on YOUR data
 - **Align `LABELS_JSON` keys to the file stem** (optional) — a mismatch silently yields an unlabeled
