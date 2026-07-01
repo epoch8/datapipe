@@ -66,3 +66,35 @@ GROUP BY 1,2,3;
   hang (the process sits in `Sl`/`Dl`).
 - **Don't carve up `image__subset`** to fake a "scenario" — the tag IS the slice; slice metrics by the
   tag and keep the split full, otherwise old and new models get measured on different holdouts.
+
+## Demo scenario — how to reproduce (for an agent)
+
+Goal: show that a model scores near-0 on a tagged scenario and, after the tagged images are added to
+training, the metric on that scenario rises. Steps to recreate it end-to-end:
+
+1. **Base data.** Seed a non-trivial cat/dog set (not the 10-image smoke default):
+   `uv run python scripts/seed_sample_data.py --detection-limit <N> --keypoints-limit 0`. Images are
+   downloaded from COCO — needs outbound internet; on a restricted node, fetch them elsewhere and
+   upload to MinIO. Read-only `/home` → set `DATAPIPE_CACHE_DIR` and `UV_*` under `/tmp`.
+2. **Build the scenario.** Take a subset of the already-labelled cat/dog images, make **darkened
+   copies** (gamma ≈ 0.10 — 0.25 is too mild to actually stump the model), upload them, and **inherit
+   the GT boxes/labels from each source image** (identical pixel size → identical boxes, so no
+   annotation). Insert one `tag` row (e.g. `night`) and one `image__tag` row per darkened image; split
+   them ~¾ train / ¼ val.
+3. **Baseline A — scenario NOT in training.** Keep the scenario's val images in `image__subset` as
+   `val`, but exclude its train images from `train`. Train through the repo's train flow → A scores
+   near-0 on the tag.
+4. **Model B — scenario IN training.** Add the scenario's train images to `image__subset` `train`, then
+   retrain a fresh model. (Freeze is delta-gated: if it no-ops, bump those images' GT `update_ts` so it
+   re-cuts a dataset.)
+5. **Metrics.** Compute per-image TP/FP/FN on val (predict, match GT at IoU≥0.5 per class), join
+   `image__tag`, and aggregate by `(detection_model_id, tag_id, subset_id)` into `tag_metrics`.
+6. **Compare.** Read `tag_metrics` rows for `model=A` vs `model=B` at the **holdout** subset — B is
+   higher. The e2e split yields only `train`/`val`, so the holdout is `val` (include `test` too if your
+   split has one); ignore the `train` row (a model scores high on its own training data). For a visual,
+   open FiftyOne filtered to the tag and show B detecting where A is empty.
+
+**Evaluate on the trained (final-epoch) weights.** On a small validation set the pipeline's
+"best epoch" selection latches onto an early, noisy metric peak and can publish an under-trained
+checkpoint that predicts nothing — use the final weights when computing the demo metrics. If the
+built-in metrics step errors on the injected data, compute the per-image metrics directly as in step 5.
