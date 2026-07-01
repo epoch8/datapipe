@@ -12,6 +12,9 @@
     box-sizing: border-box;
     overflow: hidden;
     padding: 0 6px;
+    border-radius: 8px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.12);
+    transition: none;
 }
 
 .node-core-step {
@@ -19,10 +22,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
+    background-color: #90C8AC;
 }
 
 .node-core-table {
     padding-top: 2px;
+    background-color: #FFC18E;
 }
 
 .icon {
@@ -226,11 +231,17 @@
     pointer-events: none;
     box-sizing: border-box;
     padding: 4px;
+    border-radius: 8px;
+    background-color: #e6f4ff;
+    border: 2px dashed #69b1ff;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.12);
+    transition: none;
 }
 
 .node-core-subgraph {
     justify-content: center;
     padding: 2px 5px;
+    border: 1px solid #bfbfbf;
 }
 
 .node-core-subgraph .name {

@@ -134,24 +134,27 @@ function pruneDisconnectedTables(
 }
 
 /**
- * Turn each expanded meta into a Cytoscape compound parent that wraps its sub-steps.
- * Transforms and group-internal tables become children of the container; tables that
- * also connect to nodes outside the group (boundary tables) stay external so the
- * container does not swallow shared data and collapsing leaves no orphans.
+ * Mark expanded meta subgraph members via metaGroup; the blue frame is a flat background node.
  */
 function assignCompoundParents(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     edges: Set<Cytoscape.EdgeDataDefinition>,
     expandedGroups: Set<string>,
+    data: GraphData,
 ) {
     Array.from(expandedGroups).forEach((group) => {
         const memberIds = new Set<string>();
-        nodes.forEach((data, id) => {
-            if (data.metaGroup === group) memberIds.add(id);
+        nodes.forEach((nodeData, id) => {
+            if (nodeData.metaGroup === group) memberIds.add(id);
         });
         if (!memberIds.size) return;
 
-        const boundaryNodes = new Set<string>();
+        const metaPipe = data.pipeline.find(
+            (pipe) => pipe.type === "meta" && pipe.name === group,
+        );
+        const metaOutputs = new Set(metaPipe?.type === "meta" ? metaPipe.outputs ?? [] : []);
+
+        const boundaryNodes = new Set<string>(metaOutputs);
         edges.forEach((edge) => {
             const source = edge.source as string;
             const target = edge.target as string;
@@ -165,14 +168,14 @@ function assignCompoundParents(
 
         let nested = 0;
         memberIds.forEach((id) => {
-            const data = nodes.get(id);
-            if (!data) return;
-            if (data.type === "table" && boundaryNodes.has(id)) {
-                const { metaGroup, ...rest } = data;
+            const nodeData = nodes.get(id);
+            if (!nodeData) return;
+            if (nodeData.type === "table" && boundaryNodes.has(id)) {
+                const { metaGroup, ...rest } = nodeData;
                 nodes.set(id, rest);
                 return;
             }
-            nodes.set(id, { ...data, parent: group });
+            // Keep subgraph members as top-level nodes; the blue frame is visual-only (no compound parent).
             nested += 1;
         });
 
@@ -192,7 +195,7 @@ function reprocessData(data: GraphData, expandedGroups: Set<string> = new Set())
     const edges = new Set<Cytoscape.EdgeDataDefinition>();
     processData(nodes, edges, data, expandedGroups);
     pruneDisconnectedTables(nodes, edges);
-    assignCompoundParents(nodes, edges, expandedGroups);
+    assignCompoundParents(nodes, edges, expandedGroups, data);
     return { nodes, edges };
 }
 

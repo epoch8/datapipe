@@ -1,5 +1,19 @@
 import Cytoscape from "cytoscape";
-import { GraphData } from "../../types";
+import { GraphData, MetaNode } from "../../types";
+import {
+    ANIMATION_MS,
+    animateLayoutTransition,
+    applyLayoutToCy,
+    buildCollapsedLayout,
+    cloneLayout,
+    collapseGroupInLayout,
+    expandGroupInLayout,
+    fitGraphViewport,
+    getInnerNodeIdsFromLayout,
+    GraphLayout,
+    stopLayoutAnimations,
+} from "./incrementalLayout";
+import { setNodeVisualOpacity } from "./htmlLabelOpacity";
 import { reprocessData } from "./process";
 
 export type CyElement = Cytoscape.ElementDefinition;
@@ -11,12 +25,17 @@ export type SyncOptions = {
     rankDir?: "TB" | "LR";
     anchorGroup?: string | null;
     expanding?: boolean;
+    onLayoutComplete?: () => void;
 };
+
+const layoutStore = new WeakMap<Cytoscape.Core, GraphLayout>();
+const layoutTimerStore = new WeakMap<Cytoscape.Core, number>();
+const preExpandStore = new WeakMap<Cytoscape.Core, Map<string, GraphLayout>>();
+const structureKeyStore = new WeakMap<Cytoscape.Core, string>();
 
 function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
     const { nodes, edges } = reprocessData(data, expanded);
     const elements: CyElement[] = Array.from(nodes.entries())
-        // Compound parents must be added before their children.
         .sort(([, a], [, b]) => {
             const aParent = a.type === "group-expanded" ? 0 : 1;
             const bParent = b.type === "group-expanded" ? 0 : 1;
@@ -92,29 +111,93 @@ function applyElementDiff(cy: Cytoscape.Core, target: CyElement[]) {
     });
 }
 
-function runDagre(cy: Cytoscape.Core, rankDir: "TB" | "LR", animate: boolean, fit: boolean) {
-    const layout = cy.layout({
-        name: "dagre",
-        rankDir,
-        ranker: "network-simplex",
-        nodeDimensionsIncludeLabels: true,
-        nodeSep: 44,
-        rankSep: 70,
-        edgeSep: 16,
-        fit,
-        padding: 60,
-        animate,
-        animationDuration: 350,
-        animationEasing: "ease-out-cubic",
-    } as unknown as Cytoscape.LayoutOptions);
-    layout.run();
+function captureCenters(cy: Cytoscape.Core): Map<string, { x: number; y: number }> {
+    const centers = new Map<string, { x: number; y: number }>();
+    cy.nodes().forEach((node) => {
+        centers.set(node.id(), { ...node.position() });
+    });
+    return centers;
+}
+
+function getMetaPipelineOrder(data: GraphData, groupId: string): string[] {
+    const meta = data.pipeline.find(
+        (pipe): pipe is MetaNode => pipe.type === "meta" && pipe.name === groupId,
+    );
+    if (!meta) return [];
+    return meta.graph.pipeline.filter((step) => step.type !== "meta").map((step) => step.name);
+}
+
+function pipelineOrdersFor(data: GraphData, expanded: Set<string>): Map<string, string[]> {
+    const orders = new Map<string, string[]>();
+    expanded.forEach((groupId) => {
+        orders.set(groupId, getMetaPipelineOrder(data, groupId));
+    });
+    return orders;
+}
+
+function getInnerNodeIds(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    groupId: string,
+): Set<string> {
+    const ids = new Set<string>();
+    nodes.forEach((data, id) => {
+        if (data.metaGroup === groupId) ids.add(id);
+    });
+    return ids;
+}
+
+function savePreExpandLayout(cy: Cytoscape.Core, groupId: string, layout: GraphLayout): void {
+    let groups = preExpandStore.get(cy);
+    if (!groups) {
+        groups = new Map();
+        preExpandStore.set(cy, groups);
+    }
+    groups.set(groupId, cloneLayout(layout));
+}
+
+function takePreExpandLayout(cy: Cytoscape.Core, groupId: string): GraphLayout | undefined {
+    const groups = preExpandStore.get(cy);
+    const layout = groups?.get(groupId);
+    groups?.delete(groupId);
+    return layout;
+}
+
+function graphStructureKey(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Iterable<Cytoscape.EdgeDataDefinition>,
+    expanded: Set<string>,
+): string {
+    const nodeIds = Array.from(nodes.keys()).sort();
+    const edgeList = Array.from(edges)
+        .map((edge) => `${edge.source as string}->${edge.target as string}`)
+        .sort();
+    const expandedIds = Array.from(expanded).sort();
+    return JSON.stringify({ nodeIds, edgeList, expandedIds });
+}
+
+function clearLayoutTimer(cy: Cytoscape.Core): void {
+    const prev = layoutTimerStore.get(cy);
+    if (prev != null) {
+        window.clearTimeout(prev);
+        layoutTimerStore.delete(cy);
+    }
+}
+
+function scheduleLayoutComplete(cy: Cytoscape.Core, options: SyncOptions): void {
+    if (!options.onLayoutComplete) return;
+    clearLayoutTimer(cy);
+    const timer = window.setTimeout(() => {
+        layoutTimerStore.delete(cy);
+        if (!cy.destroyed()) {
+            options.onLayoutComplete?.();
+        }
+    }, ANIMATION_MS + 40);
+    layoutTimerStore.set(cy, timer);
 }
 
 /**
- * Re-derive the graph for the current expand/collapse state and lay it out compactly with
- * dagre. Collapsed metas stay as large clickable rectangles; expanding one reflows the graph
- * with a short animation and keeps the toggled group in view, so the overview stays compact
- * and readable instead of reserving the full sub-step area for every collapsed step.
+ * Sync graph elements and apply deterministic incremental layout.
+ * Initial view uses layered DAG; expand/collapse only shifts the affected region.
  */
 export function syncCyGraph(
     cy: Cytoscape.Core,
@@ -124,40 +207,101 @@ export function syncCyGraph(
 ) {
     const rankDir = options.rankDir ?? "TB";
     const target = buildElements(data, expanded);
-    applyElementDiff(cy, target);
+    const { nodes, edges } = reprocessData(data, expanded);
+    const anchorGroup = options.anchorGroup ?? null;
+    const previousLayout = layoutStore.get(cy);
+    const fromCenters = captureCenters(cy);
+    const currentStructureKey = graphStructureKey(nodes, edges, expanded);
+    const previousStructureKey = structureKeyStore.get(cy);
 
-    if (options.mode === "fit" || cy.nodes().empty()) {
-        runDagre(cy, rankDir, false, true);
-        const fitZoom = cy.zoom();
-        cy.minZoom(Math.min(0.05, fitZoom * 0.3));
-        cy.maxZoom(Math.max(2.5, fitZoom * 6));
+    const pipelineOrders = pipelineOrdersFor(data, expanded);
 
-        // A whole pipeline of large nodes can't be read at fit-to-screen. If fitting drops
-        // the zoom below a legible level, start at a readable zoom anchored to the top of the
-        // pipeline instead; the user pans to explore the rest.
-        const READABLE_ZOOM = 0.4;
-        if (fitZoom < READABLE_ZOOM) {
-            const bb = cy.elements().boundingBox();
-            cy.zoom(READABLE_ZOOM);
-            cy.pan({
-                x: cy.width() / 2 - READABLE_ZOOM * (bb.x1 + bb.w / 2),
-                y: 90 - READABLE_ZOOM * bb.y1,
-            });
-        }
+    if (options.mode === "fit" || cy.nodes().empty() || !previousLayout) {
+        stopLayoutAnimations(cy);
+        clearLayoutTimer(cy);
+        applyElementDiff(cy, target);
+        const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+        applyLayoutToCy(cy, nextLayout);
+        layoutStore.set(cy, nextLayout);
+        structureKeyStore.set(cy, currentStructureKey);
+        fitGraphViewport(cy);
+        options.onLayoutComplete?.();
         return;
     }
 
-    runDagre(cy, rankDir, true, false);
-
-    // Keep the toggled group comfortably in view after the reflow.
-    const anchor = options.anchorGroup ? cy.getElementById(options.anchorGroup) : null;
-    if (anchor && anchor.nonempty()) {
-        const focus = options.expanding ? anchor.closedNeighborhood() : anchor;
-        cy.animate(
-            { center: { eles: focus } },
-            { duration: 350, easing: "ease-out-cubic" },
-        );
+    // Periodic refresh: update node data only, keep layout positions intact.
+    if (
+        !anchorGroup &&
+        previousStructureKey === currentStructureKey &&
+        options.mode === "preserve"
+    ) {
+        stopLayoutAnimations(cy);
+        applyElementDiff(cy, target);
+        options.onLayoutComplete?.();
+        return;
     }
+
+    if (anchorGroup && previousLayout.has(anchorGroup)) {
+        stopLayoutAnimations(cy);
+        clearLayoutTimer(cy);
+
+        const workingLayout = cloneLayout(previousLayout);
+
+        if (options.expanding) {
+            savePreExpandLayout(cy, anchorGroup, workingLayout);
+            applyElementDiff(cy, target);
+            const nextLayout = expandGroupInLayout(
+                workingLayout,
+                anchorGroup,
+                nodes,
+                edges,
+                rankDir,
+                pipelineOrders.get(anchorGroup) ?? [],
+            );
+            const innerIds = getInnerNodeIds(nodes, anchorGroup);
+            layoutStore.set(cy, nextLayout);
+            structureKeyStore.set(cy, currentStructureKey);
+            animateLayoutTransition(cy, fromCenters, nextLayout, {
+                fadeIn: innerIds,
+                onComplete: () => scheduleLayoutComplete(cy, options),
+            });
+            return;
+        }
+
+        const innerIds = getInnerNodeIdsFromLayout(previousLayout, anchorGroup);
+        const restored = takePreExpandLayout(cy, anchorGroup);
+        const collapsedLayout = restored
+            ?? collapseGroupInLayout(
+                workingLayout,
+                anchorGroup,
+                nodes,
+                edges,
+                rankDir,
+                innerIds,
+            );
+
+        layoutStore.set(cy, collapsedLayout);
+        structureKeyStore.set(cy, currentStructureKey);
+        animateLayoutTransition(cy, fromCenters, collapsedLayout, {
+            fadeOut: innerIds,
+            onComplete: () => {
+                applyElementDiff(cy, target);
+                cy.nodes().forEach((node) => setNodeVisualOpacity(cy, node, 1));
+                scheduleLayoutComplete(cy, options);
+            },
+        });
+        return;
+    }
+
+    stopLayoutAnimations(cy);
+    clearLayoutTimer(cy);
+    applyElementDiff(cy, target);
+    const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+    layoutStore.set(cy, nextLayout);
+    structureKeyStore.set(cy, currentStructureKey);
+    animateLayoutTransition(cy, fromCenters, nextLayout, {
+        onComplete: () => scheduleLayoutComplete(cy, options),
+    });
 }
 
 export { buildElements };

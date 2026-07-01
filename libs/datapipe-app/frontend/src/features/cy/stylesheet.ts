@@ -52,24 +52,21 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
     {
-        selector: 'node[type = "table"]',
+        selector: 'node[type = "transform"], node[type = "table"], node[type = "group"]',
         style: {
-            backgroundColor: "#FFC18E",
-        },
-    },
-    {
-        selector: 'node[type = "transform"]',
-        style: {
-            backgroundColor: "#90C8AC",
+            "background-opacity": 0,
+            "border-width": 0,
+            ghost: "no",
+            "z-index": 10,
         },
     },
     {
         selector: 'node[type = "group"]',
         style: {
-            backgroundColor: "#e6f4ff",
-            "border-width": 2,
-            "border-color": "#69b1ff",
-            "border-style": "dashed",
+            width: (node: Cytoscape.NodeSingular) =>
+                (node.data("boxW") as number) ?? groupBoxSize(nodeName(node), node.data("child_count") ?? 1).w,
+            height: (node: Cytoscape.NodeSingular) =>
+                (node.data("boxH") as number) ?? groupBoxSize(nodeName(node), node.data("child_count") ?? 1).h,
         },
     },
     {
@@ -77,32 +74,29 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         style: {
             shape: "round-rectangle",
             backgroundColor: "#eef6ff",
-            "background-opacity": 0.55,
-            "border-width": 1.5,
+            "background-opacity": 0.45,
+            "border-width": 2,
             "border-color": "#91caff",
             "border-style": "dashed",
+            width: (node: Cytoscape.NodeSingular) =>
+                (node.data("boxW") as number) ??
+                groupBoxSize(nodeName(node), node.data("child_count") ?? 1).w,
+            height: (node: Cytoscape.NodeSingular) =>
+                (node.data("boxH") as number) ??
+                groupBoxSize(nodeName(node), node.data("child_count") ?? 1).h,
             label: "data(name)",
             "text-valign": "top",
             "text-halign": "center",
             "text-wrap": "wrap",
             "text-max-width": "600px",
-            "font-size": 24,
+            "font-size": 22,
             "font-weight": 700,
             color: "#0958d9",
-            "text-margin-y": -18,
-            padding: "44px",
-            "z-compound-depth": "bottom",
+            "text-margin-y": -14,
+            "z-index": 0,
             ghost: "no",
-        } as any,
-    },
-    {
-        selector: 'node[?metaGroup]',
-        style: {
-            "border-width": 1,
-            "border-color": "#bfbfbf",
-            "border-style": "solid",
-            "background-opacity": 1,
-        },
+            events: "yes",
+        } as Cytoscape.Css.Node,
     },
     {
         selector: "edge",

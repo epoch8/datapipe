@@ -13,6 +13,7 @@ import "./style.css";
 import { displayNodeName, groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
+import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
 import { Alert, AlertProps, Spin } from "antd";
 import { GraphData } from "../../types";
 import type { PipelineGraphProps } from "../../types/pipelineGraph";
@@ -46,59 +47,51 @@ function statusClass(status: string): string {
     return "step-status-unknown";
 }
 
-function refreshNodeLabels(
-    cy: Cytoscape.Core,
-    runStatusRef: React.MutableRefObject<Map<string, string> | undefined>,
-) {
-    // @ts-ignore
-    cy.nodeHtmlLabel([
-        {
-            query: "node",
-            halign: "center",
-            valign: "center",
-            halignBox: "center",
-            valignBox: "center",
-            tpl(data: Cytoscape.NodeDataDefinition) {
-                if (data.type === "group-expanded") {
-                    return "";
-                }
+const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
 
-                const fullName = data.name as string;
-                const metaGroup = data.metaGroup as string | undefined;
-                const isSubgraph = Boolean(metaGroup);
-                const renderName = (lines: string[]) => lines.join("<br>");
+function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, string> | undefined>) {
+    return (data: Cytoscape.NodeDataDefinition) => {
+        if (data.type === "group-expanded") {
+            return "";
+        }
 
-                if (data.type === "group") {
-                    const childCount = data.child_count ?? 0;
-                    const fallback = groupBoxSize(fullName, childCount);
-                    const w = (data.boxW as number) ?? fallback.w;
-                    const h = (data.boxH as number) ?? fallback.h;
-                    return `
-              <div class="node-compound-label node-compound-group" style="width:${w}px;height:${h}px" title="${fullName}">
+        const fullName = data.name as string;
+        const nodeId = (data.id as string) || fullName;
+        const metaGroup = data.metaGroup as string | undefined;
+        const isSubgraph = Boolean(metaGroup);
+        const renderName = (lines: string[]) => lines.join("<br>");
+
+        if (data.type === "group") {
+            const childCount = data.child_count ?? 0;
+            const fallback = groupBoxSize(fullName, childCount);
+            const w = (data.boxW as number) ?? fallback.w;
+            const h = (data.boxH as number) ?? fallback.h;
+            return `
+              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${fullName}">
                   <div class="compound-title">${renderName(fallback.lines)}</div>
                   <div class="compound-hint">${childCount} steps</div>
                   <div class="compound-action">click to expand</div>
               </div>
             `;
-                }
+        }
 
-                const status = resolveNodeStatus(fullName, data, runStatusRef.current);
-                const coreClass = isSubgraph ? "node-core-subgraph" : "";
+        const status = resolveNodeStatus(fullName, data, runStatusRef.current);
+        const coreClass = isSubgraph ? "node-core-subgraph" : "";
 
-                if (data.type === "table") {
-                    const indexes = (data.indexes as string[]) || [];
-                    const { w, h, lines } = tableNodeSize(fullName, indexes, isSubgraph);
-                    const tip = [
-                        fullName,
-                        indexes.length ? `PK: ${indexes.join(", ")}` : "",
-                        data.size != null ? `size: ${data.size}` : "",
-                        data.store_class ? String(data.store_class) : "",
-                        metaGroup ? `in ${metaGroup}` : "",
-                    ]
-                        .filter(Boolean)
-                        .join("\n");
-                    return `
-              <div class="node-core node-core-table ${coreClass}" style="width:${w}px;height:${h}px" title="${tip}">
+        if (data.type === "table") {
+            const indexes = (data.indexes as string[]) || [];
+            const { w, h, lines } = tableNodeSize(fullName, indexes, isSubgraph);
+            const tip = [
+                fullName,
+                indexes.length ? `PK: ${indexes.join(", ")}` : "",
+                data.size != null ? `size: ${data.size}` : "",
+                data.store_class ? String(data.store_class) : "",
+                metaGroup ? `in ${metaGroup}` : "",
+            ]
+                .filter(Boolean)
+                .join("\n");
+            return `
+              <div class="node-core node-core-table ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
                   <div class="icon icon-table"></div>
                   <div class="name">${renderName(lines)}</div>
                   ${
@@ -108,28 +101,56 @@ function refreshNodeLabels(
                   }
               </div>
             `;
-                }
+        }
 
-                const { w, h, lines } = stepNodeSize(fullName, isSubgraph);
-                const tip = [
-                    fullName,
-                    data.transform_type ? String(data.transform_type) : "",
-                    data.total_idx_count != null || data.changed_idx_count != null
-                        ? `changed ${data.changed_idx_count ?? 0} / ${data.total_idx_count ?? 0}`
-                        : "",
-                    metaGroup ? `in ${metaGroup}` : "",
-                ]
-                    .filter(Boolean)
-                    .join("\n");
-                return `
-              <div class="node-core node-core-step ${coreClass}" style="width:${w}px;height:${h}px" title="${tip}">
+        const { w, h, lines } = stepNodeSize(fullName, isSubgraph);
+        const tip = [
+            fullName,
+            data.transform_type ? String(data.transform_type) : "",
+            data.total_idx_count != null || data.changed_idx_count != null
+                ? `changed ${data.changed_idx_count ?? 0} / ${data.total_idx_count ?? 0}`
+                : "",
+            metaGroup ? `in ${metaGroup}` : "",
+        ]
+            .filter(Boolean)
+            .join("\n");
+        return `
+              <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px" title="${tip}">
                   <div class="name">${renderName(lines)}</div>
                   <div class="step-status ${statusClass(status)}">${status}</div>
               </div>
             `;
-            },
+    };
+}
+
+function initNodeLabels(
+    cy: Cytoscape.Core,
+    runStatusRef: React.MutableRefObject<Map<string, string> | undefined>,
+) {
+    if (labelsInitStore.has(cy)) return;
+    labelsInitStore.set(cy, true);
+    initHtmlLabelOpacitySync(cy);
+    // @ts-ignore
+    cy.nodeHtmlLabel([
+        {
+            query: "node",
+            halign: "center",
+            valign: "center",
+            halignBox: "center",
+            valignBox: "center",
+            tpl: buildNodeLabelTpl(runStatusRef),
         },
     ]);
+    cy.one("render", () => {
+        cy.nodes().forEach((node) => setNodeVisualOpacity(cy, node, 1));
+    });
+}
+
+function refreshNodeLabelPositions(cy: Cytoscape.Core) {
+    if (cy.destroyed()) return;
+    cy.nodes().forEach((node) => {
+        node.trigger("position");
+    });
 }
 
 function PipelineGraphView({
@@ -290,11 +311,23 @@ function PipelineGraphView({
             rankDir,
             anchorGroup: anchorGroupRef.current,
             expanding: expandingRef.current,
+            onLayoutComplete: () => refreshNodeLabelPositions(cy),
         });
-        refreshNodeLabels(cy, runStatusRef);
         needFitRef.current = false;
         anchorGroupRef.current = null;
     }, [cy, rawGraph, expandedGroups, loading, rankDir, graphUrl]);
+
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        initNodeLabels(cy, runStatusRef);
+    }, [cy]);
+
+    useEffect(() => {
+        if (!cy || cy.destroyed() || !labelsInitStore.has(cy)) return;
+        cy.nodes().forEach((node) => {
+            node.data("labelRefresh", ((node.data("labelRefresh") as number) ?? 0) + 1);
+        });
+    }, [cy, runStatusByStep]);
 
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
@@ -353,6 +386,7 @@ function PipelineGraphView({
                     cy.off("tap", 'node[type = "group-expanded"]', onTapGroup);
                     // @ts-ignore
                     cy.contextMenus("destroy");
+                    labelsInitStore.delete(cy);
                 }
             } catch {
                 /* cytoscape may already be torn down */

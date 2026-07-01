@@ -1,7 +1,6 @@
 import React from "react";
 import { Card, Typography } from "antd";
 import { Link, useSearchParams } from "react-router-dom";
-import { getRefreshIntervalMs } from "../../api/ops";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 
 const { Text } = Typography;
@@ -27,7 +26,7 @@ export function DebugPage() {
                     stageFilter={stage}
                     height="100%"
                     rankDir="TB"
-                    refreshIntervalMs={getRefreshIntervalMs()}
+                    refreshIntervalMs={0}
                 />
             </Card>
         </div>
