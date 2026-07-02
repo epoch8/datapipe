@@ -5,7 +5,6 @@ import { Overview } from "./features/ops/Overview";
 import { PipelineDetail } from "./features/ops/PipelineDetail";
 import { RunDetail } from "./features/ops/RunDetail";
 import { TrainingDetail } from "./features/ops/TrainingDetail";
-import { TrainingRuns } from "./features/ops/TrainingRuns";
 import { TrainingCompare } from "./features/ops/TrainingCompare";
 import { Help } from "./features/ops/Help";
 import { Settings } from "./features/ops/Settings";
@@ -13,8 +12,15 @@ import { DebugPage } from "./features/ops/DebugPage";
 import { TableDetail } from "./features/ops/TableDetail";
 import { TransformDetail } from "./features/ops/TransformDetail";
 import { MetaStepDetail } from "./features/ops/MetaStepDetail";
+import { Metrics } from "./features/ops/Metrics";
+import { TrainingRuns } from "./features/ops/TrainingRuns";
+import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
+import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
+import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
+import { SqlStudioPage } from "./features/ops/sql/SqlStudioPage";
 import "./App.css";
 import "./operatorLight.css";
+import "./opsPages.css";
 import "antd/dist/antd.css";
 
 function App() {
@@ -23,7 +29,13 @@ function App() {
             <Routes>
                 <Route element={<OpsShell />}>
                     <Route path="/" element={<Overview />} />
-                    <Route path="/metrics" element={<Navigate to="/" replace />} />
+                    <Route path="/metrics" element={<MetricsOverviewPage />} />
+                    <Route path="/pipelines/:id/metrics" element={<MetricsOverviewPage />} />
+                    <Route path="/classes" element={<ClassMetricsPage />} />
+                    <Route path="/pipelines/:id/classes" element={<ClassMetricsPage />} />
+                    <Route path="/training" element={<TrainingRunsPage />} />
+                    <Route path="/pipelines/:id/training" element={<TrainingRunsPage />} />
+                    <Route path="/sql-studio" element={<SqlStudioPage />} />
                     <Route path="/debug" element={<DebugPage />} />
                     <Route path="/help" element={<Help />} />
                     <Route path="/settings" element={<Settings />} />
@@ -31,10 +43,12 @@ function App() {
                     <Route path="/pipelines/:id/tables/:tableName" element={<TableDetail />} />
                     <Route path="/pipelines/:id/transforms/:transformName" element={<TransformDetail />} />
                     <Route path="/pipelines/:id/meta-steps/:stepName" element={<MetaStepDetail />} />
-                    <Route path="/pipelines/:id/training" element={<TrainingRuns />} />
                     <Route path="/training/:runKey" element={<TrainingDetail />} />
                     <Route path="/training/compare" element={<TrainingCompare />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
+                    {/* Legacy wrappers */}
+                    <Route path="/metrics-legacy" element={<Metrics />} />
+                    <Route path="/training-legacy/:id" element={<TrainingRuns />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -9,6 +9,7 @@
     "@types/react": "^18.0.15",
     "@types/react-dom": "^18.0.6",
     "antd": "^4.22.1",
+    "recharts": "^2.15.0",
     "cytoscape-context-menus": "^4.1.0",
     "cytoscape-dagre": "^2.4.0",
     "cytoscape-node-html-label": "^1.2.2",

@@ -139,6 +139,26 @@ class RunRecorder:
                 )
             except Exception:
                 logger.exception("Metrics publisher failed for pipeline %s", self.pipeline_id)
+        try:
+            from datapipe_app.observability.analytics_views import refresh_analytics_views
+            from datapipe_app.observability.training_service import TrainingService
+
+            training_rows = []
+            try:
+                svc = TrainingService(store=self.store, ds=self.ds, catalog=self.catalog)
+                training_rows = [r.model_dump() for r in svc.list_runs(self.pipeline_id, limit=500).rows]
+            except Exception:
+                training_rows = []
+            refresh_analytics_views(
+                self.store.engine,
+                pipeline_id=self.pipeline_id,
+                store=self.store,
+                ds=self.ds,
+                catalog=self.catalog,
+                training_runs=training_rows,
+            )
+        except Exception:
+            logger.exception("Analytics view refresh failed for pipeline %s", self.pipeline_id)
 
     @contextmanager
     def record_steps(

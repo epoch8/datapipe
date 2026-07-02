@@ -130,3 +130,279 @@ export interface SettingsInfo {
     observability_db_connected: boolean;
     version: string;
 }
+
+/* --- ML Observability types --- */
+
+export type TaskType = "classification" | "detection" | "keypoints" | "segmentation" | string;
+
+export interface MetricsRunRow {
+    run_id: string;
+    run_key?: string;
+    pipeline_id: string;
+    model_id: string;
+    model_version?: string;
+    task_type?: TaskType;
+    subset: string;
+    started_at?: string;
+    finished_at?: string;
+    duration_s?: number;
+    status?: string;
+    metrics: Record<string, number | null>;
+    deltas?: Record<string, number | null>;
+    delta_pct?: Record<string, number | null>;
+    tags?: string[];
+}
+
+export interface MetricsRunsResponse {
+    rows: MetricsRunRow[];
+    total: number;
+    available_filters: {
+        subsets: string[];
+        models: string[];
+        tags: string[];
+        metrics: string[];
+    };
+}
+
+export interface KpiItem {
+    key: string;
+    label: string;
+    value: number | string | null;
+    delta?: number | null;
+    delta_pct?: number | null;
+    trend?: { x: string; y: number | null }[];
+    format?: "float" | "percent" | "integer" | "string";
+    higher_is_better?: boolean;
+    subtitle?: string;
+}
+
+export interface AnomalyItem {
+    severity: "info" | "warning" | "critical";
+    metric: string;
+    title: string;
+    description: string;
+    run_id?: string;
+    value?: number | null;
+    expected?: number | null;
+    delta?: number | null;
+}
+
+export interface MetricsSummaryResponse {
+    pipeline_id: string;
+    primary_metric: string;
+    latest_run?: MetricsRunRow;
+    best_run?: MetricsRunRow;
+    previous_run?: MetricsRunRow;
+    kpis: KpiItem[];
+    anomalies: AnomalyItem[];
+    has_metrics?: boolean;
+}
+
+export interface MetricsTimeseriesResponse {
+    series: {
+        key: string;
+        label: string;
+        metric: string;
+        subset?: string;
+        model_id?: string;
+        points: { x: string; y: number | null; run_id?: string }[];
+    }[];
+}
+
+export interface ClassMetricRow {
+    label: string;
+    class_id?: string | number;
+    images_support?: number;
+    support?: number;
+    TP?: number;
+    FP?: number;
+    FN?: number;
+    precision?: number | null;
+    recall?: number | null;
+    f1_score?: number | null;
+    iou_mean?: number | null;
+    mAP50?: number | null;
+    mAP50_95?: number | null;
+    pose_P?: number | null;
+    pose_R?: number | null;
+    pose_mAP50?: number | null;
+    pose_mAP50_95?: number | null;
+    delta?: Record<string, number | null>;
+    trend?: Record<string, { x: string; y: number | null }[]>;
+}
+
+export interface ClassMetricsResponse {
+    rows: ClassMetricRow[];
+    total: number;
+    summary: {
+        total_classes: number;
+        images_count?: number;
+        macro_f1?: number;
+        weighted_f1?: number;
+        best_classes?: ClassMetricRow[];
+        worst_classes?: ClassMetricRow[];
+    };
+}
+
+export interface ClassMetricDetailResponse {
+    label: string;
+    class_id?: string | number;
+    latest: ClassMetricRow;
+    previous?: ClassMetricRow;
+    trends: { metric: string; points: { x: string; y: number | null; run_id?: string }[] }[];
+    error_breakdown?: {
+        false_negatives?: number;
+        false_positives?: number;
+        localization_errors?: number;
+        confusions?: number;
+        duplicates?: number;
+        other?: number;
+    };
+    confusion_top?: { actual_label: string; predicted_label: string; count: number }[];
+    gallery_url?: string;
+}
+
+export interface TrainingRunRow {
+    run_key: string;
+    run_id?: string;
+    model_id?: string;
+    task_type?: string;
+    framework?: string;
+    dataset?: string;
+    started_at?: string;
+    finished_at?: string;
+    duration_s?: number;
+    status: string;
+    attempt?: number;
+    tags?: string[];
+    best_metric_name?: string;
+    best_metric_value?: number;
+    params?: Record<string, unknown>;
+    artifacts?: Record<string, unknown>;
+    is_best?: boolean;
+}
+
+export interface TrainingRunsResponse {
+    rows: TrainingRunRow[];
+    total: number;
+    filters: {
+        task_types: string[];
+        frameworks: string[];
+        datasets: string[];
+        statuses: string[];
+        tags: string[];
+    };
+}
+
+export interface TrainingCurveMetric {
+    key: string;
+    label: string;
+    group: string;
+    higher_is_better?: boolean;
+}
+
+export interface TrainingCurveChart {
+    metric: string;
+    title: string;
+    y_label?: string;
+    x_label: string;
+    series: {
+        run_key: string;
+        label: string;
+        color_key?: string;
+        points: { x: number | string; y: number | null }[];
+    }[];
+}
+
+export interface TrainingCompareResponse {
+    runs: TrainingRunRow[];
+    available_metrics: TrainingCurveMetric[];
+    charts: TrainingCurveChart[];
+    run_keys?: string[];
+    charts_legacy?: ChartSpec[];
+}
+
+export interface SqlColumn {
+    name: string;
+    type?: string;
+}
+
+export interface SqlQueryRequest {
+    sql: string;
+    limit?: number;
+    offset?: number;
+    datasource?: string;
+}
+
+export interface SqlQueryResponse {
+    columns: SqlColumn[];
+    rows: Record<string, unknown>[];
+    total?: number;
+    execution_ms: number;
+    truncated?: boolean;
+}
+
+export interface SqlSchemaResponse {
+    datasource: string;
+    tables: {
+        name: string;
+        columns: { name: string; type?: string }[];
+        row_count?: number;
+    }[];
+}
+
+export interface UiChartSpec {
+    id: string;
+    title: string;
+    type: "line" | "area" | "bar" | "scatter" | "heatmap";
+    x: { key: string; label: string };
+    y: { key?: string; label: string };
+    series: {
+        key: string;
+        label: string;
+        points: { x: string | number; y: number | null; meta?: Record<string, unknown> }[];
+    }[];
+}
+
+export interface MetricsListParams {
+    subset?: string;
+    model_id?: string;
+    from?: string;
+    to?: string;
+    tags?: string[];
+    search?: string;
+    sort_by?: string;
+    sort_dir?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+}
+
+export interface ClassMetricsParams {
+    run_id?: string;
+    run_key?: string;
+    model_id?: string;
+    subset?: string;
+    task_type?: string;
+    threshold_iou?: number;
+    label_search?: string;
+    sort_by?: string;
+    sort_dir?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+}
+
+export interface TrainingRunsParams {
+    task_type?: string[];
+    framework?: string[];
+    dataset?: string;
+    model_family?: string;
+    status?: string[];
+    tags?: string[];
+    from?: string;
+    to?: string;
+    search?: string;
+    sort_by?: string;
+    sort_dir?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+}

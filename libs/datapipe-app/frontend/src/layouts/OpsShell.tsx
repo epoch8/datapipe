@@ -1,10 +1,17 @@
 import React from "react";
 import {
+    AlertOutlined,
+    BarChartOutlined,
     BugOutlined,
     DashboardOutlined,
+    DatabaseOutlined,
+    ExperimentOutlined,
+    FolderOutlined,
     QuestionCircleOutlined,
     SettingOutlined,
+    TableOutlined,
 } from "@ant-design/icons";
+import { Badge, Button } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -14,13 +21,21 @@ type NavItem = {
     href: string;
     label: string;
     icon: React.ReactNode;
+    badge?: number;
+    disabled?: boolean;
 };
+
+function matchNav(pathname: string, href: string): boolean {
+    if (href === "/") return pathname === "/" || pathname.startsWith("/pipelines/");
+    return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function OpsShell() {
     const location = useLocation();
     const [title, setTitle] = React.useState("Datapipe Ops");
     const [agentMode, setAgentMode] = React.useState(false);
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
+    const [collapsed, setCollapsed] = React.useState(false);
 
     React.useEffect(() => {
         opsApi.getCapabilities().then((c) => {
@@ -34,50 +49,97 @@ export function OpsShell() {
         }).catch(() => undefined);
     }, []);
 
-    const selected = location.pathname.startsWith("/debug")
-        ? "/debug"
-        : location.pathname.startsWith("/help")
-          ? "/help"
-          : location.pathname.startsWith("/settings")
-            ? "/settings"
-            : "/";
-
-    const items: NavItem[] = [
+    const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
+        { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
+        { key: "/classes", href: "/classes", label: "Classes", icon: <TableOutlined /> },
+        { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
+        { key: "/sql-studio", href: "/sql-studio", label: "SQL Studio", icon: <DatabaseOutlined /> },
         ...(agentMode
             ? [{ key: "/debug", href: "/debug", label: "Debug", icon: <BugOutlined /> }]
             : []),
-        { key: "/help", href: "/help", label: "Help", icon: <QuestionCircleOutlined /> },
-        { key: "/settings", href: "/settings", label: "Settings", icon: <SettingOutlined /> },
     ];
 
+    const secondaryItems: NavItem[] = [
+        { key: "/alerts", href: "/alerts", label: "Alerts", icon: <AlertOutlined />, badge: 3, disabled: true },
+        { key: "/artifacts", href: "/artifacts", label: "Artifacts", icon: <FolderOutlined />, disabled: true },
+        { key: "/data", href: "/data", label: "Data", icon: <DatabaseOutlined />, disabled: true },
+        { key: "/settings", href: "/settings", label: "Settings", icon: <SettingOutlined /> },
+        { key: "/help", href: "/help", label: "Help", icon: <QuestionCircleOutlined /> },
+    ];
+
+    const allItems = [...primaryItems, ...secondaryItems];
+    const selected =
+        allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
+
     const isDebug = location.pathname.startsWith("/debug");
+    const isObsPage = ["/metrics", "/classes", "/training", "/sql-studio"].some((p) =>
+        location.pathname.startsWith(p),
+    );
+
+    const renderItem = (item: NavItem) => {
+        if (item.disabled) {
+            return (
+                <div key={item.key} className="datapipe-sidebar-item disabled" style={{ opacity: 0.5, cursor: "not-allowed" }}>
+                    <span className="sidebar-icon">{item.icon}</span>
+                    {!collapsed && (
+                        <>
+                            {item.label}
+                            {item.badge != null && <Badge count={item.badge} style={{ marginLeft: "auto" }} />}
+                        </>
+                    )}
+                </div>
+            );
+        }
+        return (
+            <Link
+                key={item.key}
+                to={item.href}
+                className={`datapipe-sidebar-item${selected === item.key ? " active" : ""}`}
+            >
+                <span className="sidebar-icon">{item.icon}</span>
+                {!collapsed && (
+                    <>
+                        {item.label}
+                        {item.badge != null && <Badge count={item.badge} style={{ marginLeft: "auto" }} />}
+                    </>
+                )}
+            </Link>
+        );
+    };
 
     return (
         <div className="datapipe-shell" style={{ display: "flex", minHeight: "100vh" }}>
-            <aside className="datapipe-sidebar">
+            <aside className={`datapipe-sidebar${collapsed ? " collapsed" : ""}`} style={{ display: "flex", flexDirection: "column" }}>
                 <div className="datapipe-sidebar-logo">Datapipe Ops</div>
                 <nav className="datapipe-sidebar-nav">
-                    {items.map((item) => (
-                        <Link
-                            key={item.key}
-                            to={item.href}
-                            className={`datapipe-sidebar-item${selected === item.key ? " active" : ""}`}
-                        >
-                            <span className="sidebar-icon">{item.icon}</span>
-                            {item.label}
-                        </Link>
-                    ))}
+                    {primaryItems.map(renderItem)}
                 </nav>
+                <div className="ops-sidebar-section">
+                    {!collapsed && <div className="ops-sidebar-section-label">More</div>}
+                    {secondaryItems.map(renderItem)}
+                </div>
+                <div className="datapipe-sidebar-footer">
+                    {!collapsed && pipelineId && (
+                        <div style={{ padding: "0 12px 8px", fontSize: 12, color: "var(--dp-sidebar-text-muted)" }}>
+                            Production · {pipelineId}
+                        </div>
+                    )}
+                    <Button type="text" style={{ color: "var(--dp-sidebar-text)", width: "100%" }} onClick={() => setCollapsed(!collapsed)}>
+                        {collapsed ? "→" : "Collapse"}
+                    </Button>
+                </div>
             </aside>
             <div className="datapipe-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <header className="datapipe-header">
-                    <h1 className="datapipe-title">{title}</h1>
-                    {agentMode && pipelineId && (
-                        <div className="run-status-pill">Running · {pipelineId}</div>
-                    )}
-                </header>
-                <main className={`datapipe-content${isDebug ? "" : " datapipe-content-padded"}`}>
+                {!isObsPage && (
+                    <header className="datapipe-header">
+                        <h1 className="datapipe-title">{title}</h1>
+                        {agentMode && pipelineId && (
+                            <div className="run-status-pill">Running · {pipelineId}</div>
+                        )}
+                    </header>
+                )}
+                <main className={`datapipe-content${isDebug || isObsPage ? " datapipe-content-padded" : " datapipe-content-padded"}`}>
                     <ErrorBoundary key={location.pathname}>
                         <Outlet />
                     </ErrorBoundary>

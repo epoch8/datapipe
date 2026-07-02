@@ -12,7 +12,23 @@ from pydantic import BaseModel, Field
 from datapipe_app.api_v1alpha1 import filter_steps_by_labels
 from datapipe_app.observability.db import ObservabilityStore, utc_now
 from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
+from datapipe_app.observability.analytics_views import ensure_analytics_tables, get_schema, refresh_analytics_views
+from datapipe_app.observability.metrics_service import MetricsService
 from datapipe_app.observability.queries import build_chart_specs, build_overview, build_training_curves
+from datapipe_app.observability.schemas import (
+    ClassMetricDetailResponse,
+    ClassMetricsResponse,
+    MetricsRunsResponse,
+    MetricsSummaryResponse,
+    MetricsTimeseriesResponse,
+    SqlQueryRequest,
+    SqlQueryResponse,
+    SqlSchemaResponse,
+    TrainingCompareResponse,
+    TrainingRunsResponse,
+)
+from datapipe_app.observability.sql_executor import execute_readonly_query
+from datapipe_app.observability.training_service import TrainingService
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry
 from datapipe_app.observability.settings import get_ops_settings
@@ -198,8 +214,148 @@ def make_app(
             "recent_runs": _serialize_recent_runs(runs),
         }
 
-    @app.get("/pipelines/{pipeline_id}/training/runs")
-    def list_training_runs(pipeline_id: str) -> dict[str, Any]:
+    @app.get("/pipelines/{pipeline_id}/training/runs", response_model=TrainingRunsResponse)
+    def list_training_runs_extended(
+        pipeline_id: str,
+        task_type: Optional[str] = None,
+        framework: Optional[str] = None,
+        status: Optional[str] = None,
+        tags: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_dir: str = "desc",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> TrainingRunsResponse:
+        svc = TrainingService(store=store, ds=ds, catalog=catalog)
+        return svc.list_runs(
+            pipeline_id,
+            task_type=task_type.split(",") if task_type else None,
+            framework=framework.split(",") if framework else None,
+            status=status.split(",") if status else None,
+            tags=tags.split(",") if tags else None,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=min(limit, 200),
+            offset=offset,
+        )
+
+    def _metrics_svc() -> MetricsService:
+        return MetricsService(store=store, ds=ds, catalog=catalog)
+
+    @app.get("/pipelines/{pipeline_id}/metrics/runs", response_model=MetricsRunsResponse)
+    def get_metrics_runs(
+        pipeline_id: str,
+        subset: Optional[str] = None,
+        model_id: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_dir: str = "desc",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> MetricsRunsResponse:
+        return _metrics_svc().list_runs(
+            pipeline_id,
+            subset=subset,
+            model_id=model_id,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=min(limit, 200),
+            offset=offset,
+        )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/summary", response_model=MetricsSummaryResponse)
+    def get_pipeline_metrics_summary(
+        pipeline_id: str,
+        subset: Optional[str] = None,
+        model_id: Optional[str] = None,
+        primary_metric: Optional[str] = None,
+    ) -> MetricsSummaryResponse:
+        return _metrics_svc().summary(
+            pipeline_id,
+            subset=subset,
+            model_id=model_id,
+            primary_metric=primary_metric,
+        )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/timeseries", response_model=MetricsTimeseriesResponse)
+    def get_metrics_timeseries(
+        pipeline_id: str,
+        metrics: str,
+        subset: Optional[str] = None,
+        group_by: str = "run",
+    ) -> MetricsTimeseriesResponse:
+        metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
+        subset_list = [s.strip() for s in subset.split(",")] if subset else None
+        return _metrics_svc().timeseries(
+            pipeline_id,
+            metrics=metric_list,
+            subset=subset_list,
+            group_by=group_by,
+        )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/classes", response_model=ClassMetricsResponse)
+    def get_class_metrics(
+        pipeline_id: str,
+        subset: Optional[str] = None,
+        model_id: Optional[str] = None,
+        label_search: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_dir: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ClassMetricsResponse:
+        return _metrics_svc().list_classes(
+            pipeline_id,
+            subset=subset,
+            model_id=model_id,
+            label_search=label_search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=min(limit, 500),
+            offset=offset,
+        )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/classes/{label}", response_model=ClassMetricDetailResponse)
+    def get_class_metric_detail(
+        pipeline_id: str,
+        label: str,
+        subset: Optional[str] = None,
+    ) -> ClassMetricDetailResponse:
+        return _metrics_svc().class_detail(pipeline_id, label, subset=subset)
+
+    @app.post("/sql/query", response_model=SqlQueryResponse)
+    def run_sql_query(req: SqlQueryRequest) -> SqlQueryResponse:
+        ensure_analytics_tables(store.engine)
+        if get_ops_settings().pipeline_id:
+            try:
+                refresh_analytics_views(
+                    store.engine,
+                    pipeline_id=get_ops_settings().pipeline_id or "",
+                    store=store,
+                    ds=ds,
+                    catalog=catalog,
+                )
+            except Exception:
+                pass
+        result = execute_readonly_query(
+            store.engine,
+            req.sql,
+            limit=req.limit or 1000,
+            offset=req.offset or 0,
+        )
+        return SqlQueryResponse(**result)
+
+    @app.get("/sql/schema", response_model=SqlSchemaResponse)
+    def get_sql_schema() -> SqlSchemaResponse:
+        ensure_analytics_tables(store.engine)
+        schema = get_schema(store.engine)
+        return SqlSchemaResponse(**schema)
+
+    @app.get("/pipelines/{pipeline_id}/training/runs/legacy")
+    def list_training_runs_legacy(pipeline_id: str) -> dict[str, Any]:
         enrichments: list[dict[str, Any]] = []
         for enricher in registry.enrichers:
             try:
@@ -378,26 +534,21 @@ def make_app(
         charts = build_training_curves(store, run_key, limit_epochs=limit_epochs)
         return {"run_key": run_key, "charts": charts}
 
-    @app.get("/training/compare")
+    @app.get("/training/compare", response_model=TrainingCompareResponse)
     def compare_training_runs(
         run_keys: str,
         pipeline_id: Optional[str] = None,
-    ) -> dict[str, Any]:
+        metrics: Optional[str] = None,
+    ) -> TrainingCompareResponse:
         keys = [k.strip() for k in run_keys.split(",") if k.strip()]
-        if len(keys) < 2 or len(keys) > 3:
-            raise HTTPException(400, "Provide 2-3 run_keys comma-separated")
-        charts_by_id: dict[str, dict[str, Any]] = {}
-        for key in keys:
-            for chart in build_training_curves(store, key):
-                charts_by_id.setdefault(chart["chart_id"].rsplit(":", 1)[-1], chart)
-                existing = charts_by_id.get(chart["title"], chart)
-                for series in chart.get("series", []):
-                    series = dict(series)
-                    series["key"] = f"{key}:{series['key']}"
-                    series["label"] = f"{key} · {series['label']}"
-                    existing.setdefault("series", []).append(series)
-                charts_by_id[chart["title"]] = existing
-        return {"run_keys": keys, "pipeline_id": pipeline_id, "charts": list(charts_by_id.values())}
+        if len(keys) < 1 or len(keys) > 4:
+            raise HTTPException(400, "Provide 1-4 run_keys comma-separated")
+        metric_list = [m.strip() for m in metrics.split(",") if m.strip()] if metrics else None
+        svc = TrainingService(store=store, ds=ds, catalog=catalog)
+        try:
+            return svc.compare(keys, metrics=metric_list, pipeline_id=pipeline_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     FastAPIInstrumentor.instrument_app(app, excluded_urls="docs")
     return app
