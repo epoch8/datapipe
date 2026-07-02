@@ -72,15 +72,16 @@ GROUP BY 1,2,3;
 Goal: show that a model scores near-0 on a tagged scenario and, after the tagged images are added to
 training, the metric on that scenario rises. Steps to recreate it end-to-end:
 
-1. **Base data.** Seed a non-trivial cat/dog set (not the 10-image smoke default):
-   `uv run python scripts/seed_sample_data.py --detection-limit <N> --keypoints-limit 0`. Images are
-   downloaded from COCO — needs outbound internet; on a restricted node, fetch them elsewhere and
-   upload to MinIO. Read-only `/home` → set `DATAPIPE_CACHE_DIR` and `UV_*` under `/tmp`.
-2. **Build the scenario.** Take a subset of the already-labelled cat/dog images, make **darkened
-   copies** (gamma ≈ 0.10 — 0.25 is too mild to actually stump the model), upload them, and **inherit
-   the GT boxes/labels from each source image** (identical pixel size → identical boxes, so no
-   annotation). Insert one `tag` row (e.g. `night`) and one `image__tag` row per darkened image; split
-   them ~¾ train / ¼ val.
+1. **Base data.** Seed a non-trivial cat/dog set (the 10-image smoke default is too small — the
+   metric on a tiny val is noisy). `scripts/seed_sample_data.py` defaults to `--detection-limit 120`,
+   which is enough for the pipeline's own metrics to work; `--keypoints-limit 0` for a detection-only
+   demo. Images download from COCO — needs outbound internet; on a restricted node fetch them
+   elsewhere and upload to MinIO. Read-only `/home` → set `DATAPIPE_CACHE_DIR` and `UV_*` under `/tmp`.
+2. **Build the scenario.** Take ~40 of the already-labelled cat/dog images, make **darkened copies**
+   (gamma ≈ 0.10 — 0.25 is too mild to actually stump the model), upload them, and **inherit the GT
+   boxes/labels from each source image** (identical pixel size → identical boxes, so no annotation).
+   Insert one `tag` row (e.g. `night`) and one `image__tag` row per darkened image; split them ~30
+   train / ~10 val.
 3. **Baseline A — scenario NOT in training.** Keep the scenario's val images in `image__subset` as
    `val`, but exclude its train images from `train`. Train through the repo's train flow → A scores
    near-0 on the tag.
@@ -94,7 +95,7 @@ training, the metric on that scenario rises. Steps to recreate it end-to-end:
    split has one); ignore the `train` row (a model scores high on its own training data). For a visual,
    open FiftyOne filtered to the tag and show B detecting where A is empty.
 
-**Evaluate on the trained (final-epoch) weights.** On a small validation set the pipeline's
-"best epoch" selection latches onto an early, noisy metric peak and can publish an under-trained
-checkpoint that predicts nothing — use the final weights when computing the demo metrics. If the
-built-in metrics step errors on the injected data, compute the per-image metrics directly as in step 5.
+**Note on checkpoint selection.** With enough data the pipeline's built-in metrics compute fine and the
+tag arc shows up in `detection_model_train__metrics_on_subset` natively. On a *small* validation set the
+"best epoch" pick can latch onto an early, noisy metric peak and publish an under-trained checkpoint — if
+a model looks suspiciously empty, sanity-check against the final-epoch weights.
