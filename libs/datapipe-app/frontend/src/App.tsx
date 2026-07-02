@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { OpsShell } from "./layouts/OpsShell";
 import { Overview } from "./features/ops/Overview";
 import { PipelineDetail } from "./features/ops/PipelineDetail";
@@ -8,7 +8,7 @@ import { TrainingDetail } from "./features/ops/TrainingDetail";
 import { TrainingCompare } from "./features/ops/TrainingCompare";
 import { Help } from "./features/ops/Help";
 import { Settings } from "./features/ops/Settings";
-import { DebugPage } from "./features/ops/DebugPage";
+import { GraphPage } from "./features/ops/GraphPage";
 import { TableDetail } from "./features/ops/TableDetail";
 import { TransformDetail } from "./features/ops/TransformDetail";
 import { MetaStepDetail } from "./features/ops/MetaStepDetail";
@@ -23,6 +23,11 @@ import "./operatorLight.css";
 import "./opsPages.css";
 import "antd/dist/antd.css";
 
+function LegacyDebugRedirect() {
+    const { search } = useLocation();
+    return <Navigate to={`/graph${search}`} replace />;
+}
+
 function App() {
     return (
         <BrowserRouter>
@@ -36,7 +41,8 @@ function App() {
                     <Route path="/training" element={<TrainingRunsPage />} />
                     <Route path="/pipelines/:id/training" element={<TrainingRunsPage />} />
                     <Route path="/sql-studio" element={<SqlStudioPage />} />
-                    <Route path="/debug" element={<DebugPage />} />
+                    <Route path="/graph" element={<GraphPage />} />
+                    <Route path="/debug" element={<LegacyDebugRedirect />} />
                     <Route path="/help" element={<Help />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/pipelines/:id" element={<PipelineDetail />} />

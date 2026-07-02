@@ -3,6 +3,8 @@ export { FilterBar } from "./FilterBar";
 export type { FilterDef, FilterOption } from "./FilterBar";
 export { KpiCard } from "./KpiCard";
 export { SortableDataTable } from "./SortableDataTable";
+export type { SortSpec } from "./SortableDataTable";
+export { parseSortParams, serializeSortParams } from "./sortUtils";
 export { ChartCard } from "./ChartCard";
 export type { UiChartSpec, ChartSeries } from "./ChartCard";
 export { EmptyState } from "./EmptyState";

@@ -1,7 +1,10 @@
 import React from "react";
 import { Pagination, Table } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
-import type { SorterResult } from "antd/es/table/interface";
+import type { SorterResult, SortOrder } from "antd/es/table/interface";
+import type { SortSpec } from "./sortUtils";
+
+export type { SortSpec };
 
 type Props<T extends object> = {
     columns: ColumnsType<T>;
@@ -12,7 +15,9 @@ type Props<T extends object> = {
     page: number;
     pageSize: number;
     onPageChange: (page: number, pageSize: number) => void;
-    onSortChange?: (sortBy: string | undefined, sortDir: "asc" | "desc" | undefined) => void;
+    onSortChange?: (sorts: SortSpec[]) => void;
+    activeSorts?: SortSpec[];
+    multiSort?: boolean;
     rowSelection?: {
         selectedRowKeys: React.Key[];
         onChange: (keys: React.Key[]) => void;
@@ -21,6 +26,22 @@ type Props<T extends object> = {
     extra?: React.ReactNode;
     scroll?: { x?: number | string };
 };
+
+function columnField<T extends object>(col: ColumnsType<T>[number]): string | undefined {
+    if ("children" in col) return undefined;
+    if (col.key != null) return String(col.key);
+    const di = col.dataIndex;
+    if (di == null) return undefined;
+    return Array.isArray(di) ? di.join(".") : String(di);
+}
+
+function sortersFromChange<T extends object>(sorter: SorterResult<T> | SorterResult<T>[]): SortSpec[] {
+    const list = (Array.isArray(sorter) ? sorter : [sorter]).filter((s) => s.field && s.order);
+    return list.map((s) => ({
+        field: String(s.field),
+        direction: s.order === "ascend" ? "asc" : "desc",
+    }));
+}
 
 export function SortableDataTable<T extends object>({
     columns,
@@ -32,6 +53,8 @@ export function SortableDataTable<T extends object>({
     pageSize,
     onPageChange,
     onSortChange,
+    activeSorts,
+    multiSort = false,
     rowSelection,
     title,
     extra,
@@ -43,15 +66,25 @@ export function SortableDataTable<T extends object>({
         sorter: SorterResult<T> | SorterResult<T>[],
     ) => {
         if (!onSortChange) return;
-        const s = Array.isArray(sorter) ? sorter[0] : sorter;
-        if (!s?.field) {
-            onSortChange(undefined, undefined);
-            return;
-        }
-        const field = String(s.field);
-        const order = s.order === "ascend" ? "asc" : s.order === "descend" ? "desc" : undefined;
-        onSortChange(field, order);
+        const specs = sortersFromChange(sorter);
+        onSortChange(multiSort ? specs : specs.slice(0, 1));
     };
+
+    const resolvedColumns = React.useMemo(
+        () =>
+            columns.map((col) => {
+                const field = columnField(col);
+                if (!field || !("sorter" in col) || !col.sorter) return col;
+                const spec = activeSorts?.find((s) => s.field === field);
+                const sortOrder: SortOrder | undefined = spec
+                    ? spec.direction === "asc"
+                        ? "ascend"
+                        : "descend"
+                    : undefined;
+                return { ...col, sortOrder };
+            }),
+        [columns, activeSorts],
+    );
 
     return (
         <div className="ops-data-table">
@@ -62,7 +95,7 @@ export function SortableDataTable<T extends object>({
                 </div>
             )}
             <Table
-                columns={columns}
+                columns={resolvedColumns}
                 dataSource={dataSource}
                 rowKey={rowKey}
                 loading={loading}

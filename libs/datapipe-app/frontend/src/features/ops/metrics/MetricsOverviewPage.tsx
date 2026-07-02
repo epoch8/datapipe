@@ -134,7 +134,13 @@ export function MetricsOverviewPage() {
                             pageSize={pageSize}
                             selectedRunIds={selectedRunIds}
                             onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }}
-                            onSortChange={(sb, sd) => { if (sb) setSortBy(sb); if (sd) setSortDir(sd); }}
+                            onSortChange={(sorts) => {
+                                const first = sorts[0];
+                                if (first) {
+                                    setSortBy(first.field);
+                                    setSortDir(first.direction);
+                                }
+                            }}
                             onSelectionChange={setSelectedRunIds}
                             onCompare={() => navigate(`/training?pipeline=${displayPipeline}`)}
                         />

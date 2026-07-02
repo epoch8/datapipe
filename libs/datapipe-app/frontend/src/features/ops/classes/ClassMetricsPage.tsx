@@ -1,9 +1,9 @@
 import React from "react";
 import { Drawer, Tabs, Tag } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import type { ColumnType, ColumnsType } from "antd/es/table";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
-import { useUrlState } from "../../../hooks/useUrlState";
+import { useUrlNumber, useUrlState } from "../../../hooks/useUrlState";
 import type { ClassMetricDetailResponse, ClassMetricRow, ClassMetricsResponse } from "../../../types/ops";
 import {
     ChartCard,
@@ -15,30 +15,52 @@ import {
     SortableDataTable,
     Sparkline,
     TrendDelta,
+    parseSortParams,
+    serializeSortParams,
+    type SortSpec,
 } from "../shared";
+
+function sortableColumn(
+    priority: number,
+    col: ColumnType<ClassMetricRow>,
+): ColumnType<ClassMetricRow> {
+    const field = col.dataIndex ?? col.key;
+    if (!field) return col;
+    return { ...col, sorter: { multiple: priority } };
+}
 
 export function ClassMetricsPage() {
     const { pipelineId, loading: pidLoading } = usePipelineId();
     const [subset, setSubset] = useUrlState("subset");
     const [modelId, setModelId] = useUrlState("model_id");
     const [labelSearch, setLabelSearch] = useUrlState("label_search");
+    const [sortBy, setSortBy] = useUrlState("sort_by", "f1_score");
+    const [sortDir, setSortDir] = useUrlState("sort_dir", "desc");
+    const [page, setPage] = useUrlNumber("page", 1);
     const [selectedLabel, setSelectedLabel] = React.useState<string | undefined>();
     const [data, setData] = React.useState<ClassMetricsResponse | null>(null);
     const [detail, setDetail] = React.useState<ClassMetricDetailResponse | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [page, setPage] = React.useState(1);
     const pageSize = 25;
 
     const load = React.useCallback(() => {
         if (!pipelineId) return;
         setLoading(true);
         opsApi
-            .getClassMetrics(pipelineId, { subset: subset || undefined, model_id: modelId || undefined, label_search: labelSearch || undefined, limit: pageSize, offset: (page - 1) * pageSize })
+            .getClassMetrics(pipelineId, {
+                subset: subset || undefined,
+                model_id: modelId || undefined,
+                label_search: labelSearch || undefined,
+                sort_by: sortBy || undefined,
+                sort_dir: sortDir as "asc" | "desc",
+                limit: pageSize,
+                offset: (page - 1) * pageSize,
+            })
             .then(setData)
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, subset, modelId, labelSearch, page]);
+    }, [pipelineId, subset, modelId, labelSearch, sortBy, sortDir, page]);
 
     React.useEffect(() => { load(); }, [load]);
 
@@ -47,23 +69,53 @@ export function ClassMetricsPage() {
         opsApi.getClassDetail(pipelineId, selectedLabel, { subset: subset || undefined }).then(setDetail).catch(() => setDetail(null));
     }, [pipelineId, selectedLabel, subset]);
 
+    const activeSorts = React.useMemo(() => parseSortParams(sortBy, sortDir), [sortBy, sortDir]);
+
+    const handleSortChange = React.useCallback((sorts: SortSpec[]) => {
+        const { sort_by, sort_dir } = serializeSortParams(sorts);
+        setSortBy(sort_by || "f1_score");
+        setSortDir(sort_dir || "desc");
+        setPage(1);
+    }, [setSortBy, setSortDir, setPage]);
+
     const columns: ColumnsType<ClassMetricRow> = [
-        { title: "label", dataIndex: "label", sorter: true, render: (v) => <a onClick={() => setSelectedLabel(String(v))}>{v}</a> },
-        { title: "images_support", dataIndex: "images_support", render: (v) => <MetricValue value={v} format="integer" /> },
-        { title: "support", dataIndex: "support", sorter: true, render: (v) => <MetricValue value={v} format="integer" /> },
-        { title: "TP", dataIndex: "TP", render: (v) => <MetricValue value={v} format="integer" /> },
-        { title: "FP", dataIndex: "FP", render: (v) => <MetricValue value={v} format="integer" /> },
-        { title: "FN", dataIndex: "FN", render: (v) => <MetricValue value={v} format="integer" /> },
-        { title: "precision", dataIndex: "precision", sorter: true, render: (v) => <MetricValue value={v} /> },
-        { title: "recall", dataIndex: "recall", sorter: true, render: (v) => <MetricValue value={v} /> },
-        { title: "F1", dataIndex: "f1_score", sorter: true, render: (v, r) => (
-            <span>
-                <MetricValue value={v} />
-                {r.delta?.f1_score != null && <TrendDelta delta={r.delta.f1_score} />}
-            </span>
-        )},
-        { title: "IoU mean", dataIndex: "iou_mean", render: (v) => <MetricValue value={v} /> },
-        { title: "mAP50", dataIndex: "mAP50", render: (v) => <MetricValue value={v} /> },
+        sortableColumn(1, {
+            title: "label",
+            dataIndex: "label",
+            render: (v) => <a onClick={() => setSelectedLabel(String(v))}>{v}</a>,
+        }),
+        sortableColumn(2, {
+            title: "images_support",
+            dataIndex: "images_support",
+            render: (v) => <MetricValue value={v} format="integer" />,
+        }),
+        sortableColumn(3, {
+            title: "support",
+            dataIndex: "support",
+            render: (v) => <MetricValue value={v} format="integer" />,
+        }),
+        sortableColumn(4, { title: "TP", dataIndex: "TP", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(5, { title: "FP", dataIndex: "FP", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(6, { title: "FN", dataIndex: "FN", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(7, { title: "precision", dataIndex: "precision", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(8, { title: "recall", dataIndex: "recall", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(9, {
+            title: "F1",
+            dataIndex: "f1_score",
+            render: (v, r) => (
+                <span>
+                    <MetricValue value={v} />
+                    {r.delta?.f1_score != null && <TrendDelta delta={r.delta.f1_score} />}
+                </span>
+            ),
+        }),
+        sortableColumn(10, { title: "IoU mean", dataIndex: "iou_mean", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(11, { title: "mAP50", dataIndex: "mAP50", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(12, { title: "mAP50-95", dataIndex: "mAP50_95", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(13, { title: "pose P", dataIndex: "pose_P", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(14, { title: "pose R", dataIndex: "pose_R", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(15, { title: "pose mAP50", dataIndex: "pose_mAP50", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(16, { title: "pose mAP50-95", dataIndex: "pose_mAP50_95", render: (v) => <MetricValue value={v} /> }),
         { title: "trend", key: "trend", render: (_, r) => (
             <Sparkline data={Array.from({ length: 8 }, (_, i) => ({ x: i, y: (r.f1_score ?? 0.7) + (i - 4) * 0.01 }))} />
         )},
@@ -119,8 +171,10 @@ export function ClassMetricsPage() {
                             page={page}
                             pageSize={pageSize}
                             onPageChange={(p) => setPage(p)}
-                            onSortChange={() => undefined}
-                            scroll={{ x: 1400 }}
+                            activeSorts={activeSorts}
+                            multiSort
+                            onSortChange={handleSortChange}
+                            scroll={{ x: 1600 }}
                         />
 
                         <div className="ops-chart-grid" style={{ marginTop: 16 }}>

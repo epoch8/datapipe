@@ -2,7 +2,7 @@ import React from "react";
 import { Button, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { MetricsRunRow } from "../../../types/ops";
-import { MetricValue, SortableDataTable, TrendDelta } from "../shared";
+import { MetricValue, SortableDataTable, TrendDelta, type SortSpec } from "../shared";
 
 type Props = {
     rows: MetricsRunRow[];
@@ -12,7 +12,7 @@ type Props = {
     loading?: boolean;
     selectedRunIds: string[];
     onPageChange: (page: number, pageSize: number) => void;
-    onSortChange: (sortBy?: string, sortDir?: "asc" | "desc") => void;
+    onSortChange: (sorts: SortSpec[]) => void;
     onSelectionChange: (ids: string[]) => void;
     onCompare?: () => void;
 };

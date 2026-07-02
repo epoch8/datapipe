@@ -253,6 +253,48 @@ def _sort_runs(runs: list[MetricsRunRow], sort_by: Optional[str], sort_dir: str)
     return sorted(runs, key=key_fn, reverse=reverse)
 
 
+CLASS_STRING_SORT_FIELDS = {"label", "class_id"}
+
+
+def _parse_sort_specs(sort_by: Optional[str], sort_dir: str) -> list[tuple[str, str]]:
+    if not sort_by:
+        return []
+    fields = [f.strip() for f in sort_by.split(",") if f.strip()]
+    dirs = [d.strip().lower() for d in sort_dir.split(",") if d.strip()]
+    if not dirs:
+        dirs = ["desc"]
+    while len(dirs) < len(fields):
+        dirs.append(dirs[-1])
+    return list(zip(fields, dirs[: len(fields)]))
+
+
+def _class_sort_tuple_key(r: ClassMetricRow, specs: list[tuple[str, str]]) -> tuple[Any, ...]:
+    parts: list[Any] = []
+    for field, direction in specs:
+        val = getattr(r, field, None)
+        if val is None:
+            parts.append((1, 0))
+            continue
+        if field in CLASS_STRING_SORT_FIELDS:
+            text = (val or "").lower() if field == "label" else str(val)
+            if direction == "asc":
+                parts.append((0, text))
+            else:
+                parts.append((0, tuple(-ord(c) for c in text)))
+        elif direction == "desc":
+            parts.append((0, -float(val)))
+        else:
+            parts.append((0, val))
+    return tuple(parts)
+
+
+def _sort_class_rows(rows: list[ClassMetricRow], sort_by: Optional[str], sort_dir: str) -> list[ClassMetricRow]:
+    specs = _parse_sort_specs(sort_by, sort_dir)
+    if not specs:
+        return rows
+    return sorted(rows, key=lambda r: _class_sort_tuple_key(r, specs))
+
+
 class MetricsService:
     def __init__(
         self,
@@ -383,9 +425,7 @@ class MetricsService:
         if label_search:
             q = label_search.lower()
             rows = [r for r in rows if q in r.label.lower()]
-        if sort_by:
-            reverse = sort_dir != "asc"
-            rows = sorted(rows, key=lambda r: getattr(r, sort_by, None) or 0, reverse=reverse)
+        rows = _sort_class_rows(rows, sort_by, sort_dir)
         total = len(rows)
         page = rows[offset : offset + limit]
         f1_vals = [r.f1_score for r in rows if r.f1_score is not None]

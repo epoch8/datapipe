@@ -12,7 +12,7 @@ export function Help() {
                 inference → metrics → optional FiftyOne export.
             </Paragraph>
             <Paragraph>
-                <strong>Debug graph</strong> — right-click any node for options: open a detail page,
+                <strong>Pipeline graph</strong> — right-click any node for options: open a detail page,
                 or expand/collapse multi-step pipeline groups. Table names show in full (up to 64
                 characters). Zoom in to read compact sub-graph labels.
             </Paragraph>

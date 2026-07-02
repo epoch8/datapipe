@@ -7,7 +7,7 @@ import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { workflowIconSvg } from "../cy/nodeIcons";
 
-export function DebugPage() {
+export function GraphPage() {
     const [searchParams] = useSearchParams();
     const stage = searchParams.get("stage");
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
@@ -52,7 +52,7 @@ export function DebugPage() {
     return (
         <div>
             <div className="datapipe-breadcrumb">
-                <Link to="/">Overview</Link> / Debug
+                <Link to="/">Overview</Link> / Graph
                 {stage ? ` / ${stage}` : ""}
             </div>
             {error && (

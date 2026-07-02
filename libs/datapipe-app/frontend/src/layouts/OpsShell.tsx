@@ -2,7 +2,7 @@ import React from "react";
 import {
     AlertOutlined,
     BarChartOutlined,
-    BugOutlined,
+    ApartmentOutlined,
     DashboardOutlined,
     DatabaseOutlined,
     ExperimentOutlined,
@@ -56,7 +56,7 @@ export function OpsShell() {
         { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
         { key: "/sql-studio", href: "/sql-studio", label: "SQL Studio", icon: <DatabaseOutlined /> },
         ...(agentMode
-            ? [{ key: "/debug", href: "/debug", label: "Debug", icon: <BugOutlined /> }]
+            ? [{ key: "/graph", href: "/graph", label: "Graph", icon: <ApartmentOutlined /> }]
             : []),
     ];
 
@@ -72,7 +72,7 @@ export function OpsShell() {
     const selected =
         allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
-    const isDebug = location.pathname.startsWith("/debug");
+    const isGraph = location.pathname.startsWith("/graph");
     const isObsPage = ["/metrics", "/classes", "/training", "/sql-studio"].some((p) =>
         location.pathname.startsWith(p),
     );
@@ -139,7 +139,7 @@ export function OpsShell() {
                         )}
                     </header>
                 )}
-                <main className={`datapipe-content${isDebug || isObsPage ? " datapipe-content-padded" : " datapipe-content-padded"}`}>
+                <main className={`datapipe-content${isGraph || isObsPage ? " datapipe-content-padded" : " datapipe-content-padded"}`}>
                     <ErrorBoundary key={location.pathname}>
                         <Outlet />
                     </ErrorBoundary>

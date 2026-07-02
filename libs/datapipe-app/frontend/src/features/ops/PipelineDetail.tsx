@@ -93,7 +93,7 @@ export function PipelineDetail({
                 stages={detail.stages}
                 edges={detail.stage_edges}
                 onStageSelect={(stage) =>
-                    navigate(`/debug?stage=${encodeURIComponent(stage)}`)
+                    navigate(`/graph?stage=${encodeURIComponent(stage)}`)
                 }
                 onStageRun={
                     detail.agent_mode
