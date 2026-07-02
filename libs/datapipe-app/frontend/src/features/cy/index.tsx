@@ -10,8 +10,13 @@ import dagre from "cytoscape-dagre";
 import contextMenus from "cytoscape-context-menus";
 
 import "./style.css";
-import { displayNodeName, groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
+import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 import { groupIconSvg, tableIconSvg, transformIconSvg, slidersHorizontalIconSvg } from "./nodeIcons";
+import { escapeHtml, getTransformPrimaryKeys, renderKeyChipList } from "./nodeKeyChips";
+import { KeyListPopover, type KeyPopoverState } from "./KeyListPopover";
+import { NodeInspectorPanel, type InspectorState } from "./NodeInspectorPanel";
+import { useResizableWidth } from "../../hooks/useResizableWidth";
+import { reprocessData } from "./process";
 import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
@@ -36,37 +41,20 @@ function buildGraphUrl(stageFilter?: string | null): string {
     return `${base}${joiner}stage=${encodeURIComponent(stageFilter)}`;
 }
 
-function resolveNodeStatus(
-    name: string,
-    data: Cytoscape.NodeDataDefinition,
-    runStatusByStep?: Map<string, string>,
-): string {
-    const fromRun = runStatusByStep?.get(name);
-    if (fromRun) return fromRun;
-    if ((data.changed_idx_count ?? 0) > 0) return "pending";
-    return "completed";
-}
-
-function statusClass(status: string): string {
-    if (status === "failed" || status === "error") return "failed";
-    if (status === "running") return "running";
-    if (status === "pending") return "pending";
-    if (status === "completed" || status === "finish") return "completed";
-    return "unknown";
-}
-
 const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
 
 /** Multi-select: clear only on short LMB click on canvas without pointer movement. */
 const BG_CLEAR_MOVE_PX = 5;
 const BG_CLEAR_MAX_MS = 280;
+/** Window during which a DOM click is treated as already handled by the cy tap. */
+const TAP_DEDUPE_MS = 350;
 
 function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
     const opacity = typeof data.htmlLabelOpacity === "number" ? data.htmlLabelOpacity : 1;
     return `opacity:${opacity};`;
 }
 
-function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, string> | undefined>) {
+function buildNodeLabelTpl() {
     return (data: Cytoscape.NodeDataDefinition) => {
         if (data.type === "group-expanded") {
             return "";
@@ -80,95 +68,74 @@ function buildNodeLabelTpl(runStatusRef: React.MutableRefObject<Map<string, stri
 
         if (data.type === "group") {
             const childCount = data.child_count ?? 0;
-            const fallback = groupBoxSize(fullName, childCount);
+            const tpk = getTransformPrimaryKeys(data);
+            const fallback = groupBoxSize(fullName, childCount, tpk);
             const w = (data.boxW as number) ?? fallback.w;
             const h = (data.boxH as number) ?? fallback.h;
             return `
-              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${fullName}">
+              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${escapeHtml(fullName)}">
                   <div class="node-content">
                       <div class="node-icon">${groupIconSvg}</div>
                       <div class="node-body">
                           <div class="node-title">${renderName(fallback.lines)}</div>
-                          <div class="node-group-steps">${childCount} steps</div>
+                          <div class="node-subtitle">${childCount} steps</div>
+                          ${renderKeyChipList(nodeId, "tpk", tpk)}
                       </div>
                   </div>
               </div>
             `;
         }
 
-        const status = resolveNodeStatus(fullName, data, runStatusRef.current);
         const coreClass = isSubgraph ? "node-core-subgraph" : "";
 
         if (data.type === "table") {
-            const indexes = (data.indexes as string[]) || [];
-            const { w, h, lines } = tableNodeSize(fullName, indexes, isSubgraph);
-            const tip = [
-                fullName,
-                indexes.length ? `PK: ${indexes.join(", ")}` : "",
-                data.size != null ? `size: ${data.size}` : "",
-                data.store_class ? String(data.store_class) : "",
-                metaGroup ? `in ${metaGroup}` : "",
-            ]
-                .filter(Boolean)
-                .join("\n");
+            const primaryKeys = (data.indexes as string[]) || [];
+            const tableType = data.store_class ? String(data.store_class) : "TableStoreDB";
+            const { w, h, lines } = tableNodeSize(fullName, primaryKeys, isSubgraph);
             return `
-              <div class="node-core node-core-table ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${tip}">
-                  <div class="node-content">
-                      <div class="node-icon">${tableIconSvg}</div>
-                      <div class="node-body">
-                          <div class="node-title">${renderName(lines)}</div>
-                          ${
-                              !isSubgraph && indexes.length
-                                  ? `<div class="node-meta">PK: ${displayNodeName(indexes.join(", "), 44)}</div>`
-                                  : ""
-                          }
-                          ${
-                              !isSubgraph && data.store_class
-                                  ? `<div class="node-subtitle">${displayNodeName(String(data.store_class), 36)}</div>`
-                                  : ""
-                          }
-                      </div>
+              <div
+                class="node-core node-core-table ${coreClass}"
+                style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
+                data-cy-node-id="${nodeId}"
+                title="${escapeHtml(fullName)}"
+              >
+                <div class="node-content">
+                  <div class="node-icon">${tableIconSvg}</div>
+                  <div class="node-body">
+                    <div class="node-title">${renderName(lines)}</div>
+                    <div class="node-subtitle">${escapeHtml(tableType)}</div>
+                    ${renderKeyChipList(nodeId, "pk", primaryKeys)}
                   </div>
+                </div>
               </div>
             `;
         }
 
-        const { w, h, lines } = stepNodeSize(fullName, isSubgraph);
-        const tip = [
-            fullName,
-            data.transform_type ? String(data.transform_type) : "",
-            data.total_idx_count != null || data.changed_idx_count != null
-                ? `changed ${data.changed_idx_count ?? 0} / ${data.total_idx_count ?? 0}`
-                : "",
-            metaGroup ? `in ${metaGroup}` : "",
-        ]
-            .filter(Boolean)
-            .join("\n");
-        const changed = data.changed_idx_count ?? 0;
-        const total = data.total_idx_count ?? 0;
-        const idxLine = total > 0 || changed > 0 ? `changed ${changed} / ${total}` : "";
-        const transformType = data.transform_type ? String(data.transform_type) : "";
+        const tpk = getTransformPrimaryKeys(data);
+        const { w, h, lines } = stepNodeSize(fullName, isSubgraph, tpk);
+        const transformType = data.transform_type ? String(data.transform_type) : "TransformStep";
 
         return `
-              <div class="node-core node-core-step ${coreClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${tip}">
-                  <div class="node-content">
-                      <div class="node-icon">${transformIconSvg}</div>
-                      <div class="node-body">
-                          <div class="node-title">${renderName(lines)}</div>
-                          ${!isSubgraph && transformType ? `<div class="node-subtitle">${displayNodeName(transformType, 36)}</div>` : ""}
-                          ${idxLine ? `<div class="node-meta">${idxLine}</div>` : ""}
-                          <div class="step-status ${statusClass(status)}">${status}</div>
-                      </div>
-                  </div>
+          <div
+            class="node-core node-core-step ${coreClass}"
+            style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
+            data-cy-node-id="${nodeId}"
+            title="${escapeHtml(fullName)}"
+          >
+            <div class="node-content">
+              <div class="node-icon">${transformIconSvg}</div>
+              <div class="node-body">
+                <div class="node-title">${renderName(lines)}</div>
+                <div class="node-subtitle">${escapeHtml(transformType)}</div>
+                ${renderKeyChipList(nodeId, "tpk", tpk)}
               </div>
-            `;
+            </div>
+          </div>
+        `;
     };
 }
 
-function initNodeLabels(
-    cy: Cytoscape.Core,
-    runStatusRef: React.MutableRefObject<Map<string, string> | undefined>,
-) {
+function initNodeLabels(cy: Cytoscape.Core) {
     if (labelsInitStore.has(cy)) return;
     labelsInitStore.set(cy, true);
     initHtmlLabelOpacitySync(cy);
@@ -181,7 +148,7 @@ function initNodeLabels(
             valign: "center",
             halignBox: "center",
             valignBox: "center",
-            tpl: buildNodeLabelTpl(runStatusRef),
+            tpl: buildNodeLabelTpl(),
         },
     ]);
     cy.one("render", () => {
@@ -214,6 +181,21 @@ function PipelineGraphView({
     const [rawGraph, setRawGraph] = useState<GraphData | null>(null);
     const [pipelineId, setPipelineId] = useState<string | null>(pipelineIdProp ?? null);
 
+    const [keyPopover, setKeyPopover] = useState<KeyPopoverState | null>(null);
+    const [inspector, setInspector] = useState<InspectorState>(null);
+
+    const {
+        width: panelWidth,
+        dragging: panelDragging,
+        onHandleMouseDown: onPanelResize,
+    } = useResizableWidth({
+        initial: 360,
+        min: 260,
+        max: 620,
+        storageKey: "dp.graphInspectorWidth",
+        edge: "left",
+    });
+
     const needFitRef = useRef(true);
     const stageInitKeyRef = useRef<string | null>(null);
     const anchorGroupRef = useRef<string | null>(null);
@@ -230,6 +212,17 @@ function PipelineGraphView({
     const graphUrl = useMemo(() => buildGraphUrl(stageFilter), [stageFilter]);
     const runStatusRef = useRef(runStatusByStep);
     runStatusRef.current = runStatusByStep;
+
+    const graphNodesById = useMemo(() => {
+        if (!rawGraph) return new Map<string, Cytoscape.NodeDataDefinition>();
+        const { nodes } = reprocessData(rawGraph, expandedGroups);
+        return nodes;
+    }, [rawGraph, expandedGroups]);
+
+    const setKeyPopoverRef = useRef(setKeyPopover);
+    const setInspectorRef = useRef(setInspector);
+    setKeyPopoverRef.current = setKeyPopover;
+    setInspectorRef.current = setInspector;
 
     useEffect(() => {
         if (pipelineIdProp) {
@@ -359,7 +352,7 @@ function PipelineGraphView({
 
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
-        initNodeLabels(cy, runStatusRef);
+        initNodeLabels(cy);
     }, [cy]);
 
     useEffect(() => {
@@ -381,7 +374,15 @@ function PipelineGraphView({
 
         const canSelectNode = (node: Cytoscape.NodeSingular): boolean => {
             const type = node.data("type") as string;
-            return type !== "group" && type !== "group-expanded";
+            return type !== "group-expanded";
+        };
+
+        const openInspectorForNode = (node: Cytoscape.NodeSingular) => {
+            setInspectorRef.current({
+                nodeId: node.id(),
+                data: node.data(),
+            });
+            setKeyPopoverRef.current(null);
         };
 
         const handleNodeSelect = (node: Cytoscape.NodeSingular, multi: boolean) => {
@@ -389,14 +390,49 @@ function PipelineGraphView({
             if (multi) {
                 if (node.selected()) {
                     node.unselect();
+                    setInspectorRef.current(null);
                 } else {
                     node.select();
+                    openInspectorForNode(node);
                 }
             } else {
                 cy.$(":selected").unselect();
                 node.select();
+                openInspectorForNode(node);
             }
             focusSelection(cy);
+        };
+
+        const resolveOverflowChip = (target: EventTarget | null): HTMLElement | null => {
+            return (target as Element | null)?.closest?.("[data-key-overflow='true']") as HTMLElement | null;
+        };
+
+        const openKeyPopoverFromChip = (overflow: HTMLElement) => {
+            const nodeId = overflow.getAttribute("data-cy-node-id");
+            const kind = overflow.getAttribute("data-key-kind") as "pk" | "tpk" | null;
+            if (!nodeId || !kind) return;
+
+            const node = cy.getElementById(nodeId);
+            if (node.empty()) return;
+
+            const data = node.data();
+            const keys =
+                kind === "pk"
+                    ? ((data.indexes as string[]) ?? [])
+                    : getTransformPrimaryKeys(data);
+
+            const containerRect = container.getBoundingClientRect();
+            const chipRect = overflow.getBoundingClientRect();
+
+            setKeyPopoverRef.current({
+                nodeId,
+                kind,
+                keys,
+                anchor: {
+                    x: chipRect.left - containerRect.left,
+                    y: chipRect.bottom - containerRect.top + 8,
+                },
+            });
         };
 
         const resolveNodeFromLabel = (target: EventTarget | null): Cytoscape.NodeSingular | null => {
@@ -413,6 +449,17 @@ function PipelineGraphView({
         let bgPress: BgPress | null = null;
         /** Snapshot while multi-select background gesture is active (pan / long-press). */
         let multiSelectSnapshot: string[] | null = null;
+        /**
+         * Node captured at mousedown. The html-label plugin can rebuild a node's
+         * DOM label between mousedown and mouseup (e.g. on hover/selection focus),
+         * which makes the browser dispatch `click` on the container instead of the
+         * label. We fall back to this captured node so fast clicks still select.
+         */
+        let nodePress: { nodeId: string; x: number; y: number } | null = null;
+        /** True while the current press started on an overflow "+N more" chip. */
+        let pressStartedOnOverflow = false;
+        /** Timestamp of the last node selection handled via the cytoscape tap. */
+        let nodeTapHandledAt = 0;
 
         const onDocumentMouseMove = (event: MouseEvent) => {
             if (!bgPress) return;
@@ -452,6 +499,8 @@ function PipelineGraphView({
             if (shouldClear) {
                 cy.$(":selected").unselect();
                 clearFocus(cy);
+                setInspectorRef.current(null);
+                setKeyPopoverRef.current(null);
                 return;
             }
 
@@ -473,7 +522,21 @@ function PipelineGraphView({
 
         const onContainerMouseDown = (event: MouseEvent) => {
             if (event.button !== 0) return;
-            if (resolveNodeFromLabel(event.target)) return;
+            pressStartedOnOverflow = false;
+            nodePress = null;
+            const overflow = resolveOverflowChip(event.target);
+            if (overflow) {
+                pressStartedOnOverflow = true;
+                event.preventDefault();
+                event.stopPropagation();
+                openKeyPopoverFromChip(overflow);
+                return;
+            }
+            const nodeAtDown = resolveNodeFromLabel(event.target);
+            if (nodeAtDown) {
+                nodePress = { nodeId: nodeAtDown.id(), x: event.clientX, y: event.clientY };
+                return;
+            }
             if (!container.contains(event.target as Node)) return;
 
             const selected = cy.nodes(":selected");
@@ -491,18 +554,44 @@ function PipelineGraphView({
             document.addEventListener("mouseup", endBackgroundPress, true);
         };
 
+        // Primary node-selection path: the cytoscape tap reliably fires (pointer
+        // events bubble to the container) even when the html-label DOM is rebuilt
+        // mid-click, which can otherwise suppress the browser "click" event.
         const onCyNodeTap = (event: Cytoscape.EventObject) => {
             const node = event.target as Cytoscape.NodeSingular;
             if (!canSelectNode(node)) return;
             const original = event.originalEvent as MouseEvent | undefined;
-            if (original && resolveNodeFromLabel(original.target)) return;
             if (original?.button != null && original.button !== 0) return;
+            if (pressStartedOnOverflow || resolveOverflowChip(original?.target ?? null)) return;
+            nodeTapHandledAt = performance.now();
             handleNodeSelect(node, Boolean(original?.ctrlKey || original?.metaKey));
         };
 
         const onContainerClick = (event: MouseEvent) => {
             if (event.button !== 0) return;
-            const node = resolveNodeFromLabel(event.target);
+            const overflow = resolveOverflowChip(event.target);
+            if (overflow) {
+                event.preventDefault();
+                event.stopPropagation();
+                nodePress = null;
+                return;
+            }
+            // Already handled by the cytoscape tap for this gesture — avoid a
+            // second (double-toggling) selection call.
+            if (performance.now() - nodeTapHandledAt < TAP_DEDUPE_MS) {
+                nodePress = null;
+                return;
+            }
+            let node = resolveNodeFromLabel(event.target);
+            if (!node && nodePress) {
+                const dx = event.clientX - nodePress.x;
+                const dy = event.clientY - nodePress.y;
+                if (dx * dx + dy * dy <= BG_CLEAR_MOVE_PX * BG_CLEAR_MOVE_PX) {
+                    const candidate = cy.getElementById(nodePress.nodeId);
+                    if (!candidate.empty()) node = candidate as Cytoscape.NodeSingular;
+                }
+            }
+            nodePress = null;
             if (!node) return;
             event.preventDefault();
             event.stopPropagation();
@@ -573,7 +662,7 @@ function PipelineGraphView({
             menuItems: [
                 {
                     id: "open-details",
-                    content: "Open details…",
+                    content: "Open details page…",
                     selector: "node",
                     onClickFunction: (event: { target?: Cytoscape.NodeSingular; cyTarget?: Cytoscape.NodeSingular }) => {
                         const node = event.target || event.cyTarget;
@@ -620,6 +709,34 @@ function PipelineGraphView({
         };
     }, [cy]);
 
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return;
+            if (keyPopover) {
+                setKeyPopover(null);
+                return;
+            }
+            if (inspector) {
+                setInspector(null);
+            }
+        };
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
+    }, [keyPopover, inspector]);
+
+    useEffect(() => {
+        if (!keyPopover) return undefined;
+        const onPointerDown = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            if (target?.closest?.(".node-key-popover") || target?.closest?.("[data-key-overflow='true']")) {
+                return;
+            }
+            setKeyPopover(null);
+        };
+        document.addEventListener("mousedown", onPointerDown, true);
+        return () => document.removeEventListener("mousedown", onPointerDown, true);
+    }, [keyPopover]);
+
     const closeAlert = () => setAlertMsg(null);
 
     const handleZoomIn = useCallback(() => {
@@ -638,7 +755,8 @@ function PipelineGraphView({
     }, [cy]);
 
     return (
-        <div className="pipeline-graph-embedded" style={{ height, position: "relative" }}>
+        <div className="pipeline-graph-shell" style={{ height }}>
+            <div className="pipeline-graph-embedded" style={{ position: "relative" }}>
             {alertMsg && (
                 <Alert
                     message={alertMsg.message}
@@ -675,6 +793,19 @@ function PipelineGraphView({
                 wheelSensitivity={0.2}
                 elements={[]}
                 className="cy-container cy-container-embedded"
+            />
+            {keyPopover && (
+                <KeyListPopover state={keyPopover} onClose={() => setKeyPopover(null)} />
+            )}
+            </div>
+            <NodeInspectorPanel
+                inspector={inspector}
+                graphNodesById={graphNodesById}
+                runStatusByStep={runStatusByStep}
+                width={panelWidth}
+                dragging={panelDragging}
+                onHandleMouseDown={onPanelResize}
+                onClose={() => setInspector(null)}
             />
         </div>
     );

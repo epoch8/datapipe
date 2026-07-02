@@ -73,15 +73,58 @@
 }
 
 .datapipe-sidebar {
-    width: 280px !important;
-    max-width: 280px !important;
-    min-width: 280px !important;
-    flex: 0 0 280px !important;
+    position: relative;
+    width: var(--dp-sidebar-width, 280px) !important;
+    max-width: var(--dp-sidebar-width, 280px) !important;
+    min-width: var(--dp-sidebar-width, 280px) !important;
+    flex: 0 0 var(--dp-sidebar-width, 280px) !important;
     background:
         radial-gradient(circle at top left, rgba(22, 119, 255, 0.22), transparent 34%),
         linear-gradient(180deg, var(--dp-sidebar-bg), var(--dp-sidebar-bg-2)) !important;
     color: var(--dp-sidebar-text);
     border-right: 1px solid var(--dp-sidebar-border) !important;
+}
+
+/* Shared drag handle for resizable side panels */
+.dp-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 50;
+    background: transparent;
+}
+
+.dp-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    transition: background 120ms ease;
+}
+
+.dp-resize-handle:hover::after,
+.dp-resize-handle:active::after {
+    background: var(--dp-accent, #1677ff);
+}
+
+.dp-resize-handle-left {
+    left: -4px;
+}
+
+.dp-resize-handle-left::after {
+    left: 4px;
+}
+
+.dp-resize-handle-right {
+    right: -4px;
+}
+
+.dp-resize-handle-right::after {
+    right: 4px;
 }
 
 .datapipe-sidebar-logo {

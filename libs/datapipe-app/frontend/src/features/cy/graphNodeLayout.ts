@@ -3,11 +3,12 @@ export const TABLE_NAME_MAX_LEN = 64;
 export const NODE_MAX_LINES = 3;
 
 export const graphNodeDimensions = {
-    table: { width: 230, height: 72 },
-    transform: { width: 250, height: 92 },
-    groupCollapsed: { width: 250, height: 82 },
-    compactTable: { width: 190, height: 58 },
-    compactTransform: { width: 210, height: 72 },
+    table: { width: 260, height: 98, heightTwoRows: 122 },
+    transform: { width: 300, height: 112, heightTwoRows: 134 },
+    groupCollapsed: { width: 300, height: 104, heightTwoRows: 126 },
+    compactTable: { width: 210, height: 68 },
+    compactTransform: { width: 230, height: 72 },
+    compactGroup: { width: 230, height: 72 },
     horizontalGap: 58,
     verticalGap: 68,
 } as const;
@@ -107,34 +108,79 @@ function sizeFor(name: string, spec: SizeSpec, extraLines = 0): NodeSize {
     const h = clamp(
         spec.padTop + lines.length * spec.lineH + extraLines * spec.lineH + spec.extraH + spec.padBottom,
         spec.minW === STEP_NORMAL.minW ? graphNodeDimensions.transform.height : graphNodeDimensions.table.height,
-        spec.minW === STEP_NORMAL.minW ? 120 : 96,
+        spec.minW === STEP_NORMAL.minW ? 140 : 130,
     );
     return { w, h, lines };
 }
 
-export function stepNodeSize(name: string, compact: boolean): NodeSize {
-    const base = sizeFor(name, compact ? STEP_COMPACT : STEP_NORMAL);
-    const target = compact ? graphNodeDimensions.compactTransform : graphNodeDimensions.transform;
-    return { ...base, w: Math.max(base.w, target.width), h: Math.max(base.h, target.height) };
+export function keyRowCount(keys: string[]): 0 | 1 | 2 {
+    if (!keys.length) return 0;
+    if (keys.length <= 3) return 1;
+    if (keys.length <= 6) return 2;
+    return 1;
+}
+
+export function stepNodeSize(name: string, compact: boolean, tpk: string[] = []): NodeSize {
+    if (compact) {
+        return {
+            ...sizeFor(name, STEP_COMPACT),
+            w: graphNodeDimensions.compactTransform.width,
+            h: graphNodeDimensions.compactTransform.height,
+        };
+    }
+
+    const rows = keyRowCount(tpk);
+    const base = sizeFor(name, STEP_NORMAL, rows === 2 ? 1 : 0);
+    const targetHeight =
+        rows === 2
+            ? graphNodeDimensions.transform.heightTwoRows
+            : graphNodeDimensions.transform.height;
+
+    return {
+        ...base,
+        w: Math.max(base.w, graphNodeDimensions.transform.width),
+        h: Math.max(base.h, targetHeight + (rows === 0 ? 0 : 0)),
+    };
 }
 
 export function tableNodeSize(name: string, indexes: string[] = [], compact: boolean): NodeSize {
     const trimmed = name.slice(0, TABLE_NAME_MAX_LEN);
-    const hasIndexes = !compact && indexes.length > 0;
-    const base = sizeFor(trimmed, compact ? TABLE_COMPACT : TABLE_NORMAL, hasIndexes ? 1 : 0);
-    const target = compact ? graphNodeDimensions.compactTable : graphNodeDimensions.table;
-    const h = Math.max(base.h, target.height + (hasIndexes ? 10 : 0));
-    return { ...base, w: Math.max(base.w, target.width), h };
+    if (compact) {
+        return {
+            ...sizeFor(trimmed, TABLE_COMPACT),
+            w: graphNodeDimensions.compactTable.width,
+            h: graphNodeDimensions.compactTable.height,
+        };
+    }
+
+    const rows = keyRowCount(indexes);
+    const base = sizeFor(trimmed, TABLE_NORMAL, rows === 2 ? 1 : 0);
+    const targetHeight =
+        rows === 2
+            ? graphNodeDimensions.table.heightTwoRows
+            : graphNodeDimensions.table.height;
+
+    return {
+        ...base,
+        w: Math.max(base.w, graphNodeDimensions.table.width),
+        h: Math.max(base.h, targetHeight),
+    };
 }
 
 export const GROUP_MIN_WIDTH = graphNodeDimensions.groupCollapsed.width;
 export const GROUP_MAX_WIDTH = 320;
 export const GROUP_MIN_HEIGHT = graphNodeDimensions.groupCollapsed.height;
-export const GROUP_MAX_HEIGHT = 140;
+export const GROUP_MAX_HEIGHT = 150;
 
-export function groupBoxSize(name: string, childCount: number): NodeSize {
+export function groupBoxSize(name: string, childCount: number, tpk: string[] = []): NodeSize {
     const { lines, maxLen } = wrapName(name, 22, 2);
+    const rows = keyRowCount(tpk);
     const w = clamp(Math.max(GROUP_MIN_WIDTH, maxLen * 11 + 56), GROUP_MIN_WIDTH, GROUP_MAX_WIDTH);
-    const h = clamp(Math.max(GROUP_MIN_HEIGHT, lines.length * 14 + 52), GROUP_MIN_HEIGHT, GROUP_MAX_HEIGHT);
+    const baseH = clamp(Math.max(GROUP_MIN_HEIGHT, lines.length * 14 + 52), GROUP_MIN_HEIGHT, GROUP_MAX_HEIGHT);
+    const targetHeight =
+        rows === 2
+            ? graphNodeDimensions.groupCollapsed.heightTwoRows
+            : graphNodeDimensions.groupCollapsed.height;
+    const h = Math.max(baseH, rows > 0 ? targetHeight : GROUP_MIN_HEIGHT);
     return { w, h, lines };
 }

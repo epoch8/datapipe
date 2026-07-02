@@ -33,6 +33,9 @@ interface TransformNode extends BaseNode {
     labels?: string[][];
     transform_type?: string;
     indexes?: string[];
+    transform_primary_keys?: string[];
+    tpk?: string[];
+    primary_keys?: string[];
     total_idx_count?: number;
     changed_idx_count?: number;
 }
@@ -43,6 +46,8 @@ interface MetaNode extends BaseNode {
     inputs?: string[];
     outputs?: string[];
     transform_type?: string;
+    transform_primary_keys?: string[];
+    tpk?: string[];
     labels?: string[][];
 }
 

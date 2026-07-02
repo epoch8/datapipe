@@ -15,6 +15,7 @@ import { Badge, Button } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { useResizableWidth } from "../hooks/useResizableWidth";
 
 type NavItem = {
     key: string;
@@ -36,6 +37,16 @@ export function OpsShell() {
     const [agentMode, setAgentMode] = React.useState(false);
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [collapsed, setCollapsed] = React.useState(false);
+    const {
+        width: sidebarWidth,
+        onHandleMouseDown: onSidebarResize,
+    } = useResizableWidth({
+        initial: 280,
+        min: 200,
+        max: 480,
+        storageKey: "dp.sidebarWidth",
+        edge: "right",
+    });
 
     React.useEffect(() => {
         opsApi.getCapabilities().then((c) => {
@@ -110,7 +121,24 @@ export function OpsShell() {
 
     return (
         <div className="datapipe-shell" style={{ display: "flex", minHeight: "100vh" }}>
-            <aside className={`datapipe-sidebar${collapsed ? " collapsed" : ""}`} style={{ display: "flex", flexDirection: "column" }}>
+            <aside
+                className={`datapipe-sidebar${collapsed ? " collapsed" : ""}`}
+                style={
+                    {
+                        display: "flex",
+                        flexDirection: "column",
+                        ...(collapsed ? {} : { ["--dp-sidebar-width" as string]: `${sidebarWidth}px` }),
+                    } as React.CSSProperties
+                }
+            >
+                {!collapsed && (
+                    <div
+                        className="dp-resize-handle dp-resize-handle-right"
+                        role="separator"
+                        aria-orientation="vertical"
+                        onMouseDown={onSidebarResize}
+                    />
+                )}
                 <div className="datapipe-sidebar-logo">Datapipe Ops</div>
                 <nav className="datapipe-sidebar-nav">
                     {primaryItems.map(renderItem)}

@@ -4,6 +4,7 @@ import {
     stepNodeSize,
     tableNodeSize,
 } from "./graphNodeLayout";
+import { getTransformPrimaryKeys } from "./nodeKeyChips";
 import {
     animateNodeVisualOpacity,
     ensureGroupExpandedVisible,
@@ -68,12 +69,14 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
     const type = data.type as string;
 
     if (type === "group") {
-        const size = groupBoxSize(name, (data.child_count as number) ?? 1);
+        const tpk = getTransformPrimaryKeys(data);
+        const size = groupBoxSize(name, (data.child_count as number) ?? 1, tpk);
         return { id, type, name, w: size.w, h: size.h, child_count: data.child_count as number };
     }
     if (type === "group-expanded") {
-        const w = (data.boxW as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1).w;
-        const h = (data.boxH as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1).h;
+        const tpk = getTransformPrimaryKeys(data);
+        const w = (data.boxW as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1, tpk).w;
+        const h = (data.boxH as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1, tpk).h;
         return { id, type, name, w, h, child_count: data.child_count as number };
     }
     if (type === "table") {
@@ -89,7 +92,8 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
             indexes: data.indexes as string[] | undefined,
         };
     }
-    const size = stepNodeSize(name, compact);
+    const tpk = getTransformPrimaryKeys(data);
+    const size = stepNodeSize(name, compact, tpk);
     return {
         id,
         type,

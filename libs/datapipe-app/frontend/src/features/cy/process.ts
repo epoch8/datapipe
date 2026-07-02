@@ -1,4 +1,3 @@
-import { omit } from "lodash";
 import { GraphData, MetaNode, TransformNode } from "../../types";
 import Cytoscape from "cytoscape";
 
@@ -48,8 +47,15 @@ function addTransformNode(
 ) {
     const nodeName = pipe.name;
     nodes.set(nodeName, {
-        ...omit(pipe, ["inputs", "outputs"]),
+        ...pipe,
         type: "transform",
+        name: nodeName,
+        transform_primary_keys:
+            pipe.transform_primary_keys ??
+            pipe.tpk ??
+            pipe.indexes ??
+            pipe.primary_keys ??
+            [],
         ...(metaGroup ? { metaGroup } : {}),
     });
 
@@ -77,6 +83,12 @@ function addCollapsedMeta(
         labels: pipe.labels,
         collapsed: true,
         child_count: childCount,
+        inputs: pipe.inputs || [],
+        outputs: pipe.outputs || [],
+        transform_primary_keys:
+            pipe.transform_primary_keys ??
+            pipe.tpk ??
+            [],
     });
 
     (pipe.inputs || []).forEach((input: string) => {

@@ -1,5 +1,6 @@
 import Cytoscape from "cytoscape";
 import { edgeColors, graphColors } from "./graphColors";
+import { getTransformPrimaryKeys } from "./nodeKeyChips";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 
 function nodeName(node: Cytoscape.NodeSingular): string {
@@ -10,24 +11,24 @@ function nodeWidth(node: Cytoscape.NodeSingular): number {
     const name = nodeName(node);
     const compact = Boolean(node.data("metaGroup"));
     if (node.data("type") === "group") {
-        return (node.data("boxW") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1).w;
+        return (node.data("boxW") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1, getTransformPrimaryKeys(node.data())).w;
     }
     if (node.data("type") === "table") {
         return tableNodeSize(name, node.data("indexes") || [], compact).w;
     }
-    return stepNodeSize(name, compact).w;
+    return stepNodeSize(name, compact, getTransformPrimaryKeys(node.data())).w;
 }
 
 function nodeHeight(node: Cytoscape.NodeSingular): number {
     const name = nodeName(node);
     const compact = Boolean(node.data("metaGroup"));
     if (node.data("type") === "group") {
-        return (node.data("boxH") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1).h;
+        return (node.data("boxH") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1, getTransformPrimaryKeys(node.data())).h;
     }
     if (node.data("type") === "table") {
         return tableNodeSize(name, node.data("indexes") || [], compact).h;
     }
-    return stepNodeSize(name, compact).h;
+    return stepNodeSize(name, compact, getTransformPrimaryKeys(node.data())).h;
 }
 
 export const stylesheet: Cytoscape.Stylesheet[] = [
