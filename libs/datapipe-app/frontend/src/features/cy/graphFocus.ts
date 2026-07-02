@@ -5,14 +5,27 @@ import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     cy.nodes().forEach((node) => {
         if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
-        const labelEl = getNodeHtmlLabelEl(cy, node.id());
-        if (!labelEl) return;
 
         const n = node as Cytoscape.NodeSingular;
-        const focused = n.hasClass("focused") || n.selected();
-        labelEl.classList.toggle("is-focused", focused);
-        labelEl.classList.toggle("is-selected", n.selected());
-        labelEl.classList.toggle("is-dimmed", n.hasClass("dimmed"));
+        const selected = n.selected();
+        const focused = n.hasClass("focused") || selected;
+        const dimmed = n.hasClass("dimmed");
+
+        // Persist interaction state on node data so it is re-emitted by the
+        // html-label template whenever the plugin rebuilds the label DOM (which
+        // happens on any style change, e.g. selection border / dim opacity).
+        // Without this, classes applied directly below are wiped on rebuild.
+        if (Boolean(n.data("uiFocused")) !== focused) n.data("uiFocused", focused);
+        if (Boolean(n.data("uiSelected")) !== selected) n.data("uiSelected", selected);
+        if (Boolean(n.data("uiDimmed")) !== dimmed) n.data("uiDimmed", dimmed);
+
+        // Immediate feedback on the current DOM element (before any rebuild).
+        const labelEl = getNodeHtmlLabelEl(cy, node.id());
+        if (labelEl) {
+            labelEl.classList.toggle("is-focused", focused);
+            labelEl.classList.toggle("is-selected", selected);
+            labelEl.classList.toggle("is-dimmed", dimmed);
+        }
     });
 }
 

@@ -54,6 +54,16 @@ function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
     return `opacity:${opacity};`;
 }
 
+function interactionStateClass(data: Cytoscape.NodeDataDefinition): string {
+    return [
+        data.uiFocused ? "is-focused" : "",
+        data.uiSelected ? "is-selected" : "",
+        data.uiDimmed ? "is-dimmed" : "",
+    ]
+        .filter(Boolean)
+        .join(" ");
+}
+
 function buildNodeLabelTpl() {
     return (data: Cytoscape.NodeDataDefinition) => {
         if (data.type === "group-expanded") {
@@ -64,6 +74,7 @@ function buildNodeLabelTpl() {
         const nodeId = (data.id as string) || fullName;
         const metaGroup = data.metaGroup as string | undefined;
         const isSubgraph = Boolean(metaGroup);
+        const stateClass = interactionStateClass(data);
         const renderName = (lines: string[]) => lines.join("<br>");
 
         if (data.type === "group") {
@@ -73,7 +84,7 @@ function buildNodeLabelTpl() {
             const w = (data.boxW as number) ?? fallback.w;
             const h = (data.boxH as number) ?? fallback.h;
             return `
-              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${escapeHtml(fullName)}">
+              <div class="node-compound-label node-compound-group ${stateClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${escapeHtml(fullName)}">
                   <div class="node-content">
                       <div class="node-icon">${groupIconSvg}</div>
                       <div class="node-body">
@@ -94,7 +105,7 @@ function buildNodeLabelTpl() {
             const { w, h, lines } = tableNodeSize(fullName, primaryKeys, isSubgraph);
             return `
               <div
-                class="node-core node-core-table ${coreClass}"
+                class="node-core node-core-table ${coreClass} ${stateClass}"
                 style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
                 data-cy-node-id="${nodeId}"
                 title="${escapeHtml(fullName)}"
@@ -117,7 +128,7 @@ function buildNodeLabelTpl() {
 
         return `
           <div
-            class="node-core node-core-step ${coreClass}"
+            class="node-core node-core-step ${coreClass} ${stateClass}"
             style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
             data-cy-node-id="${nodeId}"
             title="${escapeHtml(fullName)}"
@@ -754,6 +765,40 @@ function PipelineGraphView({
         cy.fit(undefined, 48);
     }, [cy]);
 
+    const navigateToInspectorNode = useCallback(
+        (nodeId: string) => {
+            const fallbackData = graphNodesById.get(nodeId);
+            if (!cy || cy.destroyed()) {
+                if (fallbackData) {
+                    setInspector({ nodeId, data: fallbackData });
+                    setKeyPopover(null);
+                }
+                return;
+            }
+            const node = cy.getElementById(nodeId);
+            if (!node.empty()) {
+                const type = node.data("type") as string;
+                if (type !== "group-expanded") {
+                    cy.$(":selected").unselect();
+                    node.select();
+                    setInspector({ nodeId: node.id(), data: node.data() });
+                    setKeyPopover(null);
+                    focusSelection(cy);
+                    return;
+                }
+            }
+            if (fallbackData) {
+                setInspector({ nodeId, data: fallbackData });
+                setKeyPopover(null);
+                if (!node.empty()) {
+                    cy.$(":selected").unselect();
+                    focusSelection(cy);
+                }
+            }
+        },
+        [cy, graphNodesById],
+    );
+
     return (
         <div className="pipeline-graph-shell" style={{ height }}>
             <div className="pipeline-graph-embedded" style={{ position: "relative" }}>
@@ -806,6 +851,7 @@ function PipelineGraphView({
                 dragging={panelDragging}
                 onHandleMouseDown={onPanelResize}
                 onClose={() => setInspector(null)}
+                onNavigateToNode={navigateToInspectorNode}
             />
         </div>
     );

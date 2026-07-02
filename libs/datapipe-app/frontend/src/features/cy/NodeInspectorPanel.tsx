@@ -44,6 +44,37 @@ function nodeKeysForInspector(
     return getTransformPrimaryKeys(node);
 }
 
+function isInspectableGraphNode(node: Cytoscape.NodeDataDefinition | undefined): boolean {
+    if (!node) return false;
+    const type = node.type as string;
+    return type === "table" || type === "transform" || type === "group";
+}
+
+function InspectorNodeLink({
+    nodeId,
+    node,
+    onNavigate,
+}: {
+    nodeId: string;
+    node?: Cytoscape.NodeDataDefinition;
+    onNavigate?: (nodeId: string) => void;
+}) {
+    const label = node?.name ? String(node.name) : nodeId;
+    if (!onNavigate || !isInspectableGraphNode(node)) {
+        return <>{label}</>;
+    }
+    return (
+        <button
+            type="button"
+            className="inspector-node-link"
+            title={`Show ${label} in graph`}
+            onClick={() => onNavigate(nodeId)}
+        >
+            {label}
+        </button>
+    );
+}
+
 function InspectorHeader({
     kicker,
     title,
@@ -119,15 +150,23 @@ function TransformInspectorContent({
     graphNodesById,
     runStatus,
     onClose,
+    onNavigateToNode,
 }: {
     node: Cytoscape.NodeDataDefinition;
     graphNodesById: Map<string, Cytoscape.NodeDataDefinition>;
     runStatus?: string;
     onClose: () => void;
+    onNavigateToNode?: (nodeId: string) => void;
 }) {
     const tpk = getTransformPrimaryKeys(node);
-    const inputs = ((node.inputs as string[]) ?? []).map((id) => graphNodesById.get(id));
-    const outputs = ((node.outputs as string[]) ?? []).map((id) => graphNodesById.get(id));
+    const inputs = ((node.inputs as string[]) ?? []).map((id) => ({
+        id,
+        node: graphNodesById.get(id),
+    }));
+    const outputs = ((node.outputs as string[]) ?? []).map((id) => ({
+        id,
+        node: graphNodesById.get(id),
+    }));
     const labels = (node.labels as string[][] | undefined) ?? [];
 
     return (
@@ -177,9 +216,15 @@ function TransformInspectorContent({
                             </tr>
                         </thead>
                         <tbody>
-                            {inputs.map((input, i) => (
-                                <tr key={`${input?.name ?? "missing"}-${i}`}>
-                                    <td>{input?.name ?? "—"}</td>
+                            {inputs.map(({ id, node: input }) => (
+                                <tr key={id}>
+                                    <td>
+                                        <InspectorNodeLink
+                                            nodeId={id}
+                                            node={input}
+                                            onNavigate={onNavigateToNode}
+                                        />
+                                    </td>
                                     <td>{input?.type === "table" ? "Table" : input?.type ?? "—"}</td>
                                     <td>
                                         <KeyChipList
@@ -209,9 +254,15 @@ function TransformInspectorContent({
                             </tr>
                         </thead>
                         <tbody>
-                            {outputs.map((output, i) => (
-                                <tr key={`${output?.name ?? "missing"}-${i}`}>
-                                    <td>{output?.name ?? "—"}</td>
+                            {outputs.map(({ id, node: output }) => (
+                                <tr key={id}>
+                                    <td>
+                                        <InspectorNodeLink
+                                            nodeId={id}
+                                            node={output}
+                                            onNavigate={onNavigateToNode}
+                                        />
+                                    </td>
                                     <td>{output?.type === "table" ? "Table" : output?.type ?? "—"}</td>
                                     <td>
                                         <KeyChipList
@@ -247,10 +298,14 @@ function TransformInspectorContent({
 
 function GroupInspectorContent({
     node,
+    graphNodesById,
     onClose,
+    onNavigateToNode,
 }: {
     node: Cytoscape.NodeDataDefinition;
+    graphNodesById: Map<string, Cytoscape.NodeDataDefinition>;
     onClose: () => void;
+    onNavigateToNode?: (nodeId: string) => void;
 }) {
     const childCount = (node.child_count as number) ?? 0;
     const tpk = getTransformPrimaryKeys(node);
@@ -282,13 +337,35 @@ function GroupInspectorContent({
                             {inputs.length > 0 && (
                                 <>
                                     <dt>Inputs</dt>
-                                    <dd>{inputs.join(", ")}</dd>
+                                    <dd className="inspector-link-list">
+                                        {inputs.map((id, i) => (
+                                            <React.Fragment key={id}>
+                                                {i > 0 ? ", " : null}
+                                                <InspectorNodeLink
+                                                    nodeId={id}
+                                                    node={graphNodesById.get(id)}
+                                                    onNavigate={onNavigateToNode}
+                                                />
+                                            </React.Fragment>
+                                        ))}
+                                    </dd>
                                 </>
                             )}
                             {outputs.length > 0 && (
                                 <>
                                     <dt>Outputs</dt>
-                                    <dd>{outputs.join(", ")}</dd>
+                                    <dd className="inspector-link-list">
+                                        {outputs.map((id, i) => (
+                                            <React.Fragment key={id}>
+                                                {i > 0 ? ", " : null}
+                                                <InspectorNodeLink
+                                                    nodeId={id}
+                                                    node={graphNodesById.get(id)}
+                                                    onNavigate={onNavigateToNode}
+                                                />
+                                            </React.Fragment>
+                                        ))}
+                                    </dd>
                                 </>
                             )}
                         </dl>
@@ -323,6 +400,7 @@ type NodeInspectorPanelProps = {
     dragging?: boolean;
     onHandleMouseDown: (event: React.MouseEvent) => void;
     onClose: () => void;
+    onNavigateToNode?: (nodeId: string) => void;
 };
 
 function InspectorContent({
@@ -330,7 +408,11 @@ function InspectorContent({
     graphNodesById,
     runStatusByStep,
     onClose,
-}: Pick<NodeInspectorPanelProps, "inspector" | "graphNodesById" | "runStatusByStep" | "onClose">) {
+    onNavigateToNode,
+}: Pick<
+    NodeInspectorPanelProps,
+    "inspector" | "graphNodesById" | "runStatusByStep" | "onClose" | "onNavigateToNode"
+>) {
     if (!inspector) return <InspectorEmptyState />;
 
     const node = inspector.data;
@@ -346,11 +428,19 @@ function InspectorContent({
                 graphNodesById={graphNodesById}
                 runStatus={runStatusByStep?.get(String(node.name))}
                 onClose={onClose}
+                onNavigateToNode={onNavigateToNode}
             />
         );
     }
     if (type === "group") {
-        return <GroupInspectorContent node={node} onClose={onClose} />;
+        return (
+            <GroupInspectorContent
+                node={node}
+                graphNodesById={graphNodesById}
+                onClose={onClose}
+                onNavigateToNode={onNavigateToNode}
+            />
+        );
     }
     return <InspectorEmptyState />;
 }
@@ -363,6 +453,7 @@ export function NodeInspectorPanel({
     dragging,
     onHandleMouseDown,
     onClose,
+    onNavigateToNode,
 }: NodeInspectorPanelProps) {
     return (
         <aside
@@ -381,6 +472,7 @@ export function NodeInspectorPanel({
                     graphNodesById={graphNodesById}
                     runStatusByStep={runStatusByStep}
                     onClose={onClose}
+                    onNavigateToNode={onNavigateToNode}
                 />
             </div>
         </aside>
