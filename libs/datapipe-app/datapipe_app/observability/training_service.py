@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+import math
 from typing import Any, Optional
 
 from datapipe_app.observability.queries import build_training_curves
@@ -30,6 +30,43 @@ METRIC_GROUPS = {
     "lr": "learning_rate",
     "learning_rate": "learning_rate",
 }
+
+
+def _is_nan(val: Any) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, float) and math.isnan(val):
+        return True
+    try:
+        import pandas as pd
+
+        if pd.isna(val):
+            return True
+    except Exception:
+        pass
+    return str(val).lower() == "nan"
+
+
+def _clean_str(val: Any) -> Optional[str]:
+    if _is_nan(val):
+        return None
+    return str(val)
+
+
+def _clean_optional_str(val: Any) -> Optional[str]:
+    if _is_nan(val):
+        return None
+    text = str(val).strip()
+    return text or None
+
+
+def _clean_float(val: Any) -> Optional[float]:
+    if _is_nan(val):
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
 
 def _infer_framework(model_id: Optional[str], launcher_type: Optional[str]) -> Optional[str]:
@@ -82,25 +119,28 @@ class TrainingService:
                         best_name, best_val = k, v
                         break
             tt = r.get("task_type") or "detection"
-            fw = _infer_framework(r.get("model_id"), r.get("launcher_type"))
+            fw = _infer_framework(_clean_optional_str(r.get("model_id")), _clean_optional_str(r.get("launcher_type")))
             rows.append(
                 TrainingRunRow(
-                    run_key=str(r.get("run_key", "")),
-                    run_id=str(r.get("run_key", "")),
-                    model_id=r.get("model_id"),
+                    run_key=_clean_str(r.get("run_key", "")),
+                    run_id=_clean_str(r.get("run_key", "")),
+                    model_id=_clean_optional_str(r.get("model_id")),
                     task_type=tt,
                     framework=fw,
-                    dataset=r.get("dataset") or "default",
-                    started_at=r.get("started_at"),
-                    finished_at=r.get("finished_at"),
-                    duration_s=r.get("duration_s"),
-                    status=str(r.get("status", "unknown")),
-                    attempt=r.get("attempt"),
+                    dataset=_clean_optional_str(r.get("dataset")) or "default",
+                    started_at=_clean_optional_str(r.get("started_at")),
+                    finished_at=_clean_optional_str(r.get("finished_at")),
+                    duration_s=int(r["duration_s"]) if not _is_nan(r.get("duration_s")) and r.get("duration_s") is not None else None,
+                    status=_clean_str(r.get("status", "unknown")),
+                    attempt=int(r["attempt"]) if not _is_nan(r.get("attempt")) and r.get("attempt") is not None else None,
                     tags=r.get("tags") or [],
-                    best_metric_name=best_name,
-                    best_metric_value=float(best_val) if best_val is not None else None,
-                    params={"launcher_type": r.get("launcher_type"), "attempt": r.get("attempt")},
-                    artifacts={"run_dir": r.get("run_dir"), "best_model_table": r.get("best_model_table")},
+                    best_metric_name=_clean_optional_str(best_name),
+                    best_metric_value=_clean_float(best_val),
+                    params={"launcher_type": _clean_optional_str(r.get("launcher_type")), "attempt": r.get("attempt")},
+                    artifacts={
+                        "run_dir": _clean_optional_str(r.get("run_dir")),
+                        "best_model_table": _clean_optional_str(r.get("best_model_table")),
+                    },
                     is_best=bool(r.get("is_best")),
                 )
             )

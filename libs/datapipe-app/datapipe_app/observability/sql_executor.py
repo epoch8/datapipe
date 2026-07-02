@@ -11,15 +11,20 @@ FORBIDDEN = re.compile(
     re.IGNORECASE,
 )
 
-TABLE_MAP = {
+# Qualified names first (longest). Unqualified bare names use word boundaries
+# with a negative lookbehind so `analytics_metrics_on_subset` is not rewritten twice.
+QUALIFIED_TABLE_MAP = {
     "datapipe_analytics.metrics_on_subset": "analytics_metrics_on_subset",
-    "metrics_on_subset": "analytics_metrics_on_subset",
     "datapipe_analytics.metrics_by_class": "analytics_metrics_by_class",
-    "metrics_by_class": "analytics_metrics_by_class",
     "datapipe_analytics.training_runs": "analytics_training_runs",
-    "training_runs": "analytics_training_runs",
     "datapipe_analytics.artifacts": "analytics_training_runs",
     "datapipe_analytics.predictions": "analytics_metrics_on_subset",
+}
+
+BARE_TABLE_MAP = {
+    "metrics_on_subset": "analytics_metrics_on_subset",
+    "metrics_by_class": "analytics_metrics_by_class",
+    "training_runs": "analytics_training_runs",
 }
 
 
@@ -36,8 +41,12 @@ def _validate_sql(sql: str) -> None:
 
 def _rewrite_sql(sql: str) -> str:
     result = sql
-    for src, dst in TABLE_MAP.items():
+    for src, dst in sorted(QUALIFIED_TABLE_MAP.items(), key=lambda item: len(item[0]), reverse=True):
         result = re.sub(re.escape(src), dst, result, flags=re.IGNORECASE)
+    for src, dst in BARE_TABLE_MAP.items():
+        # Avoid matching the suffix of analytics_<table> after qualified rewrite.
+        pattern = rf"(?<![a-zA-Z0-9_]){re.escape(src)}\b"
+        result = re.sub(pattern, dst, result, flags=re.IGNORECASE)
     if "LIMIT" not in result.upper():
         result = f"{result.rstrip(';')} LIMIT 1000"
     return result

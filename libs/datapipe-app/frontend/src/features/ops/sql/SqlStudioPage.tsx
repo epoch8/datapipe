@@ -8,13 +8,14 @@ const DEFAULT_SQL = `SELECT
   run_id,
   model_id,
   subset,
+  metric_timestamp,
   mAP50,
   precision,
   recall,
   f1_score AS f1
 FROM datapipe_analytics.metrics_on_subset
 WHERE metric_timestamp >= CURRENT_DATE - INTERVAL '30' DAY
-ORDER BY run_date DESC
+ORDER BY metric_timestamp DESC
 LIMIT 1000;`;
 
 const SAVED_KEY = "datapipe_sql_saved_queries";

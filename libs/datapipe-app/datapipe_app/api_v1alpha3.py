@@ -340,12 +340,17 @@ def make_app(
                 )
             except Exception:
                 pass
-        result = execute_readonly_query(
-            store.engine,
-            req.sql,
-            limit=req.limit or 1000,
-            offset=req.offset or 0,
-        )
+        try:
+            result = execute_readonly_query(
+                store.engine,
+                req.sql,
+                limit=req.limit or 1000,
+                offset=req.offset or 0,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(400, f"Query failed: {exc}") from exc
         return SqlQueryResponse(**result)
 
     @app.get("/sql/schema", response_model=SqlSchemaResponse)
