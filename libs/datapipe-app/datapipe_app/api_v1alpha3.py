@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from datapipe_app.api_v1alpha1 import filter_steps_by_labels
 from datapipe_app.observability.db import ObservabilityStore, utc_now
 from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
+from datapipe_app.observability.label_graph import build_label_graph
 from datapipe_app.observability.analytics_views import ensure_analytics_tables, get_schema, refresh_analytics_views
 from datapipe_app.observability.metrics_service import MetricsService
 from datapipe_app.observability.queries import build_chart_specs, build_overview, build_training_curves
@@ -144,9 +145,11 @@ def make_app(
 
         stages: list[dict[str, Any]] = []
         stage_edges: list[dict[str, Any]] = []
+        label_graph: dict[str, Any] | None = None
         if ds is not None and steps is not None and get_ops_settings().pipeline_id == pipeline_id:
             stages = build_stage_summary(steps, ds)
             stage_edges = build_stage_edges(steps)
+            label_graph = build_label_graph(steps, ds)
         elif pipeline is not None:
             stages = [{"stage": s, "status": "unknown", "steps": []} for s in discover_pipeline_stages(pipeline)]
 
@@ -183,6 +186,7 @@ def make_app(
             "health": "failed" if last_run and last_run.status == "failed" else "healthy",
             "stages": stages,
             "stage_edges": stage_edges,
+            "label_graph": label_graph,
             "recent_runs": _serialize_recent_runs(recent_runs),
             "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
             "last_error": last_run.error if last_run else None,

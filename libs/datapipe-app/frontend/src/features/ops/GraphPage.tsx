@@ -1,16 +1,19 @@
 import React from "react";
-import { Alert, Button, Card } from "antd";
-import { Link, useSearchParams } from "react-router-dom";
+import { Alert, Button, Card, Spin } from "antd";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
-import type { Capabilities, RecentRunSummary } from "../../types/ops";
+import type { Capabilities, PipelineDetail, RecentRunSummary } from "../../types/ops";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
+import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { workflowIconSvg } from "../cy/nodeIcons";
 
 export function GraphPage() {
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const stage = searchParams.get("stage");
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
+    const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
     const [running, setRunning] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
@@ -21,6 +24,14 @@ export function GraphPage() {
     React.useEffect(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(String(e)));
     }, []);
+
+    React.useEffect(() => {
+        if (!pipelineId) return;
+        opsApi
+            .getPipeline(pipelineId)
+            .then(setDetail)
+            .catch((e) => setError(String(e)));
+    }, [pipelineId]);
 
     const loadStageRuns = React.useCallback(() => {
         if (!stage || !pipelineId) return;
@@ -56,13 +67,51 @@ export function GraphPage() {
                 {stage ? ` / ${stage}` : ""}
             </div>
             {error && (
-                <Alert type="error" message={error} style={{ marginBottom: 12 }} closable onClose={() => setError(null)} />
+                <Alert
+                    type="error"
+                    message={error}
+                    style={{ marginBottom: 12 }}
+                    closable
+                    onClose={() => setError(null)}
+                />
             )}
+            {detail && pipelineId && (
+                <PipelineLabelGraphOverview
+                    pipelineId={pipelineId}
+                    stages={detail.stages}
+                    stageEdges={detail.stage_edges}
+                    labelGraph={detail.label_graph}
+                    selectedLabel={stage}
+                    mode="compact"
+                    onLabelSelect={(label) =>
+                        navigate(`/graph?stage=${encodeURIComponent(label)}`)
+                    }
+                    onStageRun={
+                        agentMode
+                            ? (label) => {
+                                  setRunning(true);
+                                  opsApi
+                                      .startRun([["stage", label]])
+                                      .then(() => loadStageRuns())
+                                      .catch((e) => setError(String(e)))
+                                      .finally(() => setRunning(false));
+                              }
+                            : undefined
+                    }
+                />
+            )}
+            {!detail && pipelineId && <Spin style={{ marginBottom: 16 }} />}
             <div className={`pipeline-card${stage ? " pipeline-card-with-sidebar" : ""}`}>
                 {stage && (
                     <aside className="pipeline-stage-sidebar">
                         {agentMode && (
-                            <Button type="primary" block loading={running} onClick={runStage} style={{ marginBottom: 16 }}>
+                            <Button
+                                type="primary"
+                                block
+                                loading={running}
+                                onClick={runStage}
+                                style={{ marginBottom: 16 }}
+                            >
                                 Run stage
                             </Button>
                         )}

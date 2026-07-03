@@ -1,0 +1,298 @@
+:root {
+    --lg-blue: #1677ff;
+    --lg-blue-soft: #eaf3ff;
+    --lg-blue-border: #5ca2ff;
+    --lg-text: #0b1220;
+    --lg-muted: #667085;
+    --lg-edge: #56677f;
+    --lg-edge-muted: #c4cedb;
+    --lg-edge-focused: #1677ff;
+    --lg-success-bg: #e7f8ee;
+    --lg-success-text: #087a2a;
+    --lg-success-border: #9ee6b8;
+    --lg-pending-bg: #fff5e6;
+    --lg-pending-text: #b45309;
+    --lg-pending-border: #ffd49b;
+}
+
+.label-graph-card,
+.pipeline-label-overview {
+    margin: 16px 44px 16px;
+    border: 1px solid #dbe3ef;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow:
+        0 1px 2px rgba(16, 24, 40, 0.06),
+        0 12px 32px rgba(16, 24, 40, 0.08);
+}
+
+.pipeline-label-overview-compact {
+    margin: 0 0 16px;
+    box-shadow: none;
+    border-radius: 10px;
+}
+
+.pipeline-label-overview .ant-card-body {
+    padding: 16px 20px 20px;
+}
+
+.pipeline-label-overview-compact .ant-card-body {
+    padding: 12px 16px 14px;
+}
+
+.pipeline-label-overview-header {
+    margin-bottom: 14px;
+}
+
+.pipeline-label-overview-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--lg-text);
+}
+
+.pipeline-label-overview-subtitle {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--lg-muted);
+}
+
+.pipeline-label-graph-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.pipeline-label-graph-canvas {
+    position: relative;
+    min-height: 80px;
+}
+
+.pipeline-label-graph-edges {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.label-edge {
+    fill: none;
+    stroke: var(--lg-edge);
+    stroke-width: 2;
+}
+
+.label-edge.focused {
+    stroke: var(--lg-edge-focused);
+    stroke-width: 3;
+    opacity: 1;
+}
+
+.label-edge.muted {
+    stroke: var(--lg-edge-muted);
+    stroke-width: 2;
+    opacity: 0.55;
+}
+
+.label-edge.exact {
+    stroke: var(--lg-blue);
+    stroke-width: 3;
+    stroke-dasharray: none;
+    opacity: 1;
+}
+
+.pipeline-label-graph-nodes {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pipeline-label-graph-nodes > * {
+    pointer-events: auto;
+}
+
+.label-node {
+    position: absolute;
+    border: 1.8px solid var(--lg-blue);
+    border-radius: 10px;
+    background: linear-gradient(180deg, #ffffff, #f5f9ff);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+    transition:
+        border-color 140ms ease,
+        box-shadow 140ms ease,
+        transform 140ms ease,
+        opacity 140ms ease;
+}
+
+.label-node.muted {
+    opacity: 0.55;
+}
+
+.label-node:hover,
+.label-node.is-hovered {
+    box-shadow:
+        0 0 0 4px rgba(22, 119, 255, 0.12),
+        0 8px 18px rgba(16, 24, 40, 0.1);
+    transform: translateY(-1px);
+}
+
+.label-node.selected {
+    border-width: 2.6px;
+    box-shadow:
+        0 0 0 4px rgba(22, 119, 255, 0.16),
+        0 10px 24px rgba(22, 119, 255, 0.18);
+}
+
+.label-node-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--lg-text);
+    text-align: center;
+    line-height: 1.15;
+    padding: 0 8px;
+    word-break: break-word;
+    max-width: 100%;
+}
+
+.pipeline-label-overview-compact .label-node-title {
+    font-size: 11.5px;
+}
+
+.label-node-status {
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.label-node-status.completed {
+    background: var(--lg-success-bg);
+    color: var(--lg-success-text);
+    border: 1px solid var(--lg-success-border);
+}
+
+.label-node-status.pending {
+    background: var(--lg-pending-bg);
+    color: var(--lg-pending-text);
+    border: 1px solid var(--lg-pending-border);
+}
+
+.label-node-status.running {
+    background: #eff8ff;
+    color: #175cd3;
+    border: 1px solid #b2ddff;
+}
+
+.label-node-status.failed {
+    background: #fef3f2;
+    color: #b42318;
+    border: 1px solid #fecdca;
+}
+
+.label-container {
+    position: absolute;
+    border: 1.8px solid var(--lg-blue);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(232, 242, 255, 0.74));
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: opacity 140ms ease, box-shadow 140ms ease;
+}
+
+.label-container.muted {
+    opacity: 0.55;
+}
+
+.label-container.is-hovered {
+    box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1);
+}
+
+.label-container.selected {
+    border-width: 2.4px;
+    box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.14);
+}
+
+.label-container-title {
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    font-size: 13px;
+    font-weight: 850;
+    color: var(--lg-blue);
+    pointer-events: none;
+}
+
+.label-container .label-node-status {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+}
+
+.label-interleaved-container {
+    position: absolute;
+    border: 1.8px dashed #7aa7ff;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff, #f7fbff);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.label-interleaved-container.selected,
+.label-interleaved-container.is-hovered {
+    box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+}
+
+.label-interleaved-title {
+    position: absolute;
+    top: 10px;
+    left: 14px;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--lg-blue);
+}
+
+.label-shared-bracket {
+    stroke: var(--lg-blue);
+    stroke-width: 2;
+    stroke-dasharray: 4 4;
+    fill: none;
+}
+
+.label-shared-chip {
+    position: absolute;
+    transform: translate(-50%, 0);
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px dashed #60a5fa;
+    background: #eff6ff;
+    color: #0b5ed7;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.pipeline-label-overview-compact .label-node {
+    gap: 5px;
+    border-radius: 8px;
+}
+
+.pipeline-label-overview-compact .label-node-status {
+    font-size: 10px;
+    padding: 3px 7px;
+}
+
+.pipeline-label-overview-compact .label-container {
+    border-radius: 10px;
+}
+
+.pipeline-label-overview-compact .label-container-title {
+    top: 9px;
+    left: 12px;
+    font-size: 12px;
+}

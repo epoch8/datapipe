@@ -59,13 +59,85 @@ export interface Enrichment {
     payload: Record<string, unknown>;
 }
 
+export type LabelSegment = {
+    label_id: string;
+    start_order: number;
+    end_order: number;
+    step_ids: string[];
+};
+
+export type LabelGraphNodeKind = "label" | "container" | "interleaved-group";
+
+export type LabelGraphNode = {
+    id: string;
+    label: string;
+    status: string;
+    kind: LabelGraphNodeKind;
+    step_ids: string[];
+    step_count: number;
+    parent_id?: string | null;
+    children_ids?: string[];
+    order_min: number;
+    order_max: number;
+    segments: LabelSegment[];
+};
+
+export type LabelGraphEdgeKind = "order" | "exact-order" | "secondary";
+
+export type LabelGraphEdge = {
+    id: string;
+    source: string;
+    target: string;
+    kind: LabelGraphEdgeKind;
+    visible_by_default: boolean;
+    show_when_selected?: string[];
+    source_scope?: "node" | "container" | "child";
+    target_scope?: "node" | "container" | "child";
+};
+
+export type LabelContainment = {
+    parent: string;
+    child: string;
+    kind: "semantic" | "explicit" | "heuristic";
+};
+
+export type LabelSharedRelation = {
+    id: string;
+    a: string;
+    b: string;
+    shared_step_ids: string[];
+    shared_count: number;
+    visible_by_default: boolean;
+};
+
+export type LabelInterleaving = {
+    id: string;
+    labels: string[];
+    segments: LabelSegment[];
+    switch_count: number;
+    visible_by_default: boolean;
+};
+
+export type LabelGraphPayload = {
+    label_key: string;
+    nodes: LabelGraphNode[];
+    edges: LabelGraphEdge[];
+    containments: LabelContainment[];
+    shared_relations: LabelSharedRelation[];
+    interleavings: LabelInterleaving[];
+};
+
+export type StageItem = { stage: string; status: string; steps: unknown[] };
+export type StageEdge = { from: string; to: string; count?: number };
+
 export interface PipelineDetail {
     pipeline_id: string;
     display_name: string;
     task_type?: string;
     health: string;
-    stages: { stage: string; status: string; steps: unknown[] }[];
-    stage_edges?: { from: string; to: string; count?: number }[];
+    stages: StageItem[];
+    stage_edges?: StageEdge[];
+    label_graph?: LabelGraphPayload;
     recent_runs: RecentRunSummary[];
     next_run_at?: string;
     last_error?: string;

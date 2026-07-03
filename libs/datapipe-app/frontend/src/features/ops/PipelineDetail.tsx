@@ -7,7 +7,7 @@ import { ChartGrid } from "./components/ChartGrid";
 import { PipelineMetrics } from "./components/PipelineMetrics";
 import { PluginSection } from "./components/PluginSection";
 import { RecentRunsList } from "./components/RecentRunsList";
-import { StageStepper } from "./components/StageStepper";
+import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 
 const { Text, Title } = Typography;
 
@@ -89,15 +89,18 @@ export function PipelineDetail({
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
                 <Tag color={detail.health === "failed" ? "red" : "green"}>{detail.health}</Tag>
             </div>
-            <StageStepper
+            <PipelineLabelGraphOverview
+                pipelineId={id}
                 stages={detail.stages}
-                edges={detail.stage_edges}
-                onStageSelect={(stage) =>
-                    navigate(`/graph?stage=${encodeURIComponent(stage)}`)
+                stageEdges={detail.stage_edges}
+                labelGraph={detail.label_graph}
+                mode="overview"
+                onLabelSelect={(label) =>
+                    navigate(`/graph?stage=${encodeURIComponent(label)}`)
                 }
                 onStageRun={
                     detail.agent_mode
-                        ? (stage) => runStage([["stage", stage]])
+                        ? (label) => runStage([["stage", label]])
                         : undefined
                 }
             />
