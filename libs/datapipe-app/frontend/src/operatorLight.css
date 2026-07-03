@@ -5,6 +5,10 @@
     --dp-ui-scale: 0.8;
     --dp-vh: calc(100vh / var(--dp-ui-scale));
 
+    /* Text-only enlargement factor. The layout keeps the 0.8 zoom above, but
+       text is rendered ~20% larger relative to that layout for readability. */
+    --dp-font-scale: 1.2;
+
     --dp-bg-app: #f5f8fc;
     --dp-bg-surface: #ffffff;
     --dp-border-subtle: #dbe3ef;
@@ -80,6 +84,49 @@
    Zooming #root keeps body unzoomed so popups position correctly. */
 #root {
     zoom: var(--dp-ui-scale);
+    font-size: calc(14px * var(--dp-font-scale));
+}
+
+/* Enlarge normal text ~20% without changing the layout zoom. antd hardcodes px
+   font-sizes per component, so scale the common text surfaces from their native
+   bases (14px, and 12px for compact chips). */
+.ant-btn,
+.ant-input,
+.ant-input-number,
+.ant-input-number-input,
+.ant-input-affix-wrapper,
+.ant-select,
+.ant-select-item,
+.ant-picker,
+.ant-picker-input > input,
+.ant-table,
+.ant-form,
+.ant-form-item,
+.ant-form-item-label > label,
+.ant-descriptions-item-label,
+.ant-descriptions-item-content,
+.ant-card-head-title,
+.ant-list,
+.ant-menu,
+.ant-breadcrumb,
+.ant-modal,
+.ant-tabs,
+.ant-alert,
+.ant-pagination,
+.ant-radio-wrapper,
+.ant-checkbox-wrapper,
+.ant-dropdown-menu-item,
+.ant-tooltip-inner,
+.ant-popover-inner-content,
+.ant-typography {
+    font-size: calc(14px * var(--dp-font-scale));
+}
+
+.ant-tag,
+.ant-badge-count,
+.ant-table-filter-dropdown,
+.ant-table-filter-dropdown .ant-checkbox-wrapper {
+    font-size: calc(12px * var(--dp-font-scale));
 }
 
 .datapipe-shell {
