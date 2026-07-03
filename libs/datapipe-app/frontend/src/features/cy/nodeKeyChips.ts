@@ -68,13 +68,11 @@ export function formatNodeLabels(labels: string[][] | undefined): string[] {
 }
 
 export function renderKeyChipList(nodeId: string, kind: KeyKind, keys: string[]): string {
-    const state = getVisibleKeyChips(keys);
-
     if (!keys.length) return "";
 
     const label = kind === "pk" ? "PK" : kind === "tpk" ? "TPK" : "Labels";
 
-    const chips = state.visible
+    const chips = keys
         .map(
             (key) => `
         <span class="node-key-chip ${kind}" title="${escapeHtml(key)}">
@@ -84,28 +82,18 @@ export function renderKeyChipList(nodeId: string, kind: KeyKind, keys: string[])
         )
         .join("");
 
-    const more =
-        state.hiddenCount > 0
-            ? `
-        <button
-          type="button"
-          class="node-key-chip node-key-chip-more ${kind}"
-          data-key-overflow="true"
-          data-key-kind="${kind}"
-          data-cy-node-id="${escapeHtml(nodeId)}"
-          title="Show all ${keys.length} ${kind === "label" ? "labels" : "keys"}"
-        >
-          +${state.hiddenCount} more
-        </button>
-      `
-            : "";
-
+    // All keys render in a single horizontally-scrollable row so long/overflowing
+    // keys can be revealed by scrolling instead of being clipped.
     return `
     <div class="node-key-row ${kind}">
       <span class="node-key-label">${label}</span>
-      <span class="node-key-chips ${state.mode}">
+      <span
+        class="node-key-chips scrollable"
+        data-key-scroll="true"
+        data-cy-node-id="${escapeHtml(nodeId)}"
+        data-key-kind="${kind}"
+      >
         ${chips}
-        ${more}
       </span>
     </div>
   `;

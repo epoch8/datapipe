@@ -106,7 +106,7 @@ html,
 
 .run-logs-viewer {
     margin: 0;
-    max-height: 360px;
+    max-height: 480px;
     overflow: auto;
     background: #1e1e1e;
     color: #d4d4d4;

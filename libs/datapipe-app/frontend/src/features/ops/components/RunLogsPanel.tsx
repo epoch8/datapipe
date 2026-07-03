@@ -4,8 +4,9 @@ import { opsApi } from "../../../api/ops";
 import type { RunLogLine } from "../../../types/ops";
 
 const { Text } = Typography;
-const MAX_LINES = 3000;
-const POLL_MS = 2000;
+const MAX_LINES = 10_000;
+const POLL_MS = 1000;
+const BATCH_LIMIT = 500;
 
 type Props = {
     runId: string;
@@ -29,8 +30,14 @@ export function RunLogsPanel({ runId, status }: Props) {
 
     const fetchLogs = useCallback(async () => {
         try {
-            const data = await opsApi.getRunLogs(runId, lastSeqRef.current);
-            appendLines(data.lines);
+            let after = lastSeqRef.current;
+            while (true) {
+                const data = await opsApi.getRunLogs(runId, after, BATCH_LIMIT);
+                if (!data.lines.length) break;
+                appendLines(data.lines);
+                after = data.last_seq;
+                if (data.lines.length < BATCH_LIMIT) break;
+            }
         } catch {
             /* ignore transient poll errors */
         }
@@ -46,6 +53,11 @@ export function RunLogsPanel({ runId, status }: Props) {
         if (status !== "running") return;
         const timer = setInterval(fetchLogs, POLL_MS);
         return () => clearInterval(timer);
+    }, [status, fetchLogs]);
+
+    useEffect(() => {
+        if (status === "running") return;
+        fetchLogs();
     }, [status, fetchLogs]);
 
     useEffect(() => {
@@ -66,9 +78,16 @@ export function RunLogsPanel({ runId, status }: Props) {
             size="small"
             title="Logs"
             extra={
-                <Button size="small" onClick={fetchLogs}>
-                    Refresh
-                </Button>
+                <>
+                    {lines.length > 0 && (
+                        <Text type="secondary" style={{ marginRight: 8 }}>
+                            {lines.length.toLocaleString()} lines
+                        </Text>
+                    )}
+                    <Button size="small" onClick={fetchLogs}>
+                        Refresh
+                    </Button>
+                </>
             }
         >
             {lines.length === 0 ? (

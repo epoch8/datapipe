@@ -56,7 +56,7 @@
 
 .ops-page-header-main {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: flex-start;
     gap: 24px;
     flex-wrap: wrap;

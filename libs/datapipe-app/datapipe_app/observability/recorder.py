@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from typing import Generator, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore
 
 from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.log_buffer import RunLogBuffer, RunLogHandler
+from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.registry import ObservabilityRegistry
+from datapipe_app.observability.run_output_capture import capture_run_output
 
 logger = logging.getLogger(__name__)
-_DATAPIPE_LOGGER = logging.getLogger("datapipe")
 
 
 class RunRecorder:
@@ -32,7 +32,7 @@ class RunRecorder:
         self.catalog = catalog
         self.log_buffer = log_buffer
         self._current_run_id: Optional[str] = None
-        self._log_handler: Optional[RunLogHandler] = None
+        self._output_capture: Optional[AbstractContextManager[None]] = None
 
     @property
     def current_run_id(self) -> Optional[str]:
@@ -42,14 +42,14 @@ class RunRecorder:
         if not self.log_buffer:
             return
         self.log_buffer.start_run(run_id)
-        self._log_handler = RunLogHandler(self.log_buffer, run_id)
-        _DATAPIPE_LOGGER.addHandler(self._log_handler)
+        self._output_capture = capture_run_output(self.log_buffer, run_id)
+        self._output_capture.__enter__()
         self.log_buffer.append(run_id, "INFO", f"Run {run_id} started")
 
     def _detach_log_handler(self, run_id: str) -> None:
-        if self._log_handler:
-            _DATAPIPE_LOGGER.removeHandler(self._log_handler)
-            self._log_handler = None
+        if self._output_capture is not None:
+            self._output_capture.__exit__(None, None, None)
+            self._output_capture = None
         if self.log_buffer:
             self.log_buffer.append(run_id, "INFO", f"Run {run_id} finished")
             self.log_buffer.finish_run(run_id)

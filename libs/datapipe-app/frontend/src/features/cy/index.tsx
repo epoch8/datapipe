@@ -27,6 +27,12 @@ import {
     focusSelection,
 } from "./graphFocus";
 import { Alert, AlertProps, Spin } from "antd";
+import {
+    captureGraphSessionState,
+    loadGraphSessionState,
+    saveGraphSessionState,
+    type GraphSessionState,
+} from "./graphSessionState";
 import { GraphData } from "../../types";
 import type { PipelineGraphProps } from "../../types/pipelineGraph";
 
@@ -191,12 +197,27 @@ function PipelineGraphView({
     const initialLoadRef = useRef(true);
     const [cy, setCy] = useState<Cytoscape.Core>();
     const [alertMsg, setAlertMsg] = useState<AlertProps | null>(null);
-    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+        const saved = loadGraphSessionState(buildGraphUrl(stageFilter));
+        return saved ? new Set(saved.expandedGroups) : new Set();
+    });
     const [rawGraph, setRawGraph] = useState<GraphData | null>(null);
     const [pipelineId, setPipelineId] = useState<string | null>(pipelineIdProp ?? null);
 
     const [keyPopover, setKeyPopover] = useState<KeyPopoverState | null>(null);
     const [inspector, setInspector] = useState<InspectorState>(null);
+
+    // Allow the inspector panel to grow up to ~50% of the viewport. The panel
+    // lives inside the zoomed #root (--dp-ui-scale), so its CSS-px space is the
+    // viewport width divided by that scale.
+    const inspectorMaxWidth = useMemo(() => {
+        if (typeof window === "undefined") return 900;
+        const scaleRaw = getComputedStyle(document.documentElement).getPropertyValue(
+            "--dp-ui-scale",
+        );
+        const scale = parseFloat(scaleRaw) || 0.8;
+        return Math.round((window.innerWidth / scale) * 0.5);
+    }, []);
 
     const {
         width: panelWidth,
@@ -205,10 +226,15 @@ function PipelineGraphView({
     } = useResizableWidth({
         initial: 360,
         min: 260,
-        max: 620,
+        max: inspectorMaxWidth,
         storageKey: "dp.graphInspectorWidth",
         edge: "left",
     });
+
+    const savedSessionRef = useRef<GraphSessionState | null>(
+        loadGraphSessionState(buildGraphUrl(stageFilter)),
+    );
+    const sessionRestoredRef = useRef(false);
 
     const needFitRef = useRef(true);
     // Whether the user has manually panned/zoomed. Until they do, the camera is
@@ -242,6 +268,56 @@ function PipelineGraphView({
         return nodes;
     }, [rawGraph, expandedGroups]);
 
+    const applySessionRestore = useCallback(
+        (cyInstance: Cytoscape.Core) => {
+            const saved = savedSessionRef.current;
+            if (!saved || sessionRestoredRef.current || cyInstance.destroyed()) return;
+            sessionRestoredRef.current = true;
+
+            if (saved.userInteracted) {
+                cyInstance.zoom(saved.zoom);
+                cyInstance.pan(saved.pan);
+            }
+
+            const nodeIds =
+                saved.selectedNodeIds.length > 0
+                    ? saved.selectedNodeIds
+                    : saved.inspectorNodeId
+                      ? [saved.inspectorNodeId]
+                      : [];
+
+            if (nodeIds.length > 0) {
+                cyInstance.batch(() => {
+                    cyInstance.$(":selected").unselect();
+                    nodeIds.forEach((id) => {
+                        const node = cyInstance.getElementById(id);
+                        if (!node.empty()) node.select();
+                    });
+                });
+                focusSelection(cyInstance);
+            }
+
+            if (saved.inspectorNodeId) {
+                const node = cyInstance.getElementById(saved.inspectorNodeId);
+                if (!node.empty()) {
+                    setInspector({
+                        nodeId: saved.inspectorNodeId,
+                        data: node.data(),
+                    });
+                } else {
+                    const fallback = graphNodesById.get(saved.inspectorNodeId);
+                    if (fallback) {
+                        setInspector({
+                            nodeId: saved.inspectorNodeId,
+                            data: fallback,
+                        });
+                    }
+                }
+            }
+        },
+        [graphNodesById],
+    );
+
     const setKeyPopoverRef = useRef(setKeyPopover);
     const setInspectorRef = useRef(setInspector);
     setKeyPopoverRef.current = setKeyPopover;
@@ -257,6 +333,19 @@ function PipelineGraphView({
             .then((c) => setPipelineId(c.pipeline_id ?? null))
             .catch(() => setPipelineId(null));
     }, [pipelineIdProp]);
+
+    const persistGraphSession = useCallback(() => {
+        saveGraphSessionState(
+            captureGraphSessionState(
+                graphUrl,
+                expandedGroups,
+                inspector,
+                cy,
+                userInteractedRef.current,
+            ),
+            stageFilter,
+        );
+    }, [graphUrl, expandedGroups, inspector, cy, stageFilter]);
 
     const toggleGroupExpand = useCallback((groupName: string) => {
         if (!cy) return;
@@ -275,6 +364,7 @@ function PipelineGraphView({
     }, [cy]);
 
     const openNodeDetails = useCallback((node: Cytoscape.NodeSingular) => {
+        persistGraphSession();
         const pid = pipelineIdRef.current;
         if (!pid) {
             setAlertMsg({ type: "warning", message: "Pipeline ID not available" });
@@ -290,7 +380,7 @@ function PipelineGraphView({
         } else if (nodeType === "transform") {
             navigate(`${base}/transforms/${encodeURIComponent(name)}`);
         }
-    }, [navigate]);
+    }, [navigate, persistGraphSession]);
 
     const openNodeDetailsRef = useRef(openNodeDetails);
     const toggleGroupExpandRef = useRef(toggleGroupExpand);
@@ -298,8 +388,18 @@ function PipelineGraphView({
     toggleGroupExpandRef.current = toggleGroupExpand;
 
     useEffect(() => {
+        savedSessionRef.current = loadGraphSessionState(graphUrl);
+        sessionRestoredRef.current = false;
         stageInitKeyRef.current = null;
-        needFitRef.current = true;
+        needFitRef.current = savedSessionRef.current
+            ? !savedSessionRef.current.userInteracted
+            : true;
+        userInteractedRef.current = savedSessionRef.current?.userInteracted ?? false;
+        if (savedSessionRef.current) {
+            setExpandedGroups(new Set(savedSessionRef.current.expandedGroups));
+        } else {
+            setExpandedGroups(new Set());
+        }
         initialLoadRef.current = true;
         anchorGroupRef.current = null;
         setShowInitialSpin(true);
@@ -311,6 +411,11 @@ function PipelineGraphView({
         const initKey = `${graphUrl}::${stageFilter ?? ""}`;
         if (stageInitKeyRef.current === initKey) return;
         stageInitKeyRef.current = initKey;
+
+        if (savedSessionRef.current && !sessionRestoredRef.current) {
+            needFitRef.current = !savedSessionRef.current.userInteracted;
+            return;
+        }
 
         setExpandedGroups(new Set());
         needFitRef.current = true;
@@ -371,11 +476,18 @@ function PipelineGraphView({
                 refreshNodeLabelPositions(cy);
                 applyFailedEdgeStyles(cy, runStatusRef.current);
                 refreshInternalEdgeOverlay(cy);
+                applySessionRestore(cy);
             },
         });
         needFitRef.current = false;
         anchorGroupRef.current = null;
-    }, [cy, rawGraph, expandedGroups, loading, rankDir, graphUrl]);
+    }, [cy, rawGraph, expandedGroups, loading, rankDir, graphUrl, applySessionRestore]);
+
+    useEffect(() => {
+        return () => {
+            persistGraphSession();
+        };
+    }, [persistGraphSession]);
 
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
@@ -440,6 +552,39 @@ function PipelineGraphView({
             const type = node.data("type") as string;
             return type !== "group-expanded";
         };
+
+        // Chip-row horizontal scroll positions survive html-label DOM rebuilds
+        // (selecting/focusing a node re-renders its label, which would otherwise
+        // reset scrollLeft to 0 and detach the element mid-drag).
+        const chipScrollStore = new Map<string, number>();
+        const chipScrollKey = (nodeId: string, kind: string) => `${nodeId}::${kind}`;
+
+        const findChipScroller = (nodeId: string, kind: string): HTMLElement | null =>
+            container.querySelector(
+                `.node-key-chips[data-cy-node-id="${CSS.escape(nodeId)}"][data-key-kind="${kind}"]`,
+            );
+
+        const rememberChipScroll = (el: HTMLElement) => {
+            const nodeId = el.getAttribute("data-cy-node-id");
+            const kind = el.getAttribute("data-key-kind");
+            if (nodeId && kind) chipScrollStore.set(chipScrollKey(nodeId, kind), el.scrollLeft);
+        };
+
+        // Reapply stored scroll offsets after the plugin rebuilds label DOM.
+        let restoreFrame = 0;
+        const restoreChipScrolls = () => {
+            cancelAnimationFrame(restoreFrame);
+            restoreFrame = requestAnimationFrame(() => {
+                chipScrollStore.forEach((left, key) => {
+                    const [nodeId, kind] = key.split("::");
+                    const el = findChipScroller(nodeId, kind);
+                    if (el && Math.abs(el.scrollLeft - left) > 0.5) {
+                        el.scrollLeft = left;
+                    }
+                });
+            });
+        };
+        cy.on("render", restoreChipScrolls);
 
         const openInspectorForNode = (node: Cytoscape.NodeSingular) => {
             setInspectorRef.current({
@@ -526,6 +671,50 @@ function PipelineGraphView({
         let pressStartedOnOverflow = false;
         /** Timestamp of the last node selection handled via the cytoscape tap. */
         let nodeTapHandledAt = 0;
+        /** Active drag-to-scroll gesture over a PK/TPK/labels chip row. */
+        let chipDrag:
+            | {
+                  kind: string;
+                  scrollNodeId: string;
+                  startX: number;
+                  startScrollLeft: number;
+                  moved: boolean;
+                  nodeId: string | null;
+              }
+            | null = null;
+
+        const onChipDragMove = (event: MouseEvent) => {
+            if (!chipDrag) return;
+            const dx = event.clientX - chipDrag.startX;
+            if (Math.abs(dx) > 3) chipDrag.moved = true;
+            // Re-resolve the live element every move: the html-label plugin may
+            // have replaced the DOM node (e.g. selection rebuild) since mousedown.
+            const el = findChipScroller(chipDrag.scrollNodeId, chipDrag.kind);
+            if (el) {
+                el.scrollLeft = chipDrag.startScrollLeft - dx;
+                rememberChipScroll(el);
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        const onChipDragEnd = (event: MouseEvent) => {
+            document.removeEventListener("mousemove", onChipDragMove, true);
+            document.removeEventListener("mouseup", onChipDragEnd, true);
+            const drag = chipDrag;
+            chipDrag = null;
+            if (!drag) return;
+            findChipScroller(drag.scrollNodeId, drag.kind)?.classList.remove("is-grabbing");
+            event.preventDefault();
+            event.stopPropagation();
+            // Treat a press without movement as a plain click → select the node.
+            if (!drag.moved && drag.nodeId) {
+                const node = cy.getElementById(drag.nodeId);
+                if (!node.empty() && canSelectNode(node as Cytoscape.NodeSingular)) {
+                    handleNodeSelect(node as Cytoscape.NodeSingular, event.ctrlKey || event.metaKey);
+                }
+            }
+        };
 
         const onDocumentMouseMove = (event: MouseEvent) => {
             if (!bgPress) return;
@@ -590,6 +779,34 @@ function PipelineGraphView({
             if (event.button !== 0) return;
             pressStartedOnOverflow = false;
             nodePress = null;
+
+            // Drag-to-scroll on a chip row (PK/TPK/labels) takes over the gesture
+            // so overflowing keys can be revealed by dragging left/right.
+            const scroller = (event.target as Element | null)?.closest?.(
+                ".node-key-chips",
+            ) as HTMLElement | null;
+            if (scroller && scroller.scrollWidth > scroller.clientWidth) {
+                const scrollNodeId = scroller.getAttribute("data-cy-node-id");
+                const kind = scroller.getAttribute("data-key-kind");
+                if (scrollNodeId && kind) {
+                    const node = resolveNodeFromLabel(event.target);
+                    chipDrag = {
+                        kind,
+                        scrollNodeId,
+                        startX: event.clientX,
+                        startScrollLeft: scroller.scrollLeft,
+                        moved: false,
+                        nodeId: node ? node.id() : null,
+                    };
+                    scroller.classList.add("is-grabbing");
+                    event.preventDefault();
+                    event.stopPropagation();
+                    document.addEventListener("mousemove", onChipDragMove, true);
+                    document.addEventListener("mouseup", onChipDragEnd, true);
+                    return;
+                }
+            }
+
             const overflow = resolveOverflowChip(event.target);
             if (overflow) {
                 pressStartedOnOverflow = true;
@@ -693,9 +910,27 @@ function PipelineGraphView({
             }
         };
 
+        // Let the key/label chip rows scroll horizontally on wheel instead of
+        // zooming the graph, so overflowing PK/TPK/labels can be revealed.
+        const onContainerWheel = (event: WheelEvent) => {
+            const scroller = (event.target as Element | null)?.closest?.(
+                ".node-key-chips",
+            ) as HTMLElement | null;
+            if (!scroller) return;
+            if (scroller.scrollWidth <= scroller.clientWidth) return;
+            const delta =
+                Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+            if (delta === 0) return;
+            scroller.scrollLeft += delta;
+            rememberChipScroll(scroller);
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
         cy.boxSelectionEnabled(false);
         cy.on("tap", "node", onCyNodeTap);
 
+        container.addEventListener("wheel", onContainerWheel, { capture: true, passive: false });
         container.addEventListener("mousedown", onContainerMouseDown, true);
         container.addEventListener("click", onContainerClick, true);
         container.addEventListener("mouseover", onContainerMouseOver, true);
@@ -706,7 +941,12 @@ function PipelineGraphView({
             try {
                 document.removeEventListener("mousemove", onDocumentMouseMove, true);
                 document.removeEventListener("mouseup", endBackgroundPress, true);
+                document.removeEventListener("mousemove", onChipDragMove, true);
+                document.removeEventListener("mouseup", onChipDragEnd, true);
+                cancelAnimationFrame(restoreFrame);
                 if (!cy.destroyed()) {
+                    cy.off("render", restoreChipScrolls);
+                    container.removeEventListener("wheel", onContainerWheel, true);
                     container.removeEventListener("mousedown", onContainerMouseDown, true);
                     container.removeEventListener("click", onContainerClick, true);
                     container.removeEventListener("mouseover", onContainerMouseOver, true);

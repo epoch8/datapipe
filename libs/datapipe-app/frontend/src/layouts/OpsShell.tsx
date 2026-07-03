@@ -15,6 +15,7 @@ import { Badge, Button } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { loadLastGraphStage } from "../features/cy/graphSessionState";
 import { useResizableWidth } from "../hooks/useResizableWidth";
 
 type NavItem = {
@@ -27,8 +28,10 @@ type NavItem = {
 };
 
 function matchNav(pathname: string, href: string): boolean {
-    if (href === "/") return pathname === "/" || pathname.startsWith("/pipelines/");
-    return pathname === href || pathname.startsWith(`${href}/`);
+    const hrefPath = href.split("?")[0] ?? href;
+    if (hrefPath === "/") return pathname === "/" || pathname.startsWith("/pipelines/");
+    if (hrefPath === "/graph") return pathname.startsWith("/graph");
+    return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 
 export function OpsShell() {
@@ -60,6 +63,11 @@ export function OpsShell() {
         }).catch(() => undefined);
     }, []);
 
+    const lastGraphStage = loadLastGraphStage();
+    const graphHref = lastGraphStage
+        ? `/graph?stage=${encodeURIComponent(lastGraphStage)}`
+        : "/graph";
+
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
         { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
@@ -67,7 +75,7 @@ export function OpsShell() {
         { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
         { key: "/sql-studio", href: "/sql-studio", label: "SQL Studio", icon: <DatabaseOutlined /> },
         ...(agentMode
-            ? [{ key: "/graph", href: "/graph", label: "Graph", icon: <ApartmentOutlined /> }]
+            ? [{ key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> }]
             : []),
     ];
 

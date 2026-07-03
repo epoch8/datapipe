@@ -37,7 +37,7 @@
     height: 100%;
     padding: 11px 16px;
     display: grid;
-    grid-template-columns: 28px 1fr;
+    grid-template-columns: 28px minmax(0, 1fr);
     column-gap: 12px;
     align-items: center;
 }
@@ -156,7 +156,7 @@
 .node-key-row {
     margin-top: 10px;
     display: grid;
-    grid-template-columns: 34px 1fr;
+    grid-template-columns: 34px minmax(0, 1fr);
     column-gap: 8px;
     align-items: start;
 }
@@ -170,22 +170,49 @@
 
 .node-key-chips {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 5px;
-    max-height: 49px;
-    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 24, 40, 0.28) transparent;
 }
 
-.node-key-chips.one-row,
-.node-key-chips.overflow {
-    max-height: 22px;
+.node-key-chips::-webkit-scrollbar {
+    height: 6px;
+}
+
+.node-key-chips::-webkit-scrollbar-thumb {
+    background: rgba(16, 24, 40, 0.22);
+    border-radius: 3px;
+}
+
+.node-key-chips::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Only rows that actually overflow are draggable; the JS gesture adds the grab
+   affordance. */
+.node-key-chips {
+    cursor: default;
+}
+
+.node-key-chips.is-grabbing {
+    cursor: grabbing;
+    scroll-behavior: auto;
+}
+
+.node-key-chip {
+    cursor: inherit;
 }
 
 .node-key-chip {
     display: inline-flex;
     align-items: center;
+    flex: 0 0 auto;
     height: 22px;
-    max-width: 116px;
     padding: 0 8px;
     border-radius: 6px;
     border: 1px solid var(--dp-chip-border, #d7e0ea);
@@ -195,8 +222,6 @@
     line-height: 1;
     font-weight: 700;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .node-key-chip.pk {
