@@ -43,8 +43,8 @@ def resolve_best_detection_model(
     fallback_model_id: str,
 ) -> pd.DataFrame:
     if not best_model_df.empty:
-        return best_model_df
-    return models_df[models_df[model_id_column] == fallback_model_id]
+        return best_model_df[[model_id_column]]
+    return models_df[models_df[model_id_column] == fallback_model_id][[model_id_column]]
 
 
 def get_images_without_ground_truth(
@@ -63,45 +63,55 @@ def bboxes_to_ls_prediction(
     df_bboxes: pd.DataFrame,
     df_image: pd.DataFrame,
     image__image_path__name: str,
+    primary_keys: list[str],
+    model_keys: list[str],
 ) -> pd.DataFrame:
-    image_name_to_path = dict(zip(df_image["image_name"], df_image[image__image_path__name]))
+    task_join_keys = [key for key in primary_keys if key not in set(model_keys)]
+    output_keys = list(dict.fromkeys(primary_keys + model_keys))
+
+    df_bboxes = df_bboxes.merge(
+        df_image[task_join_keys + [image__image_path__name]],
+        on=task_join_keys,
+        how="left",
+    )
+
     records = []
-    for model_id, model_df in df_bboxes.groupby("detection_model_id"):
-        for image_name, group in model_df.groupby("image_name"):
-            row = group.iloc[0]
-            bboxes = row.get("bboxes", []) or []
-            labels = row.get("labels", []) or []
-            bboxes_data = []
-            for bbox, label in zip(bboxes, labels):
-                label_str = str(label).lower()
-                if label_str not in CLASSES_TO_KEEP:
-                    continue
-                bboxes_data.append(
-                    BboxData(
-                        xmin=int(bbox[0]),
-                        ymin=int(bbox[1]),
-                        xmax=int(bbox[2]),
-                        ymax=int(bbox[3]),
-                        label=label_str.capitalize(),
-                    )
+    for _, group in df_bboxes.groupby(output_keys, dropna=False):
+        row = group.iloc[0]
+        image_path = row[image__image_path__name]
+
+        bboxes = row.get("bboxes", []) or []
+        labels = row.get("labels", []) or []
+        bboxes_data = []
+        for bbox, label in zip(bboxes, labels):
+            label_str = str(label).lower()
+            if label_str not in CLASSES_TO_KEEP:
+                continue
+            bboxes_data.append(
+                BboxData(
+                    xmin=int(bbox[0]),
+                    ymin=int(bbox[1]),
+                    xmax=int(bbox[2]),
+                    ymax=int(bbox[3]),
+                    label=label_str.capitalize(),
                 )
-            records.append(
-                {
-                    "image_name": image_name,
-                    "prediction": {
-                        "result": convert_image_data_to_annotation(
-                            image_data=ImageData(
-                                image_path=image_name_to_path[image_name],
-                                bboxes_data=bboxes_data,
-                            ),
-                            to_name="image",
-                            bboxes_from_name="label",
-                        )
-                    },
-                    "detection_model_id": model_id,
-                }
             )
-    return pd.DataFrame(records, columns=["image_name", "prediction", "detection_model_id"])
+        records.append(
+            {
+                **{key: row[key] for key in output_keys},
+                "prediction": {
+                    "result": convert_image_data_to_annotation(
+                        image_data=ImageData(
+                            image_path=image_path,
+                            bboxes_data=bboxes_data,
+                        ),
+                        to_name="image",
+                        bboxes_from_name="label",
+                    )
+                },
+            }
+        )
+    return pd.DataFrame(records, columns=output_keys + ["prediction"])
 
 
 def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:

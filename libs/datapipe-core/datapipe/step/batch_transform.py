@@ -46,6 +46,10 @@ logger = logging.getLogger("datapipe.step.batch_transform")
 tracer = trace.get_tracer("datapipe.step.batch_transform")
 
 
+def _format_step_io(step: ComputeStep) -> str:
+    return f"{[inp.dt.name for inp in step.input_dts]} -> {[out.dt.name for out in step.output_dts]}"
+
+
 # TODO подумать, может быть мы хотим дать возможность возвращать итератор TransformResult
 class DatatableBatchTransformFunc(Protocol):
     __name__: str
@@ -358,7 +362,7 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {_format_step_io(self)}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
@@ -399,7 +403,7 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {_format_step_io(self)}")
 
         changes = executor.run_process_batch(
             name=self.name,
@@ -423,7 +427,7 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {_format_step_io(self)}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         return self.process_batch(

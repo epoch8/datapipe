@@ -52,10 +52,8 @@ def resolve_best_keypoints_model(
     fallback_model_id: str,
 ) -> pd.DataFrame:
     if not best_model_df.empty:
-        resolved = best_model_df.merge(models_df, on=model_id_column, how="inner")
-        if not resolved.empty:
-            return resolved
-    return models_df[models_df[model_id_column] == fallback_model_id]
+        return best_model_df[[model_id_column]]
+    return models_df[models_df[model_id_column] == fallback_model_id][[model_id_column]]
 
 
 def get_images_without_ground_truth(

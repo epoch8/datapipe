@@ -42,11 +42,6 @@ catalog = Catalog(
                 name="best_detection_model",
                 data_sql_schema=[
                     Column("detection_model_id", String(), primary_key=True),
-                    Column("detection_model__type", String()),
-                    Column("detection_model__model_path", String()),
-                    Column("detection_model__input_size", JSON),
-                    Column("detection_model__class_names", JSON),
-                    Column("detection_model__score_threshold", Float),
                 ],
             )
         ),
@@ -56,8 +51,8 @@ catalog = Catalog(
                 name="images_with_predictions",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
+                    Column("detection_model_id", String(), primary_key=True),
                     Column("prediction", JSON),
-                    Column("detection_model_id", String()),
                 ],
             )
         ),

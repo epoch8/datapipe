@@ -23,6 +23,10 @@ logger = logging.getLogger("datapipe.step.datatable_transform")
 tracer = trace.get_tracer("datapipe.step.datatable_transform")
 
 
+def _format_step_io(step: ComputeStep) -> str:
+    return f"{[inp.dt.name for inp in step.input_dts]} -> {[out.dt.name for out in step.output_dts]}"
+
+
 class DatatableTransformFunc(Protocol):
     __name__: str
 
@@ -59,7 +63,7 @@ class DatatableTransformStep(ComputeStep):
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> None:
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {_format_step_io(self)}")
 
         # TODO implement "watermark" system for tracking computation status in DatatableTransform
         #

@@ -74,9 +74,13 @@ pipeline = Pipeline(
             func=steps.bboxes_to_ls_prediction,
             inputs=["ls_detection_prediction", "s3_images"],
             outputs=["images_with_predictions"],
-            transform_keys=["image_name"],
+            transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "annotation")],
-            kwargs=dict(image__image_path__name="image_url"),
+            kwargs=dict(
+                image__image_path__name="image_url",
+                primary_keys=["image_name"],
+                model_keys=["detection_model_id"],
+            ),
         ),
         LabelStudioUploadTasks(
             input__item="s3_images",
@@ -96,12 +100,14 @@ pipeline = Pipeline(
         LabelStudioUploadPredictions(
             input__item__has__prediction="images_with_predictions",
             input__label_studio_project_task="ls_task",
+            input__best_model="best_detection_model",
             output__label_studio_project_prediction="ls_predictions",
+            output__label_studio_current_model_version="ls_current_model_version",
             ls_url=LABEL_STUDIO_URL,
             api_key=LABEL_STUDIO_API_KEY,
             project_identifier=PROJECT_NAME,
-            primary_keys=["image_name"],
-            model_version__column="detection_model_id",
+            primary_keys=["image_name", "detection_model_id"],
+            model_keys=["detection_model_id"],
             labels=[("stage", "annotation")],
         ),
         BatchTransform(
@@ -249,5 +255,5 @@ pipeline = Pipeline(
     ]
 )
 
-ds = DataStore(DBCONN, create_meta_table=True)
+ds = DataStore(DBCONN)
 app = DatapipeAPI(ds, catalog, pipeline)
