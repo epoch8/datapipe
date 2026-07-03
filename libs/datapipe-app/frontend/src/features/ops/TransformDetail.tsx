@@ -3,32 +3,33 @@ import {
     Alert,
     Button,
     Card,
-    Collapse,
-    Descriptions,
     Popconfirm,
     Space,
     Spin,
-    Tag,
-    Typography,
 } from "antd";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
+import { graphNodesByIdFromGraph, nodeDataFromTransform } from "../cy/graphNodes";
+import { fetchTransformMetaSize } from "../../api/graph";
 import { opsApi } from "../../api/ops";
 import {
     findTransformInGraph,
     usePipelineGraph,
 } from "../../hooks/usePipelineGraph";
+import { PageHeader, TableSizeControl } from "./shared";
 import { TableDataPanel } from "./components/TableDataPanel";
 import { TransformRunPanel } from "./components/TransformRunPanel";
-
-const { Text } = Typography;
 
 export function TransformDetail() {
     const { id: pipelineId = "", transformName = "" } = useParams();
     const decodedName = decodeURIComponent(transformName);
-    const { graph, loading, error } = usePipelineGraph();
+    const { graph, loading, error, refresh } = usePipelineGraph();
     const [agentMode, setAgentMode] = useState(false);
     const [resetting, setResetting] = useState(false);
     const [metaRefreshKey, setMetaRefreshKey] = useState(0);
+    const [metaSize, setMetaSize] = useState<number | null>(null);
+    const [countingMeta, setCountingMeta] = useState(false);
+    const [metaSizeError, setMetaSizeError] = useState<string | null>(null);
     const [resetAlert, setResetAlert] = useState<{ type: "success" | "error"; message: string } | null>(
         null,
     );
@@ -40,23 +41,38 @@ export function TransformDetail() {
             .catch(() => setAgentMode(false));
     }, []);
 
-    if (error) return <Alert type="error" message={error} />;
-    if (loading || !graph) return <Spin />;
-
-    const step = findTransformInGraph(graph, decodedName);
-    if (!step || step.type !== "transform") {
-        return <Alert type="error" message={`Transform not found: ${decodedName}`} />;
-    }
+    const step = graph ? findTransformInGraph(graph, decodedName) : null;
+    const node = step
+        ? nodeDataFromTransform(step)
+        : nodeDataFromTransform({
+              name: decodedName,
+              inputs: [],
+              outputs: [],
+              indexes: [],
+          });
+    const graphNodesById = graph ? graphNodesByIdFromGraph(graph) : undefined;
+    const indexKeys = step?.indexes ?? [];
+    const hasTransformMeta =
+        node.has_transform_meta === true ||
+        node.total_idx_count != null ||
+        node.changed_idx_count != null;
 
     const metaTable = {
-        id: step.name,
-        indexes: step.indexes ?? [],
-        size: 0,
-        store_class: step.transform_type ?? "transform",
+        id: decodedName,
+        indexes: indexKeys,
+        size: metaSize,
+        store_class: step?.transform_type ?? "transform",
         type: "transform",
     };
 
-    const indexKeys = step.indexes ?? [];
+    const countMetaSize = () => {
+        setCountingMeta(true);
+        setMetaSizeError(null);
+        fetchTransformMetaSize(decodedName)
+            .then(setMetaSize)
+            .catch((e) => setMetaSizeError(String(e)))
+            .finally(() => setCountingMeta(false));
+    };
 
     const resetTransformMeta = () => {
         setResetting(true);
@@ -65,6 +81,7 @@ export function TransformDetail() {
             .resetTransformMetadata(pipelineId, decodedName)
             .then(() => {
                 setMetaRefreshKey((key) => key + 1);
+                setMetaSize(null);
                 setResetAlert({
                     type: "success",
                     message: "Transform meta table reset. All rows are marked unprocessed.",
@@ -74,91 +91,84 @@ export function TransformDetail() {
             .finally(() => setResetting(false));
     };
 
-    return (
-        <div>
-            <Text type="secondary">
-                <Link to="/">Overview</Link> /{" "}
-                <Link to={`/pipelines/${pipelineId}`}>{pipelineId}</Link> / Transform
-            </Text>
-            <Card title={decodedName} style={{ marginTop: 16 }}>
-                <Descriptions column={1} bordered size="small">
-                    <Descriptions.Item label="Name">{step.name}</Descriptions.Item>
-                    <Descriptions.Item label="Type">
-                        <Tag>{step.transform_type}</Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Inputs">
-                        {step.inputs.map((t) => (
-                            <Link
-                                key={t}
-                                to={`/pipelines/${pipelineId}/tables/${encodeURIComponent(t)}`}
-                            >
-                                {t}
-                            </Link>
-                        ))}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Outputs">
-                        {step.outputs.map((t) => (
-                            <Link
-                                key={t}
-                                to={`/pipelines/${pipelineId}/tables/${encodeURIComponent(t)}`}
-                            >
-                                {t}
-                            </Link>
-                        ))}
-                    </Descriptions.Item>
-                    {step.labels && step.labels.length > 0 && (
-                        <Descriptions.Item label="Labels">
-                            {step.labels.map(([k, v]) => (
-                                <Tag key={`${k}:${v}`}>
-                                    {k}={v}
-                                </Tag>
-                            ))}
-                        </Descriptions.Item>
-                    )}
-                </Descriptions>
-            </Card>
+    if (error) return <Alert type="error" message={error} />;
+    if (graph && !step) {
+        return <Alert type="error" message={`Transform not found: ${decodedName}`} />;
+    }
 
-            <Collapse defaultActiveKey={["run"]} style={{ marginTop: 16 }}>
-                <Collapse.Panel header="Run transform" key="run">
-                    <TransformRunPanel
-                        transformName={step.name}
-                        indexKeys={indexKeys}
-                    />
-                </Collapse.Panel>
-                <Collapse.Panel header="Transform meta table" key="meta">
-                    {agentMode ? (
-                        <Space direction="vertical" style={{ width: "100%", marginBottom: 12 }}>
-                            <Popconfirm
-                                title="Reset transform meta table? All rows will be marked unprocessed and the transform will re-run on the next execution."
-                                onConfirm={resetTransformMeta}
-                                okText="Reset"
-                                okButtonProps={{ danger: true }}
-                            >
-                                <Button danger loading={resetting}>
-                                    Reset Transform Meta Table
-                                </Button>
-                            </Popconfirm>
-                            {resetAlert && (
-                                <Alert
-                                    type={resetAlert.type}
-                                    message={resetAlert.message}
-                                    showIcon
-                                    closable
-                                    onClose={() => setResetAlert(null)}
-                                />
-                            )}
-                        </Space>
-                    ) : (
-                        <Alert
-                            style={{ marginBottom: 12 }}
-                            type="info"
-                            showIcon
-                            message="Reset transform meta table is available only in agent mode."
+    return (
+        <div className="ops-page">
+            <PageHeader
+                breadcrumbs={[
+                    { label: "Overview", href: "/" },
+                    { label: pipelineId, href: `/pipelines/${pipelineId}` },
+                    { label: "Transform" },
+                ]}
+                title={decodedName}
+                onRefresh={refresh}
+            />
+            {loading && !graph && (
+                <div style={{ marginBottom: 12 }}>
+                    <Spin size="small" /> Loading catalog metadata…
+                </div>
+            )}
+            <Card className="graph-node-detail-page" style={{ marginBottom: 16 }}>
+                <GraphNodeDetailBody
+                    node={node}
+                    graphNodesById={graphNodesById}
+                    pipelineId={pipelineId}
+                    showHeader={false}
+                    showMetaTable={false}
+                />
+            </Card>
+            <Card title="Run transform" style={{ marginBottom: 16 }}>
+                <TransformRunPanel transformName={decodedName} indexKeys={indexKeys} />
+            </Card>
+            {agentMode && hasTransformMeta && (
+                <Card title="Actions" style={{ marginBottom: 16 }}>
+                    <Space direction="vertical" style={{ width: "100%" }}>
+                        <Popconfirm
+                            title="Reset transform meta table? All rows will be marked unprocessed and the transform will re-run on the next execution."
+                            onConfirm={resetTransformMeta}
+                            okText="Reset"
+                            okButtonProps={{ danger: true }}
+                        >
+                            <Button danger loading={resetting}>
+                                Reset Transform Meta Table
+                            </Button>
+                        </Popconfirm>
+                        {resetAlert && (
+                            <Alert
+                                type={resetAlert.type}
+                                message={resetAlert.message}
+                                showIcon
+                                closable
+                                onClose={() => setResetAlert(null)}
+                            />
+                        )}
+                    </Space>
+                </Card>
+            )}
+            {hasTransformMeta && (
+                <Card title="Transform meta table">
+                    <div style={{ marginBottom: 12 }}>
+                        <TableSizeControl
+                            size={metaSize}
+                            loading={countingMeta}
+                            onCount={countMetaSize}
                         />
-                    )}
-                    <TableDataPanel key={metaRefreshKey} table={metaTable} />
-                </Collapse.Panel>
-            </Collapse>
+                        {metaSizeError ? (
+                            <div style={{ color: "#ff4d4f", marginTop: 8 }}>{metaSizeError}</div>
+                        ) : null}
+                    </div>
+                    <TableDataPanel
+                        key={metaRefreshKey}
+                        table={metaTable}
+                        knownRowCount={metaSize}
+                        hideRunStep
+                    />
+                </Card>
+            )}
         </div>
     );
 }

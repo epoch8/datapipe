@@ -12,7 +12,7 @@ import contextMenus from "cytoscape-context-menus";
 import "./style.css";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 import { groupIconSvg, tableIconSvg, transformIconSvg, slidersHorizontalIconSvg } from "./nodeIcons";
-import { escapeHtml, getTransformPrimaryKeys, renderKeyChipList } from "./nodeKeyChips";
+import { escapeHtml, formatNodeLabels, getTransformPrimaryKeys, renderKeyChipList, renderLabelChipList } from "./nodeKeyChips";
 import { KeyListPopover, type KeyPopoverState } from "./KeyListPopover";
 import { NodeInspectorPanel, type InspectorState } from "./NodeInspectorPanel";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
@@ -91,6 +91,7 @@ function buildNodeLabelTpl() {
                           <div class="node-title">${renderName(fallback.lines)}</div>
                           <div class="node-subtitle">${childCount} steps</div>
                           ${renderKeyChipList(nodeId, "tpk", tpk)}
+                          ${renderLabelChipList(nodeId, (data.labels as string[][]) ?? [])}
                       </div>
                   </div>
               </div>
@@ -139,6 +140,7 @@ function buildNodeLabelTpl() {
                 <div class="node-title">${renderName(lines)}</div>
                 <div class="node-subtitle">${escapeHtml(transformType)}</div>
                 ${renderKeyChipList(nodeId, "tpk", tpk)}
+                ${renderLabelChipList(nodeId, (data.labels as string[][]) ?? [])}
               </div>
             </div>
           </div>
@@ -181,6 +183,7 @@ function PipelineGraphView({
     rankDir = "TB",
     refreshIntervalMs = 0,
     pipelineId: pipelineIdProp,
+    graphRefreshToken = 0,
 }: PipelineGraphProps) {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
@@ -208,6 +211,11 @@ function PipelineGraphView({
     });
 
     const needFitRef = useRef(true);
+    // Whether the user has manually panned/zoomed. Until they do, the camera is
+    // considered "auto": a container resize (flex settle, inspector panel resize,
+    // sidebar toggle, window resize) re-fits so the graph stays centered instead
+    // of drifting to an edge because cytoscape cached a stale container width.
+    const userInteractedRef = useRef(false);
     // graphUrl whose data currently lives in `rawGraph`; guards the sync effect
     // from running against a stale graph during a stage switch (which would fit
     // the camera to the old graph and consume needFit before the new one loads).
@@ -346,7 +354,7 @@ function PipelineGraphView({
             cancelled = true;
             clearInterval(timer);
         };
-    }, [graphUrl, refreshIntervalMs, cy]);
+    }, [graphUrl, refreshIntervalMs, cy, graphRefreshToken]);
 
     useEffect(() => {
         if (!cy || !rawGraph || loading) return;
@@ -372,6 +380,43 @@ function PipelineGraphView({
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
         initNodeLabels(cy);
+    }, [cy]);
+
+    // Keep cytoscape's cached viewport dimensions in sync with the container.
+    // Without this, cy.width()/height() go stale whenever the flex layout, the
+    // inspector panel width, the stage sidebar, or the window changes size, and
+    // the next fit/pan centers against the wrong width — the graph then renders
+    // shifted toward an edge of the canvas.
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        const container = cy.container();
+        if (!container || typeof ResizeObserver === "undefined") return;
+
+        let frame = 0;
+        const observer = new ResizeObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                if (cy.destroyed()) return;
+                cy.resize();
+                if (!userInteractedRef.current && cy.nodes().nonempty()) {
+                    cy.fit(undefined, 48);
+                }
+            });
+        });
+        observer.observe(container);
+
+        const markInteracted = () => {
+            userInteractedRef.current = true;
+        };
+        container.addEventListener("wheel", markInteracted, { passive: true });
+        container.addEventListener("mousedown", markInteracted, true);
+
+        return () => {
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+            container.removeEventListener("wheel", markInteracted);
+            container.removeEventListener("mousedown", markInteracted, true);
+        };
     }, [cy]);
 
     useEffect(() => {
@@ -428,7 +473,7 @@ function PipelineGraphView({
 
         const openKeyPopoverFromChip = (overflow: HTMLElement) => {
             const nodeId = overflow.getAttribute("data-cy-node-id");
-            const kind = overflow.getAttribute("data-key-kind") as "pk" | "tpk" | null;
+            const kind = overflow.getAttribute("data-key-kind") as "pk" | "tpk" | "label" | null;
             if (!nodeId || !kind) return;
 
             const node = cy.getElementById(nodeId);
@@ -438,7 +483,9 @@ function PipelineGraphView({
             const keys =
                 kind === "pk"
                     ? ((data.indexes as string[]) ?? [])
-                    : getTransformPrimaryKeys(data);
+                    : kind === "label"
+                      ? formatNodeLabels((data.labels as string[][]) ?? [])
+                      : getTransformPrimaryKeys(data);
 
             const containerRect = container.getBoundingClientRect();
             const chipRect = overflow.getBoundingClientRect();
@@ -760,16 +807,20 @@ function PipelineGraphView({
 
     const handleZoomIn = useCallback(() => {
         if (!cy || cy.destroyed()) return;
+        userInteractedRef.current = true;
         cy.zoom(cy.zoom() * 1.2);
     }, [cy]);
 
     const handleZoomOut = useCallback(() => {
         if (!cy || cy.destroyed()) return;
+        userInteractedRef.current = true;
         cy.zoom(cy.zoom() / 1.2);
     }, [cy]);
 
     const handleFit = useCallback(() => {
         if (!cy || cy.destroyed()) return;
+        userInteractedRef.current = false;
+        cy.resize();
         cy.fit(undefined, 48);
     }, [cy]);
 
@@ -860,6 +911,14 @@ function PipelineGraphView({
                 onHandleMouseDown={onPanelResize}
                 onClose={() => setInspector(null)}
                 onNavigateToNode={navigateToInspectorNode}
+                onOpenDetails={
+                    inspector
+                        ? () => {
+                              const node = cy?.getElementById(inspector.nodeId);
+                              if (node && !node.empty()) openNodeDetails(node);
+                          }
+                        : undefined
+                }
             />
         </div>
     );

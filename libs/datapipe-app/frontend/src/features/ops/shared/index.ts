@@ -11,4 +11,5 @@ export { EmptyState } from "./EmptyState";
 export { MetricValue } from "./MetricValue";
 export { TrendDelta } from "./TrendDelta";
 export { Sparkline } from "./Sparkline";
+export { TableSizeControl } from "./TableSizeControl";
 export * from "./metricsFormat";

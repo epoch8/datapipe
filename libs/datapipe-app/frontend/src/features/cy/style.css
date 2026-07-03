@@ -211,6 +211,12 @@
     color: #0b6325;
 }
 
+.node-key-chip.label {
+    border-color: #d9d6fe;
+    background: #f4f3ff;
+    color: #5925dc;
+}
+
 .node-key-chip-more {
     cursor: pointer;
     border-color: #c8d6e8;
@@ -346,6 +352,25 @@
     font-weight: 700;
 }
 
+.inspector-schema-pk-row td {
+    background: #fff8ef;
+}
+
+.inspector-schema-column-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.inspector-schema-type {
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: #f6f8fb;
+    color: #475467;
+    font-size: 11px;
+}
+
 .inspector-node-link {
     display: inline;
     padding: 0;
@@ -421,7 +446,49 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
+    padding: 16px 16px 0;
     margin-bottom: 18px;
+}
+
+.inspector-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* On the wide detail page keep content within a comfortable reading width so
+   sections and tables don't stretch edge-to-edge with huge empty gaps. */
+.graph-node-detail-page .node-inspector-panel-body {
+    padding: 0;
+    max-width: 760px;
+}
+
+/* Give the Inputs/Outputs columns (Source · Type · Keys) sensible proportions
+   instead of spreading the three columns evenly across the full width. */
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) th:first-child,
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) td:first-child {
+    width: 40%;
+}
+
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) th:nth-child(2),
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) td:nth-child(2) {
+    width: 18%;
+}
+
+/* Schema table has two columns (Column · Type). */
+.graph-node-detail-page .inspector-schema-table th:first-child,
+.graph-node-detail-page .inspector-schema-table td:first-child {
+    width: 55%;
+}
+
+.inspector-substep-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.inspector-substep-list li {
+    margin-bottom: 8px;
 }
 
 .node-inspector-panel-body {

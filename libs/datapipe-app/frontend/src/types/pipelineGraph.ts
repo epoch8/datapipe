@@ -10,4 +10,5 @@ export type PipelineGraphProps = {
     rankDir?: "TB" | "LR";
     refreshIntervalMs?: number;
     pipelineId?: string | null;
+    graphRefreshToken?: number;
 };

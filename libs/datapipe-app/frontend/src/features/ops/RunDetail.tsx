@@ -8,13 +8,14 @@ import {
     Tag,
     Typography,
 } from "antd";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { RunDetail as RunDetailType } from "../../types/ops";
+import { PageHeader } from "./shared";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { RunLogsPanel } from "./components/RunLogsPanel";
 
-const { Text, Title } = Typography;
+const { Title } = Typography;
 
 function statusColor(status: string): string {
     if (status === "failed") return "red";
@@ -27,6 +28,11 @@ export function RunDetail() {
     const { runId = "" } = useParams();
     const [run, setRun] = React.useState<RunDetailType | null>(null);
     const [error, setError] = React.useState<string | null>(null);
+    const [refreshToken, setRefreshToken] = React.useState(0);
+
+    const refresh = React.useCallback(() => {
+        setRefreshToken((token) => token + 1);
+    }, []);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -54,7 +60,7 @@ export function RunDetail() {
             cancelled = true;
             if (timer) clearInterval(timer);
         };
-    }, [runId]);
+    }, [runId, refreshToken]);
 
     if (error) return <Alert type="error" message={error} />;
     if (!run) return <Spin />;
@@ -66,13 +72,18 @@ export function RunDetail() {
         : 0;
 
     return (
-        <div>
-            <Text type="secondary">
-                <Link to="/">Overview</Link> /{" "}
-                <Link to={`/pipelines/${run.pipeline_id}`}>{run.pipeline_id}</Link> / Run
-            </Text>
+        <div className="ops-page">
+            <PageHeader
+                breadcrumbs={[
+                    { label: "Overview", href: "/" },
+                    { label: run.pipeline_id, href: `/pipelines/${run.pipeline_id}` },
+                    { label: "Run" },
+                ]}
+                title={`Run ${run.run_id.slice(0, 8)}`}
+                onRefresh={refresh}
+            />
 
-            <Card style={{ marginTop: 16 }}>
+            <Card>
                 <Title level={5} style={{ marginTop: 0 }}>
                     Execution status
                 </Title>

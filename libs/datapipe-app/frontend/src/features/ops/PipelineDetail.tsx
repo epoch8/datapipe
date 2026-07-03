@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Card, Dropdown, Menu, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Card, Dropdown, Menu, Space, Spin, Tag } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
@@ -8,9 +8,8 @@ import { PipelineMetrics } from "./components/PipelineMetrics";
 import { PluginSection } from "./components/PluginSection";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
+import { PageHeader } from "./shared";
 import { prependRecentRun } from "./utils/recentRuns";
-
-const { Text, Title } = Typography;
 
 type PipelineDetailProps = {
     pipelineId?: string;
@@ -29,7 +28,6 @@ export function PipelineDetail({
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
     const [curves, setCurves] = React.useState<ChartSpec[]>([]);
     const [error, setError] = React.useState<string | null>(null);
-    const [running, setRunning] = React.useState(false);
 
     const load = React.useCallback(() => {
         if (!id) return;
@@ -53,7 +51,6 @@ export function PipelineDetail({
     }, [detail]);
 
     const runStage = (labels: [string, string][]) => {
-        setRunning(true);
         opsApi
             .startRun(labels)
             .then((started) => {
@@ -62,10 +59,9 @@ export function PipelineDetail({
                         ? { ...current, recent_runs: prependRecentRun(current.recent_runs, started) }
                         : current,
                 );
-                load();
+                navigate(`/runs/${started.run_id}`);
             })
-            .catch((e) => setError(String(e)))
-            .finally(() => setRunning(false));
+            .catch((e) => setError(String(e)));
     };
 
     if (!id) return <Alert type="error" message="Pipeline id is required" />;
@@ -83,17 +79,23 @@ export function PipelineDetail({
     );
 
     return (
-        <div>
-            {embedded ? (
-                <Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-                    {detail.display_name}
-                </Title>
-            ) : (
-                <Text type="secondary">
-                    <Link to="/">Overview</Link> / {detail.display_name}
-                </Text>
-            )}
-            <div style={{ marginTop: embedded ? 0 : 8, marginBottom: 16 }}>
+        <div className="ops-page">
+            <PageHeader
+                breadcrumbs={[{ label: "Overview" }]}
+                title={detail.display_name}
+                onRefresh={load}
+                extra={
+                    detail.agent_mode ? (
+                        <Space>
+                            <Button onClick={() => runStage([])}>Run pipeline</Button>
+                            <Dropdown overlay={stageMenu}>
+                                <Button>Run stage</Button>
+                            </Dropdown>
+                        </Space>
+                    ) : undefined
+                }
+            />
+            <div style={{ marginBottom: 16 }}>
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
                 <Tag color={detail.health === "failed" ? "red" : "green"}>{detail.health}</Tag>
             </div>
@@ -112,19 +114,9 @@ export function PipelineDetail({
                         : undefined
                 }
             />
-            {detail.agent_mode && (
-                <Space style={{ marginBottom: 16 }}>
-                    <Button loading={running} onClick={() => runStage([])}>
-                        Run pipeline
-                    </Button>
-                    <Dropdown overlay={stageMenu}>
-                        <Button loading={running}>Run stage</Button>
-                    </Dropdown>
-                </Space>
-            )}
             {detail.last_error && (
                 <Card title="Error" style={{ marginBottom: 16 }}>
-                    <Text type="danger">{detail.last_error}</Text>
+                    <span style={{ color: "#ff4d4f" }}>{detail.last_error}</span>
                 </Card>
             )}
             {curves.length > 0 && (

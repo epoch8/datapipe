@@ -1,25 +1,18 @@
 import React from "react";
-import {
-    Alert,
-    Card,
-    Descriptions,
-    List,
-    Spin,
-    Tag,
-    Typography,
-} from "antd";
-import { Link, useParams } from "react-router-dom";
+import { Alert, Card, Spin } from "antd";
+import { useParams } from "react-router-dom";
+import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
+import { graphNodesByIdFromGraph, nodeDataFromMeta } from "../cy/graphNodes";
 import {
     findMetaStepInGraph,
     usePipelineGraph,
 } from "../../hooks/usePipelineGraph";
-
-const { Text } = Typography;
+import { PageHeader } from "./shared";
 
 export function MetaStepDetail() {
     const { id: pipelineId = "", stepName = "" } = useParams();
     const decodedName = decodeURIComponent(stepName);
-    const { graph, loading, error } = usePipelineGraph();
+    const { graph, loading, error, refresh } = usePipelineGraph();
 
     if (error) return <Alert type="error" message={error} />;
     if (loading || !graph) return <Spin />;
@@ -30,67 +23,29 @@ export function MetaStepDetail() {
     }
 
     const subSteps = meta.graph?.pipeline ?? [];
+    const node = nodeDataFromMeta(meta);
+    const graphNodesById = graphNodesByIdFromGraph(graph);
 
     return (
-        <div>
-            <Text type="secondary">
-                <Link to="/">Overview</Link> /{" "}
-                <Link to={`/pipelines/${pipelineId}`}>{pipelineId}</Link> / Pipeline step
-            </Text>
-            <Card title={decodedName} style={{ marginTop: 16 }}>
-                <Descriptions column={1} bordered size="small">
-                    <Descriptions.Item label="Class">{meta.name}</Descriptions.Item>
-                    <Descriptions.Item label="Sub-steps">{subSteps.length}</Descriptions.Item>
-                    <Descriptions.Item label="External inputs">
-                        {(meta.inputs ?? []).map((t) => (
-                            <Link
-                                key={t}
-                                to={`/pipelines/${pipelineId}/tables/${encodeURIComponent(t)}`}
-                            >
-                                {t}
-                            </Link>
-                        ))}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="External outputs">
-                        {(meta.outputs ?? []).map((t) => (
-                            <Link
-                                key={t}
-                                to={`/pipelines/${pipelineId}/tables/${encodeURIComponent(t)}`}
-                            >
-                                {t}
-                            </Link>
-                        ))}
-                    </Descriptions.Item>
-                    {meta.labels && meta.labels.length > 0 && (
-                        <Descriptions.Item label="Labels">
-                            {meta.labels.map(([k, v]) => (
-                                <Tag key={`${k}:${v}`}>
-                                    {k}={v}
-                                </Tag>
-                            ))}
-                        </Descriptions.Item>
-                    )}
-                </Descriptions>
-            </Card>
-            <Card title="Sub-steps" style={{ marginTop: 16 }}>
-                <List
-                    dataSource={subSteps}
-                    renderItem={(item) => (
-                        <List.Item>
-                            {item.type === "transform" ? (
-                                <Link
-                                    to={`/pipelines/${pipelineId}/transforms/${encodeURIComponent(item.name)}`}
-                                >
-                                    {item.name}
-                                </Link>
-                            ) : (
-                                <span>{item.name}</span>
-                            )}
-                            {item.type === "transform" && (
-                                <Tag style={{ marginLeft: 8 }}>{item.transform_type}</Tag>
-                            )}
-                        </List.Item>
-                    )}
+        <div className="ops-page">
+            <PageHeader
+                breadcrumbs={[
+                    { label: "Overview", href: "/" },
+                    { label: pipelineId, href: `/pipelines/${pipelineId}` },
+                    { label: "Pipeline step" },
+                ]}
+                title={decodedName}
+                onRefresh={refresh}
+            />
+            <Card className="graph-node-detail-page">
+                <GraphNodeDetailBody
+                    node={node}
+                    graphNodesById={graphNodesById}
+                    pipelineId={pipelineId}
+                    subSteps={subSteps}
+                    showHeader={false}
+                    showTableData={false}
+                    showMetaTable={false}
                 />
             </Card>
         </div>

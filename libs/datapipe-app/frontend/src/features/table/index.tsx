@@ -17,6 +17,7 @@ import {
     InputRef,
     Progress,
     AlertProps,
+    Select,
 } from "antd";
 import { ColumnsType } from "antd/lib/table";
 import {
@@ -36,6 +37,7 @@ import {
     RunStepWebSocketComponentProps,
 } from "../../types";
 import { FilterValue, SorterResult } from "antd/lib/table/interface";
+import { getDefaultTablePageSize, setDefaultTablePageSize } from "../../api/graph";
 
 function renderCellValue(value: unknown): React.ReactNode {
     if (value === null || value === undefined) {
@@ -282,6 +284,7 @@ const loadTable = async (
     options: Options,
     loadingsOptions?: TableLoadingOptions,
     tableFocus?: FocusType,
+    knownRowCount?: number | null,
 ) => {
     loadingsOptions = loadingsOptions ?? ({} as TableLoadingOptions);
     const page = loadingsOptions.page ?? 1;
@@ -299,6 +302,7 @@ const loadTable = async (
         page_size: pageSize || options.pageSize,
         order_by: loadingsOptions.orderBy,
         order: loadingsOptions.order,
+        include_total: false,
     } as GetDataReq;
 
     if (_focus && _focus.table_name !== current.id) {
@@ -352,10 +356,18 @@ const loadTable = async (
     if (data.data.length === 0) {
         setLoading(false);
         setData([]);
+        const effectivePageSize = data.page_size ?? options.pageSize;
+        const currentPage = (data.page ?? 0) + 1;
+        const total = knownRowCount ?? data.total ?? null;
+        const hasMore =
+            total != null
+                ? currentPage * effectivePageSize < total
+                : false;
         setOptions({
-            total: data.total ?? 0,
-            page: (data.page ?? 0) + 1,
-            pageSize: data.page_size ?? options.pageSize,
+            total,
+            page: currentPage,
+            pageSize: effectivePageSize,
+            hasMore,
         });
         return;
     }
@@ -367,11 +379,22 @@ const loadTable = async (
         return;
     }
 
+    const pkKeys = new Set(current.indexes ?? []);
+
     setColumns(
         Object.entries(sampleRow).map(([column, colValue]) => {
+            const isPk = pkKeys.has(column);
             return {
-                title: column,
+                title: isPk ? (
+                    <span className="dp-col-title">
+                        {column}
+                        <span className="dp-col-pk-badge">PK</span>
+                    </span>
+                ) : (
+                    column
+                ),
                 dataIndex: column,
+                className: isPk ? "dp-pk-col" : undefined,
                 sorter: typeof colValue !== "object",
                 render: renderCellValue,
                 filterDropdown:
@@ -410,26 +433,37 @@ const loadTable = async (
         data.data.map((element: any, index: number) => ({ ...element, index })),
     );
     setLoading(false);
+    const effectivePageSize = data.page_size ?? options.pageSize;
+    const currentPage = data.page + 1;
+    const total = knownRowCount ?? data.total ?? null;
+    const hasMore =
+        total != null
+            ? currentPage * effectivePageSize < total
+            : data.data.length >= effectivePageSize;
     setOptions({
-        total: data.total,
-        page: data.page + 1,
-        pageSize: data.page_size,
+        total,
+        page: currentPage,
+        pageSize: effectivePageSize,
+        hasMore,
     });
 };
 
-const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100];
+
+const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hideRunStep = false }) => {
     const [columns, setColumns] = useState<ColumnsType<any>>([]);
     const [data, setData] = useState<any>();
     const [loading, setLoading] = useState(false);
     const [tableFocus, setTableFocus] = useState<FocusType>();
     const [options, setOptions] = useState<Options>({
-        total: 0,
+        total: knownRowCount,
         page: 1,
-        pageSize: 20,
+        pageSize: getDefaultTablePageSize(),
+        hasMore: false,
     });
     const [pagination, setPagination] = useState<Pagination>({
         page: 1,
-        pageSize: 20,
+        pageSize: getDefaultTablePageSize(),
     });
     const [sorting, setSorting] = useState<Sorting>({
         orderBy: undefined,
@@ -484,7 +518,7 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
             }
             setFilteredInfo(newFilters);
         },
-        [current, options, tableFocus],
+        [],
     );
 
     const clearFocus = useCallback(() => {
@@ -494,9 +528,10 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
     useEffect(() => {
         setFilteredInfo({});
         setSorting({});
+        const pageSize = getDefaultTablePageSize();
         setPagination({
             page: 1,
-            pageSize: 20,
+            pageSize,
         });
         setData([]);
         setColumns([]);
@@ -509,10 +544,15 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
             setOptions,
             current,
             options,
-            { page: 1, pageSize: 20 },
+            { page: 1, pageSize },
             tableFocus,
+            knownRowCount,
         );
     }, [current.id]);
+
+    useEffect(() => {
+        setOptions((prev) => ({ ...prev, total: knownRowCount }));
+    }, [knownRowCount]);
 
     useEffect(() => {
         if (skipRenderFlag.current) {
@@ -535,12 +575,18 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
                 filters: filteredInfo,
             },
             tableFocus,
+            knownRowCount,
         );
-    }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order]);
+    }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order, knownRowCount]);
+
+    const totalPages =
+        options.total != null && options.total >= 0
+            ? Math.max(1, Math.ceil(options.total / pagination.pageSize))
+            : null;
 
     return (
         <>
-            {current.type === "transform" && (
+            {current.type === "transform" && !hideRunStep && (
                 <RunStepWebSocketComponent
                     transform={current.id}
                     setAlertMsg={setAlertMsg}
@@ -584,10 +630,57 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
                         Clear filters
                     </Button>
                 )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <Space>
+                    <Button
+                        size="small"
+                        disabled={pagination.page <= 1 || loading}
+                        onClick={() =>
+                            setPagination((prev) => ({
+                                ...prev,
+                                page: Math.max(1, prev.page - 1),
+                            }))
+                        }
+                    >
+                        Previous
+                    </Button>
+                    <span>
+                        Page {pagination.page}
+                        {totalPages != null ? ` of ${totalPages}` : ""}
+                    </span>
+                    <Button
+                        size="small"
+                        disabled={!options.hasMore || loading}
+                        onClick={() =>
+                            setPagination((prev) => ({
+                                ...prev,
+                                page: prev.page + 1,
+                            }))
+                        }
+                    >
+                        Next
+                    </Button>
+                    <Select
+                        size="small"
+                        value={pagination.pageSize}
+                        options={PAGE_SIZE_OPTIONS.map((value) => ({ value, label: `${value} / page` }))}
+                        onChange={(pageSize) => {
+                            setDefaultTablePageSize(pageSize);
+                            setPagination({ page: 1, pageSize });
+                        }}
+                    />
+                    {options.total != null && (
+                        <span style={{ color: "rgba(0,0,0,0.45)" }}>
+                            {options.total.toLocaleString()} rows
+                        </span>
+                    )}
+                </Space>
+            </div>
             <AntTable
                 loading={loading}
                 showHeader={!loading && data?.length > 0}
                 onChange={changeHandler}
+                pagination={false}
                 rowKey={(record) => {
                     if (current.indexes.length > 0) {
                         const idx_string = current.indexes.reduce((acc, value) => {
@@ -611,13 +704,6 @@ const Table: FC<TableProps> = ({ current, setAlertMsg }) => {
                         }
                 }
                 size="small"
-                pagination={{
-                    showSizeChanger: true,
-                    total: options.total,
-                    pageSize: options.pageSize,
-                    current: options.page,
-                    position: ["topRight"],
-                }}
                 style={{ width: "100%" }}
                 columns={columns}
                 dataSource={loading ? [] : (data ?? [])}

@@ -5,9 +5,11 @@ import type { PipeTable } from "../../../types";
 
 type Props = {
     table: PipeTable;
+    knownRowCount?: number | null;
+    hideRunStep?: boolean;
 };
 
-export function TableDataPanel({ table }: Props) {
+export function TableDataPanel({ table, knownRowCount = null, hideRunStep = false }: Props) {
     const [alertMsg, setAlertMsg] = useState<AlertProps | null>(null);
 
     return (
@@ -21,7 +23,12 @@ export function TableDataPanel({ table }: Props) {
                     onClose={() => setAlertMsg(null)}
                 />
             )}
-            <Table current={table} setAlertMsg={setAlertMsg} />
+            <Table
+                current={table}
+                setAlertMsg={setAlertMsg}
+                knownRowCount={knownRowCount}
+                hideRunStep={hideRunStep}
+            />
         </div>
     );
 }

@@ -16,6 +16,7 @@ class PipelineStepResponse(BaseModel):
 
     labels: List[List[str]] = Field(default_factory=list)
 
+    has_transform_meta: bool = False
     total_idx_count: Optional[int] = None
     changed_idx_count: Optional[int] = None
 
@@ -39,8 +40,14 @@ class TableResponse(BaseModel):
 
     indexes: List[str]
 
-    size: int
+    size: Optional[int] = None
     store_class: str
+    schema_: List["TableColumnResponse"] = Field(alias="schema", default_factory=list)
+
+
+class TableColumnResponse(BaseModel):
+    name: str
+    type: str
 
 
 class GraphResponse(BaseModel):
@@ -49,6 +56,7 @@ class GraphResponse(BaseModel):
     stages: List[str] = Field(default_factory=list)
 
 
+TableResponse.model_rebuild()
 GraphResponse.model_rebuild()
 MetaPipelineStepResponse.model_rebuild()
 
@@ -62,17 +70,23 @@ class GetDataRequest(BaseModel):
     table: str
     filters: Dict[str, Any] = {}
     page: int = 0
-    page_size: int = 20
+    page_size: int = 5
     order_by: Optional[str] = None
     order: Literal["asc", "desc"] = "asc"
     focus: Optional[FocusFilter] = None
+    include_total: bool = False
 
 
 class GetDataResponse(BaseModel):
     page: int
     page_size: int
-    total: int
+    total: Optional[int] = None
     data: List[Dict]
+
+
+class TableSizeResponse(BaseModel):
+    table: str
+    size: int
 
 
 class RunStepRequest(BaseModel):

@@ -261,6 +261,10 @@ export function syncCyGraph(
         applyLayoutToCy(cy, nextLayout);
         layoutStore.set(cy, nextLayout);
         structureKeyStore.set(cy, currentStructureKey);
+        // Sync cached viewport dimensions before fitting: on first paint the flex
+        // container may not have reached its final width yet, and a stale
+        // cy.width() makes the centering pan land off to one side.
+        cy.resize();
         fitGraphViewport(cy);
         options.onLayoutComplete?.();
         return;
@@ -288,6 +292,9 @@ export function syncCyGraph(
             fadeIn,
             onComplete: () => scheduleLayoutComplete(cy, options),
         });
+        // Keep cached dimensions fresh so the fit target is centered on the real
+        // (possibly just-resized) container width, not a stale one.
+        cy.resize();
         // Start the viewport tween *after* animateLayoutTransition (its internal
         // cy.stop would otherwise cancel a camera animation started earlier).
         animateFitViewport(cy, nextLayout, ANIMATION_MS);

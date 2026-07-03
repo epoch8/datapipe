@@ -81,13 +81,15 @@ def get_table_store_db_data(table_store: TableStoreDB, req: models.GetDataReques
         sql = sql.where(text(f"{req.order_by} is not null"))
         sql = sql.order_by(text(f"{req.order_by} {req.order}"))
 
-    sql.offset(req.page * req.page_size).limit(req.page_size)
+    sql = sql.offset(req.page * req.page_size).limit(req.page_size)
 
     data_df = pd.read_sql_query(sql, con=table_store.dbconn.con)
 
-    with table_store.dbconn.con.begin() as conn:
-        total = conn.execute(sql_count).scalar_one_or_none()
-        assert total is not None
+    total: Optional[int] = None
+    if req.include_total:
+        with table_store.dbconn.con.begin() as conn:
+            total = conn.execute(sql_count).scalar_one_or_none()
+            assert total is not None
 
     return models.GetDataResponse(
         page=req.page,
@@ -105,6 +107,16 @@ def get_table_data(ds: DataStore, catalog: Catalog, req: models.GetDataRequest) 
         return get_table_store_db_data(table_store, req)
 
     raise HTTPException(status_code=500, detail="Not implemented")
+
+
+def get_table_store_schema(table_store: Any) -> List[models.TableColumnResponse]:
+    if not isinstance(table_store, TableStoreDB):
+        return []
+
+    return [
+        models.TableColumnResponse(name=column.name, type=str(column.type))
+        for column in table_store.data_sql_schema
+    ]
 
 
 def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest) -> models.GetDataResponse:
@@ -142,9 +154,11 @@ def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest)
     transform_data = transform_data.drop("priority", axis=1)
     transform_data["process_ts"] = pd.to_datetime(transform_data["process_ts"], unit="s", utc=True)
 
-    with transform_meta.dbconn.con.begin() as conn:
-        total = conn.execute(sql_count).scalar_one_or_none()
-        assert total is not None
+    total: Optional[int] = None
+    if req.include_total:
+        with transform_meta.dbconn.con.begin() as conn:
+            total = conn.execute(sql_count).scalar_one_or_none()
+            assert total is not None
 
     return models.GetDataResponse(
         page=req.page,
@@ -317,8 +331,9 @@ def make_app(
             return models.TableResponse(
                 name=tbl.name,
                 indexes=tbl.primary_keys,
-                size=tbl.get_size(),
+                size=None,
                 store_class=tbl.table_store.__class__.__name__,
+                schema=get_table_store_schema(tbl.table_store),
             )
 
         def pipeline_step_response(step: ComputeStep) -> models.PipelineStepResponse:
@@ -337,6 +352,7 @@ def make_app(
                     inputs=inputs,
                     outputs=outputs,
                     labels=step_labels,
+                    has_transform_meta=True,
                     total_idx_count=(step_status.total_idx_count if step_status else None),
                     changed_idx_count=(step_status.changed_idx_count if step_status else None),
                 )
@@ -403,6 +419,26 @@ def make_app(
     def get_data_post_api(req: models.GetDataRequest) -> models.GetDataResponse:
         return get_table_data(ds, catalog, req)
 
+    @app.get("/tables/{table_name}/size", response_model=models.TableSizeResponse)
+    def get_table_size(table_name: str) -> models.TableSizeResponse:
+        tbl = catalog.get_datatable(ds, table_name)
+        return models.TableSizeResponse(table=table_name, size=tbl.get_size())
+
+    @app.get("/transforms/{transform_name}/meta-size", response_model=models.TableSizeResponse)
+    def get_transform_meta_size(transform_name: str) -> models.TableSizeResponse:
+        filtered_steps = filter_steps_by_labels(steps, name_prefix=transform_name)
+        if len(filtered_steps) != 1:
+            raise HTTPException(status_code=404, detail="Step not found")
+        step = filtered_steps[0]
+        if not isinstance(step, BaseBatchTransformStep):
+            raise HTTPException(status_code=400, detail="Transform does not have SQL metadata")
+        transform_meta = require_sql_transform_meta(step.meta)
+        sql_count = select(count()).select_from(transform_meta.sql_table)
+        with transform_meta.dbconn.con.begin() as conn:
+            total = conn.execute(sql_count).scalar_one_or_none()
+            assert total is not None
+        return models.TableSizeResponse(table=transform_name, size=total)
+
     @app.post("/get-transform-data")
     def get_meta_data_api(req: models.GetDataRequest) -> models.GetDataResponse:
         filtered_steps = filter_steps_by_labels(steps, name_prefix=req.table)
@@ -415,7 +451,7 @@ def make_app(
             return models.GetDataResponse(
                 page=req.page,
                 page_size=req.page_size,
-                total=0,
+                total=None,
                 data=[],
             )
 

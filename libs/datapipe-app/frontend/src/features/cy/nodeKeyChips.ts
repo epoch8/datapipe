@@ -1,6 +1,6 @@
 import Cytoscape from "cytoscape";
 
-export type KeyKind = "pk" | "tpk";
+export type KeyKind = "pk" | "tpk" | "label";
 
 export type VisibleKeyChips = {
     visible: string[];
@@ -62,12 +62,17 @@ export function escapeHtml(value: string): string {
         .replaceAll("'", "&#039;");
 }
 
+export function formatNodeLabels(labels: string[][] | undefined): string[] {
+    if (!labels?.length) return [];
+    return labels.map(([k, v]) => `${k}=${v}`);
+}
+
 export function renderKeyChipList(nodeId: string, kind: KeyKind, keys: string[]): string {
     const state = getVisibleKeyChips(keys);
 
     if (!keys.length) return "";
 
-    const label = kind === "pk" ? "PK" : "TPK";
+    const label = kind === "pk" ? "PK" : kind === "tpk" ? "TPK" : "Labels";
 
     const chips = state.visible
         .map(
@@ -88,7 +93,7 @@ export function renderKeyChipList(nodeId: string, kind: KeyKind, keys: string[])
           data-key-overflow="true"
           data-key-kind="${kind}"
           data-cy-node-id="${escapeHtml(nodeId)}"
-          title="Show all ${keys.length} keys"
+          title="Show all ${keys.length} ${kind === "label" ? "labels" : "keys"}"
         >
           +${state.hiddenCount} more
         </button>
@@ -104,4 +109,8 @@ export function renderKeyChipList(nodeId: string, kind: KeyKind, keys: string[])
       </span>
     </div>
   `;
+}
+
+export function renderLabelChipList(nodeId: string, labels: string[][] | undefined): string {
+    return renderKeyChipList(nodeId, "label", formatNodeLabels(labels));
 }

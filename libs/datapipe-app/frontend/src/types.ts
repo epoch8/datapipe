@@ -3,11 +3,17 @@ import { InputRef } from "antd/lib/input/Input";
 import { FilterValue } from "antd/lib/table/interface";
 import { Dispatch, RefObject, SetStateAction } from "react";
 
+interface TableColumn {
+    name: string;
+    type: string;
+}
+
 interface PipeTable {
     id: string;
     indexes: string[];
-    size: number;
+    size?: number | null;
     store_class: string;
+    schema?: TableColumn[];
     type: string;
 }
 
@@ -36,6 +42,7 @@ interface TransformNode extends BaseNode {
     transform_primary_keys?: string[];
     tpk?: string[];
     primary_keys?: string[];
+    has_transform_meta?: boolean;
     total_idx_count?: number;
     changed_idx_count?: number;
 }
@@ -55,6 +62,7 @@ interface GetDataReq {
     table: string;
     page: number;
     page_size: number;
+    include_total?: boolean;
     focus?: {
         table_name: string;
         items_idx: Record<string, string | number>[];
@@ -65,9 +73,10 @@ interface GetDataReq {
 }
 
 interface Options {
-    total: number;
+    total: number | null;
     page: number;
     pageSize: number;
+    hasMore: boolean;
 }
 
 type IdxRow = {
@@ -119,6 +128,8 @@ interface RunStepWebSocketComponentProps {
 interface TableProps {
     current: PipeTable;
     setAlertMsg: Dispatch<SetStateAction<AlertProps | null>>;
+    knownRowCount?: number | null;
+    hideRunStep?: boolean;
 }
 
 interface listOfSelectedColumnsProps {
@@ -153,6 +164,7 @@ export type {
     IdxRow,
     RunStepWebSocketComponentProps,
     TableProps,
+    TableColumn,
     listOfSelectedColumnsProps,
     RunStepRequestProps,
     RunStepResponseProps,

@@ -17,7 +17,9 @@ export function KeyListPopover({ state, onClose }: KeyListPopoverProps) {
     const title =
         state.kind === "pk"
             ? `Primary keys · ${state.keys.length}`
-            : `Transform Primary Keys · ${state.keys.length}`;
+            : state.kind === "tpk"
+              ? `Transform Primary Keys · ${state.keys.length}`
+              : `Labels · ${state.keys.length}`;
 
     return (
         <div

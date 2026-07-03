@@ -1,11 +1,12 @@
 import React from "react";
 import { Alert, Button, Card, Spin } from "antd";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { Capabilities, PipelineDetail, RecentRunSummary } from "../../types/ops";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { RecentRunsList } from "./components/RecentRunsList";
+import { PageHeader } from "./shared";
 import { workflowIconSvg } from "../cy/nodeIcons";
 import { prependRecentRun } from "./utils/recentRuns";
 
@@ -16,23 +17,31 @@ export function GraphPage() {
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
-    const [running, setRunning] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
 
     const pipelineId = capabilities?.pipeline_id;
     const agentMode = capabilities?.mode === "agent";
 
-    React.useEffect(() => {
+    const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(String(e)));
     }, []);
 
-    React.useEffect(() => {
+    const loadDetail = React.useCallback(() => {
         if (!pipelineId) return;
         opsApi
             .getPipeline(pipelineId)
             .then(setDetail)
             .catch((e) => setError(String(e)));
     }, [pipelineId]);
+
+    React.useEffect(() => {
+        loadCapabilities();
+    }, [loadCapabilities]);
+
+    React.useEffect(() => {
+        loadDetail();
+    }, [loadDetail]);
 
     const loadStageRuns = React.useCallback(() => {
         if (!stage || !pipelineId) return;
@@ -49,34 +58,45 @@ export function GraphPage() {
         return () => clearInterval(timer);
     }, [loadStageRuns, stage, pipelineId]);
 
-    const handleRunStarted = React.useCallback(
-        (started: { run_id: string; status: string }, stageName?: string | null) => {
-            if (stageName && stageName === stage) {
-                setStageRuns((current) => prependRecentRun(current, started));
-            }
-            loadStageRuns();
-        },
-        [loadStageRuns, stage],
-    );
+    const refresh = React.useCallback(() => {
+        loadCapabilities();
+        loadDetail();
+        loadStageRuns();
+        setGraphRefreshToken((token) => token + 1);
+    }, [loadCapabilities, loadDetail, loadStageRuns]);
 
-    const runStage = () => {
-        if (!stage) return;
-        setRunning(true);
+    const startStageRun = (stageName: string) => {
         opsApi
-            .startRun([["stage", stage]])
-            .then((started) => handleRunStarted(started, stage))
-            .catch((e) => setError(String(e)))
-            .finally(() => setRunning(false));
+            .startRun([["stage", stageName]])
+            .then((started) => {
+                if (stageName === stage) {
+                    setStageRuns((current) => prependRecentRun(current, started));
+                }
+                navigate(`/runs/${started.run_id}`);
+            })
+            .catch((e) => setError(String(e)));
     };
 
     const title = stage ? `Pipeline graph · ${stage}` : "Pipeline graph";
 
     return (
         <div className="graph-page">
-            <div className="datapipe-breadcrumb">
-                <Link to="/">Overview</Link> / Graph
-                {stage ? ` / ${stage}` : ""}
-            </div>
+            <PageHeader
+                breadcrumbs={[
+                    { label: "Overview", href: "/" },
+                    { label: "Graph" },
+                    ...(stage ? [{ label: stage }] : []),
+                ]}
+                title={title}
+                onRefresh={refresh}
+                extra={
+                    stage && agentMode ? (
+                        <Button type="primary" onClick={() => startStageRun(stage)}>
+                            Run stage
+                        </Button>
+                    ) : undefined
+                }
+            />
             {error && (
                 <Alert
                     type="error"
@@ -98,18 +118,7 @@ export function GraphPage() {
                         onLabelSelect={(label) =>
                             navigate(`/graph?stage=${encodeURIComponent(label)}`)
                         }
-                        onStageRun={
-                            agentMode
-                                ? (label) => {
-                                      setRunning(true);
-                                      opsApi
-                                          .startRun([["stage", label]])
-                                          .then((started) => handleRunStarted(started, label))
-                                          .catch((e) => setError(String(e)))
-                                          .finally(() => setRunning(false));
-                                  }
-                                : undefined
-                        }
+                        onStageRun={agentMode ? startStageRun : undefined}
                     />
                 ) : (
                     <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -120,17 +129,6 @@ export function GraphPage() {
             <div className={`pipeline-card${stage ? " pipeline-card-with-sidebar" : ""}`}>
                 {stage && (
                     <aside className="pipeline-stage-sidebar">
-                        {agentMode && (
-                            <Button
-                                type="primary"
-                                block
-                                loading={running}
-                                onClick={runStage}
-                                style={{ marginBottom: 16 }}
-                            >
-                                Run stage
-                            </Button>
-                        )}
                         <Card title="Recent runs" size="small" className="pipeline-stage-runs-card">
                             <RecentRunsList runs={stageRuns} emptyText="No runs for this stage yet" />
                         </Card>
@@ -152,6 +150,7 @@ export function GraphPage() {
                             height="100%"
                             rankDir="TB"
                             refreshIntervalMs={0}
+                            graphRefreshToken={graphRefreshToken}
                         />
                     </div>
                 </div>

@@ -1,25 +1,24 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { GraphData } from "../types";
+import { fetchGraph } from "../api/graph";
 
-const GRAPH_URL =
-    (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha2/graph";
-
-export function usePipelineGraph() {
+export function usePipelineGraph(stage?: string | null) {
     const [graph, setGraph] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [refreshToken, setRefreshToken] = useState(0);
+
+    const refresh = useCallback(() => {
+        setRefreshToken((token) => token + 1);
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        fetch(GRAPH_URL)
-            .then((r) => {
-                if (!r.ok) throw new Error(`Graph ${r.status}`);
-                return r.json();
-            })
-            .then((data: GraphData) => {
+        fetchGraph(stage)
+            .then((data) => {
                 if (!cancelled) {
-                    setGraph(data);
+                    setGraph(data as GraphData);
                     setError(null);
                 }
             })
@@ -32,9 +31,9 @@ export function usePipelineGraph() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [stage, refreshToken]);
 
-    return { graph, loading, error };
+    return { graph, loading, error, refresh };
 }
 
 export function findTableInGraph(graph: GraphData, name: string) {
@@ -43,8 +42,9 @@ export function findTableInGraph(graph: GraphData, name: string) {
     return {
         name: entry.id ?? name,
         indexes: entry.indexes ?? [],
-        size: entry.size ?? 0,
+        size: entry.size ?? null,
         store_class: entry.store_class ?? "",
+        schema: entry.schema ?? [],
     };
 }
 
