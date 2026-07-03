@@ -54,6 +54,8 @@ def test_detection_template_catalog_has_expected_tables():
     assert {
         "s3_images",
         "detection_model",
+        "best_detection_model",
+        "detection_prediction",
         "sec__image_without_ground_truth",
         "images_with_predictions",
         "image__ground_truth",
@@ -73,6 +75,8 @@ def test_keypoints_template_catalog_has_expected_tables():
         "s3_images",
         "keypoints_model",
         "keypoints_models",
+        "best_keypoints_model",
+        "keypoints_prediction_train",
         "sec__image_without_ground_truth",
         "images_with_predictions",
         "image__ground_truth",

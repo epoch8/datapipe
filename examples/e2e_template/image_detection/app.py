@@ -18,6 +18,7 @@ import steps
 from config import (
     DATAPIPE_DIR,
     DETECTION_MODEL_CONFIG,
+    CLASSES_TO_KEEP,
     datapipe_tmp_folder,
     DBCONN,
     label_studio_storages,
@@ -69,6 +70,18 @@ pipeline = Pipeline(
             image__image_path__name="image_url",
             batch_size_default=1,
             labels=[("stage", "annotation")],
+        ),
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["ls_detection_prediction"],
+            outputs=["ls_detection_prediction"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "annotation")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="detection_model_id",
+            ),
         ),
         BatchTransform(
             func=steps.bboxes_to_ls_prediction,
@@ -192,13 +205,25 @@ pipeline = Pipeline(
         Inference_DetectionModel(
             input__image=["s3_images", "image__subset"],
             input__detection_model="detection_model",
-            output__detection_prediction="detection_prediction",
+            output__detection_prediction="detection_prediction_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
             filters={"subset_id": "val"},
+        ),
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["detection_prediction_raw"],
+            outputs=["detection_prediction"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "train"), ("stage", "inference")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="detection_model_id",
+            ),
         ),
         CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",

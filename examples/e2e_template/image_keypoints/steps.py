@@ -6,12 +6,13 @@ from typing import Iterator
 import fsspec
 import numpy as np
 import pandas as pd
-from cv_pipeliner import BboxData, ImageData
 from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
-from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+from datapipe_ml.core.image_data import (
+    convert_df_with_bbox_to_df_with_image_data,
+    convert_df_with_image_data_to_df_with_bbox,
+)
 
 from config import (
-    CLASSES_TO_KEEP,
     KEYPOINTS_LABELS,
     KEYPOINTS_MODEL_CONFIG,
     LOCAL_IMAGES_DIR,
@@ -68,50 +69,73 @@ def get_images_without_ground_truth(
     return merged[merged["_merge"] == "left_only"][primary_keys]
 
 
+def filter_bboxes_by_classes(
+    df: pd.DataFrame,
+    classes_to_keep: set[str],
+    primary_keys: list[str],
+    model_id_column: str,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    row_keys = list(dict.fromkeys(primary_keys + [model_id_column]))
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )
+    for image_data in df__image_data["image_data"]:
+        image_data.bboxes_data = [
+            bbox_data for bbox_data in image_data.bboxes_data if bbox_data.label in classes_to_keep
+        ]
+    return convert_df_with_image_data_to_df_with_bbox(
+        df__with_image_data=df__image_data,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )[df.columns]
+
+
 def keypoints_to_ls_prediction(
     df_keypoints: pd.DataFrame,
     df_image: pd.DataFrame,
     image__image_path__name: str,
+    primary_keys: list[str],
+    model_keys: list[str],
     hide_bboxes: bool = False,
 ) -> pd.DataFrame:
-    image_name_to_path = dict(zip(df_image["image_name"], df_image[image__image_path__name]))
-    records = []
-    for model_id, model_df in df_keypoints.groupby("keypoints_model_id"):
-        for image_name, group in model_df.groupby("image_name"):
-            row = group.iloc[0]
-            bboxes_data = []
-            bboxes = row.get("bboxes", []) or []
-            keypoints = row.get("keypoints", []) or []
-            labels = row.get("labels", []) or []
-            for idx in range(min(len(bboxes), len(labels))):
-                label = str(labels[idx]).lower()
-                if label not in CLASSES_TO_KEEP:
-                    continue
-                bbox = bboxes[idx]
-                bbox_keypoints = keypoints[idx] if idx < len(keypoints) and keypoints[idx] is not None else []
-                bboxes_data.append(
-                    BboxData(
-                        xmin=int(bbox[0]),
-                        ymin=int(bbox[1]),
-                        xmax=int(bbox[2]),
-                        ymax=int(bbox[3]),
-                        keypoints=np.array(bbox_keypoints).reshape(-1, 2),
-                        label=label,
-                    )
-                )
-            annotations = convert_image_data_to_annotation(
-                image_data=ImageData(image_path=image_name_to_path[image_name], bboxes_data=bboxes_data),
-                to_name="image",
-                bboxes_from_name="bbox",
-                keypoints_from_name="kp",
-                keypoints_labels=KEYPOINTS_LABELS,
-            )
-            if hide_bboxes:
-                for annotation in annotations:
-                    if annotation.get("type") == "rectanglelabels":
-                        annotation["hidden"] = True
-            records.append({"image_name": image_name, "prediction": {"result": annotations}, "keypoints_model_id": model_id})
-    return pd.DataFrame(records, columns=["image_name", "prediction", "keypoints_model_id"])
+    task_join_keys = [key for key in primary_keys if key not in set(model_keys)]
+    output_keys = list(dict.fromkeys(primary_keys + model_keys))
+
+    df_keypoints = df_keypoints.merge(
+        df_image[task_join_keys + [image__image_path__name]],
+        on=task_join_keys,
+    )
+    if df_keypoints.empty:
+        return pd.DataFrame(columns=output_keys + ["prediction"])
+
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df_keypoints,
+        primary_keys=output_keys,
+        bbox_id__name=None,
+        image__image_path__name=image__image_path__name,
+    )
+
+    def to_prediction(image_data) -> dict:
+        annotations = convert_image_data_to_annotation(
+            image_data=image_data,
+            to_name="image",
+            bboxes_from_name="bbox",
+            keypoints_from_name="kp",
+            keypoints_labels=KEYPOINTS_LABELS,
+        )
+        if hide_bboxes:
+            for annotation in annotations:
+                if annotation.get("type") == "rectanglelabels":
+                    annotation["hidden"] = True
+        return {"result": annotations}
+
+    df__image_data["prediction"] = df__image_data["image_data"].apply(to_prediction)
+    return df__image_data[output_keys + ["prediction"]]
 
 
 def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
@@ -131,11 +155,8 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
         for bbox_data in image_data.bboxes_data:
             if bbox_data.label is None:
                 continue
-            label = str(bbox_data.label).lower()
-            if label not in CLASSES_TO_KEEP:
-                continue
             bboxes.append(list(bbox_data.coords))
-            labels.append(label)
+            labels.append(str(bbox_data.label))
             keypoints.append([] if bbox_data.keypoints is None else np.array(bbox_data.keypoints).reshape(-1, 2).tolist())
         records.append({"image_name": row["image_name"], "bboxes": bboxes, "labels": labels, "keypoints": keypoints})
     return pd.DataFrame(records, columns=["image_name", "bboxes", "labels", "keypoints"])

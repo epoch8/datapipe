@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from label_studio_sdk import LabelStudio
 
-from datapipe_label_studio.sdk_utils import get_project_by_title, get_tasks_iter
+from datapipe_label_studio.sdk_utils import get_project_by_title, get_tasks_iter, project_to_dict
 
 pytestmark = [
     pytest.mark.e2e_examples,
@@ -104,7 +104,7 @@ def _annotation_result(pipeline_name: str, idx: int) -> list[dict]:
                 "width": 20,
                 "height": 24,
                 "rotation": 0,
-                "rectanglelabels": ["person"],
+                "rectanglelabels": ["Person"],
             },
         },
         {
@@ -182,6 +182,35 @@ def _assert_roundtripped_annotations(pipeline_name: str, app) -> None:
     assert set(ground_truth["image_name"]) == set(ls_task["image_name"])
 
 
+def _expected_model_version(pipeline_name: str) -> str:
+    from helpers import load_template_module
+
+    config = load_template_module(pipeline_name, "config")
+    if pipeline_name == "detection":
+        return config.DETECTION_MODEL_CONFIG["detection_model_id"]
+    return config.KEYPOINTS_MODEL_CONFIG["keypoints_model_id"]
+
+
+def _assert_prelabeling_enabled(pipeline_name: str, app) -> None:
+    from helpers import load_template_module
+
+    expected_model_version = _expected_model_version(pipeline_name)
+
+    current_model_version = app.ds.get_table("ls_current_model_version").get_data()
+    assert not current_model_version.empty
+    assert set(current_model_version["model_version"]) == {expected_model_version}
+
+    config = load_template_module(pipeline_name, "config")
+    client = _ls_client()
+    project = get_project_by_title(client, config.PROJECT_NAME)
+    assert project is not None
+    assert set(current_model_version["project_id"]) == {int(project["id"])}
+
+    project_settings = project_to_dict(client.projects.get(id=int(project["id"])))
+    assert project_settings.get("show_collab_predictions") is True
+    assert project_settings.get("model_version") == expected_model_version
+
+
 def _frozen_dataset_table_name(pipeline_name: str) -> str:
     return f"{pipeline_name}_frozen_dataset"
 
@@ -209,9 +238,10 @@ def test_detection_template_annotation_stage():
 
     assert not app.ds.get_table("s3_images").get_data().empty
     assert not app.ds.get_table("detection_model").get_data().empty
-    assert not app.ds.get_table("detection_predictions").get_data().empty
+    assert not app.ds.get_table("ls_detection_prediction").get_data().empty
     assert not app.ds.get_table("images_with_predictions").get_data().empty
     assert not app.ds.get_table("ls_task").get_data().empty
+    _assert_prelabeling_enabled("detection", app)
 
 
 @pytest.mark.parametrize("pipeline_name", ["detection", "keypoints"])
@@ -277,6 +307,7 @@ def test_keypoints_template_annotation_stage():
 
     assert not app.ds.get_table("s3_images").get_data().empty
     assert not app.ds.get_table("keypoints_model").get_data().empty
-    assert not app.ds.get_table("keypoints_predictions").get_data().empty
+    assert not app.ds.get_table("ls_keypoints_prediction").get_data().empty
     assert not app.ds.get_table("images_with_predictions").get_data().empty
     assert not app.ds.get_table("ls_task").get_data().empty
+    _assert_prelabeling_enabled("keypoints", app)

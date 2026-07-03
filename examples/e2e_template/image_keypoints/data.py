@@ -73,14 +73,29 @@ catalog = Catalog(
                 ],
             )
         ),
+        "keypoints_prediction_train": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="keypoints_prediction_train",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("keypoints", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                    Column("prediction__keypoints_scores", JSON),
+                ],
+            )
+        ),
         "images_with_predictions": Table(
             TableStoreDB(
                 dbconn=DBCONN,
                 name="images_with_predictions",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
+                    Column("keypoints_model_id", String(), primary_key=True),
                     Column("prediction", JSON),
-                    Column("keypoints_model_id", String()),
                 ],
             )
         ),

@@ -5,12 +5,13 @@ from typing import Iterator
 
 import fsspec
 import pandas as pd
-from cv_pipeliner import BboxData, ImageData
 from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
-from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+from datapipe_ml.core.image_data import (
+    convert_df_with_bbox_to_df_with_image_data,
+    convert_df_with_image_data_to_df_with_bbox,
+)
 
 from config import (
-    CLASSES_TO_KEEP,
     DETECTION_MODEL_CONFIG,
     INPUT_IMAGES_DIR,
     LOCAL_IMAGES_DIR,
@@ -59,6 +60,32 @@ def get_images_without_ground_truth(
     return merged[merged["_merge"] == "left_only"][primary_keys]
 
 
+def filter_bboxes_by_classes(
+    df: pd.DataFrame,
+    classes_to_keep: set[str],
+    primary_keys: list[str],
+    model_id_column: str,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    row_keys = list(dict.fromkeys(primary_keys + [model_id_column]))
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )
+    for image_data in df__image_data["image_data"]:
+        image_data.bboxes_data = [
+            bbox_data for bbox_data in image_data.bboxes_data if bbox_data.label in classes_to_keep
+        ]
+    return convert_df_with_image_data_to_df_with_bbox(
+        df__with_image_data=df__image_data,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )[df.columns]
+
+
 def bboxes_to_ls_prediction(
     df_bboxes: pd.DataFrame,
     df_image: pd.DataFrame,
@@ -72,46 +99,26 @@ def bboxes_to_ls_prediction(
     df_bboxes = df_bboxes.merge(
         df_image[task_join_keys + [image__image_path__name]],
         on=task_join_keys,
-        how="left",
     )
+    if df_bboxes.empty:
+        return pd.DataFrame(columns=output_keys + ["prediction"])
 
-    records = []
-    for _, group in df_bboxes.groupby(output_keys, dropna=False):
-        row = group.iloc[0]
-        image_path = row[image__image_path__name]
-
-        bboxes = row.get("bboxes", []) or []
-        labels = row.get("labels", []) or []
-        bboxes_data = []
-        for bbox, label in zip(bboxes, labels):
-            label_str = str(label).lower()
-            if label_str not in CLASSES_TO_KEEP:
-                continue
-            bboxes_data.append(
-                BboxData(
-                    xmin=int(bbox[0]),
-                    ymin=int(bbox[1]),
-                    xmax=int(bbox[2]),
-                    ymax=int(bbox[3]),
-                    label=label_str.capitalize(),
-                )
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df_bboxes,
+        primary_keys=output_keys,
+        bbox_id__name=None,
+        image__image_path__name=image__image_path__name,
+    )
+    df__image_data["prediction"] = df__image_data["image_data"].apply(
+        lambda image_data: {
+            "result": convert_image_data_to_annotation(
+                image_data=image_data,
+                to_name="image",
+                bboxes_from_name="label",
             )
-        records.append(
-            {
-                **{key: row[key] for key in output_keys},
-                "prediction": {
-                    "result": convert_image_data_to_annotation(
-                        image_data=ImageData(
-                            image_path=image_path,
-                            bboxes_data=bboxes_data,
-                        ),
-                        to_name="image",
-                        bboxes_from_name="label",
-                    )
-                },
-            }
-        )
-    return pd.DataFrame(records, columns=output_keys + ["prediction"])
+        }
+    )
+    return df__image_data[output_keys + ["prediction"]]
 
 
 def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
@@ -129,7 +136,7 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
             {
                 "image_name": row["image_name"],
                 "bboxes": [bbox_data.coords for bbox_data in image_data.bboxes_data],
-                "labels": [str(bbox_data.label).lower() for bbox_data in image_data.bboxes_data],
+                "labels": [str(bbox_data.label) for bbox_data in image_data.bboxes_data],
             }
         )
     return pd.DataFrame(records, columns=["image_name", "bboxes", "labels"])

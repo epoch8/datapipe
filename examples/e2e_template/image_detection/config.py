@@ -30,22 +30,24 @@ LABEL_CONFIG = """
 </View>
 """
 
+DETECTION_CLASSES = ["Cat", "Dog"]
+CLASSES_TO_KEEP = set(DETECTION_CLASSES)
+
 COCO_CLASSES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep",
-    "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
-    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush",
+    "Person", "Bicycle", "Car", "Motorcycle", "Airplane", "Bus", "Train",
+    "Truck", "Boat", "Traffic Light", "Fire Hydrant", "Stop Sign",
+    "Parking Meter", "Bench", "Bird", "Cat", "Dog", "Horse", "Sheep",
+    "Cow", "Elephant", "Bear", "Zebra", "Giraffe", "Backpack", "Umbrella",
+    "Handbag", "Tie", "Suitcase", "Frisbee", "Skis", "Snowboard",
+    "Sports Ball", "Kite", "Baseball Bat", "Baseball Glove", "Skateboard",
+    "Surfboard", "Tennis Racket", "Bottle", "Wine Glass", "Cup", "Fork",
+    "Knife", "Spoon", "Bowl", "Banana", "Apple", "Sandwich", "Orange",
+    "Broccoli", "Carrot", "Hot Dog", "Pizza", "Donut", "Cake", "Chair",
+    "Couch", "Potted Plant", "Bed", "Dining Table", "Toilet", "TV",
+    "Laptop", "Mouse", "Remote", "Keyboard", "Cell Phone", "Microwave",
+    "Oven", "Toaster", "Sink", "Refrigerator", "Book", "Clock", "Vase",
+    "Scissors", "Teddy Bear", "Hair Drier", "Toothbrush",
 ]
-CLASSES_TO_KEEP = {"cat", "dog"}
 
 E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DETECTION_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n.pt"
