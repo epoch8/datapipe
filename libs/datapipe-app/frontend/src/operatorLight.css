@@ -1,4 +1,10 @@
 :root {
+    /* Global UI scale. Set to 1 to return to native 100%; 0.8 mirrors an 80%
+       browser zoom. --dp-vh is a full-viewport height that stays correct under
+       the zoom (100vh renders at scale, so divide it back out). */
+    --dp-ui-scale: 0.8;
+    --dp-vh: calc(100vh / var(--dp-ui-scale));
+
     --dp-bg-app: #f5f8fc;
     --dp-bg-surface: #ffffff;
     --dp-border-subtle: #dbe3ef;
@@ -68,12 +74,21 @@
     --dp-status-failed-border: #ff9b94;
 }
 
+body {
+    zoom: var(--dp-ui-scale);
+}
+
 .datapipe-shell {
-    min-height: 100vh;
+    min-height: var(--dp-vh);
 }
 
 .datapipe-sidebar {
-    position: relative;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: var(--dp-vh);
+    overflow-y: auto;
+    overflow-x: hidden;
     width: var(--dp-sidebar-width, 280px) !important;
     max-width: var(--dp-sidebar-width, 280px) !important;
     min-width: var(--dp-sidebar-width, 280px) !important;
@@ -221,6 +236,45 @@
     padding: 24px 44px;
 }
 
+/* Graph page fills the viewport instead of scrolling. It must be a DEFINITE
+   height (not just min-height) so the inner flex column actually shrinks to fit
+   instead of growing to its preferred size. 96px = .datapipe-header height. */
+.datapipe-content-graph {
+    height: calc(var(--dp-vh) - 96px);
+    flex: 0 0 auto;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.graph-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 44px 16px;
+}
+
+.graph-page .datapipe-breadcrumb {
+    padding: 20px 0 0;
+}
+
+/* Reserve space for the label overview so the graph below does not jump/shift
+   when the (async) overview finishes loading. */
+.graph-page-overview {
+    flex: 0 0 auto;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.graph-page .pipeline-label-overview-compact {
+    margin: 8px 0 12px;
+}
+
 .datapipe-breadcrumb {
     padding: 24px 44px 0;
     font-size: 16px;
@@ -267,6 +321,20 @@
     overflow: hidden;
 }
 
+/* Inside the graph page the card stretches to fill remaining height. */
+.graph-page .pipeline-card {
+    margin: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* Without a stage sidebar the card is a column (header + graph body). The
+   with-sidebar variant keeps its existing row layout (sidebar | main). */
+.graph-page .pipeline-card:not(.pipeline-card-with-sidebar) {
+    display: flex;
+    flex-direction: column;
+}
+
 .pipeline-card-header {
     height: 76px;
     padding: 0 28px;
@@ -292,8 +360,8 @@
 
 .pipeline-card-body {
     position: relative;
-    min-height: 680px;
-    height: calc(100vh - 250px);
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .pipeline-card-with-sidebar {
@@ -304,6 +372,9 @@
 .pipeline-card-main {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .pipeline-stage-sidebar {

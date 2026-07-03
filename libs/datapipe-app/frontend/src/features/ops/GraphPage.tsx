@@ -61,7 +61,7 @@ export function GraphPage() {
     const title = stage ? `Pipeline graph · ${stage}` : "Pipeline graph";
 
     return (
-        <div>
+        <div className="graph-page">
             <div className="datapipe-breadcrumb">
                 <Link to="/">Overview</Link> / Graph
                 {stage ? ` / ${stage}` : ""}
@@ -75,32 +75,37 @@ export function GraphPage() {
                     onClose={() => setError(null)}
                 />
             )}
-            {detail && pipelineId && (
-                <PipelineLabelGraphOverview
-                    pipelineId={pipelineId}
-                    stages={detail.stages}
-                    stageEdges={detail.stage_edges}
-                    labelGraph={detail.label_graph}
-                    selectedLabel={stage}
-                    mode="compact"
-                    onLabelSelect={(label) =>
-                        navigate(`/graph?stage=${encodeURIComponent(label)}`)
-                    }
-                    onStageRun={
-                        agentMode
-                            ? (label) => {
-                                  setRunning(true);
-                                  opsApi
-                                      .startRun([["stage", label]])
-                                      .then(() => loadStageRuns())
-                                      .catch((e) => setError(String(e)))
-                                      .finally(() => setRunning(false));
-                              }
-                            : undefined
-                    }
-                />
-            )}
-            {!detail && pipelineId && <Spin style={{ marginBottom: 16 }} />}
+            <div className="graph-page-overview">
+                {detail && pipelineId ? (
+                    <PipelineLabelGraphOverview
+                        pipelineId={pipelineId}
+                        stages={detail.stages}
+                        stageEdges={detail.stage_edges}
+                        labelGraph={detail.label_graph}
+                        selectedLabel={stage}
+                        mode="compact"
+                        onLabelSelect={(label) =>
+                            navigate(`/graph?stage=${encodeURIComponent(label)}`)
+                        }
+                        onStageRun={
+                            agentMode
+                                ? (label) => {
+                                      setRunning(true);
+                                      opsApi
+                                          .startRun([["stage", label]])
+                                          .then(() => loadStageRuns())
+                                          .catch((e) => setError(String(e)))
+                                          .finally(() => setRunning(false));
+                                  }
+                                : undefined
+                        }
+                    />
+                ) : (
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                        <Spin />
+                    </div>
+                )}
+            </div>
             <div className={`pipeline-card${stage ? " pipeline-card-with-sidebar" : ""}`}>
                 {stage && (
                     <aside className="pipeline-stage-sidebar">

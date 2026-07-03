@@ -147,9 +147,10 @@ def make_app(
         stage_edges: list[dict[str, Any]] = []
         label_graph: dict[str, Any] | None = None
         if ds is not None and steps is not None and get_ops_settings().pipeline_id == pipeline_id:
-            stages = build_stage_summary(steps, ds)
+            status_cache: dict[str, dict[str, Any]] = {}
+            stages = build_stage_summary(steps, ds, status_cache)
             stage_edges = build_stage_edges(steps)
-            label_graph = build_label_graph(steps, ds)
+            label_graph = build_label_graph(steps, ds, status_cache=status_cache)
         elif pipeline is not None:
             stages = [{"stage": s, "status": "unknown", "steps": []} for s in discover_pipeline_stages(pipeline)]
 

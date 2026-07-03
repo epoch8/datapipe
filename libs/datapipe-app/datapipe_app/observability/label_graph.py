@@ -38,8 +38,12 @@ def _build_segments(label_id: str, steps: list[ComputeStep], label_key: str) -> 
     return result
 
 
-def _label_status(step_list: list[ComputeStep], ds: DataStore) -> str:
-    statuses = [stage_status_for_step(s, ds) for s in step_list]
+def _label_status(
+    step_list: list[ComputeStep],
+    ds: DataStore,
+    status_cache: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    statuses = [stage_status_for_step(s, ds, status_cache) for s in step_list]
     if any(s.get("has_backlog") for s in statuses):
         return "pending"
     return "completed"
@@ -83,8 +87,11 @@ def build_label_graph(
     steps: list[ComputeStep],
     ds: DataStore,
     label_key: str = "stage",
+    status_cache: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build label-over-transform-order graph payload from pipeline steps."""
+    if status_cache is None:
+        status_cache = {}
     label_steps: dict[str, list[ComputeStep]] = defaultdict(list)
     label_first_order: dict[str, int] = {}
 
@@ -119,7 +126,7 @@ def build_label_graph(
             {
                 "id": label,
                 "label": label,
-                "status": _label_status(step_list, ds),
+                "status": _label_status(step_list, ds, status_cache),
                 "kind": kind,
                 "step_ids": [s.name for s in step_list],
                 "step_count": len(step_list),
@@ -194,8 +201,8 @@ def build_label_graph(
                     "id": group_id,
                     "label": f"{a} ⇄ {b}",
                     "status": "pending"
-                    if _label_status(label_steps[a], ds) == "pending"
-                    or _label_status(label_steps[b], ds) == "pending"
+                    if _label_status(label_steps[a], ds, status_cache) == "pending"
+                    or _label_status(label_steps[b], ds, status_cache) == "pending"
                     else "completed",
                     "kind": "interleaved-group",
                     "step_ids": sorted(

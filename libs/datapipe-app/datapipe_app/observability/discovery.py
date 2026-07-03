@@ -18,22 +18,35 @@ def extract_stages(steps: list[ComputeStep]) -> list[str]:
     return stages
 
 
-def stage_status_for_step(step: ComputeStep, ds: DataStore) -> dict[str, Any]:
+def stage_status_for_step(
+    step: ComputeStep,
+    ds: DataStore,
+    cache: Optional[dict[str, dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    # step.get_status(ds) hits the datastore; the same step is queried by both the
+    # stage summary and the label graph (and across overlapping stage labels), so
+    # an optional per-request cache keyed by step name avoids redundant DB calls.
+    if cache is not None and step.name in cache:
+        return cache[step.name]
     try:
         status = step.get_status(ds)
-        return {
+        result = {
             "name": step.name,
             "total_idx_count": status.total_idx_count,
             "changed_idx_count": status.changed_idx_count,
             "has_backlog": status.changed_idx_count > 0,
         }
     except Exception:
-        return {"name": step.name, "total_idx_count": 0, "changed_idx_count": 0, "has_backlog": False}
+        result = {"name": step.name, "total_idx_count": 0, "changed_idx_count": 0, "has_backlog": False}
+    if cache is not None:
+        cache[step.name] = result
+    return result
 
 
 def build_stage_summary(
     steps: list[ComputeStep],
     ds: DataStore,
+    status_cache: Optional[dict[str, dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
     stage_steps: dict[str, list[ComputeStep]] = defaultdict(list)
     for step in steps:
@@ -49,7 +62,7 @@ def build_stage_summary(
         stage_step_list = stage_steps.get(stage)
         if not stage_step_list:
             continue
-        statuses = [stage_status_for_step(s, ds) for s in stage_step_list]
+        statuses = [stage_status_for_step(s, ds, status_cache) for s in stage_step_list]
         has_backlog = any(s["has_backlog"] for s in statuses)
         state = "pending" if has_backlog else "completed"
         result.append(

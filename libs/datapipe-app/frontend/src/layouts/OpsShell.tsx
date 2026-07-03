@@ -120,7 +120,7 @@ export function OpsShell() {
     };
 
     return (
-        <div className="datapipe-shell" style={{ display: "flex", minHeight: "100vh" }}>
+        <div className="datapipe-shell" style={{ display: "flex", minHeight: "var(--dp-vh)" }}>
             <aside
                 className={`datapipe-sidebar${collapsed ? " collapsed" : ""}`}
                 style={
@@ -167,7 +167,7 @@ export function OpsShell() {
                         )}
                     </header>
                 )}
-                <main className={`datapipe-content${isGraph || isObsPage ? " datapipe-content-padded" : " datapipe-content-padded"}`}>
+                <main className={`datapipe-content${isGraph ? " datapipe-content-graph" : " datapipe-content-padded"}`}>
                     <ErrorBoundary key={location.pathname}>
                         <Outlet />
                     </ErrorBoundary>
