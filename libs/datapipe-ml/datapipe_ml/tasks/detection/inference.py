@@ -93,7 +93,7 @@ detection_inference_using_thresholds = make_bbox_inference_using_thresholds_func
 @dataclass
 class Inference_DetectionModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__detection_model: PipelineInput
+    input__detection_model: PipelineInput | Sequence[PipelineInput]
     output__detection_prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int = 64
@@ -135,7 +135,7 @@ class Inference_DetectionModel(PipelineStep):
 @dataclass
 class InferenceBySplitOnCrops_DetectionModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__detection_model: PipelineInput
+    input__detection_model: PipelineInput | Sequence[PipelineInput]
     output__detection_prediction: PipelineOutput
     primary_keys: List[str]
     hCrossing: int
@@ -187,7 +187,7 @@ class InferenceBySplitOnCrops_DetectionModel(PipelineStep):
 @dataclass
 class Inference_UsingThresholdsPerClasss_DetectionModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__detection_model: PipelineInput
+    input__detection_model: PipelineInput | Sequence[PipelineInput]
     input__detection_model_thresholds: PipelineInput
     output__detection_prediction: PipelineOutput
     primary_keys: List[str]

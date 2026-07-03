@@ -21,6 +21,11 @@ from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON, Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, normalize_pipeline_inputs
+from datapipe_ml.inference.model_inputs import (
+    build_required_pipeline_inputs,
+    primary_model_input,
+    wrap_inference_inputs,
+)
 from datapipe_ml.core.image_data import check_if_images_opens, convert_df_with_image_data_to_df_with_bbox
 from datapipe_ml.inference.bbox_crops import predict_by_crops
 from datapipe_ml.inference.common import min_prediction_threshold_from_class_thresholds, resolve_threshold_space
@@ -56,7 +61,8 @@ def _model_col(spec: BboxTaskInferenceSpec, suffix: str) -> str:
 
 def run_bbox_task_inference(
     spec: BboxTaskInferenceSpec,
-    *dfs,
+    df__image: pd.DataFrame,
+    df__model: pd.DataFrame,
     image__image_path__name: str,
     primary_keys: List[str],
     bbox_id__name: Optional[str],
@@ -76,11 +82,6 @@ def run_bbox_task_inference(
         threshold_space=thresholdSpace,
         thresehold_space=threseholdSpace,
     )
-    df__image: pd.DataFrame = dfs[0]
-    if len(dfs) >= 3:
-        for df in dfs[1:-1]:
-            df__image = pd.merge(df, df__image, on=primary_keys)
-    df__model: pd.DataFrame = dfs[-1]
     model_other_primary_keys = [key for key in model_primary_keys if key not in primary_keys]
     if bbox_id__name is not None:
         columns = (
@@ -189,12 +190,13 @@ def run_bbox_task_inference(
 def make_bbox_inference_func(spec: BboxTaskInferenceSpec, *, inference_by_crops: bool = False):
     pk_kwarg = spec.model_primary_keys_kwarg
 
-    def inference_func(*dfs, **kwargs):
+    def inference_func(df__image, df__model, **kwargs):
         if pk_kwarg not in kwargs and "model_primary_keys" in kwargs:
             kwargs[pk_kwarg] = kwargs.pop("model_primary_keys")
         return run_bbox_task_inference(
             spec,
-            *dfs,
+            df__image,
+            df__model,
             inference_by_crops=inference_by_crops,
             model_primary_keys=kwargs.pop(pk_kwarg),
             **kwargs,
@@ -207,7 +209,9 @@ def make_bbox_inference_using_thresholds_func(spec: BboxTaskInferenceSpec, base_
     pk_kwarg = spec.model_primary_keys_kwarg
 
     def inference_using_thresholds_func(
-        *dfs,
+        df__image,
+        df__model,
+        df__model_thresholds,
         image__image_path__name: str,
         primary_keys: List[str],
         bbox_id__name: str,
@@ -216,14 +220,14 @@ def make_bbox_inference_using_thresholds_func(spec: BboxTaskInferenceSpec, base_
         **kwargs,
     ):
         model_primary_keys = kwargs.pop(pk_kwarg, kwargs.pop("model_primary_keys"))
-        df__model = pd.merge(dfs[-2], dfs[-1], on=model_primary_keys)
-        dfs_list = list(dfs)[:-2] + [df__model]
+        df__model = pd.merge(df__model, df__model_thresholds, on=model_primary_keys)
         prediction_threshold = min_prediction_threshold_from_class_thresholds(
             df__model,
             class_name_to_threshold__name,
         )
         return base_inference_func(
-            *dfs_list,
+            df__image,
+            df__model,
             image__image_path__name=image__image_path__name,
             primary_keys=primary_keys,
             bbox_id__name=bbox_id__name,
@@ -295,7 +299,7 @@ class BboxInferenceStepConfig:
     spec: BboxTaskInferenceSpec
     mode: InferenceMode
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__model: PipelineInput
+    input__model: PipelineInput | Sequence[PipelineInput]
     output__prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int
@@ -323,15 +327,19 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
     check_columns_are_in_table(ds, config.input__image, config.primary_keys)
     input__images = normalize_pipeline_inputs(config.input__image)
     input__image_names = [get_pipeline_input_name(input__image) for input__image in input__images]
-    input_model_name = get_pipeline_input_name(config.input__model)
+    input__models = normalize_pipeline_inputs(config.input__model)
+    model_pipeline_inputs = build_required_pipeline_inputs(config.input__model)
+    primary_model = primary_model_input(config.input__model)
     output_name = get_pipeline_output_name(config.output__prediction)
     assert any(
         check_columns_are_in_table(ds, input__image, [config.image__image_path__name], raise_exc=False)
         for input__image in input__images
     )
     dt__input__images = [get_datatable(ds, input__image) for input__image in input__image_names]
-    dt__input_model = get_datatable(ds, input_model_name)
-    check_columns_are_in_table(ds, config.input__model, model_primary_keys + config.spec.model_columns)
+    dt__input_model = get_datatable(ds, primary_model)
+    check_columns_are_in_table(ds, input__models[0], model_primary_keys + config.spec.model_columns)
+    for model_filter in input__models[1:]:
+        check_columns_are_in_table(ds, model_filter, model_primary_keys)
     if config.mode == InferenceMode.THRESHOLDS:
         assert config.input__model_thresholds is not None
         check_columns_are_in_table(
@@ -354,9 +362,18 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
 
     pk_kwarg = config.spec.model_primary_keys_kwarg
     base_func = make_bbox_inference_func(config.spec, inference_by_crops=config.mode == InferenceMode.CROPS)
+    image_pipeline_inputs = build_required_pipeline_inputs(config.input__image)
+    n_image_inputs = len(image_pipeline_inputs)
+    n_model_inputs = len(model_pipeline_inputs)
+
     if config.mode == InferenceMode.PLAIN:
-        transform_func = base_func
-        inputs = [*[required_pipeline_input(input__image) for input__image in input__images], config.input__model]
+        transform_func = wrap_inference_inputs(
+            base_func,
+            n_image_inputs=n_image_inputs,
+            primary_keys=config.primary_keys,
+            model_input_groups=[(n_model_inputs, model_primary_keys)],
+        )
+        inputs = [*image_pipeline_inputs, *model_pipeline_inputs]
         kwargs = dict(
             primary_keys=config.primary_keys,
             image__image_path__name=config.image__image_path__name,
@@ -366,8 +383,13 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
             **{pk_kwarg: model_primary_keys},
         )
     elif config.mode == InferenceMode.CROPS:
-        transform_func = base_func
-        inputs = [*[required_pipeline_input(input__image) for input__image in input__images], config.input__model]
+        transform_func = wrap_inference_inputs(
+            base_func,
+            n_image_inputs=n_image_inputs,
+            primary_keys=config.primary_keys,
+            model_input_groups=[(n_model_inputs, model_primary_keys)],
+        )
+        inputs = [*image_pipeline_inputs, *model_pipeline_inputs]
         kwargs = dict(
             primary_keys=config.primary_keys,
             image__image_path__name=config.image__image_path__name,
@@ -387,11 +409,18 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
     else:
         assert config.input__model_thresholds is not None
         model_thresholds = config.input__model_thresholds
-        transform_func = make_bbox_inference_using_thresholds_func(config.spec, base_func)
+        thresholds_func = make_bbox_inference_using_thresholds_func(config.spec, base_func)
+        transform_func = wrap_inference_inputs(
+            thresholds_func,
+            n_image_inputs=n_image_inputs,
+            primary_keys=config.primary_keys,
+            model_input_groups=[(n_model_inputs, model_primary_keys)],
+            n_trailing_inputs=1,
+        )
         inputs = [
-            *[required_pipeline_input(input__image) for input__image in input__images],
-            config.input__model,
-            model_thresholds,
+            *image_pipeline_inputs,
+            *model_pipeline_inputs,
+            required_pipeline_input(model_thresholds),
         ]
         kwargs = dict(
             primary_keys=config.primary_keys,

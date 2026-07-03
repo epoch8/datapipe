@@ -88,7 +88,7 @@ keypoints_inference_by_crops = make_bbox_inference_func(KEYPOINTS_INFERENCE_SPEC
 @dataclass
 class Inference_KeypointsModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__keypoints_model: PipelineInput
+    input__keypoints_model: PipelineInput | Sequence[PipelineInput]
     output__keypoints_prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int = 64
@@ -130,7 +130,7 @@ class Inference_KeypointsModel(PipelineStep):
 @dataclass
 class InferenceBySplitOnCrops_KeypointsModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__keypoints_model: PipelineInput
+    input__keypoints_model: PipelineInput | Sequence[PipelineInput]
     output__keypoints_prediction: PipelineOutput
     primary_keys: List[str]
     hCrossing: int = 400
