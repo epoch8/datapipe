@@ -18,6 +18,81 @@ type Props = {
     onCompare?: () => void;
 };
 
+// Human labels for known metric keys; unknown keys fall back to their raw name.
+const METRIC_LABELS: Record<string, string> = {
+    mAP50: "mAP50",
+    mAP50_95: "mAP50-95",
+    precision: "precision",
+    recall: "recall",
+    f1_score: "F1",
+    accuracy: "accuracy",
+    iou_mean: "IoU",
+    weighted_precision: "w-precision",
+    weighted_recall: "w-recall",
+    weighted_f1_score: "w-F1",
+    macro_precision: "m-precision",
+    macro_recall: "m-recall",
+    macro_f1_score: "m-F1",
+    weighted_without_pseudo_classes_precision: "w-precision (np)",
+    weighted_without_pseudo_classes_recall: "w-recall (np)",
+    weighted_without_pseudo_classes_f1_score: "w-F1 (np)",
+    macro_without_pseudo_classes_precision: "m-precision (np)",
+    macro_without_pseudo_classes_recall: "m-recall (np)",
+    macro_without_pseudo_classes_f1_score: "m-F1 (np)",
+    pose_P: "pose-P",
+    pose_R: "pose-R",
+    pose_mAP50: "pose-mAP50",
+    pose_mAP50_95: "pose-mAP50-95",
+};
+
+// Preferred left-to-right ordering; any present key not listed here is appended
+// afterwards in alphabetical order so new metrics still show up automatically.
+const METRIC_ORDER = [
+    "mAP50",
+    "mAP50_95",
+    "weighted_f1_score",
+    "macro_f1_score",
+    "weighted_precision",
+    "weighted_recall",
+    "macro_precision",
+    "macro_recall",
+    "accuracy",
+    "precision",
+    "recall",
+    "f1_score",
+    "iou_mean",
+    "weighted_without_pseudo_classes_f1_score",
+    "macro_without_pseudo_classes_f1_score",
+    "pose_mAP50",
+    "pose_mAP50_95",
+    "pose_P",
+    "pose_R",
+];
+
+// Count-like fields are rendered separately (support) or hidden, never as metrics.
+const COUNT_KEYS = new Set([
+    "images_support",
+    "support",
+    "TP",
+    "FP",
+    "FN",
+    "TP_extra_bbox",
+    "FP_extra_bbox",
+    "FN_extra_bbox",
+]);
+
+function presentMetricKeys(rows: MetricsRunRow[]): string[] {
+    const present = new Set<string>();
+    for (const row of rows) {
+        for (const [key, value] of Object.entries(row.metrics ?? {})) {
+            if (value != null && !COUNT_KEYS.has(key)) present.add(key);
+        }
+    }
+    const ordered = METRIC_ORDER.filter((k) => present.has(k));
+    const extra = Array.from(present).filter((k) => !METRIC_ORDER.includes(k)).sort();
+    return [...ordered, ...extra];
+}
+
 export function MetricsRunTable({
     rows,
     total,
@@ -31,6 +106,15 @@ export function MetricsRunTable({
     onSelectionChange,
     onCompare,
 }: Props) {
+    const metricKeys = React.useMemo(() => presentMetricKeys(rows), [rows]);
+
+    const metricColumns: ColumnsType<MetricsRunRow> = metricKeys.map((key) => ({
+        title: METRIC_LABELS[key] ?? key,
+        key,
+        sorter: true,
+        render: (_: unknown, r: MetricsRunRow) => <MetricValue value={r.metrics?.[key]} />,
+    }));
+
     const columns: ColumnsType<MetricsRunRow> = [
         { title: "run_id", dataIndex: "run_id", sorter: true, width: 120 },
         { title: "started_at", dataIndex: "started_at", sorter: true, render: (v) => v?.slice(0, 16)?.replace("T", " ") ?? "—" },
@@ -39,18 +123,13 @@ export function MetricsRunTable({
             dataIndex: "model_id",
             render: (v, r) => (
                 <span>
-                    {v} {r.model_version && <Tag>{r.model_version}</Tag>}
+                    {v || "—"} {r.model_version && <Tag>{r.model_version}</Tag>}
                 </span>
             ),
         },
         { title: "subset", dataIndex: "subset", sorter: true },
-        { title: "mAP50", key: "mAP50", sorter: true, render: (_, r) => <MetricValue value={r.metrics.mAP50} /> },
-        { title: "mAP50-95", key: "mAP50_95", sorter: true, render: (_, r) => <MetricValue value={r.metrics.mAP50_95} /> },
-        { title: "precision", key: "precision", sorter: true, render: (_, r) => <MetricValue value={r.metrics.precision} /> },
-        { title: "recall", key: "recall", sorter: true, render: (_, r) => <MetricValue value={r.metrics.recall} /> },
-        { title: "F1", key: "f1_score", sorter: true, render: (_, r) => <MetricValue value={r.metrics.f1_score} /> },
-        { title: "IoU", key: "iou_mean", sorter: true, render: (_, r) => <MetricValue value={r.metrics.iou_mean} /> },
-        { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={r.metrics.support} format="integer" /> },
+        ...metricColumns,
+        { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={r.metrics?.support} format="integer" /> },
         { title: "duration", key: "duration_s", sorter: true, render: (_, r) => (r.duration_s ? `${Math.floor(r.duration_s / 60)}m ${r.duration_s % 60}s` : "—") },
         {
             title: "status",

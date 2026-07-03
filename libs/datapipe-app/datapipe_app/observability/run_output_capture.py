@@ -7,7 +7,7 @@ from typing import Generator, Optional, TextIO
 
 from datapipe_app.observability.log_buffer import RunLogBuffer, RunLogHandler
 
-_EXTRA_LOGGERS = ("ultralytics",)
+_LOGGER_NAMES = ("datapipe", "ultralytics")
 
 
 class _TeeStream:
@@ -66,12 +66,16 @@ def capture_run_output(
     buffer: RunLogBuffer,
     run_id: str,
 ) -> Generator[None, None, None]:
-    """Capture root/ultralytics logging and stdout/stderr for a pipeline run."""
+    """Capture datapipe/ultralytics logging and stdout/stderr for a pipeline run."""
     handler = RunLogHandler(buffer, run_id)
     attached: list[tuple[logging.Logger, RunLogHandler]] = []
+    old_levels: dict[str, int] = {}
 
-    for logger_name in ("", *_EXTRA_LOGGERS):
+    for logger_name in _LOGGER_NAMES:
         logger = logging.getLogger(logger_name)
+        old_levels[logger_name] = logger.level
+        if logger_name == "datapipe":
+            logger.setLevel(logging.INFO)
         logger.addHandler(handler)
         attached.append((logger, handler))
 
@@ -87,3 +91,4 @@ def capture_run_output(
         sys.stdout, sys.stderr = old_stdout, old_stderr
         for logger, log_handler in attached:
             logger.removeHandler(log_handler)
+            logger.setLevel(old_levels.get(logger.name, logging.NOTSET))

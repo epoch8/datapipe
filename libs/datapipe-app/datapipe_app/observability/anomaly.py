@@ -13,7 +13,30 @@ PRIMARY_METRIC_BY_TASK = {
     "segmentation": "mAP50_95",
 }
 
-FALLBACK_METRICS = ["mAP50_95", "mAP50", "f1_score", "weighted_f1_score", "pose_mAP50_95"]
+FALLBACK_METRICS = [
+    "mAP50_95",
+    "mAP50",
+    "f1_score",
+    "weighted_f1_score",
+    "macro_f1_score",
+    "weighted_without_pseudo_classes_f1_score",
+    "macro_without_pseudo_classes_f1_score",
+    "pose_mAP50_95",
+]
+
+# Support / instance counts are not comparable quality metrics; they must never be
+# used to rank runs (otherwise a run with all-null metrics but a large support
+# would win the "best model" selection).
+COUNT_METRIC_KEYS = {
+    "images_support",
+    "support",
+    "TP",
+    "FP",
+    "FN",
+    "TP_extra_bbox",
+    "FP_extra_bbox",
+    "FN_extra_bbox",
+}
 
 
 def primary_metric_for_task(task_type: Optional[str]) -> str:
@@ -29,8 +52,8 @@ def pick_primary_value(metrics: dict[str, float | None], task_type: Optional[str
     for key in FALLBACK_METRICS:
         if metrics.get(key) is not None:
             return metrics.get(key)
-    for v in metrics.values():
-        if v is not None:
+    for key, v in metrics.items():
+        if v is not None and key not in COUNT_METRIC_KEYS:
             return v
     return None
 
@@ -126,15 +149,24 @@ def build_kpis(runs: list[MetricsRunRow], task_type: Optional[str], best: Option
     kpi_defs = [
         ("mAP50", "mAP50"),
         ("mAP50_95", "mAP50-95"),
+        ("weighted_f1_score", "Weighted F1"),
+        ("macro_f1_score", "Macro F1"),
+        ("weighted_precision", "Weighted Precision"),
+        ("weighted_recall", "Weighted Recall"),
+        ("accuracy", "Accuracy"),
         ("precision", "Precision"),
         ("recall", "Recall"),
         ("f1_score", "F1 Score"),
         ("iou_mean", "IoU mean"),
     ]
+    seen_labels: set[str] = set()
     kpis: list[dict[str, Any]] = []
     for key, label in kpi_defs:
         if latest.metrics.get(key) is None:
             continue
+        if label in seen_labels:
+            continue
+        seen_labels.add(label)
         trend = [
             {"x": r.run_id, "y": r.metrics.get(key)}
             for r in reversed(runs[:10])
@@ -151,4 +183,6 @@ def build_kpis(runs: list[MetricsRunRow], task_type: Optional[str], best: Option
                 "trend": trend,
             }
         )
+        if len(kpis) >= 6:
+            break
     return kpis
