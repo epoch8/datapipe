@@ -281,7 +281,8 @@ def build_label_graph(
                         "target": first_child,
                         "kind": "exact-order",
                         "visible_by_default": False,
-                        "show_when_selected": [prev_id, first_child, parent],
+                        "show_when_selected": [first_child],
+                        "replaces_edge_id": f"{prev_id}->{parent}",
                         "source_scope": "node",
                         "target_scope": "child",
                     }
@@ -296,7 +297,8 @@ def build_label_graph(
                         "target": next_id,
                         "kind": "exact-order",
                         "visible_by_default": False,
-                        "show_when_selected": [last_child, next_id, parent],
+                        "show_when_selected": [last_child, next_id],
+                        "replaces_edge_id": f"{parent}->{next_id}",
                         "source_scope": "child",
                         "target_scope": "node",
                     }

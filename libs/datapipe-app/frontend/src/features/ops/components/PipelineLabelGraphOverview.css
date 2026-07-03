@@ -85,10 +85,16 @@
     opacity: 1;
 }
 
+.label-edge.context {
+    stroke: #7faeea;
+    stroke-width: 2;
+    opacity: 0.75;
+}
+
 .label-edge.muted {
     stroke: var(--lg-edge-muted);
     stroke-width: 2;
-    opacity: 0.55;
+    opacity: 0.45;
 }
 
 .label-edge.exact {
@@ -275,6 +281,7 @@
     font-weight: 700;
     white-space: nowrap;
     pointer-events: none;
+    z-index: 1;
 }
 
 .pipeline-label-overview-compact .label-node {

@@ -7,6 +7,7 @@ import {
 } from "./animationConstants";
 import {
     ANIMATION_MS,
+    animateFitViewport,
     animateLayoutTransition,
     applyLayoutToCy,
     BBox,
@@ -249,7 +250,10 @@ export function syncCyGraph(
 
     const pipelineOrders = pipelineOrdersFor(data, expanded);
 
-    if (options.mode === "fit" || cy.nodes().empty() || !previousLayout) {
+    const isInitial = cy.nodes().empty() || !previousLayout;
+
+    if (isInitial) {
+        // First render (nothing on screen to animate from): place + fit instantly.
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
         applyElementDiff(cy, target);
@@ -259,6 +263,34 @@ export function syncCyGraph(
         structureKeyStore.set(cy, currentStructureKey);
         fitGraphViewport(cy);
         options.onLayoutComplete?.();
+        return;
+    }
+
+    if (options.mode === "fit") {
+        // Stage/graph switch with an existing graph on screen: animate node
+        // positions to the new layout while the camera pans/zooms to the new fit
+        // *in parallel*. Previously we snapped the camera (fitGraphViewport) and
+        // only then animated the graph, which read as a jarring two-step jump.
+        stopLayoutAnimations(cy);
+        clearLayoutTimer(cy);
+        applyElementDiff(cy, target);
+        const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+        layoutStore.set(cy, nextLayout);
+        structureKeyStore.set(cy, currentStructureKey);
+
+        // Nodes that only exist in the new graph fade in at their target spot.
+        const fadeIn = new Set<string>();
+        nextLayout.forEach((entry, id) => {
+            if (entry.visible && !fromCenters.has(id)) fadeIn.add(id);
+        });
+
+        animateLayoutTransition(cy, fromCenters, nextLayout, {
+            fadeIn,
+            onComplete: () => scheduleLayoutComplete(cy, options),
+        });
+        // Start the viewport tween *after* animateLayoutTransition (its internal
+        // cy.stop would otherwise cancel a camera animation started earlier).
+        animateFitViewport(cy, nextLayout, ANIMATION_MS);
         return;
     }
 

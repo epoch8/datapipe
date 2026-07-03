@@ -208,6 +208,10 @@ function PipelineGraphView({
     });
 
     const needFitRef = useRef(true);
+    // graphUrl whose data currently lives in `rawGraph`; guards the sync effect
+    // from running against a stale graph during a stage switch (which would fit
+    // the camera to the old graph and consume needFit before the new one loads).
+    const loadedUrlRef = useRef<string | null>(null);
     const stageInitKeyRef = useRef<string | null>(null);
     const anchorGroupRef = useRef<string | null>(null);
     const expandingRef = useRef(false);
@@ -317,6 +321,7 @@ function PipelineGraphView({
                 if (!response.ok) throw new Error(`Graph request failed: ${response.status}`);
                 const data = await response.json();
                 if (cancelled) return;
+                loadedUrlRef.current = graphUrl;
                 setRawGraph(data);
             } catch {
                 if (!cancelled && cy) {
@@ -345,6 +350,9 @@ function PipelineGraphView({
 
     useEffect(() => {
         if (!cy || !rawGraph || loading) return;
+        // Skip while rawGraph still belongs to the previous stage: wait until the
+        // fetch for the current graphUrl lands so we animate to the right frame.
+        if (loadedUrlRef.current !== graphUrl) return;
 
         syncCyGraph(cy, rawGraph, expandedGroups, {
             mode: needFitRef.current ? "fit" : "preserve",

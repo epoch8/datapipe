@@ -36,11 +36,14 @@ export type LayoutEdge = {
     kind: LayoutEdgeKind;
     visibleByDefault: boolean;
     showWhenSelected?: string[];
+    replacesEdgeId?: string;
     x1: number;
     y1: number;
     x2: number;
     y2: number;
 };
+
+export type EdgeHighlightLevel = "focused" | "context" | "muted";
 
 export type SharedBracket = {
     id: string;
@@ -197,7 +200,8 @@ function buildFallbackPayload(stages: StageItem[], stageEdges?: StageEdge[]): La
                 target: firstChild,
                 kind: "exact-order",
                 visible_by_default: false,
-                show_when_selected: [prev, firstChild, node.id],
+                show_when_selected: [firstChild],
+                replaces_edge_id: `${prev}->${node.id}`,
                 source_scope: "node",
                 target_scope: "child",
             });
@@ -211,7 +215,8 @@ function buildFallbackPayload(stages: StageItem[], stageEdges?: StageEdge[]): La
                 target: next,
                 kind: "exact-order",
                 visible_by_default: false,
-                show_when_selected: [lastChild, next, node.id],
+                show_when_selected: [lastChild, next],
+                replaces_edge_id: `${node.id}->${next}`,
                 source_scope: "child",
                 target_scope: "node",
             });
@@ -501,6 +506,7 @@ export function layoutLabelGraph(
             kind: edge.kind,
             visibleByDefault: edge.visible_by_default,
             showWhenSelected: edge.show_when_selected,
+            replacesEdgeId: edge.replaces_edge_id,
             x1: from.x,
             y1: from.y,
             x2: to.x,
@@ -528,7 +534,7 @@ export function layoutLabelGraph(
         if (!bA || !bB) continue;
         const left = bA.x < bB.x ? bA : bB;
         const right = bA.x < bB.x ? bB : bA;
-        const y = Math.max(left.y + left.h, right.y + right.h) + 10;
+        const y = Math.max(left.y + left.h, right.y + right.h) + 18;
         sharedBrackets.push({
             id: rel.id,
             a: rel.a,
@@ -581,33 +587,57 @@ export function nodeToTopLevel(payload: LabelGraphPayload): Map<string, string> 
 export function isEdgeVisible(
     edge: LayoutEdge,
     selectedLabel: string | null | undefined,
-    activeIds: Set<string>,
+    hoveredNodeId: string | null | undefined,
 ): boolean {
     if (edge.visibleByDefault) return true;
-    if (!selectedLabel && activeIds.size === 0) return false;
+    if (!selectedLabel && !hoveredNodeId) return false;
     if (edge.showWhenSelected?.length) {
-        return edge.showWhenSelected.some(
-            (id) => activeIds.has(id) || id === selectedLabel,
-        );
+        const direct = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+        return edge.showWhenSelected.some((id) => direct.includes(id));
     }
-    return activeIds.has(edge.source) || activeIds.has(edge.target);
+    const focus = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+    return focus.some((id) => id === edge.source || id === edge.target);
 }
 
 export function isSharedVisible(
     bracket: SharedBracket,
-    activeIds: Set<string>,
+    selectedLabel: string | null | undefined,
+    hoveredNodeId: string | null | undefined,
 ): boolean {
     if (bracket.visibleByDefault) return true;
-    if (activeIds.size === 0) return false;
-    return activeIds.has(bracket.a) || activeIds.has(bracket.b);
+    if (!selectedLabel && !hoveredNodeId) return false;
+    const focus = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+    return focus.some((id) => id === bracket.a || id === bracket.b);
 }
 
-export function isEdgeHighlighted(
+export function getEdgeHighlightLevel(
     edge: LayoutEdge,
+    selectedLabel: string | null | undefined,
     activeIds: Set<string>,
-): boolean {
-    if (activeIds.size === 0) return false;
-    return activeIds.has(edge.source) || activeIds.has(edge.target);
+): EdgeHighlightLevel {
+    if (!selectedLabel && activeIds.size === 0) return "context";
+
+    if (edge.source === selectedLabel || edge.target === selectedLabel) {
+        return "focused";
+    }
+
+    if (
+        edge.kind === "exact-order" &&
+        selectedLabel &&
+        edge.showWhenSelected?.includes(selectedLabel)
+    ) {
+        return "focused";
+    }
+
+    if (activeIds.has(edge.source) && activeIds.has(edge.target)) {
+        return "context";
+    }
+
+    if (selectedLabel || activeIds.size > 0) {
+        return "muted";
+    }
+
+    return "context";
 }
 
 export { edgePath, buildFallbackPayload as buildFallbackLabelGraphFromStages };

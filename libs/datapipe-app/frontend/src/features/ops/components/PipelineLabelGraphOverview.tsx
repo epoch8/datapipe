@@ -1,10 +1,10 @@
 import React from "react";
 import { Card, Dropdown, Menu, Tooltip } from "antd";
 import type { LabelGraphPayload, StageEdge, StageItem } from "../../../types/ops";
-import type { LayoutEdge, LayoutNode } from "../utils/labelGraph";
+import type { EdgeHighlightLevel, LayoutEdge, LayoutNode } from "../utils/labelGraph";
 import {
     edgePath,
-    isEdgeHighlighted,
+    getEdgeHighlightLevel,
     isEdgeVisible,
     isSharedVisible,
     layoutLabelGraph,
@@ -69,40 +69,48 @@ function LabelGraphNodeCard({
         </Menu>
     );
 
-    const card = (
-        <Tooltip title={tooltip ? <span style={{ whiteSpace: "pre-line" }}>{tooltip}</span> : label}>
-            <div
-                className={[
-                    "label-node",
-                    selected ? "selected" : "",
-                    hovered ? "is-hovered" : "",
-                    muted ? "muted" : "",
-                ]
-                    .filter(Boolean)
-                    .join(" ")}
-                style={{
-                    left: layoutNode.x,
-                    top: layoutNode.y,
-                    width: layoutNode.width,
-                    height: layoutNode.height,
-                }}
-                onClick={() => onSelect?.(id)}
-                onMouseEnter={() => onHover(id)}
-                onMouseLeave={() => onHover(null)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelect?.(id);
-                    }
-                }}
-            >
-                <div className="label-node-title">{label}</div>
-                <span className={`label-node-status ${statusClass(status)}`}>{status}</span>
-            </div>
-        </Tooltip>
+    const nodeBody = (
+        <div
+            className={[
+                "label-node",
+                selected ? "selected" : "",
+                hovered ? "is-hovered" : "",
+                muted ? "muted" : "",
+            ]
+                .filter(Boolean)
+                .join(" ")}
+            style={{
+                left: layoutNode.x,
+                top: layoutNode.y,
+                width: layoutNode.width,
+                height: layoutNode.height,
+            }}
+            onClick={() => onSelect?.(id)}
+            onMouseEnter={() => onHover(id)}
+            onMouseLeave={() => onHover(null)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect?.(id);
+                }
+            }}
+        >
+            <div className="label-node-title">{label}</div>
+            <span className={`label-node-status ${statusClass(status)}`}>{status}</span>
+        </div>
     );
+
+    // Tooltip on hover only — selected state uses visual highlight, not a persistent tooltip.
+    const card =
+        tooltip && hovered && !selected ? (
+            <Tooltip title={<span style={{ whiteSpace: "pre-line" }}>{tooltip}</span>}>
+                {nodeBody}
+            </Tooltip>
+        ) : (
+            nodeBody
+        );
 
     if (onSelect || onRun) {
         return (
@@ -115,12 +123,8 @@ function LabelGraphNodeCard({
     return card;
 }
 
-function renderEdge(
-    edge: LayoutEdge,
-    highlighted: boolean,
-    muted: boolean,
-    exact: boolean,
-): React.ReactNode {
+function renderEdge(edge: LayoutEdge, level: EdgeHighlightLevel, exact: boolean): React.ReactNode {
+    const focused = level === "focused";
     return (
         <path
             key={edge.id}
@@ -128,12 +132,13 @@ function renderEdge(
             className={[
                 "label-edge",
                 exact ? "exact" : "",
-                highlighted ? "focused" : "",
-                muted ? "muted" : "",
+                level === "focused" ? "focused" : "",
+                level === "context" ? "context" : "",
+                level === "muted" ? "muted" : "",
             ]
                 .filter(Boolean)
                 .join(" ")}
-            markerEnd={highlighted || exact ? "url(#label-arrow-highlight)" : "url(#label-arrow)"}
+            markerEnd={focused || exact ? "url(#label-arrow-highlight)" : "url(#label-arrow)"}
         />
     );
 }
@@ -183,13 +188,21 @@ export function PipelineLabelGraphOverview({
         return ids;
     }, [selectedLabel, hoveredNodeId, nodeById, topMap]);
 
-    const hasFocus = activeIds.size > 0;
+    const hasFocus = Boolean(selectedLabel) || activeIds.size > 0;
 
-    const visibleOrderEdges = layout.orderEdges;
     const visibleExactEdges = layout.exactEdges.filter((e) =>
-        isEdgeVisible(e, selectedLabel, activeIds),
+        isEdgeVisible(e, selectedLabel, hoveredNodeId),
     );
-    const visibleShared = layout.sharedBrackets.filter((b) => isSharedVisible(b, activeIds));
+
+    const replacedEdgeIds = new Set(
+        visibleExactEdges.map((edge) => edge.replacesEdgeId).filter(Boolean) as string[],
+    );
+
+    const visibleOrderEdges = layout.orderEdges.filter((edge) => !replacedEdgeIds.has(edge.id));
+
+    const visibleShared = layout.sharedBrackets.filter((b) =>
+        isSharedVisible(b, selectedLabel, hoveredNodeId),
+    );
 
     if (!stages.length) return null;
 
@@ -211,7 +224,7 @@ export function PipelineLabelGraphOverview({
         );
         if (shared) {
             const other = shared.a === nodeId ? shared.b : shared.a;
-            lines.push(`Shared with ${other}: ${shared.shared_count} steps`);
+            lines.push(`Shared with ${other}: ${shared.shared_count}`);
         }
         return lines.join("\n");
     };
@@ -266,16 +279,21 @@ export function PipelineLabelGraphOverview({
                             </marker>
                         </defs>
 
-                        {visibleOrderEdges.map((edge) => {
-                            const highlighted = isEdgeHighlighted(edge, activeIds);
-                            const muted = hasFocus && !highlighted;
-                            return renderEdge(edge, highlighted, muted, false);
-                        })}
+                        {visibleOrderEdges.map((edge) =>
+                            renderEdge(
+                                edge,
+                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
+                                false,
+                            ),
+                        )}
 
-                        {visibleExactEdges.map((edge) => {
-                            const highlighted = isEdgeHighlighted(edge, activeIds);
-                            return renderEdge(edge, highlighted, false, true);
-                        })}
+                        {visibleExactEdges.map((edge) =>
+                            renderEdge(
+                                edge,
+                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
+                                true,
+                            ),
+                        )}
                     </svg>
 
                     <div className="pipeline-label-graph-nodes">
@@ -360,12 +378,13 @@ export function PipelineLabelGraphOverview({
                                 (parentInterleaved
                                     ? isNodeMuted(parentInterleaved.nodeId)
                                     : false);
+                            const isHovered = hoveredNodeId === ln.nodeId;
                             return (
                                 <LabelGraphNodeCard
                                     key={ln.id}
                                     layoutNode={ln}
                                     selected={selectedLabel === ln.nodeId}
-                                    hovered={activeIds.has(ln.nodeId)}
+                                    hovered={isHovered}
                                     muted={muted && selectedLabel !== ln.nodeId}
                                     onHover={setHoveredNodeId}
                                     onSelect={onLabelSelect}

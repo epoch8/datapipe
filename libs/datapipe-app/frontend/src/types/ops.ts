@@ -91,6 +91,7 @@ export type LabelGraphEdge = {
     kind: LabelGraphEdgeKind;
     visible_by_default: boolean;
     show_when_selected?: string[];
+    replaces_edge_id?: string;
     source_scope?: "node" | "container" | "child";
     target_scope?: "node" | "container" | "child";
 };

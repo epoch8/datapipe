@@ -936,5 +936,82 @@ export function fitGraphViewport(cy: Cytoscape.Core): void {
     }
 }
 
+const READABLE_ZOOM = 0.4;
+const FIT_PADDING = 60;
+
+/** Bounding box (model coords) of all visible entries in a layout. */
+export function layoutContentBBox(layout: GraphLayout): BBox | null {
+    let x1 = Infinity;
+    let y1 = Infinity;
+    let x2 = -Infinity;
+    let y2 = -Infinity;
+    layout.forEach((entry) => {
+        if (!entry.visible) return;
+        x1 = Math.min(x1, entry.bbox.x);
+        y1 = Math.min(y1, entry.bbox.y);
+        x2 = Math.max(x2, entry.bbox.x + entry.bbox.w);
+        y2 = Math.max(y2, entry.bbox.y + entry.bbox.h);
+    });
+    if (!Number.isFinite(x1)) return null;
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+export type Viewport = { zoom: number; pan: { x: number; y: number }; minZoom: number; maxZoom: number };
+
+/**
+ * Target pan/zoom to fit `bb` (model coords) into the viewport, mirroring the
+ * clamping and readable-zoom rules of `fitGraphViewport` but *without* mutating
+ * the camera — so callers can animate toward it instead of snapping.
+ */
+export function fitViewportForBBox(cy: Cytoscape.Core, bb: BBox): Viewport | null {
+    const W = cy.width();
+    const H = cy.height();
+    if (!bb.w || !bb.h || !W || !H) return null;
+
+    const rawZoom = Math.min((W - 2 * FIT_PADDING) / bb.w, (H - 2 * FIT_PADDING) / bb.h);
+    const minZoom = Math.min(0.05, rawZoom * 0.3);
+    const maxZoom = Math.max(2.5, rawZoom * 6);
+    let zoom = Math.max(minZoom, Math.min(maxZoom, rawZoom));
+
+    let pan: { x: number; y: number };
+    if (zoom < READABLE_ZOOM) {
+        zoom = READABLE_ZOOM;
+        pan = {
+            x: W / 2 - READABLE_ZOOM * (bb.x + bb.w / 2),
+            y: 90 - READABLE_ZOOM * bb.y,
+        };
+    } else {
+        pan = {
+            x: W / 2 - zoom * (bb.x + bb.w / 2),
+            y: H / 2 - zoom * (bb.y + bb.h / 2),
+        };
+    }
+    return { zoom, pan, minZoom, maxZoom };
+}
+
+/**
+ * Smoothly pan/zoom the viewport to fit `layout`, running concurrently with a
+ * node layout transition so the camera glides to the new frame instead of
+ * snapping before the graph animates.
+ */
+export function animateFitViewport(
+    cy: Cytoscape.Core,
+    layout: GraphLayout,
+    duration: number = ANIMATION_MS,
+): void {
+    const bb = layoutContentBBox(layout);
+    if (!bb) return;
+    const target = fitViewportForBBox(cy, bb);
+    if (!target) return;
+
+    // Widen bounds first so the target zoom is always reachable by the tween.
+    cy.minZoom(target.minZoom);
+    cy.maxZoom(target.maxZoom);
+    cy.animate(
+        { zoom: target.zoom, pan: target.pan },
+        { duration, easing: ANIMATION_EASING },
+    );
+}
+
 export { ANIMATION_MS, ANIMATION_EASING } from "./animationConstants";
 export { GROUP_PADDING };
