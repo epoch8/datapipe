@@ -36,6 +36,20 @@ catalog = Catalog(
                 ],
             )
         ),
+        "best_detection_model": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="best_detection_model",
+                data_sql_schema=[
+                    Column("detection_model_id", String(), primary_key=True),
+                    Column("detection_model__type", String()),
+                    Column("detection_model__model_path", String()),
+                    Column("detection_model__input_size", JSON),
+                    Column("detection_model__class_names", JSON),
+                    Column("detection_model__score_threshold", Float),
+                ],
+            )
+        ),
         "images_with_predictions": Table(
             TableStoreDB(
                 dbconn=DBCONN,
@@ -68,20 +82,12 @@ catalog = Catalog(
                 ],
             )
         ),
-        "detection_predictions": Table(
+        "sec__image_without_ground_truth": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="detection_predictions",
+                name="sec__image_without_ground_truth",
                 data_sql_schema=[
-                    Column("image_name", String, primary_key=True),
-                    Column("detection_model_id", String, primary_key=True),
-                    Column("bbox_id", String, primary_key=True),
-                    Column("x_min", Integer),
-                    Column("y_min", Integer),
-                    Column("x_max", Integer),
-                    Column("y_max", Integer),
-                    Column("label", String),
-                    Column("prediction__detection_score", Float),
+                    Column("image_name", String(), primary_key=True),
                 ],
             )
         ),

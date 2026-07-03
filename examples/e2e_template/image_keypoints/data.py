@@ -36,6 +36,48 @@ catalog = Catalog(
                 ],
             )
         ),
+        "keypoints_models": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="keypoints_models",
+                data_sql_schema=[
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("keypoints_model__type", String()),
+                    Column("keypoints_model__model_path", String()),
+                    Column("keypoints_model__input_size", JSON),
+                    Column("keypoints_model__class_names", JSON),
+                    Column("keypoints_model__score_threshold", Float),
+                ],
+            )
+        ),
+        "keypoints_model_train": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="keypoints_model_train",
+                data_sql_schema=[
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("keypoints_model__type", String()),
+                    Column("keypoints_model__model_path", String()),
+                    Column("keypoints_model__input_size", JSON),
+                    Column("keypoints_model__class_names", JSON),
+                    Column("keypoints_model__score_threshold", Float),
+                ],
+            )
+        ),
+        "best_keypoints_model": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="best_keypoints_model",
+                data_sql_schema=[
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("keypoints_model__type", String()),
+                    Column("keypoints_model__model_path", String()),
+                    Column("keypoints_model__input_size", JSON),
+                    Column("keypoints_model__class_names", JSON),
+                    Column("keypoints_model__score_threshold", Float),
+                ],
+            )
+        ),
         "images_with_predictions": Table(
             TableStoreDB(
                 dbconn=DBCONN,
@@ -71,18 +113,12 @@ catalog = Catalog(
                 ],
             )
         ),
-        "keypoints_predictions": Table(
+        "sec__image_without_ground_truth": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="keypoints_predictions",
+                name="sec__image_without_ground_truth",
                 data_sql_schema=[
-                    Column("image_name", String, primary_key=True),
-                    Column("keypoints_model_id", String, primary_key=True),
-                    Column("bboxes", JSON),
-                    Column("keypoints", JSON),
-                    Column("labels", JSON),
-                    Column("prediction__detection_scores", JSON),
-                    Column("prediction__keypoints_scores", JSON),
+                    Column("image_name", String(), primary_key=True),
                 ],
             )
         ),
