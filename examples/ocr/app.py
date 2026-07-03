@@ -32,7 +32,7 @@ pipeline_steps = [
         inputs=[data.images_tbl, data.engines_tbl],
         outputs=[data.ocr_results_tbl],
         transform_keys=["image_id", "engine_id"],
-        chunk_size=8,
+        chunk_size=2,
         labels=[("stage", "ocr")],
     ),
 ]
@@ -47,16 +47,6 @@ for engine_id in ENABLED_ENGINES:
             labels=[("stage", "fiftyone")],
         )
     )
-
-pipeline_steps.append(
-    BatchTransform(
-        func=steps.render_composite,
-        inputs=[data.images_tbl, data.ocr_results_tbl],
-        outputs=[data.composites_tbl],
-        transform_keys=["engine_id", "image_id"],
-        labels=[("stage", "composite")],
-    )
-)
 
 pipeline = Pipeline(pipeline_steps)
 
