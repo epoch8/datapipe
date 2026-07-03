@@ -30,6 +30,7 @@ from tests.ls_test_helpers import (
     TASKS_COUNT,
     add_predictions,
     convert_to_ls_input_data,
+    make_best_model_from_predictions,
     wrapped_partial,
 )
 from tests.util import get_project_id, get_project_tasks, wait_until_label_studio_is_up
@@ -137,6 +138,17 @@ class CasesLabelStudio:
                         create_table=True,
                     )
                 ),
+                "best_model": Table(
+                    store=TableStoreDB(
+                        dbconn=dbconn,
+                        name="best_model",
+                        data_sql_schema=[
+                            Column("project_identifier", String(), primary_key=True),
+                            Column("model_version", String()),
+                        ],
+                        create_table=True,
+                    )
+                ),
             }
         )
         main_steps = [
@@ -182,15 +194,26 @@ class CasesLabelStudio:
                     inputs=["ls_input_data_raw"],
                     outputs=["ls_input_data__has__prediction"],
                 ),
+                BatchTransform(
+                    func=wrapped_partial(
+                        make_best_model_from_predictions,
+                        model_keys=["model_version"],
+                        group_by=["project_identifier"],
+                    ),
+                    inputs=["ls_input_data__has__prediction"],
+                    outputs=["best_model"],
+                ),
                 LabelStudioUploadPredictionsToProjects(
                     input__item__has__prediction="ls_input_data__has__prediction",
                     input__label_studio_project="ls_project",
                     input__label_studio_project_task="ls_task",
+                    input__best_model="best_model",
                     output__label_studio_project_prediction="ls_prediction",
+                    output__label_studio_current_model_version="ls_current_model_version",
                     ls_url=ls_url,
                     api_key=api_key,
-                    primary_keys=["project_identifier", "id"],
-                    model_version__column="model_version",
+                    primary_keys=["project_identifier", "id", "model_version"],
+                    model_keys=["model_version"],
                     create_table=True,
                 ),
             ]
@@ -320,6 +343,22 @@ def ls_moderation_base_many_projects(
                 #         )
 
         assert len(ds.get_table("ls_output").get_data(idx_project)) == 10
+
+    if include_predictions:
+        df_current_model_version = ds.get_table("ls_current_model_version").get_data()
+        assert len(df_current_model_version) == 2
+        for project_identifier in ["project_identifier0", "project_identifier1"]:
+            project = get_project_by_title(label_studio_session, project_identifier)
+            assert project is not None
+            project_id = get_project_id(project)
+            project_current_model_version = df_current_model_version[
+                df_current_model_version["project_id"] == project_id
+            ]
+            assert len(project_current_model_version) == 1
+            assert project_current_model_version.iloc[0]["model_version"] == "v1"
+            project_details = label_studio_session.projects.get(id=project_id)
+            assert project_details.show_collab_predictions is True
+            assert project_details.model_version == "v1"
 
 
 @parametrize_with_cases(
