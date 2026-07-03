@@ -145,6 +145,7 @@ def make_app(
                 "status": r.status,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "trigger": r.trigger,
             }
             for r in runs
         ]

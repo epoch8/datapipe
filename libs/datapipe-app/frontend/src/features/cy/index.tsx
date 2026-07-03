@@ -235,6 +235,11 @@ function PipelineGraphView({
         loadGraphSessionState(buildGraphUrl(stageFilter)),
     );
     const sessionRestoredRef = useRef(false);
+    // Persisted zoom/pan is only restored on the very first mount (page reload /
+    // deep-link). In-app navigation between stages and the full graph must not
+    // snap the camera to a stale manual viewport — it animates a clean fit
+    // instead, so the transition stays smooth and consistent.
+    const firstMountRef = useRef(true);
 
     const needFitRef = useRef(true);
     // Whether the user has manually panned/zoomed. Until they do, the camera is
@@ -388,15 +393,20 @@ function PipelineGraphView({
     toggleGroupExpandRef.current = toggleGroupExpand;
 
     useEffect(() => {
-        savedSessionRef.current = loadGraphSessionState(graphUrl);
+        // Only the first mount restores a persisted camera/selection (reload or
+        // deep-link). Later graphUrl changes are in-app navigation: drop the saved
+        // session so the graph animates a fresh fit instead of snapping to a stale
+        // manual zoom/pan.
+        const isFirstMount = firstMountRef.current;
+        firstMountRef.current = false;
+        const saved = isFirstMount ? loadGraphSessionState(graphUrl) : null;
+        savedSessionRef.current = saved;
         sessionRestoredRef.current = false;
         stageInitKeyRef.current = null;
-        needFitRef.current = savedSessionRef.current
-            ? !savedSessionRef.current.userInteracted
-            : true;
-        userInteractedRef.current = savedSessionRef.current?.userInteracted ?? false;
-        if (savedSessionRef.current) {
-            setExpandedGroups(new Set(savedSessionRef.current.expandedGroups));
+        needFitRef.current = saved ? !saved.userInteracted : true;
+        userInteractedRef.current = saved?.userInteracted ?? false;
+        if (saved) {
+            setExpandedGroups(new Set(saved.expandedGroups));
         } else {
             setExpandedGroups(new Set());
         }
@@ -505,13 +515,26 @@ function PipelineGraphView({
         if (!container || typeof ResizeObserver === "undefined") return;
 
         let frame = 0;
+        // Remember the last observed size so we only re-fit on a real dimension
+        // change. The observer fires once on observe() and can fire again as the
+        // flex layout settles (e.g. after a stage→full-graph navigation); without
+        // this guard it re-fits the camera right after the layout's own fit
+        // animation, producing a visible zoom jump. Padding matches the graph's
+        // own fit (FIT_PADDING = 60) so the two paths never disagree on zoom.
+        let lastW = container.clientWidth;
+        let lastH = container.clientHeight;
         const observer = new ResizeObserver(() => {
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
                 if (cy.destroyed()) return;
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                if (Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return;
+                lastW = w;
+                lastH = h;
                 cy.resize();
                 if (!userInteractedRef.current && cy.nodes().nonempty()) {
-                    cy.fit(undefined, 48);
+                    cy.fit(undefined, 60);
                 }
             });
         });

@@ -52,11 +52,17 @@ export function GraphPage() {
     }, [stage, pipelineId]);
 
     React.useEffect(() => {
-        loadStageRuns();
-        if (!stage || !pipelineId) return undefined;
-        const timer = setInterval(loadStageRuns, getRefreshIntervalMs());
+        if (!pipelineId) return undefined;
+        const tick = () => {
+            if (stage) loadStageRuns();
+            else loadDetail();
+        };
+        tick();
+        const timer = setInterval(tick, getRefreshIntervalMs());
         return () => clearInterval(timer);
-    }, [loadStageRuns, stage, pipelineId]);
+    }, [pipelineId, stage, loadStageRuns, loadDetail]);
+
+    const recentRuns = stage ? stageRuns : (detail?.recent_runs ?? []);
 
     const refresh = React.useCallback(() => {
         loadCapabilities();
@@ -69,8 +75,19 @@ export function GraphPage() {
         opsApi
             .startRun([["stage", stageName]])
             .then((started) => {
+                const entry = { ...started, trigger: `api:stage:${stageName}` };
                 if (stageName === stage) {
-                    setStageRuns((current) => prependRecentRun(current, started));
+                    setStageRuns((current) => prependRecentRun(current, entry));
+                }
+                if (!stage) {
+                    setDetail((current) =>
+                        current
+                            ? {
+                                  ...current,
+                                  recent_runs: prependRecentRun(current.recent_runs, entry),
+                              }
+                            : current,
+                    );
                 }
                 navigate(`/runs/${started.run_id}`);
             })
@@ -118,6 +135,7 @@ export function GraphPage() {
                         onLabelSelect={(label) =>
                             navigate(`/graph?stage=${encodeURIComponent(label)}`)
                         }
+                        onLabelClear={() => navigate("/graph")}
                         onStageRun={agentMode ? startStageRun : undefined}
                     />
                 ) : (
@@ -126,14 +144,17 @@ export function GraphPage() {
                     </div>
                 )}
             </div>
-            <div className={`pipeline-card${stage ? " pipeline-card-with-sidebar" : ""}`}>
-                {stage && (
-                    <aside className="pipeline-stage-sidebar">
-                        <Card title="Recent runs" size="small" className="pipeline-stage-runs-card">
-                            <RecentRunsList runs={stageRuns} emptyText="No runs for this stage yet" />
-                        </Card>
-                    </aside>
-                )}
+            <div className="pipeline-card pipeline-card-with-sidebar">
+                <aside className="pipeline-stage-sidebar">
+                    <Card title="Recent runs" size="small" className="pipeline-stage-runs-card">
+                        <RecentRunsList
+                            runs={recentRuns}
+                            emptyText={
+                                stage ? "No runs for this stage yet" : "No pipeline runs yet"
+                            }
+                        />
+                    </Card>
+                </aside>
                 <div className="pipeline-card-main">
                     <div className="pipeline-card-header">
                         <div className="pipeline-card-title">

@@ -151,6 +151,7 @@ export interface RecentRunSummary {
     status: string;
     started_at?: string;
     finished_at?: string;
+    trigger?: string;
 }
 
 export interface StageRecentRunsResponse {

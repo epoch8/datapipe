@@ -22,6 +22,7 @@ export type PipelineLabelGraphOverviewProps = {
     selectedLabel?: string | null;
     mode?: "overview" | "compact";
     onLabelSelect?: (label: string) => void;
+    onLabelClear?: () => void;
     onStageRun?: (label: string) => void;
 };
 
@@ -152,6 +153,7 @@ export function PipelineLabelGraphOverview({
     selectedLabel,
     mode = "overview",
     onLabelSelect,
+    onLabelClear,
     onStageRun,
 }: PipelineLabelGraphOverviewProps) {
     void pipelineId;
@@ -230,6 +232,19 @@ export function PipelineLabelGraphOverview({
         return lines.join("\n");
     };
 
+    const handleOverviewBackgroundClick = (event: React.MouseEvent<HTMLElement>) => {
+        if (!selectedLabel || !onLabelClear) return;
+        const target = event.target as HTMLElement;
+        if (
+            target.closest(
+                ".label-node, .label-container, .label-interleaved-container, .label-shared-chip",
+            )
+        ) {
+            return;
+        }
+        onLabelClear();
+    };
+
     return (
         <Card
             bordered={mode === "overview"}
@@ -244,7 +259,10 @@ export function PipelineLabelGraphOverview({
                 </div>
             )}
 
-            <div className="pipeline-label-graph-scroll">
+            <div
+                className="pipeline-label-graph-scroll"
+                onClick={handleOverviewBackgroundClick}
+            >
                 <div
                     className="pipeline-label-graph-canvas"
                     style={{ width: layout.width, height: layout.height }}

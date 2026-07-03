@@ -490,6 +490,12 @@
     font-weight: 600;
 }
 
+.recent-run-scope {
+    margin: 0;
+    font-size: 11px;
+    line-height: 18px;
+}
+
 .recent-run-time {
     font-size: 12px;
     white-space: nowrap;
