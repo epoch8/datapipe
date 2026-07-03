@@ -7,7 +7,10 @@ from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep, run_steps
 from datapipe.run_config import RunConfig
-from datapipe.step.batch_transform import BaseBatchTransformStep
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BaseBatchTransformStep, BatchTransform, DatatableBatchTransform
+from datapipe.step.datatable_transform import DatatableTransform
+from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, Labels
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -21,6 +24,22 @@ from datapipe_app.meta_sql import require_sql_transform_meta
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.discovery import extract_stages
 from datapipe_app.settings import API_SETTINGS
+
+
+# Primitive building blocks that map 1:1 to a single ComputeStep and should be
+# rendered as a plain transform node. Any other (custom, composite) PipelineStep
+# is drawn as a meta-group ("blue rectangle") even when it emits a single step.
+_PRIMITIVE_STEP_TYPES = (
+    BatchGenerate,
+    BatchTransform,
+    DatatableBatchTransform,
+    DatatableTransform,
+    UpdateExternalTable,
+)
+
+
+def _is_primitive_step(pipeline_step: PipelineStep) -> bool:
+    return isinstance(pipeline_step, _PRIMITIVE_STEP_TYPES)
 
 
 def _pipeline_step_group_name(pipeline_step: PipelineStep) -> str:
@@ -341,7 +360,7 @@ def make_app(
             if not visible:
                 continue
 
-            if len(group_steps) <= 1:
+            if len(group_steps) <= 1 and _is_primitive_step(pipeline_step):
                 pipeline_nodes.append(pipeline_step_response(visible[0]))
                 top_level_tables.update(_tables_for_steps(visible))
                 continue
