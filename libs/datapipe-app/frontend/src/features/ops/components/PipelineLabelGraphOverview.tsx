@@ -10,6 +10,7 @@ import {
     layoutLabelGraph,
     nodeToTopLevel,
     resolveLabelGraph,
+    sharedBracketPath,
 } from "../utils/labelGraph";
 import "./PipelineLabelGraphOverview.css";
 
@@ -224,7 +225,7 @@ export function PipelineLabelGraphOverview({
         );
         if (shared) {
             const other = shared.a === nodeId ? shared.b : shared.a;
-            lines.push(`Shared with ${other}: ${shared.shared_count}`);
+            lines.push(`Shared steps with ${other}: ${shared.shared_count}`);
         }
         return lines.join("\n");
     };
@@ -294,6 +295,14 @@ export function PipelineLabelGraphOverview({
                                 true,
                             ),
                         )}
+
+                        {visibleShared.map((bracket) => (
+                            <path
+                                key={bracket.id}
+                                className="label-shared-bracket"
+                                d={sharedBracketPath(bracket)}
+                            />
+                        ))}
                     </svg>
 
                     <div className="pipeline-label-graph-nodes">
@@ -400,7 +409,7 @@ export function PipelineLabelGraphOverview({
                                 className="label-shared-chip"
                                 style={{
                                     left: bracket.x + bracket.width / 2,
-                                    top: bracket.y,
+                                    top: bracket.y + 20,
                                 }}
                             >
                                 {bracket.label}

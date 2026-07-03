@@ -11,6 +11,7 @@ import type {
     OverviewResponse,
     PipelineDetail,
     RecentRunSummary,
+    ResetTransformMetadataResponse,
     RunDetail,
     RunLogsResponse,
     SettingsInfo,
@@ -185,12 +186,18 @@ export const opsApi = {
     getSqlSchema: () =>
         fetchWithMock<SqlSchemaResponse>("/sql/schema", undefined, () => opsMock.getSqlSchema()),
 
-    startRun: (labels?: [string, string][], background = false) =>
+    startRun: (labels?: [string, string][], background = true) =>
         fetchJson<{ run_id: string; status: string }>("/runs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ labels: labels || [], background }),
         }),
+
+    resetTransformMetadata: (pipelineId: string, transformName: string) =>
+        fetchJson<ResetTransformMetadataResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/transforms/${encodeURIComponent(transformName)}/reset-metadata`,
+            { method: "POST" },
+        ),
 };
 
 export function getRefreshIntervalMs(): number {

@@ -245,12 +245,29 @@ def _sort_runs(runs: list[MetricsRunRow], sort_by: Optional[str], sort_dir: str)
         return runs
     reverse = sort_dir != "asc"
 
-    def key_fn(r: MetricsRunRow) -> Any:
-        if sort_by in r.metrics:
-            return r.metrics.get(sort_by) or 0
-        return getattr(r, sort_by, None) or ""
+    # A metric field may be present only in some rows. Mixing floats (present) with
+    # strings ("" fallback) breaks Python's comparison, so decide once whether we
+    # are sorting a numeric metric and always emit a consistent, comparable key.
+    # The direction is folded into the key (negated numbers / inverted char codes)
+    # so that missing values (flagged with a leading 1) always sort last, in both
+    # ascending and descending order.
+    is_metric = any(sort_by in r.metrics for r in runs)
 
-    return sorted(runs, key=key_fn, reverse=reverse)
+    def key_fn(r: MetricsRunRow) -> Any:
+        if is_metric:
+            val = r.metrics.get(sort_by)
+            if val is None:
+                return (1, 0.0)
+            return (0, -float(val) if reverse else float(val))
+        attr = getattr(r, sort_by, None)
+        if attr is None:
+            return (1, ())
+        if isinstance(attr, (int, float)):
+            return (0, -float(attr) if reverse else float(attr))
+        text = str(attr)
+        return (0, tuple(-ord(c) for c in text) if reverse else tuple(ord(c) for c in text))
+
+    return sorted(runs, key=key_fn)
 
 
 CLASS_STRING_SORT_FIELDS = {"label", "class_id"}
@@ -359,6 +376,19 @@ class MetricsService:
 
         pm = primary_metric or primary_metric_for_task(task_type)
         best = max(runs, key=lambda r: pick_primary_value(r.metrics, task_type) or -1)
+        # Metrics are stored sparsely: each evaluation row of a (model, subset)
+        # may carry only a slice of the computed metrics. Merge every non-null
+        # metric from all rows of the best run's (model, subset) so the Best model
+        # panel presents the complete metric set rather than one sparse row.
+        best = best.model_copy(deep=True)
+        merged: dict[str, float | None] = dict(best.metrics)
+        for r in runs:
+            if r.model_id != best.model_id or r.subset != best.subset:
+                continue
+            for k, v in r.metrics.items():
+                if v is not None and merged.get(k) is None:
+                    merged[k] = v
+        best.metrics = merged
         latest = runs[0]
         previous = runs[1] if len(runs) > 1 else None
         return MetricsSummaryResponse(

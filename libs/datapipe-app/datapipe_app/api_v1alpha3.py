@@ -4,6 +4,7 @@ import importlib.metadata
 from typing import Any, List, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
+from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.types import Labels
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -37,12 +38,17 @@ from datapipe_app.observability.settings import get_ops_settings
 
 class StartRunRequest(BaseModel):
     labels: Labels = []
-    background: bool = False
+    background: bool = True
 
 
 class StartRunResponse(BaseModel):
     run_id: str
     status: str = "running"
+
+
+class ResetTransformMetadataResponse(BaseModel):
+    transform_name: str
+    status: str = "ok"
 
 
 class CapabilitiesResponse(BaseModel):
@@ -133,6 +139,14 @@ def make_app(
             for r in runs
         ]
 
+    def _trigger_from_labels(labels: Labels) -> str:
+        if not labels:
+            return "api:pipeline"
+        stage = next((value for key, value in labels if key == "stage"), None)
+        if stage:
+            return f"api:stage:{stage}"
+        return "api"
+
     @app.get("/pipelines/{pipeline_id}")
     def get_pipeline_detail(pipeline_id: str) -> dict[str, Any]:
         reg = store.get_pipeline(pipeline_id)
@@ -211,6 +225,7 @@ def make_app(
         runs = store.list_recent_runs_for_stage(
             pipeline_id,
             stage_step_names,
+            stage_name=stage_name,
             limit=min(limit, 50),
         )
         return {
@@ -473,9 +488,10 @@ def make_app(
         assert recorder is not None
 
         selected = filter_steps_by_labels(steps, labels=req.labels) if req.labels else steps
+        trigger = _trigger_from_labels(req.labels)
 
         if req.background:
-            run_id = recorder.start_run(trigger="api")
+            run_id = recorder.start_run(trigger=trigger)
 
             def _execute() -> None:
                 try:
@@ -495,7 +511,7 @@ def make_app(
             background_tasks.add_task(_execute)
             return StartRunResponse(run_id=run_id, status="running")
 
-        run_id = recorder.start_run(trigger="api")
+        run_id = recorder.start_run(trigger=trigger)
         try:
             for step in selected:
                 recorder.start_step(step.name)
@@ -513,6 +529,25 @@ def make_app(
             recorder.finish_run(status="failed", error=str(exc))
             raise HTTPException(500, str(exc)) from exc
         return StartRunResponse(run_id=run_id, status="completed")
+
+    @app.post(
+        "/pipelines/{pipeline_id}/transforms/{transform_name}/reset-metadata",
+        response_model=ResetTransformMetadataResponse,
+    )
+    def reset_transform_metadata(pipeline_id: str, transform_name: str) -> ResetTransformMetadataResponse:
+        _require_agent_pipeline(pipeline_id)
+        assert ds is not None and steps is not None
+        if get_ops_settings().pipeline_id != pipeline_id:
+            raise HTTPException(404, f"Pipeline {pipeline_id} not available on this agent")
+
+        filtered_steps = filter_steps_by_labels(steps, name_prefix=transform_name)
+        if len(filtered_steps) != 1:
+            raise HTTPException(404, f"Transform {transform_name} not found")
+        step = filtered_steps[0]
+        if not isinstance(step, BaseBatchTransformStep):
+            raise HTTPException(400, f"Transform {transform_name} does not have SQL metadata")
+        step.reset_metadata(ds)
+        return ResetTransformMetadataResponse(transform_name=transform_name)
 
     @app.get("/training/{run_key}")
     def get_training_run(run_key: str, pipeline_id: Optional[str] = None) -> dict[str, Any]:

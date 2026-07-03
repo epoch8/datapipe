@@ -36,9 +36,14 @@ function columnField<T extends object>(col: ColumnsType<T>[number]): string | un
 }
 
 function sortersFromChange<T extends object>(sorter: SorterResult<T> | SorterResult<T>[]): SortSpec[] {
-    const list = (Array.isArray(sorter) ? sorter : [sorter]).filter((s) => s.field && s.order);
+    // antd derives `field` from a column's dataIndex; columns that only set `key`
+    // (e.g. computed metric columns) leave `field` undefined, so fall back to
+    // `columnKey` to keep server-side sorting working for them.
+    const list = (Array.isArray(sorter) ? sorter : [sorter]).filter(
+        (s) => (s.field ?? s.columnKey) != null && s.order,
+    );
     return list.map((s) => ({
-        field: String(s.field),
+        field: String(s.field ?? s.columnKey),
         direction: s.order === "ascend" ? "asc" : "desc",
     }));
 }

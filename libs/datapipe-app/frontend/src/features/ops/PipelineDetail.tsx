@@ -8,6 +8,7 @@ import { PipelineMetrics } from "./components/PipelineMetrics";
 import { PluginSection } from "./components/PluginSection";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
+import { prependRecentRun } from "./utils/recentRuns";
 
 const { Text, Title } = Typography;
 
@@ -55,7 +56,14 @@ export function PipelineDetail({
         setRunning(true);
         opsApi
             .startRun(labels)
-            .then(() => load())
+            .then((started) => {
+                setDetail((current) =>
+                    current
+                        ? { ...current, recent_runs: prependRecentRun(current.recent_runs, started) }
+                        : current,
+                );
+                load();
+            })
             .catch((e) => setError(String(e)))
             .finally(() => setRunning(false));
     };

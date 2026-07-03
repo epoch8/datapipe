@@ -2,7 +2,7 @@ import React from "react";
 import { Button, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { MetricsRunRow } from "../../../types/ops";
-import { MetricValue, SortableDataTable, TrendDelta, type SortSpec } from "../shared";
+import { MetricValue, SortableDataTable, type SortSpec } from "../shared";
 
 type Props = {
     rows: MetricsRunRow[];
@@ -10,6 +10,7 @@ type Props = {
     page: number;
     pageSize: number;
     loading?: boolean;
+    activeSorts?: SortSpec[];
     selectedRunIds: string[];
     onPageChange: (page: number, pageSize: number) => void;
     onSortChange: (sorts: SortSpec[]) => void;
@@ -23,6 +24,7 @@ export function MetricsRunTable({
     page,
     pageSize,
     loading,
+    activeSorts,
     selectedRunIds,
     onPageChange,
     onSortChange,
@@ -44,23 +46,12 @@ export function MetricsRunTable({
         { title: "subset", dataIndex: "subset", sorter: true },
         { title: "mAP50", key: "mAP50", sorter: true, render: (_, r) => <MetricValue value={r.metrics.mAP50} /> },
         { title: "mAP50-95", key: "mAP50_95", sorter: true, render: (_, r) => <MetricValue value={r.metrics.mAP50_95} /> },
-        { title: "precision", key: "precision", render: (_, r) => <MetricValue value={r.metrics.precision} /> },
-        {
-            title: "recall",
-            key: "recall",
-            render: (_, r) => (
-                <span>
-                    <MetricValue value={r.metrics.recall} />
-                    {r.delta_pct?.recall != null && (
-                        <TrendDelta deltaPct={r.delta_pct.recall} />
-                    )}
-                </span>
-            ),
-        },
-        { title: "F1", key: "f1", render: (_, r) => <MetricValue value={r.metrics.f1_score} /> },
-        { title: "IoU", key: "iou", render: (_, r) => <MetricValue value={r.metrics.iou_mean} /> },
-        { title: "support", key: "support", render: (_, r) => <MetricValue value={r.metrics.support} format="integer" /> },
-        { title: "duration", dataIndex: "duration_s", render: (v) => (v ? `${Math.floor(v / 60)}m ${v % 60}s` : "—") },
+        { title: "precision", key: "precision", sorter: true, render: (_, r) => <MetricValue value={r.metrics.precision} /> },
+        { title: "recall", key: "recall", sorter: true, render: (_, r) => <MetricValue value={r.metrics.recall} /> },
+        { title: "F1", key: "f1_score", sorter: true, render: (_, r) => <MetricValue value={r.metrics.f1_score} /> },
+        { title: "IoU", key: "iou_mean", sorter: true, render: (_, r) => <MetricValue value={r.metrics.iou_mean} /> },
+        { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={r.metrics.support} format="integer" /> },
+        { title: "duration", key: "duration_s", sorter: true, render: (_, r) => (r.duration_s ? `${Math.floor(r.duration_s / 60)}m ${r.duration_s % 60}s` : "—") },
         {
             title: "status",
             dataIndex: "status",
@@ -89,6 +80,7 @@ export function MetricsRunTable({
             pageSize={pageSize}
             onPageChange={onPageChange}
             onSortChange={onSortChange}
+            activeSorts={activeSorts}
             rowSelection={{
                 selectedRowKeys: selectedRunIds,
                 onChange: (keys) => onSelectionChange(keys as string[]),

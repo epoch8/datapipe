@@ -60,14 +60,17 @@ def setup_prometheus_metrics(
         buckets=[0.1, 0.5, 1, 2, 3, 4, 5, 15, 30],
         skip_paths=[
             "/healthz",
-            "/metrics",
+            "/-/metrics",
             "/",
             "/favicon.ico",
             "",
         ],
         skip_methods=["OPTIONS"],
     )
-    app.add_route("/metrics", handle_metrics)
+    # Serve Prometheus metrics under /-/metrics so the path does not shadow the
+    # SPA client route at /metrics (a hard refresh there must load the React app,
+    # not the raw Prometheus exposition text).
+    app.add_route("/-/metrics", handle_metrics)
 
     if API_SETTINGS.show_step_status:
         REGISTRY.register(PipelineStatusCollector(datapipe_app))

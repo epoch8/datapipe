@@ -17,7 +17,7 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
+from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
@@ -198,9 +198,9 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
                     func=count_keypoints_metrics_on_subset,
                     inputs=[
                         self.input__image__ground_truth,
-                        self.input__subset__has__image,
+                        required_pipeline_input(self.input__subset__has__image),
                         self.input__keypoints_model,
-                        self.input__keypoints_prediction,
+                        required_pipeline_input(self.input__keypoints_prediction),
                     ],
                     outputs=[self.output__keypoints_model__metrics__on__subset],
                     transform_keys=self.keypoints_model_primary_keys + ["subset_id"],
@@ -353,9 +353,9 @@ class CountMetrics_FrozenDataset_KeypointsModel(PipelineStep):
                 BatchTransform(
                     func=count_keypoints_metrics_on_frozen_dataset,
                     inputs=[
-                        self.input__keypoints_frozen_dataset__has__image_gt,
+                        required_pipeline_input(self.input__keypoints_frozen_dataset__has__image_gt),
                         self.input__keypoints_model,
-                        self.input__keypoints_prediction,
+                        required_pipeline_input(self.input__keypoints_prediction),
                     ],
                     outputs=[self.output__keypoints_model__metrics_on__frozen_dataset],
                     transform_keys=self.keypoints_model_primary_keys

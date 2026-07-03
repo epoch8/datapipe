@@ -349,17 +349,21 @@ class ObservabilityStore:
         pipeline_id: str,
         stage_step_names: list[str],
         *,
+        stage_name: Optional[str] = None,
         limit: int = 10,
     ) -> list[PipelineRunRow]:
         """Runs that executed at least one step belonging to the stage."""
-        if not stage_step_names:
+        if not stage_step_names and not stage_name:
             return []
         with self.session() as session:
-            run_ids = select(PipelineRunStepRow.run_id).where(
-                PipelineRunStepRow.step_name.in_(stage_step_names)
-            )
-            return list(
-                session.scalars(
+            runs: list[PipelineRunRow] = []
+            seen: set[str] = set()
+
+            if stage_step_names:
+                run_ids = select(PipelineRunStepRow.run_id).where(
+                    PipelineRunStepRow.step_name.in_(stage_step_names)
+                )
+                for row in session.scalars(
                     select(PipelineRunRow)
                     .where(
                         PipelineRunRow.pipeline_id == pipeline_id,
@@ -367,8 +371,28 @@ class ObservabilityStore:
                     )
                     .order_by(PipelineRunRow.started_at.desc())
                     .limit(limit)
-                ).all()
-            )
+                ).all():
+                    if row.run_id not in seen:
+                        seen.add(row.run_id)
+                        runs.append(row)
+
+            if stage_name:
+                for row in session.scalars(
+                    select(PipelineRunRow)
+                    .where(
+                        PipelineRunRow.pipeline_id == pipeline_id,
+                        PipelineRunRow.status == "running",
+                        PipelineRunRow.trigger == f"api:stage:{stage_name}",
+                    )
+                    .order_by(PipelineRunRow.started_at.desc())
+                    .limit(limit)
+                ).all():
+                    if row.run_id not in seen:
+                        seen.add(row.run_id)
+                        runs.append(row)
+
+            runs.sort(key=lambda row: row.started_at, reverse=True)
+            return runs[:limit]
 
     def get_schedule(self, pipeline_id: str) -> Optional[PipelineScheduleRow]:
         with self.session() as session:

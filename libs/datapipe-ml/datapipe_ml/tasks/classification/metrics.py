@@ -16,7 +16,7 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
+from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
 from sqlalchemy import Column, Float, and_, func, select, tuple_
 from sqlalchemy.sql.sqltypes import Integer, String
 
@@ -535,8 +535,8 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
                     func=count_classification_metrics_on_image,
                     inputs=[
                         self.input__image__ground_truth,
-                        self.input__subset__has__image,
-                        self.input__classification_prediction,
+                        required_pipeline_input(self.input__subset__has__image),
+                        required_pipeline_input(self.input__classification_prediction),
                     ],
                     outputs=[self.output__classification_model__metrics__on__image],
                     transform_keys=stable_unique(self.primary_keys + self.classification_model_primary_keys),

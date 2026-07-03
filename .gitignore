@@ -81,15 +81,3 @@ test_data/
 datapipe-examples/
 examples/**/input/
 examples/**/output/
-
-# Not needed for datapipe-app / datapipe-central image
-examples/e2e_template/
-examples/datapipe_core/
-examples/datapipe_cvat/
-examples/datapipe_ml/
-libs/datapipe-ml/
-libs/datapipe-label-studio/
-libs/datapipe-cvat/
-tests/
-tools/
-docs/

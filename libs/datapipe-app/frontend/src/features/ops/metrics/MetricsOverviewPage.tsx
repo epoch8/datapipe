@@ -1,37 +1,61 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
-import { useUrlNumber, useUrlState } from "../../../hooks/useUrlState";
-import type { MetricsRunRow, MetricsSummaryResponse, MetricsTimeseriesResponse } from "../../../types/ops";
+import type { MetricsRunRow, MetricsSummaryResponse } from "../../../types/ops";
 import {
-    ChartCard,
     defaultDateRange,
     EmptyState,
     FilterBar,
     KpiCard,
     PageHeader,
+    parseSortParams,
 } from "../shared";
-import { AnomaliesPanel, BestRunPanel, MetricLegend, PipelineStagesStrip } from "./MetricsPanels";
+import { AnomaliesPanel, BestModelPanel, MetricLegend } from "./MetricsPanels";
 import { MetricsRunTable } from "./MetricsRunTable";
 
 export function MetricsOverviewPage() {
     const { pipelineId, loading: pidLoading } = usePipelineId();
     const navigate = useNavigate();
-    const [subset, setSubset] = useUrlState("subset");
-    const [modelId, setModelId] = useUrlState("model_id");
-    const [search, setSearch] = useUrlState("search");
-    const [sortBy, setSortBy] = useUrlState("sort_by", "started_at");
-    const [sortDir, setSortDir] = useUrlState("sort_dir", "desc");
-    const [page, setPage] = useUrlNumber("page", 1);
-    const [pageSize, setPageSize] = useUrlNumber("page_size", 25);
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // All URL params are updated through a single atomic patch. Calling several
+    // independent useSearchParams setters in one tick makes each read the same
+    // stale snapshot and clobber the others (only the last one survives), which
+    // is why sorting/filter+page updates silently dropped params before.
+    const patchParams = React.useCallback(
+        (updates: Record<string, string | number | null | undefined>) => {
+            setSearchParams(
+                (prev) => {
+                    const next = new URLSearchParams(prev);
+                    for (const [key, value] of Object.entries(updates)) {
+                        if (value === null || value === undefined || value === "") {
+                            next.delete(key);
+                        } else {
+                            next.set(key, String(value));
+                        }
+                    }
+                    return next;
+                },
+                { replace: true },
+            );
+        },
+        [setSearchParams],
+    );
+
+    const subset = searchParams.get("subset") ?? "";
+    const modelId = searchParams.get("model_id") ?? "";
+    const search = searchParams.get("search") ?? "";
+    const sortBy = searchParams.get("sort_by") ?? "started_at";
+    const sortDir = searchParams.get("sort_dir") ?? "desc";
+    const page = searchParams.get("page") ? parseInt(searchParams.get("page")!, 10) : 1;
+    const pageSize = searchParams.get("page_size") ? parseInt(searchParams.get("page_size")!, 10) : 25;
     const [selectedRunIds, setSelectedRunIds] = React.useState<string[]>([]);
     const [dateRange] = React.useState(defaultDateRange());
 
     const [rows, setRows] = React.useState<MetricsRunRow[]>([]);
     const [total, setTotal] = React.useState(0);
     const [summary, setSummary] = React.useState<MetricsSummaryResponse | null>(null);
-    const [timeseries, setTimeseries] = React.useState<MetricsTimeseriesResponse | null>(null);
     const [filters, setFilters] = React.useState({ subsets: [] as string[], models: [] as string[] });
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -51,14 +75,12 @@ export function MetricsOverviewPage() {
                 offset: (page - 1) * pageSize,
             }),
             opsApi.getMetricsSummary(pipelineId, { subset: subset || undefined, model_id: modelId || undefined }),
-            opsApi.getMetricsTimeseries(pipelineId, { metrics: ["mAP50", "f1_score", "precision", "recall"], subset: subset ? [subset] : undefined }),
         ])
-            .then(([runsRes, summaryRes, tsRes]) => {
+            .then(([runsRes, summaryRes]) => {
                 setRows(runsRes.rows);
                 setTotal(runsRes.total);
                 setFilters({ subsets: runsRes.available_filters.subsets, models: runsRes.available_filters.models });
                 setSummary(summaryRes);
-                setTimeseries(tsRes);
             })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
@@ -68,7 +90,23 @@ export function MetricsOverviewPage() {
         load();
     }, [load]);
 
+    // Default subset to test (or val) once on first load when URL has no subset param.
+    const subsetDefaultApplied = React.useRef(false);
+    React.useEffect(() => {
+        if (subsetDefaultApplied.current) return;
+        if (searchParams.has("subset")) {
+            subsetDefaultApplied.current = true;
+            return;
+        }
+        const { subsets } = filters;
+        if (!subsets.length) return;
+        const preferred = subsets.includes("test") ? "test" : subsets.includes("val") ? "val" : "";
+        if (preferred) patchParams({ subset: preferred });
+        subsetDefaultApplied.current = true;
+    }, [filters.subsets, searchParams, patchParams]);
+
     const displayPipeline = pipelineId || "image_detection_e2e";
+    const activeSorts = parseSortParams(sortBy, sortDir);
 
     return (
         <div className="ops-page">
@@ -96,19 +134,23 @@ export function MetricsOverviewPage() {
                 ]}
                 onFilterChange={(key, val) => {
                     const v = Array.isArray(val) ? val[0] : val;
-                    if (key === "subset") setSubset(v ?? "");
-                    if (key === "model_id") setModelId(v ?? "");
-                    setPage(1);
+                    if (key === "subset") patchParams({ subset: v ?? "", page: 1 });
+                    if (key === "model_id") patchParams({ model_id: v ?? "", page: 1 });
                 }}
                 search={search}
-                onSearchChange={(v) => { setSearch(v); setPage(1); }}
+                onSearchChange={(v) => patchParams({ search: v, page: 1 })}
                 searchPlaceholder="Search runs, models, tags…"
             />
 
-            <PipelineStagesStrip pipelineId={displayPipeline} />
+            <EmptyState
+                loading={pidLoading || loading}
+                error={error}
+                empty={!rows.length && !loading}
+                keepChildrenWhileLoading={rows.length > 0 || summary != null}
+            >
+                {summary?.best_run && <BestModelPanel run={summary.best_run} />}
 
-            <EmptyState loading={pidLoading || loading} error={error} empty={!rows.length && !loading}>
-                {summary && (
+                {summary && summary.kpis.length > 0 && (
                     <div className="ops-kpi-row">
                         {summary.kpis.map((kpi) => (
                             <KpiCard
@@ -116,9 +158,6 @@ export function MetricsOverviewPage() {
                                 label={kpi.label}
                                 value={kpi.value}
                                 format={kpi.format}
-                                deltaPct={kpi.delta_pct}
-                                higherIsBetter={kpi.higher_is_better}
-                                trend={kpi.trend}
                                 subtitle={kpi.subtitle}
                             />
                         ))}
@@ -132,70 +171,23 @@ export function MetricsOverviewPage() {
                             total={total}
                             page={page}
                             pageSize={pageSize}
+                            activeSorts={activeSorts}
                             selectedRunIds={selectedRunIds}
-                            onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }}
+                            onPageChange={(p, ps) => patchParams({ page: p, page_size: ps })}
                             onSortChange={(sorts) => {
                                 const first = sorts[0];
                                 if (first) {
-                                    setSortBy(first.field);
-                                    setSortDir(first.direction);
+                                    patchParams({ sort_by: first.field, sort_dir: first.direction, page: 1 });
+                                } else {
+                                    // Third click clears the sort — reset to the default ordering.
+                                    patchParams({ sort_by: null, sort_dir: null, page: 1 });
                                 }
                             }}
                             onSelectionChange={setSelectedRunIds}
                             onCompare={() => navigate(`/training?pipeline=${displayPipeline}`)}
                         />
-
-                        {timeseries && (
-                            <div className="ops-chart-grid">
-                                {timeseries.series.map((s) => (
-                                    <ChartCard
-                                        key={s.key}
-                                        spec={{
-                                            id: s.key,
-                                            title: s.label,
-                                            type: "line",
-                                            xLabel: "Date",
-                                            yLabel: s.metric,
-                                            series: [{ key: s.key, label: s.label, points: s.points.map((p) => ({ x: p.x, y: p.y })) }],
-                                        }}
-                                    />
-                                ))}
-                                <ChartCard
-                                    spec={{
-                                        id: "pr-scatter",
-                                        title: "Precision vs Recall",
-                                        type: "scatter",
-                                        xLabel: "Precision",
-                                        yLabel: "Recall",
-                                        series: [{
-                                            key: "pr",
-                                            label: "Runs",
-                                            points: rows.map((r) => ({ x: r.metrics.precision ?? 0, y: r.metrics.recall ?? 0 })),
-                                        }],
-                                    }}
-                                />
-                                <ChartCard
-                                    spec={{
-                                        id: "by-subset",
-                                        title: "Key metrics by subset (latest)",
-                                        type: "bar",
-                                        xLabel: "Subset",
-                                        yLabel: "mAP50",
-                                        series: [{
-                                            key: "mAP50",
-                                            label: "mAP50",
-                                            points: ["train", "val", "test"].map((sub) => ({
-                                                x: sub,
-                                                y: rows.find((r) => r.subset === sub)?.metrics.mAP50 ?? null,
-                                            })),
-                                        }],
-                                    }}
-                                />
-                            </div>
-                        )}
                     </div>
                     <div className="ops-rail">
-                        <BestRunPanel run={summary?.best_run} />
                         <MetricLegend />
                         <AnomaliesPanel anomalies={summary?.anomalies ?? []} />
                     </div>

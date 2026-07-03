@@ -7,6 +7,7 @@ import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { workflowIconSvg } from "../cy/nodeIcons";
+import { prependRecentRun } from "./utils/recentRuns";
 
 export function GraphPage() {
     const [searchParams] = useSearchParams();
@@ -48,12 +49,22 @@ export function GraphPage() {
         return () => clearInterval(timer);
     }, [loadStageRuns, stage, pipelineId]);
 
+    const handleRunStarted = React.useCallback(
+        (started: { run_id: string; status: string }, stageName?: string | null) => {
+            if (stageName && stageName === stage) {
+                setStageRuns((current) => prependRecentRun(current, started));
+            }
+            loadStageRuns();
+        },
+        [loadStageRuns, stage],
+    );
+
     const runStage = () => {
         if (!stage) return;
         setRunning(true);
         opsApi
             .startRun([["stage", stage]])
-            .then(() => loadStageRuns())
+            .then((started) => handleRunStarted(started, stage))
             .catch((e) => setError(String(e)))
             .finally(() => setRunning(false));
     };
@@ -93,7 +104,7 @@ export function GraphPage() {
                                       setRunning(true);
                                       opsApi
                                           .startRun([["stage", label]])
-                                          .then(() => loadStageRuns())
+                                          .then((started) => handleRunStarted(started, label))
                                           .catch((e) => setError(String(e)))
                                           .finally(() => setRunning(false));
                                   }

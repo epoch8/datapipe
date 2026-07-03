@@ -166,6 +166,15 @@
     margin-top: 6px;
 }
 
+.ops-kpi-string-value {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-all;
+    color: var(--dp-gray-950);
+    min-width: 0;
+}
+
 .ops-metric-value {
     font-size: 24px;
     font-weight: 700;
@@ -312,6 +321,128 @@
     margin-bottom: 12px;
 }
 
+.ops-best-model-panel {
+    margin-bottom: 16px;
+    max-width: 640px;
+}
+
+.ops-best-model-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.ops-best-model-id {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--dp-gray-950);
+    word-break: break-all;
+    line-height: 1.35;
+    margin-top: 2px;
+}
+
+.ops-best-model-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    font-size: 12px;
+    color: var(--dp-gray-500);
+    justify-content: flex-end;
+    text-align: right;
+}
+
+.ops-best-model-matrix {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--dp-gray-200);
+    margin-top: 4px;
+}
+
+.ops-best-model-matrix th,
+.ops-best-model-matrix td {
+    padding: 8px 12px;
+    text-align: right;
+    font-size: 14px;
+    border-bottom: 1px solid var(--dp-gray-100, #eef1f5);
+}
+
+.ops-best-model-matrix thead th {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dp-gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ops-best-model-matrix tbody th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--dp-gray-500);
+    white-space: nowrap;
+}
+
+.ops-best-model-matrix tbody td {
+    font-weight: 700;
+    color: var(--dp-gray-950);
+    font-variant-numeric: tabular-nums;
+}
+
+.ops-best-model-scalars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding-top: 12px;
+    margin-top: 4px;
+}
+
+.ops-best-model-scalar {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.ops-best-model-scalar-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dp-gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ops-best-model-scalar-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--dp-gray-950);
+    font-variant-numeric: tabular-nums;
+}
+
+.ops-best-model-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--dp-gray-50, #f8fafc);
+    border: 1px solid var(--dp-gray-200);
+    border-radius: 8px;
+}
+
+.ops-best-model-metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dp-gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ops-best-model-metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--dp-gray-950);
+}
+
 .ops-stages-strip {
     display: flex;
     align-items: center;
@@ -356,6 +487,22 @@
     justify-content: center;
     min-height: 200px;
     padding: 32px;
+}
+
+.ops-loading-wrap {
+    position: relative;
+}
+
+.ops-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    padding-top: 24px;
+    z-index: 5;
+    pointer-events: none;
 }
 
 .ops-sidebar-section {

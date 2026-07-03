@@ -197,6 +197,11 @@ export interface Capabilities {
     pipeline_id?: string;
 }
 
+export interface ResetTransformMetadataResponse {
+    transform_name: string;
+    status: string;
+}
+
 export interface SettingsInfo {
     pipeline_id?: string;
     mode: string;

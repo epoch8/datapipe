@@ -130,7 +130,6 @@ def build_kpis(runs: list[MetricsRunRow], task_type: Optional[str], best: Option
         ("recall", "Recall"),
         ("f1_score", "F1 Score"),
         ("iou_mean", "IoU mean"),
-        ("images_support", "Images support"),
     ]
     kpis: list[dict[str, Any]] = []
     for key, label in kpi_defs:
@@ -150,17 +149,6 @@ def build_kpis(runs: list[MetricsRunRow], task_type: Optional[str], best: Option
                 "format": "integer" if key == "images_support" else "float",
                 "higher_is_better": True,
                 "trend": trend,
-            }
-        )
-    if best:
-        kpis.append(
-            {
-                "key": "best_model",
-                "label": "Best model",
-                "value": best.model_id,
-                "format": "string",
-                "higher_is_better": True,
-                "subtitle": f"Run #{best.run_id}",
             }
         )
     return kpis

@@ -52,6 +52,7 @@ export type SharedBracket = {
     x: number;
     y: number;
     width: number;
+    count: number;
     label: string;
     visibleByDefault: boolean;
 };
@@ -116,6 +117,25 @@ function sortByOrderMin(ids: string[], orderMap: Map<string, number>): string[] 
 function edgePath(x1: number, y1: number, x2: number, y2: number): string {
     const midX = (x1 + x2) / 2;
     return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+}
+
+// A soft "]" style bracket: two short legs dropping from each node bottom, joined
+// by a rounded horizontal bar. Communicates overlap between two labels without
+// reading as a third directional arrow.
+export function sharedBracketPath(bracket: SharedBracket): string {
+    const x1 = bracket.x;
+    const x2 = bracket.x + bracket.width;
+    const yTop = bracket.y;
+    const yMid = bracket.y + 12;
+    const yBar = yMid + 8;
+    return [
+        `M ${x1} ${yTop}`,
+        `L ${x1} ${yMid}`,
+        `Q ${x1} ${yBar}, ${x1 + 12} ${yBar}`,
+        `L ${x2 - 12} ${yBar}`,
+        `Q ${x2} ${yBar}, ${x2} ${yMid}`,
+        `L ${x2} ${yTop}`,
+    ].join(" ");
 }
 
 type Bounds = { x: number; y: number; w: number; h: number };
@@ -534,7 +554,9 @@ export function layoutLabelGraph(
         if (!bA || !bB) continue;
         const left = bA.x < bB.x ? bA : bB;
         const right = bA.x < bB.x ? bB : bA;
-        const y = Math.max(left.y + left.h, right.y + right.h) + 18;
+        // Legs start just below the node bottoms so the bracket reads as a
+        // connection between the two nodes rather than a free-floating badge.
+        const y = Math.max(left.y + left.h, right.y + right.h) + 6;
         sharedBrackets.push({
             id: rel.id,
             a: rel.a,
@@ -542,7 +564,8 @@ export function layoutLabelGraph(
             x: left.x + left.w / 2,
             y,
             width: right.x + right.w / 2 - (left.x + left.w / 2),
-            label: rel.shared_count > 0 ? `shared · ${rel.shared_count}` : "shared",
+            count: rel.shared_count,
+            label: rel.shared_count > 0 ? `overlap · ${rel.shared_count}` : "overlap",
             visibleByDefault: rel.visible_by_default,
         });
     }
@@ -551,7 +574,7 @@ export function layoutLabelGraph(
     const maxX = Math.max(...allBounds.map((b) => b.x + b.w), cfg.canvasPad);
     const maxY = Math.max(
         ...allBounds.map((b) => b.y + b.h),
-        ...sharedBrackets.map((b) => b.y + 20),
+        ...sharedBrackets.map((b) => b.y + 42),
         cfg.canvasPad,
     );
 

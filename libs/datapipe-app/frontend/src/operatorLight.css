@@ -74,7 +74,11 @@
     --dp-status-failed-border: #ff9b94;
 }
 
-body {
+/* Scale the app via #root (not body). antd popups (Tooltip/Dropdown/Select)
+   portal to document.body; if body itself were zoomed, their getBoundingClientRect
+   based positions would get the zoom applied twice and land in the wrong spot.
+   Zooming #root keeps body unzoomed so popups position correctly. */
+#root {
     zoom: var(--dp-ui-scale);
 }
 

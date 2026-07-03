@@ -1,57 +1,137 @@
 import React from "react";
 import { Tag } from "antd";
-import { RightOutlined } from "@ant-design/icons";
-import { Link } from "react-router-dom";
+import type { MetricsRunRow } from "../../../types/ops";
 
-const STAGES = [
-    { name: "annotation", status: "completed", duration: "2m 18s" },
-    { name: "ls-sync", status: "completed", duration: "1m 05s" },
-    { name: "train-prepare", status: "completed", duration: "3m 22s" },
-    { name: "train", status: "completed", duration: "32m 41s" },
-    { name: "inference", status: "completed", duration: "8m 11s" },
-    { name: "count-metrics", status: "completed", duration: "1m 14s" },
-    { name: "fiftyone", status: "running", duration: "2m 45s" },
+const INTEGER_METRICS = new Set(["support", "TP", "FP", "FN"]);
+
+// Metrics intentionally hidden from the Best model panel.
+const HIDDEN_METRICS = new Set(["images_support"]);
+
+// Precision/Recall/F1 groups rendered as a compact matrix (rows = averaging
+// scheme, columns = Precision/Recall/F1). All three columns always show, even
+// when a value is missing (rendered as "—").
+type PrfGroup = { title: string; precision: string; recall: string; f1: string };
+
+const PRF_GROUPS: PrfGroup[] = [
+    { title: "Weighted", precision: "weighted_precision", recall: "weighted_recall", f1: "weighted_f1_score" },
+    {
+        title: "Weighted (no pseudo)",
+        precision: "weighted_without_pseudo_classes_precision",
+        recall: "weighted_without_pseudo_classes_recall",
+        f1: "weighted_without_pseudo_classes_f1_score",
+    },
+    { title: "Macro", precision: "macro_precision", recall: "macro_recall", f1: "macro_f1_score" },
+    {
+        title: "Macro (no pseudo)",
+        precision: "macro_without_pseudo_classes_precision",
+        recall: "macro_without_pseudo_classes_recall",
+        f1: "macro_without_pseudo_classes_f1_score",
+    },
+    { title: "Overall", precision: "precision", recall: "recall", f1: "f1_score" },
 ];
 
-type Props = { pipelineId: string };
+// Single-value metrics shown as compact chips below the matrix.
+const SCALAR_METRICS: string[] = [
+    "accuracy",
+    "mAP50",
+    "mAP50_95",
+    "iou_mean",
+    "TP",
+    "FP",
+    "FN",
+    "support",
+];
 
-export function PipelineStagesStrip({ pipelineId }: Props) {
-    return (
-        <div className="ops-stages-strip">
-            {STAGES.map((stage, i) => (
-                <React.Fragment key={stage.name}>
-                    <div className={`ops-stage-item ${stage.status}`}>
-                        <strong>{stage.name}</strong>
-                        <span>{stage.status}</span>
-                        <span>{stage.duration}</span>
-                    </div>
-                    {i < STAGES.length - 1 && <RightOutlined className="ops-stage-arrow" />}
-                </React.Fragment>
-            ))}
-            <Link to={`/pipelines/${pipelineId}`} style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-                View pipeline →
-            </Link>
-        </div>
-    );
+const SCALAR_LABELS: Record<string, string> = {
+    accuracy: "Accuracy",
+    mAP50: "mAP50",
+    mAP50_95: "mAP50-95",
+    iou_mean: "IoU",
+    TP: "TP",
+    FP: "FP",
+    FN: "FN",
+    support: "Support",
+};
+
+function formatMetric(key: string, value: number | null | undefined): string {
+    if (value == null) return "—";
+    if (INTEGER_METRICS.has(key)) return String(Math.round(value));
+    return value.toFixed(3);
 }
 
-export function BestRunPanel({ run }: { run?: { run_id?: string; model_id?: string; subset?: string; metrics?: Record<string, number | null> } }) {
+export function BestModelPanel({ run }: { run?: MetricsRunRow }) {
     if (!run) return null;
+    const metrics = run.metrics ?? {};
+    const present = (k: string) => !HIDDEN_METRICS.has(k) && metrics[k] != null;
+
+    // Show a PRF row if any of its three cells exists in the data.
+    const prfRows = PRF_GROUPS.filter(
+        (g) => present(g.precision) || present(g.recall) || present(g.f1),
+    );
+
+    const scalarKeys = SCALAR_METRICS.filter(present);
+    const knownScalar = new Set(SCALAR_METRICS);
+    const knownPrf = new Set(PRF_GROUPS.flatMap((g) => [g.precision, g.recall, g.f1]));
+    const otherKeys = Object.keys(metrics).filter(
+        (k) => present(k) && !knownScalar.has(k) && !knownPrf.has(k),
+    );
+
+    const duration =
+        run.duration_s != null
+            ? `${Math.floor(run.duration_s / 60)}m ${run.duration_s % 60}s`
+            : null;
+
     return (
-        <div className="ops-panel">
-            <div className="ops-panel-title">Best run (test)</div>
-            <div style={{ fontSize: 12, color: "var(--dp-gray-500)" }}>
-                <div>Run: <strong>{run.run_id}</strong></div>
-                <div>Model: <strong>{run.model_id}</strong></div>
-                <div>Subset: <Tag>{run.subset}</Tag></div>
-                {run.metrics && (
-                    <div style={{ marginTop: 8 }}>
-                        mAP50: <strong>{run.metrics.mAP50?.toFixed(3)}</strong>
-                        {" · "}
-                        F1: <strong>{run.metrics.f1_score?.toFixed(3)}</strong>
+        <div className="ops-panel ops-best-model-panel">
+            <div className="ops-best-model-head">
+                <div>
+                    <div className="ops-panel-title">Best model</div>
+                    <div className="ops-best-model-id" title={run.model_id}>
+                        {run.model_id}
+                        {run.model_version && <Tag style={{ marginLeft: 8 }}>{run.model_version}</Tag>}
                     </div>
-                )}
+                </div>
+                <div className="ops-best-model-meta">
+                    {run.subset && <span>Subset: <Tag>{run.subset}</Tag></span>}
+                    <span>Run: <strong>{run.run_id}</strong></span>
+                    {run.started_at && <span>Started: <strong>{run.started_at.slice(0, 16).replace("T", " ")}</strong></span>}
+                    {duration && <span>Duration: <strong>{duration}</strong></span>}
+                </div>
             </div>
+
+            {prfRows.length > 0 && (
+                <table className="ops-best-model-matrix">
+                    <thead>
+                        <tr>
+                            <th />
+                            <th>Precision</th>
+                            <th>Recall</th>
+                            <th>F1</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {prfRows.map((g) => (
+                            <tr key={g.title}>
+                                <th scope="row">{g.title}</th>
+                                <td>{formatMetric(g.precision, metrics[g.precision])}</td>
+                                <td>{formatMetric(g.recall, metrics[g.recall])}</td>
+                                <td>{formatMetric(g.f1, metrics[g.f1])}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+
+            {(scalarKeys.length > 0 || otherKeys.length > 0) && (
+                <div className="ops-best-model-scalars">
+                    {[...scalarKeys, ...otherKeys].map((key) => (
+                        <div key={key} className="ops-best-model-scalar">
+                            <span className="ops-best-model-scalar-label">{SCALAR_LABELS[key] ?? key}</span>
+                            <span className="ops-best-model-scalar-value">{formatMetric(key, metrics[key])}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

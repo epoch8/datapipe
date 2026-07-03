@@ -11,7 +11,7 @@ from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
-from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
+from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_Subset_PipelineModel
 from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
 
 import steps
@@ -167,7 +167,7 @@ pipeline = Pipeline(
             ),
             primary_keys=["image_name"],
             bbox_id__name=None,
-            labels=[("stage", "train")],
+            labels=[("stage", "train"), ("stage", "train-yolo")],
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
         ),
@@ -181,26 +181,28 @@ pipeline = Pipeline(
             image__image_path__name="image_url",
             batch_size_default=1,
         ),
-        CountMetrics_Subset_DetectionModel(
+        CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",
             input__subset__has__image="image__subset",
-            input__detection_prediction="detection_prediction",
-            output__detection_model__metrics__on__image="detection_model__metrics_on_image",
-            output__detection_model__metrics__on__subset="detection_model__metrics_on_subset",
+            input__pipeline_prediction="detection_prediction",
+            output__pipeline_model__metrics_on__image="pipeline_model__metrics_on_image",
+            output__pipeline_model__metrics_by_cls_on__subset="pipeline_model__metrics_by_cls_on_subset",
+            output__pipeline_model__metrics_on__subset="pipeline_model__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
+            pipeline_model_primary_keys=["detection_model_id"],
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
         ),
         FindBestModel(
             input__model="detection_model",
-            input__model__metrics_on__subset="detection_model__metrics_on_subset",
+            input__model__metrics_on__subset="pipeline_model__metrics_on_subset",
             output__attr__model__is_best="attr__detection_model__is_best",
             output__best_model="best_detection_model",
             subset_id="val",
             is_best__name="detection_model__is_best",
             primary_keys=["detection_model_id"],
-            metric__name="calc__f1_score",
+            metric__name="calc__weighted_f1_score",
             func="max",
             group_by=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],

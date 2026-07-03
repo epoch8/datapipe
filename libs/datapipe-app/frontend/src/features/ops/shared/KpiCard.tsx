@@ -34,7 +34,13 @@ export function KpiCard({
             </div>
             <div className="ops-kpi-body">
                 <div className="ops-kpi-value-row">
-                    <MetricValue value={value} format={format} />
+                    {format === "string" ? (
+                        <div className="ops-kpi-string-value" title={value != null ? String(value) : undefined}>
+                            {value ?? "—"}
+                        </div>
+                    ) : (
+                        <MetricValue value={value} format={format} />
+                    )}
                     <TrendDelta delta={delta} deltaPct={deltaPct} higherIsBetter={higherIsBetter} />
                 </div>
                 {subtitle && <div className="ops-kpi-subtitle">{subtitle}</div>}
