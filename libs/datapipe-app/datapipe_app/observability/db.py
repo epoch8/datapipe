@@ -8,7 +8,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    Float,
     Integer,
     MetaData,
     String,
@@ -85,53 +84,6 @@ class PipelineScheduleRow(Base):
     cron_expression = Column(String(128), nullable=True)
     next_run_at = Column(DateTime(timezone=True), nullable=True)
     timezone = Column(String(64), nullable=True)
-
-
-class PipelineMetricRow(Base):
-    __tablename__ = "df_pipelines_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    pipeline_id = Column(String(255), nullable=False, index=True)
-    model_id = Column(String(512), nullable=True)
-    subset_id = Column(String(255), nullable=True)
-    metric_name = Column(String(255), nullable=False)
-    metric_value = Column(Float, nullable=False)
-    computed_at = Column(DateTime(timezone=True), nullable=False)
-    source_table = Column(String(512), nullable=True)
-    task_type = Column(String(64), nullable=True)
-
-    __table_args__ = (
-        UniqueConstraint(
-            "pipeline_id",
-            "model_id",
-            "subset_id",
-            "metric_name",
-            "computed_at",
-            name="uq_pipeline_metric",
-        ),
-    )
-
-
-class TrainingEpochMetricRow(Base):
-    __tablename__ = "training_epoch_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    pipeline_id = Column(String(255), nullable=False, index=True)
-    training_run_key = Column(String(512), nullable=False, index=True)
-    epoch = Column(Integer, nullable=False)
-    total_epochs = Column(Integer, nullable=True)
-    metric_name = Column(String(255), nullable=False)
-    metric_value = Column(Float, nullable=False)
-    recorded_at = Column(DateTime(timezone=True), nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint(
-            "training_run_key",
-            "epoch",
-            "metric_name",
-            name="uq_training_epoch_metric",
-        ),
-    )
 
 
 class ObservabilityStore:
@@ -398,66 +350,17 @@ class ObservabilityStore:
         with self.session() as session:
             return session.get(PipelineScheduleRow, pipeline_id)
 
-    def list_metrics(
-        self,
-        pipeline_id: str,
-        *,
-        model_id: Optional[str] = None,
-    ) -> list[PipelineMetricRow]:
-        with self.session() as session:
-            q = select(PipelineMetricRow).where(PipelineMetricRow.pipeline_id == pipeline_id)
-            if model_id:
-                q = q.where(PipelineMetricRow.model_id == model_id)
-            return list(session.scalars(q.order_by(PipelineMetricRow.computed_at)).all())
+    def list_metrics(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return []
 
     def upsert_pipeline_metric(self, row: dict[str, Any]) -> None:
-        with self.session() as session:
-            session.add(PipelineMetricRow(**row))
-            try:
-                session.commit()
-            except Exception:
-                session.rollback()
+        return None
 
-    def list_training_epoch_metrics(
-        self,
-        training_run_key: str,
-        *,
-        limit_epochs: Optional[int] = None,
-    ) -> list[TrainingEpochMetricRow]:
-        with self.session() as session:
-            q = (
-                select(TrainingEpochMetricRow)
-                .where(TrainingEpochMetricRow.training_run_key == training_run_key)
-                .order_by(TrainingEpochMetricRow.epoch, TrainingEpochMetricRow.metric_name)
-            )
-            rows = list(session.scalars(q).all())
-            if limit_epochs is not None and rows:
-                max_epoch = max(r.epoch for r in rows)
-                min_epoch = max(1, max_epoch - limit_epochs + 1)
-                rows = [r for r in rows if r.epoch >= min_epoch]
-            return rows
+    def list_training_epoch_metrics(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return []
 
     def upsert_training_epoch_metric(self, row: dict[str, Any]) -> None:
-        with self.session() as session:
-            existing = session.scalars(
-                select(TrainingEpochMetricRow).where(
-                    TrainingEpochMetricRow.training_run_key == row["training_run_key"],
-                    TrainingEpochMetricRow.epoch == row["epoch"],
-                    TrainingEpochMetricRow.metric_name == row["metric_name"],
-                )
-            ).first()
-            if existing is None:
-                session.add(TrainingEpochMetricRow(**row))
-            else:
-                existing.metric_value = row["metric_value"]
-                existing.recorded_at = row.get("recorded_at", utc_now())
-                if row.get("total_epochs"):
-                    existing.total_epochs = row["total_epochs"]
-            session.commit()
+        return None
 
     def has_metrics(self, pipeline_id: Optional[str] = None) -> bool:
-        with self.session() as session:
-            q = select(PipelineMetricRow.id).limit(1)
-            if pipeline_id:
-                q = q.where(PipelineMetricRow.pipeline_id == pipeline_id)
-            return session.scalars(q).first() is not None
+        return False

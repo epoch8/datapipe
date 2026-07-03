@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Optional
 
@@ -159,50 +158,6 @@ def _load_catalog_rows(
     return run_rows, class_rows, task_type
 
 
-def _load_observability_runs(store: Any, pipeline_id: str) -> list[MetricsRunRow]:
-    rows: list[MetricsRunRow] = []
-    if store is None:
-        return rows
-    try:
-        metric_rows = store.list_metrics(pipeline_id)
-    except Exception:
-        return rows
-    grouped: dict[tuple[str, str, str], dict[str, float | None]] = defaultdict(dict)
-    meta: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for mr in metric_rows:
-        key = (str(mr.model_id or ""), str(mr.subset_id or ""), mr.computed_at.isoformat() if mr.computed_at else "")
-        grouped[key][mr.metric_name] = mr.metric_value
-        meta[key] = {"task_type": mr.task_type, "computed_at": mr.computed_at}
-    for i, (key, metrics) in enumerate(sorted(grouped.items(), key=lambda x: x[0][2], reverse=True)):
-        model_id, subset, ts = key
-        rows.append(
-            MetricsRunRow(
-                run_id=_run_id(model_id, subset, i) if not ts else ts[:12].replace("-", ""),
-                pipeline_id=pipeline_id,
-                model_id=model_id,
-                subset=subset,
-                started_at=ts or None,
-                task_type=meta[key].get("task_type"),
-                status="success",
-                metrics=metrics,
-            )
-        )
-    return rows
-
-
-def _merge_runs(catalog_runs: list[MetricsRunRow], obs_runs: list[MetricsRunRow], pipeline_id: str) -> list[MetricsRunRow]:
-    merged = obs_runs if obs_runs else catalog_runs
-    for r in merged:
-        r.pipeline_id = pipeline_id
-    if obs_runs and catalog_runs:
-        seen = {(r.model_id, r.subset) for r in obs_runs}
-        for r in catalog_runs:
-            if (r.model_id, r.subset) not in seen:
-                r.pipeline_id = pipeline_id
-                merged.append(r)
-    return merged
-
-
 def _filter_runs(
     runs: list[MetricsRunRow],
     *,
@@ -326,8 +281,9 @@ class MetricsService:
 
     def _all_runs(self, pipeline_id: str) -> tuple[list[MetricsRunRow], Optional[str]]:
         catalog_runs, _, task_type = _load_catalog_rows(self.ds, self.catalog)
-        obs_runs = _load_observability_runs(self.store, pipeline_id)
-        runs = _merge_runs(catalog_runs, obs_runs, pipeline_id)
+        runs = catalog_runs
+        for r in runs:
+            r.pipeline_id = pipeline_id
         for i, run in enumerate(runs):
             if i + 1 < len(runs):
                 compute_deltas(run, runs[i + 1])

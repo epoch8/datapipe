@@ -86,6 +86,16 @@ def make_app(
         if ds is None or steps is None:
             raise HTTPException(503, "Local pipeline not available")
 
+    def _has_catalog_metrics() -> bool:
+        if ds is None or catalog is None:
+            return False
+        try:
+            from datapipe_ml.observability.discovery import discover_metrics_tables
+
+            return any(True for _table_name, _dt in discover_metrics_tables(catalog, ds))
+        except Exception:
+            return False
+
     @app.get("/overview")
     def get_overview() -> dict[str, Any]:
         return build_overview(store, registry, ds=ds, catalog=catalog)
@@ -94,7 +104,7 @@ def make_app(
     def get_capabilities() -> CapabilitiesResponse:
         has_ml_plugin = len(registry.enrichers) > 0 or len(registry.publishers) > 0
         return CapabilitiesResponse(
-            ml_metrics=has_ml_plugin and store.has_metrics(),
+            ml_metrics=has_ml_plugin and _has_catalog_metrics(),
             ml_training=has_ml_plugin,
             mode=get_ops_settings().mode,
             pipeline_id=get_ops_settings().pipeline_id,
