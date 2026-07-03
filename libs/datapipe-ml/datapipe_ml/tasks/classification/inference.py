@@ -23,7 +23,13 @@ from datapipe.types import PipelineInput, PipelineOutput, Labels
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable, get_pipeline_table_name
+from datapipe_ml.core.datapipe import (
+    check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
+    make_mungled_batch_transform_step_name,
+    normalize_pipeline_inputs,
+)
 from datapipe_ml.core.image_data import check_if_images_opens
 from datapipe_ml.inference.model_inputs import (
     build_required_pipeline_inputs,
@@ -232,6 +238,13 @@ class Inference_ClassificationModel(PipelineStep):
                         n_image_inputs=len(image_pipeline_inputs),
                         primary_keys=self.primary_keys,
                         model_input_groups=[(len(model_pipeline_inputs), self.classification_model_primary_keys)],
+                    ),
+                    name=make_mungled_batch_transform_step_name(
+                        ds,
+                        catalog,
+                        base_name="classification_inference",
+                        inputs=[*image_pipeline_inputs, *model_pipeline_inputs],
+                        outputs=[self.output__classification_prediction],
                     ),
                     inputs=[
                         *image_pipeline_inputs,

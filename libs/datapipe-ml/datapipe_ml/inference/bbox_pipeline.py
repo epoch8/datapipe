@@ -20,7 +20,7 @@ from datapipe.types import Labels, PipelineInput, PipelineOutput, get_pipeline_i
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import JSON, Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, normalize_pipeline_inputs
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, make_mungled_batch_transform_step_name, normalize_pipeline_inputs
 from datapipe_ml.inference.model_inputs import (
     build_required_pipeline_inputs,
     primary_model_input,
@@ -365,6 +365,7 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
     image_pipeline_inputs = build_required_pipeline_inputs(config.input__image)
     n_image_inputs = len(image_pipeline_inputs)
     n_model_inputs = len(model_pipeline_inputs)
+    step_name_base = f"{config.spec.model_prefix}_inference"
 
     if config.mode == InferenceMode.PLAIN:
         transform_func = wrap_inference_inputs(
@@ -409,6 +410,7 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
     else:
         assert config.input__model_thresholds is not None
         model_thresholds = config.input__model_thresholds
+        step_name_base = f"{config.spec.model_prefix}_inference_using_thresholds"
         thresholds_func = make_bbox_inference_using_thresholds_func(config.spec, base_func)
         transform_func = wrap_inference_inputs(
             thresholds_func,
@@ -431,10 +433,19 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
             **{pk_kwarg: model_primary_keys},
         )
 
+    step_name = make_mungled_batch_transform_step_name(
+        ds,
+        catalog,
+        base_name=step_name_base,
+        inputs=inputs,
+        outputs=[config.output__prediction],
+    )
+
     pipeline = Pipeline(
         [
             BatchTransform(
                 func=transform_func,
+                name=step_name,
                 inputs=inputs,
                 outputs=[config.output__prediction],
                 transform_keys=stable_unique(config.primary_keys + model_primary_keys),

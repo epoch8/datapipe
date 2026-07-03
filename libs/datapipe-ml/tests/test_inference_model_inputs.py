@@ -29,6 +29,44 @@ def test_merge_inputs_on_keys_merges_filters_on_primary_keys():
     ]
 
 
+def test_merge_inputs_on_keys_filters_by_key_only_table():
+    from datapipe_ml.inference.model_inputs import merge_inputs_on_keys
+
+    models = pd.DataFrame(
+        {
+            "detection_model_id": ["m1", "m2"],
+            "detection_model__model_path": ["a.pt", "b.pt"],
+        }
+    )
+    best_model = pd.DataFrame({"detection_model_id": ["m2"]})
+
+    resolved = merge_inputs_on_keys([models, best_model], ["detection_model_id"])
+
+    assert resolved.to_dict("records") == [
+        {"detection_model_id": "m2", "detection_model__model_path": "b.pt"},
+    ]
+
+
+def test_merge_inputs_on_keys_raises_on_duplicate_non_key_columns():
+    from datapipe_ml.inference.model_inputs import merge_inputs_on_keys
+
+    models = pd.DataFrame(
+        {
+            "detection_model_id": ["m1", "m2"],
+            "detection_model__model_path": ["a.pt", "b.pt"],
+        }
+    )
+    best_model = pd.DataFrame(
+        {
+            "detection_model_id": ["m2"],
+            "detection_model__model_path": ["b.pt"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="detection_model__model_path"):
+        merge_inputs_on_keys([models, best_model], ["detection_model_id"])
+
+
 def test_build_required_pipeline_inputs_marks_all_tables_as_required():
     _require_runtime()
     from datapipe.types import Required

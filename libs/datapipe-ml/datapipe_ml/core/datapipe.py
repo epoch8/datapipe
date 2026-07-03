@@ -5,6 +5,7 @@ from typing import Any, List, Protocol, Tuple, TypeAlias
 
 import numpy as np
 import pandas as pd
+from datapipe.compute import Catalog, make_mungled_step_name, pipeline_input_to_compute_input, pipeline_output_to_compute_output
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
@@ -148,3 +149,33 @@ def is_last_frozen_dataset_old_enough(
             )
         return False
     return True
+
+
+def make_mungled_batch_transform_step_name(
+    ds: DataStore,
+    catalog: Catalog,
+    *,
+    base_name: str,
+    inputs: Sequence[PipelineInput],
+    outputs: Sequence[PipelineOutput],
+) -> str:
+    from datapipe.step.batch_transform import BatchTransformStep
+
+    input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in inputs]
+    output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in outputs]
+    return make_mungled_step_name(BatchTransformStep, base_name, input_dts, output_dts)
+
+
+def make_mungled_batch_transform_step_name(
+    ds: DataStore,
+    catalog: Catalog,
+    *,
+    base_name: str,
+    inputs: Sequence[PipelineInput],
+    outputs: Sequence[PipelineOutput],
+) -> str:
+    from datapipe.step.batch_transform import BatchTransformStep
+
+    input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in inputs]
+    output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in outputs]
+    return make_mungled_step_name(BatchTransformStep, base_name, input_dts, output_dts)
