@@ -191,6 +191,7 @@ class TableStoreDB(TableStore):
             )
 
         if create_table:
+            ensure_db_schema(self.dbconn)
             self.data_table.create(self.dbconn.con, checkfirst=True)
 
     def __reduce__(self) -> tuple[Any, ...]:

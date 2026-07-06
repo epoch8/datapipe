@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, Table, Text, delete, func, insert, select
 
+from datapipe_app.observability.metrics_service import MetricsService
 from datapipe_app.observability.tables import ObservabilityTableConfig
 
 _analytics_metadata = MetaData()

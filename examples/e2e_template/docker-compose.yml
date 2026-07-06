@@ -104,12 +104,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5151/ >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
 
   # Ops UI: run agents on the host (one process per pipeline), e.g.:
   #   cd image_detection && source ../.env && uv run datapipe --pipeline app:app api --port 8001

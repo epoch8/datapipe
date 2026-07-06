@@ -1,3 +1,6 @@
-from datapipe_ml.observability.plugin import register
+"""ML observability hooks and plugins.
 
-__all__ = ["register"]
+Entry point for plugin registration: ``datapipe_ml.observability.plugin:register``.
+"""
+
+__all__: list[str] = []

@@ -440,12 +440,15 @@ class PeriodicTrainingSync:
         if not self.training_run_key:
             return
         sync_src, sync_dst = _sync_tree_paths(self.src, self.dst, self.model_id)
-        from datapipe_ml.observability.hooks import maybe_publish_training_curves
+        try:
+            from datapipe_ml.observability.hooks import maybe_publish_training_curves
 
-        maybe_publish_training_curves(
-            training_run_key=self.training_run_key,
-            run_dir=sync_dst if sync_src != sync_dst else sync_dst,
-        )
+            maybe_publish_training_curves(
+                training_run_key=self.training_run_key,
+                run_dir=sync_dst if sync_src != sync_dst else sync_dst,
+            )
+        except Exception:
+            logger.exception("Training curve publish after sync failed")
 
     def _sync_once_non_fatal(self, label: str, *, require_stable: bool = True) -> None:
         try:

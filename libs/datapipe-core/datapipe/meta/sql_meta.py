@@ -104,6 +104,9 @@ class SQLTableMeta(TableMeta):
         )
 
         if create_table:
+            from datapipe.store.database import ensure_db_schema
+
+            ensure_db_schema(self.dbconn)
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     def __reduce__(self) -> tuple[Any, ...]:
@@ -444,6 +447,9 @@ class SQLTransformMeta(TransformMeta):
         self.order = order
 
         if create_table:
+            from datapipe.store.database import ensure_db_schema
+
+            ensure_db_schema(self.dbconn)
             self.sql_table.create(self.dbconn.con, checkfirst=True)
 
     # TODO extract all complex logic into .create classmethod, make constructor simple
