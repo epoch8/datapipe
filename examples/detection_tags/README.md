@@ -13,6 +13,7 @@ cp .env.example .env && set -a && source .env && set +a
 docker compose up -d            # postgres + minio only
 uv sync                         # cu124 torch, polars-lts-cpu, pi-heif baked in
 cd detection
+psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"   # db create-all makes tables, not the schema
 datapipe db create-all
 ```
 

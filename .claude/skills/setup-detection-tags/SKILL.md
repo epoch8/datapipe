@@ -45,7 +45,10 @@ changed; trust the `*_training_status` table, not the exit code. On an unclear f
 cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, DATAPIPE_TAGS_DIR
 docker compose up -d          # postgres + minio ONLY (no mongo, no Label Studio)
 uv sync                       # cu124 torch + polars-lts-cpu + pi-heif baked in
-cd detection && datapipe db create-all
+cd detection
+# db create-all makes the tables, NOT the schema — create it first:
+psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"   # or: docker exec <pg> psql -U postgres -c "CREATE SCHEMA IF NOT EXISTS datapipe_tags"
+datapipe db create-all
 ```
 
 ## Two-step data load — via datapipe steps (no annotation)
