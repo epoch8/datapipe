@@ -63,8 +63,8 @@ so the aggregation is correct).
   than the host (pre-AVX2). This example pins `polars-lts-cpu`; if it still happens, reinstall it.
 - **`No labels found` / every image "corrupt: No module named 'pi_heif'`** → ultralytics image
   verification needs `pi_heif` (pinned here); reinstall if missing.
-- **`No ground truth` at freeze** → injected `image__ground_truth.image_name` must equal what
-  `list_s3_images` emits (object basename); a prefixed key makes the join empty.
+- **`No ground truth` at freeze** → `image__ground_truth.image_name` must match `s3_images.image_name`
+  (the load step uses the object basename for both); a mismatched key makes the join empty.
 - **Metrics 0 on a trained model** → tiny/noisy val makes "best epoch" latch onto an early
   checkpoint; use enough data (default batches) and the shipped 50-epoch config.
 - **Training exits 0 but no model** → datapipe swallows step errors; check `detection_training_status`.
