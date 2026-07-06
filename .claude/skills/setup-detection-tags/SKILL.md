@@ -60,7 +60,9 @@ so the aggregation is correct).
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **`SIGILL` / `Illegal instruction` in the training subprocess** → `polars` built for a CPU newer
-  than the host (pre-AVX2). This example pins `polars-lts-cpu`; if it still happens, reinstall it.
+  than the host (pre-AVX2). The `polars-lts-cpu` pin is **not enough** on its own: the regular `polars`
+  comes in transitively (datapipe-ml/core) and both install the same `polars` module. After `uv sync`
+  force lts-cpu to win: `uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1`.
 - **`No labels found` / every image "corrupt: No module named 'pi_heif'`** → ultralytics image
   verification needs `pi_heif` (pinned here); reinstall if missing.
 - **`No ground truth` at freeze** → `image__ground_truth.image_name` must match `s3_images.image_name`
