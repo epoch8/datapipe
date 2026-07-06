@@ -263,6 +263,9 @@ export interface MetricsRunRow {
     model_version?: string;
     task_type?: TaskType;
     subset: string;
+    dataset_id?: string;
+    train_items?: number;
+    val_items?: number;
     started_at?: string;
     finished_at?: string;
     duration_s?: number;
@@ -271,6 +274,19 @@ export interface MetricsRunRow {
     deltas?: Record<string, number | null>;
     delta_pct?: Record<string, number | null>;
     tags?: string[];
+}
+
+export interface FrozenDatasetRow {
+    dataset_id: string;
+    frozen_at?: string;
+    train_count?: number;
+    val_count?: number;
+    test_count?: number;
+}
+
+export interface FrozenDatasetsResponse {
+    rows: FrozenDatasetRow[];
+    total: number;
 }
 
 export interface MetricsRunsResponse {

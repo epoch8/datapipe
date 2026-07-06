@@ -25,6 +25,8 @@ type Props<T extends object> = {
     title?: React.ReactNode;
     extra?: React.ReactNode;
     scroll?: { x?: number | string };
+    size?: "small" | "middle" | "large";
+    className?: string;
 };
 
 function columnField<T extends object>(col: ColumnsType<T>[number]): string | undefined {
@@ -64,6 +66,8 @@ export function SortableDataTable<T extends object>({
     title,
     extra,
     scroll,
+    size = "middle",
+    className,
 }: Props<T>) {
     const handleChange = (
         _pagination: TablePaginationConfig,
@@ -108,8 +112,8 @@ export function SortableDataTable<T extends object>({
                 rowSelection={rowSelection}
                 onChange={handleChange}
                 scroll={scroll}
-                size="middle"
-                className="ops-table"
+                size={size}
+                className={["ops-table", className].filter(Boolean).join(" ")}
             />
             <div className="ops-table-pagination">
                 <Pagination

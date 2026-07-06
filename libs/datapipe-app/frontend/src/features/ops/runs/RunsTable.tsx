@@ -122,7 +122,7 @@ export function RunsTable({
             activeSorts={activeSorts}
             onPageChange={onPageChange}
             onSortChange={onSortChange}
-            scroll={{ x: 900 }}
+            scroll={{ x: 600 }}
         />
     );
 }

@@ -40,6 +40,7 @@ export function ClassMetricsPage() {
     const [selectedLabel, setSelectedLabel] = React.useState<string | undefined>();
     const [data, setData] = React.useState<ClassMetricsResponse | null>(null);
     const [detail, setDetail] = React.useState<ClassMetricDetailResponse | null>(null);
+    const [modelOptions, setModelOptions] = React.useState<string[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const pageSize = 25;
@@ -47,8 +48,8 @@ export function ClassMetricsPage() {
     const load = React.useCallback(() => {
         if (!pipelineId) return;
         setLoading(true);
-        opsApi
-            .getClassMetrics(pipelineId, {
+        Promise.all([
+            opsApi.getClassMetrics(pipelineId, {
                 subset: subset || undefined,
                 model_id: modelId || undefined,
                 label_search: labelSearch || undefined,
@@ -56,8 +57,13 @@ export function ClassMetricsPage() {
                 sort_dir: sortDir as "asc" | "desc",
                 limit: pageSize,
                 offset: (page - 1) * pageSize,
+            }),
+            opsApi.getMetricsRuns(pipelineId, { limit: 1 }),
+        ])
+            .then(([classRes, runsRes]) => {
+                setData(classRes);
+                setModelOptions(runsRes.available_filters.models);
             })
-            .then(setData)
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
     }, [pipelineId, subset, modelId, labelSearch, sortBy, sortDir, page]);
@@ -116,9 +122,6 @@ export function ClassMetricsPage() {
         sortableColumn(14, { title: "pose R", dataIndex: "pose_R", render: (v) => <MetricValue value={v} /> }),
         sortableColumn(15, { title: "pose mAP50", dataIndex: "pose_mAP50", render: (v) => <MetricValue value={v} /> }),
         sortableColumn(16, { title: "pose mAP50-95", dataIndex: "pose_mAP50_95", render: (v) => <MetricValue value={v} /> }),
-        { title: "trend", key: "trend", render: (_, r) => (
-            <Sparkline data={Array.from({ length: 8 }, (_, i) => ({ x: i, y: (r.f1_score ?? 0.7) + (i - 4) * 0.01 }))} />
-        )},
     ];
 
     const displayPipeline = pipelineId || "image_detection_e2e";
@@ -137,7 +140,7 @@ export function ClassMetricsPage() {
             <FilterBar
                 filters={[
                     { key: "subset", label: "Subset", value: subset, options: [{ label: "All", value: "" }, { label: "train", value: "train" }, { label: "val", value: "val" }, { label: "test", value: "test" }] },
-                    { key: "model_id", label: "Model", value: modelId, options: [{ label: "All", value: "" }, { label: "yolo11x.pt", value: "yolo11x.pt" }] },
+                    { key: "model_id", label: "Model", value: modelId, options: [{ label: "All", value: "" }, ...modelOptions.map((m) => ({ label: m, value: m }))] },
                 ]}
                 onFilterChange={(key, val) => {
                     const v = Array.isArray(val) ? val[0] : val;
@@ -208,9 +211,6 @@ export function ClassMetricsPage() {
                                 }}
                             />
                         </div>
-                    </Tabs.TabPane>
-                    <Tabs.TabPane tab="SQL / Custom query" key="sql">
-                        <p style={{ color: "var(--dp-gray-500)" }}>Use <a href="/sql-studio">SQL Studio</a> for custom class queries.</p>
                     </Tabs.TabPane>
                 </Tabs>
             </EmptyState>

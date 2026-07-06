@@ -1,8 +1,9 @@
 import React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Tag } from "antd";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
-import type { MetricsRunRow, MetricsSummaryResponse } from "../../../types/ops";
+import type { FrozenDatasetRow, MetricsRunRow, MetricsSummaryResponse } from "../../../types/ops";
 import {
     defaultDateRange,
     EmptyState,
@@ -11,7 +12,8 @@ import {
     PageHeader,
     parseSortParams,
 } from "../shared";
-import { AnomaliesPanel, BestModelPanel, MetricLegend } from "./MetricsPanels";
+import { BestModelPanel } from "./MetricsPanels";
+import { FrozenDatasetsTable } from "./FrozenDatasetsTable";
 import { MetricsRunTable } from "./MetricsRunTable";
 
 export function MetricsOverviewPage() {
@@ -44,7 +46,10 @@ export function MetricsOverviewPage() {
     );
 
     const subset = searchParams.get("subset") ?? "";
-    const modelId = searchParams.get("model_id") ?? "";
+    const modelIds = React.useMemo(
+        () => (searchParams.get("model_id") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+        [searchParams],
+    );
     const search = searchParams.get("search") ?? "";
     const sortBy = searchParams.get("sort_by") ?? "started_at";
     const sortDir = searchParams.get("sort_dir") ?? "desc";
@@ -54,6 +59,7 @@ export function MetricsOverviewPage() {
     const [dateRange] = React.useState(defaultDateRange());
 
     const [rows, setRows] = React.useState<MetricsRunRow[]>([]);
+    const [frozenDatasets, setFrozenDatasets] = React.useState<FrozenDatasetRow[]>([]);
     const [total, setTotal] = React.useState(0);
     const [summary, setSummary] = React.useState<MetricsSummaryResponse | null>(null);
     const [filters, setFilters] = React.useState({ subsets: [] as string[], models: [] as string[] });
@@ -67,24 +73,29 @@ export function MetricsOverviewPage() {
         Promise.all([
             opsApi.getMetricsRuns(pipelineId, {
                 subset: subset || undefined,
-                model_id: modelId || undefined,
+                model_id: modelIds.length ? modelIds.join(",") : undefined,
                 search: search || undefined,
                 sort_by: sortBy,
                 sort_dir: sortDir as "asc" | "desc",
                 limit: pageSize,
                 offset: (page - 1) * pageSize,
             }),
-            opsApi.getMetricsSummary(pipelineId, { subset: subset || undefined, model_id: modelId || undefined }),
+            opsApi.getMetricsSummary(pipelineId, {
+                subset: subset || undefined,
+                model_id: modelIds.length ? modelIds.join(",") : undefined,
+            }),
+            opsApi.getFrozenDatasets(pipelineId),
         ])
-            .then(([runsRes, summaryRes]) => {
+            .then(([runsRes, summaryRes, frozenRes]) => {
                 setRows(runsRes.rows);
                 setTotal(runsRes.total);
                 setFilters({ subsets: runsRes.available_filters.subsets, models: runsRes.available_filters.models });
                 setSummary(summaryRes);
+                setFrozenDatasets(frozenRes.rows);
             })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, subset, modelId, search, sortBy, sortDir, page, pageSize]);
+    }, [pipelineId, subset, modelIds, search, sortBy, sortDir, page, pageSize]);
 
     React.useEffect(() => {
         load();
@@ -107,6 +118,9 @@ export function MetricsOverviewPage() {
 
     const displayPipeline = pipelineId || "image_detection_e2e";
     const activeSorts = parseSortParams(sortBy, sortDir);
+    const visibleKpis = (summary?.kpis ?? []).filter(
+        (kpi) => kpi.key !== "weighted_recall" && kpi.key !== "accuracy",
+    );
 
     return (
         <div className="ops-page">
@@ -130,17 +144,50 @@ export function MetricsOverviewPage() {
             <FilterBar
                 filters={[
                     { key: "subset", label: "Subset", value: subset, options: [{ label: "All", value: "" }, ...filters.subsets.map((s) => ({ label: s, value: s }))] },
-                    { key: "model_id", label: "Model", value: modelId, options: [{ label: "All", value: "" }, ...filters.models.map((m) => ({ label: m, value: m }))] },
+                    {
+                        key: "model_id",
+                        label: "Model",
+                        mode: "multiple",
+                        minWidth: 560,
+                        dropdownMinWidth: 560,
+                        value: modelIds,
+                        placeholder: "All models",
+                        options: filters.models.map((m) => ({ label: m, value: m })),
+                    },
                 ]}
                 onFilterChange={(key, val) => {
-                    const v = Array.isArray(val) ? val[0] : val;
-                    if (key === "subset") patchParams({ subset: v ?? "", page: 1 });
-                    if (key === "model_id") patchParams({ model_id: v ?? "", page: 1 });
+                    if (key === "subset") {
+                        const v = Array.isArray(val) ? val[0] : val;
+                        patchParams({ subset: v ?? "", page: 1 });
+                    }
+                    if (key === "model_id") {
+                        const ids = Array.isArray(val) ? val : val ? [val] : [];
+                        patchParams({ model_id: ids.length ? ids.join(",") : null, page: 1 });
+                    }
                 }}
                 search={search}
                 onSearchChange={(v) => patchParams({ search: v, page: 1 })}
                 searchPlaceholder="Search runs, models, tags…"
             />
+
+            {modelIds.length > 0 && (
+                <div className="ops-selected-filters">
+                    <span className="ops-selected-filters-label">Selected models</span>
+                    {modelIds.map((id) => (
+                        <Tag
+                            key={id}
+                            closable
+                            className="ops-selected-filter-tag"
+                            onClose={() => {
+                                const next = modelIds.filter((item) => item !== id);
+                                patchParams({ model_id: next.length ? next.join(",") : null, page: 1 });
+                            }}
+                        >
+                            {id}
+                        </Tag>
+                    ))}
+                </div>
+            )}
 
             <EmptyState
                 loading={pidLoading || loading}
@@ -150,9 +197,9 @@ export function MetricsOverviewPage() {
             >
                 {summary?.best_run && <BestModelPanel run={summary.best_run} />}
 
-                {summary && summary.kpis.length > 0 && (
+                {visibleKpis.length > 0 && (
                     <div className="ops-kpi-row">
-                        {summary.kpis.map((kpi) => (
+                        {visibleKpis.map((kpi) => (
                             <KpiCard
                                 key={kpi.key}
                                 label={kpi.label}
@@ -164,8 +211,9 @@ export function MetricsOverviewPage() {
                     </div>
                 )}
 
-                <div className="ops-layout-with-rail">
-                    <div>
+                <div>
+                    <FrozenDatasetsTable rows={frozenDatasets} loading={loading} />
+                    <div style={{ marginTop: 16 }}>
                         <MetricsRunTable
                             rows={rows}
                             total={total}
@@ -179,17 +227,12 @@ export function MetricsOverviewPage() {
                                 if (first) {
                                     patchParams({ sort_by: first.field, sort_dir: first.direction, page: 1 });
                                 } else {
-                                    // Third click clears the sort — reset to the default ordering.
                                     patchParams({ sort_by: null, sort_dir: null, page: 1 });
                                 }
                             }}
                             onSelectionChange={setSelectedRunIds}
                             onCompare={() => navigate(`/training?pipeline=${displayPipeline}`)}
                         />
-                    </div>
-                    <div className="ops-rail">
-                        <MetricLegend />
-                        <AnomaliesPanel anomalies={summary?.anomalies ?? []} />
                     </div>
                 </div>
             </EmptyState>

@@ -127,6 +127,17 @@ export function MetricsRunTable({
                 </span>
             ),
         },
+        { title: "dataset_id", dataIndex: "dataset_id", render: (v) => v || "—" },
+        {
+            title: "train items",
+            dataIndex: "train_items",
+            render: (v) => <MetricValue value={v} format="integer" />,
+        },
+        {
+            title: "val items",
+            dataIndex: "val_items",
+            render: (v) => <MetricValue value={v} format="integer" />,
+        },
         { title: "subset", dataIndex: "subset", sorter: true },
         ...metricColumns,
         { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={r.metrics?.support} format="integer" /> },

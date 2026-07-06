@@ -158,20 +158,22 @@ export function RunsPage() {
             </Tabs>
 
             <EmptyState loading={pidLoading || loading} error={error ? String(error) : null}>
-                <RunsTable
-                    rows={rows}
-                    total={total}
-                    page={page}
-                    pageSize={PAGE_SIZE}
-                    loading={loading}
-                    activeSorts={parseSortParams(sortBy, sortDir)}
-                    onPageChange={(nextPage) => setPage(nextPage)}
-                    onSortChange={(sorts) => {
-                        const primary = sorts[0];
-                        setSortBy(primary?.field ?? "started_at");
-                        setSortDir(primary?.direction ?? "desc");
-                    }}
-                />
+                <div className="ops-runs-table-wrap">
+                    <RunsTable
+                        rows={rows}
+                        total={total}
+                        page={page}
+                        pageSize={PAGE_SIZE}
+                        loading={loading}
+                        activeSorts={parseSortParams(sortBy, sortDir)}
+                        onPageChange={(nextPage) => setPage(nextPage)}
+                        onSortChange={(sorts) => {
+                            const primary = sorts[0];
+                            setSortBy(primary?.field ?? "started_at");
+                            setSortDir(primary?.direction ?? "desc");
+                        }}
+                    />
+                </div>
             </EmptyState>
         </div>
     );

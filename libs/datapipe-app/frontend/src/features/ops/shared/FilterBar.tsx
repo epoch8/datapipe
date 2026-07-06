@@ -8,9 +8,11 @@ export type FilterDef = {
     key: string;
     label: string;
     options: FilterOption[];
-    value?: string;
+    value?: string | string[];
     placeholder?: string;
     mode?: "multiple";
+    minWidth?: number;
+    dropdownMinWidth?: number;
 };
 
 type Props = {
@@ -42,8 +44,16 @@ export function FilterBar({
                             allowClear
                             mode={f.mode}
                             placeholder={f.placeholder ?? f.label}
-                            value={f.value}
-                            style={{ minWidth: 140 }}
+                            value={
+                                f.mode === "multiple"
+                                    ? (Array.isArray(f.value) ? f.value : f.value ? [f.value] : [])
+                                    : f.value
+                            }
+                            style={{ minWidth: f.minWidth ?? 140 }}
+                            dropdownMatchSelectWidth={false}
+                            dropdownStyle={f.dropdownMinWidth ? { minWidth: f.dropdownMinWidth } : undefined}
+                            maxTagCount={f.mode === "multiple" ? 0 : undefined}
+                            maxTagPlaceholder={(omitted) => `+${omitted.length} selected`}
                             options={f.options}
                             onChange={(v) => onFilterChange(f.key, v)}
                         />

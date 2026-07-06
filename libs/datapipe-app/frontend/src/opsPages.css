@@ -132,6 +132,31 @@
     letter-spacing: 0.04em;
 }
 
+.ops-selected-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: -4px 0 12px;
+}
+
+.ops-selected-filters-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--dp-gray-500);
+}
+
+.ops-selected-filter-tag {
+    margin: 0;
+    max-width: 100%;
+    white-space: normal;
+    height: auto;
+    line-height: 1.4;
+    padding: 4px 8px;
+}
+
 .ops-kpi-row {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

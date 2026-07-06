@@ -8,7 +8,6 @@ import { RunDetail } from "./features/ops/RunDetail";
 import { TrainingDetail } from "./features/ops/TrainingDetail";
 import { TrainingCompare } from "./features/ops/TrainingCompare";
 import { Help } from "./features/ops/Help";
-import { Settings } from "./features/ops/Settings";
 import { GraphPage } from "./features/ops/GraphPage";
 import { TableDetail } from "./features/ops/TableDetail";
 import { TransformDetail } from "./features/ops/TransformDetail";
@@ -18,7 +17,6 @@ import { TrainingRuns } from "./features/ops/TrainingRuns";
 import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
 import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
-import { SqlStudioPage } from "./features/ops/sql/SqlStudioPage";
 import "./App.css";
 import "./operatorLight.css";
 import "./opsPages.css";
@@ -43,11 +41,9 @@ function App() {
                     <Route path="/pipelines/:id/classes" element={<ClassMetricsPage />} />
                     <Route path="/training" element={<TrainingRunsPage />} />
                     <Route path="/pipelines/:id/training" element={<TrainingRunsPage />} />
-                    <Route path="/sql-studio" element={<SqlStudioPage />} />
                     <Route path="/graph" element={<GraphPage />} />
                     <Route path="/debug" element={<LegacyDebugRedirect />} />
                     <Route path="/help" element={<Help />} />
-                    <Route path="/settings" element={<Settings />} />
                     <Route path="/pipelines/:id" element={<PipelineDetail />} />
                     <Route path="/pipelines/:id/tables/:tableName" element={<TableDetail />} />
                     <Route path="/pipelines/:id/transforms/:transformName" element={<TransformDetail />} />

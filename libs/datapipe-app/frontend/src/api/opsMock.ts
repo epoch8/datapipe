@@ -1,6 +1,7 @@
 import type {
     ClassMetricDetailResponse,
     ClassMetricsResponse,
+    FrozenDatasetsResponse,
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTimeseriesResponse,
@@ -61,7 +62,29 @@ function makeRuns(): MetricsRunsResponse["rows"] {
     return rows.sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
 }
 
-const MOCK_RUNS = makeRuns();
+const MOCK_FROZEN_DATASETS: FrozenDatasetsResponse["rows"] = [
+    {
+        dataset_id: "20260706_1515_yolov8n-320-batch16-epochs30-cfg-edc8a3153_e2e",
+        frozen_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        train_count: 120,
+        val_count: 30,
+        test_count: 10,
+    },
+    {
+        dataset_id: "20260701_0900_yolov8n-smoke",
+        frozen_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        train_count: 80,
+        val_count: 20,
+        test_count: 0,
+    },
+];
+
+const MOCK_RUNS = makeRuns().map((row, i) => ({
+    ...row,
+    dataset_id: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].dataset_id,
+    train_items: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].train_count,
+    val_items: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].val_count,
+}));
 
 const MOCK_PIPELINE_RUNS: RunListRow[] = [
     { run_id: "99d91102-a1b2", pipeline_id: PIPELINE, status: "completed", scope: "stage_run", target_label: "count-metrics", started_at: new Date(Date.now() - 2 * 60_000).toISOString(), duration_s: 120, trigger: "api:stage:count-metrics" },
@@ -81,6 +104,10 @@ const MOCK_PIPELINE_RUNS: RunListRow[] = [
 ];
 
 export const opsMock = {
+    getFrozenDatasets(): FrozenDatasetsResponse {
+        return { rows: MOCK_FROZEN_DATASETS, total: MOCK_FROZEN_DATASETS.length };
+    },
+
     getRuns(params: RunsListParams = {}): RunsListResponse {
         let rows = [...MOCK_PIPELINE_RUNS];
         if (params.status) rows = rows.filter((r) => r.status === params.status);

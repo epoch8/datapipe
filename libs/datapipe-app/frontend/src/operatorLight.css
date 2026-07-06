@@ -252,6 +252,25 @@
     color: inherit;
 }
 
+.datapipe-sidebar-refresh {
+    width: 100%;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.ops-sidebar-refresh-popover {
+    width: 220px;
+}
+
+.ops-sidebar-refresh-label {
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--dp-gray-700);
+}
+
 .datapipe-main {
     background: var(--dp-bg-app);
     color: var(--dp-text-primary);
@@ -540,6 +559,11 @@
 
 .ops-runs-status-tabs {
     margin-bottom: 12px;
+}
+
+.ops-runs-table-wrap {
+    max-width: calc(100% / 1.5);
+    width: 100%;
 }
 
 @media (max-width: 1100px) {

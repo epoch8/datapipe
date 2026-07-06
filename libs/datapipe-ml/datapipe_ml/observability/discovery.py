@@ -75,3 +75,25 @@ def row_model_id(row: Any, columns: list[str]) -> Optional[str]:
     if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
         return None
     return str(value)
+
+
+def is_frozen_dataset_table(name: str) -> bool:
+    return name.endswith("_frozen_dataset") and "__" not in name
+
+
+def is_model_frozen_dataset_link_table(name: str) -> bool:
+    return "model_is_trained_on" in name and "frozen_dataset" in name
+
+
+def frozen_dataset_id_column(columns: list[str]) -> Optional[str]:
+    matches = [column for column in columns if column.endswith("_frozen_dataset_id")]
+    return matches[0] if matches else None
+
+
+def frozen_dataset_metadata_columns(columns: list[str]) -> dict[str, Optional[str]]:
+    return {
+        "created_at": next((c for c in columns if c.endswith("_frozen_dataset__created_at")), None),
+        "train_count": next((c for c in columns if c.endswith("_frozen_dataset__train_images_count")), None),
+        "val_count": next((c for c in columns if c.endswith("_frozen_dataset__val_images_count")), None),
+        "test_count": next((c for c in columns if c.endswith("_frozen_dataset__test_images_count")), None),
+    }

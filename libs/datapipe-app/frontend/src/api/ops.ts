@@ -8,6 +8,7 @@ import type {
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTimeseriesResponse,
+    FrozenDatasetsResponse,
     OverviewResponse,
     PipelineDetail,
     RecentRunSummary,
@@ -132,6 +133,13 @@ export const opsApi = {
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
             undefined,
             () => opsMock.getMetricsRuns(pipelineId, params),
+        ),
+
+    getFrozenDatasets: (pipelineId: string) =>
+        fetchWithMock<FrozenDatasetsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets`,
+            undefined,
+            () => opsMock.getFrozenDatasets(),
         ),
 
     getMetricsSummary: (pipelineId: string, params: { subset?: string; model_id?: string; primary_metric?: string } = {}) =>

@@ -20,6 +20,8 @@ from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricRow,
     ClassMetricsResponse,
+    FrozenDatasetRow,
+    FrozenDatasetsResponse,
     MetricsRunRow,
     MetricsRunsResponse,
     MetricsSummaryResponse,
@@ -29,8 +31,13 @@ from datapipe_app.observability.schemas import (
 try:
     from datapipe_ml.observability.discovery import (
         discover_metrics_tables,
+        frozen_dataset_id_column,
+        frozen_dataset_metadata_columns,
         infer_task_type,
+        is_frozen_dataset_table,
+        is_model_frozen_dataset_link_table,
         metric_columns,
+        model_id_column,
         row_model_id,
         table_schema_columns,
     )
@@ -40,6 +47,11 @@ except ImportError:
     metric_columns = lambda cols: [c for c in cols if c.startswith("calc__")]  # type: ignore
     row_model_id = lambda _r, _c: None  # type: ignore
     table_schema_columns = lambda _dt: []  # type: ignore
+    model_id_column = lambda _c: None  # type: ignore
+    is_frozen_dataset_table = lambda _n: False  # type: ignore
+    is_model_frozen_dataset_link_table = lambda _n: False  # type: ignore
+    frozen_dataset_id_column = lambda _c: None  # type: ignore
+    frozen_dataset_metadata_columns = lambda _c: {}  # type: ignore
 
 
 METRIC_ALIASES = {
@@ -158,6 +170,111 @@ def _load_catalog_rows(
     return run_rows, class_rows, task_type
 
 
+def _format_timestamp(value: Any) -> Optional[str]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _load_frozen_dataset_catalog(
+    ds: Optional[DataStore],
+    catalog: Optional[Catalog],
+) -> tuple[list[FrozenDatasetRow], dict[str, FrozenDatasetRow], dict[str, str]]:
+    datasets: list[FrozenDatasetRow] = []
+    by_id: dict[str, FrozenDatasetRow] = {}
+    model_to_dataset: dict[str, str] = {}
+
+    if ds is None or catalog is None:
+        return datasets, by_id, model_to_dataset
+
+    for name in catalog.catalog:
+        if is_frozen_dataset_table(name):
+            dt = ds.get_table(name)
+            try:
+                df = dt.get_data()
+            except Exception:
+                continue
+            if df.empty:
+                continue
+            columns = table_schema_columns(dt)
+            id_col = frozen_dataset_id_column(columns)
+            if not id_col:
+                continue
+            meta_cols = frozen_dataset_metadata_columns(columns)
+            for _, row in df.iterrows():
+                dataset_id = row.get(id_col)
+                if dataset_id is None or (isinstance(dataset_id, float) and pd.isna(dataset_id)):
+                    continue
+                entry = FrozenDatasetRow(
+                    dataset_id=str(dataset_id),
+                    frozen_at=_format_timestamp(row.get(meta_cols.get("created_at")) if meta_cols.get("created_at") else None),
+                    train_count=_safe_int(row.get(meta_cols.get("train_count")) if meta_cols.get("train_count") else None),
+                    val_count=_safe_int(row.get(meta_cols.get("val_count")) if meta_cols.get("val_count") else None),
+                    test_count=_safe_int(row.get(meta_cols.get("test_count")) if meta_cols.get("test_count") else None),
+                )
+                if entry.dataset_id not in by_id:
+                    datasets.append(entry)
+                    by_id[entry.dataset_id] = entry
+
+        if is_model_frozen_dataset_link_table(name):
+            dt = ds.get_table(name)
+            try:
+                df = dt.get_data()
+            except Exception:
+                continue
+            if df.empty:
+                continue
+            columns = table_schema_columns(dt)
+            model_col = model_id_column(columns)
+            dataset_col = frozen_dataset_id_column(columns)
+            if not model_col or not dataset_col:
+                continue
+            for _, row in df.iterrows():
+                model_value = row.get(model_col)
+                dataset_value = row.get(dataset_col)
+                if model_value is None or dataset_value is None:
+                    continue
+                if isinstance(model_value, float) and pd.isna(model_value):
+                    continue
+                if isinstance(dataset_value, float) and pd.isna(dataset_value):
+                    continue
+                model_to_dataset[str(model_value)] = str(dataset_value)
+
+    datasets.sort(key=lambda item: item.frozen_at or "", reverse=True)
+    return datasets, by_id, model_to_dataset
+
+
+def _enrich_runs_with_datasets(
+    runs: list[MetricsRunRow],
+    *,
+    model_to_dataset: dict[str, str],
+    datasets_by_id: dict[str, FrozenDatasetRow],
+) -> list[MetricsRunRow]:
+    enriched: list[MetricsRunRow] = []
+    for run in runs:
+        dataset_id = model_to_dataset.get(run.model_id)
+        meta = datasets_by_id.get(dataset_id) if dataset_id else None
+        enriched.append(
+            run.model_copy(
+                update={
+                    "dataset_id": dataset_id,
+                    "train_items": meta.train_count if meta else None,
+                    "val_items": meta.val_count if meta else None,
+                }
+            )
+        )
+    return enriched
+
+
+def _parse_model_ids(model_id: Optional[str]) -> Optional[list[str]]:
+    if not model_id:
+        return None
+    ids = [part.strip() for part in model_id.split(",") if part.strip()]
+    return ids or None
+
+
 def _filter_runs(
     runs: list[MetricsRunRow],
     *,
@@ -170,8 +287,10 @@ def _filter_runs(
     result = runs
     if subset:
         result = [r for r in result if r.subset == subset]
-    if model_id:
-        result = [r for r in result if r.model_id == model_id]
+    model_ids = _parse_model_ids(model_id)
+    if model_ids:
+        allowed = set(model_ids)
+        result = [r for r in result if r.model_id in allowed]
     if search:
         q = search.lower()
         result = [r for r in result if q in r.run_id.lower() or q in r.model_id.lower() or q in r.subset.lower()]
@@ -279,15 +398,28 @@ class MetricsService:
         self.ds = ds
         self.catalog = catalog
 
+    def _dataset_context(self) -> tuple[dict[str, FrozenDatasetRow], dict[str, str]]:
+        _, by_id, model_to_dataset = _load_frozen_dataset_catalog(self.ds, self.catalog)
+        return by_id, model_to_dataset
+
     def _all_runs(self, pipeline_id: str) -> tuple[list[MetricsRunRow], Optional[str]]:
         catalog_runs, _, task_type = _load_catalog_rows(self.ds, self.catalog)
-        runs = catalog_runs
+        datasets_by_id, model_to_dataset = self._dataset_context()
+        runs = _enrich_runs_with_datasets(
+            catalog_runs,
+            model_to_dataset=model_to_dataset,
+            datasets_by_id=datasets_by_id,
+        )
         for r in runs:
             r.pipeline_id = pipeline_id
         for i, run in enumerate(runs):
             if i + 1 < len(runs):
                 compute_deltas(run, runs[i + 1])
         return runs, task_type
+
+    def list_frozen_datasets(self, pipeline_id: str) -> FrozenDatasetsResponse:
+        rows, _, _ = _load_frozen_dataset_catalog(self.ds, self.catalog)
+        return FrozenDatasetsResponse(rows=rows, total=len(rows))
 
     def list_runs(
         self,

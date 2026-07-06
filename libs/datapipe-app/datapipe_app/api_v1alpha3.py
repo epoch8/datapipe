@@ -27,6 +27,7 @@ from datapipe_app.observability.queries import build_chart_specs, build_overview
 from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricsResponse,
+    FrozenDatasetsResponse,
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTimeseriesResponse,
@@ -274,6 +275,10 @@ def make_app(
 
     def _metrics_svc() -> MetricsService:
         return MetricsService(store=store, ds=ds, catalog=catalog)
+
+    @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets", response_model=FrozenDatasetsResponse)
+    def get_frozen_datasets(pipeline_id: str) -> FrozenDatasetsResponse:
+        return _metrics_svc().list_frozen_datasets(pipeline_id)
 
     @app.get("/pipelines/{pipeline_id}/metrics/runs", response_model=MetricsRunsResponse)
     def get_metrics_runs(

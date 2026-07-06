@@ -36,6 +36,9 @@ class MetricsRunRow(BaseModel):
     model_version: Optional[str] = None
     task_type: Optional[str] = None
     subset: str = ""
+    dataset_id: Optional[str] = None
+    train_items: Optional[int] = None
+    val_items: Optional[int] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     duration_s: Optional[int] = None
@@ -44,6 +47,19 @@ class MetricsRunRow(BaseModel):
     deltas: dict[str, float | None] = Field(default_factory=dict)
     delta_pct: dict[str, float | None] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
+
+
+class FrozenDatasetRow(BaseModel):
+    dataset_id: str
+    frozen_at: Optional[str] = None
+    train_count: Optional[int] = None
+    val_count: Optional[int] = None
+    test_count: Optional[int] = None
+
+
+class FrozenDatasetsResponse(BaseModel):
+    rows: list[FrozenDatasetRow]
+    total: int
 
 
 class MetricsRunsResponse(BaseModel):

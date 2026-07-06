@@ -1,18 +1,15 @@
 import React from "react";
 import {
-    AlertOutlined,
     BarChartOutlined,
     ApartmentOutlined,
     DashboardOutlined,
-    DatabaseOutlined,
     ExperimentOutlined,
-    FolderOutlined,
     HistoryOutlined,
     QuestionCircleOutlined,
-    SettingOutlined,
+    ReloadOutlined,
     TableOutlined,
 } from "@ant-design/icons";
-import { Badge, Button } from "antd";
+import { Button, InputNumber, Popover, Slider } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
 import { ApiErrorAlert } from "../components/ApiErrorAlert";
@@ -26,9 +23,48 @@ type NavItem = {
     href: string;
     label: string;
     icon: React.ReactNode;
-    badge?: number;
-    disabled?: boolean;
 };
+
+function readRefreshSeconds(): number {
+    const stored = localStorage.getItem("datapipe_ops_refresh_s");
+    const seconds = stored ? parseInt(stored, 10) : 30;
+    return Number.isFinite(seconds) ? seconds : 30;
+}
+
+function SidebarRefreshControl({ collapsed }: { collapsed: boolean }) {
+    const [refreshSeconds, setRefreshSeconds] = React.useState(readRefreshSeconds);
+
+    const onRefreshChange = (value: number) => {
+        const next = value || 30;
+        setRefreshSeconds(next);
+        localStorage.setItem("datapipe_ops_refresh_s", String(next));
+    };
+
+    const popover = (
+        <div className="ops-sidebar-refresh-popover">
+            <div className="ops-sidebar-refresh-label">Refresh interval (seconds)</div>
+            <Slider min={15} max={120} value={refreshSeconds} onChange={onRefreshChange} />
+            <InputNumber
+                min={15}
+                max={120}
+                value={refreshSeconds}
+                onChange={(value) => onRefreshChange(value ?? 30)}
+                style={{ width: "100%" }}
+            />
+        </div>
+    );
+
+    return (
+        <Popover content={popover} trigger="click" placement="topLeft">
+            <button type="button" className="datapipe-sidebar-item datapipe-sidebar-refresh">
+                <span className="sidebar-icon">
+                    <ReloadOutlined />
+                </span>
+                {!collapsed && `Refresh (${refreshSeconds}s)`}
+            </button>
+        </Popover>
+    );
+}
 
 function matchNav(pathname: string, href: string): boolean {
     const hrefPath = href.split("?")[0] ?? href;
@@ -84,17 +120,12 @@ export function OpsShell() {
         { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
         { key: "/classes", href: "/classes", label: "Classes", icon: <TableOutlined /> },
         { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
-        { key: "/sql-studio", href: "/sql-studio", label: "SQL Studio", icon: <DatabaseOutlined /> },
         ...(agentMode
             ? [{ key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> }]
             : []),
     ];
 
     const secondaryItems: NavItem[] = [
-        { key: "/alerts", href: "/alerts", label: "Alerts", icon: <AlertOutlined />, badge: 3, disabled: true },
-        { key: "/artifacts", href: "/artifacts", label: "Artifacts", icon: <FolderOutlined />, disabled: true },
-        { key: "/data", href: "/data", label: "Data", icon: <DatabaseOutlined />, disabled: true },
-        { key: "/settings", href: "/settings", label: "Settings", icon: <SettingOutlined /> },
         { key: "/help", href: "/help", label: "Help", icon: <QuestionCircleOutlined /> },
     ];
 
@@ -103,40 +134,20 @@ export function OpsShell() {
         allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
     const isGraph = location.pathname.startsWith("/graph");
-    const isObsPage = ["/metrics", "/classes", "/training", "/sql-studio"].some((p) =>
+    const isObsPage = ["/metrics", "/classes", "/training"].some((p) =>
         location.pathname.startsWith(p),
     );
 
-    const renderItem = (item: NavItem) => {
-        if (item.disabled) {
-            return (
-                <div key={item.key} className="datapipe-sidebar-item disabled" style={{ opacity: 0.5, cursor: "not-allowed" }}>
-                    <span className="sidebar-icon">{item.icon}</span>
-                    {!collapsed && (
-                        <>
-                            {item.label}
-                            {item.badge != null && <Badge count={item.badge} style={{ marginLeft: "auto" }} />}
-                        </>
-                    )}
-                </div>
-            );
-        }
-        return (
-            <Link
-                key={item.key}
-                to={item.href}
-                className={`datapipe-sidebar-item${selected === item.key ? " active" : ""}`}
-            >
-                <span className="sidebar-icon">{item.icon}</span>
-                {!collapsed && (
-                    <>
-                        {item.label}
-                        {item.badge != null && <Badge count={item.badge} style={{ marginLeft: "auto" }} />}
-                    </>
-                )}
-            </Link>
-        );
-    };
+    const renderItem = (item: NavItem) => (
+        <Link
+            key={item.key}
+            to={item.href}
+            className={`datapipe-sidebar-item${selected === item.key ? " active" : ""}`}
+        >
+            <span className="sidebar-icon">{item.icon}</span>
+            {!collapsed && item.label}
+        </Link>
+    );
 
     return (
         <div className="datapipe-shell" style={{ display: "flex", minHeight: "var(--dp-vh)" }}>
@@ -172,6 +183,7 @@ export function OpsShell() {
                             Production · {pipelineId}
                         </div>
                     )}
+                    <SidebarRefreshControl collapsed={collapsed} />
                     <Button type="text" style={{ color: "var(--dp-sidebar-text)", width: "100%" }} onClick={() => setCollapsed(!collapsed)}>
                         {collapsed ? "→" : "Collapse"}
                     </Button>
