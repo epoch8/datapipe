@@ -12,6 +12,26 @@ Minimal detection pipeline whose whole point is **tags**: train a baseline, load
 batch**, retrain, and watch the metric on that tag rise in a `tag_metrics` table. Ground truth is
 **injected** (COCO labels, lowercase `cat`/`dog`) — no human annotation — so it runs unattended.
 
+**First, ask: demo (test) or real data?** — the whole flow branches on this.
+
+- **Demo / test** → run it unattended on the built-in COCO cat/dog data. Do it in this order and
+  *narrate each step*:
+  1. deploy (services + `uv sync` + `db create-all`), load the **base** batch, run `stage=train`;
+  2. **show the metrics** (`detection_model_train__metrics_on_subset`) for the baseline model;
+  3. say: *"there's a `night` low-light tagged scenario — want to add it and retrain, or stop here?"*
+  4. if yes → load the **night** batch (`--tag night --darken 0.25`), run `stage=train` again;
+  5. after the run, **show the metrics again** — both `metrics_on_subset` and **`tag_metrics`** (the
+     `night/val` recall for the baseline vs the retrained model).
+
+- **Real data** → don't guess; gather everything up front and fill it in explicitly:
+  - **images + ground truth**: where are the images, and where do the boxes/labels come from —
+    a labelled dataset to inject, or real annotation? (this example has no Label Studio; GT is injected)
+  - **classes**: the real class names → set `DETECTION_CLASSES` / the GT labels to match exactly (casing!)
+  - **the tag/scenario**: what is the tagged case (e.g. night, occluded, a site) and which images carry it
+  - **storage + DB**: which S3/MinIO bucket (`DATAPIPE_TAGS_DIR`) and which Postgres/schema (`DB_URL`/`DB_SCHEMA`)
+  - **GPU + training size**: enough data and epochs that metrics are meaningful (see the note below)
+  Then wire the loader to the real source instead of the COCO `load_batch` step.
+
 **Ask first — don't assume (only the unresolved):** which Postgres + which database for `DB_URL`
 (don't target an existing DB or drop a `localhost` default without confirming); reuse an existing
 venv/`uv` env or a fresh one? GPU available (training is GPU)? surface stage logs or run quiet?

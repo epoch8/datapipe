@@ -68,7 +68,7 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=50, exist_ok=True)
+                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True)
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
             resume_config=TrainingResumeConfig(
