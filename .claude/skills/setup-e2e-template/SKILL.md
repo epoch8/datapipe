@@ -48,6 +48,20 @@ fiftyone app launch datapipe_detection_e2e    # or datapipe_keypoints_e2e
 ```
 Train uses `yolov8n*.pt` (imgsz 320, 30 ep); pre-annotation fallback `yolo11n*.pt`; best on `subset_id=val`.
 
+## Skip annotation — inject ground truth (unattended / demo)
+No human in Label Studio? You can bypass `annotation`/`ls-sync` by writing `image__ground_truth` +
+`image__subset` directly, then run `stage=train`. **The injected rows MUST follow the pipeline's own
+conventions, or the freeze join silently yields nothing / classes don't match:**
+- **`image_name` must equal what `list_s3_images` emits** — the key **relative to `INPUT_IMAGES_DIR`
+  (`$DATAPIPE_E2E_DIR/images`)**, i.e. the plain object name (`000000008458.jpg`). Don't invent a
+  prefixed form — if `s3_images` has `X` and your GT has `pfx___X`, the `GT ⋈ subset ⋈ s3_images` join
+  is empty → `freeze_dataset` fails with `No ground truth`.
+- **`labels` must match `DETECTION_CLASSES` casing** (e.g. `Cat`/`Dog`, not COCO lowercase `cat`/`dog`)
+  — otherwise predictions and GT land in *different* classes and every metric is 0.
+- **`bboxes`** = pixel `[x1,y1,x2,y2]`; assign `image__subset.subset_id` (`train`/`val`) yourself.
+- Write via datapipe `DataStore`/`UpdateExternalTable` (keeps `*_meta` in sync) — not raw SQL `UPDATE`
+  on PK columns. Then `datapipe step --labels=stage=train run` (skip `annotation`/`ls-sync`).
+
 ## Add-on upgrade — tags for per-scenario metrics
 An **optional layer on top of the base pipeline** (not needed to run it). New case (e.g. dark-room
 pallets) → tag those images, let part flow into training, and measure the model **on that scenario
