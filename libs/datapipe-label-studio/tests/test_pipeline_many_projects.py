@@ -202,6 +202,7 @@ class CasesLabelStudio:
                     ),
                     inputs=["ls_input_data__has__prediction"],
                     outputs=["best_model"],
+                    transform_keys=["project_identifier"],
                 ),
                 LabelStudioUploadPredictionsToProjects(
                     input__item__has__prediction="ls_input_data__has__prediction",

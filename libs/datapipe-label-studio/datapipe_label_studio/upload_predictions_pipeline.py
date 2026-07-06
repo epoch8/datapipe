@@ -1,3 +1,4 @@
+import copy
 import json
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple, Union
@@ -97,8 +98,14 @@ def upload_prediction_to_label_studio(
         return pd.DataFrame(columns=primary_keys + ["task_id", "prediction"])
 
     client, project_id = get_project_context()
-    idx = data_to_index(idx, primary_keys)
-    df_existing_prediction_to_be_deleted = dt__output__label_studio_project_prediction.get_data(idx=idx)
+    delete_lookup_idx = (
+        data_to_index(idx, primary_keys)
+        if set(primary_keys).issubset(idx.columns)
+        else data_to_index(idx, task_join_keys)
+    )
+    df_existing_prediction_to_be_deleted = dt__output__label_studio_project_prediction.get_data(
+        idx=delete_lookup_idx
+    )
     if len(df_existing_prediction_to_be_deleted) > 0:
         for prediction in df_existing_prediction_to_be_deleted["prediction"]:
             try:
@@ -147,7 +154,7 @@ def upload_prediction_to_label_studio(
         dtype=object,
         index=df.index,
     )
-    return df[primary_keys + ["task_id", "prediction_id", "model_version", "prediction"]]
+    return df[list(dict.fromkeys(primary_keys + ["task_id", "prediction_id", "prediction"]))]
 
 
 def _set_current_model_version_row(
@@ -331,11 +338,14 @@ class LabelStudioUploadPredictions(PipelineStep):
         )
         task_join_keys = _prediction_task_join_keys(self.primary_keys, self.model_keys)
         check_columns_are_in_table(ds, self.input__label_studio_project_task, task_join_keys + ["task_id"])
-        primary_schema_columns = [
-            column
-            for column in dt__input__has__prediction.primary_schema
-            if column.name in self.primary_keys
-        ]
+        input_columns = {
+            col.name: col for col in dt__input__has__prediction.table_store.get_schema()
+        }
+        primary_schema_columns = []
+        for key in self.primary_keys:
+            column = copy.copy(input_columns[key])
+            column.primary_key = True
+            primary_schema_columns.append(column)
         catalog.add_datatable(
             output_label_studio_project_prediction_name,
             Table(
@@ -350,7 +360,6 @@ class LabelStudioUploadPredictions(PipelineStep):
                             for column in (
                                 Column("task_id", Integer),
                                 Column("prediction_id", Integer),
-                                Column("model_version", String),
                                 Column("prediction", JSON),
                             )
                             if column.name not in {col.name for col in primary_schema_columns}
@@ -381,7 +390,7 @@ class LabelStudioUploadPredictions(PipelineStep):
                     func=upload_prediction_to_label_studio,
                     inputs=[self.input__item__has__prediction, self.input__label_studio_project_task],
                     outputs=[self.output__label_studio_project_prediction],
-                    transform_keys=self.primary_keys,
+                    transform_keys=task_join_keys,
                     chunk_size=self.chunk_size,
                     executor_config=self.executor_config,
                     kwargs=dict(
@@ -499,11 +508,14 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
         task_join_keys = _prediction_task_join_keys(self.primary_keys, self.model_keys)
         check_columns_are_in_table(ds, self.input__label_studio_project_task, task_join_keys + ["task_id"])
         check_columns_are_in_table(ds, self.input__label_studio_project, ["project_identifier", "project_id"])
-        primary_schema_columns = [
-            column
-            for column in dt__input__has__prediction.primary_schema
-            if column.name in self.primary_keys
-        ]
+        input_columns = {
+            col.name: col for col in dt__input__has__prediction.table_store.get_schema()
+        }
+        primary_schema_columns = []
+        for key in self.primary_keys:
+            column = copy.copy(input_columns[key])
+            column.primary_key = True
+            primary_schema_columns.append(column)
         catalog.add_datatable(
             output_label_studio_project_prediction_name,
             Table(
@@ -518,7 +530,6 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
                             for column in (
                                 Column("task_id", Integer),
                                 Column("prediction_id", Integer),
-                                Column("model_version", String),
                                 Column("prediction", JSON),
                             )
                             if column.name not in {col.name for col in primary_schema_columns}
@@ -563,7 +574,7 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
                         dt__output__label_studio_project_prediction=dt__output__label_studio_project_prediction,
                         model_keys=self.model_keys,
                     ),
-                    transform_keys=self.primary_keys,
+                    transform_keys=task_join_keys,
                 ),
                 BatchTransform(
                     labels=self.labels,
