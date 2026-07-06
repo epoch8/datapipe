@@ -4,9 +4,13 @@ import type {
     ClassMetricDetailResponse,
     ClassMetricsParams,
     ClassMetricsResponse,
+    MetricsCandidateCreate,
+    MetricsEvaluateRequest,
+    MetricsEvaluateResponse,
     MetricsListParams,
     MetricsRunsResponse,
     MetricsSummaryResponse,
+    MetricsTableSchema,
     MetricsTimeseriesResponse,
     FrozenDatasetsResponse,
     OverviewResponse,
@@ -141,6 +145,37 @@ export const opsApi = {
             undefined,
             () => opsMock.getFrozenDatasets(),
         ),
+
+    getMetricsSchema: (pipelineId: string, taskType?: string) =>
+        fetchWithMock<MetricsTableSchema>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/schema${toQuery({ task_type: taskType })}`,
+            undefined,
+            () => opsMock.getMetricsSchema(),
+        ),
+
+    addMetricsCandidate: (pipelineId: string, body: MetricsCandidateCreate) =>
+        fetchJson<{ id: string }>(`/pipelines/${encodeURIComponent(pipelineId)}/metrics/candidates`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+
+    deleteMetricsCandidate: (pipelineId: string, candidateId: string) =>
+        fetchJson<{ status: string }>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/candidates/${encodeURIComponent(candidateId)}`,
+            { method: "DELETE" },
+        ),
+
+    evaluateMetrics: (pipelineId: string, body: MetricsEvaluateRequest = {}) =>
+        fetchJson<MetricsEvaluateResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/metrics/evaluate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                candidate_ids: body.candidate_ids ?? [],
+                labels: body.labels ?? [["stage", "count-metrics"]],
+                background: body.background ?? true,
+            }),
+        }),
 
     getMetricsSummary: (pipelineId: string, params: { subset?: string; model_id?: string; primary_metric?: string } = {}) =>
         fetchWithMock<MetricsSummaryResponse>(

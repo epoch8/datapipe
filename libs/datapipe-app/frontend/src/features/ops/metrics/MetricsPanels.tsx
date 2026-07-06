@@ -76,11 +76,6 @@ export function BestModelPanel({ run }: { run?: MetricsRunRow }) {
         (k) => present(k) && !knownScalar.has(k) && !knownPrf.has(k),
     );
 
-    const duration =
-        run.duration_s != null
-            ? `${Math.floor(run.duration_s / 60)}m ${run.duration_s % 60}s`
-            : null;
-
     return (
         <div className="ops-panel ops-best-model-panel">
             <div className="ops-best-model-head">
@@ -93,9 +88,7 @@ export function BestModelPanel({ run }: { run?: MetricsRunRow }) {
                 </div>
                 <div className="ops-best-model-meta">
                     {run.subset && <span>Subset: <Tag>{run.subset}</Tag></span>}
-                    <span>Run: <strong>{run.run_id}</strong></span>
-                    {run.started_at && <span>Started: <strong>{run.started_at.slice(0, 16).replace("T", " ")}</strong></span>}
-                    {duration && <span>Duration: <strong>{duration}</strong></span>}
+                    {run.dataset_id && <span>Dataset: <strong title={run.dataset_id}>{run.dataset_id.slice(0, 20)}…</strong></span>}
                 </div>
             </div>
 

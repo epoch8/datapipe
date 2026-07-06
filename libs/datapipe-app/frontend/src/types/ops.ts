@@ -276,6 +276,103 @@ export interface MetricsRunRow {
     tags?: string[];
 }
 
+export interface SplitCounts {
+    train?: number;
+    val?: number;
+    test?: number;
+}
+
+export type MetricFormat = "float" | "percent" | "integer" | "duration" | "string";
+
+export interface MetricDefinition {
+    key: string;
+    label: string;
+    short_label: string;
+    group: string;
+    task_types: string[];
+    format: MetricFormat;
+    higher_is_better: boolean;
+    visible_by_default: boolean;
+    primary?: boolean;
+    description?: string;
+    decimals?: number;
+}
+
+export interface MetricColumnGroup {
+    key: string;
+    label: string;
+    priority: number;
+    metrics: MetricDefinition[];
+}
+
+export interface MetricsTableSchema {
+    task_type: string;
+    primary_metric: string;
+    groups: MetricColumnGroup[];
+}
+
+export interface MetricsModelRow {
+    id: string;
+    pipeline_id: string;
+    model_id: string;
+    model_display_name?: string;
+    model_source?: "training_run" | "artifact" | "manual" | "registry" | string;
+    model_version?: string;
+    task_type?: TaskType;
+    dataset_id?: string;
+    dataset_display_name?: string;
+    frozen_at?: string;
+    subset: string;
+    split_counts?: SplitCounts;
+    has_metrics: boolean;
+    metrics_state?: "not_computed" | "queued" | "running" | "computed" | "failed" | string;
+    metrics?: Record<string, number | null>;
+    run_id?: string;
+    run_key?: string;
+    started_at?: string;
+    finished_at?: string;
+    duration_s?: number;
+    status?: string;
+    tags?: string[];
+}
+
+export interface MetricsCandidateCreate {
+    model_id: string;
+    model_source?: string;
+    artifact_uri?: string;
+    dataset_id: string;
+    subset?: string;
+    task_type?: string;
+}
+
+export interface MetricsCandidateRow {
+    id: string;
+    pipeline_id: string;
+    model_id: string;
+    model_source: string;
+    artifact_uri?: string;
+    dataset_id: string;
+    subset: string;
+    task_type?: string;
+    metrics_state: string;
+}
+
+export interface MetricsCandidatesResponse {
+    rows: MetricsCandidateRow[];
+    total: number;
+}
+
+export interface MetricsEvaluateRequest {
+    candidate_ids?: string[];
+    labels?: [string, string][];
+    background?: boolean;
+}
+
+export interface MetricsEvaluateResponse {
+    run_id: string;
+    status: string;
+}
+
 export interface FrozenDatasetRow {
     dataset_id: string;
     frozen_at?: string;
@@ -290,7 +387,7 @@ export interface FrozenDatasetsResponse {
 }
 
 export interface MetricsRunsResponse {
-    rows: MetricsRunRow[];
+    rows: MetricsModelRow[];
     total: number;
     available_filters: {
         subsets: string[];
@@ -298,6 +395,7 @@ export interface MetricsRunsResponse {
         tags: string[];
         metrics: string[];
     };
+    schema: MetricsTableSchema;
 }
 
 export interface KpiItem {
@@ -503,6 +601,7 @@ export interface UiChartSpec {
 export interface MetricsListParams {
     subset?: string;
     model_id?: string;
+    task_type?: string;
     from?: string;
     to?: string;
     tags?: string[];

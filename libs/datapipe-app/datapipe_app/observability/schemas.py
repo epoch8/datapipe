@@ -49,6 +49,110 @@ class MetricsRunRow(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class SplitCounts(BaseModel):
+    train: Optional[int] = None
+    val: Optional[int] = None
+    test: Optional[int] = None
+
+
+class MetricDefinition(BaseModel):
+    key: str
+    label: str
+    short_label: str
+    group: str
+    task_types: list[str] = Field(default_factory=lambda: ["*"])
+    format: str = "float"
+    higher_is_better: bool = True
+    visible_by_default: bool = True
+    primary: bool = False
+    description: Optional[str] = None
+    decimals: Optional[int] = None
+
+
+class MetricColumnGroup(BaseModel):
+    key: str
+    label: str
+    priority: int = 0
+    metrics: list[MetricDefinition] = Field(default_factory=list)
+
+
+class MetricsTableSchema(BaseModel):
+    task_type: str = "custom"
+    primary_metric: str = "f1_score"
+    groups: list[MetricColumnGroup] = Field(default_factory=list)
+
+
+class MetricsModelRow(BaseModel):
+    id: str
+    pipeline_id: str
+    model_id: str
+    model_display_name: Optional[str] = None
+    model_source: Optional[str] = None
+    model_version: Optional[str] = None
+    task_type: Optional[str] = None
+    dataset_id: Optional[str] = None
+    dataset_display_name: Optional[str] = None
+    frozen_at: Optional[str] = None
+    subset: str = ""
+    split_counts: SplitCounts = Field(default_factory=SplitCounts)
+    has_metrics: bool = False
+    metrics_state: Optional[str] = "not_computed"
+    metrics: dict[str, float | None] = Field(default_factory=dict)
+    run_id: Optional[str] = None
+    run_key: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    duration_s: Optional[int] = None
+    status: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class MetricsCandidateCreate(BaseModel):
+    model_id: str
+    model_source: str = "manual"
+    artifact_uri: Optional[str] = None
+    dataset_id: str
+    subset: str = "val"
+    task_type: Optional[str] = None
+
+
+class MetricsCandidateRow(BaseModel):
+    id: str
+    pipeline_id: str
+    model_id: str
+    model_source: str = "manual"
+    artifact_uri: Optional[str] = None
+    dataset_id: str
+    subset: str = "val"
+    task_type: Optional[str] = None
+    metrics_state: str = "not_computed"
+
+
+class MetricsCandidatesResponse(BaseModel):
+    rows: list[MetricsCandidateRow]
+    total: int
+
+
+class MetricsEvaluateRequest(BaseModel):
+    candidate_ids: list[str] = Field(default_factory=list)
+    labels: list[list[str]] = Field(default_factory=lambda: [["stage", "count-metrics"]])
+    background: bool = True
+
+
+class MetricsEvaluateResponse(BaseModel):
+    run_id: str
+    status: str = "running"
+
+
+class MetricsRunsResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    rows: list[MetricsModelRow]
+    total: int
+    available_filters: dict[str, list[str]]
+    table_schema: MetricsTableSchema = Field(alias="schema")
+
+
 class FrozenDatasetRow(BaseModel):
     dataset_id: str
     frozen_at: Optional[str] = None
@@ -60,12 +164,6 @@ class FrozenDatasetRow(BaseModel):
 class FrozenDatasetsResponse(BaseModel):
     rows: list[FrozenDatasetRow]
     total: int
-
-
-class MetricsRunsResponse(BaseModel):
-    rows: list[MetricsRunRow]
-    total: int
-    available_filters: dict[str, list[str]]
 
 
 class MetricsSummaryResponse(BaseModel):

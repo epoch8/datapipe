@@ -28,8 +28,13 @@ from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricsResponse,
     FrozenDatasetsResponse,
+    MetricsCandidateCreate,
+    MetricsCandidateRow,
+    MetricsEvaluateRequest,
+    MetricsEvaluateResponse,
     MetricsRunsResponse,
     MetricsSummaryResponse,
+    MetricsTableSchema,
     MetricsTimeseriesResponse,
     SqlQueryRequest,
     SqlQueryResponse,
@@ -286,6 +291,7 @@ def make_app(
         subset: Optional[str] = None,
         model_id: Optional[str] = None,
         search: Optional[str] = None,
+        task_type: Optional[str] = None,
         sort_by: Optional[str] = None,
         sort_dir: str = "desc",
         limit: int = 25,
@@ -296,11 +302,37 @@ def make_app(
             subset=subset,
             model_id=model_id,
             search=search,
+            task_type=task_type,
             sort_by=sort_by,
             sort_dir=sort_dir,
             limit=min(limit, 200),
             offset=offset,
         )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/schema", response_model=MetricsTableSchema)
+    def get_metrics_schema(pipeline_id: str, task_type: Optional[str] = None) -> MetricsTableSchema:
+        return _metrics_svc().get_schema(pipeline_id, task_type=task_type)
+
+    @app.post("/pipelines/{pipeline_id}/metrics/candidates", response_model=MetricsCandidateRow)
+    def create_metrics_candidate(pipeline_id: str, body: MetricsCandidateCreate) -> MetricsCandidateRow:
+        return _metrics_svc().add_candidate(pipeline_id, body)
+
+    @app.delete("/pipelines/{pipeline_id}/metrics/candidates/{candidate_id}")
+    def delete_metrics_candidate(pipeline_id: str, candidate_id: str) -> dict[str, str]:
+        if not _metrics_svc().delete_candidate(pipeline_id, candidate_id):
+            raise HTTPException(404, f"Candidate {candidate_id} not found")
+        return {"status": "ok"}
+
+    @app.post("/pipelines/{pipeline_id}/metrics/evaluate", response_model=MetricsEvaluateResponse)
+    def evaluate_metrics(
+        pipeline_id: str,
+        req: MetricsEvaluateRequest,
+        background_tasks: BackgroundTasks,
+    ) -> MetricsEvaluateResponse:
+        _require_agent_pipeline(pipeline_id)
+        labels = Labels([tuple(pair) for pair in req.labels]) if req.labels else Labels([("stage", "count-metrics")])
+        run_resp = start_run(StartRunRequest(labels=labels, background=req.background), background_tasks)
+        return MetricsEvaluateResponse(run_id=run_resp.run_id, status=run_resp.status)
 
     @app.get("/pipelines/{pipeline_id}/metrics/summary", response_model=MetricsSummaryResponse)
     def get_pipeline_metrics_summary(

@@ -16,16 +16,23 @@ from datapipe_app.observability.anomaly import (
     pick_primary_value,
     primary_metric_for_task,
 )
+from datapipe_app.observability.metrics_schema import build_metric_schema
 from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricRow,
     ClassMetricsResponse,
     FrozenDatasetRow,
     FrozenDatasetsResponse,
+    MetricsCandidateCreate,
+    MetricsCandidateRow,
+    MetricsCandidatesResponse,
+    MetricsModelRow,
     MetricsRunRow,
     MetricsRunsResponse,
     MetricsSummaryResponse,
+    MetricsTableSchema,
     MetricsTimeseriesResponse,
+    SplitCounts,
 )
 
 try:
@@ -58,6 +65,26 @@ METRIC_ALIASES = {
     "mAP_0_5": "mAP50",
     "mAP_0_5_to_0_95": "mAP50_95",
 }
+
+_MODEL_COUNT_KEYS = frozenset(
+    {
+        "images_support",
+        "support",
+        "TP",
+        "FP",
+        "FN",
+        "TP_extra_bbox",
+        "FP_extra_bbox",
+        "FN_extra_bbox",
+        "images",
+        "objects",
+        "detections",
+        "false_positives",
+        "false_negatives",
+    }
+)
+
+_CANDIDATES: dict[str, list[MetricsCandidateRow]] = {}
 
 
 def _normalize_metric_key(key: str) -> str:
@@ -344,6 +371,162 @@ def _sort_runs(runs: list[MetricsRunRow], sort_by: Optional[str], sort_dir: str)
     return sorted(runs, key=key_fn)
 
 
+def _model_row_id(model_id: str, dataset_id: str, subset: str) -> str:
+    raw = f"{model_id}|{dataset_id}|{subset}"
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+def _has_computed_metrics(metrics: dict[str, float | None]) -> bool:
+    return any(v is not None for k, v in metrics.items() if k not in _MODEL_COUNT_KEYS)
+
+
+def _merge_run_metrics(group: list[MetricsRunRow]) -> dict[str, float | None]:
+    merged: dict[str, float | None] = {}
+    for row in group:
+        for key, value in row.metrics.items():
+            if value is not None and merged.get(key) is None:
+                merged[key] = value
+    return merged
+
+
+def runs_to_model_rows(
+    runs: list[MetricsRunRow],
+    *,
+    datasets_by_id: dict[str, FrozenDatasetRow],
+    task_type: Optional[str],
+    pipeline_id: str,
+) -> list[MetricsModelRow]:
+    groups: dict[tuple[str, str, str], list[MetricsRunRow]] = {}
+    for row in runs:
+        key = (row.model_id, row.dataset_id or "", row.subset)
+        groups.setdefault(key, []).append(row)
+
+    model_rows: list[MetricsModelRow] = []
+    for (model_id, dataset_id, subset), group in groups.items():
+        rep = max(group, key=lambda r: r.started_at or "")
+        merged = _merge_run_metrics(group)
+        dataset = datasets_by_id.get(dataset_id) if dataset_id else None
+        has_metrics = _has_computed_metrics(merged)
+        model_rows.append(
+            MetricsModelRow(
+                id=_model_row_id(model_id, dataset_id, subset),
+                pipeline_id=pipeline_id,
+                model_id=model_id,
+                model_display_name=model_id,
+                model_version=rep.model_version,
+                task_type=rep.task_type or task_type,
+                dataset_id=dataset_id or None,
+                frozen_at=dataset.frozen_at if dataset else None,
+                subset=subset,
+                split_counts=SplitCounts(
+                    train=dataset.train_count if dataset else rep.train_items,
+                    val=dataset.val_count if dataset else rep.val_items,
+                    test=dataset.test_count if dataset else None,
+                ),
+                has_metrics=has_metrics,
+                metrics_state="computed" if has_metrics else "not_computed",
+                metrics=merged,
+                run_id=rep.run_id,
+                run_key=rep.run_key,
+                started_at=rep.started_at,
+                finished_at=rep.finished_at,
+                duration_s=rep.duration_s,
+                status=rep.status,
+                tags=rep.tags,
+            )
+        )
+    return model_rows
+
+
+def _merge_candidates(
+    model_rows: list[MetricsModelRow],
+    candidates: list[MetricsCandidateRow],
+    datasets_by_id: dict[str, FrozenDatasetRow],
+    pipeline_id: str,
+) -> list[MetricsModelRow]:
+    existing = {(r.model_id, r.dataset_id or "", r.subset) for r in model_rows}
+    for candidate in candidates:
+        key = (candidate.model_id, candidate.dataset_id, candidate.subset)
+        if key in existing:
+            continue
+        dataset = datasets_by_id.get(candidate.dataset_id)
+        model_rows.append(
+            MetricsModelRow(
+                id=candidate.id,
+                pipeline_id=pipeline_id,
+                model_id=candidate.model_id,
+                model_display_name=candidate.model_id,
+                model_source=candidate.model_source,
+                task_type=candidate.task_type,
+                dataset_id=candidate.dataset_id,
+                frozen_at=dataset.frozen_at if dataset else None,
+                subset=candidate.subset,
+                split_counts=SplitCounts(
+                    train=dataset.train_count if dataset else None,
+                    val=dataset.val_count if dataset else None,
+                    test=dataset.test_count if dataset else None,
+                ),
+                has_metrics=False,
+                metrics_state=candidate.metrics_state,
+                metrics={},
+            )
+        )
+    return model_rows
+
+
+def _filter_model_rows(
+    rows: list[MetricsModelRow],
+    *,
+    subset: Optional[str] = None,
+    model_id: Optional[str] = None,
+    search: Optional[str] = None,
+    task_type: Optional[str] = None,
+) -> list[MetricsModelRow]:
+    result = rows
+    if subset:
+        result = [r for r in result if r.subset == subset]
+    model_ids = _parse_model_ids(model_id)
+    if model_ids:
+        allowed = set(model_ids)
+        result = [r for r in result if r.model_id in allowed]
+    if task_type and task_type != "auto":
+        result = [r for r in result if (r.task_type or "").lower() == task_type.lower()]
+    if search:
+        q = search.lower()
+        result = [
+            r
+            for r in result
+            if q in r.model_id.lower()
+            or q in (r.dataset_id or "").lower()
+            or q in r.subset.lower()
+            or any(q in tag.lower() for tag in r.tags)
+        ]
+    return result
+
+
+def _sort_model_rows(rows: list[MetricsModelRow], sort_by: Optional[str], sort_dir: str) -> list[MetricsModelRow]:
+    if not sort_by:
+        return rows
+    reverse = sort_dir != "asc"
+    is_metric = any(sort_by in r.metrics for r in rows)
+
+    def key_fn(row: MetricsModelRow) -> Any:
+        if is_metric:
+            val = row.metrics.get(sort_by)
+            if val is None:
+                return (1, 0.0)
+            return (0, -float(val) if reverse else float(val))
+        attr = getattr(row, sort_by, None)
+        if attr is None:
+            return (1, ())
+        if isinstance(attr, (int, float)):
+            return (0, -float(attr) if reverse else float(attr))
+        text = str(attr)
+        return (0, tuple(-ord(c) for c in text) if reverse else tuple(ord(c) for c in text))
+
+    return sorted(rows, key=key_fn)
+
+
 CLASS_STRING_SORT_FIELDS = {"label", "class_id"}
 
 
@@ -428,6 +611,7 @@ class MetricsService:
         subset: Optional[str] = None,
         model_id: Optional[str] = None,
         search: Optional[str] = None,
+        task_type: Optional[str] = None,
         from_dt: Optional[datetime] = None,
         to_dt: Optional[datetime] = None,
         sort_by: Optional[str] = None,
@@ -435,19 +619,81 @@ class MetricsService:
         limit: int = 25,
         offset: int = 0,
     ) -> MetricsRunsResponse:
-        runs, _ = self._all_runs(pipeline_id)
+        runs, discovered_task_type = self._all_runs(pipeline_id)
         runs = _filter_runs(runs, subset=subset, model_id=model_id, search=search, from_dt=from_dt, to_dt=to_dt)
-        runs = _sort_runs(runs, sort_by or "started_at", sort_dir)
-        total = len(runs)
-        page = runs[offset : offset + limit]
-        subsets = sorted({r.subset for r in runs if r.subset})
-        models = sorted({r.model_id for r in runs if r.model_id})
-        metric_keys = sorted({k for r in runs for k in r.metrics})
+        datasets_by_id, _ = self._dataset_context()
+        model_rows = runs_to_model_rows(
+            runs,
+            datasets_by_id=datasets_by_id,
+            task_type=discovered_task_type,
+            pipeline_id=pipeline_id,
+        )
+        model_rows = _merge_candidates(
+            model_rows,
+            _CANDIDATES.get(pipeline_id, []),
+            datasets_by_id,
+            pipeline_id,
+        )
+        model_rows = _filter_model_rows(
+            model_rows,
+            subset=subset,
+            model_id=model_id,
+            search=search,
+            task_type=task_type,
+        )
+        model_rows = _sort_model_rows(model_rows, sort_by or "model_id", sort_dir)
+        total = len(model_rows)
+        page = model_rows[offset : offset + limit]
+        subsets = sorted({r.subset for r in model_rows if r.subset})
+        models = sorted({r.model_id for r in model_rows if r.model_id})
+        metric_keys = sorted({k for r in model_rows for k in r.metrics})
+        schema = build_metric_schema(
+            discovered_task_type,
+            metric_keys,
+            primary_metric=primary_metric_for_task(discovered_task_type),
+        )
         return MetricsRunsResponse(
             rows=page,
             total=total,
             available_filters={"subsets": subsets, "models": models, "tags": [], "metrics": metric_keys},
+            table_schema=schema,
         )
+
+    def get_schema(self, pipeline_id: str, *, task_type: Optional[str] = None) -> MetricsTableSchema:
+        runs, discovered_task_type = self._all_runs(pipeline_id)
+        metric_keys = sorted({k for r in runs for k in r.metrics})
+        tt = task_type or discovered_task_type
+        return build_metric_schema(tt, metric_keys, primary_metric=primary_metric_for_task(tt))
+
+    def list_candidates(self, pipeline_id: str) -> MetricsCandidatesResponse:
+        rows = list(_CANDIDATES.get(pipeline_id, []))
+        return MetricsCandidatesResponse(rows=rows, total=len(rows))
+
+    def add_candidate(self, pipeline_id: str, body: MetricsCandidateCreate) -> MetricsCandidateRow:
+        candidate_id = hashlib.md5(
+            f"{body.model_id}|{body.dataset_id}|{body.subset}|{len(_CANDIDATES.get(pipeline_id, []))}".encode()
+        ).hexdigest()[:16]
+        row = MetricsCandidateRow(
+            id=candidate_id,
+            pipeline_id=pipeline_id,
+            model_id=body.model_id,
+            model_source=body.model_source,
+            artifact_uri=body.artifact_uri,
+            dataset_id=body.dataset_id,
+            subset=body.subset,
+            task_type=body.task_type,
+            metrics_state="not_computed",
+        )
+        _CANDIDATES.setdefault(pipeline_id, []).append(row)
+        return row
+
+    def delete_candidate(self, pipeline_id: str, candidate_id: str) -> bool:
+        rows = _CANDIDATES.get(pipeline_id, [])
+        kept = [r for r in rows if r.id != candidate_id]
+        if len(kept) == len(rows):
+            return False
+        _CANDIDATES[pipeline_id] = kept
+        return True
 
     def summary(
         self,

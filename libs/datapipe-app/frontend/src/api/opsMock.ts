@@ -2,8 +2,11 @@ import type {
     ClassMetricDetailResponse,
     ClassMetricsResponse,
     FrozenDatasetsResponse,
+    MetricsModelRow,
+    MetricsRunRow,
     MetricsRunsResponse,
     MetricsSummaryResponse,
+    MetricsTableSchema,
     MetricsTimeseriesResponse,
     RunsListParams,
     RunsListResponse,
@@ -27,9 +30,9 @@ function seededRandom(seed: number) {
     };
 }
 
-function makeRuns(): MetricsRunsResponse["rows"] {
+function makeLegacyRuns(): MetricsRunRow[] {
     const rand = seededRandom(42);
-    const rows: MetricsRunsResponse["rows"] = [];
+    const rows: MetricsRunRow[] = [];
     for (let i = 0; i < 42; i++) {
         const day = new Date();
         day.setDate(day.getDate() - Math.floor(rand() * 30));
@@ -52,6 +55,12 @@ function makeRuns(): MetricsRunsResponse["rows"] {
                 recall,
                 f1_score: 0.79 + rand() * 0.06,
                 iou_mean: 0.68 + rand() * 0.08,
+                weighted_f1_score: 0.79 + rand() * 0.06,
+                weighted_precision: 0.8 + rand() * 0.08,
+                weighted_recall: recall,
+                macro_f1_score: 0.72 + rand() * 0.06,
+                macro_precision: 0.7 + rand() * 0.08,
+                macro_recall: 0.75 + rand() * 0.08,
                 images_support: 15000 + Math.floor(rand() * 5000),
                 support: 8000 + Math.floor(rand() * 3000),
             },
@@ -61,6 +70,79 @@ function makeRuns(): MetricsRunsResponse["rows"] {
     }
     return rows.sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
 }
+
+function toModelRows(runs: MetricsRunRow[]): MetricsModelRow[] {
+    const byKey = new Map<string, MetricsModelRow>();
+    for (const run of runs) {
+        const datasetId = run.dataset_id ?? "";
+        const key = `${run.model_id}|${datasetId}|${run.subset}`;
+        const existing = byKey.get(key);
+        const frozen = MOCK_FROZEN_DATASETS.find((d) => d.dataset_id === datasetId);
+        const mergedMetrics = { ...(existing?.metrics ?? {}), ...run.metrics };
+        byKey.set(key, {
+            id: key.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16) || run.run_id,
+            pipeline_id: run.pipeline_id,
+            model_id: run.model_id,
+            model_display_name: run.model_id,
+            model_version: run.model_version,
+            task_type: run.task_type,
+            dataset_id: run.dataset_id,
+            frozen_at: frozen?.frozen_at,
+            subset: run.subset,
+            split_counts: {
+                train: frozen?.train_count ?? run.train_items,
+                val: frozen?.val_count ?? run.val_items,
+                test: frozen?.test_count,
+            },
+            has_metrics: Object.values(mergedMetrics).some((v) => v != null),
+            metrics_state: "computed",
+            metrics: mergedMetrics,
+            run_id: run.run_id,
+            started_at: run.started_at,
+            duration_s: run.duration_s,
+            status: run.status,
+            tags: run.tags,
+        });
+    }
+    return Array.from(byKey.values());
+}
+
+const MOCK_SCHEMA: MetricsTableSchema = {
+    task_type: "detection",
+    primary_metric: "mAP50_95",
+    groups: [
+        {
+            key: "core",
+            label: "Core",
+            priority: 1,
+            metrics: [
+                { key: "mAP50_95", label: "mAP50-95", short_label: "mAP", group: "core", task_types: ["detection"], format: "float", higher_is_better: true, visible_by_default: true, primary: true },
+                { key: "mAP50", label: "mAP50", short_label: "mAP50", group: "core", task_types: ["detection"], format: "float", higher_is_better: true, visible_by_default: true },
+                { key: "support", label: "Support", short_label: "Sup", group: "core", task_types: ["*"], format: "integer", higher_is_better: true, visible_by_default: true },
+            ],
+        },
+        {
+            key: "weighted",
+            label: "Weighted",
+            priority: 2,
+            metrics: [
+                { key: "weighted_f1_score", label: "F1", short_label: "F1", group: "weighted", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+                { key: "weighted_precision", label: "Precision", short_label: "P", group: "weighted", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+                { key: "weighted_recall", label: "Recall", short_label: "R", group: "weighted", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+            ],
+        },
+        {
+            key: "macro",
+            label: "Macro",
+            priority: 3,
+            metrics: [
+                { key: "macro_f1_score", label: "F1", short_label: "F1", group: "macro", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+                { key: "macro_precision", label: "Precision", short_label: "P", group: "macro", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+                { key: "macro_recall", label: "Recall", short_label: "R", group: "macro", task_types: ["*"], format: "float", higher_is_better: true, visible_by_default: true },
+            ],
+        },
+    ],
+};
 
 const MOCK_FROZEN_DATASETS: FrozenDatasetsResponse["rows"] = [
     {
@@ -79,12 +161,34 @@ const MOCK_FROZEN_DATASETS: FrozenDatasetsResponse["rows"] = [
     },
 ];
 
-const MOCK_RUNS = makeRuns().map((row, i) => ({
+const MOCK_LEGACY_RUNS = makeLegacyRuns().map((row, i) => ({
     ...row,
     dataset_id: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].dataset_id,
     train_items: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].train_count,
     val_items: MOCK_FROZEN_DATASETS[i % MOCK_FROZEN_DATASETS.length].val_count,
 }));
+
+const MOCK_MODEL_ROWS: MetricsModelRow[] = [
+    ...toModelRows(MOCK_LEGACY_RUNS),
+    {
+        id: "pending-new-yolo",
+        pipeline_id: PIPELINE,
+        model_id: "new_yolo_model",
+        model_source: "manual",
+        task_type: "detection",
+        dataset_id: MOCK_FROZEN_DATASETS[0].dataset_id,
+        frozen_at: MOCK_FROZEN_DATASETS[0].frozen_at,
+        subset: "val",
+        split_counts: {
+            train: MOCK_FROZEN_DATASETS[0].train_count,
+            val: MOCK_FROZEN_DATASETS[0].val_count,
+            test: MOCK_FROZEN_DATASETS[0].test_count,
+        },
+        has_metrics: false,
+        metrics_state: "not_computed",
+        metrics: {},
+    },
+];
 
 const MOCK_PIPELINE_RUNS: RunListRow[] = [
     { run_id: "99d91102-a1b2", pipeline_id: PIPELINE, status: "completed", scope: "stage_run", target_label: "count-metrics", started_at: new Date(Date.now() - 2 * 60_000).toISOString(), duration_s: 120, trigger: "api:stage:count-metrics" },
@@ -144,21 +248,26 @@ export const opsMock = {
         const offset = params?.offset ?? 0;
         const limit = params?.limit ?? 25;
         return {
-            rows: MOCK_RUNS.slice(offset, offset + limit),
-            total: MOCK_RUNS.length,
+            rows: MOCK_MODEL_ROWS.slice(offset, offset + limit),
+            total: MOCK_MODEL_ROWS.length,
             available_filters: {
                 subsets: SUBSETS,
                 models: MODELS,
                 tags: ["baseline", "exp"],
                 metrics: ["mAP50", "mAP50_95", "precision", "recall", "f1_score", "iou_mean"],
             },
+            schema: MOCK_SCHEMA,
         };
     },
 
+    getMetricsSchema(): MetricsTableSchema {
+        return MOCK_SCHEMA;
+    },
+
     getMetricsSummary(pipelineId: string): MetricsSummaryResponse {
-        const best = [...MOCK_RUNS].sort((a, b) => (b.metrics.mAP50_95 ?? 0) - (a.metrics.mAP50_95 ?? 0))[0];
-        const latest = MOCK_RUNS[0];
-        const previous = MOCK_RUNS[1];
+        const best = [...MOCK_LEGACY_RUNS].sort((a, b) => (b.metrics.mAP50_95 ?? 0) - (a.metrics.mAP50_95 ?? 0))[0];
+        const latest = MOCK_LEGACY_RUNS[0];
+        const previous = MOCK_LEGACY_RUNS[1];
         return {
             pipeline_id: pipelineId,
             primary_metric: "mAP50_95",
@@ -167,8 +276,8 @@ export const opsMock = {
             previous_run: previous,
             has_metrics: true,
             kpis: [
-                { key: "mAP50", label: "mAP50", value: latest.metrics.mAP50, delta_pct: latest.delta_pct?.mAP50, format: "float", higher_is_better: true, trend: MOCK_RUNS.slice(0, 10).reverse().map((r) => ({ x: r.run_id, y: r.metrics.mAP50 })) },
-                { key: "mAP50_95", label: "mAP50-95", value: latest.metrics.mAP50_95, delta_pct: 3.6, format: "float", higher_is_better: true, trend: MOCK_RUNS.slice(0, 10).reverse().map((r) => ({ x: r.run_id, y: r.metrics.mAP50_95 })) },
+                { key: "mAP50", label: "mAP50", value: latest.metrics.mAP50, delta_pct: latest.delta_pct?.mAP50, format: "float", higher_is_better: true, trend: MOCK_LEGACY_RUNS.slice(0, 10).reverse().map((r) => ({ x: r.run_id, y: r.metrics.mAP50 })) },
+                { key: "mAP50_95", label: "mAP50-95", value: latest.metrics.mAP50_95, delta_pct: 3.6, format: "float", higher_is_better: true, trend: MOCK_LEGACY_RUNS.slice(0, 10).reverse().map((r) => ({ x: r.run_id, y: r.metrics.mAP50_95 })) },
                 { key: "precision", label: "Precision", value: latest.metrics.precision, delta_pct: 2.5, format: "float", higher_is_better: true },
                 { key: "recall", label: "Recall", value: latest.metrics.recall, delta_pct: -1.0, format: "float", higher_is_better: true },
                 { key: "f1_score", label: "F1 Score", value: latest.metrics.f1_score, delta_pct: 1.2, format: "float", higher_is_better: true },
@@ -186,8 +295,8 @@ export const opsMock = {
     getMetricsTimeseries(): MetricsTimeseriesResponse {
         return {
             series: [
-                { key: "mAP50-test", label: "mAP50 (test)", metric: "mAP50", subset: "test", points: MOCK_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.mAP50, run_id: r.run_id })) },
-                { key: "f1-test", label: "F1 (test)", metric: "f1_score", subset: "test", points: MOCK_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.f1_score, run_id: r.run_id })) },
+                { key: "mAP50-test", label: "mAP50 (test)", metric: "mAP50", subset: "test", points: MOCK_LEGACY_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.mAP50, run_id: r.run_id })) },
+                { key: "f1-test", label: "F1 (test)", metric: "f1_score", subset: "test", points: MOCK_LEGACY_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.f1_score, run_id: r.run_id })) },
             ],
         };
     },
@@ -232,7 +341,7 @@ export const opsMock = {
             class_id: latest.class_id,
             latest,
             previous: { ...latest, f1_score: (latest.f1_score ?? 0) - 0.03 },
-            trends: [{ metric: "f1_score", points: MOCK_RUNS.slice(0, 8).reverse().map((r) => ({ x: r.run_id, y: (latest.f1_score ?? 0.8) + (Math.random() - 0.5) * 0.05, run_id: r.run_id })) }],
+            trends: [{ metric: "f1_score", points: MOCK_LEGACY_RUNS.slice(0, 8).reverse().map((r) => ({ x: r.run_id, y: (latest.f1_score ?? 0.8) + (Math.random() - 0.5) * 0.05, run_id: r.run_id })) }],
             error_breakdown: { false_negatives: latest.FN, false_positives: latest.FP, localization_errors: 12, confusions: 8 },
             confusion_top: [{ actual_label: label, predicted_label: "dog", count: 5 }],
         };
@@ -304,7 +413,7 @@ export const opsMock = {
     runSqlQuery(): SqlQueryResponse {
         return {
             columns: [{ name: "run_id" }, { name: "model_id" }, { name: "subset" }, { name: "run_date" }, { name: "mAP50" }, { name: "precision" }, { name: "recall" }, { name: "f1" }],
-            rows: MOCK_RUNS.slice(0, 25).map((r) => ({
+            rows: MOCK_LEGACY_RUNS.slice(0, 25).map((r) => ({
                 run_id: r.run_id,
                 model_id: r.model_id,
                 subset: r.subset,

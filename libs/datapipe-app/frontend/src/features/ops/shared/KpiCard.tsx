@@ -41,7 +41,9 @@ export function KpiCard({
                     ) : (
                         <MetricValue value={value} format={format} />
                     )}
-                    <TrendDelta delta={delta} deltaPct={deltaPct} higherIsBetter={higherIsBetter} />
+                    {(delta != null || deltaPct != null) && (
+                        <TrendDelta delta={delta} deltaPct={deltaPct} higherIsBetter={higherIsBetter} />
+                    )}
                 </div>
                 {subtitle && <div className="ops-kpi-subtitle">{subtitle}</div>}
                 {trend && trend.length > 0 && <Sparkline data={trend} />}
