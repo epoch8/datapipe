@@ -220,7 +220,7 @@ def set_label_studio_current_model_version(
     return _set_current_model_version_row(client, project_id, model_version)
 
 
-def set_label_studio_current_model_version_for_projects(
+def set_ls_current_model_version_projects(
     df__label_studio_project: pd.DataFrame,
     df__best_model: pd.DataFrame,
     idx: IndexDF,
@@ -578,7 +578,7 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
                 ),
                 BatchTransform(
                     labels=self.labels,
-                    func=set_label_studio_current_model_version_for_projects,
+                    func=set_ls_current_model_version_projects,
                     inputs=[self.input__label_studio_project, self.input__best_model],
                     outputs=[self.output__label_studio_current_model_version],
                     chunk_size=1,
