@@ -100,7 +100,7 @@ class CasesLabelStudio:
                         name="ls_input_data__has__prediction",
                         data_sql_schema=[
                             Column("id", String(), primary_key=True),
-                            Column("model_version", String()),
+                            Column("model_version", String(), primary_key=True),
                             Column("prediction", JSON),
                         ],
                         create_table=True,

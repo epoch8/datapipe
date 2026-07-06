@@ -211,12 +211,25 @@ def _assert_prelabeling_enabled(pipeline_name: str, app) -> None:
     assert project_settings.get("model_version") == expected_model_version
 
 
-def _frozen_dataset_table_name(pipeline_name: str) -> str:
-    return f"{pipeline_name}_frozen_dataset"
+def _training_blocked_tables(pipeline_name: str) -> tuple[str, str, str]:
+    if pipeline_name == "detection":
+        return (
+            "detection_frozen_dataset",
+            "detection_model_is_trained_on_detection_frozen_dataset",
+            "detection_training_status",
+        )
+    return (
+        "keypoints_frozen_dataset",
+        "keypoints_model_is_trained_on_keypoints_frozen_dataset",
+        "keypoints_training_status",
+    )
 
 
-def _trained_model_table_name(pipeline_name: str) -> str:
-    return f"{pipeline_name}_model_train"
+def _assert_training_still_blocked(pipeline_name: str, app) -> None:
+    frozen_dataset_table, trained_on_table, training_status_table = _training_blocked_tables(pipeline_name)
+    assert app.ds.get_table(frozen_dataset_table).get_data().empty
+    assert app.ds.get_table(trained_on_table).get_data().empty
+    assert app.ds.get_table(training_status_table).get_data().empty
 
 
 def _freeze_min_delta(pipeline_name: str, app) -> int:
@@ -277,14 +290,11 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     _ensure_sample_images_seeded()
 
     app = run_template_stage(pipeline_name, "annotation")
-    frozen_dataset_table = _frozen_dataset_table_name(pipeline_name)
-    trained_model_table = _trained_model_table_name(pipeline_name)
     freeze_min_delta = _freeze_min_delta(pipeline_name, app)
 
-    with pytest.raises(ValueError, match=r"Not enough changed idx for freezing \(0 < \d+\)"):
-        run_template_stage(pipeline_name, "train-prepare")
-    assert app.ds.get_table(frozen_dataset_table).get_data().empty
-    assert app.ds.get_table(trained_model_table).get_data().empty
+    # Freeze step logs and swallows ValueError when min_delta is not met.
+    app = run_template_stage(pipeline_name, "train-prepare")
+    _assert_training_still_blocked(pipeline_name, app)
 
     _annotate_uploaded_tasks(pipeline_name, app)
     app = run_template_stage(pipeline_name, "annotation")
@@ -292,13 +302,8 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     synced_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
     assert synced_annotations_count < freeze_min_delta
 
-    with pytest.raises(
-        ValueError,
-        match=rf"Not enough changed idx for freezing \({synced_annotations_count} < {freeze_min_delta}\)",
-    ):
-        run_template_stage(pipeline_name, "train-prepare")
-    assert app.ds.get_table(frozen_dataset_table).get_data().empty
-    assert app.ds.get_table(trained_model_table).get_data().empty
+    app = run_template_stage(pipeline_name, "train-prepare")
+    _assert_training_still_blocked(pipeline_name, app)
 
 
 def test_keypoints_template_annotation_stage():

@@ -132,8 +132,8 @@ class CasesLabelStudio:
                         data_sql_schema=[
                             Column("project_identifier", String(), primary_key=True),
                             Column("id", String(), primary_key=True),
+                            Column("model_version", String(), primary_key=True),
                             Column("prediction", JSON),
-                            Column("model_version", String()),
                         ],
                         create_table=True,
                     )

@@ -38,7 +38,7 @@ def dbconn():
 
         try:
             with eng.begin() as conn:
-                conn.execute(text(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE"))
+                conn.execute(text(f'DROP SCHEMA IF EXISTS "{DB_TEST_SCHEMA}" CASCADE'))
         except Exception:
             pass
 
@@ -48,7 +48,7 @@ def dbconn():
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
 
         with eng.begin() as conn:
-            conn.execute(text(f"DROP SCHEMA {DB_TEST_SCHEMA} CASCADE"))
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{DB_TEST_SCHEMA}" CASCADE'))
 
     else:
         yield DBConn(DBCONNSTR, DB_TEST_SCHEMA)
