@@ -15,13 +15,21 @@ batch**, retrain, and watch the metric on that tag rise in a `tag_metrics` table
 **First, ask: demo (test) or real data?** — the whole flow branches on this.
 
 - **Demo / test** → run it unattended on the built-in COCO cat/dog data. Do it in this order and
-  *narrate each step*:
-  1. deploy (services + `uv sync` + `db create-all`), load the **base** batch, run `stage=train`;
+  *narrate each step*. The arc is deliberately **problem → fix**: first make the baseline's weakness
+  on the tag *visible*, then close it by retraining.
+  1. deploy (services + `uv sync` + `db create-all`), load the **base** batch, run `stage=train`
+     → model A;
   2. **show the metrics** (`detection_model_train__metrics_on_subset`) for the baseline model;
   3. say: *"there's a `night` low-light tagged scenario — want to add it and retrain, or stop here?"*
-  4. if yes → load the **night** batch (`--tag night --darken 0.25`), run `stage=train` again;
-  5. after the run, **show the metrics again** — both `metrics_on_subset` and **`tag_metrics`** (the
-     `night/val` recall for the baseline vs the retrained model).
+  4. if yes → load the **night** batch (`--tag night --darken 0.25`);
+  5. **before retraining, measure the baseline on the tag** — run the metric stages on model A over
+     the new night data *without* training: `stage=train-prepare` (split) → `stage=inference` →
+     `stage=count-metrics` → `stage=tag-metrics`. **Show `tag_metrics`**: `night/val` recall is **low**
+     — say plainly *"the baseline barely sees in the dark — that's the problem we'll fix"*
+     (this works because inference/metrics/tag_metrics depend only on the *existing* model, not on training);
+  6. **now fix it** → run `stage=train` again → model B (night is now in training);
+  7. **show the metrics again** — both `metrics_on_subset` and **`tag_metrics`**: the `night/val` recall
+     rises from the baseline (A) to the retrained model (B). That rise is the payoff.
 
 - **Real data** → don't guess; gather everything up front and fill it in explicitly:
   - **images + ground truth**: where are the images, and where do the boxes/labels come from —
@@ -78,8 +86,17 @@ so the aggregation is correct).
 
 ## Two-model demo (baseline vs retrained)
 1. Load batch 1 → `datapipe step --labels=stage=train run` → model A (no tag in training).
-2. Load batch 2 (`--tag night --darken 0.25`) → `datapipe step --labels=stage=train run` → model B.
-3. Read `tag_metrics`: `night/val` ≈ low for A, higher for B.
+2. Load batch 2 (`--tag night --darken 0.25`). **Before retraining**, measure the baseline on the
+   tag *without training* — run only the metric stages on model A over the new data:
+   `stage=train-prepare` → `stage=inference` → `stage=count-metrics` → `stage=tag-metrics`, then read
+   `tag_metrics`: `night/val` is **low** (A never trained on night). This is the "problem" the demo surfaces.
+3. Retrain → `datapipe step --labels=stage=train run` → model B (night now in training).
+4. Read `tag_metrics` again: `night/val` recall rises from A to B — the tagged batch in training fixed it.
+
+> `tag_metrics` cannot be computed straight after `inference`: it aggregates from
+> `metrics_on_image`, which the `count-metrics` stage produces — so `inference → count-metrics →
+> tag-metrics`, in that order. The `night/val` set is small, so treat the rise as **directional**;
+> enlarge the night batch (or hold night out as a fixed val set) for a more dramatic gap.
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **`SIGILL` / `Illegal instruction` in the training subprocess** → `polars` built for a CPU newer
