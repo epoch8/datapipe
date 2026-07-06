@@ -389,6 +389,86 @@ class ObservabilityStore:
                 .limit(1)
             ).first()
 
+    def list_runs(
+        self,
+        *,
+        pipeline_id: Optional[str] = None,
+        status: Optional[str] = None,
+        stage: Optional[str] = None,
+        trigger: Optional[str] = None,
+        search: Optional[str] = None,
+        from_dt: Optional[datetime] = None,
+        to_dt: Optional[datetime] = None,
+        sort_by: str = "started_at",
+        sort_dir: str = "desc",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[PipelineRunRow], int, dict[str, list[str]], dict[str, int]]:
+        with self.session() as session:
+            query = select(PipelineRunRow)
+            if pipeline_id:
+                query = query.where(PipelineRunRow.pipeline_id == pipeline_id)
+            if status:
+                query = query.where(PipelineRunRow.status == status)
+            if trigger:
+                query = query.where(PipelineRunRow.trigger == trigger)
+            if stage:
+                if stage == "all labels":
+                    query = query.where(PipelineRunRow.trigger == "api:pipeline")
+                else:
+                    query = query.where(PipelineRunRow.trigger == f"api:stage:{stage}")
+            if search:
+                query = query.where(PipelineRunRow.run_id.contains(search))
+            if from_dt:
+                query = query.where(PipelineRunRow.started_at >= from_dt)
+            if to_dt:
+                query = query.where(PipelineRunRow.started_at <= to_dt)
+
+            rows = list(session.scalars(query).all())
+
+            filter_query = select(PipelineRunRow)
+            if pipeline_id:
+                filter_query = filter_query.where(PipelineRunRow.pipeline_id == pipeline_id)
+            all_for_filters = list(session.scalars(filter_query).all())
+
+        statuses = sorted({r.status for r in all_for_filters})
+        triggers = sorted({r.trigger for r in all_for_filters if r.trigger})
+        stages: set[str] = set()
+        for row in all_for_filters:
+            if row.trigger and row.trigger.startswith("api:stage:"):
+                stages.add(row.trigger[len("api:stage:") :])
+            elif row.trigger == "api:pipeline":
+                stages.add("all labels")
+
+        counts_by_status: dict[str, int] = {}
+        for row in all_for_filters:
+            counts_by_status[row.status] = counts_by_status.get(row.status, 0) + 1
+
+        reverse = sort_dir != "asc"
+
+        def _duration(row: PipelineRunRow) -> float:
+            if row.started_at and row.finished_at:
+                return (row.finished_at - row.started_at).total_seconds()
+            return -1.0
+
+        if sort_by == "duration":
+            rows.sort(key=_duration, reverse=reverse)
+        elif sort_by == "status":
+            rows.sort(key=lambda row: row.status, reverse=reverse)
+        elif sort_by == "stage":
+            rows.sort(key=lambda row: row.trigger or "", reverse=reverse)
+        else:
+            rows.sort(key=lambda row: row.started_at, reverse=reverse)
+
+        total = len(rows)
+        page = rows[offset : offset + limit]
+        filters = {
+            "statuses": statuses,
+            "stages": sorted(stages),
+            "triggers": triggers,
+        }
+        return page, total, filters, counts_by_status
+
     def list_recent_runs(self, pipeline_id: str, limit: int = 10) -> list[PipelineRunRow]:
         with self.session() as session:
             return list(

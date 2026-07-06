@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import importlib.metadata
+from datetime import datetime
 from typing import Any, List, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.types import Labels
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, Field
 
@@ -432,6 +433,61 @@ def make_app(
             "model_id": latest.model_id,
             "subset_id": latest.subset_id,
             "computed_at": latest.computed_at.isoformat() if latest.computed_at else None,
+        }
+
+    def _serialize_run_list_row(run: Any) -> dict[str, Any]:
+        labels = labels_from_json(getattr(run, "labels_json", None))
+        scope = derive_run_scope(labels=labels, trigger=run.trigger)
+        duration_s: int | None = None
+        if run.started_at and run.finished_at:
+            duration_s = int((run.finished_at - run.started_at).total_seconds())
+        return {
+            "run_id": run.run_id,
+            "pipeline_id": run.pipeline_id,
+            "status": run.status,
+            "scope": scope["run_scope"],
+            "target_label": scope.get("target_label_display"),
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "duration_s": duration_s,
+            "trigger": run.trigger,
+        }
+
+    @app.get("/runs")
+    def list_runs(
+        pipeline_id: Optional[str] = None,
+        status: Optional[str] = None,
+        stage: Optional[str] = None,
+        trigger: Optional[str] = None,
+        search: Optional[str] = None,
+        from_: Optional[str] = Query(None, alias="from"),
+        to: Optional[str] = None,
+        limit: int = 25,
+        offset: int = 0,
+        sort_by: str = "started_at",
+        sort_dir: Literal["asc", "desc"] = "desc",
+    ) -> dict[str, Any]:
+        pid = pipeline_id or _pipeline_id()
+        from_parsed = datetime.fromisoformat(from_) if from_ else None
+        to_parsed = datetime.fromisoformat(to) if to else None
+        rows, total, filters, counts_by_status = store.list_runs(
+            pipeline_id=pid,
+            status=status,
+            stage=stage,
+            trigger=trigger,
+            search=search,
+            from_dt=from_parsed,
+            to_dt=to_parsed,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=min(limit, 200),
+            offset=offset,
+        )
+        return {
+            "rows": [_serialize_run_list_row(r) for r in rows],
+            "total": total,
+            "filters": filters,
+            "counts_by_status": counts_by_status,
         }
 
     @app.get("/runs/{run_id}")

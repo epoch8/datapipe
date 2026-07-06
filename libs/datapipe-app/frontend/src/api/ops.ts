@@ -14,6 +14,8 @@ import type {
     ResetTransformMetadataResponse,
     RunDetail,
     RunLogsResponse,
+    RunsListParams,
+    RunsListResponse,
     SettingsInfo,
     SqlQueryRequest,
     SqlQueryResponse,
@@ -109,6 +111,12 @@ export const opsApi = {
         }
     },
     getRun: (id: string) => fetchJson<RunDetail>(`/runs/${id}`),
+    getRuns: (params: RunsListParams = {}) =>
+        fetchWithMock<RunsListResponse>(
+            `/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+            undefined,
+            () => opsMock.getRuns(params),
+        ),
     getRunLogs: (runId: string, after = 0, limit = 500) =>
         fetchJson<RunLogsResponse>(`/runs/${runId}/logs?after=${after}&limit=${limit}`),
     getMetricsCharts: (pipelineId: string, modelId?: string) => {

@@ -7,6 +7,7 @@ import {
     DatabaseOutlined,
     ExperimentOutlined,
     FolderOutlined,
+    HistoryOutlined,
     QuestionCircleOutlined,
     SettingOutlined,
     TableOutlined,
@@ -31,7 +32,10 @@ type NavItem = {
 
 function matchNav(pathname: string, href: string): boolean {
     const hrefPath = href.split("?")[0] ?? href;
-    if (hrefPath === "/") return pathname === "/" || pathname.startsWith("/pipelines/");
+    if (hrefPath === "/runs") return pathname === "/runs" || pathname.startsWith("/runs/");
+    if (hrefPath === "/") {
+        return pathname === "/" || (pathname.startsWith("/pipelines/") && !pathname.includes("/metrics") && !pathname.includes("/classes") && !pathname.includes("/training"));
+    }
     if (hrefPath === "/graph") return pathname.startsWith("/graph");
     return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
@@ -76,6 +80,7 @@ export function OpsShell() {
 
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
+        { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
         { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
         { key: "/classes", href: "/classes", label: "Classes", icon: <TableOutlined /> },
         { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },

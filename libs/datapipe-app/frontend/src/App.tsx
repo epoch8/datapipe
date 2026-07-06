@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { OpsShell } from "./layouts/OpsShell";
 import { Overview } from "./features/ops/Overview";
+import { RunsPage } from "./features/ops/runs/RunsPage";
 import { PipelineDetail } from "./features/ops/PipelineDetail";
 import { RunDetail } from "./features/ops/RunDetail";
 import { TrainingDetail } from "./features/ops/TrainingDetail";
@@ -34,6 +35,8 @@ function App() {
             <Routes>
                 <Route element={<OpsShell />}>
                     <Route path="/" element={<Overview />} />
+                    <Route path="/runs" element={<RunsPage />} />
+                    <Route path="/runs/:runId" element={<RunDetail />} />
                     <Route path="/metrics" element={<MetricsOverviewPage />} />
                     <Route path="/pipelines/:id/metrics" element={<MetricsOverviewPage />} />
                     <Route path="/classes" element={<ClassMetricsPage />} />
@@ -51,7 +54,6 @@ function App() {
                     <Route path="/pipelines/:id/meta-steps/:stepName" element={<MetaStepDetail />} />
                     <Route path="/training/:runKey" element={<TrainingDetail />} />
                     <Route path="/training/compare" element={<TrainingCompare />} />
-                    <Route path="/runs/:runId" element={<RunDetail />} />
                     {/* Legacy wrappers */}
                     <Route path="/metrics-legacy" element={<Metrics />} />
                     <Route path="/training-legacy/:id" element={<TrainingRuns />} />

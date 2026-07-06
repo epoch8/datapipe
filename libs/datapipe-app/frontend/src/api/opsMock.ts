@@ -4,6 +4,9 @@ import type {
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTimeseriesResponse,
+    RunsListParams,
+    RunsListResponse,
+    RunListRow,
     SqlQueryResponse,
     SqlSchemaResponse,
     TrainingCompareResponse,
@@ -60,7 +63,56 @@ function makeRuns(): MetricsRunsResponse["rows"] {
 
 const MOCK_RUNS = makeRuns();
 
+const MOCK_PIPELINE_RUNS: RunListRow[] = [
+    { run_id: "99d91102-a1b2", pipeline_id: PIPELINE, status: "completed", scope: "stage_run", target_label: "count-metrics", started_at: new Date(Date.now() - 2 * 60_000).toISOString(), duration_s: 120, trigger: "api:stage:count-metrics" },
+    { run_id: "33e2e1ef-c3d4", pipeline_id: PIPELINE, status: "completed", scope: "stage_run", target_label: "train", started_at: new Date(Date.now() - 28 * 60_000).toISOString(), duration_s: 1680, trigger: "api:stage:train" },
+    { run_id: "aa00b7f8-e5f6", pipeline_id: PIPELINE, status: "running", scope: "stage_run", target_label: "train", started_at: new Date(Date.now() - 60 * 60_000).toISOString(), trigger: "api:stage:train" },
+    { run_id: "7b2d3c11-a7b8", pipeline_id: PIPELINE, status: "failed", scope: "stage_run", target_label: "inference", started_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString(), duration_s: 900, trigger: "api:stage:inference" },
+    ...Array.from({ length: 124 }, (_, i) => ({
+        run_id: `run-${String(i).padStart(4, "0")}`,
+        pipeline_id: PIPELINE,
+        status: i % 17 === 0 ? "failed" : "completed",
+        scope: "full_pipeline" as const,
+        target_label: "all labels",
+        started_at: new Date(Date.now() - (i + 4) * 3600_000).toISOString(),
+        duration_s: 300 + i * 10,
+        trigger: "api:pipeline",
+    })),
+];
+
 export const opsMock = {
+    getRuns(params: RunsListParams = {}): RunsListResponse {
+        let rows = [...MOCK_PIPELINE_RUNS];
+        if (params.status) rows = rows.filter((r) => r.status === params.status);
+        if (params.stage) {
+            rows = rows.filter((r) =>
+                params.stage === "all labels"
+                    ? r.scope === "full_pipeline"
+                    : r.target_label === params.stage,
+            );
+        }
+        if (params.search) {
+            const q = params.search.toLowerCase();
+            rows = rows.filter((r) => r.run_id.toLowerCase().includes(q));
+        }
+        const counts_by_status = MOCK_PIPELINE_RUNS.reduce<Record<string, number>>((acc, row) => {
+            acc[row.status] = (acc[row.status] ?? 0) + 1;
+            return acc;
+        }, {});
+        const offset = params.offset ?? 0;
+        const limit = params.limit ?? 25;
+        return {
+            rows: rows.slice(offset, offset + limit),
+            total: rows.length,
+            filters: {
+                statuses: ["completed", "running", "failed"],
+                stages: ["all labels", "train", "inference", "count-metrics", "fiftyone"],
+                triggers: ["api:pipeline", "api:stage:train", "api:stage:inference"],
+            },
+            counts_by_status,
+        };
+    },
+
     getMetricsRuns(_pipelineId: string, params?: { limit?: number; offset?: number }): MetricsRunsResponse {
         const offset = params?.offset ?? 0;
         const limit = params?.limit ?? 25;

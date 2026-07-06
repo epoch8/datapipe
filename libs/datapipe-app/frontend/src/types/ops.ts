@@ -154,6 +154,43 @@ export interface RecentRunSummary {
     trigger?: string;
 }
 
+export interface RunListRow {
+    run_id: string;
+    pipeline_id: string;
+    status: string;
+    scope: "full_pipeline" | "stage_run" | "label_run";
+    target_label?: string;
+    started_at?: string;
+    finished_at?: string;
+    duration_s?: number;
+    trigger?: string;
+}
+
+export interface RunsListResponse {
+    rows: RunListRow[];
+    total: number;
+    filters: {
+        statuses: string[];
+        stages: string[];
+        triggers: string[];
+    };
+    counts_by_status?: Record<string, number>;
+}
+
+export interface RunsListParams {
+    pipeline_id?: string;
+    status?: string;
+    stage?: string;
+    trigger?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+    sort_by?: "started_at" | "duration" | "status" | "stage";
+    sort_dir?: "asc" | "desc";
+}
+
 export interface StageRecentRunsResponse {
     pipeline_id: string;
     stage: string;

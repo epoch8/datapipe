@@ -27,6 +27,21 @@ export function resolveRunScopeDisplay(run: Pick<
     return { scopeLabel: "full pipeline", targetLabel: "all labels", highlightLabel: null };
 }
 
+export function formatRunListStage(row: {
+    scope?: string;
+    target_label?: string;
+    trigger?: string;
+}): string {
+    if (row.target_label) return row.target_label;
+    if (row.trigger?.startsWith("api:stage:")) {
+        return row.trigger.slice("api:stage:".length);
+    }
+    if (row.trigger === "api:pipeline" || row.scope === "full_pipeline") {
+        return "all labels";
+    }
+    return row.trigger ?? "—";
+}
+
 export function formatRunStageColumn(run: Pick<
     RunDetail,
     "run_scope" | "target_label_display" | "target_labels" | "trigger"
