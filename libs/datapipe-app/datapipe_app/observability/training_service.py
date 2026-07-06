@@ -6,11 +6,13 @@ from typing import Any, Optional
 from datapipe_app.observability.queries import build_training_curves
 from datapipe_app.observability.schemas import TrainingCompareResponse, TrainingRunRow, TrainingRunsResponse
 
-_training_run_catalog_cls: type[Any] | None
+_training_run_catalog_cls: type[Any] | None = None
 try:
-    from datapipe_ml.observability.runs_catalog import TrainingRunCatalog as _training_run_catalog_cls
+    from datapipe_ml.observability.runs_catalog import TrainingRunCatalog as _TrainingRunCatalog
+
+    _training_run_catalog_cls = _TrainingRunCatalog
 except ImportError:
-    _training_run_catalog_cls = None
+    pass
 
 RUN_COLORS = ["purple", "blue", "orange", "green"]
 
