@@ -163,7 +163,8 @@ def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, primary_keys: 
 # --- tag metrics ----------------------------------------------------------------
 def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.DataFrame) -> pd.DataFrame:
     cols = ["detection_model_id", "tag_id", "subset_id", "calc__images_support",
-            "calc__support", "calc__precision", "calc__recall", "calc__f1_score"]
+            "calc__support", "calc__TP", "calc__FP", "calc__FN",
+            "calc__precision", "calc__recall", "calc__f1_score"]
     if df_metrics_on_image.empty or df_image_tag.empty:
         return pd.DataFrame(columns=cols)
     m = df_metrics_on_image.merge(df_image_tag[["image_name", "tag_id"]], on="image_name")
@@ -179,4 +180,7 @@ def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.Data
     g["calc__f1_score"] = (2 * p * r / (p + r)).where((p + r) > 0, 0.0)
     g["calc__support"] = (tp + fn).astype(int)
     g["calc__images_support"] = g["images_support"].astype(int)
+    g["calc__TP"] = tp.astype(int)
+    g["calc__FP"] = fp.astype(int)
+    g["calc__FN"] = fn.astype(int)
     return g[cols]
