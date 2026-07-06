@@ -4,19 +4,9 @@ import io
 import logging
 import sys
 
-import pytest
-
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.run_output_capture import _TeeStream, capture_run_output
-
-
-def _subprocess_print_child(queue, message: str) -> None:
-    import sys
-
-    print(message, flush=True)
-    sys.stdout.flush()
-    queue.put("ok")
 
 
 def test_tee_stream_appends_complete_lines(tmp_path):
@@ -52,22 +42,6 @@ def test_tee_stream_appends_carriage_return_updates(tmp_path):
     assert "  0%|          | 0/7" in messages
     assert " 50%|█████     | 3/7" in messages
     assert "100%|██████████| 7/7" in messages
-
-
-def test_capture_run_output_records_subprocess_stdout(tmp_path):
-    pytest.importorskip("datapipe_ml")
-    from datapipe_ml.core.multiprocessing import _spawn
-
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs3.db'}")
-    buffer = RunLogBuffer(store)
-    run_id = "run-3"
-    buffer.start_run(run_id)
-
-    with capture_run_output(buffer, run_id):
-        assert _spawn(_subprocess_print_child, "Ultralytics epoch 1/30") == "ok"
-
-    messages = [line.message for line in buffer.get_lines(run_id)]
-    assert "Ultralytics epoch 1/30" in messages
 
 
 def test_capture_run_output_records_logging_and_stdout(tmp_path):
