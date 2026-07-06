@@ -47,8 +47,9 @@ To make tags a node in the UI graph (not just a side script), add to the example
 3. Populate `image__tag`, then run `stage=train` (or `stage=count-metrics`) — the UI graph then shows
    the tag tables + step, and `tag_metrics` fills per model.
 
-> Keep these pipeline edits **out of the committed example** (docs-only, per this recipe) — apply them
-> physically where you run the demo, but the repo's example code stays unchanged.
+> This is a **per-consumer** extension: the upstream datapipe example stays unchanged; whoever needs
+> tags applies these edits **in their own project/repo** (following this recipe) and commits them there.
+> Keep them out of the committed example.
 
 ## How to use
 1. Label the scenario images → rows in `image__tag` (a tag, e.g. `dark_room`).
