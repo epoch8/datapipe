@@ -614,6 +614,20 @@ def make_app(
             "last_seq": lines[-1].seq if lines else after,
         }
 
+    @app.post("/run")
+    def run_pipeline_legacy() -> dict[str, Any]:
+        """Legacy full-pipeline run endpoint (formerly v1alpha1 /run with recorder)."""
+        assert ds is not None and steps is not None
+        if recorder is None:
+            run_steps(ds=ds, steps=steps)
+            return {"result": "ok"}
+        run_id = recorder.start_run(trigger="v1alpha1")
+        try:
+            recorder.execute_steps(steps, ds=ds, run_id=run_id, on_step_failure="raise")
+        except Exception:
+            return {"run_id": run_id, "status": "failed"}
+        return {"run_id": run_id, "status": "completed"}
+
     @app.post("/runs", response_model=StartRunResponse)
     def start_run(req: StartRunRequest, background_tasks: BackgroundTasks) -> StartRunResponse:
         pid = _pipeline_id()

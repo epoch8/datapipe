@@ -19,7 +19,6 @@ from sqlalchemy.sql.expression import and_, asc, desc, select, text
 from sqlalchemy.sql.functions import count
 
 from datapipe_app.meta_sql import require_sql_table_meta
-from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.settings import API_SETTINGS
 
 
@@ -268,13 +267,7 @@ def get_data_post(ds: DataStore, catalog: Catalog, req: GetDataRequest) -> GetDa
         )
 
 
-def make_app(
-    ds: DataStore,
-    catalog: Catalog,
-    pipeline: Pipeline,
-    steps: List[ComputeStep],
-    recorder: Optional[RunRecorder] = None,
-) -> FastAPI:
+def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[ComputeStep]) -> FastAPI:
     app = FastAPI()
 
     @app.get("/graph", response_model=GraphResponse)
@@ -403,30 +396,7 @@ def make_app(
 
     @app.post("/run")
     def run():
-        if recorder is not None:
-            run_id = recorder.start_run(trigger="v1alpha1")
-            run_error: Optional[str] = None
-            run_status = "completed"
-            try:
-                for step in steps:
-                    recorder.start_step(step.name)
-                    try:
-                        step.run_full(ds=ds, run_config=None, executor=None)
-                        recorder.finish_step(step.name, status="completed")
-                    except Exception as exc:
-                        run_status = "failed"
-                        run_error = str(exc)
-                        recorder.finish_step(step.name, status="failed", error=run_error)
-                        raise
-            except Exception:
-                if run_status != "failed":
-                    run_status = "failed"
-                    run_error = run_error or "run failed"
-            finally:
-                recorder.finish_run(status=run_status, error=run_error)
-            return {"run_id": run_id, "status": run_status}
         run_steps(ds=ds, steps=steps)
-        return {"result": "ok"}
 
     # TODO refactor out to component based extension system
     # TODO automatic setup of webhook on project creation

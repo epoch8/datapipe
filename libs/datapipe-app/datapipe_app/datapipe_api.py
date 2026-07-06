@@ -172,7 +172,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             self.api.mount(
                 "/v1alpha1",
                 api_v1alpha1.make_app(
-                    self.ds, self.catalog, self.pipeline, self.steps, recorder=self.run_recorder
+                    self.ds, self.catalog, self.pipeline, self.steps
                 ),
                 name="v1alpha1",
             )
