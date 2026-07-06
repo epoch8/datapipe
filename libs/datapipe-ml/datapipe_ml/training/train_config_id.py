@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, cast
 
 import pandas as pd
 from pathy import Pathy
@@ -37,7 +37,7 @@ def build_train_config_id(
 def _dataclass_params(instance: object) -> dict[str, Any]:
     if isinstance(instance, type) or not is_dataclass(instance):
         raise TypeError(f"Expected dataclass config instance, got {type(instance)!r}")
-    return asdict(instance)
+    return asdict(cast(Any, instance))
 
 
 def train_configs_to_dataframe(

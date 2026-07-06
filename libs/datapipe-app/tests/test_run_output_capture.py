@@ -4,6 +4,8 @@ import io
 import logging
 import sys
 
+import pytest
+
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.run_output_capture import _TeeStream, capture_run_output

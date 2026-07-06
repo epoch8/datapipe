@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 from typing_extensions import Buffer
 from pathlib import Path
-from typing import Iterator, Optional, Protocol, runtime_checkable
+from typing import Iterator, Optional, Protocol, cast, runtime_checkable
 
 from datapipe_ml.core.atomic_io import atomic_write_local
 
@@ -51,7 +51,9 @@ def atomic_yolo_checkpoint_io() -> Iterator[None]:
     original_path_write_bytes: PathWriteBytesFn = Path.write_bytes
 
     def atomic_torch_save(obj: object, target: object, /, *args: object, **kwargs: object) -> None:
-        checkpoint_path = _checkpoint_path_from_torch_save_target(target)
+        checkpoint_path = _checkpoint_path_from_torch_save_target(
+            cast("str | Path | _NamedCheckpointTarget", target)
+        )
         if checkpoint_path is None or not _is_torch_checkpoint_path(checkpoint_path):
             original_torch_save(obj, target, *args, **kwargs)
             return

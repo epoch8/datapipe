@@ -220,9 +220,16 @@ def _trained_model_table_name(pipeline_name: str) -> str:
 
 
 def _freeze_min_delta(pipeline_name: str, app) -> int:
-    frozen_dataset_table = _frozen_dataset_table_name(pipeline_name)
+    from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
+    from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
+
+    freeze_step_types = {
+        "detection": DetectionFreezeDataset,
+        "keypoints": KeypointsFreezeDataset,
+    }
+    step_type = freeze_step_types[pipeline_name]
     for step in app.pipeline.steps:
-        if getattr(step, f"output__{frozen_dataset_table}", None) == frozen_dataset_table:
+        if isinstance(step, step_type):
             return int(step.min_delta)
     raise AssertionError(f"Cannot find freeze step for {pipeline_name}")
 
@@ -262,10 +269,9 @@ def test_template_annotation_roundtrip_from_label_studio(pipeline_name: str):
 
 
 @pytest.mark.parametrize("pipeline_name", ["detection", "keypoints"])
-def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str, caplog):
+def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str):
     from helpers import run_template_stage
 
-    caplog.set_level(logging.ERROR)
     _require_service_env()
     _ensure_label_studio_token()
     _ensure_sample_images_seeded()
@@ -274,11 +280,9 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     frozen_dataset_table = _frozen_dataset_table_name(pipeline_name)
     trained_model_table = _trained_model_table_name(pipeline_name)
     freeze_min_delta = _freeze_min_delta(pipeline_name, app)
-    initial_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
 
-    caplog.clear()
-    run_template_stage(pipeline_name, "train-prepare")
-    assert f"Not enough changed idx for freezing ({initial_annotations_count} < {freeze_min_delta})" in caplog.text
+    with pytest.raises(ValueError, match=r"Not enough changed idx for freezing \(0 < \d+\)"):
+        run_template_stage(pipeline_name, "train-prepare")
     assert app.ds.get_table(frozen_dataset_table).get_data().empty
     assert app.ds.get_table(trained_model_table).get_data().empty
 
@@ -288,10 +292,11 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     synced_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
     assert synced_annotations_count < freeze_min_delta
 
-    # CI seeds fewer annotated images than the freeze step requires, so training must stay blocked.
-    caplog.clear()
-    run_template_stage(pipeline_name, "train-prepare")
-    assert f"Not enough changed idx for freezing ({synced_annotations_count} < {freeze_min_delta})" in caplog.text
+    with pytest.raises(
+        ValueError,
+        match=rf"Not enough changed idx for freezing \({synced_annotations_count} < {freeze_min_delta}\)",
+    ):
+        run_template_stage(pipeline_name, "train-prepare")
     assert app.ds.get_table(frozen_dataset_table).get_data().empty
     assert app.ds.get_table(trained_model_table).get_data().empty
 
