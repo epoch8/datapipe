@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Card, Spin } from "antd";
+import { Alert, Card, Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { Capabilities, PipelineDetail, RecentRunSummary } from "../../types/ops";
@@ -9,6 +9,7 @@ import { RecentRunsList } from "./components/RecentRunsList";
 import { PageHeader } from "./shared";
 import { workflowIconSvg } from "../cy/nodeIcons";
 import { prependRecentRun } from "./utils/recentRuns";
+import { RunStepsDropdown } from "./components/RunStepsDropdown";
 
 export function GraphPage() {
     const [searchParams] = useSearchParams();
@@ -71,11 +72,13 @@ export function GraphPage() {
         setGraphRefreshToken((token) => token + 1);
     }, [loadCapabilities, loadDetail, loadStageRuns]);
 
-    const startStageRun = (stageName: string) => {
+    const startRun = (labels: [string, string][]) => {
         opsApi
-            .startRun([["stage", stageName]])
+            .startRun(labels)
             .then((started) => {
-                const entry = { ...started, trigger: `api:stage:${stageName}` };
+                const stageName = labels.find(([key]) => key === "stage")?.[1];
+                const trigger = stageName ? `api:stage:${stageName}` : "api:pipeline";
+                const entry = { ...started, trigger };
                 if (stageName === stage) {
                     setStageRuns((current) => prependRecentRun(current, entry));
                 }
@@ -107,10 +110,8 @@ export function GraphPage() {
                 title={title}
                 onRefresh={refresh}
                 extra={
-                    stage && agentMode ? (
-                        <Button type="primary" onClick={() => startStageRun(stage)}>
-                            Run stage
-                        </Button>
+                    agentMode && detail ? (
+                        <RunStepsDropdown stages={detail.stages} onStart={startRun} />
                     ) : undefined
                 }
             />
@@ -136,7 +137,7 @@ export function GraphPage() {
                             navigate(`/graph?stage=${encodeURIComponent(label)}`)
                         }
                         onLabelClear={() => navigate("/graph")}
-                        onStageRun={agentMode ? startStageRun : undefined}
+                        onStageRun={agentMode ? (label) => startRun([["stage", label]]) : undefined}
                     />
                 ) : (
                     <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>

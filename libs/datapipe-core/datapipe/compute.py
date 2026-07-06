@@ -334,7 +334,6 @@ class DatapipeApp:
         self.ds = ds
         self.catalog = catalog
         self.pipeline = pipeline
-
         self.steps = build_compute(ds, catalog, pipeline)
 
 

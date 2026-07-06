@@ -21,6 +21,15 @@ logger = logging.getLogger("datapipe.store.database")
 tracer = trace.get_tracer("datapipe.store.database")
 
 
+def ensure_db_schema(dbconn: "DBConn") -> None:
+    if not dbconn.schema:
+        return
+    if dbconn.connstr.startswith("sqlite"):
+        return
+    with dbconn.con.begin() as con:
+        con.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{dbconn.schema}"'))
+
+
 class DBConn:
     def __init__(
         self,

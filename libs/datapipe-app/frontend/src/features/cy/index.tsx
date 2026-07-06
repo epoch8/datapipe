@@ -55,6 +55,11 @@ const BG_CLEAR_MAX_MS = 280;
 /** Window during which a DOM click is treated as already handled by the cy tap. */
 const TAP_DEDUPE_MS = 350;
 
+const MIN_ZOOM = 0.05;
+const MAX_ZOOM = 6.0;
+const WHEEL_ZOOM_SPEED = 2.0;
+const FAST_WHEEL_ZOOM_SPEED = 3.0;
+
 function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
     const opacity = typeof data.htmlLabelOpacity === "number" ? data.htmlLabelOpacity : 1;
     return `opacity:${opacity};`;
@@ -939,15 +944,33 @@ function PipelineGraphView({
             const scroller = (event.target as Element | null)?.closest?.(
                 ".node-key-chips",
             ) as HTMLElement | null;
-            if (!scroller) return;
-            if (scroller.scrollWidth <= scroller.clientWidth) return;
-            const delta =
-                Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-            if (delta === 0) return;
-            scroller.scrollLeft += delta;
-            rememberChipScroll(scroller);
+            if (scroller) {
+                if (scroller.scrollWidth <= scroller.clientWidth) return;
+                const delta =
+                    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+                if (delta === 0) return;
+                scroller.scrollLeft += delta;
+                rememberChipScroll(scroller);
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
             event.preventDefault();
-            event.stopPropagation();
+            userInteractedRef.current = true;
+            const normalizedDelta = Math.max(-100, Math.min(100, event.deltaY));
+            const speed =
+                event.shiftKey || event.ctrlKey || event.metaKey
+                    ? FAST_WHEEL_ZOOM_SPEED
+                    : WHEEL_ZOOM_SPEED;
+            const factor = Math.exp(-normalizedDelta * 0.003 * speed);
+            const rect = container.getBoundingClientRect();
+            const renderedPosition = {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top,
+            };
+            const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, cy.zoom() * factor));
+            cy.zoom({ level: nextZoom, renderedPosition });
         };
 
         cy.boxSelectionEnabled(false);
@@ -1071,13 +1094,22 @@ function PipelineGraphView({
     const handleZoomIn = useCallback(() => {
         if (!cy || cy.destroyed()) return;
         userInteractedRef.current = true;
-        cy.zoom(cy.zoom() * 1.2);
+        const next = Math.min(MAX_ZOOM, cy.zoom() * 1.25);
+        cy.zoom(next);
     }, [cy]);
 
     const handleZoomOut = useCallback(() => {
         if (!cy || cy.destroyed()) return;
         userInteractedRef.current = true;
-        cy.zoom(cy.zoom() / 1.2);
+        const next = Math.max(MIN_ZOOM, cy.zoom() / 1.25);
+        cy.zoom(next);
+    }, [cy]);
+
+    const handleResetZoom = useCallback(() => {
+        if (!cy || cy.destroyed()) return;
+        userInteractedRef.current = true;
+        cy.zoom(1);
+        cy.center();
     }, [cy]);
 
     const handleFit = useCallback(() => {
@@ -1145,6 +1177,14 @@ function PipelineGraphView({
                 </button>
                 <button
                     type="button"
+                    className="graph-toolbar-segment"
+                    onClick={handleResetZoom}
+                    title="Reset zoom to 100%"
+                >
+                    100%
+                </button>
+                <button
+                    type="button"
                     className="graph-toolbar-button graph-toolbar-icon"
                     title="Graph settings"
                     aria-label="Graph settings"
@@ -1155,9 +1195,9 @@ function PipelineGraphView({
                 stylesheet={stylesheet}
                 cy={setCy}
                 autoungrabify
-                maxZoom={3}
-                minZoom={0.08}
-                wheelSensitivity={0.2}
+                maxZoom={MAX_ZOOM}
+                minZoom={MIN_ZOOM}
+                wheelSensitivity={0}
                 elements={[]}
                 className="cy-container cy-container-embedded"
             />

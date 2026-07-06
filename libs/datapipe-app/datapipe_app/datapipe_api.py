@@ -18,7 +18,12 @@ from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import get_log_buffer
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry, load_observability_plugins
+from datapipe_app.observability.schema_resolution import resolve_datapipe_schema
 from datapipe_app.observability.settings import get_ops_settings
+from datapipe_app.observability.tables import (
+    ObservabilityTableConfig,
+    validate_observability_tables_against_catalog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +48,14 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         catalog: Optional[Catalog] = None,
         pipeline: Optional[Pipeline] = None,
         app: Optional[DatapipeApp] = None,
+        observability_table_config: Optional[ObservabilityTableConfig] = None,
     ):
         self.observability_registry = ObservabilityRegistry()
         load_observability_plugins(self.observability_registry)
 
-        # Settings read fresh from env on each app init (tests monkeypatch env vars)
         ops = get_ops_settings()
+        self.observability_table_config = observability_table_config
+        observability_tables = observability_table_config or ObservabilityTableConfig()
 
         if ops.mode == "central":
             self.ds = None
@@ -64,10 +71,26 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             assert ds is not None and catalog is not None and pipeline is not None
             DatapipeApp.__init__(self, ds, catalog, pipeline)
 
+        if self.catalog is not None and self.catalog.catalog:
+            validate_observability_tables_against_catalog(observability_tables, self.catalog)
+
+        if self.ds is not None:
+            from datapipe_app.db_schema import register_observability_tables_in_metadata
+
+            register_observability_tables_in_metadata(
+                self.ds.meta_dbconn,
+                tables=observability_tables,
+            )
+
         FastAPI.__init__(self)
 
         obs_url = _resolve_observability_url(self.ds, get_ops_settings())
-        self.observability_store = ObservabilityStore.from_url(obs_url)
+        obs_schema = resolve_datapipe_schema(self.ds)
+        self.observability_store = ObservabilityStore.from_url(
+            obs_url,
+            schema=obs_schema,
+            tables=observability_tables,
+        )
         self.run_recorder: Optional[RunRecorder] = None
         if ops.mode == "agent" and ops.pipeline_id:
             self.observability_store.register_pipeline(

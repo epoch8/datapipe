@@ -1,12 +1,41 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Typography } from "antd";
+import { Button, Card, Dropdown, Menu, Typography } from "antd";
 import { opsApi } from "../../../api/ops";
 import type { RunLogLine } from "../../../types/ops";
 
 const { Text } = Typography;
 const MAX_LINES = 10_000;
-const POLL_MS = 1000;
+const DEFAULT_POLL_MS = 5000;
 const BATCH_LIMIT = 500;
+const STORAGE_KEY = "datapipe.ops.logsRefreshMs";
+
+const REFRESH_OPTIONS: { label: string; value: number | null }[] = [
+    { label: "Off", value: null },
+    { label: "1s", value: 1000 },
+    { label: "5s", value: 5000 },
+    { label: "10s", value: 10000 },
+    { label: "30s", value: 30000 },
+];
+
+function readStoredRefreshMs(): number | null {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw === "off") return null;
+        if (raw) {
+            const parsed = Number(raw);
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+    } catch {
+        /* ignore */
+    }
+    return DEFAULT_POLL_MS;
+}
+
+function formatRefreshLabel(ms: number | null): string {
+    if (ms == null) return "Off";
+    if (ms < 1000) return `${ms}ms`;
+    return `${ms / 1000}s`;
+}
 
 type Props = {
     runId: string;
@@ -15,6 +44,7 @@ type Props = {
 
 export function RunLogsPanel({ runId, status }: Props) {
     const [lines, setLines] = useState<RunLogLine[]>([]);
+    const [refreshMs, setRefreshMs] = useState<number | null>(() => readStoredRefreshMs());
     const lastSeqRef = useRef(0);
     const containerRef = useRef<HTMLPreElement>(null);
     const stickToBottomRef = useRef(true);
@@ -43,6 +73,15 @@ export function RunLogsPanel({ runId, status }: Props) {
         }
     }, [runId, appendLines]);
 
+    const setRefreshInterval = (value: number | null) => {
+        setRefreshMs(value);
+        try {
+            localStorage.setItem(STORAGE_KEY, value == null ? "off" : String(value));
+        } catch {
+            /* ignore */
+        }
+    };
+
     useEffect(() => {
         lastSeqRef.current = 0;
         setLines([]);
@@ -50,10 +89,10 @@ export function RunLogsPanel({ runId, status }: Props) {
     }, [runId, fetchLogs]);
 
     useEffect(() => {
-        if (status !== "running") return;
-        const timer = setInterval(fetchLogs, POLL_MS);
-        return () => clearInterval(timer);
-    }, [status, fetchLogs]);
+        if (status !== "running" || refreshMs == null) return;
+        const timer = window.setInterval(fetchLogs, refreshMs);
+        return () => window.clearInterval(timer);
+    }, [status, refreshMs, fetchLogs]);
 
     useEffect(() => {
         if (status === "running") return;
@@ -73,19 +112,64 @@ export function RunLogsPanel({ runId, status }: Props) {
         stickToBottomRef.current = atBottom;
     };
 
+    const clearLogs = () => {
+        lastSeqRef.current = 0;
+        setLines([]);
+    };
+
+    const downloadLogs = () => {
+        const text = lines
+            .map((ln) => `${ln.logged_at} [${ln.level}] ${ln.message}`)
+            .join("\n");
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `run-${runId.slice(0, 8)}-logs.txt`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const refreshMenu = (
+        <Menu
+            selectedKeys={[refreshMs == null ? "off" : String(refreshMs)]}
+            onClick={({ key }) => {
+                if (key === "off") setRefreshInterval(null);
+                else setRefreshInterval(Number(key));
+            }}
+        >
+            {REFRESH_OPTIONS.map((opt) => (
+                <Menu.Item key={opt.value == null ? "off" : String(opt.value)}>
+                    {opt.label}
+                </Menu.Item>
+            ))}
+        </Menu>
+    );
+
     return (
         <Card
             size="small"
             title="Logs"
             extra={
                 <>
+                    <Dropdown overlay={refreshMenu}>
+                        <Button size="small" style={{ marginRight: 8 }}>
+                            Refresh: {formatRefreshLabel(refreshMs)}
+                        </Button>
+                    </Dropdown>
                     {lines.length > 0 && (
                         <Text type="secondary" style={{ marginRight: 8 }}>
                             {lines.length.toLocaleString()} lines
                         </Text>
                     )}
-                    <Button size="small" onClick={fetchLogs}>
+                    <Button size="small" onClick={fetchLogs} style={{ marginRight: 8 }}>
                         Refresh
+                    </Button>
+                    <Button size="small" onClick={downloadLogs} disabled={!lines.length} style={{ marginRight: 8 }}>
+                        Download
+                    </Button>
+                    <Button size="small" onClick={clearLogs} disabled={!lines.length}>
+                        Clear
                     </Button>
                 </>
             }

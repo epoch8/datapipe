@@ -20,18 +20,13 @@ export type PipelineLabelGraphOverviewProps = {
     stageEdges?: StageEdge[];
     labelGraph?: LabelGraphPayload;
     selectedLabel?: string | null;
+    scopeHighlightLabel?: string | null;
+    scopeMuteOutside?: boolean;
     mode?: "overview" | "compact";
     onLabelSelect?: (label: string) => void;
     onLabelClear?: () => void;
     onStageRun?: (label: string) => void;
 };
-
-function statusClass(status: string): string {
-    if (status === "completed") return "completed";
-    if (status === "failed") return "failed";
-    if (status === "running") return "running";
-    return "pending";
-}
 
 function LabelGraphNodeCard({
     layoutNode,
@@ -54,7 +49,6 @@ function LabelGraphNodeCard({
 }) {
     const id = layoutNode.nodeId;
     const label = layoutNode.label ?? id;
-    const status = layoutNode.status ?? "pending";
 
     const menu = (
         <Menu>
@@ -65,7 +59,7 @@ function LabelGraphNodeCard({
             )}
             {onRun && (
                 <Menu.Item key="run" onClick={() => onRun(id)}>
-                    Run stage
+                    Run label
                 </Menu.Item>
             )}
         </Menu>
@@ -100,7 +94,6 @@ function LabelGraphNodeCard({
             }}
         >
             <div className="label-node-title">{label}</div>
-            <span className={`label-node-status ${statusClass(status)}`}>{status}</span>
         </div>
     );
 
@@ -151,6 +144,8 @@ export function PipelineLabelGraphOverview({
     stageEdges,
     labelGraph: labelGraphProp,
     selectedLabel,
+    scopeHighlightLabel = null,
+    scopeMuteOutside = false,
     mode = "overview",
     onLabelSelect,
     onLabelClear,
@@ -213,7 +208,21 @@ export function PipelineLabelGraphOverview({
     const interleavedContainers = layout.nodes.filter((n) => n.kind === "interleaved-group");
     const leafNodes = layout.nodes.filter((n) => n.kind === "node");
 
+    const isInRunScope = (nodeId: string): boolean => {
+        if (!scopeHighlightLabel) return true;
+        if (nodeId === scopeHighlightLabel) return true;
+        const top = topMap.get(nodeId);
+        if (top === scopeHighlightLabel) return true;
+        const highlightNode = nodeById.get(scopeHighlightLabel);
+        if (highlightNode?.children_ids?.includes(nodeId)) return true;
+        if (highlightNode?.parent_id === nodeId) return true;
+        return false;
+    };
+
     const isNodeMuted = (nodeId: string): boolean => {
+        if (scopeMuteOutside && scopeHighlightLabel && !isInRunScope(nodeId)) {
+            return true;
+        }
         if (!hasFocus) return false;
         return !activeIds.has(nodeId) && !activeIds.has(topMap.get(nodeId) ?? nodeId);
     };
@@ -221,7 +230,7 @@ export function PipelineLabelGraphOverview({
     const nodeTooltip = (nodeId: string): string | undefined => {
         const node = nodeById.get(nodeId);
         if (!node) return undefined;
-        const lines = [node.label, `Status: ${node.status}`, `Steps: ${node.step_count}`];
+        const lines = [node.label, `Steps: ${node.step_count}`];
         const shared = payload.shared_relations.find(
             (r) => (r.a === nodeId || r.b === nodeId) && r.shared_count > 0,
         );
@@ -325,7 +334,9 @@ export function PipelineLabelGraphOverview({
 
                     <div className="pipeline-label-graph-nodes">
                         {containerNodes.map((cn) => {
-                            const isSelected = selectedLabel === cn.nodeId;
+                            const isScopeSelected =
+                                scopeHighlightLabel != null && cn.nodeId === scopeHighlightLabel;
+                            const isSelected = selectedLabel === cn.nodeId || isScopeSelected;
                             const isHovered =
                                 activeIds.has(cn.nodeId) ||
                                 (cn.childIds?.some((c) => activeIds.has(c)) ?? false);
@@ -354,13 +365,6 @@ export function PipelineLabelGraphOverview({
                                     tabIndex={0}
                                 >
                                     <div className="label-container-title">{cn.label}</div>
-                                    {cn.status && (
-                                        <span
-                                            className={`label-node-status ${statusClass(cn.status)}`}
-                                        >
-                                            {cn.status}
-                                        </span>
-                                    )}
                                 </div>
                             );
                         })}
@@ -410,7 +414,12 @@ export function PipelineLabelGraphOverview({
                                 <LabelGraphNodeCard
                                     key={ln.id}
                                     layoutNode={ln}
-                                    selected={selectedLabel === ln.nodeId}
+                                    selected={
+                                        selectedLabel === ln.nodeId ||
+                                        (scopeHighlightLabel != null &&
+                                            isInRunScope(ln.nodeId) &&
+                                            scopeMuteOutside)
+                                    }
                                     hovered={isHovered}
                                     muted={muted && selectedLabel !== ln.nodeId}
                                     onHover={setHoveredNodeId}

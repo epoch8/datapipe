@@ -180,6 +180,10 @@ export interface RunDetail {
     started_at?: string;
     finished_at?: string;
     error?: string;
+    trigger?: string;
+    run_scope?: "full_pipeline" | "stage_run" | "label_run";
+    target_labels?: [string, string][];
+    target_label_display?: string;
     steps: {
         step_name: string;
         status: string;

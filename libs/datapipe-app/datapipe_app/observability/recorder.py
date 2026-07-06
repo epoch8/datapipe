@@ -54,8 +54,12 @@ class RunRecorder:
             self.log_buffer.append(run_id, "INFO", f"Run {run_id} finished")
             self.log_buffer.finish_run(run_id)
 
-    def start_run(self, *, trigger: Optional[str] = None) -> str:
-        self._current_run_id = self.store.create_run(self.pipeline_id, trigger=trigger)
+    def start_run(self, *, trigger: Optional[str] = None, labels_json: Optional[str] = None) -> str:
+        self._current_run_id = self.store.create_run(
+            self.pipeline_id,
+            trigger=trigger,
+            labels_json=labels_json,
+        )
         self._attach_log_handler(self._current_run_id)
         if trigger:
             self.log_buffer and self.log_buffer.append(
@@ -63,16 +67,20 @@ class RunRecorder:
             )
         return self._current_run_id
 
-    def start_step(self, step_name: str) -> None:
-        if not self._current_run_id:
+    def _run_id(self, run_id: Optional[str] = None) -> Optional[str]:
+        return run_id or self._current_run_id
+
+    def start_step(self, step_name: str, *, run_id: Optional[str] = None) -> None:
+        rid = self._run_id(run_id)
+        if not rid:
             return
         self.store.upsert_run_step(
-            self._current_run_id,
+            rid,
             step_name,
             status="running",
         )
         if self.log_buffer:
-            self.log_buffer.append(self._current_run_id, "INFO", f"Step started: {step_name}")
+            self.log_buffer.append(rid, "INFO", f"Step started: {step_name}")
 
     def update_step_progress(
         self,
@@ -80,11 +88,13 @@ class RunRecorder:
         *,
         processed: int,
         total: int,
+        run_id: Optional[str] = None,
     ) -> None:
-        if not self._current_run_id:
+        rid = self._run_id(run_id)
+        if not rid:
             return
         self.store.upsert_run_step(
-            self._current_run_id,
+            rid,
             step_name,
             status="running",
             processed=processed,
@@ -97,13 +107,15 @@ class RunRecorder:
         *,
         status: str = "completed",
         error: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> None:
-        if not self._current_run_id:
+        rid = self._run_id(run_id)
+        if not rid:
             return
         from datapipe_app.observability.db import utc_now
 
         self.store.upsert_run_step(
-            self._current_run_id,
+            rid,
             step_name,
             status=status,
             finished_at=utc_now(),
@@ -112,19 +124,28 @@ class RunRecorder:
         if self.log_buffer:
             level = "ERROR" if error else "INFO"
             msg = f"Step {status}: {step_name}" + (f" — {error}" if error else "")
-            self.log_buffer.append(self._current_run_id, level, msg)
+            self.log_buffer.append(rid, level, msg)
 
-    def finish_run(self, *, status: str = "completed", error: Optional[str] = None) -> None:
-        if not self._current_run_id:
+    def finish_run(
+        self,
+        *,
+        status: str = "completed",
+        error: Optional[str] = None,
+        run_id: Optional[str] = None,
+    ) -> None:
+        rid = self._run_id(run_id)
+        if not rid:
             return
-        run_id = self._current_run_id
-        self.store.finish_run(run_id, status=status, error=error)
-        if status == "completed" and self.registry and self.ds and self.catalog:
-            self._publish_metrics()
-        if error and self.log_buffer:
-            self.log_buffer.append(run_id, "ERROR", error)
-        self._detach_log_handler(run_id)
-        self._current_run_id = None
+        try:
+            self.store.finish_run(rid, status=status, error=error)
+            if status == "completed" and self.registry and self.ds and self.catalog:
+                self._publish_metrics()
+            if error and self.log_buffer:
+                self.log_buffer.append(rid, "ERROR", error)
+        finally:
+            if self._current_run_id == rid:
+                self._detach_log_handler(rid)
+                self._current_run_id = None
 
     def _publish_metrics(self) -> None:
         if not self.registry or not self.ds or not self.catalog:

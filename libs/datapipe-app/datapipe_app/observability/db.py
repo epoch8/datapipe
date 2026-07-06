@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -15,9 +16,16 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     select,
+    text,
+    update,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
+from datapipe_app.db_schema import apply_observability_table_config
+from datapipe_app.observability.tables import ObservabilityTableConfig
+
+logger = logging.getLogger(__name__)
 
 metadata = MetaData()
 Base = declarative_base(metadata=metadata)
@@ -48,6 +56,7 @@ class PipelineRunRow(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)
     trigger = Column(String(64), nullable=True)
+    labels_json = Column(Text, nullable=True)
 
 
 class PipelineRunStepRow(Base):
@@ -87,19 +96,59 @@ class PipelineScheduleRow(Base):
 
 
 class ObservabilityStore:
-    def __init__(self, engine: Engine):
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        schema: Optional[str] = None,
+        tables: Optional[ObservabilityTableConfig] = None,
+    ):
         self.engine = engine
+        self.schema = schema
+        self.tables = tables or ObservabilityTableConfig()
         self._Session = sessionmaker(bind=engine, expire_on_commit=False)
+        apply_observability_table_config(self.tables, self.schema)
 
     @classmethod
-    def from_url(cls, url: str) -> "ObservabilityStore":
+    def from_url(
+        cls,
+        url: str,
+        *,
+        schema: Optional[str] = None,
+        tables: Optional[ObservabilityTableConfig] = None,
+    ) -> "ObservabilityStore":
         engine = create_engine(url, future=True)
-        store = cls(engine)
+        if schema and not url.startswith("sqlite"):
+            from datapipe.store.database import DBConn, ensure_db_schema
+
+            ensure_db_schema(DBConn(url, schema))
+        store = cls(engine, schema=schema, tables=tables)
         store.create_all()
         return store
 
     def create_all(self) -> None:
         Base.metadata.create_all(self.engine)
+        from datapipe_app.observability.analytics_views import ensure_analytics_tables
+
+        ensure_analytics_tables(self.engine, tables=self.tables, schema=self.schema)
+        self._ensure_run_labels_column()
+
+    def _ensure_run_labels_column(self) -> None:
+        try:
+            from sqlalchemy import inspect as sa_inspect
+
+            inspector = sa_inspect(self.engine)
+            runs_table = self.tables.pipeline_runs
+            if runs_table not in inspector.get_table_names(schema=self.schema):
+                return
+            columns = {col["name"] for col in inspector.get_columns(runs_table, schema=self.schema)}
+            if "labels_json" in columns:
+                return
+            qualified = f'"{self.schema}".{runs_table}' if self.schema else runs_table
+            with self.engine.begin() as con:
+                con.execute(text(f"ALTER TABLE {qualified} ADD COLUMN labels_json TEXT"))
+        except Exception:
+            return
 
     def session(self) -> Session:
         return self._Session()
@@ -146,6 +195,7 @@ class ObservabilityStore:
         pipeline_id: str,
         *,
         trigger: Optional[str] = None,
+        labels_json: Optional[str] = None,
     ) -> str:
         run_id = str(uuid.uuid4())
         now = utc_now()
@@ -157,6 +207,7 @@ class ObservabilityStore:
                     status="running",
                     started_at=now,
                     trigger=trigger,
+                    labels_json=labels_json,
                 )
             )
             session.commit()
@@ -169,13 +220,19 @@ class ObservabilityStore:
         status: str,
         error: Optional[str] = None,
     ) -> None:
+        now = utc_now()
         with self.session() as session:
-            row = session.get(PipelineRunRow, run_id)
-            if row is None:
-                return
-            row.status = status
-            row.finished_at = utc_now()
-            row.error = error
+            result = session.execute(
+                update(PipelineRunRow)
+                .where(PipelineRunRow.run_id == run_id)
+                .values(status=status, finished_at=now, error=error)
+            )
+            if result.rowcount == 0:
+                logger.warning(
+                    "finish_run: pipeline_runs row not found for run_id=%s (schema=%s)",
+                    run_id,
+                    self.schema,
+                )
             session.commit()
 
     def upsert_run_step(

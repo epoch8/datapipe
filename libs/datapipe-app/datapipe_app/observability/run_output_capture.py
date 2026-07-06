@@ -7,7 +7,7 @@ from typing import Generator, Optional, TextIO
 
 from datapipe_app.observability.log_buffer import RunLogBuffer, RunLogHandler
 
-_LOGGER_NAMES = ("datapipe", "ultralytics")
+_LOGGER_NAMES = ("datapipe", "datapipe_ml", "ultralytics")
 
 
 class _TeeStream:
@@ -32,7 +32,11 @@ class _TeeStream:
         if not data:
             return len(data)
         if "\r" in data and "\n" not in data:
-            self._linebuf = data.split("\r")[-1]
+            parts = [part for part in data.split("\r") if part]
+            line = parts[-1] if parts else ""
+            if line.strip():
+                self._append_line(line)
+            self._linebuf = ""
             return len(data)
         self._linebuf += data
         while "\n" in self._linebuf:
@@ -66,7 +70,7 @@ def capture_run_output(
     buffer: RunLogBuffer,
     run_id: str,
 ) -> Generator[None, None, None]:
-    """Capture datapipe/ultralytics logging and stdout/stderr for a pipeline run."""
+    """Capture datapipe/datapipe_ml/ultralytics logging and stdout/stderr for a pipeline run."""
     handler = RunLogHandler(buffer, run_id)
     attached: list[tuple[logging.Logger, RunLogHandler]] = []
     old_levels: dict[str, int] = {}
@@ -74,7 +78,7 @@ def capture_run_output(
     for logger_name in _LOGGER_NAMES:
         logger = logging.getLogger(logger_name)
         old_levels[logger_name] = logger.level
-        if logger_name == "datapipe":
+        if logger_name in ("datapipe", "datapipe_ml"):
             logger.setLevel(logging.INFO)
         logger.addHandler(handler)
         attached.append((logger, handler))

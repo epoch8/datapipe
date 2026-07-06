@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Card, Dropdown, Menu, Space, Spin, Tag } from "antd";
+import { Alert, Card, Spin, Tag } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
@@ -10,6 +10,7 @@ import { RecentRunsList } from "./components/RecentRunsList";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { PageHeader } from "./shared";
 import { prependRecentRun } from "./utils/recentRuns";
+import { RunStepsDropdown } from "./components/RunStepsDropdown";
 
 type PipelineDetailProps = {
     pipelineId?: string;
@@ -68,16 +69,6 @@ export function PipelineDetail({
     if (error) return <Alert type="error" message={error} />;
     if (!detail) return <Spin />;
 
-    const stageMenu = (
-        <Menu>
-            {detail.stages.map((s) => (
-                <Menu.Item key={s.stage} onClick={() => runStage([["stage", s.stage]])}>
-                    {s.stage}
-                </Menu.Item>
-            ))}
-        </Menu>
-    );
-
     return (
         <div className="ops-page">
             <PageHeader
@@ -86,12 +77,7 @@ export function PipelineDetail({
                 onRefresh={load}
                 extra={
                     detail.agent_mode ? (
-                        <Space>
-                            <Button onClick={() => runStage([])}>Run pipeline</Button>
-                            <Dropdown overlay={stageMenu}>
-                                <Button>Run stage</Button>
-                            </Dropdown>
-                        </Space>
+                        <RunStepsDropdown stages={detail.stages} onStart={runStage} />
                     ) : undefined
                 }
             />

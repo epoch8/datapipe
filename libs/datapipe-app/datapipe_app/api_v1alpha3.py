@@ -11,6 +11,12 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, Field
 
 from datapipe_app.api_v1alpha1 import filter_steps_by_labels
+from datapipe_app.observability.run_scope import (
+    derive_run_scope,
+    labels_from_json,
+    labels_to_json,
+    trigger_from_labels,
+)
 from datapipe_app.observability.db import ObservabilityStore, utc_now
 from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
 from datapipe_app.observability.label_graph import build_label_graph
@@ -150,13 +156,6 @@ def make_app(
             for r in runs
         ]
 
-    def _trigger_from_labels(labels: Labels) -> str:
-        if not labels:
-            return "api:pipeline"
-        stage = next((value for key, value in labels if key == "stage"), None)
-        if stage:
-            return f"api:stage:{stage}"
-        return "api"
 
     @app.get("/pipelines/{pipeline_id}")
     def get_pipeline_detail(pipeline_id: str) -> dict[str, Any]:
@@ -441,6 +440,8 @@ def make_app(
         if run is None:
             raise HTTPException(404, f"Run {run_id} not found")
         steps_rows = store.get_run_steps(run_id)
+        labels = labels_from_json(getattr(run, "labels_json", None))
+        scope = derive_run_scope(labels=labels, trigger=run.trigger)
         return {
             "run_id": run.run_id,
             "pipeline_id": run.pipeline_id,
@@ -448,6 +449,8 @@ def make_app(
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
             "error": run.error,
+            "trigger": run.trigger,
+            **scope,
             "steps": [
                 {
                     "step_name": s.step_name,
@@ -499,45 +502,48 @@ def make_app(
         assert recorder is not None
 
         selected = filter_steps_by_labels(steps, labels=req.labels) if req.labels else steps
-        trigger = _trigger_from_labels(req.labels)
+        trigger = trigger_from_labels(req.labels)
+        labels_json = labels_to_json(req.labels)
 
         if req.background:
-            run_id = recorder.start_run(trigger=trigger)
+            run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
 
             def _execute() -> None:
                 try:
                     for step in selected:
-                        recorder.start_step(step.name)
+                        recorder.start_step(step.name, run_id=run_id)
                         try:
                             step.run_full(ds=ds, run_config=None, executor=None)
-                            recorder.finish_step(step.name, status="completed")
+                            recorder.finish_step(step.name, status="completed", run_id=run_id)
                         except Exception as exc:
-                            recorder.finish_step(step.name, status="failed", error=str(exc))
-                            recorder.finish_run(status="failed", error=str(exc))
+                            recorder.finish_step(
+                                step.name, status="failed", error=str(exc), run_id=run_id
+                            )
+                            recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
                             return
-                    recorder.finish_run(status="completed")
+                    recorder.finish_run(status="completed", run_id=run_id)
                 except Exception as exc:
-                    recorder.finish_run(status="failed", error=str(exc))
+                    recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
 
             background_tasks.add_task(_execute)
             return StartRunResponse(run_id=run_id, status="running")
 
-        run_id = recorder.start_run(trigger=trigger)
+        run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
         try:
             for step in selected:
-                recorder.start_step(step.name)
+                recorder.start_step(step.name, run_id=run_id)
                 try:
                     step.run_full(ds=ds, run_config=None, executor=None)
-                    recorder.finish_step(step.name, status="completed")
+                    recorder.finish_step(step.name, status="completed", run_id=run_id)
                 except Exception as exc:
-                    recorder.finish_step(step.name, status="failed", error=str(exc))
-                    recorder.finish_run(status="failed", error=str(exc))
+                    recorder.finish_step(step.name, status="failed", error=str(exc), run_id=run_id)
+                    recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
                     raise HTTPException(500, str(exc)) from exc
-            recorder.finish_run(status="completed")
+            recorder.finish_run(status="completed", run_id=run_id)
         except HTTPException:
             raise
         except Exception as exc:
-            recorder.finish_run(status="failed", error=str(exc))
+            recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
             raise HTTPException(500, str(exc)) from exc
         return StartRunResponse(run_id=run_id, status="completed")
 

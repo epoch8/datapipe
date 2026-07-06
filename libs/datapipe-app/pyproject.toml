@@ -4,7 +4,7 @@ version = "0.6.0"
 description = "REST API, debug UI, and CLI extensions for Datapipe pipelines"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "datapipe-core",
     "fastapi>=0.69.0",
@@ -22,6 +22,9 @@ jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
 
 [project.entry-points."datapipe.cli"]
 datapipe_app = "datapipe_app.cli:register_commands"
+
+[project.entry-points."datapipe.db_create_all"]
+datapipe_app = "datapipe_app.db_schema:create_observability_tables_hook"
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"

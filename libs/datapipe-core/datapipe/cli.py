@@ -235,7 +235,19 @@ def create_all(ctx: click.Context) -> None:
             with dbconn.con.begin() as con:
                 con.execute(CreateSchema(dbconn.schema))
 
+    _run_db_create_all_extensions(app, dbconn)
     dbconn.sqla_metadata.create_all(dbconn.con)
+    _run_db_create_all_extensions(app, dbconn)
+
+
+def _run_db_create_all_extensions(app: DatapipeApp, dbconn) -> None:
+    try:
+        eps = metadata.entry_points(group="datapipe.db_create_all")
+    except TypeError:
+        eps = metadata.entry_points().get("datapipe.db_create_all", [])  # type: ignore
+    for entry_point in eps:
+        create_all_extension = entry_point.load()
+        create_all_extension(app, dbconn)
 
 
 @cli.command()

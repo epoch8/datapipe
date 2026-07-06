@@ -9,6 +9,14 @@ from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.run_output_capture import _TeeStream, capture_run_output
 
 
+def _subprocess_print_child(queue, message: str) -> None:
+    import sys
+
+    print(message, flush=True)
+    sys.stdout.flush()
+    queue.put("ok")
+
+
 def test_tee_stream_appends_complete_lines(tmp_path):
     store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
     buffer = RunLogBuffer(store)
@@ -26,6 +34,39 @@ def test_tee_stream_appends_complete_lines(tmp_path):
     assert original.getvalue() == "line one\npartial end\n"
 
 
+def test_tee_stream_appends_carriage_return_updates(tmp_path):
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs2.db'}")
+    buffer = RunLogBuffer(store)
+    run_id = "run-1b"
+    buffer.start_run(run_id)
+
+    original = io.StringIO()
+    tee = _TeeStream(original, buffer, run_id)
+    tee.write("  0%|          | 0/7\r")
+    tee.write(" 50%|█████     | 3/7\r")
+    tee.write("100%|██████████| 7/7\n")
+
+    messages = [line.message for line in buffer.get_lines(run_id)]
+    assert "  0%|          | 0/7" in messages
+    assert " 50%|█████     | 3/7" in messages
+    assert "100%|██████████| 7/7" in messages
+
+
+def test_capture_run_output_records_subprocess_stdout(tmp_path):
+    from datapipe_ml.core.multiprocessing import _spawn
+
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs3.db'}")
+    buffer = RunLogBuffer(store)
+    run_id = "run-3"
+    buffer.start_run(run_id)
+
+    with capture_run_output(buffer, run_id):
+        assert _spawn(_subprocess_print_child, "Ultralytics epoch 1/30") == "ok"
+
+    messages = [line.message for line in buffer.get_lines(run_id)]
+    assert "Ultralytics epoch 1/30" in messages
+
+
 def test_capture_run_output_records_logging_and_stdout(tmp_path):
     store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
     buffer = RunLogBuffer(store)
@@ -34,11 +75,13 @@ def test_capture_run_output_records_logging_and_stdout(tmp_path):
 
     with capture_run_output(buffer, run_id):
         logging.getLogger("datapipe.test").info("from logger")
+        logging.getLogger("datapipe_ml.core.files").info("Copying training sync file: a -> b")
         print("from stdout", flush=True)
         sys.stderr.write("from stderr\n")
         sys.stderr.flush()
 
     messages = [line.message for line in buffer.get_lines(run_id)]
     assert any("from logger" in msg for msg in messages)
+    assert any("Copying training sync file" in msg for msg in messages)
     assert "from stdout" in messages
     assert "from stderr" in messages

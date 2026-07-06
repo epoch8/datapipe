@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, Table, Text, delete, func, insert, select
 
-from datapipe_app.observability.metrics_service import MetricsService
+from datapipe_app.observability.tables import ObservabilityTableConfig
 
 _analytics_metadata = MetaData()
 
@@ -61,7 +61,33 @@ analytics_training_runs = Table(
 )
 
 
-def ensure_analytics_tables(engine: Any) -> None:
+def apply_analytics_table_config(
+    *,
+    tables: ObservabilityTableConfig,
+    schema: str | None,
+) -> None:
+    analytics_metrics_on_subset.name = tables.analytics_metrics_on_subset
+    analytics_metrics_by_class.name = tables.analytics_metrics_by_class
+    analytics_training_runs.name = tables.analytics_training_runs
+    analytics_metrics_on_subset.schema = schema
+    analytics_metrics_by_class.schema = schema
+    analytics_training_runs.schema = schema
+
+
+def analytics_metadata() -> MetaData:
+    return _analytics_metadata
+
+
+def ensure_analytics_tables(
+    engine: Any,
+    *,
+    tables: Optional["ObservabilityTableConfig"] = None,
+    schema: Optional[str] = None,
+) -> None:
+    from datapipe_app.observability.tables import ObservabilityTableConfig
+
+    tables = tables or ObservabilityTableConfig()
+    apply_analytics_table_config(tables=tables, schema=schema)
     _analytics_metadata.create_all(engine)
 
 
