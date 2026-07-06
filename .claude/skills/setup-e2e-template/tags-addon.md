@@ -125,6 +125,17 @@ a model looks suspiciously empty, sanity-check against the final-epoch weights.
 ## Live demo walkthrough (with the datapipe-app UI)
 The narrated flow for showing this to someone — you drive the setup by chatting, then click in the UI:
 
+0. **Start from a clean slate (TEST DATA ONLY).** Before demoing, wipe prior state so the graph, runs
+   and metrics are pristine — otherwise old models and "Recent runs" from earlier attempts show up and
+   confuse the story. Two independent places to clear:
+   - **pipeline data** — the schema (e.g. `datapipe_e2e_detection`) + MinIO objects + local train
+     outputs, then `datapipe db create-all`;
+   - **observability run history** — lives **separately** in the `public` schema
+     (`pipeline_runs`, `pipeline_run_steps`, `pipeline_run_logs`, `analytics_training_runs`); dropping
+     the pipeline schema does NOT clear it. Truncate these to empty "Recent runs".
+   ⚠️ Do this **only on a throwaway/demo database**, never on real data. (Note: this Postgres is shared
+   with Label Studio — scope truncates to the datapipe-app tables above; don't `CASCADE` into LS tables.)
+
 1. **Invoke the skill.** `/setup-e2e-template`, and say *"this is a demo"*. It brings up the services
    and seeds demo cat/dog data (COCO → MinIO), i.e. the images that would be annotated in Label Studio.
 2. **Skill asks the key question:** *annotate for real in Label Studio, or inject ready-made GT?* For a
