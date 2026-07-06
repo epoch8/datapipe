@@ -49,7 +49,7 @@ datapipe run                  # load → split → freeze → train → inferenc
 ## The payoff
 `tag_metrics(detection_model_id, tag_id, subset_id)` → precision/recall/f1. Compare the baseline
 (trained before batch 2) vs the retrained model at `tag=night, subset=val` — recall on the tag rises
-once the tagged batch is in training. `tag`/`image__tag` are external inputs (from `load_batch.py`);
+once the tagged batch is in training. `tag`/`image__tag` are external inputs (produced by the `load` step);
 `tag_metrics` is a real pipeline step (`steps.compute_tag_metrics`, `transform_keys=["detection_model_id"]`
 so the aggregation is correct).
 

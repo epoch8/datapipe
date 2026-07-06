@@ -43,5 +43,5 @@ Or just `datapipe run` after adding request rows to run every stage.
 - Classes are lowercase (`cat`/`dog`) to match COCO, so injected GT and predictions align.
 - On a tiny validation set the "best epoch" pick can latch onto an early checkpoint; this example
   uses 50 epochs and a non-trivial batch size to keep metrics meaningful.
-- Tables `tag` / `image__tag` are external inputs (written by `load_batch.py`); `tag_metrics` is
+- Tables `tag` / `image__tag` are external inputs (produced by the `load` step); `tag_metrics` is
   produced by a pipeline `BatchTransform` (`steps.compute_tag_metrics`).
