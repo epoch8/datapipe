@@ -23,8 +23,9 @@ def observability_store():
 
 @pytest.fixture
 def agent_env(monkeypatch):
-    monkeypatch.setenv("DATAPIPE_APP_MODE", "agent")
-    monkeypatch.setenv("DATAPIPE_APP_PIPELINE_ID", "test_pipeline")
+    monkeypatch.delenv("DATAPIPE_APP_MODE", raising=False)
+    monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
+    monkeypatch.delenv("DATAPIPE_APP_OBSERVABILITY_DB_URL", raising=False)
 
 
 @pytest.fixture
@@ -82,7 +83,7 @@ def ops_app(agent_env):
         input_dt = catalog.get_datatable(ds, "input")
         catalog.get_datatable(ds, "output")
         input_dt.store_chunk(pd.DataFrame([{"id": 1, "v": "a"}, {"id": 2, "v": "b"}]))
-        yield DatapipeAPI(ds, catalog, pipeline)
+        yield DatapipeAPI(ds, catalog, pipeline, pipeline_id="test_pipeline")
 
 
 @pytest.fixture

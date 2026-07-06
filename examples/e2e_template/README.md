@@ -209,7 +209,7 @@ Then open `http://localhost:5151` and select `datapipe_keypoints_e2e` (or use lo
 
 ## Running via Ops UI
 
-Set Ops env vars in `.env` (see `.env.example`). Each pipeline needs its own agent process and a unique `DATAPIPE_APP_PIPELINE_ID` (`image_detection_e2e` or `image_keypoints_e2e`).
+Each pipeline needs its own agent process (distinct port). `pipeline_id` is inferred from the pipeline module filename (e.g. `app.py` → `app`); observability DB defaults to the pipeline `DB_URL`.
 
 Start local services first:
 
@@ -225,9 +225,9 @@ set -a && source ../.env && set +a
 uv run datapipe --pipeline app:app api --port 8001
 ```
 
-Open `http://localhost:8001` (title: `Datapipe Ops · image_detection_e2e`). From there you can run stages, view the pipeline graph (Debug), and inspect runs.
+Open `http://localhost:8001` (title: `Datapipe Ops · app`). From there you can run stages, view the pipeline graph (Debug), and inspect runs.
 
-For keypoints, use `image_keypoints_e2e` in `.env` (or override `DATAPIPE_APP_PIPELINE_ID`), port `8002`, and:
+For keypoints, port `8002`, and:
 
 ```bash
 cd image_keypoints

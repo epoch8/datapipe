@@ -46,6 +46,13 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
 
     assert isinstance(app, DatapipeApp)
 
+    try:
+        from datapipe_app.observability.settings import bind_pipeline_ops
+
+        bind_pipeline_ops(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
+    except ImportError:
+        pass
+
     return app
 
 

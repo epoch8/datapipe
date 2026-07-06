@@ -11,10 +11,11 @@ def register_commands(cli: click.Group):
     @click.pass_context
     def api(ctx: click.Context, host: str, port: int) -> None:
         app: DatapipeApp = ctx.obj["pipeline"]
+        pipeline_spec = ctx.parent.params.get("pipeline", "app")
 
         import uvicorn
 
         if not isinstance(app, DatapipeAPI):
-            app = DatapipeAPI(app=app)
+            app = DatapipeAPI(app=app, pipeline_spec=pipeline_spec)
 
         uvicorn.run(app, host=host, port=port)

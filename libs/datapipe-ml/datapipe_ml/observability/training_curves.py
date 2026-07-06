@@ -165,13 +165,14 @@ def _resolve_store_and_pipeline(
         return store, pipeline_id
     try:
         from datapipe_app.observability.db import ObservabilityStore
-        from datapipe_app.observability.settings import OPS_SETTINGS
+        from datapipe_app.observability.settings import get_ops_settings
     except ImportError:
         return None, pipeline_id
-    url = OPS_SETTINGS.observability_db_url
+    ops = get_ops_settings()
+    url = ops.observability_db_url
     if not url:
-        return None, OPS_SETTINGS.pipeline_id or pipeline_id
-    return ObservabilityStore.from_url(url), OPS_SETTINGS.pipeline_id or pipeline_id
+        return None, ops.pipeline_id or pipeline_id
+    return ObservabilityStore.from_url(url), ops.pipeline_id or pipeline_id
 
 
 class TrainingCurvePublisher:

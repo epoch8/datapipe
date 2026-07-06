@@ -20,7 +20,7 @@ from datapipe_app.observability.log_buffer import get_log_buffer
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry, load_observability_plugins
 from datapipe_app.observability.schema_resolution import resolve_datapipe_schema
-from datapipe_app.observability.settings import get_ops_settings
+from datapipe_app.observability.settings import OpsSettings, configure_active_ops, resolve_ops_settings
 from datapipe_app.observability.tables import (
     ObservabilityTableConfig,
     validate_observability_tables_against_catalog,
@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 _FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend/")
 
 
-def _resolve_observability_url(ds: Optional[DataStore], ops=None) -> str:
-    ops = ops or get_ops_settings()
+def _resolve_observability_url(ds: Optional[DataStore], ops: OpsSettings) -> str:
     if ops.observability_db_url:
         return ops.observability_db_url
     if ds is not None:
@@ -64,15 +63,17 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         pipeline: Optional[Pipeline] = None,
         app: Optional[DatapipeApp] = None,
         observability_table_config: Optional[ObservabilityTableConfig] = None,
+        pipeline_id: Optional[str] = None,
+        pipeline_spec: Optional[str] = None,
     ):
         self.observability_registry = ObservabilityRegistry()
         load_observability_plugins(self.observability_registry)
 
-        ops = get_ops_settings()
+        env_ops = OpsSettings()
         self.observability_table_config = observability_table_config
         observability_tables = observability_table_config or ObservabilityTableConfig()
 
-        if ops.mode == "central":
+        if env_ops.mode == "central":
             self.ds = None
             self.catalog = catalog or Catalog({})
             self.pipeline = pipeline or Pipeline([])
@@ -85,6 +86,17 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         else:
             assert ds is not None and catalog is not None and pipeline is not None
             DatapipeApp.__init__(self, ds, catalog, pipeline)
+
+        pipeline_module = getattr(app, "_datapipe_pipeline_module", None)
+        explicit_pipeline_id = pipeline_id or getattr(app, "pipeline_id", None)
+        self.ops_settings = resolve_ops_settings(
+            ds=self.ds,
+            pipeline_id=explicit_pipeline_id,
+            pipeline_spec=pipeline_spec,
+            pipeline_module=pipeline_module,
+        )
+        configure_active_ops(self.ops_settings)
+        ops = self.ops_settings
 
         if self.catalog is not None and self.catalog.catalog:
             validate_observability_tables_against_catalog(observability_tables, self.catalog)
@@ -99,7 +111,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
 
         FastAPI.__init__(self, lifespan=_make_lifespan(self))
 
-        obs_url = _resolve_observability_url(self.ds, get_ops_settings())
+        obs_url = _resolve_observability_url(self.ds, ops)
         obs_schema = resolve_datapipe_schema(self.ds)
         self.observability_store = ObservabilityStore.from_url(
             obs_url,
@@ -199,6 +211,19 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             if os.path.isfile(asset_path):
                 return FileResponse(asset_path)
             return FileResponse(index_path)
+
+    def refresh_ops_settings(
+        self,
+        *,
+        pipeline_module=None,
+        pipeline_spec: Optional[str] = None,
+    ) -> None:
+        self.ops_settings = resolve_ops_settings(
+            ds=self.ds,
+            pipeline_spec=pipeline_spec,
+            pipeline_module=pipeline_module or getattr(self, "_datapipe_pipeline_module", None),
+        )
+        configure_active_ops(self.ops_settings)
 
 
 def setup_logging(level=logging.INFO):

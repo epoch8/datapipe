@@ -32,11 +32,11 @@ Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
 
 `DatapipeAPI` extends `DatapipeApp` with an **Ops dashboard** (default `/`) and **Debug UI** (`/debug`).
 
-Environment variables:
+Environment variables (all optional; defaults are inferred from the loaded pipeline):
 
-- `DATAPIPE_APP_MODE=agent|central` — agent writes observability for one pipeline; central reads all
-- `DATAPIPE_APP_PIPELINE_ID` — registry key (agent mode)
-- `DATAPIPE_APP_OBSERVABILITY_DB_URL` — optional; defaults to pipeline DB
+- `DATAPIPE_APP_MODE=agent|central` — default `agent`; `central` reads all pipelines
+- `DATAPIPE_APP_PIPELINE_ID` — default: stem of the pipeline module file (e.g. `app` for `app.py`), else `--pipeline` module name
+- `DATAPIPE_APP_OBSERVABILITY_DB_URL` — default: pipeline `DB_URL` / `DataStore` connection
 
 Ops API: `/api/v1alpha3/overview`, `/metrics/charts`, `/runs`, `/training/{run_key}/curves`.
 

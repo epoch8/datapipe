@@ -98,5 +98,4 @@ pipeline = Pipeline(
 
 ds = DataStore(dbconn, create_meta_table=False)
 
-# Ops UI (agent mode): set DATAPIPE_APP_PIPELINE_ID to register this pipeline.
 app = DatapipeAPI(ds, catalog, pipeline)
