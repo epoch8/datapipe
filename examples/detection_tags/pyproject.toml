@@ -1,0 +1,33 @@
+[project]
+name = "datapipe-detection-tags-example"
+version = "0"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "datapipe-app",
+    "datapipe-ml[torch]",
+    "torch==2.6.0",
+    "torchvision==0.21.0",
+    "stringzilla==4.4.0",       # needed by albumentations
+    "polars-lts-cpu==1.33.1",   # ultralytics/datapipe on pre-AVX2 CPUs (avoids SIGILL)
+    "pi-heif",                  # ultralytics image verification imports it
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+datapipe-app = { path = "../../libs/datapipe-app", editable = true }
+datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
+datapipe-core = { path = "../../libs/datapipe-core", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest<8",
+    "requests",
+    "tqdm",
+    "boto3",
+]

@@ -18,13 +18,14 @@ Each `examples/*` pipeline has a dedicated setup skill — pick by what it does:
 | `e2e_template/image_detection` | YOLO detection + Label Studio human-in-the-loop → train → FiftyOne | **setup-e2e-template** |
 | `e2e_template/image_keypoints` | YOLO-pose keypoints + Label Studio → train → FiftyOne | **setup-e2e-template** |
 | `sam_cvat` | SAM3 text-prompt boxes+masks → CVAT pre-annotations | **setup-sam-cvat** |
+| `detection_tags` | YOLO detection + **tags** (per-scenario metrics), no Label Studio / FiftyOne, GT injected | **setup-detection-tags** |
 
 ## Ask first — don't assume (only the unresolved)
 Clarify what's not obvious before acting — don't spin up services or pull data you don't need. Ask only the unresolved:
 - **Demo or your own data?** · **Provision Postgres/services or reuse existing?** (e2e ships `docker compose`; embedder/sam need external Postgres)
 - **Which Postgres + which database** for `DB_URL`? Never point it at an existing DB or drop in a `localhost` default without confirming.
 - **Reuse an existing venv / `uv` env, or create a fresh one?** · **Which GPU?** (SAM3 >8 GB; DINOv2/YOLO ~8 GB) · **Annotation backend up?** (LS for e2e / external CVAT for sam)
-- **Surface stage logs or run quiet?** · **(e2e) per-tag scenario metrics** (retrain new case, old vs new)? → `setup-e2e-template/tags-addon.md`
+- **Surface stage logs or run quiet?** · **Per-tag scenario metrics** (retrain new case, old vs new)? → the `detection_tags` example / **setup-detection-tags**
 
 ## How to work
 Read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with its logs shown and, after each, say what you did and what changed — don't run the pipeline silently. Trust the status table (`*_training_status`/`brain_status`), not the exit code. If a stage fails and the cause isn't clear from the normal logs, re-run it with `datapipe --debug … run` (or `--debug-sql` for SQL errors) sent to a file and `grep`ped, rather than dumping the verbose output inline.

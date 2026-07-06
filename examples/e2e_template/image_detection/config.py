@@ -24,8 +24,8 @@ LABEL_CONFIG = """
 <View>
   <Image name="image" value="$image_url"/>
   <RectangleLabels name="label" toName="image">
-    <Label value="Cat" background="#FF6B6B"/>
-    <Label value="Dog" background="#4ECDC4"/>
+    <Label value="cat" background="#FF6B6B"/>
+    <Label value="dog" background="#4ECDC4"/>
   </RectangleLabels>
 </View>
 """

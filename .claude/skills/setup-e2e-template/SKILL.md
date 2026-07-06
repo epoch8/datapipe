@@ -9,7 +9,7 @@ description: >
 
 This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR images. The COCO seed sample is just a smoke-test; the real goal is your own images — set the knobs below first.
 
-**Ask first — don't assume (only the unresolved):** demo or your own data? bring up the bundled `docker compose` services or reuse existing? **which Postgres + which database** for `DB_URL` — never point it at an existing DB without confirming; reuse an existing venv / `uv` env or create a fresh one? GPU? **annotate for real in Label Studio, or inject ready-made ground truth** (reuse existing labels / a labelled dataset) to skip the human `annotation` step? per-tag scenario metrics ([tags-addon.md](tags-addon.md))? surface stage logs or run quiet?
+**Ask first — don't assume (only the unresolved):** demo or your own data? bring up the bundled `docker compose` services or reuse existing? **which Postgres + which database** for `DB_URL` — never point it at an existing DB without confirming; reuse an existing venv / `uv` env or create a fresh one? GPU? **annotate for real in Label Studio, or inject ready-made ground truth** (reuse existing labels / a labelled dataset) to skip the human `annotation` step? surface stage logs or run quiet? (per-tag scenario metrics live in a separate example → **setup-detection-tags**)
 
 **How to work:** read the setup, then propose a short plan and get a go-ahead before touching anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage with its logs shown and, after each, say what you did and what changed — don't run the pipeline silently. If a stage fails and the cause isn't clear from the normal logs, re-run it with `datapipe --debug … run` (or `--debug-sql` for SQL errors); debug is very verbose, so send it to a file and `grep` it (e.g. `datapipe --debug run > /tmp/dp_debug.log 2>&1; grep -nEi "error|traceback" /tmp/dp_debug.log`) rather than dumping it inline.
 
@@ -62,12 +62,11 @@ conventions, or the freeze join silently yields nothing / classes don't match:**
 - Write via datapipe `DataStore`/`UpdateExternalTable` (keeps `*_meta` in sync) — not raw SQL `UPDATE`
   on PK columns. Then `datapipe step --labels=stage=train run` (skip `annotation`/`ls-sync`).
 
-## Add-on upgrade — tags for per-scenario metrics
-An **optional layer on top of the base pipeline** (not needed to run it). New case (e.g. dark-room
-pallets) → tag those images, let part flow into training, and measure the model **on that scenario
-separately** (old vs new) without touching the split. Bolt-on recipe (catalog `tag`/`image__tag` +
-one `tag_metrics` step; example logic unchanged): [tags-addon.md](tags-addon.md). Verified end-to-end —
-`tag_metrics` shows the retrained model gaining recall on the tagged scenario.
+## Per-scenario tag metrics → see the dedicated example
+Want to tag a scenario (e.g. dark-room pallets), add it to training, and measure the model on that
+scenario separately (baseline vs retrained)? That lives as its own self-contained example —
+`examples/detection_tags` (`tag`/`image__tag`/`tag_metrics` built into the pipeline, **no Label Studio
+or FiftyOne**, ground truth injected). Use the **setup-detection-tags** skill.
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **No model after `train`, exit 0** → datapipe swallows step errors; check `detection_training_status`, not the exit code.
