@@ -92,6 +92,21 @@ class PipelineScheduleRow(Base):
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class PipelineMetricsCandidateRow(Base):
+    __tablename__ = "metrics_candidates"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pipeline_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    model_source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual")
+    artifact_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    dataset_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    subset: Mapped[str] = mapped_column(String(64), nullable=False, default="val")
+    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metrics_state: Mapped[str] = mapped_column(String(32), nullable=False, default="not_computed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ObservabilityStore:
     def __init__(
         self,
@@ -128,24 +143,6 @@ class ObservabilityStore:
         from datapipe_app.observability.analytics_views import ensure_analytics_tables
 
         ensure_analytics_tables(self.engine, tables=self.tables, schema=self.schema)
-        self._ensure_run_labels_column()
-
-    def _ensure_run_labels_column(self) -> None:
-        try:
-            from sqlalchemy import inspect as sa_inspect
-
-            inspector = sa_inspect(self.engine)
-            runs_table = self.tables.pipeline_runs
-            if runs_table not in inspector.get_table_names(schema=self.schema):
-                return
-            columns = {col["name"] for col in inspector.get_columns(runs_table, schema=self.schema)}
-            if "labels_json" in columns:
-                return
-            qualified = f'"{self.schema}".{runs_table}' if self.schema else runs_table
-            with self.engine.begin() as con:
-                con.execute(text(f"ALTER TABLE {qualified} ADD COLUMN labels_json TEXT"))
-        except Exception:
-            return
 
     def session(self) -> Session:
         return self._Session()
@@ -551,3 +548,29 @@ class ObservabilityStore:
 
     def has_metrics(self, pipeline_id: Optional[str] = None) -> bool:
         return False
+
+    def list_metrics_candidates(self, pipeline_id: str) -> list[PipelineMetricsCandidateRow]:
+        with self.session() as session:
+            return list(
+                session.scalars(
+                    select(PipelineMetricsCandidateRow)
+                    .where(PipelineMetricsCandidateRow.pipeline_id == pipeline_id)
+                    .order_by(PipelineMetricsCandidateRow.created_at.desc())
+                ).all()
+            )
+
+    def add_metrics_candidate(self, row: PipelineMetricsCandidateRow) -> PipelineMetricsCandidateRow:
+        with self.session() as session:
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row
+
+    def delete_metrics_candidate(self, pipeline_id: str, candidate_id: str) -> bool:
+        with self.session() as session:
+            row = session.get(PipelineMetricsCandidateRow, candidate_id)
+            if row is None or row.pipeline_id != pipeline_id:
+                return False
+            session.delete(row)
+            session.commit()
+            return True

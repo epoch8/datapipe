@@ -33,7 +33,6 @@ import type {
     TrainingRunsResponse,
 } from "../types/ops";
 import { ApiError, apiFetch, readApiErrorBody } from "./http";
-import { opsMock } from "./opsMock";
 
 const API_BASE = "/api/v1alpha3";
 
@@ -45,18 +44,6 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
         throw new ApiError("http", `API error (${res.status}): ${detail}`, { status: res.status, url });
     }
     return res.json() as Promise<T>;
-}
-
-async function fetchWithMock<T>(path: string, init: RequestInit | undefined, mockFn: () => T): Promise<T> {
-    try {
-        return await fetchJson<T>(path, init);
-    } catch (e) {
-        const msg = String(e);
-        if (msg.includes("404") || msg.includes("Not Found") || msg.includes("422")) {
-            return mockFn();
-        }
-        throw e;
-    }
 }
 
 function toQuery(params: Record<string, string | number | string[] | undefined>): string {
@@ -119,10 +106,8 @@ export const opsApi = {
     },
     getRun: (id: string) => fetchJson<RunDetail>(`/runs/${id}`),
     getRuns: (params: RunsListParams = {}) =>
-        fetchWithMock<RunsListResponse>(
+        fetchJson<RunsListResponse>(
             `/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
-            undefined,
-            () => opsMock.getRuns(params),
         ),
     getRunLogs: (runId: string, after = 0, limit = 500) =>
         fetchJson<RunLogsResponse>(`/runs/${runId}/logs?after=${after}&limit=${limit}`),
@@ -135,17 +120,13 @@ export const opsApi = {
         fetchJson<Record<string, unknown>>(`/metrics/summary?pipeline_id=${pipelineId}`),
 
     getMetricsRuns: (pipelineId: string, params: MetricsListParams = {}) =>
-        fetchWithMock<MetricsRunsResponse>(
+        fetchJson<MetricsRunsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
-            undefined,
-            () => opsMock.getMetricsRuns(pipelineId, params),
         ),
 
     getFrozenDatasets: (pipelineId: string) =>
-        fetchWithMock<FrozenDatasetsResponse>(
+        fetchJson<FrozenDatasetsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets`,
-            undefined,
-            () => opsMock.getFrozenDatasets(),
         ),
 
     getModelDetail: (
@@ -153,10 +134,8 @@ export const opsApi = {
         modelId: string,
         params?: { dataset_id?: string; subset?: string },
     ) =>
-        fetchWithMock<MetricsModelDetailResponse>(
+        fetchJson<MetricsModelDetailResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/models/${encodeURIComponent(modelId)}${toQuery(params ?? {})}`,
-            undefined,
-            () => opsMock.getModelDetail(pipelineId, modelId, params),
         ),
 
     getFrozenDatasetDetail: (
@@ -164,17 +143,13 @@ export const opsApi = {
         datasetId: string,
         params?: { subset?: string },
     ) =>
-        fetchWithMock<FrozenDatasetDetailResponse>(
+        fetchJson<FrozenDatasetDetailResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets/${encodeURIComponent(datasetId)}${toQuery(params ?? {})}`,
-            undefined,
-            () => opsMock.getFrozenDatasetDetail(pipelineId, datasetId, params),
         ),
 
     getMetricsSchema: (pipelineId: string, taskType?: string) =>
-        fetchWithMock<MetricsTableSchema>(
+        fetchJson<MetricsTableSchema>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/schema${toQuery({ task_type: taskType })}`,
-            undefined,
-            () => opsMock.getMetricsSchema(),
         ),
 
     addMetricsCandidate: (pipelineId: string, body: MetricsCandidateCreate) =>
@@ -202,34 +177,26 @@ export const opsApi = {
         }),
 
     getMetricsSummary: (pipelineId: string, params: { subset?: string; model_id?: string; primary_metric?: string } = {}) =>
-        fetchWithMock<MetricsSummaryResponse>(
+        fetchJson<MetricsSummaryResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/summary${toQuery(params)}`,
-            undefined,
-            () => opsMock.getMetricsSummary(pipelineId),
         ),
 
     getMetricsTimeseries: (
         pipelineId: string,
         params: { metrics: string[]; subset?: string[]; group_by?: string; model_id?: string; from?: string; to?: string },
     ) =>
-        fetchWithMock<MetricsTimeseriesResponse>(
+        fetchJson<MetricsTimeseriesResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/timeseries${toQuery({ ...params, metrics: params.metrics.join(",") })}`,
-            undefined,
-            () => opsMock.getMetricsTimeseries(),
         ),
 
     getClassMetrics: (pipelineId: string, params: ClassMetricsParams = {}) =>
-        fetchWithMock<ClassMetricsResponse>(
+        fetchJson<ClassMetricsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/classes${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
-            undefined,
-            () => opsMock.getClassMetrics(),
         ),
 
     getClassDetail: (pipelineId: string, label: string, params: { run_id?: string; subset?: string } = {}) =>
-        fetchWithMock<ClassMetricDetailResponse>(
+        fetchJson<ClassMetricDetailResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/classes/${encodeURIComponent(label)}${toQuery(params)}`,
-            undefined,
-            () => opsMock.getClassDetail(label),
         ),
 
     getTrainingCurves: (runKey: string, limitEpochs?: number) => {
@@ -240,28 +207,23 @@ export const opsApi = {
         fetchJson<Record<string, unknown>>(`/training/${encodeURIComponent(runKey)}`),
 
     getTrainingRuns: (pipelineId: string, params: TrainingRunsParams = {}) =>
-        fetchWithMock<TrainingRunsResponse>(
+        fetchJson<TrainingRunsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/training/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
-            undefined,
-            () => opsMock.getTrainingRuns(),
         ),
 
     compareTraining: (runKeys: string[], params: { metrics?: string[]; smoothing?: number; pipeline_id?: string } = {}) =>
-        fetchWithMock<TrainingCompareResponse>(
+        fetchJson<TrainingCompareResponse>(
             `/training/compare${toQuery({ run_keys: runKeys.join(","), ...params, metrics: params.metrics?.join(",") })}`,
-            undefined,
-            () => opsMock.compareTraining(runKeys),
         ),
 
     runSqlQuery: (req: SqlQueryRequest) =>
-        fetchWithMock<SqlQueryResponse>(
-            "/sql/query",
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) },
-            () => opsMock.runSqlQuery(),
-        ),
+        fetchJson<SqlQueryResponse>("/sql/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(req),
+        }),
 
-    getSqlSchema: () =>
-        fetchWithMock<SqlSchemaResponse>("/sql/schema", undefined, () => opsMock.getSqlSchema()),
+    getSqlSchema: () => fetchJson<SqlSchemaResponse>("/sql/schema"),
 
     startRun: (labels?: [string, string][], background = true) =>
         fetchJson<{ run_id: string; status: string }>("/runs", {

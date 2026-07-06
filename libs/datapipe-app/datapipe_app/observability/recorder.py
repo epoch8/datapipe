@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import AbstractContextManager, contextmanager
-from typing import Generator, Optional
+from typing import Generator, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore
 
@@ -181,6 +181,31 @@ class RunRecorder:
         except Exception:
             logger.exception("Analytics view refresh failed for pipeline %s", self.pipeline_id)
 
+    def execute_steps(
+        self,
+        steps: list[ComputeStep],
+        *,
+        ds: DataStore,
+        run_id: Optional[str] = None,
+        on_step_failure: Literal["raise", "return"] = "raise",
+    ) -> None:
+        rid = self._run_id(run_id)
+        if not rid:
+            raise ValueError("run_id is required to execute steps")
+        for step in steps:
+            self.start_step(step.name, run_id=rid)
+            try:
+                step.run_full(ds=ds, run_config=None, executor=None)  # type: ignore[arg-type]
+                self.finish_step(step.name, status="completed", run_id=rid)
+            except Exception as exc:
+                error = str(exc)
+                self.finish_step(step.name, status="failed", error=error, run_id=rid)
+                self.finish_run(status="failed", error=error, run_id=rid)
+                if on_step_failure == "raise":
+                    raise
+                return
+        self.finish_run(status="completed", run_id=rid)
+
     @contextmanager
     def record_steps(
         self,
@@ -188,24 +213,11 @@ class RunRecorder:
         *,
         trigger: Optional[str] = None,
     ) -> Generator[str, None, None]:
+        if self.ds is None:
+            raise ValueError("DataStore is required to record steps")
         run_id = self.start_run(trigger=trigger)
-        run_error: Optional[str] = None
-        run_status = "completed"
         try:
-            for step in steps:
-                self.start_step(step.name)
-                try:
-                    step.run_full(ds=self.ds, run_config=None, executor=None)  # type: ignore[arg-type]
-                    self.finish_step(step.name, status="completed")
-                except Exception as exc:
-                    run_status = "failed"
-                    run_error = str(exc)
-                    self.finish_step(step.name, status="failed", error=run_error)
-                    raise
+            self.execute_steps(steps, ds=self.ds, run_id=run_id)
             yield run_id
         except Exception:
-            if run_status != "failed":
-                run_status = "failed"
             raise
-        finally:
-            self.finish_run(status=run_status, error=run_error)

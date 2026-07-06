@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import MetaData, Table, text
-from sqlalchemy.engine import Engine
+from sqlalchemy import MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from datapipe_app.observability.tables import ObservabilityTableConfig
@@ -26,6 +25,7 @@ def apply_observability_table_config(
     schema: str | None,
 ) -> None:
     from datapipe_app.observability.db import (
+        PipelineMetricsCandidateRow,
         PipelineRegistryRow,
         PipelineRunLogRow,
         PipelineRunRow,
@@ -39,6 +39,7 @@ def apply_observability_table_config(
         PipelineRunStepRow: tables.pipeline_run_steps,
         PipelineRunLogRow: tables.pipeline_run_logs,
         PipelineScheduleRow: tables.pipeline_schedules,
+        PipelineMetricsCandidateRow: tables.metrics_candidates,
     }
     for model_cls, table_name in mapping.items():
         table = cast(Table, model_cls.__table__)
@@ -61,6 +62,7 @@ def register_observability_tables_in_metadata(
 
     from datapipe_app.observability.analytics_views import analytics_metadata
     from datapipe_app.observability.db import (
+        PipelineMetricsCandidateRow,
         PipelineRegistryRow,
         PipelineRunLogRow,
         PipelineRunRow,
@@ -75,6 +77,7 @@ def register_observability_tables_in_metadata(
         PipelineRunStepRow,
         PipelineRunLogRow,
         PipelineScheduleRow,
+        PipelineMetricsCandidateRow,
     ):
         src = cast(Table, model_cls.__table__)
         if not _metadata_has_table(target, src.name, dbconn.schema):
@@ -121,29 +124,3 @@ def create_observability_tables_hook(app: DatapipeApp, dbconn: DBConn) -> None:
 
             ensure_db_schema(dbconn)
         register_observability_tables_in_metadata(dbconn, tables=tables)
-        return
-
-    _ensure_run_labels_column(dbconn.con, tables=tables, schema=dbconn.schema)
-
-
-def _ensure_run_labels_column(
-    engine: Engine,
-    *,
-    tables: ObservabilityTableConfig,
-    schema: str | None,
-) -> None:
-    try:
-        from sqlalchemy import inspect as sa_inspect
-
-        inspector = sa_inspect(engine)
-        runs_table = tables.pipeline_runs
-        if runs_table not in inspector.get_table_names(schema=schema):
-            return
-        columns = {col["name"] for col in inspector.get_columns(runs_table, schema=schema)}
-        if "labels_json" in columns:
-            return
-        qualified = f'"{schema}".{runs_table}' if schema else runs_table
-        with engine.begin() as con:
-            con.execute(text(f"ALTER TABLE {qualified} ADD COLUMN labels_json TEXT"))
-    except Exception:
-        return

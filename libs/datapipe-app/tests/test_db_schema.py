@@ -16,6 +16,7 @@ def test_register_observability_tables_in_metadata() -> None:
     config = ObservabilityTableConfig()
     assert config.pipeline_runs in table_names
     assert config.pipeline_run_logs in table_names
+    assert config.metrics_candidates in table_names
     assert config.analytics_metrics_on_subset in table_names
 
 

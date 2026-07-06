@@ -16,6 +16,7 @@ class ObservabilityTableConfig:
     pipeline_run_steps: str = "pipeline_run_steps"
     pipeline_run_logs: str = "pipeline_run_logs"
     pipeline_schedules: str = "pipeline_schedules"
+    metrics_candidates: str = "metrics_candidates"
     analytics_metrics_on_subset: str = "analytics_metrics_on_subset"
     analytics_metrics_by_class: str = "analytics_metrics_by_class"
     analytics_training_runs: str = "analytics_training_runs"

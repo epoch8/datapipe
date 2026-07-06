@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Iterable, Protocol
 
@@ -38,6 +39,7 @@ class Executor(ABC):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList: ...
 
 
@@ -51,6 +53,7 @@ class SingleThreadExecutor(Executor):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
@@ -62,5 +65,7 @@ class SingleThreadExecutor(Executor):
             )
 
             res_changelist.extend(changes)
+            if on_batch_complete is not None:
+                on_batch_complete()
 
         return res_changelist

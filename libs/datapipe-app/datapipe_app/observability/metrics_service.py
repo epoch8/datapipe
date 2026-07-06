@@ -11,6 +11,7 @@ import pandas as pd
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 
+from datapipe_app.observability.db import PipelineMetricsCandidateRow, utc_now
 from datapipe_app.observability.anomaly import (
     build_kpis,
     compute_deltas,
@@ -98,7 +99,25 @@ _MODEL_COUNT_KEYS = frozenset(
     }
 )
 
-_CANDIDATES: dict[str, list[MetricsCandidateRow]] = {}
+
+def _candidate_row_from_db(row: Any) -> MetricsCandidateRow:
+    return MetricsCandidateRow(
+        id=row.id,
+        pipeline_id=row.pipeline_id,
+        model_id=row.model_id,
+        model_source=row.model_source,
+        artifact_uri=row.artifact_uri,
+        dataset_id=row.dataset_id,
+        subset=row.subset,
+        task_type=row.task_type,
+        metrics_state=row.metrics_state,
+    )
+
+
+def _load_candidates(store: Any, pipeline_id: str) -> list[MetricsCandidateRow]:
+    if store is None:
+        return []
+    return [_candidate_row_from_db(row) for row in store.list_metrics_candidates(pipeline_id)]
 
 
 @dataclass
@@ -168,7 +187,12 @@ def _is_likely_model_table(name: str, columns: list[str]) -> bool:
     return "model" in lowered and not is_frozen_dataset_table(name) and not is_model_frozen_dataset_link_table(name)
 
 
-def _load_entity_source_records(ds: Optional[DataStore], catalog: Optional[Catalog]) -> EntitySourceIndex:
+def _load_entity_source_records(
+    ds: Optional[DataStore],
+    catalog: Optional[Catalog],
+    *,
+    candidates: Optional[list[MetricsCandidateRow]] = None,
+) -> EntitySourceIndex:
     index = EntitySourceIndex()
     if ds is None or catalog is None:
         return index
@@ -276,23 +300,22 @@ def _load_entity_source_records(ds: Optional[DataStore], catalog: Optional[Catal
                     priority=4,
                 )
 
-    for candidate_rows in _CANDIDATES.values():
-        for candidate_row in candidate_rows:
-            _maybe_set_model_record(
-                index,
-                candidate_row.model_id,
-                EntitySourceRecord(
-                    table_name="metrics_candidates",
-                    pk={"id": candidate_row.id},
-                    record=candidate_row.model_dump(),
-                ),
-                priority=5,
-            )
-            if candidate_row.dataset_id:
-                index.model_to_dataset[candidate_row.model_id] = candidate_row.dataset_id
-                index.dataset_to_models.setdefault(candidate_row.dataset_id, [])
-                if candidate_row.model_id not in index.dataset_to_models[candidate_row.dataset_id]:
-                    index.dataset_to_models[candidate_row.dataset_id].append(candidate_row.model_id)
+    for candidate_row in candidates or []:
+        _maybe_set_model_record(
+            index,
+            candidate_row.model_id,
+            EntitySourceRecord(
+                table_name="metrics_candidates",
+                pk={"id": candidate_row.id},
+                record=candidate_row.model_dump(),
+            ),
+            priority=5,
+        )
+        if candidate_row.dataset_id:
+            index.model_to_dataset[candidate_row.model_id] = candidate_row.dataset_id
+            index.dataset_to_models.setdefault(candidate_row.dataset_id, [])
+            if candidate_row.model_id not in index.dataset_to_models[candidate_row.dataset_id]:
+                index.dataset_to_models[candidate_row.dataset_id].append(candidate_row.model_id)
 
     return index
 
@@ -848,7 +871,7 @@ class MetricsService:
         )
         model_rows = _merge_candidates(
             model_rows,
-            _CANDIDATES.get(pipeline_id, []),
+            _load_candidates(self.store, pipeline_id),
             datasets_by_id,
             pipeline_id,
         )
@@ -856,7 +879,8 @@ class MetricsService:
 
     def list_frozen_datasets(self, pipeline_id: str) -> FrozenDatasetsResponse:
         rows, by_id, model_to_dataset = _load_frozen_dataset_catalog(self.ds, self.catalog)
-        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        candidates = _load_candidates(self.store, pipeline_id)
+        entity_index = _load_entity_source_records(self.ds, self.catalog, candidates=candidates)
         model_rows, _ = self._all_model_rows(pipeline_id)
         counts: dict[str, set[str]] = {}
         for model_id, dataset_id in {**model_to_dataset, **entity_index.model_to_dataset}.items():
@@ -897,7 +921,7 @@ class MetricsService:
         )
         model_rows = _merge_candidates(
             model_rows,
-            _CANDIDATES.get(pipeline_id, []),
+            _load_candidates(self.store, pipeline_id),
             datasets_by_id,
             pipeline_id,
         )
@@ -933,34 +957,36 @@ class MetricsService:
         return build_metric_schema(tt, metric_keys, primary_metric=primary_metric_for_task(tt))
 
     def list_candidates(self, pipeline_id: str) -> MetricsCandidatesResponse:
-        rows = list(_CANDIDATES.get(pipeline_id, []))
+        rows = _load_candidates(self.store, pipeline_id)
         return MetricsCandidatesResponse(rows=rows, total=len(rows))
 
     def add_candidate(self, pipeline_id: str, body: MetricsCandidateCreate) -> MetricsCandidateRow:
+        if self.store is None:
+            raise ValueError("Observability store is required for metrics candidates")
+        existing = self.store.list_metrics_candidates(pipeline_id)
         candidate_id = hashlib.md5(
-            f"{body.model_id}|{body.dataset_id}|{body.subset}|{len(_CANDIDATES.get(pipeline_id, []))}".encode()
+            f"{body.model_id}|{body.dataset_id}|{body.subset}|{len(existing)}".encode()
         ).hexdigest()[:16]
-        row = MetricsCandidateRow(
-            id=candidate_id,
-            pipeline_id=pipeline_id,
-            model_id=body.model_id,
-            model_source=body.model_source,
-            artifact_uri=body.artifact_uri,
-            dataset_id=body.dataset_id,
-            subset=body.subset,
-            task_type=body.task_type,
-            metrics_state="not_computed",
+        saved = self.store.add_metrics_candidate(
+            PipelineMetricsCandidateRow(
+                id=candidate_id,
+                pipeline_id=pipeline_id,
+                model_id=body.model_id,
+                model_source=body.model_source,
+                artifact_uri=body.artifact_uri,
+                dataset_id=body.dataset_id,
+                subset=body.subset,
+                task_type=body.task_type,
+                metrics_state="not_computed",
+                created_at=utc_now(),
+            )
         )
-        _CANDIDATES.setdefault(pipeline_id, []).append(row)
-        return row
+        return _candidate_row_from_db(saved)
 
     def delete_candidate(self, pipeline_id: str, candidate_id: str) -> bool:
-        rows = _CANDIDATES.get(pipeline_id, [])
-        kept = [r for r in rows if r.id != candidate_id]
-        if len(kept) == len(rows):
+        if self.store is None:
             return False
-        _CANDIDATES[pipeline_id] = kept
-        return True
+        return self.store.delete_metrics_candidate(pipeline_id, candidate_id)
 
     def summary(
         self,
@@ -1105,7 +1131,11 @@ class MetricsService:
         if subset:
             matching = [r for r in matching if r.subset == subset]
 
-        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        entity_index = _load_entity_source_records(
+            self.ds,
+            self.catalog,
+            candidates=_load_candidates(self.store, pipeline_id),
+        )
         datasets_by_id, _ = self._dataset_context()
         source = entity_index.model_records_by_id.get(model_id)
         linked_dataset_id = (
@@ -1153,7 +1183,11 @@ class MetricsService:
     ) -> FrozenDatasetDetailResponse:
         rows, by_id, _ = _load_frozen_dataset_catalog(self.ds, self.catalog)
         dataset = by_id.get(dataset_id) or FrozenDatasetRow(dataset_id=dataset_id)
-        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        entity_index = _load_entity_source_records(
+            self.ds,
+            self.catalog,
+            candidates=_load_candidates(self.store, pipeline_id),
+        )
         source = entity_index.dataset_records_by_id.get(dataset_id)
         model_rows, task_type = self._all_model_rows(pipeline_id)
         models = [r for r in model_rows if r.dataset_id == dataset_id]

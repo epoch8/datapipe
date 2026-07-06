@@ -630,41 +630,20 @@ def make_app(
             run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
 
             def _execute() -> None:
-                try:
-                    for step in selected:
-                        recorder.start_step(step.name, run_id=run_id)
-                        try:
-                            step.run_full(ds=ds, run_config=None, executor=None)
-                            recorder.finish_step(step.name, status="completed", run_id=run_id)
-                        except Exception as exc:
-                            recorder.finish_step(
-                                step.name, status="failed", error=str(exc), run_id=run_id
-                            )
-                            recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
-                            return
-                    recorder.finish_run(status="completed", run_id=run_id)
-                except Exception as exc:
-                    recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
+                recorder.execute_steps(
+                    selected,
+                    ds=ds,
+                    run_id=run_id,
+                    on_step_failure="return",
+                )
 
             background_tasks.add_task(_execute)
             return StartRunResponse(run_id=run_id, status="running")
 
         run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
         try:
-            for step in selected:
-                recorder.start_step(step.name, run_id=run_id)
-                try:
-                    step.run_full(ds=ds, run_config=None, executor=None)
-                    recorder.finish_step(step.name, status="completed", run_id=run_id)
-                except Exception as exc:
-                    recorder.finish_step(step.name, status="failed", error=str(exc), run_id=run_id)
-                    recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
-                    raise HTTPException(500, str(exc)) from exc
-            recorder.finish_run(status="completed", run_id=run_id)
-        except HTTPException:
-            raise
+            recorder.execute_steps(selected, ds=ds, run_id=run_id)
         except Exception as exc:
-            recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
             raise HTTPException(500, str(exc)) from exc
         return StartRunResponse(run_id=run_id, status="completed")
 

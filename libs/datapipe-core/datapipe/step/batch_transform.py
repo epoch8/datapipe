@@ -358,6 +358,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
+        on_batch_progress: Callable[[int, int], None] | None = None,
     ) -> None:
         if executor is None:
             executor = SingleThreadExecutor()
@@ -372,6 +373,16 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return
 
+        batches_done = 0
+        if on_batch_progress is not None:
+            on_batch_progress(0, idx_count or 0)
+
+        def _on_batch_complete() -> None:
+            nonlocal batches_done
+            batches_done += 1
+            if on_batch_progress is not None:
+                on_batch_progress(batches_done, idx_count or 0)
+
         executor.run_process_batch(
             name=self.name,
             ds=ds,
@@ -380,6 +391,7 @@ class BaseBatchTransformStep(ComputeStep):
             process_fn=self.process_batch,
             run_config=run_config,
             executor_config=self.executor_config,
+            on_batch_complete=_on_batch_complete if on_batch_progress is not None else None,
         )
 
         ds.event_logger.log_step_full_complete(self.name)

@@ -1,12 +1,10 @@
 import asyncio
-import copy
 import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
-from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep, run_steps
-from datapipe.run_config import RunConfig
+from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BaseBatchTransformStep, BatchTransform, DatatableBatchTransform
 from datapipe.step.datatable_transform import DatatableTransform
@@ -235,67 +233,44 @@ def run_step(
     filters: Optional[List[Dict]],
     recorder: Optional[RunRecorder] = None,
 ) -> None:
-    # Before we progress callback to datapipe-core we need to do this shenanigans 💀
-    _step = copy.copy(step)
-    transform_meta = require_sql_transform_meta(_step.meta)
-    if filters is not None:
-        selected_data = [{k: v for k, v in row.items() if k in transform_meta.transform_keys} for row in filters]
-        idx = pd.DataFrame.from_records(selected_data)
-        transform_state.total = len(selected_data)
+    def on_batch_progress(batches_done: int, total_batches: int) -> None:
+        transform_state.total = total_batches
         transform_state.status = "running"
+        transform_state.processed = batches_done * step.chunk_size
 
-        def get_full_process_ids(
-            ds: DataStore,
-            chunk_size: Optional[int] = None,
-            run_config: Optional[RunConfig] = None,
-        ):
-            idx_total = len(selected_data)
-
-            def updating_idx_gen():
-                chunk_count = math.ceil(idx_total / _step.chunk_size)
-                for i in range(chunk_count):
-                    start = i * _step.chunk_size
-                    end = (i + 1) * _step.chunk_size
-                    yield IndexDF(idx.iloc[start:end])
-                    transform_state.processed += _step.chunk_size
-
-            return idx_total, updating_idx_gen()
-
-    else:
-        _get_full_process_ids = _step.get_full_process_ids
-
-        def get_full_process_ids(
-            ds: DataStore,
-            chunk_size: Optional[int] = None,
-            run_config: Optional[RunConfig] = None,
-        ):
-            idx_total, idx_gen = _get_full_process_ids(ds, chunk_size, run_config)
-            transform_state.total = idx_total
+    def _run() -> None:
+        if filters is not None:
+            transform_meta = require_sql_transform_meta(step.meta)
+            selected_data = [
+                {k: v for k, v in row.items() if k in transform_meta.transform_keys} for row in filters
+            ]
+            idx = pd.DataFrame.from_records(selected_data)
+            transform_state.total = len(selected_data)
             transform_state.status = "running"
+            chunk_count = math.ceil(len(idx) / step.chunk_size) if len(idx) else 0
+            for i in range(chunk_count):
+                start = i * step.chunk_size
+                end = (i + 1) * step.chunk_size
+                step.run_idx(ds, IndexDF(idx.iloc[start:end]))
+                transform_state.processed += step.chunk_size
+            return
 
-            def updating_idx_gen():
-                for idx in idx_gen:
-                    yield idx
-                    transform_state.processed += _step.chunk_size
+        step.run_full(ds=ds, on_batch_progress=on_batch_progress)
 
-            return idx_total, updating_idx_gen()
-
-    # FIXME this should not be necessary
-    _step.get_full_process_ids = get_full_process_ids  # type: ignore
     if recorder is not None:
         run_id = recorder.start_run(trigger="websocket")
         transform_state.run_id = run_id
-        recorder.start_step(_step.name)
+        recorder.start_step(step.name, run_id=run_id)
         try:
-            run_steps(ds=ds, steps=[_step])
-            recorder.finish_step(_step.name, status="completed")
-            recorder.finish_run(status="completed")
+            _run()
+            recorder.finish_step(step.name, status="completed", run_id=run_id)
+            recorder.finish_run(status="completed", run_id=run_id)
         except Exception as exc:
-            recorder.finish_step(_step.name, status="failed", error=str(exc))
-            recorder.finish_run(status="failed", error=str(exc))
+            recorder.finish_step(step.name, status="failed", error=str(exc), run_id=run_id)
+            recorder.finish_run(status="failed", error=str(exc), run_id=run_id)
             raise
     else:
-        run_steps(ds=ds, steps=[_step])
+        _run()
 
 
 def make_app(

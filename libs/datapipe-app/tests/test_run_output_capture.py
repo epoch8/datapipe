@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import logging
 import sys
+import threading
 
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
@@ -62,3 +63,39 @@ def test_capture_run_output_records_logging_and_stdout(tmp_path):
     assert any("Copying training sync file" in msg for msg in messages)
     assert "from stdout" in messages
     assert "from stderr" in messages
+
+
+def test_capture_run_output_isolates_concurrent_threads(tmp_path) -> None:
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    buffer = RunLogBuffer(store)
+    run_a = "run-a"
+    run_b = "run-b"
+    buffer.start_run(run_a)
+    buffer.start_run(run_b)
+    barrier = threading.Barrier(2)
+    errors: list[str] = []
+
+    def worker(run_id: str, message: str) -> None:
+        try:
+            with capture_run_output(buffer, run_id):
+                barrier.wait(timeout=5)
+                print(message, flush=True)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    threads = [
+        threading.Thread(target=worker, args=(run_a, "message-a")),
+        threading.Thread(target=worker, args=(run_b, "message-b")),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert not errors
+    messages_a = [line.message for line in buffer.get_lines(run_a)]
+    messages_b = [line.message for line in buffer.get_lines(run_b)]
+    assert "message-a" in messages_a
+    assert "message-b" in messages_b
+    assert "message-b" not in messages_a
+    assert "message-a" not in messages_b
