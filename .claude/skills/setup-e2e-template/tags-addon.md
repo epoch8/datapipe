@@ -121,3 +121,27 @@ training, the metric on that scenario rises. Steps to recreate it end-to-end.
 tag arc shows up in `detection_model_train__metrics_on_subset` natively. On a *small* validation set the
 "best epoch" pick can latch onto an early, noisy metric peak and publish an under-trained checkpoint — if
 a model looks suspiciously empty, sanity-check against the final-epoch weights.
+
+## Live demo walkthrough (with the datapipe-app UI)
+The narrated flow for showing this to someone — you drive the setup by chatting, then click in the UI:
+
+1. **Invoke the skill.** `/setup-e2e-template`, and say *"this is a demo"*. It brings up the services
+   and seeds demo cat/dog data (COCO → MinIO), i.e. the images that would be annotated in Label Studio.
+2. **Skill asks the key question:** *annotate for real in Label Studio, or inject ready-made GT?* For a
+   live demo pick **inject** — it writes GT directly (following the conventions in the skill's "Skip
+   annotation" section: basename `image_name`, `Cat`/`Dog` casing) so no human labelling is needed.
+3. **Set up tags (don't skip this).** Before training, define the scenario: darken a subset → `tag`
+   (`night`) + `image__tag`, and add the `tag_metrics` step (see this file's "Wire it into the
+   pipeline"). Now tags are nodes in the UI graph.
+4. **Bring up the UI:** `datapipe --pipeline app:app api` (agent mode + `DATAPIPE_APP_PIPELINE_ID`),
+   port-forward, open it. Show the pipeline graph including the tag tables/step.
+5. **Train model A (baseline)** from the UI: run the **`train`** stage (not the whole pipeline — that
+   hits Label Studio). This is the model *without* the tagged scenario in training.
+6. **Add the scenario to training** (tag-train rows into `image__subset` `train`) and run **`train`**
+   again → **model B**. Then run **`count-metrics`** / the tag step.
+7. **Payoff:** the UI now shows **two models** and their metrics; `tag_metrics` on the tag's `val`
+   holdout is ~0 for A and higher for B. Optionally FiftyOne: B detects on the tagged images where A is empty.
+
+> Trigger runs **by stage** from the UI (there's a per-stage run menu / graph-node run), never "Run
+> pipeline" (that runs `annotation` → Label Studio). Training runs on the API process; on this WIP
+> branch it needs `pi_heif` and a pre-AVX2-safe `polars-lts-cpu` in the venv (see the api issues log).
