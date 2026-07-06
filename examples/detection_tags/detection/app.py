@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datapipe.compute import DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
-from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
@@ -15,15 +14,19 @@ import steps
 from config import DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
 from data import catalog
 
-# Ground truth (image__ground_truth) and tags (tag / image__tag) are loaded by
-# scripts/load_batch.py — there is no Label Studio annotation stage in this example.
+# Data is loaded via the `load` step: add a row to `load_request` (request_id, n, offset, tag,
+# darken) and run `datapipe step --labels=stage=load run`. It downloads COCO cat/dog images,
+# uploads them to object storage, and produces s3_images + ground truth (+ tag) directly — there
+# is no Label Studio annotation stage.
 
 pipeline = Pipeline(
     [
-        BatchGenerate(
-            steps.list_s3_images,
-            outputs=["s3_images"],
-            labels=[("stage", "ingest")],
+        BatchTransform(
+            func=steps.load_batch,
+            inputs=["load_request"],
+            outputs=["s3_images", "image__ground_truth", "tag", "image__tag"],
+            transform_keys=["request_id"],
+            labels=[("stage", "load")],
         ),
         BatchTransform(
             func=steps.split_df_train_val,

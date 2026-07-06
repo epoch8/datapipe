@@ -13,7 +13,15 @@ def _t(name, schema):
 
 catalog = Catalog(
     {
-        # images listed from object storage
+        # a load request: add a row here, then run `datapipe step --labels=stage=load run`
+        "load_request": _t("load_request", [
+            Column("request_id", String, primary_key=True),
+            Column("n", Integer),
+            Column("offset", Integer),
+            Column("tag", String),
+            Column("darken", Float),
+        ]),
+        # images uploaded by the load step (image_name = object basename)
         "s3_images": _t("s3_images", [
             Column("image_name", String, primary_key=True),
             Column("image_url", String),

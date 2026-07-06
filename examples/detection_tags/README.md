@@ -16,20 +16,21 @@ cd detection
 datapipe db create-all
 ```
 
-## Two-step data load (no annotation)
+## Two-step data load — via datapipe steps (no annotation)
+Loading is a real pipeline step (`stage=load`): add a request row, then run the step. It downloads
+COCO cat/dog, uploads to MinIO, and produces `s3_images` + ground truth (+ a tag) — no human labelling.
 ```bash
 # from examples/detection_tags/detection
-python ../scripts/load_batch.py --n 120                       # batch 1: base cat/dog
-python ../scripts/load_batch.py --n 40 --tag night --darken 0.1   # batch 2: tagged low-light scenario
-```
-`load_batch.py` downloads COCO cat/dog images, uploads them to MinIO, and injects ground truth
-(+ a tag for batch 2). No human labelling.
+python ../scripts/add_request.py --id base --n 120
+datapipe step --labels=stage=load run          # batch 1: base cat/dog
+datapipe step --labels=stage=train run         # -> model A (baseline, no tag in training)
 
-## Run the pipeline
-```bash
-datapipe run                    # ingest -> split -> freeze -> train -> inference -> metrics -> tag_metrics
-# or by stage: datapipe step --labels=stage=train run
+python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
+datapipe step --labels=stage=load run          # batch 2: tagged low-light scenario
+datapipe step --labels=stage=train run         # -> model B (tag in training)
+datapipe step --labels=stage=count-metrics run # (re)compute metrics incl. tag_metrics
 ```
+Or just `datapipe run` after adding request rows to run every stage.
 
 ## What you get
 - `detection_model_train` — trained model(s).

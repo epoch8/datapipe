@@ -28,18 +28,21 @@ uv sync                       # cu124 torch + polars-lts-cpu + pi-heif baked in
 cd detection && datapipe db create-all
 ```
 
-## Two-step data load (no annotation)
+## Two-step data load — via datapipe steps (no annotation)
+Loading is a pipeline step (`stage=load`) driven by rows in the `load_request` table. Add a request,
+run the load step; it downloads COCO cat/dog, uploads to MinIO, and emits `s3_images` + ground truth
+(+ tag). Labels are lowercase `cat`/`dog`; `image_name` = object basename so all joins line up.
 ```bash
 # from examples/detection_tags/detection
-python ../scripts/load_batch.py --n 120                              # batch 1: base cat/dog
-python ../scripts/load_batch.py --n 40 --tag night --darken 0.1      # batch 2: tagged scenario
+python ../scripts/add_request.py --id base --n 120
+datapipe step --labels=stage=load run                                   # batch 1: base cat/dog
+python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
+datapipe step --labels=stage=load run                                   # batch 2: tagged scenario
 ```
-`load_batch.py` downloads COCO cat/dog, uploads to MinIO, injects GT (+ a tag for batch 2). Labels are
-lowercase `cat`/`dog`; `image_name` = the object basename (what `list_s3_images` emits) so the joins line up.
 
 ## Run
 ```bash
-datapipe run                  # ingest → split → freeze → train → inference → metrics → tag_metrics
+datapipe run                  # load → split → freeze → train → inference → metrics → tag_metrics
 # or by stage: datapipe step --labels=stage=train run
 ```
 
