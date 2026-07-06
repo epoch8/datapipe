@@ -54,9 +54,9 @@ run the load step; it downloads COCO cat/dog, uploads to MinIO, and emits `s3_im
 (+ tag). Labels are lowercase `cat`/`dog`; `image_name` = object basename so all joins line up.
 ```bash
 # from examples/detection_tags/detection
-python ../scripts/add_request.py --id base --n 120
+python ../scripts/add_request.py --id base --n 450
 datapipe step --labels=stage=load run                                   # batch 1: base cat/dog
-python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
+python ../scripts/add_request.py --id night --n 50 --offset 450 --tag night --darken 0.25
 datapipe step --labels=stage=load run                                   # batch 2: tagged scenario
 ```
 
@@ -75,7 +75,7 @@ so the aggregation is correct).
 
 ## Two-model demo (baseline vs retrained)
 1. Load batch 1 → `datapipe step --labels=stage=train run` → model A (no tag in training).
-2. Load batch 2 (`--tag night --darken 0.1`) → `datapipe step --labels=stage=train run` → model B.
+2. Load batch 2 (`--tag night --darken 0.25`) → `datapipe step --labels=stage=train run` → model B.
 3. Read `tag_metrics`: `night/val` ≈ low for A, higher for B.
 
 ## Troubleshooting (may already be fixed — verify against current files)
@@ -88,5 +88,5 @@ so the aggregation is correct).
 - **`No ground truth` at freeze** → `image__ground_truth.image_name` must match `s3_images.image_name`
   (the load step uses the object basename for both); a mismatched key makes the join empty.
 - **Metrics 0 on a trained model** → tiny/noisy val makes "best epoch" latch onto an early
-  checkpoint; use enough data (default batches) and the shipped 50-epoch config.
+  checkpoint; use enough data (~500 total via the default batches) and the shipped epoch config.
 - **Training exits 0 but no model** → datapipe swallows step errors; check `detection_training_status`.

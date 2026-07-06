@@ -21,11 +21,11 @@ Loading is a real pipeline step (`stage=load`): add a request row, then run the 
 COCO cat/dog, uploads to MinIO, and produces `s3_images` + ground truth (+ a tag) — no human labelling.
 ```bash
 # from examples/detection_tags/detection
-python ../scripts/add_request.py --id base --n 120
+python ../scripts/add_request.py --id base --n 450
 datapipe step --labels=stage=load run          # batch 1: base cat/dog
 datapipe step --labels=stage=train run         # -> model A (baseline, no tag in training)
 
-python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
+python ../scripts/add_request.py --id night --n 50 --offset 450 --tag night --darken 0.25
 datapipe step --labels=stage=load run          # batch 2: tagged low-light scenario
 datapipe step --labels=stage=train run         # -> model B (tag in training)
 datapipe step --labels=stage=count-metrics run # (re)compute metrics incl. tag_metrics

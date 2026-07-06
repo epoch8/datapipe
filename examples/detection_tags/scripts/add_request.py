@@ -23,7 +23,7 @@ from datapipe.store.database import TableStoreDB  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--id", required=True, help="request_id (unique per batch)")
-    ap.add_argument("--n", type=int, default=120)
+    ap.add_argument("--n", type=int, default=450)
     ap.add_argument("--offset", type=int, default=0, help="skip the first OFFSET picked COCO images")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--darken", type=float, default=None, help="gamma < 1 darkens (e.g. 0.1)")
