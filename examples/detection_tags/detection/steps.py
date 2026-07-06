@@ -80,13 +80,42 @@ def load_batch(df_request: pd.DataFrame):
         return (pd.DataFrame(columns=s3_cols), pd.DataFrame(columns=gt_cols),
                 pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols))
 
-    id_to_img, anns = _coco_annotations_by_image()
-    cat_dog_ids = sorted(anns.keys())
-    random.seed(RNG_SEED)
-    random.shuffle(cat_dog_ids)
+    # Prefer a pre-staged local cache (fast, no COCO): CACHE/images/<fn> + CACHE/gt.json.
+    # Download the cache once on a fast machine and copy it here — avoids per-image COCO fetches.
+    cache_gt_path = CACHE / "gt.json"
+    use_cache = cache_gt_path.exists() and (CACHE / "images").is_dir()
+    if use_cache:
+        cache_gt = json.loads(cache_gt_path.read_text())
+        pool = sorted(cache_gt.keys())  # deterministic order
+        random.seed(RNG_SEED)
+        random.shuffle(pool)
+        anns = None
+    else:
+        id_to_img, anns = _coco_annotations_by_image()
+        by_id = sorted(anns.keys())
+        random.seed(RNG_SEED)
+        random.shuffle(by_id)
+        pool = [id_to_img[i]["file_name"] for i in by_id]  # file names, same order semantics
 
     fs = fsspec.filesystem("s3", **input_storage_options())
     bucket = input_bucket()
+
+    def raw_bytes_and_gt(fn: str):
+        if use_cache:
+            data = (CACHE / "images" / fn).read_bytes()
+            g = cache_gt[fn]
+            return data, g["bboxes"], g["labels"]
+        # COCO fallback
+        # map filename back to id via anns lookup (filename -> id): rebuild once
+        raw = _get(COCO_IMG_BASE + fn).content
+        iid = _fn_to_id[fn]
+        boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
+                  int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])] for a in anns[iid]]
+        labels = [COCO_CAT_IDS[a["category_id"]] for a in anns[iid]]
+        return raw, boxes, labels
+
+    if not use_cache:
+        _fn_to_id = {id_to_img[i]["file_name"]: i for i in anns.keys()}
 
     s3_rows, gt_rows, tag_rows, tag_defs = [], [], [], {}
     for _, req in df_request.iterrows():
@@ -95,10 +124,9 @@ def load_batch(df_request: pd.DataFrame):
         tag = req.get("tag") or None
         darken = req.get("darken")
         darken = float(darken) if darken is not None and str(darken) != "" else None
-        for iid in cat_dog_ids[offset: offset + n]:
-            fn = id_to_img[iid]["file_name"]
+        for fn in pool[offset: offset + n]:
             stem, ext = os.path.splitext(fn)
-            raw = _get(COCO_IMG_BASE + fn).content
+            raw, boxes, labels = raw_bytes_and_gt(fn)
             if darken is not None:
                 name = f"{stem}__{tag or 'dark'}{ext}"
                 buf = io.BytesIO()
@@ -107,9 +135,6 @@ def load_batch(df_request: pd.DataFrame):
             else:
                 name, data = fn, raw
             fs.pipe(f"{bucket}/images/{name}", data)
-            boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
-                      int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])] for a in anns[iid]]
-            labels = [COCO_CAT_IDS[a["category_id"]] for a in anns[iid]]
             s3_rows.append({"image_name": name, "image_url": input_image_url(name)})
             gt_rows.append({"image_name": name, "bboxes": boxes, "labels": labels})
             if tag:

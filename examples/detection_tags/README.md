@@ -32,6 +32,15 @@ datapipe step --labels=stage=count-metrics run # (re)compute metrics incl. tag_m
 ```
 Or just `datapipe run` after adding request rows to run every stage.
 
+### Fast data on a slow/blocked network (pre-staged cache)
+The `load` step downloads images from COCO per request, which is slow on a high-latency or
+throttled link. To avoid it, pre-stage a cache once from a fast machine:
+`DATAPIPE_TAGS_CACHE_DIR/images/<file>.jpg` + `DATAPIPE_TAGS_CACHE_DIR/gt.json`
+(`{ "<file>.jpg": {"bboxes": [[x1,y1,x2,y2]], "labels": ["cat"|"dog"]}, ... }`). If that cache is
+present, the load step reads images + ground truth from it (no COCO fetches at all). Build it by
+downloading the COCO cat/dog subset elsewhere and copying the folder to `DATAPIPE_TAGS_CACHE_DIR`
+(default `/tmp/datapipe-tags-cache`).
+
 ## What you get
 - `detection_model_train` — trained model(s).
 - `detection_model_train__metrics_on_subset` — overall metrics per model.
