@@ -130,7 +130,7 @@ export function ClassMetricsPage() {
     return (
         <div className="ops-page">
             <PageHeader
-                breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: "Classes" }]}
+                breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: "Class Metrics" }]}
                 title="Class Metrics Explorer"
                 subtitle={`Per-class metrics for ${displayPipeline}`}
                 statusChips={[{ label: "Detection", variant: "purple" }]}

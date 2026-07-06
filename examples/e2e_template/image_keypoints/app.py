@@ -72,7 +72,7 @@ pipeline = Pipeline(
         Inference_KeypointsModel(
             input__image=["s3_images", "sec__image_without_ground_truth"],
             input__keypoints_model=["keypoints_models", "best_keypoints_model"],
-            output__keypoints_prediction="ls_keypoints_prediction",
+            output__keypoints_prediction="ls_keypoints_prediction_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
@@ -81,7 +81,7 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.filter_bboxes_by_classes,
-            inputs=["ls_keypoints_prediction"],
+            inputs=["ls_keypoints_prediction_raw"],
             outputs=["ls_keypoints_prediction"],
             transform_keys=["image_name", "keypoints_model_id"],
             labels=[("stage", "annotation")],

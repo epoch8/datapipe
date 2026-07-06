@@ -65,7 +65,7 @@ pipeline = Pipeline(
         Inference_DetectionModel(
             input__image=["s3_images", "sec__image_without_ground_truth"],
             input__detection_model=["detection_model", "best_detection_model"],
-            output__detection_prediction="ls_detection_prediction",
+            output__detection_prediction="ls_detection_prediction_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
@@ -74,7 +74,7 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.filter_bboxes_by_classes,
-            inputs=["ls_detection_prediction"],
+            inputs=["ls_detection_prediction_raw"],
             outputs=["ls_detection_prediction"],
             transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "annotation")],

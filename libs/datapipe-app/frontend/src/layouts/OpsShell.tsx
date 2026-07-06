@@ -116,13 +116,13 @@ export function OpsShell() {
 
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
-        { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
-        { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
-        { key: "/classes", href: "/classes", label: "Classes", icon: <TableOutlined /> },
-        { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
         ...(agentMode
             ? [{ key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> }]
             : []),
+        { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
+        { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
+        { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
+        { key: "/classes", href: "/classes", label: "Class Metrics", icon: <TableOutlined /> },
     ];
 
     const secondaryItems: NavItem[] = [

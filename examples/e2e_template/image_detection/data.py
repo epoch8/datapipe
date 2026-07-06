@@ -58,6 +58,19 @@ catalog = Catalog(
                 ],
             )
         ),
+        "ls_detection_prediction": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="ls_detection_prediction",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("detection_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                ],
+            )
+        ),
         "images_with_predictions": Table(
             TableStoreDB(
                 dbconn=DBCONN,
