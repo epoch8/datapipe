@@ -1,7 +1,9 @@
 import type {
     ClassMetricDetailResponse,
     ClassMetricsResponse,
+    FrozenDatasetDetailResponse,
     FrozenDatasetsResponse,
+    MetricsModelDetailResponse,
     MetricsModelRow,
     MetricsRunRow,
     MetricsRunsResponse,
@@ -151,6 +153,7 @@ const MOCK_FROZEN_DATASETS: FrozenDatasetsResponse["rows"] = [
         train_count: 120,
         val_count: 30,
         test_count: 10,
+        models_count: 3,
     },
     {
         dataset_id: "20260701_0900_yolov8n-smoke",
@@ -158,6 +161,7 @@ const MOCK_FROZEN_DATASETS: FrozenDatasetsResponse["rows"] = [
         train_count: 80,
         val_count: 20,
         test_count: 0,
+        models_count: 1,
     },
 ];
 
@@ -210,6 +214,76 @@ const MOCK_PIPELINE_RUNS: RunListRow[] = [
 export const opsMock = {
     getFrozenDatasets(): FrozenDatasetsResponse {
         return { rows: MOCK_FROZEN_DATASETS, total: MOCK_FROZEN_DATASETS.length };
+    },
+
+    getModelDetail(pipelineId: string, modelId: string, params?: { dataset_id?: string; subset?: string }): MetricsModelDetailResponse {
+        let rows = MOCK_MODEL_ROWS.filter((r) => r.model_id === modelId);
+        if (params?.dataset_id) rows = rows.filter((r) => r.dataset_id === params.dataset_id);
+        if (params?.subset) rows = rows.filter((r) => r.subset === params.subset);
+        const primary = rows.find((r) => r.has_metrics) ?? rows[0];
+        const datasetId = params?.dataset_id ?? primary?.dataset_id ?? MOCK_FROZEN_DATASETS[0].dataset_id;
+        const frozen = MOCK_FROZEN_DATASETS.find((d) => d.dataset_id === datasetId);
+        return {
+            pipeline_id: pipelineId,
+            model_id: modelId,
+            title: modelId,
+            source_table: "ml_models",
+            source_record: {
+                model_id: modelId,
+                task_type: "detection",
+                run_key: primary?.run_key ?? "240701-0921",
+                frozen_dataset_id: datasetId,
+            },
+            source_table_url: `/pipelines/${pipelineId}/tables/ml_models?focus_col=model_id&focus_value=${encodeURIComponent(modelId)}`,
+            model_row: primary,
+            frozen_dataset: frozen,
+            frozen_dataset_source_table: "frozen_datasets",
+            metrics_rows: rows.length ? rows : MOCK_MODEL_ROWS.slice(0, 1).map((r) => ({ ...r, model_id: modelId, has_metrics: false, metrics: {} })),
+            kpis: primary?.has_metrics
+                ? [
+                      { key: "weighted_f1_score", label: "W-F1", value: primary.metrics?.weighted_f1_score ?? null, format: "float" },
+                      { key: "macro_f1_score", label: "M-F1", value: primary.metrics?.macro_f1_score ?? null, format: "float" },
+                      { key: "support", label: "Support", value: primary.metrics?.support ?? null, format: "integer" },
+                  ]
+                : [],
+            related: { dataset_id: datasetId, run_id: primary?.run_id, run_key: primary?.run_key },
+        };
+    },
+
+    getFrozenDatasetDetail(pipelineId: string, datasetId: string, params?: { subset?: string }): FrozenDatasetDetailResponse {
+        const dataset = MOCK_FROZEN_DATASETS.find((d) => d.dataset_id === datasetId) ?? {
+            dataset_id: datasetId,
+            train_count: 0,
+            val_count: 0,
+            test_count: 0,
+        };
+        let models = MOCK_MODEL_ROWS.filter((r) => r.dataset_id === datasetId);
+        if (params?.subset) models = models.filter((r) => r.subset === params.subset);
+        const withMetrics = models.filter((r) => r.has_metrics);
+        const best = withMetrics.sort((a, b) => (b.metrics?.weighted_f1_score ?? 0) - (a.metrics?.weighted_f1_score ?? 0))[0];
+        return {
+            pipeline_id: pipelineId,
+            dataset_id: datasetId,
+            title: datasetId,
+            dataset: { ...dataset, models_count: models.length },
+            source_table: "frozen_datasets",
+            source_record: {
+                frozen_dataset_id: datasetId,
+                train_images_count: dataset.train_count,
+                val_images_count: dataset.val_count,
+                test_images_count: dataset.test_count,
+            },
+            source_table_url: `/pipelines/${pipelineId}/tables/frozen_datasets?focus_col=frozen_dataset_id&focus_value=${encodeURIComponent(datasetId)}`,
+            models,
+            coverage: {
+                models_total: models.length,
+                models_with_metrics: withMetrics.length,
+                subsets: Array.from(new Set(models.map((m) => m.subset))),
+                best_metric_key: "weighted_f1_score",
+                best_metric_value: best?.metrics?.weighted_f1_score ?? null,
+                best_model_id: best?.model_id ?? null,
+            },
+        };
     },
 
     getRuns(params: RunsListParams = {}): RunsListResponse {

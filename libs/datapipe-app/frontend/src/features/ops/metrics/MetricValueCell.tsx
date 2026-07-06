@@ -19,7 +19,7 @@ function formatValue(value: number, format: MetricFormat): string {
 
 export function MetricValueCell({ value, label, format = "float", isBest, delta }: Props) {
     if (value == null) {
-        return <span className="ops-metric-cell ops-metric-cell-empty">—</span>;
+        return null;
     }
     const tip = label ? `${label}: ${formatValue(value, format)}` : undefined;
     return (
@@ -46,7 +46,7 @@ type StackedProps = {
 
 export function StackedMetricCell({ title, hideTitle, items }: StackedProps) {
     const visible = items.filter((i) => i.value != null);
-    if (!visible.length) return <span className="ops-metric-cell ops-metric-cell-empty">—</span>;
+    if (!visible.length) return null;
     return (
         <div className="ops-metric-stacked">
             {!hideTitle && title && <div className="ops-metric-stacked-title">{title}</div>}

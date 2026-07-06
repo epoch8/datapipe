@@ -7,9 +7,17 @@ type Props = {
     table: PipeTable;
     knownRowCount?: number | null;
     hideRunStep?: boolean;
+    pipelineId?: string;
+    initialColumnFilter?: { column: string; value: string };
 };
 
-export function TableDataPanel({ table, knownRowCount = null, hideRunStep = false }: Props) {
+export function TableDataPanel({
+    table,
+    knownRowCount = null,
+    hideRunStep = false,
+    pipelineId,
+    initialColumnFilter,
+}: Props) {
     const [alertMsg, setAlertMsg] = useState<AlertProps | null>(null);
 
     return (
@@ -28,6 +36,8 @@ export function TableDataPanel({ table, knownRowCount = null, hideRunStep = fals
                 setAlertMsg={setAlertMsg}
                 knownRowCount={knownRowCount}
                 hideRunStep={hideRunStep}
+                pipelineId={pipelineId}
+                initialColumnFilter={initialColumnFilter}
             />
         </div>
     );

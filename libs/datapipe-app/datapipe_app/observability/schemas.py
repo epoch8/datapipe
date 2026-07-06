@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -159,6 +159,7 @@ class FrozenDatasetRow(BaseModel):
     train_count: Optional[int] = None
     val_count: Optional[int] = None
     test_count: Optional[int] = None
+    models_count: Optional[int] = None
 
 
 class FrozenDatasetsResponse(BaseModel):
@@ -272,3 +273,61 @@ class SqlQueryResponse(BaseModel):
 class SqlSchemaResponse(BaseModel):
     datasource: str
     tables: list[dict[str, object]]
+
+
+class EntitySourceRecord(BaseModel):
+    table_name: str
+    pk: dict[str, Any] | None = None
+    record: dict[str, Any] = Field(default_factory=dict)
+
+
+class MetricsModelDetailKpi(BaseModel):
+    key: str
+    label: str
+    value: float | str | None = None
+    format: str = "float"
+
+
+class MetricsModelDetailRelated(BaseModel):
+    dataset_id: Optional[str] = None
+    run_key: Optional[str] = None
+    run_id: Optional[str] = None
+
+
+class MetricsModelDetailResponse(BaseModel):
+    pipeline_id: str
+    model_id: str
+    title: str
+    source_table: Optional[str] = None
+    source_pk: dict[str, Any] | None = None
+    source_record: dict[str, Any] | None = None
+    source_table_url: Optional[str] = None
+    model_row: Optional[MetricsModelRow] = None
+    frozen_dataset: Optional[FrozenDatasetRow] = None
+    frozen_dataset_source_table: Optional[str] = None
+    frozen_dataset_source_pk: dict[str, Any] | None = None
+    metrics_rows: list[MetricsModelRow] = Field(default_factory=list)
+    kpis: list[MetricsModelDetailKpi] = Field(default_factory=list)
+    related: MetricsModelDetailRelated = Field(default_factory=MetricsModelDetailRelated)
+
+
+class FrozenDatasetCoverage(BaseModel):
+    models_total: int = 0
+    models_with_metrics: int = 0
+    subsets: list[str] = Field(default_factory=list)
+    best_metric_key: Optional[str] = None
+    best_metric_value: Optional[float] = None
+    best_model_id: Optional[str] = None
+
+
+class FrozenDatasetDetailResponse(BaseModel):
+    pipeline_id: str
+    dataset_id: str
+    title: str
+    dataset: FrozenDatasetRow
+    source_table: Optional[str] = None
+    source_pk: dict[str, Any] | None = None
+    source_record: dict[str, Any] | None = None
+    source_table_url: Optional[str] = None
+    models: list[MetricsModelRow] = Field(default_factory=list)
+    coverage: FrozenDatasetCoverage = Field(default_factory=FrozenDatasetCoverage)

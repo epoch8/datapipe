@@ -130,6 +130,8 @@ interface TableProps {
     setAlertMsg: Dispatch<SetStateAction<AlertProps | null>>;
     knownRowCount?: number | null;
     hideRunStep?: boolean;
+    pipelineId?: string;
+    initialColumnFilter?: { column: string; value: string };
 }
 
 interface listOfSelectedColumnsProps {

@@ -57,7 +57,6 @@ export function MetricsOverviewPage() {
     const sortDir = searchParams.get("sort_dir") ?? "desc";
     const page = searchParams.get("page") ? parseInt(searchParams.get("page")!, 10) : 1;
     const pageSize = searchParams.get("page_size") ? parseInt(searchParams.get("page_size")!, 10) : 25;
-    const [selectedRowIds, setSelectedRowIds] = React.useState<string[]>([]);
     const [dateRange] = React.useState(defaultDateRange());
 
     const [rows, setRows] = React.useState<MetricsModelRow[]>([]);
@@ -125,16 +124,6 @@ export function MetricsOverviewPage() {
     const visibleKpis = (summary?.kpis ?? []).filter(
         (kpi) => kpi.key !== "weighted_recall" && kpi.key !== "accuracy",
     );
-
-    const handleCompute = async (rowIds: string[]) => {
-        if (!pipelineId || !rowIds.length) return;
-        try {
-            await opsApi.evaluateMetrics(pipelineId, { candidate_ids: rowIds });
-            load();
-        } catch (e) {
-            setError(String(e));
-        }
-    };
 
     return (
         <div className="ops-page">
@@ -241,7 +230,7 @@ export function MetricsOverviewPage() {
                 )}
 
                 <div className="ops-metrics-frozen-row">
-                    <FrozenDatasetsCompact rows={frozenDatasets} loading={loading} />
+                    <FrozenDatasetsCompact rows={frozenDatasets} loading={loading} pipelineId={pipelineId} />
                 </div>
 
                 {schema && (
@@ -255,7 +244,6 @@ export function MetricsOverviewPage() {
                         pageSize={pageSize}
                         loading={loading}
                         activeSorts={activeSorts}
-                        selectedRowIds={selectedRowIds}
                         onPageChange={(p, ps) => patchParams({ page: p, page_size: ps })}
                         onSortChange={(sorts) => {
                             const first = sorts[0];
@@ -265,8 +253,6 @@ export function MetricsOverviewPage() {
                                 patchParams({ sort_by: null, sort_dir: null, page: 1 });
                             }
                         }}
-                        onSelectionChange={setSelectedRowIds}
-                        onCompute={(rowId) => handleCompute([rowId])}
                     />
                 )}
             </EmptyState>

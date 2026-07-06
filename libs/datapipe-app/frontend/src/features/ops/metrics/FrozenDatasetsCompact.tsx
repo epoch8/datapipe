@@ -1,32 +1,17 @@
 import React from "react";
-import { Button, Tooltip } from "antd";
-import { CopyOutlined } from "@ant-design/icons";
+import { Link } from "react-router-dom";
 import type { FrozenDatasetRow } from "../../../types/ops";
+import { EntityLink } from "./EntityLink";
+import { buildDatasetUrl } from "./entityUrls";
+import { formatFrozenAt } from "./frozenDatasetFormat";
 
 type Props = {
     rows: FrozenDatasetRow[];
     loading?: boolean;
+    pipelineId?: string;
 };
 
-function truncateId(id: string, max = 28): string {
-    if (id.length <= max) return id;
-    return `${id.slice(0, max)}…`;
-}
-
-function copyText(text: string) {
-    void navigator.clipboard?.writeText(text);
-}
-
-function formatFrozenAt(iso?: string): string {
-    if (!iso) return "—";
-    const normalized = iso.replace("Z", "").replace(/\.\d+$/, "");
-    const [date, time] = normalized.split("T");
-    if (!time) return `${date} 00:00:00`;
-    const [h = "00", m = "00", s = "00"] = time.split(":");
-    return `${date} ${h.padStart(2, "0")}:${m.padStart(2, "0")}:${s.padStart(2, "0")}`;
-}
-
-export function FrozenDatasetsCompact({ rows, loading }: Props) {
+export function FrozenDatasetsCompact({ rows, loading, pipelineId }: Props) {
     return (
         <div className="ops-panel ops-frozen-compact">
             <div className="ops-panel-title">Frozen datasets</div>
@@ -41,30 +26,26 @@ export function FrozenDatasetsCompact({ rows, loading }: Props) {
                             <th>Dataset</th>
                             <th>Frozen at</th>
                             <th>Split</th>
+                            <th>Models</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.map((row) => (
                             <tr key={row.dataset_id}>
                                 <td>
-                                    <Tooltip title={row.dataset_id}>
-                                        <span className="ops-truncate-id">{truncateId(row.dataset_id)}</span>
-                                    </Tooltip>
-                                    <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<CopyOutlined />}
-                                        aria-label="Copy dataset id"
-                                        onClick={() => copyText(row.dataset_id)}
-                                    />
+                                    <EntityLink kind="dataset" id={row.dataset_id} />
                                 </td>
                                 <td>{formatFrozenAt(row.frozen_at)}</td>
                                 <td>
-                                    <Tooltip title="train / val / test">
-                                        <span>
-                                            {row.train_count ?? 0} / {row.val_count ?? 0} / {row.test_count ?? 0}
-                                        </span>
-                                    </Tooltip>
+                                    <span title="train / val / test">
+                                        {row.train_count ?? 0} / {row.val_count ?? 0} / {row.test_count ?? 0}
+                                    </span>
+                                </td>
+                                <td>
+                                    <Link to={buildDatasetUrl(row.dataset_id, pipelineId)}>
+                                        {row.models_count ?? 0} models
+                                    </Link>
+                                    <div className="ops-muted">trained on this snapshot</div>
                                 </td>
                             </tr>
                         ))}

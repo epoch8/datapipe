@@ -379,11 +379,64 @@ export interface FrozenDatasetRow {
     train_count?: number;
     val_count?: number;
     test_count?: number;
+    models_count?: number;
 }
 
 export interface FrozenDatasetsResponse {
     rows: FrozenDatasetRow[];
     total: number;
+}
+
+export interface MetricsModelDetailKpi {
+    key: string;
+    label: string;
+    value: number | string | null;
+    format?: MetricFormat;
+}
+
+export interface MetricsModelDetailRelated {
+    dataset_id?: string | null;
+    run_key?: string | null;
+    run_id?: string | null;
+}
+
+export interface MetricsModelDetailResponse {
+    pipeline_id: string;
+    model_id: string;
+    title: string;
+    source_table?: string | null;
+    source_pk?: Record<string, string | number | boolean | null> | null;
+    source_record?: Record<string, unknown> | null;
+    source_table_url?: string | null;
+    model_row?: MetricsModelRow | null;
+    frozen_dataset?: FrozenDatasetRow | null;
+    frozen_dataset_source_table?: string | null;
+    frozen_dataset_source_pk?: Record<string, unknown> | null;
+    metrics_rows: MetricsModelRow[];
+    kpis: MetricsModelDetailKpi[];
+    related: MetricsModelDetailRelated;
+}
+
+export interface FrozenDatasetCoverage {
+    models_total: number;
+    models_with_metrics: number;
+    subsets: string[];
+    best_metric_key?: string | null;
+    best_metric_value?: number | null;
+    best_model_id?: string | null;
+}
+
+export interface FrozenDatasetDetailResponse {
+    pipeline_id: string;
+    dataset_id: string;
+    title: string;
+    dataset: FrozenDatasetRow;
+    source_table?: string | null;
+    source_pk?: Record<string, unknown> | null;
+    source_record?: Record<string, unknown> | null;
+    source_table_url?: string | null;
+    models: MetricsModelRow[];
+    coverage: FrozenDatasetCoverage;
 }
 
 export interface MetricsRunsResponse {

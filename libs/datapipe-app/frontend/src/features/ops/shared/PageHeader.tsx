@@ -9,6 +9,7 @@ type StatusChip = { label: string; color?: string; variant?: "success" | "purple
 type Props = {
     breadcrumbs?: { label: string; href?: string }[];
     title: string;
+    titleTooltip?: string;
     subtitle?: string;
     statusChips?: StatusChip[];
     dateRange?: [Moment, Moment] | null;
@@ -21,6 +22,7 @@ type Props = {
 export function PageHeader({
     breadcrumbs = [],
     title,
+    titleTooltip,
     subtitle,
     statusChips = [],
     dateRange,
@@ -44,7 +46,9 @@ export function PageHeader({
             <div className="ops-page-header-main">
                 <div className="ops-page-header-left">
                     <div className="ops-page-title-row">
-                        <h1 className="ops-page-title">{title}</h1>
+                        <h1 className="ops-page-title" title={titleTooltip}>
+                            {title}
+                        </h1>
                         <StarOutlined className="ops-page-star" />
                     </div>
                     {subtitle && <p className="ops-page-subtitle">{subtitle}</p>}

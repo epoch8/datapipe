@@ -12,7 +12,9 @@ import type {
     MetricsSummaryResponse,
     MetricsTableSchema,
     MetricsTimeseriesResponse,
+    FrozenDatasetDetailResponse,
     FrozenDatasetsResponse,
+    MetricsModelDetailResponse,
     OverviewResponse,
     PipelineDetail,
     RecentRunSummary,
@@ -144,6 +146,28 @@ export const opsApi = {
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets`,
             undefined,
             () => opsMock.getFrozenDatasets(),
+        ),
+
+    getModelDetail: (
+        pipelineId: string,
+        modelId: string,
+        params?: { dataset_id?: string; subset?: string },
+    ) =>
+        fetchWithMock<MetricsModelDetailResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/models/${encodeURIComponent(modelId)}${toQuery(params ?? {})}`,
+            undefined,
+            () => opsMock.getModelDetail(pipelineId, modelId, params),
+        ),
+
+    getFrozenDatasetDetail: (
+        pipelineId: string,
+        datasetId: string,
+        params?: { subset?: string },
+    ) =>
+        fetchWithMock<FrozenDatasetDetailResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets/${encodeURIComponent(datasetId)}${toQuery(params ?? {})}`,
+            undefined,
+            () => opsMock.getFrozenDatasetDetail(pipelineId, datasetId, params),
         ),
 
     getMetricsSchema: (pipelineId: string, taskType?: string) =>

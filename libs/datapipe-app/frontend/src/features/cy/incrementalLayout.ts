@@ -29,6 +29,8 @@ export type MeasuredNode = {
     metaGroup?: string;
     child_count?: number;
     indexes?: string[];
+    pipelineIndex?: number;
+    pipelineOrderKey?: string;
 };
 
 export type LayoutEntry = {
@@ -71,13 +73,31 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
     if (type === "group") {
         const tpk = getTransformPrimaryKeys(data);
         const size = groupBoxSize(name, (data.child_count as number) ?? 1, tpk);
-        return { id, type, name, w: size.w, h: size.h, child_count: data.child_count as number };
+        return {
+            id,
+            type,
+            name,
+            w: size.w,
+            h: size.h,
+            child_count: data.child_count as number,
+            pipelineIndex: data.pipelineIndex as number | undefined,
+            pipelineOrderKey: data.pipelineOrderKey as string | undefined,
+        };
     }
     if (type === "group-expanded") {
         const tpk = getTransformPrimaryKeys(data);
         const w = (data.boxW as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1, tpk).w;
         const h = (data.boxH as number) ?? groupBoxSize(name, (data.child_count as number) ?? 1, tpk).h;
-        return { id, type, name, w, h, child_count: data.child_count as number };
+        return {
+            id,
+            type,
+            name,
+            w,
+            h,
+            child_count: data.child_count as number,
+            pipelineIndex: data.pipelineIndex as number | undefined,
+            pipelineOrderKey: data.pipelineOrderKey as string | undefined,
+        };
     }
     if (type === "table") {
         const size = tableNodeSize(name, (data.indexes as string[]) || [], compact);
@@ -90,6 +110,8 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
             parent: data.parent as string | undefined,
             metaGroup: data.metaGroup as string | undefined,
             indexes: data.indexes as string[] | undefined,
+            pipelineIndex: data.pipelineIndex as number | undefined,
+            pipelineOrderKey: data.pipelineOrderKey as string | undefined,
         };
     }
     const tpk = getTransformPrimaryKeys(data);
@@ -102,6 +124,8 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
         h: size.h,
         parent: data.parent as string | undefined,
         metaGroup: data.metaGroup as string | undefined,
+        pipelineIndex: data.pipelineIndex as number | undefined,
+        pipelineOrderKey: data.pipelineOrderKey as string | undefined,
     };
 }
 
@@ -109,18 +133,104 @@ function sortIds(ids: string[]): string[] {
     return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
-/**
- * Deterministic layered DAG layout (top-to-bottom or left-to-right).
- * Same inputs always produce the same node positions.
- */
-export function layoutLayeredDag(
+function isTransformLike(type: string): boolean {
+    return type === "transform" || type === "group";
+}
+
+function rankOfTransform(nodeId: string, nodes: Map<string, MeasuredNode>): number | undefined {
+    const node = nodes.get(nodeId);
+    if (!node || !isTransformLike(node.type)) return undefined;
+    if (node.pipelineIndex != null) return node.pipelineIndex * 2 + 1;
+    return undefined;
+}
+
+function computeTableRank(
+    tableId: string,
     nodes: Map<string, MeasuredNode>,
     edges: LayoutEdge[],
-    rankDir: "TB" | "LR" = "TB",
-): Map<string, BBox> {
-    const ids = sortIds(Array.from(nodes.keys()));
-    if (!ids.length) return new Map();
+): number {
+    const producers: number[] = [];
+    const consumers: number[] = [];
 
+    edges.forEach(({ source, target }) => {
+        if (target === tableId) {
+            const src = nodes.get(source);
+            if (src && isTransformLike(src.type)) {
+                const rank = rankOfTransform(source, nodes);
+                if (rank != null) producers.push(rank);
+            }
+        }
+        if (source === tableId) {
+            const tgt = nodes.get(target);
+            if (tgt && isTransformLike(tgt.type)) {
+                const rank = rankOfTransform(target, nodes);
+                if (rank != null) consumers.push(rank);
+            }
+        }
+    });
+
+    if (!producers.length && consumers.length) {
+        return Math.max(0, Math.min(...consumers) - 1);
+    }
+    if (producers.length && !consumers.length) {
+        return Math.min(...producers) + 1;
+    }
+    if (producers.length && consumers.length) {
+        const firstProducer = Math.min(...producers);
+        const firstConsumer = Math.min(...consumers);
+        return Math.min(firstProducer + 1, Math.max(0, firstConsumer - 1));
+    }
+    return 0;
+}
+
+function hasPath(
+    graph: Map<string, Set<string>>,
+    from: string,
+    to: string,
+    visited: Set<string> = new Set(),
+): boolean {
+    if (from === to) return true;
+    if (visited.has(from)) return false;
+    visited.add(from);
+    const nexts = Array.from(graph.get(from) ?? []);
+    for (let i = 0; i < nexts.length; i += 1) {
+        if (hasPath(graph, nexts[i], to, visited)) return true;
+    }
+    return false;
+}
+
+function edgePipelinePriority(edge: LayoutEdge, nodes: Map<string, MeasuredNode>): number {
+    const srcIdx = nodes.get(edge.source)?.pipelineIndex ?? 9999;
+    const tgtIdx = nodes.get(edge.target)?.pipelineIndex ?? 9999;
+    return srcIdx <= tgtIdx ? 0 : 1;
+}
+
+/** Edges used only for vertical rank — cycle-closing edges are dropped. */
+export function makeAcyclicRankEdges(
+    edges: LayoutEdge[],
+    nodes: Map<string, MeasuredNode>,
+): LayoutEdge[] {
+    const sorted = [...edges].sort(
+        (a, b) => edgePipelinePriority(a, nodes) - edgePipelinePriority(b, nodes),
+    );
+    const result: LayoutEdge[] = [];
+    const graph = new Map<string, Set<string>>();
+
+    sorted.forEach((edge) => {
+        if (!nodes.has(edge.source) || !nodes.has(edge.target)) return;
+        if (hasPath(graph, edge.target, edge.source)) return;
+        result.push(edge);
+        if (!graph.has(edge.source)) graph.set(edge.source, new Set());
+        graph.get(edge.source)?.add(edge.target);
+    });
+    return result;
+}
+
+function longestPathRanks(
+    nodes: Map<string, MeasuredNode>,
+    edges: LayoutEdge[],
+): Map<string, number> {
+    const ids = sortIds(Array.from(nodes.keys()));
     const rank = new Map<string, number>();
     ids.forEach((id) => rank.set(id, 0));
     let changed = true;
@@ -137,6 +247,72 @@ export function layoutLayeredDag(
             }
         });
     }
+    return rank;
+}
+
+function computePipelineAwareRanks(
+    nodes: Map<string, MeasuredNode>,
+    rankEdges: LayoutEdge[],
+): Map<string, number> {
+    const rank = new Map<string, number>();
+
+    nodes.forEach((node, id) => {
+        if (isTransformLike(node.type) && node.pipelineIndex != null) {
+            rank.set(id, node.pipelineIndex * 2 + 1);
+        }
+    });
+
+    nodes.forEach((node, id) => {
+        if (node.type === "table") {
+            rank.set(id, computeTableRank(id, nodes, rankEdges));
+        }
+    });
+
+    const missing = sortIds(Array.from(nodes.keys())).filter((id) => !rank.has(id));
+    if (missing.length) {
+        const fallback = longestPathRanks(nodes, rankEdges);
+        missing.forEach((id) => {
+            if (!rank.has(id)) rank.set(id, fallback.get(id) ?? 0);
+        });
+    }
+
+    return rank;
+}
+
+export function buildRankEdges(
+    nodes: Map<string, MeasuredNode>,
+    renderEdges: LayoutEdge[],
+): LayoutEdge[] {
+    return makeAcyclicRankEdges(renderEdges, nodes);
+}
+
+function computeRanks(
+    nodes: Map<string, MeasuredNode>,
+    renderEdges: LayoutEdge[],
+    rankEdges?: LayoutEdge[],
+): Map<string, number> {
+    const edgesForRank = rankEdges ?? makeAcyclicRankEdges(renderEdges, nodes);
+    const hasPipelineOrder = Array.from(nodes.values()).some((n) => n.pipelineIndex != null);
+    if (hasPipelineOrder) {
+        return computePipelineAwareRanks(nodes, edgesForRank);
+    }
+    return longestPathRanks(nodes, edgesForRank);
+}
+
+/**
+ * Deterministic layered layout (top-to-bottom or left-to-right).
+ * Render edges may include cycles; rank uses acyclic rankEdges + pipeline order when available.
+ */
+export function layoutLayeredDag(
+    nodes: Map<string, MeasuredNode>,
+    edges: LayoutEdge[],
+    rankDir: "TB" | "LR" = "TB",
+    rankEdges?: LayoutEdge[],
+): Map<string, BBox> {
+    const ids = sortIds(Array.from(nodes.keys()));
+    if (!ids.length) return new Map();
+
+    const rank = computeRanks(nodes, edges, rankEdges);
 
     const ranks = new Map<number, string[]>();
     ids.forEach((id) => {
@@ -147,7 +323,7 @@ export function layoutLayeredDag(
     ranks.forEach((rankIds, r) => ranks.set(r, sortIds(rankIds)));
 
     const positions = new Map<string, BBox>();
-    const sortedRankKeys = sortIds(Array.from(ranks.keys()).map(String)).map(Number);
+    const sortedRankKeys = Array.from(ranks.keys()).sort((a, b) => a - b);
 
     if (rankDir === "TB") {
         let yCursor = 0;
@@ -240,8 +416,9 @@ export function layoutInnerGraph(
     const hasInternalEdges = edges.some(
         ({ source, target }) => children.has(source) && children.has(target),
     );
+    const rankEdges = hasInternalEdges ? buildRankEdges(children, edges) : edges;
     const positions = hasInternalEdges
-        ? layoutLayeredDag(children, edges, "TB")
+        ? layoutLayeredDag(children, edges, "TB", rankEdges)
         : layoutVerticalStack(children, pipelineOrder.length ? pipelineOrder : sortIds(Array.from(children.keys())));
     return { positions, contentBBox: innerGraphBBox(positions) };
 }
@@ -588,7 +765,7 @@ export function buildCollapsedLayout(
         layoutNodes.set(id, measureNode({ ...data, id }));
     });
 
-    const positions = layoutLayeredDag(layoutNodes, edgeList, rankDir);
+    const positions = layoutLayeredDag(layoutNodes, edgeList, rankDir, buildRankEdges(layoutNodes, edgeList));
     layoutNodes.forEach((node, id) => {
         const bbox = positions.get(id);
         if (!bbox) return;

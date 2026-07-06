@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import quote
 
 import pandas as pd
 from datapipe.compute import Catalog
@@ -21,11 +23,17 @@ from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricRow,
     ClassMetricsResponse,
+    EntitySourceRecord,
+    FrozenDatasetCoverage,
+    FrozenDatasetDetailResponse,
     FrozenDatasetRow,
     FrozenDatasetsResponse,
     MetricsCandidateCreate,
     MetricsCandidateRow,
     MetricsCandidatesResponse,
+    MetricsModelDetailKpi,
+    MetricsModelDetailRelated,
+    MetricsModelDetailResponse,
     MetricsModelRow,
     MetricsRunRow,
     MetricsRunsResponse,
@@ -38,11 +46,14 @@ from datapipe_app.observability.schemas import (
 try:
     from datapipe_ml.observability.discovery import (
         discover_metrics_tables,
+        discover_training_status_tables,
         frozen_dataset_id_column,
         frozen_dataset_metadata_columns,
         infer_task_type,
         is_frozen_dataset_table,
+        is_metrics_table,
         is_model_frozen_dataset_link_table,
+        is_training_status_table,
         metric_columns,
         model_id_column,
         row_model_id,
@@ -50,6 +61,7 @@ try:
     )
 except ImportError:
     discover_metrics_tables = None  # type: ignore
+    discover_training_status_tables = lambda _c, _d: []  # type: ignore
     infer_task_type = lambda _n: None  # type: ignore
     metric_columns = lambda cols: [c for c in cols if c.startswith("calc__")]  # type: ignore
     row_model_id = lambda _r, _c: None  # type: ignore
@@ -57,6 +69,8 @@ except ImportError:
     model_id_column = lambda _c: None  # type: ignore
     is_frozen_dataset_table = lambda _n: False  # type: ignore
     is_model_frozen_dataset_link_table = lambda _n: False  # type: ignore
+    is_metrics_table = lambda _n, _dt: False  # type: ignore
+    is_training_status_table = lambda _n: False  # type: ignore
     frozen_dataset_id_column = lambda _c: None  # type: ignore
     frozen_dataset_metadata_columns = lambda _c: {}  # type: ignore
 
@@ -85,6 +99,202 @@ _MODEL_COUNT_KEYS = frozenset(
 )
 
 _CANDIDATES: dict[str, list[MetricsCandidateRow]] = {}
+
+
+@dataclass
+class EntitySourceIndex:
+    model_records_by_id: dict[str, EntitySourceRecord] = field(default_factory=dict)
+    dataset_records_by_id: dict[str, EntitySourceRecord] = field(default_factory=dict)
+    model_to_dataset: dict[str, str] = field(default_factory=dict)
+    dataset_to_models: dict[str, list[str]] = field(default_factory=dict)
+    _model_priority: dict[str, int] = field(default_factory=dict)
+    _dataset_priority: dict[str, int] = field(default_factory=dict)
+
+
+def _jsonable(val: Any) -> Any:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    if isinstance(val, (str, int, float, bool)):
+        return val
+    return str(val)
+
+
+def _row_to_record(row: pd.Series, columns: list[str]) -> dict[str, Any]:
+    return {col: _jsonable(row.get(col)) for col in columns}
+
+
+def _row_pk(row: pd.Series, pk_cols: list[str]) -> dict[str, Any] | None:
+    if not pk_cols:
+        return None
+    pk = {col: _jsonable(row.get(col)) for col in pk_cols}
+    if all(v is None for v in pk.values()):
+        return None
+    return pk
+
+
+def _table_row_url(
+    pipeline_id: str,
+    table_name: str | None,
+    focus_col: str | None,
+    focus_value: str | None,
+) -> str | None:
+    if not table_name or not focus_col or focus_value is None:
+        return None
+    qs = f"focus_col={quote(focus_col)}&focus_value={quote(str(focus_value))}"
+    return f"/pipelines/{quote(pipeline_id)}/tables/{quote(table_name)}?{qs}"
+
+
+def _maybe_set_model_record(index: EntitySourceIndex, model_id: str, record: EntitySourceRecord, priority: int) -> None:
+    if model_id not in index.model_records_by_id or index._model_priority.get(model_id, 99) > priority:
+        index.model_records_by_id[model_id] = record
+        index._model_priority[model_id] = priority
+
+
+def _maybe_set_dataset_record(index: EntitySourceIndex, dataset_id: str, record: EntitySourceRecord, priority: int) -> None:
+    if dataset_id not in index.dataset_records_by_id or index._dataset_priority.get(dataset_id, 99) > priority:
+        index.dataset_records_by_id[dataset_id] = record
+        index._dataset_priority[dataset_id] = priority
+
+
+def _is_likely_model_table(name: str, columns: list[str]) -> bool:
+    if is_training_status_table(name):
+        return True
+    model_col = model_id_column(columns)
+    if not model_col:
+        return False
+    lowered = name.lower()
+    return "model" in lowered and not is_frozen_dataset_table(name) and not is_model_frozen_dataset_link_table(name)
+
+
+def _load_entity_source_records(ds: Optional[DataStore], catalog: Optional[Catalog]) -> EntitySourceIndex:
+    index = EntitySourceIndex()
+    if ds is None or catalog is None:
+        return index
+
+    for name in catalog.catalog:
+        dt = ds.get_table(name)
+        try:
+            df = dt.get_data()
+        except Exception:
+            continue
+        if df.empty:
+            continue
+        columns = table_schema_columns(dt)
+        pk_cols = list(getattr(dt, "primary_keys", None) or getattr(dt, "indexes", None) or [])
+
+        if is_frozen_dataset_table(name):
+            id_col = frozen_dataset_id_column(columns)
+            if not id_col:
+                continue
+            for _, row in df.iterrows():
+                dataset_id = row.get(id_col)
+                if dataset_id is None or (isinstance(dataset_id, float) and pd.isna(dataset_id)):
+                    continue
+                did = str(dataset_id)
+                _maybe_set_dataset_record(
+                    index,
+                    did,
+                    EntitySourceRecord(
+                        table_name=name,
+                        pk=_row_pk(row, pk_cols) or {id_col: did},
+                        record=_row_to_record(row, columns),
+                    ),
+                    priority=1,
+                )
+
+        if is_model_frozen_dataset_link_table(name):
+            model_col = model_id_column(columns)
+            dataset_col = frozen_dataset_id_column(columns)
+            if not model_col or not dataset_col:
+                continue
+            for _, row in df.iterrows():
+                model_value = row.get(model_col)
+                dataset_value = row.get(dataset_col)
+                if model_value is None or dataset_value is None:
+                    continue
+                if isinstance(model_value, float) and pd.isna(model_value):
+                    continue
+                if isinstance(dataset_value, float) and pd.isna(dataset_value):
+                    continue
+                mid, did = str(model_value), str(dataset_value)
+                index.model_to_dataset[mid] = did
+                index.dataset_to_models.setdefault(did, [])
+                if mid not in index.dataset_to_models[did]:
+                    index.dataset_to_models[did].append(mid)
+                record = EntitySourceRecord(
+                    table_name=name,
+                    pk=_row_pk(row, pk_cols),
+                    record=_row_to_record(row, columns),
+                )
+                _maybe_set_model_record(index, mid, record, priority=2)
+                _maybe_set_dataset_record(index, did, record, priority=3)
+
+        if _is_likely_model_table(name, columns):
+            model_col = model_id_column(columns)
+            if not model_col:
+                continue
+            priority = 1 if is_training_status_table(name) else 1
+            if is_training_status_table(name):
+                priority = 3
+            elif "model" in name.lower():
+                priority = 1
+            for _, row in df.iterrows():
+                model_value = row.get(model_col)
+                if model_value is None or (isinstance(model_value, float) and pd.isna(model_value)):
+                    continue
+                mid = str(model_value)
+                _maybe_set_model_record(
+                    index,
+                    mid,
+                    EntitySourceRecord(
+                        table_name=name,
+                        pk=_row_pk(row, pk_cols) or {model_col: mid},
+                        record=_row_to_record(row, columns),
+                    ),
+                    priority=priority,
+                )
+
+        if discover_metrics_tables is not None and is_metrics_table(name, dt):
+            model_col = model_id_column(columns)
+            if not model_col:
+                continue
+            for _, row in df.iterrows():
+                model_value = row.get(model_col)
+                if model_value is None or (isinstance(model_value, float) and pd.isna(model_value)):
+                    continue
+                mid = str(model_value)
+                _maybe_set_model_record(
+                    index,
+                    mid,
+                    EntitySourceRecord(
+                        table_name=name,
+                        pk=_row_pk(row, pk_cols) or {model_col: mid},
+                        record=_row_to_record(row, columns),
+                    ),
+                    priority=4,
+                )
+
+    for candidate in _CANDIDATES.values():
+        for row in candidate:
+            _maybe_set_model_record(
+                index,
+                row.model_id,
+                EntitySourceRecord(
+                    table_name="metrics_candidates",
+                    pk={"id": row.id},
+                    record=row.model_dump(),
+                ),
+                priority=5,
+            )
+            if row.dataset_id:
+                index.model_to_dataset[row.model_id] = row.dataset_id
+                index.dataset_to_models.setdefault(row.dataset_id, [])
+                if row.model_id not in index.dataset_to_models[row.dataset_id]:
+                    index.dataset_to_models[row.dataset_id].append(row.model_id)
+
+    return index
 
 
 def _normalize_metric_key(key: str) -> str:
@@ -569,6 +779,33 @@ def _sort_class_rows(rows: list[ClassMetricRow], sort_by: Optional[str], sort_di
     return sorted(rows, key=lambda r: _class_sort_tuple_key(r, specs))
 
 
+def _build_model_detail_kpis(row: Optional[MetricsModelRow]) -> list[MetricsModelDetailKpi]:
+    if row is None or not row.has_metrics:
+        return []
+    metrics = row.metrics or {}
+    specs = [
+        ("weighted_f1_score", "W-F1"),
+        ("macro_f1_score", "M-F1"),
+        ("weighted_without_pseudo_classes_precision", "W-Precision"),
+        ("weighted_without_pseudo_classes_recall", "W-Recall"),
+        ("weighted_precision", "W-Precision"),
+        ("weighted_recall", "W-Recall"),
+        ("support", "Support"),
+    ]
+    seen: set[str] = set()
+    kpis: list[MetricsModelDetailKpi] = []
+    for key, label in specs:
+        if key in seen:
+            continue
+        val = metrics.get(key)
+        if val is None:
+            continue
+        seen.add(key)
+        fmt = "integer" if key == "support" else "float"
+        kpis.append(MetricsModelDetailKpi(key=key, label=label, value=val, format=fmt))
+    return kpis
+
+
 class MetricsService:
     def __init__(
         self,
@@ -600,9 +837,39 @@ class MetricsService:
                 compute_deltas(run, runs[i + 1])
         return runs, task_type
 
+    def _all_model_rows(self, pipeline_id: str) -> tuple[list[MetricsModelRow], Optional[str]]:
+        runs, discovered_task_type = self._all_runs(pipeline_id)
+        datasets_by_id, _ = self._dataset_context()
+        model_rows = runs_to_model_rows(
+            runs,
+            datasets_by_id=datasets_by_id,
+            task_type=discovered_task_type,
+            pipeline_id=pipeline_id,
+        )
+        model_rows = _merge_candidates(
+            model_rows,
+            _CANDIDATES.get(pipeline_id, []),
+            datasets_by_id,
+            pipeline_id,
+        )
+        return model_rows, discovered_task_type
+
     def list_frozen_datasets(self, pipeline_id: str) -> FrozenDatasetsResponse:
-        rows, _, _ = _load_frozen_dataset_catalog(self.ds, self.catalog)
-        return FrozenDatasetsResponse(rows=rows, total=len(rows))
+        rows, by_id, model_to_dataset = _load_frozen_dataset_catalog(self.ds, self.catalog)
+        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        model_rows, _ = self._all_model_rows(pipeline_id)
+        counts: dict[str, set[str]] = {}
+        for model_id, dataset_id in {**model_to_dataset, **entity_index.model_to_dataset}.items():
+            counts.setdefault(dataset_id, set()).add(model_id)
+        for row in model_rows:
+            if row.dataset_id:
+                counts.setdefault(row.dataset_id, set()).add(row.model_id)
+        enriched: list[FrozenDatasetRow] = []
+        for row in rows:
+            enriched.append(
+                row.model_copy(update={"models_count": len(counts.get(row.dataset_id, set()))}),
+            )
+        return FrozenDatasetsResponse(rows=enriched, total=len(enriched))
 
     def list_runs(
         self,
@@ -821,4 +1088,107 @@ class MetricsService:
                 "false_negatives": latest.FN or 0,
                 "false_positives": latest.FP or 0,
             },
+        )
+
+    def get_model_detail(
+        self,
+        pipeline_id: str,
+        model_id: str,
+        *,
+        dataset_id: Optional[str] = None,
+        subset: Optional[str] = None,
+    ) -> MetricsModelDetailResponse:
+        model_rows, _ = self._all_model_rows(pipeline_id)
+        matching = [r for r in model_rows if r.model_id == model_id]
+        if dataset_id:
+            matching = [r for r in matching if r.dataset_id == dataset_id]
+        if subset:
+            matching = [r for r in matching if r.subset == subset]
+
+        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        datasets_by_id, _ = self._dataset_context()
+        source = entity_index.model_records_by_id.get(model_id)
+        linked_dataset_id = (
+            dataset_id
+            or (matching[0].dataset_id if matching else None)
+            or entity_index.model_to_dataset.get(model_id)
+        )
+        frozen = datasets_by_id.get(linked_dataset_id) if linked_dataset_id else None
+        dataset_source = entity_index.dataset_records_by_id.get(linked_dataset_id) if linked_dataset_id else None
+        primary_row = next((r for r in matching if r.has_metrics), matching[0] if matching else None)
+        model_col = "model_id"
+        if source:
+            model_col = model_id_column(list(source.record.keys())) or model_col
+        dataset_col = "frozen_dataset_id"
+        if dataset_source:
+            dataset_col = frozen_dataset_id_column(list(dataset_source.record.keys())) or dataset_col
+
+        return MetricsModelDetailResponse(
+            pipeline_id=pipeline_id,
+            model_id=model_id,
+            title=model_id,
+            source_table=source.table_name if source else None,
+            source_pk=source.pk if source else None,
+            source_record=source.record if source else None,
+            source_table_url=_table_row_url(pipeline_id, source.table_name if source else None, model_col, model_id),
+            model_row=primary_row,
+            frozen_dataset=frozen,
+            frozen_dataset_source_table=dataset_source.table_name if dataset_source else None,
+            frozen_dataset_source_pk=dataset_source.pk if dataset_source else None,
+            metrics_rows=matching,
+            kpis=_build_model_detail_kpis(primary_row),
+            related=MetricsModelDetailRelated(
+                dataset_id=linked_dataset_id,
+                run_key=primary_row.run_key if primary_row else None,
+                run_id=primary_row.run_id if primary_row else None,
+            ),
+        )
+
+    def get_frozen_dataset_detail(
+        self,
+        pipeline_id: str,
+        dataset_id: str,
+        *,
+        subset: Optional[str] = None,
+    ) -> FrozenDatasetDetailResponse:
+        rows, by_id, _ = _load_frozen_dataset_catalog(self.ds, self.catalog)
+        dataset = by_id.get(dataset_id) or FrozenDatasetRow(dataset_id=dataset_id)
+        entity_index = _load_entity_source_records(self.ds, self.catalog)
+        source = entity_index.dataset_records_by_id.get(dataset_id)
+        model_rows, task_type = self._all_model_rows(pipeline_id)
+        models = [r for r in model_rows if r.dataset_id == dataset_id]
+        if subset:
+            models = [r for r in models if r.subset == subset]
+
+        models_count = len({r.model_id for r in models})
+        with_metrics = len({r.model_id for r in models if r.has_metrics})
+        subsets = sorted({r.subset for r in models if r.subset})
+        best_key = primary_metric_for_task(task_type)
+        best_row = max(
+            (r for r in models if r.has_metrics),
+            key=lambda r: pick_primary_value(r.metrics, task_type) or -1,
+            default=None,
+        )
+        dataset_col = "frozen_dataset_id"
+        if source:
+            dataset_col = frozen_dataset_id_column(list(source.record.keys())) or dataset_col
+
+        return FrozenDatasetDetailResponse(
+            pipeline_id=pipeline_id,
+            dataset_id=dataset_id,
+            title=dataset_id,
+            dataset=dataset.model_copy(update={"models_count": models_count or dataset.models_count}),
+            source_table=source.table_name if source else None,
+            source_pk=source.pk if source else None,
+            source_record=source.record if source else None,
+            source_table_url=_table_row_url(pipeline_id, source.table_name if source else None, dataset_col, dataset_id),
+            models=models,
+            coverage=FrozenDatasetCoverage(
+                models_total=models_count,
+                models_with_metrics=with_metrics,
+                subsets=subsets,
+                best_metric_key=best_key if best_row else None,
+                best_metric_value=pick_primary_value(best_row.metrics, task_type) if best_row else None,
+                best_model_id=best_row.model_id if best_row else None,
+            ),
         )

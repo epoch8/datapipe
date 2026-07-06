@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, Card, Spin } from "antd";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
 import { nodeDataFromTable } from "../cy/graphNodes";
@@ -12,7 +12,12 @@ import { PageHeader } from "./shared";
 
 export function TableDetail() {
     const { id: pipelineId = "", tableName = "" } = useParams();
+    const [searchParams] = useSearchParams();
     const decodedName = decodeURIComponent(tableName);
+    const focusCol = searchParams.get("focus_col") ?? undefined;
+    const focusValue = searchParams.get("focus_value") ?? undefined;
+    const initialColumnFilter =
+        focusCol && focusValue ? { column: focusCol, value: focusValue } : undefined;
     const { graph, loading, error, refresh } = usePipelineGraph();
 
     const table = graph ? findTableInGraph(graph, decodedName) : null;
@@ -51,6 +56,7 @@ export function TableDetail() {
                     pipelineId={pipelineId}
                     showHeader={false}
                     showTableData
+                    initialColumnFilter={initialColumnFilter}
                 />
             </Card>
         </div>

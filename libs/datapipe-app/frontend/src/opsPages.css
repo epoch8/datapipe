@@ -284,6 +284,86 @@
     flex-wrap: wrap;
 }
 
+.dp-entity-link {
+    color: var(--dp-blue-600, #1677ff);
+    text-decoration: none;
+}
+
+.dp-entity-link:hover {
+    text-decoration: underline;
+}
+
+.ops-entity-cards-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.ops-source-record-card {
+    min-height: 180px;
+}
+
+.ops-source-record-dl {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 6px 12px;
+    margin: 0;
+    font-size: 13px;
+}
+
+.ops-source-record-dl dt {
+    color: var(--dp-gray-500);
+    margin: 0;
+}
+
+.ops-source-record-dl dd {
+    margin: 0;
+    word-break: break-word;
+}
+
+.ops-source-record-table-link {
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.ops-metric-kpi-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.ops-metric-kpi-item {
+    min-width: 100px;
+}
+
+.ops-metric-kpi-label {
+    font-size: 12px;
+    color: var(--dp-gray-500);
+}
+
+.ops-metric-kpi-value {
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.ops-entity-footer-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--dp-gray-500);
+}
+
+.ops-page-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .ops-metrics-toolbar {
     display: flex;
     flex-wrap: wrap;

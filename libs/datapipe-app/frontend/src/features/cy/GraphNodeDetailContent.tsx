@@ -191,13 +191,22 @@ export function GraphNodeDetailHeader({
 function TableDataSection({
     table,
     knownRowCount,
+    pipelineId,
+    initialColumnFilter,
 }: {
     table: PipeTable;
     knownRowCount: number | null;
+    pipelineId?: string;
+    initialColumnFilter?: { column: string; value: string };
 }) {
     return (
         <InspectorSection title="Table data">
-            <TableDataPanel table={table} knownRowCount={knownRowCount} />
+            <TableDataPanel
+                table={table}
+                knownRowCount={knownRowCount}
+                pipelineId={pipelineId}
+                initialColumnFilter={initialColumnFilter}
+            />
         </InspectorSection>
     );
 }
@@ -208,6 +217,8 @@ export function TableNodeDetailBody({
     onOpenDetails,
     showTableData = true,
     showHeader = true,
+    pipelineId,
+    initialColumnFilter,
 }: {
     node: GraphNodeData;
     pipelineId?: string;
@@ -215,6 +226,7 @@ export function TableNodeDetailBody({
     onOpenDetails?: () => void;
     showTableData?: boolean;
     showHeader?: boolean;
+    initialColumnFilter?: { column: string; value: string };
 }) {
     const primaryKeys = (node.indexes as string[]) ?? [];
     const storeClass = node.store_class ? String(node.store_class) : "TableStoreDB";
@@ -291,7 +303,12 @@ export function TableNodeDetailBody({
                 </InspectorSection>
 
                 {showTableData && (
-                    <TableDataSection table={pipeTable} knownRowCount={tableSize} />
+                    <TableDataSection
+                        table={pipeTable}
+                        knownRowCount={tableSize}
+                        pipelineId={pipelineId}
+                        initialColumnFilter={initialColumnFilter}
+                    />
                 )}
             </div>
         </>
@@ -638,6 +655,7 @@ export function GraphNodeDetailBody({
     showTableData = true,
     showMetaTable = true,
     showHeader = true,
+    initialColumnFilter,
 }: {
     node: GraphNodeData;
     graphNodesById?: Map<string, Cytoscape.NodeDataDefinition>;
@@ -650,6 +668,7 @@ export function GraphNodeDetailBody({
     showTableData?: boolean;
     showMetaTable?: boolean;
     showHeader?: boolean;
+    initialColumnFilter?: { column: string; value: string };
 }) {
     const type = node.type as string;
     if (type === "table") {
@@ -661,6 +680,7 @@ export function GraphNodeDetailBody({
                 onOpenDetails={onOpenDetails}
                 showTableData={showTableData}
                 showHeader={showHeader}
+                initialColumnFilter={initialColumnFilter}
             />
         );
     }

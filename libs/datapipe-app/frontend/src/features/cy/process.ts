@@ -44,6 +44,8 @@ function addTransformNode(
     data: GraphData,
     pipe: TransformNode,
     metaGroup?: string,
+    pipelineIndex?: number,
+    pipelineOrderKey?: string,
 ) {
     const nodeName = pipe.name;
     nodes.set(nodeName, {
@@ -57,6 +59,8 @@ function addTransformNode(
             pipe.primary_keys ??
             [],
         ...(metaGroup ? { metaGroup } : {}),
+        ...(pipelineIndex != null ? { pipelineIndex } : {}),
+        ...(pipelineOrderKey ? { pipelineOrderKey } : {}),
     });
 
     (pipe.inputs || []).forEach((input: string) => {
@@ -74,6 +78,8 @@ function addCollapsedMeta(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     data: GraphData,
     pipe: MetaNode,
+    pipelineIndex?: number,
+    pipelineOrderKey?: string,
 ) {
     const childCount = pipe.graph?.pipeline?.length ?? 0;
     nodes.set(pipe.name, {
@@ -89,6 +95,8 @@ function addCollapsedMeta(
             pipe.transform_primary_keys ??
             pipe.tpk ??
             [],
+        ...(pipelineIndex != null ? { pipelineIndex } : {}),
+        ...(pipelineOrderKey ? { pipelineOrderKey } : {}),
     });
 
     (pipe.inputs || []).forEach((input: string) => {
@@ -107,23 +115,26 @@ function processMetaGraph(
     graph: GraphData,
     expandedGroups: Set<string>,
     metaGroup: string,
+    parentOrderKey: string,
 ) {
-    for (const child of graph.pipeline) {
+    graph.pipeline.forEach((child, index) => {
+        const orderKey = `${parentOrderKey}.${String(index).padStart(4, "0")}`;
         if (child.type === "meta") {
             if (expandedGroups.has(child.name)) {
-                processMetaGraph(nodes, edges, child.graph, expandedGroups, child.name);
-                for (const nested of child.graph.pipeline) {
+                processMetaGraph(nodes, edges, child.graph, expandedGroups, child.name, orderKey);
+                child.graph.pipeline.forEach((nested, nestedIndex) => {
                     if (nested.type !== "meta") {
-                        addTransformNode(nodes, edges, child.graph, nested, child.name);
+                        const nestedKey = `${orderKey}.${String(nestedIndex).padStart(4, "0")}`;
+                        addTransformNode(nodes, edges, child.graph, nested, child.name, nestedIndex, nestedKey);
                     }
-                }
+                });
             } else {
-                addCollapsedMeta(nodes, edges, child.graph, child);
+                addCollapsedMeta(nodes, edges, child.graph, child, index, orderKey);
             }
-            continue;
+            return;
         }
-        addTransformNode(nodes, edges, graph, child, metaGroup);
-    }
+        addTransformNode(nodes, edges, graph, child, metaGroup, index, orderKey);
+    });
 }
 
 function processData(
@@ -132,18 +143,19 @@ function processData(
     data: GraphData,
     expandedGroups: Set<string>,
 ) {
-    for (const pipe of data.pipeline) {
+    data.pipeline.forEach((pipe, index) => {
+        const orderKey = String(index).padStart(4, "0");
         if (pipe.type !== "meta") {
-            addTransformNode(nodes, edges, data, pipe);
-            continue;
+            addTransformNode(nodes, edges, data, pipe, undefined, index, orderKey);
+            return;
         }
 
         if (expandedGroups.has(pipe.name)) {
-            processMetaGraph(nodes, edges, pipe.graph, expandedGroups, pipe.name);
+            processMetaGraph(nodes, edges, pipe.graph, expandedGroups, pipe.name, orderKey);
         } else {
-            addCollapsedMeta(nodes, edges, data, pipe);
+            addCollapsedMeta(nodes, edges, data, pipe, index, orderKey);
         }
-    }
+    });
 }
 
 function pruneDisconnectedTables(

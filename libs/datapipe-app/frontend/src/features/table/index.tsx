@@ -38,10 +38,23 @@ import {
 } from "../../types";
 import { FilterValue, SorterResult } from "antd/lib/table/interface";
 import { getDefaultTablePageSize, setDefaultTablePageSize } from "../../api/graph";
+import { EntityLink } from "../ops/metrics/EntityLink";
 
-function renderCellValue(value: unknown): React.ReactNode {
+function renderCellValue(value: unknown, columnName: string, pipelineId?: string): React.ReactNode {
     if (value === null || value === undefined) {
         return value as null | undefined;
+    }
+    if (!value || value === "—") {
+        return value as React.ReactNode;
+    }
+    const isModelIdColumn = columnName === "model_id" || columnName.endsWith("_model_id");
+    const isFrozenDatasetIdColumn =
+        columnName === "frozen_dataset_id" || columnName.endsWith("_frozen_dataset_id");
+    if (typeof value === "string" && isModelIdColumn) {
+        return <EntityLink kind="model" id={value} />;
+    }
+    if (typeof value === "string" && isFrozenDatasetIdColumn) {
+        return <EntityLink kind="dataset" id={value} />;
     }
     if (typeof value === "object") {
         return (
@@ -285,6 +298,7 @@ const loadTable = async (
     loadingsOptions?: TableLoadingOptions,
     tableFocus?: FocusType,
     knownRowCount?: number | null,
+    pipelineId?: string,
 ) => {
     loadingsOptions = loadingsOptions ?? ({} as TableLoadingOptions);
     const page = loadingsOptions.page ?? 1;
@@ -396,7 +410,7 @@ const loadTable = async (
                 dataIndex: column,
                 className: isPk ? "dp-pk-col" : undefined,
                 sorter: typeof colValue !== "object",
-                render: renderCellValue,
+                render: (value: unknown) => renderCellValue(value, column, pipelineId),
                 filterDropdown:
                     typeof colValue !== "object" &&
                     (({
@@ -450,7 +464,14 @@ const loadTable = async (
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100];
 
-const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hideRunStep = false }) => {
+const Table: FC<TableProps> = ({
+    current,
+    setAlertMsg,
+    knownRowCount = null,
+    hideRunStep = false,
+    pipelineId,
+    initialColumnFilter,
+}) => {
     const [columns, setColumns] = useState<ColumnsType<any>>([]);
     const [data, setData] = useState<any>();
     const [loading, setLoading] = useState(false);
@@ -471,7 +492,7 @@ const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hid
     });
     const [filteredInfo, setFilteredInfo] = useState<
         Record<string, FilterValue | null>
-    >({});
+    >(initialColumnFilter ? { [initialColumnFilter.column]: [initialColumnFilter.value] } : {});
     const [dataIsProcessed, setDataIsProcessed] = useState<boolean>(false);
     const skipRenderFlag = useRef(true);
     const searchInput = useRef<InputRef>(null);
@@ -526,7 +547,9 @@ const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hid
     }, [current, options, tableFocus]);
 
     useEffect(() => {
-        setFilteredInfo({});
+        setFilteredInfo(
+            initialColumnFilter ? { [initialColumnFilter.column]: [initialColumnFilter.value] } : {},
+        );
         setSorting({});
         const pageSize = getDefaultTablePageSize();
         setPagination({
@@ -547,8 +570,9 @@ const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hid
             { page: 1, pageSize },
             tableFocus,
             knownRowCount,
+            pipelineId,
         );
-    }, [current.id]);
+    }, [current.id, initialColumnFilter?.column, initialColumnFilter?.value]);
 
     useEffect(() => {
         setOptions((prev) => ({ ...prev, total: knownRowCount }));
@@ -576,8 +600,9 @@ const Table: FC<TableProps> = ({ current, setAlertMsg, knownRowCount = null, hid
             },
             tableFocus,
             knownRowCount,
+            pipelineId,
         );
-    }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order, knownRowCount]);
+    }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order, knownRowCount, pipelineId]);
 
     const totalPages =
         options.total != null && options.total >= 0

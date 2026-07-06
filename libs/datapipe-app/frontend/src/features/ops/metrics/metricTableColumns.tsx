@@ -16,8 +16,6 @@ type GroupSpec = {
     metrics: LeafSpec[];
 };
 
-const EMPTY = "—";
-
 function metricFormat(format: MetricFormat): "float" | "percent" | "integer" | "string" {
     if (format === "duration") return "float";
     return format;
@@ -26,7 +24,7 @@ function metricFormat(format: MetricFormat): "float" | "percent" | "integer" | "
 function metricCell(row: MetricsModelRow, key: string, format: MetricFormat = "float"): React.ReactNode {
     const value = row.metrics?.[key];
     if (!row.has_metrics || value == null || typeof value !== "number") {
-        return <span className="ops-metric-cell ops-metric-cell-empty">{EMPTY}</span>;
+        return null;
     }
     return <MetricValue value={value} format={metricFormat(format)} />;
 }

@@ -27,11 +27,13 @@ from datapipe_app.observability.queries import build_chart_specs, build_overview
 from datapipe_app.observability.schemas import (
     ClassMetricDetailResponse,
     ClassMetricsResponse,
+    FrozenDatasetDetailResponse,
     FrozenDatasetsResponse,
     MetricsCandidateCreate,
     MetricsCandidateRow,
     MetricsEvaluateRequest,
     MetricsEvaluateResponse,
+    MetricsModelDetailResponse,
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTableSchema,
@@ -284,6 +286,32 @@ def make_app(
     @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets", response_model=FrozenDatasetsResponse)
     def get_frozen_datasets(pipeline_id: str) -> FrozenDatasetsResponse:
         return _metrics_svc().list_frozen_datasets(pipeline_id)
+
+    @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets/{dataset_id}", response_model=FrozenDatasetDetailResponse)
+    def get_frozen_dataset_detail(
+        pipeline_id: str,
+        dataset_id: str,
+        subset: Optional[str] = None,
+    ) -> FrozenDatasetDetailResponse:
+        return _metrics_svc().get_frozen_dataset_detail(
+            pipeline_id,
+            dataset_id,
+            subset=subset,
+        )
+
+    @app.get("/pipelines/{pipeline_id}/metrics/models/{model_id}", response_model=MetricsModelDetailResponse)
+    def get_model_detail(
+        pipeline_id: str,
+        model_id: str,
+        dataset_id: Optional[str] = None,
+        subset: Optional[str] = None,
+    ) -> MetricsModelDetailResponse:
+        return _metrics_svc().get_model_detail(
+            pipeline_id,
+            model_id,
+            dataset_id=dataset_id,
+            subset=subset,
+        )
 
     @app.get("/pipelines/{pipeline_id}/metrics/runs", response_model=MetricsRunsResponse)
     def get_metrics_runs(

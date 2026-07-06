@@ -15,6 +15,8 @@ import { MetaStepDetail } from "./features/ops/MetaStepDetail";
 import { Metrics } from "./features/ops/Metrics";
 import { TrainingRuns } from "./features/ops/TrainingRuns";
 import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
+import { ModelDetailPage } from "./features/ops/metrics/ModelDetailPage";
+import { FrozenDatasetDetailPage } from "./features/ops/metrics/FrozenDatasetDetailPage";
 import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
 import "./App.css";
@@ -36,7 +38,11 @@ function App() {
                     <Route path="/runs" element={<RunsPage />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
                     <Route path="/metrics" element={<MetricsOverviewPage />} />
+                    <Route path="/metrics/models/:modelId" element={<ModelDetailPage />} />
+                    <Route path="/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/pipelines/:id/metrics" element={<MetricsOverviewPage />} />
+                    <Route path="/pipelines/:id/metrics/models/:modelId" element={<ModelDetailPage />} />
+                    <Route path="/pipelines/:id/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/classes" element={<ClassMetricsPage />} />
                     <Route path="/pipelines/:id/classes" element={<ClassMetricsPage />} />
                     <Route path="/training" element={<TrainingRunsPage />} />
