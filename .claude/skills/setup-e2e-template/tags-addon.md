@@ -25,14 +25,30 @@ detection and checks out.
   (as in every e2e table). Both read via the standard `UpdateExternalTable`; who writes them is out of
   scope (UI / manual INSERT / script).
 - `tag_metrics(detection_model_id PK, tag_id PK, subset_id PK, calc__precision, calc__recall,
-  calc__f1_score, support, images_support)` — a new `BatchTransform` step.
-  **Source — NOT the raw `detection_predictions`** (that's pre-annotation; the trained model's output is
-  in `detection_prediction_train`). Cleanest: take the already-computed **per-image**
-  `detection_model_train__metrics_on_image` (`image_name, detection_model_id, subset_id,
+  calc__f1_score, support, images_support)` — a new aggregation step.
+  **Source — NOT the raw predictions** (that's pre-annotation). Take the already-computed **per-image**
+  metrics table (`…__metrics_on_image`: `image_name, detection_model_id, subset_id,
   calc__TP/FP/FN/support`), join `image__tag` on `image_name`, and **re-aggregate by
-  `(detection_model_id, tag_id, subset_id)`** — same as `count_..._metrics_on_subset`, just with
+  `(detection_model_id, tag_id, subset_id)`** — same as `count_…_metrics_on_subset`, just with
   `tag_id` in the GROUP BY.
+- ⚠️ **Use `DatatableBatchTransform` (whole-table SQL group-by), not a plain `BatchTransform`.** This is
+  an aggregation (many images → one `(model,tag,subset)` row); a chunked `BatchTransform` splits a tag's
+  images across chunks and computes wrong sums. Mirror the existing `count_…_metrics_on_subset` step
+  (it's a `DatatableBatchTransform`) and add `tag_id` to its grouping.
 - **Leave alone:** `image__subset`/split, `..._metrics_on_subset`, `FindBestModel(subset_id="val")`, training.
+
+## Wire it into the pipeline (so it shows in the datapipe-app UI)
+To make tags a node in the UI graph (not just a side script), add to the example code:
+1. **`data.py` → `catalog`:** add `tag`, `image__tag`, `tag_metrics` as `Table(TableStoreDB(...))` (same
+   pattern as the other tables). `tag`/`image__tag` are external inputs (written by UI / INSERT / script);
+   `tag_metrics` is the step's output.
+2. **`app.py` → `pipeline`:** add the aggregation step (see ⚠️ above) reading `…__metrics_on_image` +
+   `image__tag`, writing `tag_metrics`, `labels=[("stage","count-metrics")]` so it runs with metrics.
+3. Populate `image__tag`, then run `stage=train` (or `stage=count-metrics`) — the UI graph then shows
+   the tag tables + step, and `tag_metrics` fills per model.
+
+> Keep these pipeline edits **out of the committed example** (docs-only, per this recipe) — apply them
+> physically where you run the demo, but the repo's example code stays unchanged.
 
 ## How to use
 1. Label the scenario images → rows in `image__tag` (a tag, e.g. `dark_room`).
