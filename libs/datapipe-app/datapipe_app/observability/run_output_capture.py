@@ -10,7 +10,9 @@ from typing import Generator, Optional, TextIO
 
 _LOGGER_NAMES = ("datapipe", "datapipe_ml", "ultralytics")
 
-_CAPTURE = contextvars.ContextVar("_run_output_capture", default=None)
+_CAPTURE: contextvars.ContextVar[Optional[_CaptureState]] = contextvars.ContextVar(
+    "_run_output_capture", default=None
+)
 _CAPTURE_STACK: list["_CaptureState"] = []
 _CAPTURE_LOCK = threading.Lock()
 
