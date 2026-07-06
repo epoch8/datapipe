@@ -1,5 +1,7 @@
 # OCR + FiftyOne Pipeline
 
+**Claude Code skill:** `/setup-ocr` — auto-loads when relevant, or invoke directly.
+
 Datapipe example for:
 - ingesting passport / id-doc images (local folder or Hugging Face dataset)
 - running OCR with multiple LLM engines (OpenAI, Gemini)
