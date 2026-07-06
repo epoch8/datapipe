@@ -70,7 +70,12 @@ GROUP BY 1,2,3;
 ## Demo scenario — how to reproduce (for an agent)
 
 Goal: show that a model scores near-0 on a tagged scenario and, after the tagged images are added to
-training, the metric on that scenario rises. Steps to recreate it end-to-end:
+training, the metric on that scenario rises. Steps to recreate it end-to-end.
+
+> This recipe **injects ready-made ground truth** (COCO labels / inherited boxes) and **skips the
+> Label Studio `annotation` step** — so it runs unattended. Confirm this is acceptable up front (see
+> the skill's "Ask first" line): if the demo must show real human annotation in Label Studio, that
+> stays a manual step and isn't automated here.
 
 1. **Base data.** Seed a non-trivial cat/dog set (the 10-image smoke default is too small — the
    metric on a tiny val is noisy). `scripts/seed_sample_data.py` defaults to `--detection-limit 120`,
