@@ -24,7 +24,7 @@ import { formatRunTriggerLabel } from "./utils/recentRuns";
 const { Text } = Typography;
 
 function statusColor(status: string): string {
-    if (status === "failed") return "red";
+    if (status === "failed" || status === "interrupted") return "red";
     if (status === "running") return "blue";
     if (status === "completed") return "green";
     return "default";

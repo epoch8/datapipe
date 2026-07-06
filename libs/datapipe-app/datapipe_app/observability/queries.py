@@ -43,7 +43,7 @@ def _health_from_run(
         return "healthy"
     if run.status == "running":
         return "running"
-    if run.status == "failed":
+    if run.status in ("failed", "interrupted"):
         return "failed"
     return "healthy"
 

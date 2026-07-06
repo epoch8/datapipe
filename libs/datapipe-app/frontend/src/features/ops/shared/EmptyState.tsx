@@ -1,9 +1,10 @@
 import React from "react";
-import { Alert, Empty, Spin } from "antd";
+import { Empty, Spin } from "antd";
+import { ApiErrorAlert } from "../../../components/ApiErrorAlert";
 
 type Props = {
     loading?: boolean;
-    error?: string | null;
+    error?: unknown;
     empty?: boolean;
     emptyMessage?: string;
     // When true, keep children mounted during loading and overlay a subtle
@@ -41,7 +42,7 @@ export function EmptyState({
     if (error) {
         return (
             <div className="ops-empty-state">
-                <Alert type="error" message={error} showIcon />
+                <ApiErrorAlert error={error} />
             </div>
         );
     }

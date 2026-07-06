@@ -27,6 +27,8 @@ import {
     focusSelection,
 } from "./graphFocus";
 import { Alert, AlertProps, Spin } from "antd";
+import { apiFetch, getApiErrorMessage } from "../../api/http";
+import { opsApi } from "../../api/ops";
 import {
     captureGraphSessionState,
     loadGraphSessionState,
@@ -338,8 +340,8 @@ function PipelineGraphView({
             setPipelineId(pipelineIdProp);
             return;
         }
-        fetch("/api/v1alpha3/capabilities")
-            .then((r) => r.json())
+        opsApi
+            .getCapabilities()
             .then((c) => setPipelineId(c.pipeline_id ?? null))
             .catch(() => setPipelineId(null));
     }, [pipelineIdProp]);
@@ -445,15 +447,18 @@ function PipelineGraphView({
             }
 
             try {
-                const response = await fetch(graphUrl);
+                const response = await apiFetch(graphUrl);
                 if (!response.ok) throw new Error(`Graph request failed: ${response.status}`);
                 const data = await response.json();
                 if (cancelled) return;
                 loadedUrlRef.current = graphUrl;
                 setRawGraph(data);
-            } catch {
-                if (!cancelled && cy) {
-                    cy.elements().remove();
+            } catch (error) {
+                if (!cancelled) {
+                    if (cy) {
+                        cy.elements().remove();
+                    }
+                    setAlertMsg({ type: "error", message: getApiErrorMessage(error) });
                 }
             } finally {
                 if (!cancelled) {

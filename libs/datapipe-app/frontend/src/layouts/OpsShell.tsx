@@ -14,6 +14,8 @@ import {
 import { Badge, Button } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { opsApi } from "../api/ops";
+import { ApiErrorAlert } from "../components/ApiErrorAlert";
+import { ConnectivityBanner } from "../components/ConnectivityBanner";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { loadLastGraphStage } from "../features/cy/graphSessionState";
 import { useResizableWidth } from "../hooks/useResizableWidth";
@@ -40,6 +42,7 @@ export function OpsShell() {
     const [agentMode, setAgentMode] = React.useState(false);
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [collapsed, setCollapsed] = React.useState(false);
+    const [capabilitiesError, setCapabilitiesError] = React.useState<unknown>(null);
     const {
         width: sidebarWidth,
         onHandleMouseDown: onSidebarResize,
@@ -55,12 +58,15 @@ export function OpsShell() {
         opsApi.getCapabilities().then((c) => {
             setAgentMode(c.mode === "agent");
             setPipelineId(c.pipeline_id ?? null);
+            setCapabilitiesError(null);
             setTitle(
                 c.mode === "central"
                     ? "Datapipe Central Dashboard"
                     : `Datapipe Ops · ${c.pipeline_id || "agent"}`,
             );
-        }).catch(() => undefined);
+        }).catch((e) => {
+            setCapabilitiesError(e);
+        });
     }, []);
 
     const lastGraphStage = loadLastGraphStage();
@@ -167,6 +173,10 @@ export function OpsShell() {
                 </div>
             </aside>
             <div className="datapipe-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <ConnectivityBanner />
+                {capabilitiesError ? (
+                    <ApiErrorAlert error={capabilitiesError} style={{ borderRadius: 0 }} />
+                ) : null}
                 {!isObsPage && (
                     <header className="datapipe-header">
                         <h1 className="datapipe-title">{title}</h1>

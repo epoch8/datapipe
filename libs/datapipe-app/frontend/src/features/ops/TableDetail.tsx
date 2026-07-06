@@ -1,6 +1,7 @@
 import React from "react";
 import { Alert, Card, Spin } from "antd";
 import { useParams } from "react-router-dom";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
 import { nodeDataFromTable } from "../cy/graphNodes";
 import {
@@ -23,7 +24,7 @@ export function TableDetail() {
         table?.schema ?? [],
     );
 
-    if (error) return <Alert type="error" message={error} />;
+    if (error) return <ApiErrorAlert error={error} />;
     if (graph && !table) {
         return <Alert type="error" message={`Table not found: ${decodedName}`} />;
     }

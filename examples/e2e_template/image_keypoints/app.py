@@ -8,6 +8,7 @@ from datapipe.step.batch_transform import BatchTransform
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
+from datapipe.types import Required
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
@@ -271,17 +272,35 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone,
-            inputs=["local_images", "keypoints_prediction_train"],
-            outputs=["fiftyone_predictions"],
+            inputs=["local_images"],
+            outputs=["fiftyone_images"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_to_fiftyone,
-            inputs=["local_images", "image__ground_truth"],
+            func=steps.publish_to_fiftyone_ground_truth,
+            inputs=["local_images", Required("image__ground_truth"), Required("image__subset")],
             outputs=["fiftyone_annotations"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_predictions_from_best_model,
+            inputs=["local_images", "keypoints_prediction_train", Required("best_keypoints_model")],
+            outputs=["fiftyone_predictions_from_best_model"],
+            transform_keys=["image_name", "keypoints_model_id"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                model_keys=["keypoints_model_id"],
+                image__image_path__name="local_path",
+            ),
         ),
     ]
 )

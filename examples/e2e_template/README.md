@@ -23,7 +23,7 @@ Each template follows the same layout as a standalone project:
 Pipeline metadata is stored in Postgres. Set `DB_URL` in `.env` before running datapipe commands.
 Detection and keypoints use separate Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) so their tables do not collide when both pipelines share the same database.
 
-All commands below assume the current directory is `examples/e2e_template/`.
+All commands below assume the current directory is `examples/e2e_template/`. Use `uv run` for Python CLI tools (`datapipe`, `fiftyone`, scripts) so they run in the project virtualenv from `uv sync`.
 
 ## Installation
 
@@ -54,7 +54,7 @@ What each piece is for:
 
 ### Local services
 
-Start Postgres, MinIO, MongoDB (FiftyOne), and Label Studio from this directory:
+Start Postgres, MinIO, MongoDB, FiftyOne App, and Label Studio from this directory:
 
 ```bash
 docker compose up
@@ -67,6 +67,7 @@ Services:
 - Postgres — `localhost:5432` (`postgres` / `password`)
 - MinIO — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e` (only needed for the sample-data quick start; see [Data ingest](#data-ingest))
 - MongoDB — `localhost:27017` (FiftyOne dataset metadata; set `FIFTYONE_DATABASE_URI` in `.env`)
+- FiftyOne App — `http://localhost:5151` (reads datasets from MongoDB; mounts `DATAPIPE_E2E_TMP_DIR` for local image paths)
 - Label Studio — `http://localhost:8080`
 
 Copy env vars and set the Label Studio API token (after `docker compose up`):
@@ -108,7 +109,7 @@ Default quick start uses MinIO from `docker compose`. With services running and 
 uv run python scripts/seed_sample_data.py
 ```
 
-The first run downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `datapipe db create-all` (see [Running](#running)).
+The first run downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`), downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `uv run datapipe db create-all` (see [Running](#running)).
 
 Options:
 
@@ -129,12 +130,12 @@ Use this path when images already live in AWS S3 or another S3-compatible store.
    - `DATAPIPE_E2E_DIR` (e.g. `s3://my-bucket`; the Label Studio S3 storage bucket is derived from it)
    - For AWS S3, omit `S3_ENDPOINT_URL` and `LABEL_STUDIO_S3_ENDPOINT_URL` so datapipe and Label Studio use the default AWS endpoint.
    - Set `S3_PUBLIC_URL` to a base URL the Label Studio browser can fetch. URLs are built as `$S3_PUBLIC_URL/<bucket>/images/<key>` (path-style), e.g. `https://s3.us-east-1.amazonaws.com` for a publicly readable bucket, or a CDN/proxy in front of your objects.
-3. Remove MinIO from `docker-compose.yml`: delete the `minio` and `minio-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, and `label-studio`.
+3. Remove MinIO from `docker-compose.yml`: delete the `minio` and `minio-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, `fiftyone`, and `label-studio`.
 4. Skip `scripts/seed_sample_data.py`. Create Postgres schemas before the first pipeline run:
 
 ```bash
-cd image_detection && datapipe db create-all
-cd ../image_keypoints && datapipe db create-all
+cd image_detection && uv run datapipe db create-all
+cd ../image_keypoints && uv run datapipe db create-all
 ```
 
 For self-hosted S3-compatible storage (not AWS), keep `S3_ENDPOINT_URL` for datapipe on the host and set `LABEL_STUDIO_S3_ENDPOINT_URL` to an endpoint reachable from the Label Studio container (same pattern as MinIO, but pointing at your store).
@@ -152,51 +153,59 @@ Training hyperparameters (`epochs`, `batch`, `imgsz`, base checkpoint) are in `a
 
 ## Running
 
-Run by stage with `datapipe step --labels=... run`. Plain `datapipe run` executes the whole pipeline without label filtering.
+Run by stage with `uv run datapipe step --labels=... run`. Plain `uv run datapipe run` executes the whole pipeline without label filtering.
 
 Detection:
 
 ```bash
 cd image_detection
-datapipe db create-all
-datapipe step --labels=stage=annotation run
+uv run datapipe db create-all
+uv run datapipe step --labels=stage=annotation run
 ```
 
 After tasks appear in Label Studio, annotate them and sync back:
 
 ```bash
-datapipe step --labels=stage=ls-sync run
-datapipe step --labels=stage=train run
-datapipe step --labels=stage=fiftyone run
+uv run datapipe step --labels=stage=ls-sync run
+uv run datapipe step --labels=stage=train run
+uv run datapipe step --labels=stage=fiftyone run
 ```
 
-After the FiftyOne stage, open the dataset in the FiftyOne App (with `.env` loaded and `mongo` running):
+After the FiftyOne stage, open the dataset in the FiftyOne App (`docker compose` must be running):
+
+### FiftyOne App
+
+- Detection — `http://localhost:5151` → dataset `datapipe_detection_e2e`
+- Keypoints — `http://localhost:5151` → dataset `datapipe_keypoints_e2e`
+
+The compose `fiftyone` service mounts `DATAPIPE_E2E_TMP_DIR` (default `/tmp/datapipe-e2e`) read-only so sample filepaths from the host pipeline resolve inside the container.
+
+**Local launch (without the Docker service):** if you prefer the FiftyOne process on the host (same machine as the pipeline), with `.env` loaded and `mongo` running:
 
 ```bash
-set -a && source ../.env && set +a   # from image_detection/
-fiftyone app launch datapipe_detection_e2e
+set -a && source ../.env && set +a   # from image_detection/ or image_keypoints/
+uv run fiftyone app launch datapipe_detection_e2e   # or datapipe_keypoints_e2e
 ```
+
+This opens the App in your browser and attaches directly to the named dataset. Use it when compose `fiftyone` is stopped or when image paths are not under `DATAPIPE_E2E_TMP_DIR` (e.g. a local `DATAPIPE_E2E_DIR` on disk — then the host App sees files natively; add a matching bind mount to the `fiftyone` service if you still want the Docker App).
 
 Keypoints:
 
 ```bash
 cd image_keypoints
-datapipe db create-all
-datapipe step --labels=stage=annotation run
+uv run datapipe db create-all
+uv run datapipe step --labels=stage=annotation run
 ```
 
 After tasks appear in Label Studio, annotate them and sync back:
 
 ```bash
-datapipe step --labels=stage=ls-sync run
-datapipe step --labels=stage=train run
-datapipe step --labels=stage=fiftyone run
+uv run datapipe step --labels=stage=ls-sync run
+uv run datapipe step --labels=stage=train run
+uv run datapipe step --labels=stage=fiftyone run
 ```
 
-```bash
-set -a && source ../.env && set +a   # from image_keypoints/
-fiftyone app launch datapipe_keypoints_e2e
-```
+Then open `http://localhost:5151` and select `datapipe_keypoints_e2e` (or use local launch below).
 
 ## Running via Ops UI
 
@@ -213,11 +222,17 @@ Run a pipeline **agent** (with `.env` loaded). Use a distinct port per pipeline:
 ```bash
 cd image_detection
 set -a && source ../.env && set +a
-datapipe --pipeline app:app api --port 8001
+uv run datapipe --pipeline app:app api --port 8001
 ```
 
 Open `http://localhost:8001` (title: `Datapipe Ops · image_detection_e2e`). From there you can run stages, view the pipeline graph (Debug), and inspect runs.
 
-For keypoints, use `image_keypoints_e2e` in `.env` (or override `DATAPIPE_APP_PIPELINE_ID`) and port `8002`.
+For keypoints, use `image_keypoints_e2e` in `.env` (or override `DATAPIPE_APP_PIPELINE_ID`), port `8002`, and:
+
+```bash
+cd image_keypoints
+set -a && source ../.env && set +a
+uv run datapipe --pipeline app:app api --port 8002
+```
 
 The service-backed test path in `tests/e2e_template/` uses the same stack. See `.github/workflows/e2e-template.yml`.

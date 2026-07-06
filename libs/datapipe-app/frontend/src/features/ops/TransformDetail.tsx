@@ -11,6 +11,8 @@ import { useParams } from "react-router-dom";
 import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
 import { graphNodesByIdFromGraph, nodeDataFromTransform } from "../cy/graphNodes";
 import { fetchTransformMetaSize } from "../../api/graph";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
+import { getApiErrorMessage } from "../../api/http";
 import { opsApi } from "../../api/ops";
 import {
     findTransformInGraph,
@@ -70,7 +72,7 @@ export function TransformDetail() {
         setMetaSizeError(null);
         fetchTransformMetaSize(decodedName)
             .then(setMetaSize)
-            .catch((e) => setMetaSizeError(String(e)))
+            .catch((e) => setMetaSizeError(getApiErrorMessage(e)))
             .finally(() => setCountingMeta(false));
     };
 
@@ -87,11 +89,11 @@ export function TransformDetail() {
                     message: "Transform meta table reset. All rows are marked unprocessed.",
                 });
             })
-            .catch((e) => setResetAlert({ type: "error", message: String(e) }))
+            .catch((e) => setResetAlert({ type: "error", message: getApiErrorMessage(e) }))
             .finally(() => setResetting(false));
     };
 
-    if (error) return <Alert type="error" message={error} />;
+    if (error) return <ApiErrorAlert error={error} />;
     if (graph && !step) {
         return <Alert type="error" message={`Transform not found: ${decodedName}`} />;
     }

@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { Alert, Spin } from "antd";
+import { opsApi } from "../../../api/ops";
 import type { PipelineGraphProps } from "../../../types/pipelineGraph";
 
 const CyGraph = React.lazy(() => import("../../cy"));
@@ -24,8 +25,8 @@ export function PipelineGraphAgentOnly(props: PipelineGraphProps) {
     const [agentMode, setAgentMode] = React.useState<boolean | null>(null);
 
     React.useEffect(() => {
-        fetch("/api/v1alpha3/capabilities")
-            .then((r) => r.json())
+        opsApi
+            .getCapabilities()
             .then((c) => setAgentMode(c.mode === "agent"))
             .catch(() => setAgentMode(false));
     }, []);

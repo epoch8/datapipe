@@ -23,15 +23,17 @@ import type {
     TrainingRunsParams,
     TrainingRunsResponse,
 } from "../types/ops";
+import { ApiError, apiFetch, readApiErrorBody } from "./http";
 import { opsMock } from "./opsMock";
 
 const API_BASE = "/api/v1alpha3";
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`, init);
+    const url = `${API_BASE}${path}`;
+    const res = await apiFetch(url, init);
     if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
+        const detail = await readApiErrorBody(res);
+        throw new ApiError("http", `API error (${res.status}): ${detail}`, { status: res.status, url });
     }
     return res.json() as Promise<T>;
 }

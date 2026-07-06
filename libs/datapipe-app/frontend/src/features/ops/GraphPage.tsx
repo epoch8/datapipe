@@ -1,7 +1,8 @@
 import React from "react";
-import { Alert, Card, Spin } from "antd";
+import { Card, Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import type { Capabilities, PipelineDetail, RecentRunSummary } from "../../types/ops";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
@@ -18,14 +19,14 @@ export function GraphPage() {
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
-    const [error, setError] = React.useState<string | null>(null);
+    const [error, setError] = React.useState<unknown>(null);
     const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
 
     const pipelineId = capabilities?.pipeline_id;
     const agentMode = capabilities?.mode === "agent";
 
     const loadCapabilities = React.useCallback(() => {
-        opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(String(e)));
+        opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
     }, []);
 
     const loadDetail = React.useCallback(() => {
@@ -33,7 +34,7 @@ export function GraphPage() {
         opsApi
             .getPipeline(pipelineId)
             .then(setDetail)
-            .catch((e) => setError(String(e)));
+            .catch((e) => setError(e));
     }, [pipelineId]);
 
     React.useEffect(() => {
@@ -49,7 +50,7 @@ export function GraphPage() {
         opsApi
             .resolveStageRecentRuns(pipelineId, stage)
             .then((response) => setStageRuns(response.recent_runs))
-            .catch((e) => setError(String(e)));
+            .catch((e) => setError(e));
     }, [stage, pipelineId]);
 
     React.useEffect(() => {
@@ -94,7 +95,7 @@ export function GraphPage() {
                 }
                 navigate(`/runs/${started.run_id}`);
             })
-            .catch((e) => setError(String(e)));
+            .catch((e) => setError(e));
     };
 
     const title = stage ? `Pipeline graph · ${stage}` : "Pipeline graph";
@@ -115,15 +116,11 @@ export function GraphPage() {
                     ) : undefined
                 }
             />
-            {error && (
-                <Alert
-                    type="error"
-                    message={error}
-                    style={{ marginBottom: 12 }}
-                    closable
-                    onClose={() => setError(null)}
-                />
-            )}
+            {error ? (
+                <div style={{ marginBottom: 12 }}>
+                    <ApiErrorAlert error={error} />
+                </div>
+            ) : null}
             <div className="graph-page-overview">
                 {detail && pipelineId ? (
                     <PipelineLabelGraphOverview

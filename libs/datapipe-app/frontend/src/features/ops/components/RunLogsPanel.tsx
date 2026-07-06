@@ -52,10 +52,16 @@ export function RunLogsPanel({ runId, status }: Props) {
     const appendLines = useCallback((incoming: RunLogLine[]) => {
         if (!incoming.length) return;
         setLines((prev) => {
-            const next = [...prev, ...incoming];
+            const seen = new Set(prev.map((ln) => ln.seq));
+            const unique = incoming.filter((ln) => !seen.has(ln.seq));
+            if (!unique.length) return prev;
+            const next = [...prev, ...unique];
             return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
         });
-        lastSeqRef.current = incoming[incoming.length - 1].seq;
+        lastSeqRef.current = Math.max(
+            lastSeqRef.current,
+            incoming[incoming.length - 1].seq,
+        );
     }, []);
 
     const fetchLogs = useCallback(async () => {

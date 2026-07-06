@@ -295,6 +295,53 @@ class ObservabilityStore:
                 ).all()
             )
 
+    def list_running_runs(self, pipeline_id: str) -> list[PipelineRunRow]:
+        with self.session() as session:
+            return list(
+                session.scalars(
+                    select(PipelineRunRow)
+                    .where(
+                        PipelineRunRow.pipeline_id == pipeline_id,
+                        PipelineRunRow.status == "running",
+                    )
+                    .order_by(PipelineRunRow.started_at)
+                ).all()
+            )
+
+    def finish_running_steps(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        error: Optional[str] = None,
+    ) -> int:
+        now = utc_now()
+        with self.session() as session:
+            result = session.execute(
+                update(PipelineRunStepRow)
+                .where(
+                    PipelineRunStepRow.run_id == run_id,
+                    PipelineRunStepRow.status == "running",
+                )
+                .values(status=status, finished_at=now, error=error)
+            )
+            session.commit()
+            return result.rowcount or 0
+
+    def append_run_log_line(self, run_id: str, level: str, message: str) -> None:
+        seq = self.get_last_log_seq(run_id) + 1
+        self.append_run_logs(
+            [
+                {
+                    "run_id": run_id,
+                    "seq": seq,
+                    "logged_at": utc_now(),
+                    "level": level,
+                    "message": message,
+                }
+            ]
+        )
+
     def append_run_logs(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return

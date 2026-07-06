@@ -5,7 +5,7 @@ import { fetchGraph } from "../api/graph";
 export function usePipelineGraph(stage?: string | null) {
     const [graph, setGraph] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<unknown>(null);
     const [refreshToken, setRefreshToken] = useState(0);
 
     const refresh = useCallback(() => {
@@ -23,7 +23,7 @@ export function usePipelineGraph(stage?: string | null) {
                 }
             })
             .catch((e) => {
-                if (!cancelled) setError(String(e));
+                if (!cancelled) setError(e);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);

@@ -109,13 +109,15 @@ catalog = Catalog(
                 ],
             )
         ),
-        "fiftyone_predictions": Table(
+        "fiftyone_images": Table(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="predictions",
-                rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                fo_detections_label="images",
+                rm_only_fo_fields=False,
+                primary_schema=[
+                    Column("image_name", String(255), primary_key=True),
+                ],
             )
         ),
         "fiftyone_annotations": Table(
@@ -124,7 +126,34 @@ catalog = Catalog(
                 fo_session=fo_session,
                 fo_detections_label="annotations",
                 rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["subset_id"]
+            )
+        ),
+        "fiftyone_predictions": Table(
+            FiftyOneImagesDataTableStore(
+                dataset=FIFTYONE_DATASET_NAME,
+                fo_session=fo_session,
+                fo_detections_label="predictions",
+                rm_only_fo_fields=True,
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["detection_model_id"]
+            )
+        ),
+        "fiftyone_predictions_from_best_model": Table(
+            FiftyOneImagesDataTableStore(
+                dataset=FIFTYONE_DATASET_NAME,
+                fo_session=fo_session,
+                fo_detections_label="predictions_from_best_model",
+                rm_only_fo_fields=True,
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["detection_model_id"]
             )
         ),
     }

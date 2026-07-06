@@ -176,8 +176,34 @@ def download_images(
     return s3_images_df[["image_name", image__local_image_path__name]]
 
 
-def publish_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+def publish_to_fiftyone(images_df: pd.DataFrame) -> pd.DataFrame:
+    return convert_df_with_bbox_to_df_with_image_data(df__with_bbox=images_df)
+
+
+def publish_to_fiftyone_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys, how="left")
+    images_df = pd.merge(images_df, subset_df, on=primary_keys, how="left")
     return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=pd.merge(predictions_df, images_df, on=kwargs["primary_keys"][0]),
-        **kwargs,
+        df__with_bbox=images_df, image__image_path__name=image__image_path__name
+    )
+
+
+def publish_to_fiftyone_predictions_from_best_model(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    best_detection_model_df: pd.DataFrame,
+    primary_keys: list[str],
+    model_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    df = pd.merge(predictions_df, images_df, on=primary_keys, how="left")
+    df = pd.merge(df, best_detection_model_df, on=model_keys, how="left")
+    return convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df, image__image_path__name=image__image_path__name
     )

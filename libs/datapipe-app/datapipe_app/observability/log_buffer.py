@@ -8,8 +8,10 @@ from typing import Deque, Optional
 
 from datapipe_app.observability.db import ObservabilityStore, utc_now
 
+logger = logging.getLogger(__name__)
+
 MAX_LINES_PER_RUN = 10_000
-FLUSH_BATCH = 100
+FLUSH_BATCH = 1
 
 
 @dataclass
@@ -67,31 +69,44 @@ class RunLogBuffer:
             self._flush_locked(run_id)
             self._buffers.pop(run_id, None)
             self._pending_flush.pop(run_id, None)
+            self._seq.pop(run_id, None)
+
+    def flush_all(self) -> None:
+        with self._lock:
+            for run_id in list(self._pending_flush.keys()):
+                self._flush_locked(run_id)
 
     def _flush_locked(self, run_id: str) -> None:
         pending = self._pending_flush.get(run_id, [])
         if not pending:
             return
         rows = list(pending)
+        try:
+            self.store.append_run_logs(rows)
+        except Exception:
+            logger.exception("Failed to persist run logs for %s", run_id)
+            raise
         pending.clear()
-        self.store.append_run_logs(rows)
 
     def get_lines(self, run_id: str, *, after: int = 0, limit: int = 500) -> list[LogLine]:
-        with self._lock:
-            buf = self._buffers.get(run_id)
-            if buf is not None:
-                lines = [ln for ln in buf if ln.seq > after]
-                return lines[:limit]
-        rows = self.store.get_run_logs(run_id, after=after, limit=limit)
-        return [
+        db_lines = [
             LogLine(
                 seq=r.seq,
                 logged_at=r.logged_at.isoformat() if r.logged_at else "",
                 level=r.level,
                 message=r.message,
             )
-            for r in rows
+            for r in self.store.get_run_logs(run_id, after=0, limit=MAX_LINES_PER_RUN)
         ]
+        with self._lock:
+            buf = self._buffers.get(run_id)
+            if buf is None:
+                return [ln for ln in db_lines if ln.seq > after][:limit]
+            by_seq = {ln.seq: ln for ln in db_lines}
+            for ln in buf:
+                by_seq[ln.seq] = ln
+            merged = sorted(by_seq.values(), key=lambda item: item.seq)
+            return [ln for ln in merged if ln.seq > after][:limit]
 
 
 class RunLogHandler(logging.Handler):

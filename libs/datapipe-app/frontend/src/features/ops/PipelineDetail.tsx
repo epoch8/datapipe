@@ -2,6 +2,7 @@ import React from "react";
 import { Alert, Card, Spin, Tag } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
 import { ChartGrid } from "./components/ChartGrid";
 import { PipelineMetrics } from "./components/PipelineMetrics";
@@ -28,14 +29,14 @@ export function PipelineDetail({
     const navigate = useNavigate();
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
     const [curves, setCurves] = React.useState<ChartSpec[]>([]);
-    const [error, setError] = React.useState<string | null>(null);
+    const [error, setError] = React.useState<unknown>(null);
 
     const load = React.useCallback(() => {
         if (!id) return;
         opsApi
             .getPipeline(id)
             .then(setDetail)
-            .catch((e) => setError(String(e)));
+            .catch((e) => setError(e));
     }, [id]);
 
     React.useEffect(() => {
@@ -62,11 +63,11 @@ export function PipelineDetail({
                 );
                 navigate(`/runs/${started.run_id}`);
             })
-            .catch((e) => setError(String(e)));
+            .catch((e) => setError(e));
     };
 
     if (!id) return <Alert type="error" message="Pipeline id is required" />;
-    if (error) return <Alert type="error" message={error} />;
+    if (error) return <ApiErrorAlert error={error} />;
     if (!detail) return <Spin />;
 
     return (

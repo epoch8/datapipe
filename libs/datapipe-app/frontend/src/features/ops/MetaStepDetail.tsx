@@ -1,6 +1,7 @@
 import React from "react";
 import { Alert, Card, Spin } from "antd";
 import { useParams } from "react-router-dom";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
 import { graphNodesByIdFromGraph, nodeDataFromMeta } from "../cy/graphNodes";
 import {
@@ -14,7 +15,7 @@ export function MetaStepDetail() {
     const decodedName = decodeURIComponent(stepName);
     const { graph, loading, error, refresh } = usePipelineGraph();
 
-    if (error) return <Alert type="error" message={error} />;
+    if (error) return <ApiErrorAlert error={error} />;
     if (loading || !graph) return <Spin />;
 
     const meta = findMetaStepInGraph(graph, decodedName);

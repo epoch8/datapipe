@@ -1,6 +1,7 @@
 import logging
 import os.path
 import sys
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
@@ -39,6 +40,20 @@ def _resolve_observability_url(ds: Optional[DataStore], ops=None) -> str:
     raise RuntimeError(
         "OBSERVABILITY_DB_URL (DATAPIPE_APP_OBSERVABILITY_DB_URL) is required in central mode"
     )
+
+
+def _make_lifespan(api: "DatapipeAPI"):
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        yield
+        try:
+            from datapipe_app.observability.log_buffer import get_log_buffer
+
+            get_log_buffer(api.observability_store).flush_all()
+        except Exception:
+            logger.exception("Failed to flush run log buffers on shutdown")
+
+    return lifespan
 
 
 class DatapipeAPI(FastAPI, DatapipeApp):
@@ -82,7 +97,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
                 tables=observability_tables,
             )
 
-        FastAPI.__init__(self)
+        FastAPI.__init__(self, lifespan=_make_lifespan(self))
 
         obs_url = _resolve_observability_url(self.ds, get_ops_settings())
         obs_schema = resolve_datapipe_schema(self.ds)
@@ -105,6 +120,18 @@ class DatapipeAPI(FastAPI, DatapipeApp):
                 catalog=self.catalog,
                 log_buffer=get_log_buffer(self.observability_store),
             )
+            from datapipe_app.observability.run_reconciler import reconcile_orphaned_runs_on_startup
+
+            reconciled = reconcile_orphaned_runs_on_startup(
+                self.observability_store,
+                ops.pipeline_id,
+            )
+            if reconciled:
+                logger.info(
+                    "Marked %s orphaned run(s) as interrupted on startup: %s",
+                    len(reconciled),
+                    ", ".join(reconciled),
+                )
 
         self.add_middleware(
             CORSMiddleware,

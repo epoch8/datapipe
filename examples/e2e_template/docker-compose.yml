@@ -52,26 +52,65 @@ services:
       mc anonymous set download local/datapipe-e2e
       "
 
+  postgres-label-studio:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: label_studio
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   label-studio:
     image: heartexlabs/label-studio:1.22.0
     ports:
       - "8080:8080"
     environment:
       DJANGO_DB: default
-      POSTGRE_NAME: postgres
+      POSTGRE_NAME: label_studio
       POSTGRE_USER: postgres
       POSTGRE_PASSWORD: password
       POSTGRE_PORT: 5432
-      POSTGRE_HOST: postgres
+      POSTGRE_HOST: postgres-label-studio
       LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
     depends_on:
-      postgres:
+      postgres-label-studio:
         condition: service_healthy
       minio:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
 
+  fiftyone:
+    image: voxel51/fiftyone:1.17.0
+    command: ["python", "-m", "fiftyone.server.main", "--port", "5151"]
+    environment:
+      FIFTYONE_DATABASE_URI: mongodb://mongo:27017
+      FIFTYONE_DEFAULT_APP_ADDRESS: 0.0.0.0
+    ports:
+      - "5151:5151"
+    volumes:
+      # Host paths written by the pipeline (e.g. /tmp/datapipe-e2e/local_images) must match inside the container.
+      - type: bind
+        source: ${DATAPIPE_E2E_TMP_DIR:-/tmp/datapipe-e2e}
+        target: /tmp/datapipe-e2e
+        read_only: true
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5151/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   # Ops UI: run agents on the host (one process per pipeline), e.g.:
-  #   cd image_detection && source ../.env && datapipe --pipeline app:app api --port 8001
-  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e datapipe --pipeline app:app api --port 8002
+  #   cd image_detection && source ../.env && uv run datapipe --pipeline app:app api --port 8001
+  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e uv run datapipe --pipeline app:app api --port 8002
