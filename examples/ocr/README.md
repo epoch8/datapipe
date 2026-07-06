@@ -47,10 +47,16 @@ datapipe db create-all
 ### API keys
 
 - `OPENAI_API_KEY` for `openai`
-- `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for `gemini`
+- `GEMINI_API_KEY` for `gemini`
 - `QWEN_API_KEY` for `qwen` (DashScope compatible OpenAI API)
 
 ### FiftyOne App
+
+First - after creating virtual env install the community plugin for readable JSON in the FiftyOne modal:
+
+```shell
+fiftyone plugins download https://github.com/harpreetsahota204/caption_viewer
+```
 
 Launch on the same machine as the pipeline:
 
@@ -58,15 +64,7 @@ Launch on the same machine as the pipeline:
 fiftyone app launch --remote --address 0.0.0.0 --port 5151 --wait -1
 ```
 
-### Caption Viewer plugin
-
-Install the community plugin for readable JSON in the FiftyOne modal:
-
-```shell
-fiftyone plugins download https://github.com/harpreetsahota204/caption_viewer
-```
-
-In the App: open a sample → add panel → **Caption Viewer** → select `openai_ocr`, `gemini_ocr`, or `qwen_ocr`.
+To visualize JSON structured output in the App: open a sample → add panel → **Caption Viewer** → select `openai_ocr`, `gemini_ocr`, or `qwen_ocr`.
 
 ## Run
 
