@@ -182,7 +182,7 @@ def _load_entity_source_records(ds: Optional[DataStore], catalog: Optional[Catal
         if df.empty:
             continue
         columns = table_schema_columns(dt)
-        pk_cols = list(getattr(dt, "primary_keys", None) or getattr(dt, "indexes", None) or [])
+        pk_cols = list(dt.primary_keys)
 
         if is_frozen_dataset_table(name):
             id_col = frozen_dataset_id_column(columns)
@@ -276,23 +276,23 @@ def _load_entity_source_records(ds: Optional[DataStore], catalog: Optional[Catal
                     priority=4,
                 )
 
-    for candidate in _CANDIDATES.values():
-        for row in candidate:
+    for candidate_rows in _CANDIDATES.values():
+        for candidate_row in candidate_rows:
             _maybe_set_model_record(
                 index,
-                row.model_id,
+                candidate_row.model_id,
                 EntitySourceRecord(
                     table_name="metrics_candidates",
-                    pk={"id": row.id},
-                    record=row.model_dump(),
+                    pk={"id": candidate_row.id},
+                    record=candidate_row.model_dump(),
                 ),
                 priority=5,
             )
-            if row.dataset_id:
-                index.model_to_dataset[row.model_id] = row.dataset_id
-                index.dataset_to_models.setdefault(row.dataset_id, [])
-                if row.model_id not in index.dataset_to_models[row.dataset_id]:
-                    index.dataset_to_models[row.dataset_id].append(row.model_id)
+            if candidate_row.dataset_id:
+                index.model_to_dataset[candidate_row.model_id] = candidate_row.dataset_id
+                index.dataset_to_models.setdefault(candidate_row.dataset_id, [])
+                if candidate_row.model_id not in index.dataset_to_models[candidate_row.dataset_id]:
+                    index.dataset_to_models[candidate_row.dataset_id].append(candidate_row.model_id)
 
     return index
 
@@ -570,7 +570,7 @@ def _sort_runs(runs: list[MetricsRunRow], sort_by: Optional[str], sort_dir: str)
             if val is None:
                 return (1, 0.0)
             return (0, -float(val) if reverse else float(val))
-        attr = getattr(r, sort_by, None)
+        attr = r.model_dump().get(sort_by)
         if attr is None:
             return (1, ())
         if isinstance(attr, (int, float)):
@@ -726,7 +726,7 @@ def _sort_model_rows(rows: list[MetricsModelRow], sort_by: Optional[str], sort_d
             if val is None:
                 return (1, 0.0)
             return (0, -float(val) if reverse else float(val))
-        attr = getattr(row, sort_by, None)
+        attr = row.model_dump().get(sort_by)
         if attr is None:
             return (1, ())
         if isinstance(attr, (int, float)):
@@ -755,7 +755,7 @@ def _parse_sort_specs(sort_by: Optional[str], sort_dir: str) -> list[tuple[str, 
 def _class_sort_tuple_key(r: ClassMetricRow, specs: list[tuple[str, str]]) -> tuple[Any, ...]:
     parts: list[Any] = []
     for field, direction in specs:
-        val = getattr(r, field, None)
+        val = r.model_dump().get(field)
         if val is None:
             parts.append((1, 0))
             continue
@@ -865,9 +865,9 @@ class MetricsService:
             if row.dataset_id:
                 counts.setdefault(row.dataset_id, set()).add(row.model_id)
         enriched: list[FrozenDatasetRow] = []
-        for row in rows:
+        for frozen_row in rows:
             enriched.append(
-                row.model_copy(update={"models_count": len(counts.get(row.dataset_id, set()))}),
+                frozen_row.model_copy(update={"models_count": len(counts.get(frozen_row.dataset_id, set()))}),
             )
         return FrozenDatasetsResponse(rows=enriched, total=len(enriched))
 
@@ -923,7 +923,7 @@ class MetricsService:
             rows=page,
             total=total,
             available_filters={"subsets": subsets, "models": models, "tags": [], "metrics": metric_keys},
-            table_schema=schema,
+            schema=schema,
         )
 
     def get_schema(self, pipeline_id: str, *, task_type: Optional[str] = None) -> MetricsTableSchema:
@@ -1014,7 +1014,7 @@ class MetricsService:
         runs, _ = self._all_runs(pipeline_id)
         if subset:
             runs = [r for r in runs if r.subset in subset]
-        series = []
+        series: list[dict[str, object]] = []
         for metric in metrics:
             for sub in sorted({r.subset for r in runs}) or [""]:
                 sub_runs = [r for r in runs if r.subset == sub] if sub else runs

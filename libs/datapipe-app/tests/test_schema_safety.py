@@ -11,7 +11,7 @@ from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.schema_resolution import assert_safe_drop_schema, is_datapipe_owned_table
 
 pytestmark_postgres = pytest.mark.skipif(
-    os.environ.get("TEST_DB_ENV") == "sqlite",
+    os.environ.get("TEST_DB_ENV") != "postgres",
     reason="Postgres schema isolation tests require TEST_DB_ENV=postgres",
 )
 

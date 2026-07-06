@@ -18,7 +18,7 @@ from datapipe_app.observability.run_scope import (
     labels_to_json,
     trigger_from_labels,
 )
-from datapipe_app.observability.db import ObservabilityStore, utc_now
+from datapipe_app.observability.db import ObservabilityStore, PipelineRunRow, utc_now
 from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
 from datapipe_app.observability.label_graph import build_label_graph
 from datapipe_app.observability.analytics_views import ensure_analytics_tables, get_schema, refresh_analytics_views
@@ -358,7 +358,7 @@ def make_app(
         background_tasks: BackgroundTasks,
     ) -> MetricsEvaluateResponse:
         _require_agent_pipeline(pipeline_id)
-        labels = Labels([tuple(pair) for pair in req.labels]) if req.labels else Labels([("stage", "count-metrics")])
+        labels = Labels([(pair[0], pair[1]) for pair in req.labels if len(pair) >= 2]) if req.labels else Labels([("stage", "count-metrics")])
         run_resp = start_run(StartRunRequest(labels=labels, background=req.background), background_tasks)
         return MetricsEvaluateResponse(run_id=run_resp.run_id, status=run_resp.status)
 
@@ -500,8 +500,8 @@ def make_app(
             "computed_at": latest.computed_at.isoformat() if latest.computed_at else None,
         }
 
-    def _serialize_run_list_row(run: Any) -> dict[str, Any]:
-        labels = labels_from_json(getattr(run, "labels_json", None))
+    def _serialize_run_list_row(run: PipelineRunRow) -> dict[str, Any]:
+        labels = labels_from_json(run.labels_json)
         scope = derive_run_scope(labels=labels, trigger=run.trigger)
         duration_s: int | None = None
         if run.started_at and run.finished_at:
@@ -561,7 +561,7 @@ def make_app(
         if run is None:
             raise HTTPException(404, f"Run {run_id} not found")
         steps_rows = store.get_run_steps(run_id)
-        labels = labels_from_json(getattr(run, "labels_json", None))
+        labels = labels_from_json(run.labels_json)
         scope = derive_run_scope(labels=labels, trigger=run.trigger)
         return {
             "run_id": run.run_id,

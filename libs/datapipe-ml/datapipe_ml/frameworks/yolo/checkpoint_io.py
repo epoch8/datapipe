@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 from typing_extensions import Buffer
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Protocol, runtime_checkable
 
 from datapipe_ml.core.atomic_io import atomic_write_local
 
@@ -15,12 +15,17 @@ TorchSaveFn = Callable[..., None]
 PathWriteBytesFn = Callable[[Path, Buffer], int]
 
 
-def _checkpoint_path_from_torch_save_target(target: object) -> Optional[Path]:
+@runtime_checkable
+class _NamedCheckpointTarget(Protocol):
+    name: str
+
+
+def _checkpoint_path_from_torch_save_target(target: str | Path | _NamedCheckpointTarget) -> Optional[Path]:
     if isinstance(target, (str, Path)):
         return Path(target)
-    target_name = getattr(target, "name", None)
-    if isinstance(target_name, str) and target_name:
-        return Path(target_name)
+    if isinstance(target, _NamedCheckpointTarget):
+        if target.name:
+            return Path(target.name)
     return None
 
 

@@ -53,6 +53,7 @@ def test_tee_stream_appends_carriage_return_updates(tmp_path):
 
 
 def test_capture_run_output_records_subprocess_stdout(tmp_path):
+    pytest.importorskip("datapipe_ml")
     from datapipe_ml.core.multiprocessing import _spawn
 
     store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs3.db'}")

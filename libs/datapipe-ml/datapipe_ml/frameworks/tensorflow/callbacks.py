@@ -146,7 +146,7 @@ class FsspecModelCheckpoint(Callback):
         self._mirror_if_exists(epoch, logs)
 
     def _resolve_local_checkpoint_path(self, epoch: int, logs: Optional[Dict[str, Any]]) -> Optional[Path]:
-        inner_path = getattr(self._inner_ckpt, "filepath", None)
+        inner_path = self._inner_ckpt.filepath
         if inner_path:
             candidate = Path(inner_path)
             if candidate.exists():

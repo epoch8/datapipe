@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from datapipe.compute import Catalog
@@ -24,7 +24,12 @@ class ObservabilityTableConfig:
         validate_observability_table_names(self)
 
     def table_names(self) -> dict[str, str]:
-        return {field.name: getattr(self, field.name) for field in fields(self)}
+        return asdict(self)
+
+
+@runtime_checkable
+class _NamedTableStore(Protocol):
+    name: str
 
 
 def validate_observability_table_names(config: ObservabilityTableConfig) -> None:
@@ -58,7 +63,7 @@ def _collect_pipeline_table_names(catalog: Catalog) -> set[str]:
     names: set[str] = set()
     for catalog_name, table in catalog.catalog.items():
         names.add(catalog_name)
-        store_name = getattr(table.store, "name", None)
+        store_name = table.store.name if isinstance(table.store, _NamedTableStore) else None
         if isinstance(store_name, str):
             names.add(store_name)
     return names

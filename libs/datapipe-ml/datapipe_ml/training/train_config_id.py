@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import fields, is_dataclass
+from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Iterable, Mapping, Optional
 
 import pandas as pd
@@ -37,7 +37,7 @@ def build_train_config_id(
 def _dataclass_params(instance: object) -> dict[str, Any]:
     if isinstance(instance, type) or not is_dataclass(instance):
         raise TypeError(f"Expected dataclass config instance, got {type(instance)!r}")
-    return {field.name: getattr(instance, field.name) for field in fields(instance)}
+    return asdict(instance)
 
 
 def train_configs_to_dataframe(

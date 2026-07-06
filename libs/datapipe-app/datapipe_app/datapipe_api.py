@@ -2,6 +2,7 @@ import logging
 import os.path
 import sys
 from contextlib import asynccontextmanager
+from types import ModuleType
 from typing import Optional
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
@@ -15,6 +16,7 @@ import datapipe_app.api_v1alpha1 as api_v1alpha1
 import datapipe_app.api_v1alpha2 as api_v1alpha2
 import datapipe_app.api_v1alpha3 as api_v1alpha3
 from datapipe_app.metrics import setup_prometheus_metrics
+from datapipe_app.pipeline_binding import pipeline_module_for
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import get_log_buffer
 from datapipe_app.observability.recorder import RunRecorder
@@ -56,6 +58,12 @@ def _make_lifespan(api: "DatapipeAPI"):
 
 
 class DatapipeAPI(FastAPI, DatapipeApp):
+    catalog: Catalog
+    pipeline: Pipeline
+    steps: list
+    observability_table_config: Optional[ObservabilityTableConfig]
+    ops_settings: OpsSettings
+
     def __init__(
         self,
         ds: Optional[DataStore] = None,
@@ -74,7 +82,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         observability_tables = observability_table_config or ObservabilityTableConfig()
 
         if env_ops.mode == "central":
-            self.ds = None
+            self.ds = None  # type: ignore[assignment]
             self.catalog = catalog or Catalog({})
             self.pipeline = pipeline or Pipeline([])
             self.steps = []
@@ -87,8 +95,8 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             assert ds is not None and catalog is not None and pipeline is not None
             DatapipeApp.__init__(self, ds, catalog, pipeline)
 
-        pipeline_module = getattr(app, "_datapipe_pipeline_module", None)
-        explicit_pipeline_id = pipeline_id or getattr(app, "pipeline_id", None)
+        pipeline_module = pipeline_module_for(app)
+        explicit_pipeline_id = pipeline_id
         self.ops_settings = resolve_ops_settings(
             ds=self.ds,
             pipeline_id=explicit_pipeline_id,
@@ -215,13 +223,13 @@ class DatapipeAPI(FastAPI, DatapipeApp):
     def refresh_ops_settings(
         self,
         *,
-        pipeline_module=None,
+        pipeline_module: ModuleType | None = None,
         pipeline_spec: Optional[str] = None,
     ) -> None:
         self.ops_settings = resolve_ops_settings(
             ds=self.ds,
             pipeline_spec=pipeline_spec,
-            pipeline_module=pipeline_module or getattr(self, "_datapipe_pipeline_module", None),
+            pipeline_module=pipeline_module or pipeline_module_for(self),
         )
         configure_active_ops(self.ops_settings)
 

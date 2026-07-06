@@ -6,10 +6,11 @@ from typing import Any, Optional
 from datapipe_app.observability.queries import build_training_curves
 from datapipe_app.observability.schemas import TrainingCompareResponse, TrainingRunRow, TrainingRunsResponse
 
+_training_run_catalog_cls: type[Any] | None
 try:
-    from datapipe_ml.observability.runs_catalog import TrainingRunCatalog
+    from datapipe_ml.observability.runs_catalog import TrainingRunCatalog as _training_run_catalog_cls
 except ImportError:
-    TrainingRunCatalog = None  # type: ignore
+    _training_run_catalog_cls = None
 
 RUN_COLORS = ["purple", "blue", "orange", "green"]
 
@@ -82,7 +83,7 @@ class TrainingService:
         self.store = store
         self.ds = ds
         self.catalog = catalog
-        self._catalog = TrainingRunCatalog() if TrainingRunCatalog else None
+        self._catalog = _training_run_catalog_cls() if _training_run_catalog_cls is not None else None
 
     def list_runs(
         self,
@@ -122,8 +123,8 @@ class TrainingService:
             fw = _infer_framework(_clean_optional_str(r.get("model_id")), _clean_optional_str(r.get("launcher_type")))
             rows.append(
                 TrainingRunRow(
-                    run_key=_clean_str(r.get("run_key", "")),
-                    run_id=_clean_str(r.get("run_key", "")),
+                    run_key=_clean_str(r.get("run_key")) or "",
+                    run_id=_clean_str(r.get("run_key")) or "",
                     model_id=_clean_optional_str(r.get("model_id")),
                     task_type=tt,
                     framework=fw,
@@ -131,7 +132,7 @@ class TrainingService:
                     started_at=_clean_optional_str(r.get("started_at")),
                     finished_at=_clean_optional_str(r.get("finished_at")),
                     duration_s=int(r["duration_s"]) if not _is_nan(r.get("duration_s")) and r.get("duration_s") is not None else None,
-                    status=_clean_str(r.get("status", "unknown")),
+                    status=_clean_str(r.get("status")) or "unknown",
                     attempt=int(r["attempt"]) if not _is_nan(r.get("attempt")) and r.get("attempt") is not None else None,
                     tags=r.get("tags") or [],
                     best_metric_name=_clean_optional_str(best_name),
@@ -159,7 +160,12 @@ class TrainingService:
 
         if sort_by:
             reverse = sort_dir != "asc"
-            rows = sorted(rows, key=lambda r: getattr(r, sort_by, None) or "", reverse=reverse)
+
+            def _sort_key(row: TrainingRunRow) -> str:
+                value = row.model_dump().get(sort_by)
+                return "" if value is None else str(value)
+
+            rows = sorted(rows, key=_sort_key, reverse=reverse)
 
         total = len(rows)
         page = rows[offset : offset + limit]

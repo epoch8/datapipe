@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Type
 
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep
@@ -112,12 +112,56 @@ class YoloV8TrainStepFields:
     model_id__name: str
     frozen_dataset_id__name: str
 
+    def model_primary_keys(self, step: YoloV8TrainStepLike) -> list[str] | None:
+        value = getattr(step, self.model_primary_keys_attr)
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError(
+                f"Expected {self.model_primary_keys_attr!r} to be list[str] | None, got {type(value)!r}"
+            )
+        return value
+
+    def model_id_column(self, step: YoloV8TrainStepLike) -> str:
+        return _step_pipeline_io(step, self.model_id__name)
+
+    def frozen_dataset_id_column(self, step: YoloV8TrainStepLike) -> str:
+        return _step_pipeline_io(step, self.frozen_dataset_id__name)
+
+
+class YoloV8TrainStepLike(Protocol):
+    working_dir: str
+    primary_keys: list[str]
+    image__image_path__name: str
+    bbox_id__name: str | None
+    separator_to_split_attrnames: str
+    create_table: bool
+    labels: Labels | None
+    executor_config: ExecutorConfig | None
+    prepare_data_executor_config: ExecutorConfig | None
+    resize_images: bool
+    max_within_time: str
+    tmp_folder: str
+    model_suffix: str
+    allow_sample_size_mismatch: bool
+    training_launcher_config: TrainingLauncherConfig | None
+    sync_config: TrainingSyncConfig | None
+    resume_config: TrainingResumeConfig | None
+    filedir_fsspec_kwargs: dict[str, Any] | None
+
+
+def _step_pipeline_io(step: YoloV8TrainStepLike, attr_name: str) -> str:
+    value = getattr(step, attr_name)
+    if not isinstance(value, str):
+        raise TypeError(f"Expected pipeline I/O attribute {attr_name!r} to be str, got {type(value)!r}")
+    return value
+
 
 def build_yolov8_train_compute(
     *,
     ds: DataStore,
     catalog: Catalog,
-    step: Any,
+    step: YoloV8TrainStepLike,
     spec: YoloV8TaskSpec,
     fields: YoloV8TrainStepFields,
     yolov8_train_configs: List[YoloV8_TrainingConfig],
@@ -150,28 +194,32 @@ def build_yolov8_train_compute(
     return build_yolo_compute(
         ds=ds,
         catalog=catalog,
-        input__frozen_dataset=getattr(step, fields.input__frozen_dataset),
-        input__frozen_dataset__has__image_gt=getattr(step, fields.input__frozen_dataset__has__image_gt),
-        output__train_config=getattr(step, fields.output__train_config),
-        output__size_for_resize=getattr(step, fields.output__size_for_resize),
-        output__frozen_dataset__class_names=getattr(step, fields.output__frozen_dataset__class_names),
-        output__frozen_dataset__resized_image_file=getattr(step, fields.output__frozen_dataset__resized_image_file),
-        output__frozen_dataset__yolo_txt=getattr(step, fields.output__frozen_dataset__yolo_txt),
-        output__model=getattr(step, fields.output__model),
-        output__model_is_trained_on_frozen_dataset=getattr(step, fields.output__model_is_trained_on_frozen_dataset),
+        input__frozen_dataset=_step_pipeline_io(step, fields.input__frozen_dataset),
+        input__frozen_dataset__has__image_gt=_step_pipeline_io(step, fields.input__frozen_dataset__has__image_gt),
+        output__train_config=_step_pipeline_io(step, fields.output__train_config),
+        output__size_for_resize=_step_pipeline_io(step, fields.output__size_for_resize),
+        output__frozen_dataset__class_names=_step_pipeline_io(step, fields.output__frozen_dataset__class_names),
+        output__frozen_dataset__resized_image_file=_step_pipeline_io(
+            step, fields.output__frozen_dataset__resized_image_file
+        ),
+        output__frozen_dataset__yolo_txt=_step_pipeline_io(step, fields.output__frozen_dataset__yolo_txt),
+        output__model=_step_pipeline_io(step, fields.output__model),
+        output__model_is_trained_on_frozen_dataset=_step_pipeline_io(
+            step, fields.output__model_is_trained_on_frozen_dataset
+        ),
         working_dir=step.working_dir,
-        filedir_fsspec_kwargs=getattr(step, "filedir_fsspec_kwargs", None),
+        filedir_fsspec_kwargs=step.filedir_fsspec_kwargs,
         primary_keys=step.primary_keys,
-        model_primary_keys=getattr(step, fields.model_primary_keys_attr),
-        model_id__name=getattr(step, fields.model_id__name),
-        frozen_dataset_id__name=getattr(step, fields.frozen_dataset_id__name),
+        model_primary_keys=fields.model_primary_keys(step),
+        model_id__name=fields.model_id_column(step),
+        frozen_dataset_id__name=fields.frozen_dataset_id_column(step),
         image__image_path__name=step.image__image_path__name,
         bbox_id__name=step.bbox_id__name,
         separator_to_split_attrnames=step.separator_to_split_attrnames,
         create_table=step.create_table,
         labels=step.labels,
         executor_config=step.executor_config,
-        prepare_data_executor_config=getattr(step, "prepare_data_executor_config", None),
+        prepare_data_executor_config=step.prepare_data_executor_config,
         resize_images=step.resize_images,
         max_within_time=step.max_within_time,
         tmp_folder=step.tmp_folder,
@@ -179,8 +227,8 @@ def build_yolov8_train_compute(
         allow_sample_size_mismatch=step.allow_sample_size_mismatch,
         mode=YoloModeSpec(**mode_kwargs),
         train_configs_list=dict(yolov8_train_configs=yolov8_train_configs),
-        training_launcher_config=getattr(step, "training_launcher_config", None),
-        sync_config=getattr(step, "sync_config", None),
-        resume_config=getattr(step, "resume_config", None),
-        output__training_status=getattr(step, fields.output__training_status),
+        training_launcher_config=step.training_launcher_config,
+        sync_config=step.sync_config,
+        resume_config=step.resume_config,
+        output__training_status=_step_pipeline_io(step, fields.output__training_status),
     )

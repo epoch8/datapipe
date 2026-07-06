@@ -3,14 +3,11 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy import (
-    Boolean,
-    Column,
     DateTime,
     Integer,
-    MetaData,
     String,
     Text,
     UniqueConstraint,
@@ -19,16 +16,16 @@ from sqlalchemy import (
     text,
     update,
 )
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.engine import CursorResult, Engine
+from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
+from datapipe_app.db_schema import ObservabilityBase
 from datapipe_app.db_schema import apply_observability_table_config
 from datapipe_app.observability.tables import ObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
 
-metadata = MetaData()
-Base = declarative_base(metadata=metadata)
+Base = ObservabilityBase
 
 
 def utc_now() -> datetime:
@@ -38,50 +35,50 @@ def utc_now() -> datetime:
 class PipelineRegistryRow(Base):
     __tablename__ = "pipeline_registry"
 
-    pipeline_id = Column(String(255), primary_key=True)
-    display_name = Column(String(512), nullable=False)
-    task_type = Column(String(64), nullable=True)
-    registered_at = Column(DateTime(timezone=True), nullable=False)
-    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
-    agent_url = Column(String(1024), nullable=True)
+    pipeline_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
 
 class PipelineRunRow(Base):
     __tablename__ = "pipeline_runs"
 
-    run_id = Column(String(64), primary_key=True)
-    pipeline_id = Column(String(255), nullable=False, index=True)
-    status = Column(String(32), nullable=False)
-    started_at = Column(DateTime(timezone=True), nullable=False)
-    finished_at = Column(DateTime(timezone=True), nullable=True)
-    error = Column(Text, nullable=True)
-    trigger = Column(String(64), nullable=True)
-    labels_json = Column(Text, nullable=True)
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pipeline_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    labels_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PipelineRunStepRow(Base):
     __tablename__ = "pipeline_run_steps"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(String(64), nullable=False, index=True)
-    step_name = Column(String(512), nullable=False)
-    status = Column(String(32), nullable=False)
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    finished_at = Column(DateTime(timezone=True), nullable=True)
-    processed = Column(Integer, nullable=True)
-    total = Column(Integer, nullable=True)
-    error = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    step_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PipelineRunLogRow(Base):
     __tablename__ = "pipeline_run_logs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(String(64), nullable=False, index=True)
-    seq = Column(Integer, nullable=False)
-    logged_at = Column(DateTime(timezone=True), nullable=False)
-    level = Column(String(16), nullable=False)
-    message = Column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    level: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
 
     __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_run_log_seq"),)
 
@@ -89,10 +86,10 @@ class PipelineRunLogRow(Base):
 class PipelineScheduleRow(Base):
     __tablename__ = "pipeline_schedules"
 
-    pipeline_id = Column(String(255), primary_key=True)
-    cron_expression = Column(String(128), nullable=True)
-    next_run_at = Column(DateTime(timezone=True), nullable=True)
-    timezone = Column(String(64), nullable=True)
+    pipeline_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    cron_expression: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class ObservabilityStore:
@@ -222,12 +219,15 @@ class ObservabilityStore:
     ) -> None:
         now = utc_now()
         with self.session() as session:
-            result = session.execute(
-                update(PipelineRunRow)
-                .where(PipelineRunRow.run_id == run_id)
-                .values(status=status, finished_at=now, error=error)
+            cursor_result = cast(
+                CursorResult[Any],
+                session.execute(
+                    update(PipelineRunRow)
+                    .where(PipelineRunRow.run_id == run_id)
+                    .values(status=status, finished_at=now, error=error)
+                ),
             )
-            if result.rowcount == 0:
+            if cursor_result.rowcount == 0:
                 logger.warning(
                     "finish_run: pipeline_runs row not found for run_id=%s (schema=%s)",
                     run_id,
@@ -317,16 +317,19 @@ class ObservabilityStore:
     ) -> int:
         now = utc_now()
         with self.session() as session:
-            result = session.execute(
-                update(PipelineRunStepRow)
-                .where(
-                    PipelineRunStepRow.run_id == run_id,
-                    PipelineRunStepRow.status == "running",
-                )
-                .values(status=status, finished_at=now, error=error)
+            cursor_result = cast(
+                CursorResult[Any],
+                session.execute(
+                    update(PipelineRunStepRow)
+                    .where(
+                        PipelineRunStepRow.run_id == run_id,
+                        PipelineRunStepRow.status == "running",
+                    )
+                    .values(status=status, finished_at=now, error=error)
+                ),
             )
             session.commit()
-            return result.rowcount or 0
+            return cursor_result.rowcount or 0
 
     def append_run_log_line(self, run_id: str, level: str, message: str) -> None:
         seq = self.get_last_log_seq(run_id) + 1
@@ -432,7 +435,7 @@ class ObservabilityStore:
             all_for_filters = list(session.scalars(filter_query).all())
 
         statuses = sorted({r.status for r in all_for_filters})
-        triggers = sorted({r.trigger for r in all_for_filters if r.trigger})
+        triggers = sorted({trigger for r in all_for_filters if (trigger := r.trigger)})
         stages: set[str] = set()
         for row in all_for_filters:
             if row.trigger and row.trigger.startswith("api:stage:"):

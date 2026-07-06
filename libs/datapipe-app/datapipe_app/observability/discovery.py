@@ -6,6 +6,8 @@ from typing import Any, Optional
 from datapipe.compute import Catalog, ComputeStep, Pipeline
 from datapipe.datatable import DataStore
 
+from datapipe_app.pipeline_steps import pipeline_step_labels
+
 
 def extract_stages(steps: list[ComputeStep]) -> list[str]:
     stages: list[str] = []
@@ -117,8 +119,7 @@ def discover_pipeline_stages(
     stages: list[str] = []
     seen: set[str] = set()
     for step in pipeline.steps:
-        labels = getattr(step, "labels", []) or []
-        for k, v in labels:
+        for k, v in pipeline_step_labels(step):
             if k == "stage" and v not in seen:
                 stages.append(v)
                 seen.add(v)

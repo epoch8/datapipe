@@ -40,7 +40,7 @@ def load_observability_plugins(registry: ObservabilityRegistry) -> None:
     try:
         eps = entry_points(group="datapipe.observability")
     except TypeError:
-        eps = entry_points().get("datapipe.observability", [])
+        eps = entry_points().select(group="datapipe.observability")
     for ep in eps:
         try:
             register_fn = ep.load()

@@ -1,15 +1,24 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import MetaData, text
+from sqlalchemy import MetaData, Table, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase
 
 from datapipe_app.observability.tables import ObservabilityTableConfig
 
 if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
     from datapipe.store.database import DBConn
+    from datapipe_app.datapipe_api import DatapipeAPI
+
+
+metadata = MetaData()
+
+
+class ObservabilityBase(DeclarativeBase):
+    metadata = metadata
 
 
 def apply_observability_table_config(
@@ -24,7 +33,7 @@ def apply_observability_table_config(
         PipelineScheduleRow,
     )
 
-    mapping = {
+    mapping: dict[type[ObservabilityBase], str] = {
         PipelineRegistryRow: tables.pipeline_registry,
         PipelineRunRow: tables.pipeline_runs,
         PipelineRunStepRow: tables.pipeline_run_steps,
@@ -32,8 +41,9 @@ def apply_observability_table_config(
         PipelineScheduleRow: tables.pipeline_schedules,
     }
     for model_cls, table_name in mapping.items():
-        model_cls.__table__.name = table_name
-        model_cls.__table__.schema = schema
+        table = cast(Table, model_cls.__table__)
+        table.name = table_name
+        table.schema = schema
 
     from datapipe_app.observability.analytics_views import apply_analytics_table_config
 
@@ -66,13 +76,19 @@ def register_observability_tables_in_metadata(
         PipelineRunLogRow,
         PipelineScheduleRow,
     ):
-        src = model_cls.__table__
+        src = cast(Table, model_cls.__table__)
         if not _metadata_has_table(target, src.name, dbconn.schema):
-            src.to_metadata(target, schema=dbconn.schema)
+            if dbconn.schema is not None:
+                src.to_metadata(target, schema=dbconn.schema)
+            else:
+                src.to_metadata(target)
 
-    for src in analytics_metadata().tables.values():
-        if not _metadata_has_table(target, src.name, dbconn.schema):
-            src.to_metadata(target, schema=dbconn.schema)
+    for src_table in analytics_metadata().tables.values():
+        if not _metadata_has_table(target, src_table.name, dbconn.schema):
+            if dbconn.schema is not None:
+                src_table.to_metadata(target, schema=dbconn.schema)
+            else:
+                src_table.to_metadata(target)
 
 
 def _metadata_has_table(metadata: MetaData, name: str, schema: str | None) -> bool:
@@ -90,7 +106,9 @@ def create_observability_tables_hook(app: DatapipeApp, dbconn: DBConn) -> None:
     if app.ds is None:
         return
 
-    tables = getattr(app, "observability_table_config", None) or ObservabilityTableConfig()
+    from datapipe_app.datapipe_api import DatapipeAPI
+
+    tables = app.observability_table_config if isinstance(app, DatapipeAPI) and app.observability_table_config else ObservabilityTableConfig()
 
     if not _observability_tables_registered(dbconn, tables):
         if app.catalog is not None and app.catalog.catalog:

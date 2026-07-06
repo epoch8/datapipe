@@ -128,7 +128,7 @@ pipeline = Pipeline(
             func=steps.parse_annotations_from_label_studio,
             inputs=["ls_annotations"],
             outputs=["image__ground_truth"],
-            labels=[("stage", "annotation")],
+            labels=[("stage", "annotation"), ("stage", "ls-sync")],
             transform_keys=["image_name"],
         ),
         BatchTransform(
@@ -151,7 +151,7 @@ pipeline = Pipeline(
             output__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             working_dir=str(DATAPIPE_DIR),
             min_within_time="1s",
-            min_delta=1,
+            min_delta=10,
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",

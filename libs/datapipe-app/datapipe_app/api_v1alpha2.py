@@ -23,6 +23,7 @@ from datapipe_app.api_v1alpha1 import filter_steps_by_labels
 from datapipe_app.meta_sql import require_sql_transform_meta
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.discovery import extract_stages
+from datapipe_app.pipeline_steps import pipeline_step_labels
 from datapipe_app.settings import API_SETTINGS
 
 
@@ -166,19 +167,6 @@ def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest)
         total=total,
         data=transform_data.fillna("-").to_dict(orient="records"),
     )
-
-
-def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_prefix: str = "") -> List[ComputeStep]:
-    res = []
-    for step in steps:
-        for k, v in labels:
-            if (k, v) not in step.labels:
-                break
-        else:
-            if step.name.startswith(name_prefix):
-                res.append(step)
-
-    return res
 
 
 class WebSocketManager:
@@ -396,7 +384,7 @@ def make_app(
                     transform_type=group_name,
                     inputs=sorted(external_inputs),
                     outputs=sorted(external_outputs),
-                    labels=[[k, v] for k, v in (getattr(pipeline_step, "labels", None) or [])],
+                    labels=[[k, v] for k, v in pipeline_step_labels(pipeline_step)],
                     graph=subgroup,
                 )
             )

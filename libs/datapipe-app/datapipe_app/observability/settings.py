@@ -9,6 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from datapipe.datatable import DataStore
 
+from datapipe_app.pipeline_binding import bind_pipeline_module, pipeline_module_for
+
 if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
 
@@ -37,7 +39,7 @@ def pipeline_id_from_spec(pipeline_spec: str) -> Optional[str]:
 def pipeline_id_from_module(pipeline_module: ModuleType | None) -> Optional[str]:
     if pipeline_module is None:
         return None
-    file = getattr(pipeline_module, "__file__", None)
+    file = pipeline_module.__file__
     if not file:
         return None
     return Path(file).stem
@@ -50,7 +52,7 @@ def pipeline_module_from_caller() -> ModuleType | None:
             continue
         if any(mod.__name__.startswith(prefix) for prefix in _SKIP_MODULE_PREFIXES):
             continue
-        if getattr(mod, "__file__", None):
+        if mod.__file__:
             return mod
     return None
 
@@ -95,7 +97,7 @@ def bind_pipeline_ops(
     pipeline_module: ModuleType,
     pipeline_spec: str,
 ) -> None:
-    app._datapipe_pipeline_module = pipeline_module  # type: ignore[attr-defined]
+    bind_pipeline_module(app, pipeline_module)
 
     from datapipe_app.datapipe_api import DatapipeAPI
 

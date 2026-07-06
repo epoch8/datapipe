@@ -61,7 +61,7 @@ def test_detection_template_catalog_has_expected_tables():
         "image__ground_truth",
         "image__subset",
         "local_images",
-        "fiftyone_predictions",
+        "fiftyone_predictions_from_best_model",
         "fiftyone_annotations",
     }.issubset(catalog.catalog)
 
@@ -82,7 +82,7 @@ def test_keypoints_template_catalog_has_expected_tables():
         "image__ground_truth",
         "image__subset",
         "local_images",
-        "fiftyone_predictions",
+        "fiftyone_predictions_from_best_model",
         "fiftyone_annotations",
     }.issubset(catalog.catalog)
 

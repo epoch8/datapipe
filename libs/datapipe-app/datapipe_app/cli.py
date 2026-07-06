@@ -10,8 +10,10 @@ def register_commands(cli: click.Group):
     @click.option("--port", type=click.INT, default=8000)
     @click.pass_context
     def api(ctx: click.Context, host: str, port: int) -> None:
+        parent = ctx.parent
+        assert parent is not None
         app: DatapipeApp = ctx.obj["pipeline"]
-        pipeline_spec = ctx.parent.params.get("pipeline", "app")
+        pipeline_spec = parent.params.get("pipeline", "app")
 
         import uvicorn
 
