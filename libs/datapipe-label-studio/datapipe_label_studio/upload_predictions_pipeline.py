@@ -331,6 +331,11 @@ class LabelStudioUploadPredictions(PipelineStep):
         )
         task_join_keys = _prediction_task_join_keys(self.primary_keys, self.model_keys)
         check_columns_are_in_table(ds, self.input__label_studio_project_task, task_join_keys + ["task_id"])
+        primary_schema_columns = [
+            column
+            for column in dt__input__has__prediction.primary_schema
+            if column.name in self.primary_keys
+        ]
         catalog.add_datatable(
             output_label_studio_project_prediction_name,
             Table(
@@ -339,16 +344,16 @@ class LabelStudioUploadPredictions(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=output_label_studio_project_prediction_name,
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__has__prediction.primary_schema
-                            if column.name in self.primary_keys
-                        ]
+                        data_sql_schema=primary_schema_columns
                         + [
-                            Column("task_id", Integer),
-                            Column("prediction_id", Integer),
-                            Column("model_version", String),
-                            Column("prediction", JSON),
+                            column
+                            for column in (
+                                Column("task_id", Integer),
+                                Column("prediction_id", Integer),
+                                Column("model_version", String),
+                                Column("prediction", JSON),
+                            )
+                            if column.name not in {col.name for col in primary_schema_columns}
                         ],
                         create_table=self.create_table,
                     ),
@@ -494,6 +499,11 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
         task_join_keys = _prediction_task_join_keys(self.primary_keys, self.model_keys)
         check_columns_are_in_table(ds, self.input__label_studio_project_task, task_join_keys + ["task_id"])
         check_columns_are_in_table(ds, self.input__label_studio_project, ["project_identifier", "project_id"])
+        primary_schema_columns = [
+            column
+            for column in dt__input__has__prediction.primary_schema
+            if column.name in self.primary_keys
+        ]
         catalog.add_datatable(
             output_label_studio_project_prediction_name,
             Table(
@@ -502,16 +512,16 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=output_label_studio_project_prediction_name,
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__has__prediction.primary_schema
-                            if column.name in self.primary_keys
-                        ]
+                        data_sql_schema=primary_schema_columns
                         + [
-                            Column("task_id", Integer),
-                            Column("prediction_id", Integer),
-                            Column("model_version", String),
-                            Column("prediction", JSON),
+                            column
+                            for column in (
+                                Column("task_id", Integer),
+                                Column("prediction_id", Integer),
+                                Column("model_version", String),
+                                Column("prediction", JSON),
+                            )
+                            if column.name not in {col.name for col in primary_schema_columns}
                         ],
                         create_table=self.create_table,
                     ),
