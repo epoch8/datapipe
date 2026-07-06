@@ -426,6 +426,15 @@ export interface FrozenDatasetCoverage {
     best_model_id?: string | null;
 }
 
+export interface FrozenDatasetLinkedModelRow {
+    model_id: string;
+    created_at?: string | null;
+    run_key?: string | null;
+    run_id?: string | null;
+    link_table?: string | null;
+    link_record?: Record<string, unknown> | null;
+}
+
 export interface FrozenDatasetDetailResponse {
     pipeline_id: string;
     dataset_id: string;
@@ -435,7 +444,9 @@ export interface FrozenDatasetDetailResponse {
     source_pk?: Record<string, unknown> | null;
     source_record?: Record<string, unknown> | null;
     source_table_url?: string | null;
-    models: MetricsModelRow[];
+    linked_models: FrozenDatasetLinkedModelRow[];
+    /** @deprecated API ≤ linked_models migration; normalized client-side */
+    models?: MetricsModelRow[];
     coverage: FrozenDatasetCoverage;
 }
 

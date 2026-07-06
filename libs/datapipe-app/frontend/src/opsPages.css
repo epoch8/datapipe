@@ -74,6 +74,8 @@
     line-height: 32px;
     font-weight: 700;
     color: var(--dp-gray-950);
+    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .ops-page-star {
@@ -287,6 +289,8 @@
 .dp-entity-link {
     color: var(--dp-blue-600, #1677ff);
     text-decoration: none;
+    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .dp-entity-link:hover {
@@ -300,14 +304,34 @@
     margin-bottom: 16px;
 }
 
+.ops-entity-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.ops-entity-layout .ops-source-record-card,
+.ops-entity-layout .ops-entity-summary-panel {
+    width: 100%;
+}
+
+.ops-entity-summary-panel {
+    margin-top: 0;
+}
+
+.ops-entity-summary-dl {
+    max-width: 640px;
+}
+
 .ops-source-record-card {
     min-height: 180px;
 }
 
 .ops-source-record-dl {
     display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 6px 12px;
+    grid-template-columns: minmax(200px, 28%) minmax(0, 1fr);
+    gap: 10px 20px;
     margin: 0;
     font-size: 13px;
 }
@@ -319,7 +343,8 @@
 
 .ops-source-record-dl dd {
     margin: 0;
-    word-break: break-word;
+    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .ops-source-record-table-link {
@@ -347,6 +372,14 @@
     font-size: 24px;
     font-weight: 600;
     line-height: 1.2;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.ops-metric-kpi-value-text {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
 }
 
 .ops-entity-footer-strip {
@@ -386,8 +419,8 @@
 }
 
 .ops-metrics-frozen-row {
-    max-width: 66%;
-    min-width: 520px;
+    max-width: 100%;
+    min-width: 0;
     margin-bottom: 16px;
 }
 
@@ -412,6 +445,27 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--dp-gray-200);
     text-align: left;
+    vertical-align: top;
+}
+
+.ops-frozen-compact-table td:first-child {
+    min-width: 280px;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.ops-entity-metrics-table .ant-table-cell {
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.ops-frozen-linked-models-table {
+    max-width: 50%;
+}
+
+.ops-model-detail-metrics-table {
+    max-width: 50%;
 }
 
 .ops-models-evaluate-list {

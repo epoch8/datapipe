@@ -320,6 +320,15 @@ class FrozenDatasetCoverage(BaseModel):
     best_model_id: Optional[str] = None
 
 
+class FrozenDatasetLinkedModelRow(BaseModel):
+    model_id: str
+    created_at: Optional[str] = None
+    run_key: Optional[str] = None
+    run_id: Optional[str] = None
+    link_table: Optional[str] = None
+    link_record: dict[str, Any] | None = None
+
+
 class FrozenDatasetDetailResponse(BaseModel):
     pipeline_id: str
     dataset_id: str
@@ -329,5 +338,5 @@ class FrozenDatasetDetailResponse(BaseModel):
     source_pk: dict[str, Any] | None = None
     source_record: dict[str, Any] | None = None
     source_table_url: Optional[str] = None
-    models: list[MetricsModelRow] = Field(default_factory=list)
+    linked_models: list[FrozenDatasetLinkedModelRow] = Field(default_factory=list)
     coverage: FrozenDatasetCoverage = Field(default_factory=FrozenDatasetCoverage)

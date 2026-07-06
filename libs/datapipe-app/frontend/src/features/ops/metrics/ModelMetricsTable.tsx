@@ -45,7 +45,6 @@ export function ModelMetricsTable({
             title: "Model",
             dataIndex: "model_id",
             fixed: "left",
-            width: 220,
             sorter: true,
             render: (v: string, row) => (
                 <EntityLink kind="model" id={v} datasetId={row.dataset_id} subset={row.subset} />
@@ -54,7 +53,6 @@ export function ModelMetricsTable({
         {
             title: "Dataset",
             dataIndex: "dataset_id",
-            width: 200,
             render: (v?: string, row?: MetricsModelRow) =>
                 v ? (
                     <EntityLink kind="dataset" id={v} subset={row?.subset} />
@@ -103,7 +101,7 @@ export function ModelMetricsTable({
             onPageChange={onPageChange}
             onSortChange={onSortChange}
             activeSorts={activeSorts}
-            scroll={{ x: viewMode === "all" ? 2200 : 1400 }}
+            scroll={{ x: "max-content" }}
         />
     );
 }

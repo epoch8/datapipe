@@ -27,6 +27,7 @@ from datapipe_app.observability.schemas import (
     EntitySourceRecord,
     FrozenDatasetCoverage,
     FrozenDatasetDetailResponse,
+    FrozenDatasetLinkedModelRow,
     FrozenDatasetRow,
     FrozenDatasetsResponse,
     MetricsCandidateCreate,
@@ -126,6 +127,7 @@ class EntitySourceIndex:
     dataset_records_by_id: dict[str, EntitySourceRecord] = field(default_factory=dict)
     model_to_dataset: dict[str, str] = field(default_factory=dict)
     dataset_to_models: dict[str, list[str]] = field(default_factory=dict)
+    dataset_model_link_records: dict[tuple[str, str], EntitySourceRecord] = field(default_factory=dict)
     _model_priority: dict[str, int] = field(default_factory=dict)
     _dataset_priority: dict[str, int] = field(default_factory=dict)
 
@@ -252,6 +254,7 @@ def _load_entity_source_records(
                     pk=_row_pk(row, pk_cols),
                     record=_row_to_record(row, columns),
                 )
+                index.dataset_model_link_records[(did, mid)] = record
                 _maybe_set_model_record(index, mid, record, priority=2)
                 _maybe_set_dataset_record(index, did, record, priority=3)
 
@@ -436,6 +439,113 @@ def _format_timestamp(value: Any) -> Optional[str]:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
+
+
+def _record_created_at(record: dict[str, Any]) -> Optional[str]:
+    preferred = ("__created_at", "created_at", "__create_ts", "create_ts", "__started_at", "started_at")
+    for key, value in record.items():
+        lowered = key.lower()
+        if any(lowered == suffix or lowered.endswith(suffix) for suffix in preferred):
+            ts = _format_timestamp(value)
+            if ts:
+                return ts
+    return None
+
+
+@dataclass
+class _TrainingLinkContext:
+    started_at: dict[tuple[str, str], str] = field(default_factory=dict)
+    run_key: dict[tuple[str, str], str] = field(default_factory=dict)
+    run_id: dict[tuple[str, str], str] = field(default_factory=dict)
+
+
+def _load_training_link_context(ds: DataStore, catalog: Catalog) -> _TrainingLinkContext:
+    ctx = _TrainingLinkContext()
+    for name in catalog.catalog:
+        if not is_training_status_table(name):
+            continue
+        dt = ds.get_table(name)
+        try:
+            df = dt.get_data()
+        except Exception:
+            continue
+        if df.empty:
+            continue
+        columns = table_schema_columns(dt)
+        model_col = model_id_column(columns)
+        dataset_col = frozen_dataset_id_column(columns)
+        if not model_col or not dataset_col:
+            continue
+        started_col = next((c for c in columns if "started_at" in c.lower()), None)
+        run_key_col = next((c for c in columns if "run_key" in c.lower()), None)
+        status_id_col = next((c for c in columns if c.endswith("_id") and "status" in c.lower()), None)
+        for _, row in df.iterrows():
+            model_value = row.get(model_col)
+            dataset_value = row.get(dataset_col)
+            if model_value is None or dataset_value is None:
+                continue
+            if isinstance(model_value, float) and pd.isna(model_value):
+                continue
+            if isinstance(dataset_value, float) and pd.isna(dataset_value):
+                continue
+            key = (str(model_value), str(dataset_value))
+            if started_col:
+                ts = _format_timestamp(row.get(started_col))
+                if ts:
+                    ctx.started_at.setdefault(key, ts)
+            if run_key_col:
+                rk = row.get(run_key_col)
+                if rk is not None and not (isinstance(rk, float) and pd.isna(rk)):
+                    ctx.run_key.setdefault(key, str(rk))
+            if status_id_col:
+                rid = row.get(status_id_col)
+                if rid is not None and not (isinstance(rid, float) and pd.isna(rid)):
+                    ctx.run_id.setdefault(key, str(rid))
+    return ctx
+
+
+def _build_linked_models_for_dataset(
+    *,
+    dataset_id: str,
+    entity_index: EntitySourceIndex,
+    training_ctx: _TrainingLinkContext,
+    metrics_by_model: dict[str, MetricsModelRow],
+) -> list[FrozenDatasetLinkedModelRow]:
+    model_ids = list(entity_index.dataset_to_models.get(dataset_id, []))
+    if not model_ids:
+        model_ids = sorted(
+            {
+                model_id
+                for model_id, linked_dataset_id in entity_index.model_to_dataset.items()
+                if linked_dataset_id == dataset_id
+            }
+        )
+
+    linked: list[FrozenDatasetLinkedModelRow] = []
+    for model_id in model_ids:
+        link = entity_index.dataset_model_link_records.get((dataset_id, model_id))
+        link_record = link.record if link else None
+        created_at = _record_created_at(link_record) if link_record else None
+        train_key = (model_id, dataset_id)
+        if not created_at:
+            created_at = training_ctx.started_at.get(train_key)
+        metrics_row = metrics_by_model.get(model_id)
+        if not created_at and metrics_row:
+            created_at = metrics_row.started_at
+        run_key = training_ctx.run_key.get(train_key) or (metrics_row.run_key if metrics_row else None)
+        run_id = training_ctx.run_id.get(train_key) or (metrics_row.run_id if metrics_row else None)
+        linked.append(
+            FrozenDatasetLinkedModelRow(
+                model_id=model_id,
+                created_at=created_at,
+                run_key=run_key,
+                run_id=run_id,
+                link_table=link.table_name if link else None,
+                link_record=link_record,
+            )
+        )
+    linked.sort(key=lambda row: row.created_at or "", reverse=True)
+    return linked
 
 
 def _load_frozen_dataset_catalog(
@@ -1190,16 +1300,39 @@ class MetricsService:
         )
         source = entity_index.dataset_records_by_id.get(dataset_id)
         model_rows, task_type = self._all_model_rows(pipeline_id)
-        models = [r for r in model_rows if r.dataset_id == dataset_id]
-        if subset:
-            models = [r for r in models if r.subset == subset]
+        metrics_by_model: dict[str, MetricsModelRow] = {}
+        for row in model_rows:
+            if row.dataset_id != dataset_id:
+                continue
+            existing = metrics_by_model.get(row.model_id)
+            if existing is None or (row.started_at or "") > (existing.started_at or ""):
+                metrics_by_model[row.model_id] = row
 
-        models_count = len({r.model_id for r in models})
-        with_metrics = len({r.model_id for r in models if r.has_metrics})
-        subsets = sorted({r.subset for r in models if r.subset})
+        training_ctx = (
+            _load_training_link_context(self.ds, self.catalog)
+            if self.ds is not None and self.catalog is not None
+            else _TrainingLinkContext()
+        )
+        linked_models = _build_linked_models_for_dataset(
+            dataset_id=dataset_id,
+            entity_index=entity_index,
+            training_ctx=training_ctx,
+            metrics_by_model=metrics_by_model,
+        )
+
+        linked_model_ids = {row.model_id for row in linked_models}
+        models_count = len(linked_models)
+        with_metrics = len(
+            {
+                model_id
+                for model_id in linked_model_ids
+                if metrics_by_model.get(model_id) and metrics_by_model[model_id].has_metrics
+            }
+        )
+        subsets = sorted({row.subset for row in model_rows if row.model_id in linked_model_ids and row.subset})
         best_key = primary_metric_for_task(task_type)
         best_row = max(
-            (r for r in models if r.has_metrics),
+            (metrics_by_model[mid] for mid in linked_model_ids if mid in metrics_by_model and metrics_by_model[mid].has_metrics),
             key=lambda r: pick_primary_value(r.metrics, task_type) or -1,
             default=None,
         )
@@ -1216,7 +1349,7 @@ class MetricsService:
             source_pk=source.pk if source else None,
             source_record=source.record if source else None,
             source_table_url=_table_row_url(pipeline_id, source.table_name if source else None, dataset_col, dataset_id),
-            models=models,
+            linked_models=linked_models,
             coverage=FrozenDatasetCoverage(
                 models_total=models_count,
                 models_with_metrics=with_metrics,

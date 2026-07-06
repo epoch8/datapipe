@@ -261,11 +261,26 @@ export const opsMock = {
         if (params?.subset) models = models.filter((r) => r.subset === params.subset);
         const withMetrics = models.filter((r) => r.has_metrics);
         const best = withMetrics.sort((a, b) => (b.metrics?.weighted_f1_score ?? 0) - (a.metrics?.weighted_f1_score ?? 0))[0];
+        const linkedByModel = new Map<string, (typeof models)[number]>();
+        for (const row of models) {
+            if (!linkedByModel.has(row.model_id)) linkedByModel.set(row.model_id, row);
+        }
+        const linked_models = Array.from(linkedByModel.entries()).map(([model_id, row]) => ({
+            model_id,
+            created_at: row.started_at ?? null,
+            run_key: row.run_key ?? null,
+            run_id: row.run_id ?? null,
+            link_table: "detection_model_is_trained_on_detection_frozen_dataset",
+            link_record: {
+                detection_model_id: model_id,
+                detection_frozen_dataset_id: datasetId,
+            },
+        }));
         return {
             pipeline_id: pipelineId,
             dataset_id: datasetId,
             title: datasetId,
-            dataset: { ...dataset, models_count: models.length },
+            dataset: { ...dataset, models_count: linked_models.length },
             source_table: "frozen_datasets",
             source_record: {
                 frozen_dataset_id: datasetId,
@@ -274,9 +289,9 @@ export const opsMock = {
                 test_images_count: dataset.test_count,
             },
             source_table_url: `/pipelines/${pipelineId}/tables/frozen_datasets?focus_col=frozen_dataset_id&focus_value=${encodeURIComponent(datasetId)}`,
-            models,
+            linked_models,
             coverage: {
-                models_total: models.length,
+                models_total: linked_models.length,
                 models_with_metrics: withMetrics.length,
                 subsets: Array.from(new Set(models.map((m) => m.subset))),
                 best_metric_key: "weighted_f1_score",

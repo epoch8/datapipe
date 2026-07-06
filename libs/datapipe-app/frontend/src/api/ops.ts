@@ -13,7 +13,9 @@ import type {
     MetricsTableSchema,
     MetricsTimeseriesResponse,
     FrozenDatasetDetailResponse,
+    FrozenDatasetLinkedModelRow,
     FrozenDatasetsResponse,
+    MetricsModelRow,
     MetricsModelDetailResponse,
     OverviewResponse,
     PipelineDetail,
@@ -44,6 +46,31 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
         throw new ApiError("http", `API error (${res.status}): ${detail}`, { status: res.status, url });
     }
     return res.json() as Promise<T>;
+}
+
+type FrozenDatasetDetailPayload = FrozenDatasetDetailResponse & {
+    models?: MetricsModelRow[];
+};
+
+function normalizeFrozenDatasetDetail(payload: FrozenDatasetDetailPayload): FrozenDatasetDetailResponse {
+    if (payload.linked_models?.length) {
+        return payload;
+    }
+    const legacyModels = payload.models;
+    if (!legacyModels?.length) {
+        return { ...payload, linked_models: payload.linked_models ?? [] };
+    }
+    const byModel = new Map<string, FrozenDatasetLinkedModelRow>();
+    for (const row of legacyModels) {
+        if (!row.model_id || byModel.has(row.model_id)) continue;
+        byModel.set(row.model_id, {
+            model_id: row.model_id,
+            created_at: row.started_at ?? null,
+            run_key: row.run_key ?? null,
+            run_id: row.run_id ?? null,
+        });
+    }
+    return { ...payload, linked_models: Array.from(byModel.values()) };
 }
 
 function toQuery(params: Record<string, string | number | string[] | undefined>): string {
@@ -143,9 +170,9 @@ export const opsApi = {
         datasetId: string,
         params?: { subset?: string },
     ) =>
-        fetchJson<FrozenDatasetDetailResponse>(
+        fetchJson<FrozenDatasetDetailPayload>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets/${encodeURIComponent(datasetId)}${toQuery(params ?? {})}`,
-        ),
+        ).then(normalizeFrozenDatasetDetail),
 
     getMetricsSchema: (pipelineId: string, taskType?: string) =>
         fetchJson<MetricsTableSchema>(

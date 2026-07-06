@@ -10,7 +10,7 @@ import { MetricKpiStrip } from "./MetricKpiStrip";
 import { SourceRecordCard } from "./SourceRecordCard";
 import { buildMetricColumns } from "./metricTableColumns";
 import { buildMetricSchema } from "./metricsSchema";
-import { buildMetricsUrl, truncateMiddle } from "./entityUrls";
+import { buildMetricsUrl } from "./entityUrls";
 import { splitSizeLabel } from "./FrozenDatasetsCompact";
 
 export function ModelDetailPage() {
@@ -53,13 +53,6 @@ export function ModelDetailPage() {
 
     const columns = React.useMemo(
         () => [
-            {
-                title: "Dataset",
-                dataIndex: "dataset_id",
-                width: 200,
-                render: (v?: string) =>
-                    v ? <EntityLink kind="dataset" id={v} subset={subset} /> : <span className="ops-muted">no frozen dataset</span>,
-            },
             { title: "Subset", dataIndex: "subset", width: 72 },
             {
                 title: "Split",
@@ -69,7 +62,7 @@ export function ModelDetailPage() {
             },
             ...metricColumns,
         ],
-        [metricColumns, subset],
+        [metricColumns],
     );
 
     return (
@@ -80,10 +73,9 @@ export function ModelDetailPage() {
                     { label: pipelineId || "pipeline" },
                     { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
                     { label: "Models" },
-                    { label: truncateMiddle(modelId, 24) },
+                    { label: modelId },
                 ]}
-                title={`Model: ${truncateMiddle(modelId, 40)}`}
-                titleTooltip={modelId}
+                title={`Model: ${modelId}`}
                 subtitle="Model detail page with source record, linked frozen dataset, and available metrics."
                 statusChips={[
                     { label: "trained", variant: "success" },
@@ -108,7 +100,7 @@ export function ModelDetailPage() {
                     <>
                         <MetricKpiStrip items={data.kpis} />
 
-                        <div className="ops-entity-cards-row">
+                        <div className="ops-entity-layout">
                             <SourceRecordCard
                                 title="Source model record"
                                 record={data.source_record}
@@ -126,12 +118,13 @@ export function ModelDetailPage() {
                                 sourceTableUrl={data.source_table_url}
                                 pipelineId={pipelineId}
                             />
-                            <div className="ops-panel ops-source-record-card">
+
+                            <div className="ops-panel ops-entity-summary-panel">
                                 <div className="ops-panel-title">Linked frozen dataset</div>
                                 {data.frozen_dataset ? (
                                     <>
                                         <EntityLink kind="dataset" id={data.frozen_dataset.dataset_id} />
-                                        <dl className="ops-source-record-dl">
+                                        <dl className="ops-source-record-dl ops-entity-summary-dl">
                                             <dt>Frozen at</dt>
                                             <dd>{data.frozen_dataset.frozen_at ?? "—"}</dd>
                                             <dt>Split</dt>
@@ -160,7 +153,7 @@ export function ModelDetailPage() {
                             </div>
                         </div>
 
-                        <div className="ops-data-table ops-entity-metrics-table">
+                        <div className="ops-data-table ops-entity-metrics-table ops-model-detail-metrics-table">
                             <div className="ops-data-table-toolbar">
                                 <div className="ops-data-table-title">Metrics for this model</div>
                                 <div className="ops-metrics-view-toggle">
@@ -187,7 +180,7 @@ export function ModelDetailPage() {
                                 columns={columns}
                                 dataSource={data.metrics_rows}
                                 pagination={false}
-                                scroll={{ x: 1200 }}
+                                scroll={{ x: "max-content" }}
                             />
                         </div>
                     </>

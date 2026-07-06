@@ -1,28 +1,19 @@
 import React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Button, Table, Tooltip } from "antd";
+import { Button, Table } from "antd";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
-import type { FrozenDatasetDetailResponse, MetricsModelRow } from "../../../types/ops";
-import { MetricValue, EmptyState, PageHeader } from "../shared";
+import type { FrozenDatasetDetailResponse } from "../../../types/ops";
+import { EmptyState, PageHeader } from "../shared";
 import { EntityLink } from "./EntityLink";
 import { MetricKpiStrip } from "./MetricKpiStrip";
 import { SourceRecordCard } from "./SourceRecordCard";
-import { buildMetricsUrl, truncateMiddle } from "./entityUrls";
+import { buildMetricsUrl } from "./entityUrls";
 import { formatFrozenAt } from "./frozenDatasetFormat";
 
-function precisionRecallCell(row: MetricsModelRow): React.ReactNode {
-    if (!row.has_metrics) return null;
-    const p = row.metrics?.weighted_precision ?? row.metrics?.weighted_without_pseudo_classes_precision;
-    const r = row.metrics?.weighted_recall ?? row.metrics?.weighted_without_pseudo_classes_recall;
-    if (p == null && r == null) return null;
-    return (
-        <span>
-            {p != null ? <MetricValue value={p} format="float" /> : ""}
-            {p != null && r != null ? " / " : ""}
-            {r != null ? <MetricValue value={r} format="float" /> : ""}
-        </span>
-    );
+function formatCreatedAt(value?: string | null): string | null {
+    if (!value) return null;
+    return formatFrozenAt(value) ?? value.slice(0, 16).replace("T", " ");
 }
 
 export function FrozenDatasetDetailPage() {
@@ -78,49 +69,13 @@ export function FrozenDatasetDetailPage() {
         {
             title: "Model",
             dataIndex: "model_id",
-            width: 220,
             render: (v: string) => <EntityLink kind="model" id={v} datasetId={datasetId} subset={subset} />,
         },
         {
             title: "Created at",
-            dataIndex: "started_at",
-            width: 140,
-            render: (v?: string) => (v ? v.slice(0, 16).replace("T", " ") : null),
-        },
-        {
-            title: "Run",
-            dataIndex: "run_key",
-            width: 120,
-            render: (v?: string, row?: MetricsModelRow) => v ?? row?.run_id ?? null,
-        },
-        { title: "Subset", dataIndex: "subset", width: 72 },
-        {
-            title: "Best metric",
-            key: "best_metric",
-            width: 100,
-            align: "right" as const,
-            render: (_: unknown, row: MetricsModelRow) => {
-                if (!row.has_metrics) return null;
-                const val = row.metrics?.weighted_f1_score ?? row.metrics?.mAP50_95;
-                return val != null ? <MetricValue value={val} format="float" /> : null;
-            },
-        },
-        {
-            title: "Precision / Recall",
-            key: "pr",
-            width: 140,
-            align: "right" as const,
-            render: (_: unknown, row: MetricsModelRow) => precisionRecallCell(row),
-        },
-        {
-            title: "Support",
-            key: "support",
-            width: 80,
-            align: "right" as const,
-            render: (_: unknown, row: MetricsModelRow) => {
-                const val = row.metrics?.support;
-                return val != null ? <MetricValue value={val} format="integer" /> : null;
-            },
+            dataIndex: "created_at",
+            width: 180,
+            render: (v?: string | null) => formatCreatedAt(v),
         },
     ];
 
@@ -132,10 +87,9 @@ export function FrozenDatasetDetailPage() {
                     { label: pipelineId || "pipeline" },
                     { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
                     { label: "Frozen datasets" },
-                    { label: truncateMiddle(datasetId, 24) },
+                    { label: datasetId },
                 ]}
-                title={`Frozen dataset: ${truncateMiddle(datasetId, 40)}`}
-                titleTooltip={datasetId}
+                title={`Frozen dataset: ${datasetId}`}
                 subtitle="Snapshot of a frozen dataset split used to train models and compute metrics."
                 statusChips={[
                     { label: "frozen", variant: "purple" },
@@ -159,7 +113,7 @@ export function FrozenDatasetDetailPage() {
                     <>
                         <MetricKpiStrip items={kpiItems} />
 
-                        <div className="ops-entity-cards-row">
+                        <div className="ops-entity-layout">
                             <SourceRecordCard
                                 title="Source frozen dataset record"
                                 record={data.source_record}
@@ -174,9 +128,10 @@ export function FrozenDatasetDetailPage() {
                                 sourceTableUrl={data.source_table_url}
                                 pipelineId={pipelineId}
                             />
-                            <div className="ops-panel ops-source-record-card">
+
+                            <div className="ops-panel ops-entity-summary-panel">
                                 <div className="ops-panel-title">Split summary</div>
-                                <dl className="ops-source-record-dl">
+                                <dl className="ops-source-record-dl ops-entity-summary-dl">
                                     <dt>Frozen at</dt>
                                     <dd>{formatFrozenAt(data.dataset.frozen_at)}</dd>
                                     <dt>Train / Val / Test</dt>
@@ -189,18 +144,17 @@ export function FrozenDatasetDetailPage() {
                             </div>
                         </div>
 
-                        <div className="ops-data-table ops-entity-metrics-table">
+                        <div className="ops-data-table ops-entity-metrics-table ops-frozen-linked-models-table">
                             <div className="ops-data-table-toolbar">
                                 <div className="ops-data-table-title">Models trained on this frozen dataset</div>
                             </div>
                             <Table
                                 className="ops-table"
                                 size="middle"
-                                rowKey="id"
+                                rowKey="model_id"
                                 columns={columns}
-                                dataSource={data.models}
+                                dataSource={data.linked_models}
                                 pagination={false}
-                                scroll={{ x: 1000 }}
                             />
                         </div>
 

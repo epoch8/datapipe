@@ -16,7 +16,13 @@ export function MetricKpiStrip({ items }: { items: Kpi[] }) {
             {items.map((item) => (
                 <div key={item.key} className="ops-metric-kpi-item">
                     <div className="ops-metric-kpi-label">{item.label}</div>
-                    <div className="ops-metric-kpi-value">
+                    <div
+                        className={
+                            typeof item.value === "string"
+                                ? "ops-metric-kpi-value ops-metric-kpi-value-text"
+                                : "ops-metric-kpi-value"
+                        }
+                    >
                         {typeof item.value === "number" ? (
                             <MetricValue
                                 value={item.value}

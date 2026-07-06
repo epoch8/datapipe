@@ -45,7 +45,9 @@ export function MetricsOverviewPage() {
         [setSearchParams],
     );
 
-    const subset = searchParams.get("subset") ?? "";
+    const subsetParam = searchParams.get("subset");
+    const subset = subsetParam ?? "val";
+    const apiSubset = subset === "all" ? undefined : subset;
     const taskType = searchParams.get("task_type") ?? "";
     const viewMode: MetricsViewMode = searchParams.get("view") === "all" ? "all" : "detailed";
     const modelIds = React.useMemo(
@@ -74,7 +76,7 @@ export function MetricsOverviewPage() {
         setError(null);
         Promise.all([
             opsApi.getMetricsRuns(pipelineId, {
-                subset: subset || undefined,
+                subset: apiSubset,
                 model_id: modelIds.length ? modelIds.join(",") : undefined,
                 task_type: taskType || undefined,
                 search: search || undefined,
@@ -84,7 +86,7 @@ export function MetricsOverviewPage() {
                 offset: (page - 1) * pageSize,
             }),
             opsApi.getMetricsSummary(pipelineId, {
-                subset: subset || undefined,
+                subset: apiSubset,
                 model_id: modelIds.length ? modelIds.join(",") : undefined,
             }),
             opsApi.getFrozenDatasets(pipelineId),
@@ -99,25 +101,16 @@ export function MetricsOverviewPage() {
             })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, subset, taskType, modelIds, search, sortBy, sortDir, page, pageSize]);
+    }, [pipelineId, apiSubset, taskType, modelIds, search, sortBy, sortDir, page, pageSize]);
+
+    React.useLayoutEffect(() => {
+        if (subsetParam !== null) return;
+        patchParams({ subset: "val" });
+    }, [subsetParam, patchParams]);
 
     React.useEffect(() => {
         load();
     }, [load]);
-
-    const subsetDefaultApplied = React.useRef(false);
-    React.useEffect(() => {
-        if (subsetDefaultApplied.current) return;
-        if (searchParams.has("subset")) {
-            subsetDefaultApplied.current = true;
-            return;
-        }
-        const { subsets } = filters;
-        if (!subsets.length) return;
-        const preferred = subsets.includes("test") ? "test" : subsets.includes("val") ? "val" : "";
-        if (preferred) patchParams({ subset: preferred });
-        subsetDefaultApplied.current = true;
-    }, [filters.subsets, searchParams, patchParams]);
 
     const displayPipeline = pipelineId || "image_detection_e2e";
     const activeSorts = parseSortParams(sortBy, sortDir);
@@ -146,7 +139,7 @@ export function MetricsOverviewPage() {
             <div className="ops-metrics-toolbar">
                 <FilterBar
                     filters={[
-                        { key: "subset", label: "Subset", value: subset, options: [{ label: "All", value: "" }, ...filters.subsets.map((s) => ({ label: s, value: s }))] },
+                        { key: "subset", label: "Subset", value: subset, options: [{ label: "All", value: "all" }, ...filters.subsets.map((s) => ({ label: s, value: s }))] },
                         {
                             key: "model_id",
                             label: "Model",
@@ -173,7 +166,7 @@ export function MetricsOverviewPage() {
                     onFilterChange={(key, val) => {
                         if (key === "subset") {
                             const v = Array.isArray(val) ? val[0] : val;
-                            patchParams({ subset: v ?? "", page: 1 });
+                            patchParams({ subset: v === "all" || v === "" ? "all" : (v ?? "val"), page: 1 });
                         }
                         if (key === "model_id") {
                             const ids = Array.isArray(val) ? val : val ? [val] : [];
