@@ -69,11 +69,9 @@ uv.lock
 *.tgz
 *.7z
 
-# Node (frontend is rebuilt in the multi-stage Dockerfile)
+# Node
 **/node_modules/
 
-# Prebuilt frontend static bundle (rebuilt in Docker)
-libs/datapipe-app/datapipe_app/frontend/
 
 # Test & sample data
 test_data/
