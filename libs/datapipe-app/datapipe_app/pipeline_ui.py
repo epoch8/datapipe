@@ -25,6 +25,7 @@ from datapipe_app.meta_sql import require_sql_transform_meta
 from datapipe_app.observability.discovery import extract_stages
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.pipeline_steps import pipeline_step_labels
+from datapipe_app.settings import API_SETTINGS
 
 _PRIMITIVE_STEP_TYPES = (
     BatchGenerate,
@@ -301,7 +302,12 @@ def register_pipeline_ui_routes(
             step_labels = [[k, v] for k, v in (step.labels or [])]
 
             if isinstance(step, BaseBatchTransformStep):
-                step_status = step.get_status(ds=ds)
+                step_status = None
+                if API_SETTINGS.show_step_status:
+                    try:
+                        step_status = step.get_status(ds=ds)
+                    except Exception:
+                        step_status = None
 
                 return models.PipelineStepResponse(
                     type="transform",

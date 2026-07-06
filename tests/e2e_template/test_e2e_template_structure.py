@@ -19,7 +19,6 @@ def test_detection_template_builds_expected_pipeline():
     assert len(detection_pipeline.steps) >= 15
     assert {
         ("stage", "annotation"),
-        ("stage", "ls-sync"),
         ("stage", "train"),
         ("stage", "train-prepare"),
         ("stage", "inference"),
@@ -37,7 +36,6 @@ def test_keypoints_template_builds_expected_pipeline():
     assert len(keypoints_pipeline.steps) >= 15
     assert {
         ("stage", "annotation"),
-        ("stage", "ls-sync"),
         ("stage", "train"),
         ("stage", "train-prepare"),
         ("stage", "inference"),

@@ -165,8 +165,12 @@ uv run datapipe step --labels=stage=annotation run
 
 After tasks appear in Label Studio, annotate them and sync back:
 
+```
+uv run datapipe step --labels=stage=annotation run
+```
+
+Then train model and visualize results in fiftyone:
 ```bash
-uv run datapipe step --labels=stage=ls-sync run
 uv run datapipe step --labels=stage=train run
 uv run datapipe step --labels=stage=fiftyone run
 ```
@@ -198,6 +202,11 @@ uv run datapipe step --labels=stage=annotation run
 ```
 
 After tasks appear in Label Studio, annotate them and sync back:
+```
+uv run datapipe step --labels=stage=annotation run
+```
+
+Then train model and visualize results in fiftyone:
 
 ```bash
 uv run datapipe step --labels=stage=ls-sync run

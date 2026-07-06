@@ -128,7 +128,7 @@ pipeline = Pipeline(
             func=steps.parse_annotations_from_label_studio,
             inputs=["ls_annotations"],
             outputs=["image__ground_truth"],
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            labels=[("stage", "annotation")],
             transform_keys=["image_name"],
         ),
         BatchTransform(
