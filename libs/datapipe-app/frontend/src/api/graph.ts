@@ -1,7 +1,7 @@
 import { ApiError, apiFetch, readApiErrorBody } from "./http";
 
 const GRAPH_BASE =
-    (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha2/graph";
+    (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
 const API_BASE = GRAPH_BASE.replace(/\/graph$/, "");
 
 async function fetchJsonOrThrow(url: string): Promise<unknown> {

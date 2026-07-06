@@ -43,7 +43,7 @@ Cytoscape.use(dagre);
 Cytoscape.use(contextMenus);
 
 function buildGraphUrl(stageFilter?: string | null): string {
-    const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha2/graph";
+    const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
     if (!stageFilter) return base;
     const joiner = base.includes("?") ? "&" : "?";
     return `${base}${joiner}stage=${encodeURIComponent(stageFilter)}`;

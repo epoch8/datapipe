@@ -49,6 +49,7 @@ from datapipe_app.observability.training_service import TrainingService
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry
 from datapipe_app.observability.settings import get_ops_settings
+from datapipe_app.pipeline_ui import register_pipeline_ui_routes
 
 
 class StartRunRequest(BaseModel):
@@ -711,6 +712,16 @@ def make_app(
             return svc.compare(keys, metrics=metric_list, pipeline_id=pipeline_id)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    if ds is not None and catalog is not None and pipeline is not None and steps is not None:
+        register_pipeline_ui_routes(
+            app,
+            ds=ds,
+            catalog=catalog,
+            pipeline=pipeline,
+            steps=steps,
+            recorder=recorder,
+        )
 
     FastAPIInstrumentor.instrument_app(app, excluded_urls="docs")
     return app
