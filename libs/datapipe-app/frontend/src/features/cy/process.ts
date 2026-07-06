@@ -267,7 +267,7 @@ function addSequentialMetaEdges(
             const source = transforms[index];
             const target = transforms[index + 1];
             if (hasTransformPath(edges, source, target)) continue;
-            edges.add({ source, target, internalMeta: groupId, sequential: true });
+            edges.add({ source, target, internalMeta: groupId, sequential: true, synthetic: true });
         }
     });
 }

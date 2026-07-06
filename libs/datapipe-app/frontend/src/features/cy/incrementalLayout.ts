@@ -17,7 +17,12 @@ import { animateEdgeOpacityTransitions, resetEdgeOpacities } from "./edgeTransit
 
 export type BBox = { x: number; y: number; w: number; h: number };
 
-export type LayoutEdge = { source: string; target: string };
+export type LayoutEdge = {
+    source: string;
+    target: string;
+    sequential?: boolean;
+    synthetic?: boolean;
+};
 
 export type MeasuredNode = {
     id: string;
@@ -42,8 +47,8 @@ export type LayoutEntry = {
 export type GraphLayout = Map<string, LayoutEntry>;
 
 const GROUP_PADDING = { top: 56, bottom: 44, left: 44, right: 44 };
-const RANK_SEP = 68;
-const NODE_SEP = 58;
+const RANK_SEP = 48;
+const NODE_SEP = 48;
 function bboxFromCenter(cx: number, cy: number, w: number, h: number): BBox {
     return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
@@ -133,54 +138,35 @@ function sortIds(ids: string[]): string[] {
     return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
-function isTransformLike(type: string): boolean {
-    return type === "transform" || type === "group";
-}
+function sortRankIds(ids: string[], nodes: Map<string, MeasuredNode>): string[] {
+    return [...ids].sort((a, b) => {
+        const na = nodes.get(a);
+        const nb = nodes.get(b);
 
-function rankOfTransform(nodeId: string, nodes: Map<string, MeasuredNode>): number | undefined {
-    const node = nodes.get(nodeId);
-    if (!node || !isTransformLike(node.type)) return undefined;
-    if (node.pipelineIndex != null) return node.pipelineIndex * 2 + 1;
-    return undefined;
-}
-
-function computeTableRank(
-    tableId: string,
-    nodes: Map<string, MeasuredNode>,
-    edges: LayoutEdge[],
-): number {
-    const producers: number[] = [];
-    const consumers: number[] = [];
-
-    edges.forEach(({ source, target }) => {
-        if (target === tableId) {
-            const src = nodes.get(source);
-            if (src && isTransformLike(src.type)) {
-                const rank = rankOfTransform(source, nodes);
-                if (rank != null) producers.push(rank);
-            }
+        const oa = na?.pipelineOrderKey;
+        const ob = nb?.pipelineOrderKey;
+        if (oa && ob && oa !== ob) {
+            return oa.localeCompare(ob);
         }
-        if (source === tableId) {
-            const tgt = nodes.get(target);
-            if (tgt && isTransformLike(tgt.type)) {
-                const rank = rankOfTransform(target, nodes);
-                if (rank != null) consumers.push(rank);
-            }
+
+        const ia = na?.pipelineIndex;
+        const ib = nb?.pipelineIndex;
+        if (ia != null && ib != null && ia !== ib) {
+            return ia - ib;
         }
+
+        return a.localeCompare(b);
     });
+}
 
-    if (!producers.length && consumers.length) {
-        return Math.max(0, Math.min(...consumers) - 1);
-    }
-    if (producers.length && !consumers.length) {
-        return Math.min(...producers) + 1;
-    }
-    if (producers.length && consumers.length) {
-        const firstProducer = Math.min(...producers);
-        const firstConsumer = Math.min(...consumers);
-        return Math.min(firstProducer + 1, Math.max(0, firstConsumer - 1));
-    }
-    return 0;
+function densifyRanks(rank: Map<string, number>): Map<string, number> {
+    const sorted = Array.from(new Set(rank.values())).sort((a, b) => a - b);
+    const remap = new Map(sorted.map((value, index) => [value, index]));
+    const next = new Map<string, number>();
+    rank.forEach((value, id) => {
+        next.set(id, remap.get(value) ?? value);
+    });
+    return next;
 }
 
 function hasPath(
@@ -250,40 +236,12 @@ function longestPathRanks(
     return rank;
 }
 
-function computePipelineAwareRanks(
-    nodes: Map<string, MeasuredNode>,
-    rankEdges: LayoutEdge[],
-): Map<string, number> {
-    const rank = new Map<string, number>();
-
-    nodes.forEach((node, id) => {
-        if (isTransformLike(node.type) && node.pipelineIndex != null) {
-            rank.set(id, node.pipelineIndex * 2 + 1);
-        }
-    });
-
-    nodes.forEach((node, id) => {
-        if (node.type === "table") {
-            rank.set(id, computeTableRank(id, nodes, rankEdges));
-        }
-    });
-
-    const missing = sortIds(Array.from(nodes.keys())).filter((id) => !rank.has(id));
-    if (missing.length) {
-        const fallback = longestPathRanks(nodes, rankEdges);
-        missing.forEach((id) => {
-            if (!rank.has(id)) rank.set(id, fallback.get(id) ?? 0);
-        });
-    }
-
-    return rank;
-}
-
 export function buildRankEdges(
     nodes: Map<string, MeasuredNode>,
     renderEdges: LayoutEdge[],
 ): LayoutEdge[] {
-    return makeAcyclicRankEdges(renderEdges, nodes);
+    const rankCandidates = renderEdges.filter((edge) => !edge.sequential && !edge.synthetic);
+    return makeAcyclicRankEdges(rankCandidates, nodes);
 }
 
 function computeRanks(
@@ -291,17 +249,13 @@ function computeRanks(
     renderEdges: LayoutEdge[],
     rankEdges?: LayoutEdge[],
 ): Map<string, number> {
-    const edgesForRank = rankEdges ?? makeAcyclicRankEdges(renderEdges, nodes);
-    const hasPipelineOrder = Array.from(nodes.values()).some((n) => n.pipelineIndex != null);
-    if (hasPipelineOrder) {
-        return computePipelineAwareRanks(nodes, edgesForRank);
-    }
-    return longestPathRanks(nodes, edgesForRank);
+    const edgesForRank = rankEdges ?? buildRankEdges(nodes, renderEdges);
+    return densifyRanks(longestPathRanks(nodes, edgesForRank));
 }
 
 /**
  * Deterministic layered layout (top-to-bottom or left-to-right).
- * Render edges may include cycles; rank uses acyclic rankEdges + pipeline order when available.
+ * Vertical rank from dependency depth; pipeline order sorts nodes within a layer.
  */
 export function layoutLayeredDag(
     nodes: Map<string, MeasuredNode>,
@@ -320,7 +274,7 @@ export function layoutLayeredDag(
         if (!ranks.has(r)) ranks.set(r, []);
         ranks.get(r)?.push(id);
     });
-    ranks.forEach((rankIds, r) => ranks.set(r, sortIds(rankIds)));
+    ranks.forEach((rankIds, r) => ranks.set(r, sortRankIds(rankIds, nodes)));
 
     const positions = new Map<string, BBox>();
     const sortedRankKeys = Array.from(ranks.keys()).sort((a, b) => a - b);
@@ -469,6 +423,8 @@ function edgesToList(edges: Iterable<Cytoscape.EdgeDataDefinition>): LayoutEdge[
     return Array.from(edges).map((edge) => ({
         source: edge.source as string,
         target: edge.target as string,
+        sequential: edge.sequential as boolean | undefined,
+        synthetic: edge.synthetic as boolean | undefined,
     }));
 }
 
