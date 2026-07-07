@@ -12,4 +12,5 @@ export { MetricValue } from "./MetricValue";
 export { TrendDelta } from "./TrendDelta";
 export { Sparkline } from "./Sparkline";
 export { TableSizeControl } from "./TableSizeControl";
+export { SelectedModelChips } from "./SelectedModelChips";
 export * from "./metricsFormat";

@@ -1,6 +1,5 @@
 import React from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tag } from "antd";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
 import type {
@@ -16,6 +15,7 @@ import {
     KpiCard,
     PageHeader,
     parseSortParams,
+    SelectedModelChips,
 } from "../shared";
 import { FrozenDatasetsCompact } from "./FrozenDatasetsCompact";
 import { ModelMetricsTable } from "./ModelMetricsTable";
@@ -95,7 +95,6 @@ export function MetricsOverviewPage() {
                 setRows(runsRes.rows);
                 setTotal(runsRes.total);
                 setSchema(buildMetricSchema(summaryRes.best_run?.task_type, runsRes.available_filters.metrics, runsRes.schema));
-                setFilters({ subsets: runsRes.available_filters.subsets, models: runsRes.available_filters.models });
                 setSummary(summaryRes);
                 setFrozenDatasets(frozenRes.rows);
             })
@@ -109,6 +108,18 @@ export function MetricsOverviewPage() {
     }, [subsetParam, patchParams]);
 
     React.useEffect(() => {
+        if (!pipelineId) return;
+        opsApi.getMetricsRuns(pipelineId, { subset: apiSubset, limit: 1 })
+            .then((res) => {
+                setFilters({
+                    subsets: res.available_filters.subsets,
+                    models: res.available_filters.models,
+                });
+            })
+            .catch(() => undefined);
+    }, [pipelineId, apiSubset]);
+
+    React.useEffect(() => {
         load();
     }, [load]);
 
@@ -116,6 +127,18 @@ export function MetricsOverviewPage() {
     const activeSorts = parseSortParams(sortBy, sortDir);
     const visibleKpis = (summary?.kpis ?? []).filter(
         (kpi) => kpi.key !== "weighted_recall" && kpi.key !== "accuracy",
+    );
+    const modelFilterOptions = React.useMemo(() => {
+        const ids = new Set([...filters.models, ...modelIds]);
+        return Array.from(ids).sort().map((m) => ({ label: m, value: m }));
+    }, [filters.models, modelIds]);
+
+    const removeModel = React.useCallback(
+        (id: string) => {
+            const next = modelIds.filter((item) => item !== id);
+            patchParams({ model_id: next.length ? next.join(",") : null, page: 1 });
+        },
+        [modelIds, patchParams],
     );
 
     return (
@@ -148,7 +171,7 @@ export function MetricsOverviewPage() {
                             dropdownMinWidth: 360,
                             value: modelIds,
                             placeholder: "All models",
-                            options: filters.models.map((m) => ({ label: m, value: m })),
+                            options: modelFilterOptions,
                         },
                         {
                             key: "task_type",
@@ -183,24 +206,7 @@ export function MetricsOverviewPage() {
                 />
             </div>
 
-            {modelIds.length > 0 && (
-                <div className="ops-selected-filters">
-                    <span className="ops-selected-filters-label">Selected models</span>
-                    {modelIds.map((id) => (
-                        <Tag
-                            key={id}
-                            closable
-                            className="ops-selected-filter-tag"
-                            onClose={() => {
-                                const next = modelIds.filter((item) => item !== id);
-                                patchParams({ model_id: next.length ? next.join(",") : null, page: 1 });
-                            }}
-                        >
-                            {id}
-                        </Tag>
-                    ))}
-                </div>
-            )}
+            <SelectedModelChips modelIds={modelIds} onRemove={removeModel} />
 
             <EmptyState
                 loading={pidLoading || loading}

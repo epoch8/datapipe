@@ -50,3 +50,11 @@ def test_normalize_metric_nulls_fills_zero_recall_gaps() -> None:
     assert metrics["weighted_f1_score"] == 0.0
     assert metrics["macro_precision"] == 0.0
     assert metrics["macro_f1_score"] == 0.0
+
+
+def test_parse_model_ids_or_filter() -> None:
+    from datapipe_app.observability.metrics_service import _parse_model_ids
+
+    assert _parse_model_ids("a,b, c") == ["a", "b", "c"]
+    assert _parse_model_ids(None) is None
+    assert _parse_model_ids("") is None

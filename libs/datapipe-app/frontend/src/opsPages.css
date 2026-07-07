@@ -159,6 +159,61 @@
     padding: 4px 8px;
 }
 
+.ops-selected-model-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 0 2px;
+}
+
+.ops-model-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(100%, 420px);
+    height: 28px;
+    padding: 0 4px 0 10px;
+    border-radius: 6px;
+    border: 1px solid #d9d6fe;
+    background: #f4f3ff;
+    color: #5925dc;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 1px 0 rgba(89, 37, 220, 0.06);
+}
+
+.ops-model-chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.ops-model-chip-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #7a5af8;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ops-model-chip-close:hover {
+    background: rgba(89, 37, 220, 0.1);
+    color: #42307d;
+}
+
 .ops-kpi-row {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

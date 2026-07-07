@@ -185,6 +185,7 @@ class MetricsTimeseriesResponse(BaseModel):
 class ClassMetricRow(BaseModel):
     label: str
     subset: Optional[str] = None
+    model_id: Optional[str] = None
     class_id: Optional[str | int] = None
     images_support: Optional[int] = None
     support: Optional[int] = None

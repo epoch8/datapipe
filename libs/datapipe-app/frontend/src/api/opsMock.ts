@@ -395,6 +395,7 @@ export const opsMock = {
         const rows = CLASSES.map((label, i) => ({
             label,
             subset: "val",
+            model_id: "yolov8n-demo",
             class_id: i,
             images_support: 500 + Math.floor(rand() * 2000),
             support: 200 + Math.floor(rand() * 800),

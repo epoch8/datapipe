@@ -1,5 +1,5 @@
 import React from "react";
-import { Drawer, Tabs, Tag } from "antd";
+import { Drawer, Tabs } from "antd";
 import type { ColumnType, ColumnsType } from "antd/es/table";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
@@ -14,6 +14,7 @@ import {
     PageHeader,
     SortableDataTable,
     Sparkline,
+    SelectedModelChips,
     TrendDelta,
     parseSortParams,
     serializeSortParams,
@@ -34,7 +35,11 @@ export function ClassMetricsPage() {
     const [subsetParam, setSubset] = useUrlState("subset");
     const subset = subsetParam || "val";
     const apiSubset = subset === "all" ? undefined : subset;
-    const [modelId, setModelId] = useUrlState("model_id");
+    const [modelIdParam, setModelIdParam] = useUrlState("model_id");
+    const modelIds = React.useMemo(
+        () => modelIdParam.split(",").map((s) => s.trim()).filter(Boolean),
+        [modelIdParam],
+    );
     const [labelSearch, setLabelSearch] = useUrlState("label_search");
     const [sortBy, setSortBy] = useUrlState("sort_by", "f1_score");
     const [sortDir, setSortDir] = useUrlState("sort_dir", "desc");
@@ -50,25 +55,26 @@ export function ClassMetricsPage() {
     const load = React.useCallback(() => {
         if (!pipelineId) return;
         setLoading(true);
-        Promise.all([
-            opsApi.getClassMetrics(pipelineId, {
-                subset: apiSubset,
-                model_id: modelId || undefined,
-                label_search: labelSearch || undefined,
-                sort_by: sortBy || undefined,
-                sort_dir: sortDir as "asc" | "desc",
-                limit: pageSize,
-                offset: (page - 1) * pageSize,
-            }),
-            opsApi.getMetricsRuns(pipelineId, { limit: 1 }),
-        ])
-            .then(([classRes, runsRes]) => {
-                setData(classRes);
-                setModelOptions(runsRes.available_filters.models);
-            })
+        opsApi.getClassMetrics(pipelineId, {
+            subset: apiSubset,
+            model_id: modelIds.length ? modelIds.join(",") : undefined,
+            label_search: labelSearch || undefined,
+            sort_by: sortBy || undefined,
+            sort_dir: sortDir as "asc" | "desc",
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+        })
+            .then(setData)
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, apiSubset, modelId, labelSearch, sortBy, sortDir, page]);
+    }, [pipelineId, apiSubset, modelIds, labelSearch, sortBy, sortDir, page]);
+
+    React.useEffect(() => {
+        if (!pipelineId) return;
+        opsApi.getMetricsRuns(pipelineId, { subset: apiSubset, limit: 1 })
+            .then((runsRes) => setModelOptions(runsRes.available_filters.models))
+            .catch(() => undefined);
+    }, [pipelineId, apiSubset]);
 
     React.useLayoutEffect(() => {
         if (subsetParam) return;
@@ -98,22 +104,23 @@ export function ClassMetricsPage() {
             render: (v) => <a onClick={() => setSelectedLabel(String(v))}>{v}</a>,
         }),
         sortableColumn(2, { title: "subset_id", dataIndex: "subset", width: 72 }),
-        sortableColumn(3, {
+        sortableColumn(3, { title: "model_id", dataIndex: "model_id", width: 220, ellipsis: true }),
+        sortableColumn(4, {
             title: "images_support",
             dataIndex: "images_support",
             render: (v) => <MetricValue value={v} format="integer" />,
         }),
-        sortableColumn(4, {
+        sortableColumn(5, {
             title: "support",
             dataIndex: "support",
             render: (v) => <MetricValue value={v} format="integer" />,
         }),
-        sortableColumn(5, { title: "TP", dataIndex: "TP", render: (v) => <MetricValue value={v} format="integer" /> }),
-        sortableColumn(6, { title: "FP", dataIndex: "FP", render: (v) => <MetricValue value={v} format="integer" /> }),
-        sortableColumn(7, { title: "FN", dataIndex: "FN", render: (v) => <MetricValue value={v} format="integer" /> }),
-        sortableColumn(8, { title: "precision", dataIndex: "precision", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(9, { title: "recall", dataIndex: "recall", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(10, {
+        sortableColumn(6, { title: "TP", dataIndex: "TP", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(7, { title: "FP", dataIndex: "FP", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(8, { title: "FN", dataIndex: "FN", render: (v) => <MetricValue value={v} format="integer" /> }),
+        sortableColumn(9, { title: "precision", dataIndex: "precision", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(10, { title: "recall", dataIndex: "recall", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(11, {
             title: "F1",
             dataIndex: "f1_score",
             render: (v, r) => (
@@ -123,17 +130,30 @@ export function ClassMetricsPage() {
                 </span>
             ),
         }),
-        sortableColumn(11, { title: "IoU mean", dataIndex: "iou_mean", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(12, { title: "mAP50", dataIndex: "mAP50", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(13, { title: "mAP50-95", dataIndex: "mAP50_95", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(14, { title: "pose P", dataIndex: "pose_P", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(15, { title: "pose R", dataIndex: "pose_R", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(16, { title: "pose mAP50", dataIndex: "pose_mAP50", render: (v) => <MetricValue value={v} /> }),
-        sortableColumn(17, { title: "pose mAP50-95", dataIndex: "pose_mAP50_95", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(12, { title: "IoU mean", dataIndex: "iou_mean", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(13, { title: "mAP50", dataIndex: "mAP50", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(14, { title: "mAP50-95", dataIndex: "mAP50_95", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(15, { title: "pose P", dataIndex: "pose_P", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(16, { title: "pose R", dataIndex: "pose_R", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(17, { title: "pose mAP50", dataIndex: "pose_mAP50", render: (v) => <MetricValue value={v} /> }),
+        sortableColumn(18, { title: "pose mAP50-95", dataIndex: "pose_mAP50_95", render: (v) => <MetricValue value={v} /> }),
     ];
 
     const displayPipeline = pipelineId || "image_detection_e2e";
     const summary = data?.summary;
+    const modelFilterOptions = React.useMemo(() => {
+        const ids = new Set([...modelOptions, ...modelIds]);
+        return Array.from(ids).sort().map((m) => ({ label: m, value: m }));
+    }, [modelOptions, modelIds]);
+
+    const removeModel = React.useCallback(
+        (id: string) => {
+            const next = modelIds.filter((item) => item !== id);
+            setModelIdParam(next.length ? next.join(",") : "");
+            setPage(1);
+        },
+        [modelIds, setModelIdParam, setPage],
+    );
 
     return (
         <div className="ops-page">
@@ -148,18 +168,34 @@ export function ClassMetricsPage() {
             <FilterBar
                 filters={[
                     { key: "subset", label: "Subset", value: subset, options: [{ label: "All", value: "all" }, { label: "train", value: "train" }, { label: "val", value: "val" }, { label: "test", value: "test" }] },
-                    { key: "model_id", label: "Model", value: modelId, options: [{ label: "All", value: "" }, ...modelOptions.map((m) => ({ label: m, value: m }))] },
+                    {
+                        key: "model_id",
+                        label: "Model",
+                        mode: "multiple",
+                        minWidth: 360,
+                        dropdownMinWidth: 360,
+                        value: modelIds,
+                        placeholder: "All models",
+                        options: modelFilterOptions,
+                    },
                 ]}
                 onFilterChange={(key, val) => {
-                    const v = Array.isArray(val) ? val[0] : val;
-                    if (key === "subset") setSubset(v === "all" || !v ? "all" : v);
-                    if (key === "model_id") setModelId(v ?? "");
+                    if (key === "subset") {
+                        const v = Array.isArray(val) ? val[0] : val;
+                        setSubset(v === "all" || !v ? "all" : v);
+                    }
+                    if (key === "model_id") {
+                        const ids = Array.isArray(val) ? val : val ? [val] : [];
+                        setModelIdParam(ids.length ? ids.join(",") : "");
+                    }
                     setPage(1);
                 }}
                 search={labelSearch}
                 onSearchChange={setLabelSearch}
                 searchPlaceholder="Search labels…"
             />
+
+            <SelectedModelChips modelIds={modelIds} onRemove={removeModel} />
 
             <EmptyState loading={pidLoading || loading} error={error} empty={!data?.rows.length && !loading}>
                 {summary && (
@@ -178,7 +214,7 @@ export function ClassMetricsPage() {
                             title="Metrics by class"
                             columns={columns}
                             dataSource={data?.rows ?? []}
-                            rowKey={(r) => `${r.label}|${r.subset ?? ""}`}
+                            rowKey={(r) => `${r.label}|${r.subset ?? ""}|${r.model_id ?? ""}`}
                             total={data?.total ?? 0}
                             page={page}
                             pageSize={pageSize}
@@ -245,7 +281,7 @@ export function ClassMetricsPage() {
                                 <div>Localization: {detail.error_breakdown.localization_errors}</div>
                             </div>
                         )}
-                        {detail.gallery_url && <Tag color="blue">FiftyOne gallery</Tag>}
+                        {detail.gallery_url && <span className="ops-model-chip">FiftyOne gallery</span>}
                     </>
                 )}
             </Drawer>

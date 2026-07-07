@@ -443,6 +443,7 @@ def _load_catalog_rows(
                         ClassMetricRow(
                             label=str(label),
                             subset=subset or None,
+                            model_id=model_id or None,
                             class_id=row.get("class_id"),
                             images_support=_safe_int(row.get("calc__images_support")),
                             support=_safe_int(row.get("calc__support")),
@@ -1067,10 +1068,35 @@ class MetricsService:
         offset: int = 0,
     ) -> MetricsRunsResponse:
         runs, discovered_task_type = self._all_runs(pipeline_id)
-        runs = _filter_runs(runs, subset=subset, model_id=model_id, search=search, from_dt=from_dt, to_dt=to_dt)
         datasets_by_id, _ = self._dataset_context()
-        model_rows = runs_to_model_rows(
+        facet_runs = _filter_runs(
             runs,
+            subset=subset,
+            from_dt=from_dt,
+            to_dt=to_dt,
+        )
+        facet_rows = runs_to_model_rows(
+            facet_runs,
+            datasets_by_id=datasets_by_id,
+            task_type=discovered_task_type,
+            pipeline_id=pipeline_id,
+        )
+        facet_rows = _merge_candidates(
+            facet_rows,
+            _load_candidates(self.store, pipeline_id),
+            datasets_by_id,
+            pipeline_id,
+        )
+        filtered_runs = _filter_runs(
+            runs,
+            subset=subset,
+            model_id=model_id,
+            search=search,
+            from_dt=from_dt,
+            to_dt=to_dt,
+        )
+        model_rows = runs_to_model_rows(
+            filtered_runs,
             datasets_by_id=datasets_by_id,
             task_type=discovered_task_type,
             pipeline_id=pipeline_id,
@@ -1091,9 +1117,9 @@ class MetricsService:
         model_rows = _sort_model_rows(model_rows, sort_by or "model_id", sort_dir)
         total = len(model_rows)
         page = model_rows[offset : offset + limit]
-        subsets = sorted({r.subset for r in model_rows if r.subset})
-        models = sorted({r.model_id for r in model_rows if r.model_id})
-        metric_keys = sorted({k for r in model_rows for k in r.metrics})
+        subsets = sorted({r.subset for r in facet_rows if r.subset})
+        models = sorted({r.model_id for r in facet_rows if r.model_id})
+        metric_keys = sorted({k for r in facet_rows for k in r.metrics})
         schema = build_metric_schema(
             discovered_task_type,
             metric_keys,
@@ -1235,6 +1261,10 @@ class MetricsService:
     ) -> ClassMetricsResponse:
         _, class_rows, _ = _load_catalog_rows(self.ds, self.catalog)
         rows = [r for _, r, _ in class_rows if (not subset or r.subset == subset)]
+        model_ids = _parse_model_ids(model_id)
+        if model_ids:
+            allowed = set(model_ids)
+            rows = [r for r in rows if r.model_id in allowed]
         if label_search:
             q = label_search.lower()
             rows = [r for r in rows if q in r.label.lower()]
