@@ -1,7 +1,19 @@
 from __future__ import annotations
 
 from datapipe.compute import Pipeline
-from datapipe_app import DatapipeAPI
+from datapipe_app import (
+    DatapipeAPI,
+    DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
+    OpsColumn,
+    OpsColumnGroup,
+    OpsDataSpec,
+    OpsFrozenDatasetSpec,
+    OpsMetricTableSpec,
+    OpsModelSpec,
+    OpsRelationSpec,
+    OpsTrainingSpec,
+)
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -301,3 +313,151 @@ pipeline = Pipeline(
 
 ds = DataStore(DBCONN)
 app = DatapipeAPI(ds, catalog, pipeline)
+
+app.add_specs([
+    DatapipeOpsSpec(
+        id="cat_dog_smoke_yolo",
+        title="Cat / Dog Smoke YOLO",
+        description="YOLO training pipeline over frozen image snapshots.",
+        icon="shield",
+        color="blue",
+        data=OpsDataSpec(
+            tables=[
+                "s3_images",
+                "image__ground_truth",
+                "image__subset",
+                "detection_frozen_dataset",
+                "detection_model",
+                "pipeline_model__metrics_on_subset",
+                "pipeline_model__metrics_by_cls_on_subset",
+            ],
+            item_table="s3_images",
+            label_table="image__ground_truth",
+            subset_table="image__subset",
+        ),
+        frozen_dataset=OpsFrozenDatasetSpec(
+            table="detection_frozen_dataset",
+            id_column="detection_frozen_dataset_id",
+            created_at_column="detection_frozen_dataset__created_at",
+            label_mode="timestamp",
+            split_columns={
+                "train": "detection_frozen_dataset__train_images_count",
+                "val": "detection_frozen_dataset__val_images_count",
+                "test": "detection_frozen_dataset__test_images_count",
+            },
+            models_count_relation_id="model_trained_on_frozen_dataset",
+        ),
+        model=OpsModelSpec(
+            table="detection_model",
+            id_column="detection_model_id",
+            artifact_uri_column="detection_model__model_path",
+            is_best_table="attr__detection_model__is_best",
+            is_best_column="detection_model__is_best",
+        ),
+        training=OpsTrainingSpec(
+            status_table="detection_training_status",
+            model_id_column="detection_model_id",
+            status_column="training_status__status",
+            started_at_column="training_status__started_at",
+            finished_at_column="training_status__finished_at",
+            artifact_columns={
+                "manifest": "training_status__manifest_path",
+                "run_dir": "training_status__run_dir",
+            },
+            extra_columns=[
+                OpsColumn("run_key", "Run ID", "training_status__run_key", link_to="training_run"),
+                OpsColumn("frozen_dataset", "Frozen dataset", "detection_frozen_dataset_id", link_to="frozen_dataset"),
+            ],
+        ),
+        relations=[
+            OpsRelationSpec(
+                id="model_trained_on_frozen_dataset",
+                table="detection_model_is_trained_on_detection_frozen_dataset",
+                from_entity="model",
+                from_column="detection_model_id",
+                to_entity="frozen_dataset",
+                to_column="detection_frozen_dataset_id",
+            )
+        ],
+        metrics=[
+            OpsMetricTableSpec(
+                id="model_metrics",
+                title="Model metrics",
+                table="pipeline_model__metrics_on_subset",
+                metric_source="pipeline_model__metrics_on_subset",
+                primary_key_columns=["detection_model_id", "subset_id"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                },
+                primary_columns=[
+                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
+                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumnGroup(
+                        "Precision",
+                        [
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
+                        ],
+                    ),
+                    OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
+                best_metric_column="calc__weighted_f1_score",
+                default_sort=[("weighted_f1", "desc")],
+                filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+            )
+        ],
+        class_metrics=[
+            OpsClassMetricTableSpec(
+                id="subset_class_metrics",
+                title="Subset class metrics",
+                table="pipeline_model__metrics_by_cls_on_subset",
+                metric_source="pipeline_model__metrics_by_cls_on_subset",
+                primary_key_columns=["detection_model_id", "subset_id", "label"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
+                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                    OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                    OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                    OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                ],
+                best_metric_column="calc__f1_score",
+                default_sort=[("f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("class_filter", "Class", "label", filterable=True),
+                ],
+            )
+        ],
+        tags=["yolo", "image", "training"],
+    )
+])

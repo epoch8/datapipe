@@ -35,6 +35,7 @@ import type {
     TrainingRunsResponse,
 } from "../types/ops";
 import { ApiError, apiFetch, readApiErrorBody } from "./http";
+import type { OpsOverviewResponse, OpsRowsParams, OpsRowsResponse, OpsSpecDetail, OpsSpecsResponse } from "../types/opsSpecs";
 
 const API_BASE = "/api/v1alpha3";
 
@@ -112,6 +113,28 @@ async function fallbackStageRecentRuns(
 }
 
 export const opsApi = {
+    getOpsSpecs: (pipelineId: string) =>
+        fetchJson<OpsSpecsResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-specs`),
+    getOpsSpec: (pipelineId: string, specId: string) =>
+        fetchJson<OpsSpecDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}`),
+    getOpsPageOverview: (pipelineId: string, page: "frozen-datasets" | "training" | "metrics" | "class-metrics") =>
+        fetchJson<OpsOverviewResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-pages/${page}/overview`),
+    getOpsFrozenRows: (pipelineId: string, specId: string, params: OpsRowsParams = {}) =>
+        fetchJson<OpsRowsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getOpsTrainingRows: (pipelineId: string, specId: string, params: OpsRowsParams = {}) =>
+        fetchJson<OpsRowsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/training/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getOpsMetricRows: (pipelineId: string, specId: string, tableId: string, params: OpsRowsParams = {}) =>
+        fetchJson<OpsRowsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/metrics/${encodeURIComponent(tableId)}/rows${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getOpsClassMetricRows: (pipelineId: string, specId: string, tableId: string, params: OpsRowsParams = {}) =>
+        fetchJson<OpsRowsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/class-metrics/${encodeURIComponent(tableId)}/rows${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
     getOverview: () => fetchJson<OverviewResponse>("/overview"),
     getCapabilities: () => fetchJson<Capabilities>("/capabilities"),
     getSettings: () => fetchJson<SettingsInfo>("/settings"),

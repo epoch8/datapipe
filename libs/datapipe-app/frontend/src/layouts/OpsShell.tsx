@@ -8,6 +8,7 @@ import {
     QuestionCircleOutlined,
     ReloadOutlined,
     TableOutlined,
+    DatabaseOutlined,
 } from "@ant-design/icons";
 import { Button, InputNumber, Popover, Slider } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
@@ -17,6 +18,7 @@ import { ConnectivityBanner } from "../components/ConnectivityBanner";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { loadLastGraphStage } from "../features/cy/graphSessionState";
 import { useResizableWidth } from "../hooks/useResizableWidth";
+import type { OpsSpecSummary } from "../types/opsSpecs";
 
 type NavItem = {
     key: string;
@@ -83,6 +85,7 @@ export function OpsShell() {
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [collapsed, setCollapsed] = React.useState(false);
     const [capabilitiesError, setCapabilitiesError] = React.useState<unknown>(null);
+    const [opsSpecs, setOpsSpecs] = React.useState<OpsSpecSummary[]>([]);
     const {
         width: sidebarWidth,
         onHandleMouseDown: onSidebarResize,
@@ -104,6 +107,13 @@ export function OpsShell() {
                     ? "Datapipe Central Dashboard"
                     : `Datapipe Ops · ${c.pipeline_id || "agent"}`,
             );
+            if (c.pipeline_id) {
+                opsApi.getOpsSpecs(c.pipeline_id)
+                    .then((res) => setOpsSpecs(res.specs))
+                    .catch(() => setOpsSpecs([]));
+            } else {
+                setOpsSpecs([]);
+            }
         }).catch((e) => {
             setCapabilitiesError(e);
         });
@@ -114,15 +124,20 @@ export function OpsShell() {
         ? `/graph?stage=${encodeURIComponent(lastGraphStage)}`
         : "/graph";
 
+    const hasExplicitSpecs = opsSpecs.length > 0;
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
         ...(agentMode
             ? [{ key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> }]
             : []),
         { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
-        { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
-        { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
-        { key: "/classes", href: "/classes", label: "Class Metrics", icon: <TableOutlined /> },
+        ...(hasExplicitSpecs
+            ? []
+            : [
+                { key: "/training", href: "/training", label: "Training", icon: <ExperimentOutlined /> },
+                { key: "/metrics", href: "/metrics", label: "Metrics", icon: <BarChartOutlined /> },
+                { key: "/classes", href: "/classes", label: "Class Metrics", icon: <TableOutlined /> },
+            ]),
     ];
 
     const secondaryItems: NavItem[] = [
@@ -134,7 +149,7 @@ export function OpsShell() {
         allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
     const isGraph = location.pathname.startsWith("/graph");
-    const isObsPage = ["/metrics", "/classes", "/training"].some((p) =>
+    const isObsPage = ["/frozen-datasets", "/metrics", "/classes", "/class-metrics", "/training"].some((p) =>
         location.pathname.startsWith(p),
     );
 
@@ -148,6 +163,36 @@ export function OpsShell() {
             {!collapsed && item.label}
         </Link>
     );
+
+    const renderSpecGroup = (
+        href: string,
+        label: string,
+        icon: React.ReactNode,
+        enabled: (spec: OpsSpecSummary) => boolean,
+    ) => {
+        const specs = opsSpecs.filter(enabled);
+        if (!specs.length) return null;
+        return (
+            <div className="ops-sidebar-section" key={href}>
+                <Link
+                    to={href}
+                    className={`datapipe-sidebar-item${matchNav(location.pathname, href) ? " active" : ""}`}
+                >
+                    <span className="sidebar-icon">{icon}</span>
+                    {!collapsed && label}
+                </Link>
+                {!collapsed && specs.map((spec) => (
+                    <Link
+                        key={`${href}/${spec.id}`}
+                        to={`${href}/${spec.id}`}
+                        className={`datapipe-sidebar-item ops-sidebar-nested${location.pathname === `${href}/${spec.id}` ? " active" : ""}`}
+                    >
+                        {spec.title}
+                    </Link>
+                ))}
+            </div>
+        );
+    };
 
     return (
         <div className="datapipe-shell" style={{ display: "flex", minHeight: "var(--dp-vh)" }}>
@@ -172,6 +217,10 @@ export function OpsShell() {
                 <div className="datapipe-sidebar-logo">Datapipe Ops</div>
                 <nav className="datapipe-sidebar-nav">
                     {primaryItems.map(renderItem)}
+                    {hasExplicitSpecs && renderSpecGroup("/frozen-datasets", "Frozen Datasets", <DatabaseOutlined />, (spec) => spec.has_frozen_datasets)}
+                    {hasExplicitSpecs && renderSpecGroup("/training", "Training", <ExperimentOutlined />, (spec) => spec.has_training)}
+                    {hasExplicitSpecs && renderSpecGroup("/metrics", "Metrics", <BarChartOutlined />, (spec) => spec.metric_tables_count > 0)}
+                    {hasExplicitSpecs && renderSpecGroup("/class-metrics", "Class Metrics", <TableOutlined />, (spec) => spec.class_metric_tables_count > 0)}
                 </nav>
                 <div className="ops-sidebar-section">
                     {!collapsed && <div className="ops-sidebar-section-label">More</div>}

@@ -50,6 +50,9 @@ from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry
 from datapipe_app.observability.settings import get_ops_settings
 from datapipe_app.pipeline_ui import register_pipeline_ui_routes
+from datapipe_app.api_v1alpha3_specs import register_ops_spec_routes
+from datapipe_app.ops_specs_service import OpsSpecsService
+from datapipe_app.spec_registry import OpsSpecRegistry
 
 
 class StartRunRequest(BaseModel):
@@ -90,8 +93,14 @@ def make_app(
     pipeline: Optional[Pipeline] = None,
     steps: Optional[List[ComputeStep]] = None,
     recorder: Optional[RunRecorder] = None,
+    ops_specs: Optional[OpsSpecRegistry] = None,
 ) -> FastAPI:
     app = FastAPI(title="Datapipe Ops API v1alpha3")
+    ops_spec_registry = ops_specs or OpsSpecRegistry()
+    register_ops_spec_routes(
+        app,
+        OpsSpecsService(ops_spec_registry, ds=ds, catalog=catalog),
+    )
 
     def _pipeline_id() -> Optional[str]:
         return get_ops_settings().pipeline_id

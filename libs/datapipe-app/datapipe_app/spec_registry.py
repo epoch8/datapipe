@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, Sequence
+
+from datapipe.compute import Catalog
+from datapipe.datatable import DataStore
+
+from datapipe_app.specs import (
+    DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
+    OpsColumn,
+    OpsColumnGroup,
+    OpsMetricTableSpec,
+)
+
+
+class OpsSpecValidationError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class TableSchema:
+    columns: set[str]
+
+
+class OpsSpecRegistry:
+    def __init__(self) -> None:
+        self._specs: dict[str, DatapipeOpsSpec] = {}
+
+    def add_many(self, specs: Sequence[DatapipeOpsSpec]) -> None:
+        for spec in specs:
+            if spec.id in self._specs:
+                raise OpsSpecValidationError(f'Spec "{spec.id}" is already registered.')
+            self._specs[spec.id] = spec
+
+    def get(self, spec_id: str) -> DatapipeOpsSpec:
+        try:
+            return self._specs[spec_id]
+        except KeyError as exc:
+            raise KeyError(f'Spec "{spec_id}" is not registered.') from exc
+
+    def list(self) -> list[DatapipeOpsSpec]:
+        return list(self._specs.values())
+
+    def validate(self, catalog: Catalog | None, db: DataStore | None = None, *, strict: bool = True) -> None:
+        if not strict or not self._specs:
+            return
+
+        seen: set[str] = set()
+        for spec in self.list():
+            if spec.id in seen:
+                raise OpsSpecValidationError(f'Duplicate spec id "{spec.id}".')
+            seen.add(spec.id)
+            self._validate_spec(spec, catalog, db)
+
+    def _validate_spec(self, spec: DatapipeOpsSpec, catalog: Catalog | None, db: DataStore | None) -> None:
+        table_ids = self._table_ids(spec)
+        for table in table_ids:
+            self._schema_for(spec, table, catalog, db)
+
+        metric_ids: set[str] = set()
+        for table_spec in [*spec.metrics, *spec.class_metrics]:
+            if table_spec.id in metric_ids:
+                raise OpsSpecValidationError(f'Spec "{spec.id}" has duplicate metric table id "{table_spec.id}".')
+            metric_ids.add(table_spec.id)
+            self._validate_metric_table(spec, table_spec, catalog, db)
+
+        if spec.frozen_dataset is not None:
+            schema = self._schema_for(spec, spec.frozen_dataset.table, catalog, db)
+            for column in [
+                spec.frozen_dataset.id_column,
+                spec.frozen_dataset.created_at_column,
+                spec.frozen_dataset.display_name_column,
+                *spec.frozen_dataset.split_columns.values(),
+            ]:
+                if column:
+                    self._require_column(spec, spec.frozen_dataset.table, column, schema)
+
+        if spec.model is not None:
+            schema = self._schema_for(spec, spec.model.table, catalog, db)
+            for column in [
+                spec.model.id_column,
+                spec.model.display_name_column,
+                spec.model.created_at_column,
+                spec.model.artifact_uri_column,
+            ]:
+                if column:
+                    self._require_column(spec, spec.model.table, column, schema)
+            if spec.model.is_best_table:
+                best_schema = self._schema_for(spec, spec.model.is_best_table, catalog, db)
+                if spec.model.is_best_column:
+                    self._require_column(spec, spec.model.is_best_table, spec.model.is_best_column, best_schema)
+
+        if spec.training is not None:
+            schema = self._schema_for(spec, spec.training.status_table, catalog, db)
+            for column in [
+                spec.training.model_id_column,
+                spec.training.status_column,
+                spec.training.started_at_column,
+                spec.training.finished_at_column,
+                spec.training.duration_seconds_column,
+                *spec.training.artifact_columns.values(),
+                *(col.source for col in spec.training.extra_columns),
+            ]:
+                if column:
+                    self._require_column(spec, spec.training.status_table, column, schema)
+
+        for relation in spec.relations:
+            schema = self._schema_for(spec, relation.table, catalog, db)
+            self._require_column(spec, relation.table, relation.from_column, schema)
+            self._require_column(spec, relation.table, relation.to_column, schema)
+
+    def _validate_metric_table(
+        self,
+        spec: DatapipeOpsSpec,
+        table_spec: OpsMetricTableSpec | OpsClassMetricTableSpec,
+        catalog: Catalog | None,
+        db: DataStore | None,
+    ) -> None:
+        schema = self._schema_for(spec, table_spec.table, catalog, db)
+        for column in table_spec.primary_key_columns:
+            self._require_column(spec, table_spec.table, column, schema)
+        for column in table_spec.entity_links.values():
+            self._require_column(spec, table_spec.table, column, schema)
+
+        self._validate_columns_unique(spec, table_spec, "primary_columns", table_spec.primary_columns)
+        self._validate_columns_unique(spec, table_spec, "filters", table_spec.filters)
+        metric_columns = list(_flatten_columns(table_spec.metric_columns))
+        self._validate_columns_unique(spec, table_spec, "metric_columns", metric_columns)
+        for column in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]:
+            self._require_column(spec, table_spec.table, column.source, schema)
+        if table_spec.best_metric_column:
+            self._require_column(spec, table_spec.table, table_spec.best_metric_column, schema)
+        allowed_sort_ids = {c.id for c in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]}
+        allowed_source_ids = {c.source for c in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]}
+        for sort_column, _direction in table_spec.default_sort:
+            if sort_column not in allowed_sort_ids and sort_column not in allowed_source_ids:
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" default sort references unknown column "{sort_column}".'
+                )
+
+    def _validate_columns_unique(
+        self,
+        spec: DatapipeOpsSpec,
+        table_spec: OpsMetricTableSpec | OpsClassMetricTableSpec,
+        section: str,
+        columns: Sequence[OpsColumn],
+    ) -> None:
+        seen: set[str] = set()
+        for column in columns:
+            if column.id in seen:
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" has duplicate {section} id "{column.id}".'
+                )
+            seen.add(column.id)
+
+    def _table_ids(self, spec: DatapipeOpsSpec) -> set[str]:
+        tables = set(spec.data.tables if spec.data else [])
+        if spec.frozen_dataset:
+            tables.add(spec.frozen_dataset.table)
+        if spec.model:
+            tables.add(spec.model.table)
+            if spec.model.is_best_table:
+                tables.add(spec.model.is_best_table)
+        if spec.training:
+            tables.add(spec.training.status_table)
+        tables.update(relation.table for relation in spec.relations)
+        tables.update(metric.table for metric in spec.metrics)
+        tables.update(metric.table for metric in spec.class_metrics)
+        return tables
+
+    def _schema_for(
+        self,
+        spec: DatapipeOpsSpec,
+        table: str,
+        catalog: Catalog | None,
+        db: DataStore | None,
+    ) -> TableSchema:
+        if catalog is not None and table in catalog.catalog:
+            store = catalog.catalog[table].store
+            if getattr(store.caps, "supports_get_schema", False):
+                return TableSchema(columns={col.name for col in store.get_schema()})
+            if db is not None and table in db.tables:
+                return TableSchema(columns={col.name for col in db.get_table(table).primary_schema})
+            raise OpsSpecValidationError(f'Spec "{spec.id}": table "{table}" does not expose a schema.')
+        if db is not None and table in db.tables:
+            dt = db.get_table(table)
+            columns = {col.name for col in dt.primary_schema}
+            if getattr(dt.table_store.caps, "supports_get_schema", False):
+                columns.update(col.name for col in dt.table_store.get_schema())
+            return TableSchema(columns=columns)
+        raise OpsSpecValidationError(f'Spec "{spec.id}" references missing table "{table}".')
+
+    def _require_column(self, spec: DatapipeOpsSpec, table: str, column: str, schema: TableSchema) -> None:
+        if column not in schema.columns:
+            raise OpsSpecValidationError(
+                f'Spec "{spec.id}": table "{table}" references missing column "{column}".'
+            )
+
+
+def _flatten_columns(columns: Iterable[OpsColumn | OpsColumnGroup]) -> Iterable[OpsColumn]:
+    for column in columns:
+        if isinstance(column, OpsColumnGroup):
+            yield from column.columns
+        else:
+            yield column

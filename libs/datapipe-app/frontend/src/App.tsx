@@ -19,6 +19,7 @@ import { ModelDetailPage } from "./features/ops/metrics/ModelDetailPage";
 import { FrozenDatasetDetailPage } from "./features/ops/metrics/FrozenDatasetDetailPage";
 import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
+import { OpsEntityDetailPage, OpsOverviewSpecPage, OpsSpecificSpecPage } from "./features/ops/specs/OpsSpecPages";
 import "./App.css";
 import "./operatorLight.css";
 import "./opsPages.css";
@@ -37,7 +38,17 @@ function App() {
                     <Route path="/" element={<Overview />} />
                     <Route path="/runs" element={<RunsPage />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
-                    <Route path="/metrics" element={<MetricsOverviewPage />} />
+                    <Route path="/frozen-datasets" element={<OpsOverviewSpecPage kind="frozen-datasets" />} />
+                    <Route path="/frozen-datasets/:specId/datasets/:entityId" element={<OpsEntityDetailPage kind="frozen-dataset" />} />
+                    <Route path="/frozen-datasets/:specId" element={<OpsSpecificSpecPage kind="frozen-datasets" />} />
+                    <Route path="/training" element={<OpsOverviewSpecPage kind="training" />} />
+                    <Route path="/training/:specId/runs/:entityId" element={<OpsEntityDetailPage kind="training-run" />} />
+                    <Route path="/training/:specId" element={<OpsSpecificSpecPage kind="training" />} />
+                    <Route path="/metrics" element={<OpsOverviewSpecPage kind="metrics" />} />
+                    <Route path="/metrics/:specId/models/:entityId" element={<OpsEntityDetailPage kind="model" />} />
+                    <Route path="/metrics/:specId" element={<OpsSpecificSpecPage kind="metrics" />} />
+                    <Route path="/class-metrics" element={<OpsOverviewSpecPage kind="class-metrics" />} />
+                    <Route path="/class-metrics/:specId" element={<OpsSpecificSpecPage kind="class-metrics" />} />
                     <Route path="/metrics/models/:modelId" element={<ModelDetailPage />} />
                     <Route path="/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/pipelines/:id/metrics" element={<MetricsOverviewPage />} />
@@ -45,7 +56,6 @@ function App() {
                     <Route path="/pipelines/:id/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/classes" element={<ClassMetricsPage />} />
                     <Route path="/pipelines/:id/classes" element={<ClassMetricsPage />} />
-                    <Route path="/training" element={<TrainingRunsPage />} />
                     <Route path="/pipelines/:id/training" element={<TrainingRunsPage />} />
                     <Route path="/graph" element={<GraphPage />} />
                     <Route path="/debug" element={<LegacyDebugRedirect />} />
@@ -54,7 +64,7 @@ function App() {
                     <Route path="/pipelines/:id/tables/:tableName" element={<TableDetail />} />
                     <Route path="/pipelines/:id/transforms/:transformName" element={<TransformDetail />} />
                     <Route path="/pipelines/:id/meta-steps/:stepName" element={<MetaStepDetail />} />
-                    <Route path="/training/:runKey" element={<TrainingDetail />} />
+                    <Route path="/training-runs/:runKey" element={<TrainingDetail />} />
                     <Route path="/training/compare" element={<TrainingCompare />} />
                     {/* Legacy wrappers */}
                     <Route path="/metrics-legacy" element={<Metrics />} />

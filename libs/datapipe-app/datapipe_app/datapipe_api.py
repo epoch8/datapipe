@@ -16,6 +16,7 @@ import datapipe_app.api_v1alpha1 as api_v1alpha1
 import datapipe_app.api_v1alpha2 as api_v1alpha2
 import datapipe_app.api_v1alpha3 as api_v1alpha3
 from datapipe_app.metrics import setup_prometheus_metrics
+from datapipe_app.spec_registry import OpsSpecRegistry
 from datapipe_app.pipeline_binding import pipeline_module_for
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import get_log_buffer
@@ -86,14 +87,17 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             self.catalog = catalog or Catalog({})
             self.pipeline = pipeline or Pipeline([])
             self.steps = []
+            self.ops_specs = OpsSpecRegistry()
         elif app is not None:
             self.ds = app.ds
             self.catalog = app.catalog
             self.pipeline = app.pipeline
             self.steps = app.steps
+            self.ops_specs = getattr(app, "ops_specs", OpsSpecRegistry())
         else:
             assert ds is not None and catalog is not None and pipeline is not None
             DatapipeApp.__init__(self, ds, catalog, pipeline)
+            self.ops_specs = getattr(self, "ops_specs", OpsSpecRegistry())
 
         pipeline_module = pipeline_module_for(app)
         explicit_pipeline_id = pipeline_id
@@ -108,6 +112,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
 
         if self.catalog is not None and self.catalog.catalog:
             validate_observability_tables_against_catalog(observability_tables, self.catalog)
+            self.ops_specs.validate(self.catalog, self.ds, strict=True)
 
         if self.ds is not None:
             from datapipe_app.db_schema import register_observability_tables_in_metadata
@@ -194,6 +199,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
                 pipeline=self.pipeline,
                 steps=self.steps if self.ds is not None else None,
                 recorder=self.run_recorder,
+                ops_specs=self.ops_specs,
             ),
             name="v1alpha3",
         )
