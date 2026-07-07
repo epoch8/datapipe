@@ -1,7 +1,7 @@
 import React from "react";
 import type { ColumnsType } from "antd/es/table";
 import type { MetricFormat, MetricsModelRow, MetricsTableSchema } from "../../../types/ops";
-import { MetricValue } from "../shared";
+import { MetricValue, readMetricNumber } from "../shared";
 import { buildAllMetricsSchema, type MetricsViewMode } from "./metricsSchema";
 
 type LeafSpec = {
@@ -22,8 +22,8 @@ function metricFormat(format: MetricFormat): "float" | "percent" | "integer" | "
 }
 
 function metricCell(row: MetricsModelRow, key: string, format: MetricFormat = "float"): React.ReactNode {
-    const value = row.metrics?.[key];
-    if (!row.has_metrics || value == null || typeof value !== "number") {
+    const value = readMetricNumber(row.metrics, key);
+    if (value == null) {
         return null;
     }
     return <MetricValue value={value} format={metricFormat(format)} />;

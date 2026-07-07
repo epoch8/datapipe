@@ -44,8 +44,11 @@ function renderCellValue(value: unknown, columnName: string, pipelineId?: string
     if (value === null || value === undefined) {
         return value as null | undefined;
     }
-    if (!value || value === "—") {
+    if (value === "—" || value === "" || value === false) {
         return value as React.ReactNode;
+    }
+    if (typeof value === "number" && value === 0) {
+        return "0";
     }
     const isModelIdColumn = columnName === "model_id" || columnName.endsWith("_model_id");
     const isFrozenDatasetIdColumn =

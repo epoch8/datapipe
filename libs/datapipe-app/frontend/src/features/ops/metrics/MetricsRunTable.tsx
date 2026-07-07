@@ -2,7 +2,7 @@ import React from "react";
 import { Button, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { MetricsRunRow } from "../../../types/ops";
-import { MetricValue, SortableDataTable, type SortSpec } from "../shared";
+import { MetricValue, SortableDataTable, readMetricNumber, type SortSpec } from "../shared";
 
 type Props = {
     rows: MetricsRunRow[];
@@ -84,8 +84,8 @@ const COUNT_KEYS = new Set([
 function presentMetricKeys(rows: MetricsRunRow[]): string[] {
     const present = new Set<string>();
     for (const row of rows) {
-        for (const [key, value] of Object.entries(row.metrics ?? {})) {
-            if (value != null && !COUNT_KEYS.has(key)) present.add(key);
+        for (const key of Object.keys(row.metrics ?? {})) {
+            if (readMetricNumber(row.metrics, key) != null && !COUNT_KEYS.has(key)) present.add(key);
         }
     }
     const ordered = METRIC_ORDER.filter((k) => present.has(k));
@@ -112,7 +112,9 @@ export function MetricsRunTable({
         title: METRIC_LABELS[key] ?? key,
         key,
         sorter: true,
-        render: (_: unknown, r: MetricsRunRow) => <MetricValue value={r.metrics?.[key]} />,
+        render: (_: unknown, r: MetricsRunRow) => (
+            <MetricValue value={readMetricNumber(r.metrics, key) ?? undefined} />
+        ),
     }));
 
     const columns: ColumnsType<MetricsRunRow> = [
@@ -140,7 +142,7 @@ export function MetricsRunTable({
         },
         { title: "subset", dataIndex: "subset", sorter: true },
         ...metricColumns,
-        { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={r.metrics?.support} format="integer" /> },
+        { title: "support", key: "support", sorter: true, render: (_, r) => <MetricValue value={readMetricNumber(r.metrics, "support") ?? undefined} format="integer" /> },
         { title: "duration", key: "duration_s", sorter: true, render: (_, r) => (r.duration_s ? `${Math.floor(r.duration_s / 60)}m ${r.duration_s % 60}s` : "—") },
         {
             title: "status",

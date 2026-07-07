@@ -394,6 +394,7 @@ export const opsMock = {
         const rand = seededRandom(99);
         const rows = CLASSES.map((label, i) => ({
             label,
+            subset: "val",
             class_id: i,
             images_support: 500 + Math.floor(rand() * 2000),
             support: 200 + Math.floor(rand() * 800),

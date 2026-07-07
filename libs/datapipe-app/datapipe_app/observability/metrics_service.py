@@ -331,6 +331,10 @@ def _normalize_metric_key(key: str) -> str:
 def _safe_float(val: Any) -> Optional[float]:
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
+    if isinstance(val, str):
+        stripped = val.strip()
+        if stripped in {"-", "—"}:
+            return 0.0
     try:
         return float(val)
     except (TypeError, ValueError):
@@ -347,15 +351,56 @@ def _run_id(model_id: str, subset: str, idx: int) -> str:
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
+_METRIC_PREFIXES = (
+    "weighted",
+    "macro",
+    "weighted_without_pseudo_classes",
+    "macro_without_pseudo_classes",
+    "weighted_known",
+    "macro_known",
+    "weighted_known_without_pseudo_classes",
+    "macro_known_without_pseudo_classes",
+)
+
+
+def _normalize_metric_nulls(metrics: dict[str, float | None]) -> dict[str, float | None]:
+    """SQL rollups can leave precision/F1 NULL when recall is 0; show 0 in UI."""
+    out = dict(metrics)
+    for prefix in _METRIC_PREFIXES:
+        prec_key = f"{prefix}_precision"
+        rec_key = f"{prefix}_recall"
+        f1_key = f"{prefix}_f1_score"
+        recall = out.get(rec_key)
+        if recall != 0.0:
+            continue
+        if out.get(prec_key) is None:
+            out[prec_key] = 0.0
+        if out.get(f1_key) is None:
+            out[f1_key] = 0.0
+    if out.get("recall") == 0.0:
+        if out.get("precision") is None:
+            out["precision"] = 0.0
+        if out.get("f1_score") is None:
+            out["f1_score"] = 0.0
+    return out
+
+
 def _row_to_metrics(row: pd.Series, calc_cols: list[str]) -> dict[str, float | None]:
     metrics: dict[str, float | None] = {}
     for col in calc_cols:
         metrics[_normalize_metric_key(col)] = _safe_float(row.get(col))
-    return metrics
+    return _normalize_metric_nulls(metrics)
 
 
 def _is_class_table(name: str, columns: list[str]) -> bool:
-    return "by_cls" in name or ("label" in columns and "metrics_by" in name)
+    # Per-image metrics tables carry a label column but are not class aggregates.
+    if "metrics_on_image" in name:
+        return False
+    # Class explorer reads subset-level by-class rollups only.
+    if "by_cls" not in name:
+        return False
+    normalized = name.replace("__", "_")
+    return "on_subset" in normalized
 
 
 def _load_catalog_rows(
@@ -383,7 +428,7 @@ def _load_catalog_rows(
         tt = infer_task_type(table_name)
         if tt:
             task_type = tt
-        is_class = _is_class_table(table_name, columns) or ("label" in columns and "metrics_on_subset" not in table_name)
+        is_class = _is_class_table(table_name, columns)
 
         for idx, row in df.iterrows():
             model_id = row_model_id(row, columns) or ""
@@ -397,6 +442,7 @@ def _load_catalog_rows(
                         table_name,
                         ClassMetricRow(
                             label=str(label),
+                            subset=subset or None,
                             class_id=row.get("class_id"),
                             images_support=_safe_int(row.get("calc__images_support")),
                             support=_safe_int(row.get("calc__support")),
@@ -720,7 +766,7 @@ def _model_row_id(model_id: str, dataset_id: str, subset: str) -> str:
 
 
 def _has_computed_metrics(metrics: dict[str, float | None]) -> bool:
-    return any(v is not None for k, v in metrics.items() if k not in _MODEL_COUNT_KEYS)
+    return any(v is not None for v in metrics.values())
 
 
 def _merge_run_metrics(group: list[MetricsRunRow]) -> dict[str, float | None]:
@@ -1188,7 +1234,7 @@ class MetricsService:
         offset: int = 0,
     ) -> ClassMetricsResponse:
         _, class_rows, _ = _load_catalog_rows(self.ds, self.catalog)
-        rows = [r for _, r, sub in class_rows if (not subset or sub == subset)]
+        rows = [r for _, r, _ in class_rows if (not subset or r.subset == subset)]
         if label_search:
             q = label_search.lower()
             rows = [r for r in rows if q in r.label.lower()]

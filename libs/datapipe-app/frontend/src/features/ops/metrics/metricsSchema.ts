@@ -1,4 +1,5 @@
 import type { MetricColumnGroup, MetricDefinition, MetricsModelRow, MetricsTableSchema } from "../../../types/ops";
+import { readMetricNumber } from "../shared/metricsFormat";
 
 const COUNT_KEYS = new Set([
     "images_support",
@@ -270,8 +271,8 @@ function sortGroups(groups: MetricColumnGroup[]): MetricColumnGroup[] {
 export function collectRowMetricKeys(rows: MetricsModelRow[]): string[] {
     const keys = new Set<string>();
     for (const row of rows) {
-        for (const [k, v] of Object.entries(row.metrics ?? {})) {
-            if (v != null && typeof v === "number") keys.add(k);
+        for (const key of Object.keys(row.metrics ?? {})) {
+            if (readMetricNumber(row.metrics, key) != null) keys.add(key);
         }
     }
     return Array.from(keys);
@@ -318,7 +319,7 @@ export function groupMetricItems(
     limit = 3,
 ) {
     return group.metrics
-        .filter((m) => rowMetrics?.[m.key] != null)
+        .filter((m) => readMetricNumber(rowMetrics, m.key) != null)
         .slice(0, limit)
         .map((m) => ({
             label: m.short_label,

@@ -63,9 +63,13 @@ def float_columns(names: Sequence[str]) -> List[Column]:
 
 
 def precision_recall_f1(tp_num: Any, precision_den: Any, recall_den: Any, sql_cast: Any) -> Tuple[Any, Any, Any]:
-    precision = tp_num / func.nullif(precision_den, sql_cast(0, Float))
-    recall = tp_num / func.nullif(recall_den, sql_cast(0, Float))
-    f1_score = (sql_cast(2.0, Float) * precision * recall) / func.nullif(precision + recall, sql_cast(0, Float))
+    zero = sql_cast(0, Float)
+    precision = func.coalesce(tp_num / func.nullif(precision_den, zero), zero)
+    recall = func.coalesce(tp_num / func.nullif(recall_den, zero), zero)
+    f1_score = func.coalesce(
+        (sql_cast(2.0, Float) * precision * recall) / func.nullif(precision + recall, zero),
+        zero,
+    )
     return precision, recall, f1_score
 
 

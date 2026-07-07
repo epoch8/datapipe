@@ -155,10 +155,20 @@ def count_detection_metrics_on_subset(
     agg_iou_mean = (weighted_iou_num / weighted_iou_den).label("calc__iou_mean")
 
     # metrics with float division
-    prec = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP, Float), sql_cast(0, Float))
-    rec = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FN, Float), sql_cast(0, Float))
-    acc = sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP + sum_FN, Float), sql_cast(0, Float))
-    f1 = (sql_cast(2.0, Float) * prec * rec) / func.nullif(prec + rec, sql_cast(0, Float))
+    zero = sql_cast(0, Float)
+    prec = func.coalesce(
+        sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP, Float), zero),
+        zero,
+    )
+    rec = func.coalesce(
+        sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FN, Float), zero),
+        zero,
+    )
+    acc = func.coalesce(
+        sql_cast(sum_TP, Float) / func.nullif(sql_cast(sum_TP + sum_FP + sum_FN, Float), zero),
+        zero,
+    )
+    f1 = func.coalesce((sql_cast(2.0, Float) * prec * rec) / func.nullif(prec + rec, zero), zero)
 
     stmt = (
         select(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.metrics_service import MetricsService
+from datapipe_app.observability.metrics_service import MetricsService, _normalize_metric_nulls
 from datapipe_app.observability.schemas import MetricsCandidateCreate
 
 
@@ -32,3 +32,21 @@ def test_metrics_candidates_persist_in_store(tmp_path) -> None:
 
     assert svc.delete_candidate("pipeline_a", created.id) is True
     assert svc.list_candidates("pipeline_a").total == 0
+
+
+def test_normalize_metric_nulls_fills_zero_recall_gaps() -> None:
+    metrics = _normalize_metric_nulls(
+        {
+            "weighted_recall": 0.0,
+            "weighted_precision": None,
+            "weighted_f1_score": None,
+            "macro_recall": 0.0,
+            "macro_precision": None,
+            "macro_f1_score": None,
+            "accuracy": 0.0,
+        }
+    )
+    assert metrics["weighted_precision"] == 0.0
+    assert metrics["weighted_f1_score"] == 0.0
+    assert metrics["macro_precision"] == 0.0
+    assert metrics["macro_f1_score"] == 0.0

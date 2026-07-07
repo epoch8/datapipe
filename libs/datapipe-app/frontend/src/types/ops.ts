@@ -509,6 +509,7 @@ export interface MetricsTimeseriesResponse {
 
 export interface ClassMetricRow {
     label: string;
+    subset?: string;
     class_id?: string | number;
     images_support?: number;
     support?: number;

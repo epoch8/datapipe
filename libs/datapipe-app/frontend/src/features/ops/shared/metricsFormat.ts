@@ -23,6 +23,22 @@ export function normalizeMetricKey(key: string): string {
     return METRIC_ALIASES[key] ?? key.replace(/^calc__/, "");
 }
 
+export function readMetricNumber(
+    metrics: Record<string, number | string | null | undefined> | undefined,
+    key: string,
+): number | null {
+    if (!metrics || !(key in metrics)) return null;
+    const raw = metrics[key];
+    if (raw == null) return null;
+    if (typeof raw === "string") {
+        const stripped = raw.trim();
+        if (stripped === "-" || stripped === "—") return 0;
+    }
+    if (typeof raw === "number") return Number.isNaN(raw) ? null : raw;
+    const coerced = Number(raw);
+    return Number.isNaN(coerced) ? null : coerced;
+}
+
 export function formatMetric(
     value: number | string | null | undefined,
     format: "float" | "percent" | "integer" | "string" = "float",
