@@ -4,12 +4,13 @@ version = "0"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "datapipe-app",
-    "datapipe-ml[torch]",
+    "datapipe-ml[torch,fiftyone]",   # fiftyone extra pulls FiftyOneImagesDataTableStore + cv_pipeliner.fiftyone
     "torch==2.6.0",
     "torchvision==0.21.0",
     "stringzilla==4.4.0",       # needed by albumentations
     "polars-lts-cpu==1.33.1",   # ultralytics/datapipe on pre-AVX2 CPUs (avoids SIGILL)
     "pi-heif",                  # ultralytics image verification imports it
+    "fiftyone==1.17.0",         # FiftyOne App + dataset (metadata in MongoDB)
 ]
 
 [[tool.uv.index]]
