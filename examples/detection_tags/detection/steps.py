@@ -1,24 +1,14 @@
 from __future__ import annotations
 
-import io
-import json
 import os
-import random
-import time
-import zipfile
-from pathlib import Path
-from typing import Optional
 
 import fsspec
 import numpy as np
 import pandas as pd
-import requests
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-from PIL import Image
 
+from coco_demo import CocoDemoSource, darken as demo_darken
 from config import (
-    COCO_CAT_IDS,
-    DBCONN,
     LOCAL_IMAGES_DIR,
     input_bucket,
     input_image_url,
@@ -27,55 +17,12 @@ from config import (
     tag_name_for,
 )
 
-COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
-COCO_ANN_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
-CACHE = Path(os.environ.get("DATAPIPE_TAGS_CACHE_DIR", "/tmp/datapipe-tags-cache"))
-RNG_SEED = 1234
-
-
-# --- COCO helpers ---------------------------------------------------------------
-def _get(url: str, attempts: int = 4) -> requests.Response:
-    last: Optional[Exception] = None
-    for a in range(attempts):
-        try:
-            r = requests.get(url, timeout=60, stream=True)
-            r.raise_for_status()
-            return r
-        except requests.RequestException as e:
-            last = e
-            time.sleep(min(2 ** a, 20))
-    assert last is not None
-    raise last
-
-
-def _coco_annotations_by_image() -> tuple[dict, dict]:
-    """Return (id_to_image_meta, {image_id: [cat/dog annotations]}), cached on disk."""
-    CACHE.mkdir(parents=True, exist_ok=True)
-    zip_path = CACHE / "annotations_trainval2017.zip"
-    if not zip_path.exists() or zip_path.stat().st_size < 1_000_000:
-        with _get(COCO_ANN_URL) as r, open(zip_path, "wb") as f:
-            for chunk in r.iter_content(1 << 20):
-                f.write(chunk)
-    with zipfile.ZipFile(zip_path) as zf, zf.open("annotations/instances_train2017.json") as h:
-        inst = json.load(h)
-    id_to_img = {im["id"]: im for im in inst["images"]}
-    anns: dict[int, list] = {}
-    for a in inst["annotations"]:
-        if a.get("category_id") in COCO_CAT_IDS and not a.get("iscrowd", 0) and a.get("bbox"):
-            anns.setdefault(a["image_id"], []).append(a)
-    return id_to_img, anns
-
-
-def _darken(im: Image.Image, gamma: float) -> Image.Image:
-    a = np.asarray(im.convert("RGB")).astype(np.float32) / 255.0
-    return Image.fromarray((np.power(a, 1.0 / gamma) * 255).clip(0, 255).astype(np.uint8))
-
-
-# --- load step ------------------------------------------------------------------
+# --- load step (demo: pulls images/GT from coco_demo; swap that module for real data) -----------
 def load_batch(df_request: pd.DataFrame):
-    """For each load_request row: download COCO cat/dog images, upload to object storage, and
-    return (s3_images, image__ground_truth, tag, image__tag). Ground truth uses lowercase COCO
-    labels; image_name is the object basename (what a listing would produce)."""
+    """For each load_request row: pull images + ground truth from the demo source (coco_demo),
+    optionally darken (a tagged scenario), upload to object storage, and return (s3_images,
+    image__ground_truth, tag, image__tag, image__subset_hint). image_name is the object basename.
+    For REAL data, replace coco_demo — this step itself is source-agnostic plumbing."""
     s3_cols = ["image_name", "image_url"]
     gt_cols = ["image_name", "bboxes", "labels"]
     tag_cols = ["tag_id", "tag_name", "tag_description"]
@@ -86,42 +33,9 @@ def load_batch(df_request: pd.DataFrame):
                 pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols),
                 pd.DataFrame(columns=hint_cols))
 
-    # Prefer a pre-staged local cache (fast, no COCO): CACHE/images/<fn> + CACHE/gt.json.
-    # Download the cache once on a fast machine and copy it here — avoids per-image COCO fetches.
-    cache_gt_path = CACHE / "gt.json"
-    use_cache = cache_gt_path.exists() and (CACHE / "images").is_dir()
-    if use_cache:
-        cache_gt = json.loads(cache_gt_path.read_text())
-        pool = sorted(cache_gt.keys())  # deterministic order
-        random.seed(RNG_SEED)
-        random.shuffle(pool)
-        anns = None
-    else:
-        id_to_img, anns = _coco_annotations_by_image()
-        by_id = sorted(anns.keys())
-        random.seed(RNG_SEED)
-        random.shuffle(by_id)
-        pool = [id_to_img[i]["file_name"] for i in by_id]  # file names, same order semantics
-
+    source = CocoDemoSource()   # demo data (COCO cat/dog); for real data swap coco_demo.py
     fs = fsspec.filesystem("s3", **input_storage_options())
     bucket = input_bucket()
-
-    def raw_bytes_and_gt(fn: str):
-        if use_cache:
-            data = (CACHE / "images" / fn).read_bytes()
-            g = cache_gt[fn]
-            return data, g["bboxes"], g["labels"]
-        # COCO fallback
-        # map filename back to id via anns lookup (filename -> id): rebuild once
-        raw = _get(COCO_IMG_BASE + fn).content
-        iid = _fn_to_id[fn]
-        boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
-                  int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])] for a in anns[iid]]
-        labels = [COCO_CAT_IDS[a["category_id"]] for a in anns[iid]]
-        return raw, boxes, labels
-
-    if not use_cache:
-        _fn_to_id = {id_to_img[i]["file_name"]: i for i in anns.keys()}
 
     s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
     for _, req in df_request.iterrows():
@@ -136,14 +50,12 @@ def load_batch(df_request: pd.DataFrame):
         subset = None if pd.isna(subset) or str(subset) == "" else str(subset)
         darken = req.get("darken")
         darken = None if pd.isna(darken) or str(darken) == "" else float(darken)
-        for fn in pool[offset: offset + n]:
+        for fn in source.pool[offset: offset + n]:
             stem, ext = os.path.splitext(fn)
-            raw, boxes, labels = raw_bytes_and_gt(fn)
+            raw, boxes, labels = source.fetch(fn)
             if darken is not None:
                 name = f"{stem}__{tag or 'dark'}{ext}"
-                buf = io.BytesIO()
-                _darken(Image.open(io.BytesIO(raw)), darken).save(buf, format="JPEG", quality=92)
-                data = buf.getvalue()
+                data = demo_darken(raw, darken)
             else:
                 name, data = fn, raw
             fs.pipe(f"{bucket}/images/{name}", data)
