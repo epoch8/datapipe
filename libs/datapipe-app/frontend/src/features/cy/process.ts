@@ -1,6 +1,39 @@
 import { GraphData, MetaNode, TransformNode } from "../../types";
 import Cytoscape from "cytoscape";
 
+type TableOrderSource = "consumer" | "producer";
+
+function tableOrderKey(
+    baseOrderKey: string | undefined,
+    role: "in" | "out",
+    index: number,
+): string | undefined {
+    if (!baseOrderKey) return undefined;
+    return `${baseOrderKey}.${role}.${String(index).padStart(4, "0")}`;
+}
+
+function shouldReplaceTableOrder(
+    existing: Cytoscape.NodeDataDefinition | undefined,
+    nextOrderKey: string | undefined,
+    source: TableOrderSource,
+): boolean {
+    if (!nextOrderKey) return false;
+
+    const currentOrderKey = existing?.pipelineOrderKey as string | undefined;
+    const currentSource = existing?.tableOrderSource as TableOrderSource | undefined;
+
+    if (!currentOrderKey) return true;
+
+    // Output tables should stay near the transform/meta-step that produced them.
+    // A later consumer must not pull a produced table sideways across the graph.
+    if (source === "producer" && currentSource !== "producer") return true;
+    if (source === "consumer" && currentSource === "producer") return false;
+
+    // Among producers, or among source-only consumer anchors, keep the earliest
+    // pipeline occurrence for deterministic stable ordering.
+    return nextOrderKey.localeCompare(currentOrderKey) < 0;
+}
+
 function hasTransformPath(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     source: string,
@@ -24,16 +57,29 @@ function ensureTable(
     data: GraphData,
     tableName: string,
     metaGroup?: string,
+    pipelineIndex?: number,
+    pipelineOrderKey?: string,
+    tableOrderSource: TableOrderSource = "consumer",
 ) {
     const properties = data.catalog[tableName];
     if (!properties) return;
 
     const tableData = nodes.get(tableName);
+    const orderPatch =
+        shouldReplaceTableOrder(tableData, pipelineOrderKey, tableOrderSource)
+            ? {
+                  pipelineIndex,
+                  pipelineOrderKey,
+                  tableOrderSource,
+              }
+            : {};
+
     nodes.set(tableName, {
         ...tableData,
         ...properties,
         type: "table",
         name: tableName,
+        ...orderPatch,
         ...(metaGroup ? { metaGroup } : {}),
     });
 }
@@ -63,12 +109,28 @@ function addTransformNode(
         ...(pipelineOrderKey ? { pipelineOrderKey } : {}),
     });
 
-    (pipe.inputs || []).forEach((input: string) => {
-        ensureTable(nodes, data, input, metaGroup);
+    (pipe.inputs || []).forEach((input: string, inputIndex: number) => {
+        ensureTable(
+            nodes,
+            data,
+            input,
+            metaGroup,
+            pipelineIndex,
+            tableOrderKey(pipelineOrderKey, "in", inputIndex),
+            "consumer",
+        );
         edges.add({ source: input, target: nodeName });
     });
-    (pipe.outputs || []).forEach((output: string) => {
-        ensureTable(nodes, data, output, metaGroup);
+    (pipe.outputs || []).forEach((output: string, outputIndex: number) => {
+        ensureTable(
+            nodes,
+            data,
+            output,
+            metaGroup,
+            pipelineIndex,
+            tableOrderKey(pipelineOrderKey, "out", outputIndex),
+            "producer",
+        );
         edges.add({ source: nodeName, target: output });
     });
 }
@@ -99,12 +161,28 @@ function addCollapsedMeta(
         ...(pipelineOrderKey ? { pipelineOrderKey } : {}),
     });
 
-    (pipe.inputs || []).forEach((input: string) => {
-        ensureTable(nodes, data, input);
+    (pipe.inputs || []).forEach((input: string, inputIndex: number) => {
+        ensureTable(
+            nodes,
+            data,
+            input,
+            undefined,
+            pipelineIndex,
+            tableOrderKey(pipelineOrderKey, "in", inputIndex),
+            "consumer",
+        );
         edges.add({ source: input, target: pipe.name });
     });
-    (pipe.outputs || []).forEach((output: string) => {
-        ensureTable(nodes, data, output);
+    (pipe.outputs || []).forEach((output: string, outputIndex: number) => {
+        ensureTable(
+            nodes,
+            data,
+            output,
+            undefined,
+            pipelineIndex,
+            tableOrderKey(pipelineOrderKey, "out", outputIndex),
+            "producer",
+        );
         edges.add({ source: pipe.name, target: output });
     });
 }
