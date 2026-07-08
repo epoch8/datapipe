@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
@@ -20,7 +20,7 @@ from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, requi
 from sqlalchemy import Column, Float, and_, func, select, tuple_
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, pipeline_output_as_input, get_datatable, get_pipeline_table_name
+from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name, pipeline_output_as_input
 from datapipe_ml.metrics.common import (
     CLASS_METRIC_COLUMNS,
     KNOWN_OVERALL_METRIC_COLUMNS,
@@ -29,6 +29,15 @@ from datapipe_ml.metrics.common import (
     macro_weighted_metric_selects,
     precision_recall_f1,
     stable_unique,
+)
+from datapipe_ml.metrics.inputs import (
+    build_ground_truth_batch_inputs,
+    get_ground_truth_datatables,
+    merged_ground_truth_primary_schema,
+    model_primary_key_columns,
+    model_primary_keys_in_table,
+    primary_ground_truth_input,
+    wrap_ground_truth_inputs,
 )
 
 
@@ -403,7 +412,7 @@ def count_classification_metrics_on_subset(
 
 @dataclass
 class CountMetrics_Subset_ClassificationModel(PipelineStep):
-    input__image__ground_truth: PipelineInput
+    input__image__ground_truth: PipelineInput | Sequence[PipelineInput]
     input__subset__has__image: PipelineInput
     input__classification_prediction: PipelineInput
     output__classification_model__metrics__on__image: PipelineOutput
@@ -424,16 +433,27 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
         if self.classification_model_primary_keys is None:
             self.classification_model_primary_keys = ["classification_model_id"]
 
-        check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys + ["label"])
+        primary_gt = primary_ground_truth_input(self.input__image__ground_truth)
+        prediction_model_keys = model_primary_keys_in_table(
+            ds, self.input__classification_prediction, self.classification_model_primary_keys
+        )
+        check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys)
+        check_columns_are_in_table(ds, primary_gt, self.primary_keys + ["label"])
         check_columns_are_in_table(ds, self.input__subset__has__image, ["subset_id"])
         check_columns_are_in_table(
             ds,
             self.input__classification_prediction,
-            self.primary_keys + self.classification_model_primary_keys + ["label", "prediction__top_n"],
+            self.primary_keys + prediction_model_keys + ["label", "prediction__top_n"],
         )
 
-        dt__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__image__ground_truth_tables = get_ground_truth_datatables(ds, self.input__image__ground_truth)
         dt__classification_prediction = get_datatable(ds, self.input__classification_prediction)
+        model_key_columns = model_primary_key_columns(
+            ds,
+            self.classification_model_primary_keys,
+            prediction=self.input__classification_prediction,
+            ground_truth=self.input__image__ground_truth,
+        )
 
         catalog.add_datatable(
             get_pipeline_table_name(self.output__classification_model__metrics__on__image),
@@ -443,11 +463,7 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__classification_model__metrics__on__image),
-                        data_sql_schema=[
-                            column
-                            for column in dt__image__ground_truth.primary_schema
-                            if column.name not in ["subset_id"]
-                        ]
+                        data_sql_schema=merged_ground_truth_primary_schema(dt__image__ground_truth_tables)
                         + [
                             column
                             for column in dt__classification_prediction.primary_schema
@@ -476,11 +492,7 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__classification_model__metrics_by_cls_on__subset),
-                        data_sql_schema=[
-                            column
-                            for column in dt__classification_prediction.primary_schema
-                            if column.name in self.classification_model_primary_keys
-                        ]
+                        data_sql_schema=model_key_columns
                         + [
                             Column("subset_id", String, primary_key=True),
                             Column("label", String, primary_key=True),
@@ -511,11 +523,7 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__classification_model__metrics_on__subset),
-                        data_sql_schema=[
-                            column
-                            for column in dt__classification_prediction.primary_schema
-                            if column.name in self.classification_model_primary_keys
-                        ]
+                        data_sql_schema=model_key_columns
                         + [
                             Column("subset_id", String, primary_key=True),
                             Column("calc__images_support", Integer),
@@ -529,12 +537,17 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
             ),
         )
 
+        ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=count_classification_metrics_on_image,
+                    func=wrap_ground_truth_inputs(
+                        count_classification_metrics_on_image,
+                        n_ground_truth_inputs=len(ground_truth_inputs),
+                        primary_keys=self.primary_keys,
+                    ),
                     inputs=[
-                        self.input__image__ground_truth,
+                        *ground_truth_inputs,
                         required_pipeline_input(self.input__subset__has__image),
                         required_pipeline_input(self.input__classification_prediction),
                     ],

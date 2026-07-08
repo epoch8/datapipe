@@ -5,7 +5,7 @@ Studio and no FiftyOne**. Ground truth is injected directly (COCO labels, lowerc
 so the whole thing runs unattended from scratch.
 
 The point: train a baseline, then add a **tagged scenario batch**, retrain, and watch the metric on
-that tag rise — visible in a dedicated `tag_metrics` table (a real pipeline step).
+that tag rise — visible in `pipeline_model__metrics_by_tag_on_subset` (a real pipeline step).
 
 ## Deploy from scratch
 ```bash
@@ -13,8 +13,13 @@ cp .env.example .env && set -a && source .env && set +a
 docker compose up -d            # postgres + minio only
 uv sync                         # cu124 torch, polars-lts-cpu, pi-heif baked in
 cd detection
-psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"   # db create-all makes tables, not the schema
-datapipe db create-all
+psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"   # create-all makes tables, not the schema
+uv run datapipe db create-all   # required on first run (and after schema-breaking changes)
+```
+
+## Ops smoke data (optional)
+```bash
+uv run python ../scripts/seed_ops_smoke.py
 ```
 
 ## Two-step data load — via datapipe steps (no annotation)
@@ -29,7 +34,7 @@ datapipe step --labels=stage=train run         # -> model A (baseline, no tag in
 python ../scripts/add_request.py --id night --n 50 --offset 450 --tag night --darken 0.25
 datapipe step --labels=stage=load run          # batch 2: tagged low-light scenario
 datapipe step --labels=stage=train run         # -> model B (tag in training)
-datapipe step --labels=stage=count-metrics run # (re)compute metrics incl. tag_metrics
+datapipe step --labels=stage=count-metrics run # (re)compute overall + tag metrics
 ```
 Or just `datapipe run` after adding request rows to run every stage.
 
@@ -44,14 +49,16 @@ downloading the COCO cat/dog subset elsewhere and copying the folder to `DATAPIP
 
 ## What you get
 - `detection_model_train` — trained model(s).
-- `detection_model_train__metrics_on_subset` — overall metrics per model.
-- **`tag_metrics`** — `(detection_model_id, tag_id, subset_id)` → precision/recall/f1. Compare the
-  baseline (trained before batch 2) vs the retrained model on `tag=night, subset=val`: the tag recall
-  rises once the tagged batch is in training.
+- `pipeline_model__metrics_on_subset` — overall weighted/macro metrics per model.
+- `pipeline_model__metrics_by_cls_on_subset` — per-class metrics per model/subset.
+- **`pipeline_model__metrics_by_tag_on_subset`** — `(detection_model_id, tag_id, subset_id)` metrics.
+  The same tag can appear for multiple models (compare baseline vs retrained on `batch_night`).
+- `pipeline_model__metrics_by_tag_by_cls_on_subset` — per-class metrics within each tag slice.
 
 ## Notes
 - Classes are lowercase (`cat`/`dog`) to match COCO, so injected GT and predictions align.
 - On a tiny validation set the "best epoch" pick can latch onto an early checkpoint; this example
   uses 50 epochs and a non-trivial batch size to keep metrics meaningful.
-- Tables `tag` / `image__tag` are external inputs (produced by the `load` step); `tag_metrics` is
-  produced by a pipeline `BatchTransform` (`steps.compute_tag_metrics`).
+- Tables `tag` / `image__tag` are external inputs (produced by the `load` step). Metric tables are
+  created by `CountMetrics_Subset_PipelineModel` — run `datapipe db create-all` before the first
+  pipeline run.

@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Type, Union
 
@@ -23,6 +23,13 @@ from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+from datapipe_ml.metrics.inputs import (
+    build_ground_truth_batch_inputs,
+    ground_truth_convert_keys,
+    model_primary_keys_in_table,
+    primary_ground_truth_input,
+    wrap_ground_truth_inputs,
+)
 
 DETECTION_METRIC_COLUMNS = [
     "calc__images_support",
@@ -92,7 +99,8 @@ def count_keypoints_metrics_on_subset(
 
     subset_id = df__subset__has__image.iloc[0]["subset_id"]
     df__gt = pd.merge(df__image__ground_truth, df__subset__has__image)
-    df__true_images_data = convert_df_with_bbox_to_df_with_image_data(df__gt, primary_keys, bbox_id__name)
+    gt_convert_keys = ground_truth_convert_keys(primary_keys, keypoints_model_primary_keys, df__gt)
+    df__true_images_data = convert_df_with_bbox_to_df_with_image_data(df__gt, gt_convert_keys, bbox_id__name)
     df__pred_images_data = convert_df_with_bbox_to_df_with_image_data(
         df__keypoints_prediction, primary_keys, bbox_id__name
     )
@@ -114,7 +122,7 @@ def count_keypoints_metrics_on_subset(
 
 @dataclass
 class CountMetrics_Subset_KeypointsModel(PipelineStep):
-    input__image__ground_truth: PipelineInput
+    input__image__ground_truth: PipelineInput | Sequence[PipelineInput]
     input__subset__has__image: PipelineInput
     input__keypoints_model: PipelineInput
     input__keypoints_prediction: PipelineInput
@@ -133,25 +141,30 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
         if self.keypoints_model_primary_keys is None:
             self.keypoints_model_primary_keys = ["keypoints_model_id"]
         check_columns_are_in_table(ds, self.input__subset__has__image, ["subset_id"])
+        primary_gt = primary_ground_truth_input(self.input__image__ground_truth)
+        prediction_model_keys = model_primary_keys_in_table(
+            ds, self.input__keypoints_prediction, self.keypoints_model_primary_keys
+        )
+        check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys)
         if self.bbox_id__name is not None:
             check_columns_are_in_table(
                 ds,
-                self.input__image__ground_truth,
+                primary_gt,
                 self.primary_keys + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max", "keypoints"],
             )
             check_columns_are_in_table(
                 ds,
                 self.input__keypoints_prediction,
                 self.primary_keys
-                + self.keypoints_model_primary_keys
+                + prediction_model_keys
                 + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max", "keypoints"],
             )
         else:
-            check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys + ["bboxes", "keypoints"])
+            check_columns_are_in_table(ds, primary_gt, self.primary_keys + ["bboxes", "keypoints"])
             check_columns_are_in_table(
                 ds,
                 self.input__keypoints_prediction,
-                self.primary_keys + self.keypoints_model_primary_keys + ["bboxes", "keypoints"],
+                self.primary_keys + prediction_model_keys + ["bboxes", "keypoints"],
             )
         check_columns_are_in_table(ds, self.input__keypoints_model, self.keypoints_model_primary_keys)
         dt__pred = get_datatable(ds, self.input__keypoints_prediction)
@@ -192,12 +205,17 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
                 ).table_store
             ),
         )
+        ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=count_keypoints_metrics_on_subset,
+                    func=wrap_ground_truth_inputs(
+                        count_keypoints_metrics_on_subset,
+                        n_ground_truth_inputs=len(ground_truth_inputs),
+                        primary_keys=self.primary_keys,
+                    ),
                     inputs=[
-                        self.input__image__ground_truth,
+                        *ground_truth_inputs,
                         required_pipeline_input(self.input__subset__has__image),
                         self.input__keypoints_model,
                         required_pipeline_input(self.input__keypoints_prediction),

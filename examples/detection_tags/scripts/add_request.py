@@ -5,19 +5,18 @@
     # batch 2 — tagged low-light scenario
     python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
 
-Run from examples/detection_tags/detection (so `import config` resolves)."""
+Run from examples/detection_tags/detection after `datapipe db create-all`."""
 from __future__ import annotations
 
 import argparse
 import sys
 
 import pandas as pd
-from sqlalchemy import Column, Float, Integer, String
 
 sys.path.insert(0, ".")
 import config  # noqa: E402
+from data import catalog  # noqa: E402
 from datapipe.datatable import DataStore  # noqa: E402
-from datapipe.store.database import TableStoreDB  # noqa: E402
 
 
 def main() -> int:
@@ -29,15 +28,8 @@ def main() -> int:
     ap.add_argument("--darken", type=float, default=None, help="gamma < 1 darkens (e.g. 0.1)")
     a = ap.parse_args()
 
-    ds = DataStore(config.DBCONN, create_meta_table=True)
-    dt = ds.get_or_create_table("load_request", TableStoreDB(
-        dbconn=config.DBCONN, name="load_request",
-        data_sql_schema=[
-            Column("request_id", String, primary_key=True),
-            Column("n", Integer), Column("offset", Integer),
-            Column("tag", String), Column("darken", Float),
-        ], create_table=True))
-    dt.store_chunk(pd.DataFrame([{
+    ds = DataStore(config.DBCONN)
+    catalog.get_datatable(ds, "load_request").store_chunk(pd.DataFrame([{
         "request_id": a.id, "n": a.n, "offset": a.offset, "tag": a.tag, "darken": a.darken,
     }]))
     print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} darken={a.darken}")
