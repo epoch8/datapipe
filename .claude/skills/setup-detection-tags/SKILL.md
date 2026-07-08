@@ -217,12 +217,11 @@ When you show metrics, dump the **whole** table, not a truncated view. Both of t
 docker exec <pg> psql -U postgres -x -c \
   "SELECT * FROM $DB_SCHEMA.detection_model_train__metrics_on_subset ORDER BY detection_model_id, subset_id"
 docker exec <pg> psql -U postgres -x -c \
-  "SELECT tm.*, t.tag_name FROM $DB_SCHEMA.tag_metrics tm JOIN $DB_SCHEMA.tag t USING(tag_id) \
-   ORDER BY tm.detection_model_id, tm.tag_id, tm.subset_id"
+  "SELECT * FROM $DB_SCHEMA.tag_metrics ORDER BY detection_model_id, tag_id, subset_id"
 ```
 
-`tag_id` is a numeric surrogate key (deterministic map in `config.TAG_IDS`, e.g. `night`→1); the
-`tag` dimension holds `tag_name`/`tag_description`, so join it to show the readable name.
+`tag_id` **is the tag name itself** (text, e.g. `night`) — no numeric surrogate, no join needed. The
+`tag` dimension is two columns: `tag_id` (name) + `tag_description` (readable, notes darkening).
 
 The payoff comparison: `tag_metrics` at `tag=night, subset=val`, model A vs model B — recall rises.
 The night/val set is small (25 images), so treat the rise as **directional**.

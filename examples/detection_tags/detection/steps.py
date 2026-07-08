@@ -13,8 +13,6 @@ from config import (
     input_bucket,
     input_image_url,
     input_storage_options,
-    tag_id_for,
-    tag_name_for,
 )
 
 # --- load step (demo: pulls images/GT from coco_demo; swap that module for real data) -----------
@@ -25,7 +23,7 @@ def load_batch(df_request: pd.DataFrame):
     For REAL data, replace coco_demo — this step itself is source-agnostic plumbing."""
     s3_cols = ["image_name", "image_url"]
     gt_cols = ["image_name", "bboxes", "labels"]
-    tag_cols = ["tag_id", "tag_name", "tag_description"]
+    tag_cols = ["tag_id", "tag_description"]
     it_cols = ["image_name", "tag_id"]
     hint_cols = ["image_name", "subset_id"]
     if df_request.empty:
@@ -62,19 +60,18 @@ def load_batch(df_request: pd.DataFrame):
             s3_rows.append({"image_name": name, "image_url": input_image_url(name)})
             gt_rows.append({"image_name": name, "bboxes": boxes, "labels": labels})
             if tag:
-                tid = tag_id_for(tag)
-                tag_rows.append({"image_name": name, "tag_id": tid})
-                # tag_defs[name] = (numeric id, readable description); note darkening if any
+                tag_rows.append({"image_name": name, "tag_id": tag})
+                # tag_defs[name] = readable description; note darkening if any
                 desc = tag if darken is None else f"{tag} (low-light, gamma {darken})"
-                tag_defs[tag] = (tid, desc)
+                tag_defs[tag] = desc
             if subset:
                 hint_rows.append({"image_name": name, "subset_id": subset})
 
     return (
         pd.DataFrame(s3_rows, columns=s3_cols),
         pd.DataFrame(gt_rows, columns=gt_cols),
-        pd.DataFrame([{"tag_id": tid, "tag_name": nm, "tag_description": d}
-                      for nm, (tid, d) in tag_defs.items()], columns=tag_cols),
+        pd.DataFrame([{"tag_id": nm, "tag_description": d}
+                      for nm, d in tag_defs.items()], columns=tag_cols),
         pd.DataFrame(tag_rows, columns=it_cols),
         pd.DataFrame(hint_rows, columns=hint_cols),
     )
@@ -166,10 +163,10 @@ def publish_gt_to_fiftyone(images_df: pd.DataFrame, gt_df: pd.DataFrame, subset_
                       if not tag_df.empty else {})
     for _, row in df.iterrows():
         tid = tagid_by_image.get(row[pk])
-        # FiftyOne sample fields must be strings; write the tag NAME (not the numeric id)
+        # tag_id is already the readable tag name (text), so write it straight to the sample field
         row["image_data"].additional_info = {
             "subset": subset_by_image.get(row[pk]) or "none",
-            "tag": tag_name_for(tid) if tid is not None else "none",
+            "tag": tid if tid is not None else "none",
         }
     return df
 

@@ -65,15 +65,14 @@ catalog = Catalog(
             Column("subset_id", String),
         ]),
         # --- tags -------------------------------------------------------------
-        # tag dimension: numeric tag_id (surrogate key), tag_name (slug), tag_description (readable)
+        # tag dimension: tag_id is the tag NAME itself (text) + a readable description (two columns)
         "tag": _t("tag", [
-            Column("tag_id", Integer, primary_key=True),
-            Column("tag_name", String),
+            Column("tag_id", String, primary_key=True),
             Column("tag_description", String),
         ]),
         "image__tag": _t("image__tag", [
             Column("image_name", String, primary_key=True),
-            Column("tag_id", Integer, primary_key=True),
+            Column("tag_id", String, primary_key=True),
         ]),
         # per-image metrics produced by the CountMetrics step (declared so the
         # tag-metrics transform can read it as an input)
@@ -90,7 +89,7 @@ catalog = Catalog(
         # per-(model, tag, subset) metrics — the tag arc lives here
         "tag_metrics": _t("tag_metrics", [
             Column("detection_model_id", String, primary_key=True),
-            Column("tag_id", Integer, primary_key=True),
+            Column("tag_id", String, primary_key=True),
             Column("subset_id", String, primary_key=True),
             Column("calc__images_support", Integer),
             Column("calc__support", Integer),

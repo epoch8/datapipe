@@ -22,20 +22,8 @@ DETECTION_CLASSES = ["cat", "dog"]
 COCO_CAT_IDS = {17: "cat", 18: "dog"}  # COCO category_id -> class name
 
 # --- tags -----------------------------------------------------------------------
-# Numeric tag ids must be DETERMINISTIC (datapipe re-runs), so map known tag names to
-# fixed ids; unknown names fall back to a stable crc32-derived number.
-import zlib  # noqa: E402
-
-TAG_IDS = {"night": 1}
-TAG_NAMES = {v: k for k, v in TAG_IDS.items()}
-
-
-def tag_id_for(name: str) -> int:
-    return TAG_IDS.get(name) or (zlib.crc32(name.encode()) % 100000)
-
-
-def tag_name_for(tag_id) -> str:
-    return TAG_NAMES.get(tag_id, str(tag_id))
+# tag_id is the human-readable tag NAME itself (text). Two columns only: (tag_id, tag_description).
+# No numeric surrogate / separate tag_name — the UI shows the tag by name directly.
 
 # --- single storage root --------------------------------------------------------
 # Input images live under <root>/images; the pipeline working_dir under <root>/datapipe
