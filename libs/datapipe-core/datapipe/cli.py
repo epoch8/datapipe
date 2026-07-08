@@ -91,6 +91,30 @@ def filter_steps_by_labels_and_name(
     return res
 
 
+def _try_run_steps_observed(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    executor: Executor,
+    labels: Labels,
+    pipeline_spec: str | None,
+    record: bool = True,
+) -> bool:
+    try:
+        from datapipe_app.observability.cli_runner import try_run_steps_observed
+
+        return try_run_steps_observed(
+            app,
+            steps,
+            executor=executor,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+            record=record,
+        )
+    except ImportError:
+        return False
+
+
 @click.group()
 @click.option("--debug", is_flag=True, help="Log debug output")
 @click.option("--debug-sql", is_flag=True, help="Log SQL queries VERY VERBOSE")
@@ -212,14 +236,32 @@ def table_list(ctx: click.Context) -> None:
 
 
 @cli.command(name="run")
+@click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
+@click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option("--no-record", is_flag=True, default=False, help="Do not persist this run to Ops observability")
 @click.pass_context
-def main_run(ctx: click.Context) -> None:
+def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
+    executor: Executor = ctx.obj["executor"]
+    pipeline_spec = ctx.params.get("pipeline", "app")
 
     with tracer.start_as_current_span("run"):
-        from datapipe.compute import run_steps
+        while True:
+            if not _try_run_steps_observed(
+                app,
+                app.steps,
+                executor=executor,
+                labels=[],
+                pipeline_spec=pipeline_spec,
+                record=not no_record,
+            ):
+                run_steps(app.ds, app.steps, executor=executor)
 
-        run_steps(app.ds, app.steps)
+            if not loop:
+                break
+            print(f"Loop ended, sleeping {loop_delay}s...")
+            time.sleep(loop_delay)
+            print("\n\n")
 
 
 @cli.group()
@@ -338,6 +380,7 @@ def step(
     steps = filter_steps_by_labels_and_name(app, labels=labels_list, name_prefix=name)
 
     ctx.obj["steps"] = steps
+    ctx.obj["step_labels"] = labels_list
 
 
 def to_human_repr(step: ComputeStep, extra_args: dict | None = None) -> str:
@@ -391,19 +434,31 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 @step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option("--no-record", is_flag=True, default=False, help="Do not persist this run to Ops observability")
 @click.pass_context
-def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: list[ComputeStep] = ctx.obj["steps"]
 
     executor: Executor = ctx.obj["executor"]
+    labels: Labels = ctx.obj.get("step_labels", [])
+    parent = ctx.parent
+    pipeline_spec = parent.params.get("pipeline", "app") if parent is not None else "app"
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run, executor=executor)
+            if not _try_run_steps_observed(
+                app,
+                steps_to_run,
+                executor=executor,
+                labels=labels,
+                pipeline_spec=pipeline_spec,
+                record=not no_record,
+            ):
+                run_steps(app.ds, steps_to_run, executor=executor)
 
         if not loop:
             break

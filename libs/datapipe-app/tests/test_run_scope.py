@@ -35,3 +35,7 @@ def test_derive_from_trigger_only() -> None:
     scope = derive_run_scope(labels=[], trigger="api:stage:fiftyone")
     assert scope["run_scope"] == "stage_run"
     assert scope["target_label_display"] == "fiftyone"
+
+    cli_scope = derive_run_scope(labels=[], trigger="cli:stage:train")
+    assert cli_scope["run_scope"] == "stage_run"
+    assert cli_scope["target_label_display"] == "train"

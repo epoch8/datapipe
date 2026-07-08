@@ -5,6 +5,7 @@ from contextlib import AbstractContextManager, contextmanager
 from typing import Generator, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore
+from datapipe.executor import Executor
 
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
@@ -187,6 +188,7 @@ class RunRecorder:
         *,
         ds: DataStore,
         run_id: Optional[str] = None,
+        executor: Executor | None = None,
         on_step_failure: Literal["raise", "return"] = "raise",
     ) -> None:
         rid = self._run_id(run_id)
@@ -195,7 +197,7 @@ class RunRecorder:
         for step in steps:
             self.start_step(step.name, run_id=rid)
             try:
-                step.run_full(ds=ds, run_config=None, executor=None)  # type: ignore[arg-type]
+                step.run_full(ds=ds, run_config=None, executor=executor)  # type: ignore[arg-type]
                 self.finish_step(step.name, status="completed", run_id=rid)
             except Exception as exc:
                 error = str(exc)

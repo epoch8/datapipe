@@ -2,11 +2,21 @@ import type { RunDetail } from "../../../types/ops";
 
 export type RunScopeKind = "full_pipeline" | "stage_run" | "label_run";
 
+const STAGE_TRIGGER_PREFIXES = ["api:stage:", "cli:stage:"] as const;
+
+function stageFromTrigger(trigger?: string): string | null {
+    if (!trigger) return null;
+    for (const prefix of STAGE_TRIGGER_PREFIXES) {
+        if (trigger.startsWith(prefix)) return trigger.slice(prefix.length);
+    }
+    return null;
+}
+
 export function resolveRunScopeDisplay(run: Pick<
     RunDetail,
     "run_scope" | "target_label_display" | "target_labels" | "trigger"
 >): { scopeLabel: string; targetLabel: string; highlightLabel: string | null } {
-    if (run.run_scope === "full_pipeline" || (!run.target_labels?.length && run.trigger === "api:pipeline")) {
+    if (run.run_scope === "full_pipeline" || (!run.target_labels?.length && (run.trigger === "api:pipeline" || run.trigger === "cli:pipeline"))) {
         return { scopeLabel: "full pipeline", targetLabel: "all labels", highlightLabel: null };
     }
     if (run.target_label_display) {
@@ -16,13 +26,13 @@ export function resolveRunScopeDisplay(run: Pick<
             highlightLabel: run.target_label_display,
         };
     }
-    if (run.trigger?.startsWith("api:stage:")) {
-        const stage = run.trigger.slice("api:stage:".length);
-        return { scopeLabel: "stage run", targetLabel: stage, highlightLabel: stage };
+    const triggerStage = stageFromTrigger(run.trigger);
+    if (triggerStage) {
+        return { scopeLabel: "stage run", targetLabel: triggerStage, highlightLabel: triggerStage };
     }
-    const stage = run.target_labels?.find(([key]) => key === "stage")?.[1];
-    if (stage) {
-        return { scopeLabel: "stage run", targetLabel: stage, highlightLabel: stage };
+    const labelStage = run.target_labels?.find(([key]) => key === "stage")?.[1];
+    if (labelStage) {
+        return { scopeLabel: "stage run", targetLabel: labelStage, highlightLabel: labelStage };
     }
     return { scopeLabel: "full pipeline", targetLabel: "all labels", highlightLabel: null };
 }
@@ -33,10 +43,9 @@ export function formatRunListStage(row: {
     trigger?: string;
 }): string {
     if (row.target_label) return row.target_label;
-    if (row.trigger?.startsWith("api:stage:")) {
-        return row.trigger.slice("api:stage:".length);
-    }
-    if (row.trigger === "api:pipeline" || row.scope === "full_pipeline") {
+    const stage = stageFromTrigger(row.trigger);
+    if (stage) return stage;
+    if (row.trigger === "api:pipeline" || row.trigger === "cli:pipeline" || row.scope === "full_pipeline") {
         return "all labels";
     }
     return row.trigger ?? "—";

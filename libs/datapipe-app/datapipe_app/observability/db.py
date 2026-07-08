@@ -21,6 +21,11 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
 from datapipe_app.db_schema import ObservabilityBase
 from datapipe_app.db_schema import apply_observability_table_config
+from datapipe_app.observability.run_triggers import (
+    pipeline_trigger_values,
+    stage_from_trigger,
+    stage_trigger_values,
+)
 from datapipe_app.observability.tables import ObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
@@ -414,9 +419,9 @@ class ObservabilityStore:
                 query = query.where(PipelineRunRow.trigger == trigger)
             if stage:
                 if stage == "all labels":
-                    query = query.where(PipelineRunRow.trigger == "api:pipeline")
+                    query = query.where(PipelineRunRow.trigger.in_(pipeline_trigger_values()))
                 else:
-                    query = query.where(PipelineRunRow.trigger == f"api:stage:{stage}")
+                    query = query.where(PipelineRunRow.trigger.in_(stage_trigger_values(stage)))
             if search:
                 query = query.where(PipelineRunRow.run_id.contains(search))
             if from_dt:
@@ -435,9 +440,10 @@ class ObservabilityStore:
         triggers = sorted({trigger for r in all_for_filters if (trigger := r.trigger)})
         stages: set[str] = set()
         for row in all_for_filters:
-            if row.trigger and row.trigger.startswith("api:stage:"):
-                stages.add(row.trigger[len("api:stage:") :])
-            elif row.trigger == "api:pipeline":
+            stage = stage_from_trigger(row.trigger)
+            if stage:
+                stages.add(stage)
+            elif row.trigger in pipeline_trigger_values():
                 stages.add("all labels")
 
         counts_by_status: dict[str, int] = {}
@@ -518,7 +524,7 @@ class ObservabilityStore:
                     .where(
                         PipelineRunRow.pipeline_id == pipeline_id,
                         PipelineRunRow.status == "running",
-                        PipelineRunRow.trigger == f"api:stage:{stage_name}",
+                        PipelineRunRow.trigger.in_(stage_trigger_values(stage_name)),
                     )
                     .order_by(PipelineRunRow.started_at.desc())
                     .limit(limit)

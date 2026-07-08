@@ -3,9 +3,11 @@ import type { RecentRunSummary } from "../../../types/ops";
 /** Human-readable label scope for a pipeline run trigger. */
 export function formatRunTriggerLabel(trigger?: string | null): string | null {
     if (!trigger) return null;
-    if (trigger === "api:pipeline") return "all stages";
-    if (trigger.startsWith("api:stage:")) {
-        return trigger.slice("api:stage:".length) || null;
+    if (trigger === "api:pipeline" || trigger === "cli:pipeline") return "all stages";
+    for (const prefix of ["api:stage:", "cli:stage:"]) {
+        if (trigger.startsWith(prefix)) {
+            return trigger.slice(prefix.length) || null;
+        }
     }
     return trigger;
 }
