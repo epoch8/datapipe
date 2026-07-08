@@ -194,6 +194,32 @@ export function parseUrlFilterState(searchParams: URLSearchParams): OpsFilterSta
     return { mode, rules: ensureRuleIds(decodeFiltersParam(encoded)), search };
 }
 
+export function mergeTableFilterState(
+    searchParams: URLSearchParams,
+    table: { default_filters?: OpsFilterRule[] },
+    columns: OpsColumn[],
+): OpsFilterState {
+    const fromUrl = parseUrlFilterState(searchParams);
+    if (searchParams.has("filters")) {
+        return fromUrl;
+    }
+    const defaults = table.default_filters ?? [];
+    if (!defaults.length) {
+        return fromUrl;
+    }
+    return {
+        mode: fromUrl.mode,
+        search: fromUrl.search,
+        rules: ensureRuleIds(
+            defaults.map((rule) => ({
+                column_id: normalizeRuleColumnId(rule.column_id, columns),
+                operator: rule.operator,
+                value: rule.value,
+            })),
+        ),
+    };
+}
+
 export function expandChipValueRules(rules: OpsFilterRule[], columns: OpsColumn[]): OpsFilterRule[] {
     return rules.flatMap((rule) => {
         const column = findFilterColumn(rule.column_id, columns);

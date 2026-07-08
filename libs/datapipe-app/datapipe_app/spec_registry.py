@@ -11,6 +11,7 @@ from datapipe_app.specs import (
     OpsClassMetricTableSpec,
     OpsColumn,
     OpsColumnGroup,
+    OpsFilterRule,
     OpsMetricTableSpec,
 )
 
@@ -138,6 +139,40 @@ class OpsSpecRegistry:
             if sort_column not in allowed_sort_ids and sort_column not in allowed_source_ids:
                 raise OpsSpecValidationError(
                     f'Spec "{spec.id}": metric table "{table_spec.id}" default sort references unknown column "{sort_column}".'
+                )
+        self._validate_default_filters(spec, table_spec, metric_columns)
+
+    def _validate_default_filters(
+        self,
+        spec: DatapipeOpsSpec,
+        table_spec: OpsMetricTableSpec | OpsClassMetricTableSpec,
+        metric_columns: Sequence[OpsColumn],
+    ) -> None:
+        if not table_spec.default_filters:
+            return
+        allowed_ids: set[str] = set()
+        allowed_sources: set[str] = set()
+        for column in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]:
+            if column.filterable or column in table_spec.filters:
+                allowed_ids.add(column.id)
+                allowed_sources.add(column.source)
+        valid_operators = {"contains", "not_contains", "regex", "equal", "not_equal", "is_empty"}
+        for rule in table_spec.default_filters:
+            if not isinstance(rule, OpsFilterRule):
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" default_filters must contain OpsFilterRule values.'
+                )
+            if rule.operator not in valid_operators:
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" default filter uses unknown operator "{rule.operator}".'
+                )
+            if rule.column_id not in allowed_ids and rule.column_id not in allowed_sources:
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" default filter references unknown column "{rule.column_id}".'
+                )
+            if rule.operator != "is_empty" and (rule.value is None or not str(rule.value).strip()):
+                raise OpsSpecValidationError(
+                    f'Spec "{spec.id}": metric table "{table_spec.id}" default filter operator "{rule.operator}" requires a value.'
                 )
 
     def _validate_columns_unique(

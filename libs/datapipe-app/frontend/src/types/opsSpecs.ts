@@ -45,6 +45,7 @@ export type OpsTableSchema = {
     primary_columns: OpsColumn[];
     metric_columns: OpsMetricColumn[];
     filters: OpsColumn[];
+    default_filters?: OpsFilterRule[];
     default_sort: [string, "asc" | "desc"][];
     entity_links?: Record<string, string>;
 };

@@ -272,17 +272,13 @@ export function TableFilterBar({
                             >
                                 {(() => {
                                     const parts = formatRuleParts(rule, columns);
-                                    if (!parts.values.length) {
-                                        return `${parts.label} ${parts.operator}`;
-                                    }
                                     return (
                                         <>
-                                            <span className="ops-filter-chip-meta">
-                                                {parts.label} {parts.operator}
-                                            </span>
-                                            {parts.values.map((value) => (
-                                                <span className="ops-filter-chip-value" key={value}>
-                                                    {value}
+                                            <span className="ops-filter-chip-value">{parts.label}</span>
+                                            <span className="ops-filter-chip-meta">{parts.operator}</span>
+                                            {parts.values.map((chipValue) => (
+                                                <span className="ops-filter-chip-value" key={chipValue}>
+                                                    {chipValue}
                                                 </span>
                                             ))}
                                         </>

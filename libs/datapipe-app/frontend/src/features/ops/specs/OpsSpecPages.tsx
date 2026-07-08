@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button, Space, Table, Tabs, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { SortOrder } from "antd/es/table/interface";
 import {
     ApartmentOutlined,
     BarChartOutlined,
@@ -28,11 +29,18 @@ import {
     collectFilterColumns,
     expandChipValueRules,
     formatRule,
+    mergeTableFilterState,
     parseUrlFilterState,
     serializeFilterRules,
     writeUrlFilterState,
     type OpsFilterState,
 } from "../shared/tableFilters";
+import {
+    defaultSortState,
+    resolveSortFromTableChange,
+    serverSideSorter,
+    sortOrderForColumn,
+} from "../shared/opsTableSort";
 
 type PageKind = "frozen-datasets" | "training" | "metrics" | "class-metrics";
 type EntityKind = "frozen-dataset" | "model" | "training-run";
@@ -125,9 +133,19 @@ function renderColumn(column: OpsColumn, specId: string, fallbackKind?: string) 
         return displayValue(value);
     };
 }
-function metricColumns(table: OpsTableSchema, specId: string): ColumnsType<Row> {
+function metricColumns(table: OpsTableSchema, specId: string, sortState: { sort_by?: string; sort_dir?: "asc" | "desc" }): ColumnsType<Row> {
     const entityBySource = new Map(Object.entries(table.entity_links ?? {}).map(([entity, source]) => [source, entity]));
-    const simple = (column: OpsColumn) => ({ title: column.label, dataIndex: column.source, key: column.id, width: column.width ?? undefined, ellipsis: column.kind === "text" || column.kind === "link", render: renderColumn(column, specId, entityBySource.get(column.source)), sorter: column.sortable ? true : undefined });
+    const simple = (column: OpsColumn) => ({
+        title: column.label,
+        dataIndex: column.source,
+        key: column.id,
+        width: column.width ?? undefined,
+        ellipsis: column.kind === "text" || column.kind === "link",
+        render: renderColumn(column, specId, entityBySource.get(column.source)),
+        sorter: serverSideSorter(column),
+        sortDirections: ["ascend", "descend"] as SortOrder[],
+        sortOrder: sortOrderForColumn(column, sortState),
+    });
     return [...table.primary_columns.map(simple), ...table.metric_columns.map((column) => isGroup(column) ? { title: column.label, key: column.label, children: column.columns.map(simple) } : simple(column))];
 }
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -143,16 +161,15 @@ function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipeline
     const [searchParams, setSearchParams] = useSearchParams();
     const filterColumns = React.useMemo(() => collectFilterColumns(table), [table]);
     const entityLinks = table.entity_links ?? {};
-    const [filterState, setFilterState] = React.useState<OpsFilterState>(() => parseUrlFilterState(searchParams));
+    const [filterState, setFilterState] = React.useState<OpsFilterState>(() =>
+        mergeTableFilterState(searchParams, table, collectFilterColumns(table)),
+    );
     const [data, setData] = React.useState<OpsRowsResponse | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [page, setPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(10);
-    const [sortState, setSortState] = React.useState<{ sort_by?: string; sort_dir?: "asc" | "desc" }>({
-        sort_by: table.default_sort[0]?.[0],
-        sort_dir: table.default_sort[0]?.[1],
-    });
+    const [sortState, setSortState] = React.useState(() => defaultSortState(table));
     const debouncedSearch = useDebouncedValue(filterState.search ?? "", 300);
     const debouncedRules = useDebouncedValue(filterState.rules, 300);
 
@@ -175,7 +192,9 @@ function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipeline
         call(pipelineId, specId, table.id, params).then(setData).catch((e) => setError(String(e))).finally(() => setLoading(false));
     }, [classMetrics, debouncedRules, debouncedSearch, filterColumns, filterState.mode, page, pageSize, pipelineId, specId, sortState, table.id]);
 
-    React.useEffect(() => { setPage(1); }, [debouncedSearch, debouncedRules, filterState.mode]);
+    const tableColumns = React.useMemo(() => metricColumns(table, specId, sortState), [specId, sortState, table]);
+
+    React.useEffect(() => { setPage(1); }, [debouncedSearch, debouncedRules, filterState.mode, sortState]);
     React.useEffect(() => { load(); }, [load]);
 
     const appliedRules = serializeFilterRules(expandChipValueRules(filterState.rules, filterColumns), filterColumns);
@@ -206,7 +225,7 @@ function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipeline
                 <Table
                     className="ops-table ops-spec-table ops-table-compact"
                     size="small"
-                    columns={metricColumns(table, specId)}
+                    columns={tableColumns}
                     dataSource={data?.rows ?? []}
                     rowKey={(row, i) => `${table.id}-${String(row.model_id ?? row.dataset_id ?? row.class_id ?? i)}`}
                     pagination={{
@@ -218,9 +237,7 @@ function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipeline
                     }}
                     scroll={{ x: "max-content" }}
                     onChange={(_pagination, _filters, sorter) => {
-                        const s = Array.isArray(sorter) ? sorter[0] : sorter;
-                        const field = (s as { field?: string })?.field;
-                        setSortState({ sort_by: field ? String(field) : table.default_sort[0]?.[0], sort_dir: s?.order === "ascend" ? "asc" : "desc" });
+                        setSortState(resolveSortFromTableChange(sorter, table));
                     }}
                 />
             </EmptyState>
@@ -273,5 +290,5 @@ export function OpsEntityDetailPage({ kind }: { kind: EntityKind }) {
     const found = rows.flatMap((p) => p.rows).filter((row) => Object.values(row).some((v) => String(v) === entityId)); const record = found[0];
     const title = kind === "model" ? `Model ${entityId}` : kind === "training-run" ? `Training run ${entityId}` : `Frozen dataset ${entityId}`;
     const back = kind === "model" ? `/metrics/${specId}` : kind === "training-run" ? `/training/${specId}` : `/frozen-datasets/${specId}`;
-    return <div className="ops-page ops-spec-page"><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: spec?.title ?? specId, href: back }, { label: entityId }]} title={title} subtitle={spec?.description} onRefresh={load} /><EmptyState loading={pidLoading || loading} error={error} empty={!record && !loading}><div className="ops-entity-detail-grid"><div className="ops-panel ops-polished-panel"><div className="ops-panel-title">Source record</div><dl className="ops-source-record-dl">{Object.entries(record ?? {}).slice(0, 18).map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{displayValue(v)}</dd></React.Fragment>)}</dl></div><div className="ops-panel ops-polished-panel"><div className="ops-panel-title">Linked pages</div><div className="ops-linked-actions"><Link to={`/frozen-datasets/${specId}`}>Frozen datasets <RightOutlined /></Link><Link to={`/training/${specId}`}>Training <RightOutlined /></Link><Link to={`/metrics/${specId}`}>Metrics <RightOutlined /></Link><Link to={`/class-metrics/${specId}`}>Class metrics <RightOutlined /></Link></div></div></div>{kind === "model" && spec?.metrics.map((table, i) => <div className="ops-panel ops-polished-panel ops-spec-table-panel" key={table.id}><div className="ops-panel-title">{table.title}</div><Table className="ops-table ops-spec-table" size="small" columns={metricColumns(table, specId)} dataSource={rows[i]?.rows.filter((row) => String(row.model_id ?? row[table.entity_links?.model ?? ""]) === entityId) ?? []} rowKey={(row, idx) => `${table.id}-${idx}`} pagination={false} scroll={{ x: "max-content" }} /></div>)}</EmptyState></div>;
+    return <div className="ops-page ops-spec-page"><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: spec?.title ?? specId, href: back }, { label: entityId }]} title={title} subtitle={spec?.description} onRefresh={load} /><EmptyState loading={pidLoading || loading} error={error} empty={!record && !loading}><div className="ops-entity-detail-grid"><div className="ops-panel ops-polished-panel"><div className="ops-panel-title">Source record</div><dl className="ops-source-record-dl">{Object.entries(record ?? {}).slice(0, 18).map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{displayValue(v)}</dd></React.Fragment>)}</dl></div><div className="ops-panel ops-polished-panel"><div className="ops-panel-title">Linked pages</div><div className="ops-linked-actions"><Link to={`/frozen-datasets/${specId}`}>Frozen datasets <RightOutlined /></Link><Link to={`/training/${specId}`}>Training <RightOutlined /></Link><Link to={`/metrics/${specId}`}>Metrics <RightOutlined /></Link><Link to={`/class-metrics/${specId}`}>Class metrics <RightOutlined /></Link></div></div></div>{kind === "model" && spec?.metrics.map((table, i) => <div className="ops-panel ops-polished-panel ops-spec-table-panel" key={table.id}><div className="ops-panel-title">{table.title}</div><Table className="ops-table ops-spec-table" size="small" columns={metricColumns(table, specId, defaultSortState(table))} dataSource={rows[i]?.rows.filter((row) => String(row.model_id ?? row[table.entity_links?.model ?? ""]) === entityId) ?? []} rowKey={(row, idx) => `${table.id}-${idx}`} pagination={false} scroll={{ x: "max-content" }} /></div>)}</EmptyState></div>;
 }

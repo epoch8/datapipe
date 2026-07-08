@@ -147,6 +147,14 @@ TAG_OVERALL_METRICS = {
 }
 
 CLASS_METRICS = [
+    # train — per-class (aligned with OVERALL_METRICS train aggregates)
+    ("yolov8n_tags_baseline_v1", "train", "cat", 115, 22, 42, 45),
+    ("yolov8n_tags_baseline_v1", "train", "dog", 98, 20, 38, 40),
+    ("yolov8n_tags_night_v2", "train", "cat", 125, 12, 18, 28),
+    ("yolov8n_tags_night_v2", "train", "dog", 110, 10, 15, 24),
+    ("yolov8n_tags_augmented_v3", "train", "cat", 118, 16, 22, 36),
+    ("yolov8n_tags_augmented_v3", "train", "dog", 102, 14, 20, 32),
+    # val
     ("yolov8n_tags_baseline_v1", "val", "cat", 28, 9, 11, 12),
     ("yolov8n_tags_baseline_v1", "val", "dog", 24, 8, 10, 10),
     ("yolov8n_tags_night_v2", "val", "cat", 34, 4, 5, 14),
@@ -292,8 +300,8 @@ def seed() -> None:
         for subset_id, values in by_subset.items()
     ])
     metrics_by_cls = pd.DataFrame([
-        _class_row(model_id, subset_id, label, tp, fp, fn, images=12 if label == "cat" else 10)
-        for model_id, subset_id, label, tp, fp, fn, _ in CLASS_METRICS
+        _class_row(model_id, subset_id, label, tp, fp, fn, images)
+        for model_id, subset_id, label, tp, fp, fn, images in CLASS_METRICS
     ])
     tag_metrics = pd.DataFrame([
         _tag_overall_row(model_id, "batch_night", "val", values)

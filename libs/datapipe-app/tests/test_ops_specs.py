@@ -17,6 +17,7 @@ from datapipe_app.specs import (
     OpsColumn,
     OpsColumnGroup,
     OpsDataSpec,
+    OpsFilterRule,
     OpsMetricTableSpec,
 )
 from datapipe_app.ops_query import format_snapshot_label
@@ -122,6 +123,35 @@ def test_grouped_metric_columns_serialize(ops_app):
     table = res.json()["metrics"][0]
     assert table["metric_columns"][0]["label"] == "Quality"
     assert table["metric_columns"][0]["columns"][0]["label"] == "Precision"
+
+
+def test_default_filters_serialize(ops_app):
+    spec = input_spec(
+        metrics=[
+            OpsMetricTableSpec(
+                id="filtered",
+                title="Filtered",
+                table="input",
+                metric_source="input",
+                primary_key_columns=["id"],
+                entity_links={"item": "id"},
+                primary_columns=[OpsColumn("id", "ID", "id", filterable=True)],
+                metric_columns=[OpsColumn("value", "Value", "v")],
+                filters=[OpsColumn("value_filter", "Value", "v", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="value_filter", operator="equal", value="a")],
+            )
+        ]
+    )
+    ops_app.add_specs([spec])
+    client = TestClient(ops_app)
+
+    res = client.get("/api/v1alpha3/pipelines/test_pipeline/ops-specs/catalog_tags")
+
+    assert res.status_code == 200
+    table = res.json()["metrics"][0]
+    assert table["default_filters"] == [
+        {"column_id": "value_filter", "operator": "equal", "value": "a"},
+    ]
 
 
 def test_metric_rows_reject_unknown_sort(ops_app):

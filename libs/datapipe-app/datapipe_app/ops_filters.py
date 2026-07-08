@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from typing import Any, Literal, Sequence
 
 from datapipe_app.spec_registry import OpsSpecValidationError
+from datapipe_app.specs import OpsFilterRule
 
 OpsFilterOperator = Literal[
     "contains",
@@ -21,13 +21,6 @@ OpsFilterMode = Literal["or", "and"]
 VALID_OPERATORS: frozenset[str] = frozenset(
     {"contains", "not_contains", "regex", "equal", "not_equal", "is_empty"}
 )
-
-
-@dataclass(frozen=True)
-class OpsFilterRule:
-    column_id: str
-    operator: OpsFilterOperator
-    value: str | None = None
 
 
 def parse_filter_rules(filters: str | None) -> list[OpsFilterRule]:
