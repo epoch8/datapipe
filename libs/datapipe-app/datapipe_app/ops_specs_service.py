@@ -25,7 +25,16 @@ class OpsSpecsService:
         if debug:
             payload["debug_spec"] = ops_spec_to_dict(spec)
         else:
-            payload.update({"metrics": [self._table_schema(t) for t in spec.metrics], "class_metrics": [self._table_schema(t) for t in spec.class_metrics]})
+            payload.update(
+                {
+                    "metrics": [self._table_schema(t) for t in spec.metrics],
+                    "class_metrics": [self._table_schema(t) for t in spec.class_metrics],
+                    "frozen_dataset": ops_spec_to_dict(spec.frozen_dataset) if spec.frozen_dataset else None,
+                    "model": ops_spec_to_dict(spec.model) if spec.model else None,
+                    "training": ops_spec_to_dict(spec.training) if spec.training else None,
+                    "relations": ops_spec_to_dict(spec.relations),
+                }
+            )
         return payload
 
     def frozen_overview(self) -> dict[str, Any]:

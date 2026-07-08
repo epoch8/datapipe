@@ -396,6 +396,11 @@
     margin: 0;
 }
 
+.ops-source-record-pk-badge {
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
 .ops-source-record-dl dd {
     margin: 0;
     word-break: break-all;

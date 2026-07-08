@@ -9,7 +9,7 @@ type Props =
     | { kind: "dataset"; id: string; subset?: string; children?: React.ReactNode; className?: string };
 
 export function EntityLink(props: Props) {
-    const { id: routePipelineId } = useParams<{ id?: string }>();
+    const { id: routePipelineId, specId } = useParams<{ id?: string; specId?: string }>();
     const pipelineId = routePipelineId || undefined;
     const label = props.children ?? props.id;
 
@@ -19,8 +19,12 @@ export function EntityLink(props: Props) {
 
     const to =
         props.kind === "model"
-            ? buildModelUrl(props.id, pipelineId, { dataset_id: props.datasetId, subset: props.subset })
-            : buildDatasetUrl(props.id, pipelineId, { subset: props.subset });
+            ? buildModelUrl(props.id, pipelineId, {
+                  dataset_id: props.datasetId,
+                  subset: props.subset,
+                  specId,
+              })
+            : buildDatasetUrl(props.id, pipelineId, { subset: props.subset, specId });
 
     return (
         <Tooltip title={props.id}>

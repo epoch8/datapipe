@@ -4,12 +4,14 @@ import { Button, Table } from "antd";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
 import type { FrozenDatasetDetailResponse } from "../../../types/ops";
+import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
 import { EntityLink } from "./EntityLink";
 import { MetricKpiStrip } from "./MetricKpiStrip";
 import { SourceRecordCard } from "./SourceRecordCard";
 import { buildMetricsUrl } from "./entityUrls";
 import { formatFrozenAt } from "./frozenDatasetFormat";
+import { frozenDatasetHighlightFields } from "./recordFields";
 
 function formatCreatedAt(value?: string | null): string | null {
     if (!value) return null;
@@ -17,13 +19,18 @@ function formatCreatedAt(value?: string | null): string | null {
 }
 
 export function FrozenDatasetDetailPage() {
-    const { datasetId: rawDatasetId = "" } = useParams<{ datasetId: string }>();
-    const datasetId = decodeURIComponent(rawDatasetId);
+    const { datasetId: rawDatasetId = "", entityId = "", specId = "" } = useParams<{
+        datasetId?: string;
+        entityId?: string;
+        specId?: string;
+    }>();
+    const datasetId = decodeURIComponent(rawDatasetId || entityId);
     const { pipelineId, loading: pidLoading } = usePipelineId();
     const [searchParams] = useSearchParams();
     const subset = searchParams.get("subset") ?? undefined;
 
     const [data, setData] = React.useState<FrozenDatasetDetailResponse | null>(null);
+    const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -31,12 +38,17 @@ export function FrozenDatasetDetailPage() {
         if (!pipelineId || !datasetId) return;
         setLoading(true);
         setError(null);
-        opsApi
-            .getFrozenDatasetDetail(pipelineId, datasetId, { subset })
-            .then(setData)
+        Promise.all([
+            opsApi.getFrozenDatasetDetail(pipelineId, datasetId, { subset }),
+            specId ? opsApi.getOpsSpec(pipelineId, specId) : Promise.resolve(null),
+        ])
+            .then(([detail, specDetail]) => {
+                setData(detail);
+                setSpec(specDetail);
+            })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, datasetId, subset]);
+    }, [pipelineId, datasetId, subset, specId]);
 
     React.useEffect(() => {
         load();
@@ -69,10 +81,12 @@ export function FrozenDatasetDetailPage() {
         {
             title: "Model",
             dataIndex: "model_id",
-            render: (v: string) => <EntityLink kind="model" id={v} datasetId={datasetId} subset={subset} />,
+            render: (v: string) => (
+                <EntityLink kind="model" id={v} datasetId={datasetId} subset={subset} />
+            ),
         },
         {
-            title: "Created at",
+            title: "Trained at",
             dataIndex: "created_at",
             width: 180,
             render: (v?: string | null) => formatCreatedAt(v),
@@ -82,13 +96,22 @@ export function FrozenDatasetDetailPage() {
     return (
         <div className="ops-page">
             <PageHeader
-                breadcrumbs={[
-                    { label: "Datapipe Ops", href: "/" },
-                    { label: pipelineId || "pipeline" },
-                    { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
-                    { label: "Frozen datasets" },
-                    { label: datasetId },
-                ]}
+                breadcrumbs={
+                    specId
+                        ? [
+                              { label: "Datapipe Ops", href: "/" },
+                              { label: "Frozen Datasets", href: "/frozen-datasets" },
+                              { label: specId, href: `/frozen-datasets/${encodeURIComponent(specId)}` },
+                              { label: datasetId },
+                          ]
+                        : [
+                              { label: "Datapipe Ops", href: "/" },
+                              { label: pipelineId || "pipeline" },
+                              { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
+                              { label: "Frozen datasets" },
+                              { label: datasetId },
+                          ]
+                }
                 title={`Frozen dataset: ${datasetId}`}
                 subtitle="Snapshot of a frozen dataset split used to train models and compute metrics."
                 statusChips={[
@@ -100,8 +123,8 @@ export function FrozenDatasetDetailPage() {
                         <Button href={data?.source_table_url ?? undefined} disabled={!data?.source_table_url}>
                             Open dataset row
                         </Button>
-                        <Link to={buildMetricsUrl(pipelineId || undefined)}>
-                            <Button>Back to Metrics</Button>
+                        <Link to={specId ? `/frozen-datasets/${encodeURIComponent(specId)}` : buildMetricsUrl(pipelineId || undefined)}>
+                            <Button>{specId ? "Back to Frozen Datasets" : "Back to Metrics"}</Button>
                         </Link>
                     </>
                 }
@@ -117,13 +140,8 @@ export function FrozenDatasetDetailPage() {
                             <SourceRecordCard
                                 title="Source frozen dataset record"
                                 record={data.source_record}
-                                preferredFields={[
-                                    "frozen_dataset_id",
-                                    "train_images_count",
-                                    "val_images_count",
-                                    "test_images_count",
-                                    "created_at",
-                                ]}
+                                sourcePk={data.source_pk}
+                                highlightFields={spec ? frozenDatasetHighlightFields(spec) : []}
                                 sourceTable={data.source_table}
                                 sourceTableUrl={data.source_table_url}
                                 pipelineId={pipelineId}

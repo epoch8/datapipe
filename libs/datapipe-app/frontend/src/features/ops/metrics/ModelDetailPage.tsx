@@ -4,6 +4,7 @@ import { Button, Table } from "antd";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
 import type { MetricsModelRow, MetricsModelDetailResponse, MetricsTableSchema } from "../../../types/ops";
+import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
 import { EntityLink } from "./EntityLink";
 import { MetricKpiStrip } from "./MetricKpiStrip";
@@ -12,16 +13,34 @@ import { buildMetricColumns } from "./metricTableColumns";
 import { buildMetricSchema } from "./metricsSchema";
 import { buildMetricsUrl } from "./entityUrls";
 import { splitSizeLabel } from "./FrozenDatasetsCompact";
+import { modelHighlightFields } from "./recordFields";
+
+function resolveLinkedDatasetId(data: MetricsModelDetailResponse): string | undefined {
+    if (data.frozen_dataset?.dataset_id) return data.frozen_dataset.dataset_id;
+    if (data.related?.dataset_id) return data.related.dataset_id;
+    if (!data.source_record) return undefined;
+    for (const [key, value] of Object.entries(data.source_record)) {
+        if (key.endsWith("_frozen_dataset_id") && typeof value === "string" && value) {
+            return value;
+        }
+    }
+    return undefined;
+}
 
 export function ModelDetailPage() {
-    const { modelId: rawModelId = "" } = useParams<{ modelId: string }>();
-    const modelId = decodeURIComponent(rawModelId);
+    const { modelId: rawModelId = "", entityId = "", specId = "" } = useParams<{
+        modelId?: string;
+        entityId?: string;
+        specId?: string;
+    }>();
+    const modelId = decodeURIComponent(rawModelId || entityId);
     const { pipelineId, loading: pidLoading } = usePipelineId();
     const [searchParams] = useSearchParams();
     const datasetId = searchParams.get("dataset_id") ?? undefined;
     const subset = searchParams.get("subset") ?? undefined;
 
     const [data, setData] = React.useState<MetricsModelDetailResponse | null>(null);
+    const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null);
     const [schema, setSchema] = React.useState<MetricsTableSchema | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -31,16 +50,19 @@ export function ModelDetailPage() {
         if (!pipelineId || !modelId) return;
         setLoading(true);
         setError(null);
-        opsApi
-            .getModelDetail(pipelineId, modelId, { dataset_id: datasetId, subset })
-            .then((res) => {
+        Promise.all([
+            opsApi.getModelDetail(pipelineId, modelId, { dataset_id: datasetId, subset }),
+            specId ? opsApi.getOpsSpec(pipelineId, specId) : Promise.resolve(null),
+        ])
+            .then(([res, specDetail]) => {
                 setData(res);
+                setSpec(specDetail);
                 const keys = Array.from(new Set(res.metrics_rows.flatMap((r) => Object.keys(r.metrics ?? {}))));
                 setSchema(buildMetricSchema(res.model_row?.task_type, keys));
             })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
-    }, [pipelineId, modelId, datasetId, subset]);
+    }, [pipelineId, modelId, datasetId, subset, specId]);
 
     React.useEffect(() => {
         load();
@@ -65,16 +87,27 @@ export function ModelDetailPage() {
         [metricColumns],
     );
 
+    const linkedDatasetId = data ? resolveLinkedDatasetId(data) : undefined;
+
     return (
         <div className="ops-page">
             <PageHeader
-                breadcrumbs={[
-                    { label: "Datapipe Ops", href: "/" },
-                    { label: pipelineId || "pipeline" },
-                    { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
-                    { label: "Models" },
-                    { label: modelId },
-                ]}
+                breadcrumbs={
+                    specId
+                        ? [
+                              { label: "Datapipe Ops", href: "/" },
+                              { label: "Metrics", href: "/metrics" },
+                              { label: specId, href: `/metrics/${encodeURIComponent(specId)}` },
+                              { label: modelId },
+                          ]
+                        : [
+                              { label: "Datapipe Ops", href: "/" },
+                              { label: pipelineId || "pipeline" },
+                              { label: "Metrics", href: buildMetricsUrl(pipelineId || undefined) },
+                              { label: "Models" },
+                              { label: modelId },
+                          ]
+                }
                 title={`Model: ${modelId}`}
                 subtitle="Model detail page with source record, linked frozen dataset, and available metrics."
                 statusChips={[
@@ -87,7 +120,7 @@ export function ModelDetailPage() {
                         <Button href={data?.source_table_url ?? undefined} disabled={!data?.source_table_url}>
                             Open model row
                         </Button>
-                        <Link to={buildMetricsUrl(pipelineId || undefined)}>
+                        <Link to={specId ? `/metrics/${encodeURIComponent(specId)}` : buildMetricsUrl(pipelineId || undefined)}>
                             <Button>Back to Metrics</Button>
                         </Link>
                     </>
@@ -104,16 +137,8 @@ export function ModelDetailPage() {
                             <SourceRecordCard
                                 title="Source model record"
                                 record={data.source_record}
-                                preferredFields={[
-                                    "model_id",
-                                    "task",
-                                    "task_type",
-                                    "created_at",
-                                    "run_key",
-                                    "checkpoint",
-                                    "train_subset",
-                                    "frozen_dataset_id",
-                                ]}
+                                sourcePk={data.source_pk}
+                                highlightFields={spec ? modelHighlightFields(spec) : []}
                                 sourceTable={data.source_table}
                                 sourceTableUrl={data.source_table_url}
                                 pipelineId={pipelineId}
@@ -121,16 +146,16 @@ export function ModelDetailPage() {
 
                             <div className="ops-panel ops-entity-summary-panel">
                                 <div className="ops-panel-title">Linked frozen dataset</div>
-                                {data.frozen_dataset ? (
+                                {linkedDatasetId ? (
                                     <>
-                                        <EntityLink kind="dataset" id={data.frozen_dataset.dataset_id} />
+                                        <EntityLink kind="dataset" id={linkedDatasetId} />
                                         <dl className="ops-source-record-dl ops-entity-summary-dl">
                                             <dt>Frozen at</dt>
-                                            <dd>{data.frozen_dataset.frozen_at ?? "—"}</dd>
+                                            <dd>{data.frozen_dataset?.frozen_at ?? "—"}</dd>
                                             <dt>Split</dt>
                                             <dd>
-                                                {data.frozen_dataset.train_count ?? 0} / {data.frozen_dataset.val_count ?? 0} /{" "}
-                                                {data.frozen_dataset.test_count ?? 0}
+                                                {data.frozen_dataset?.train_count ?? 0} / {data.frozen_dataset?.val_count ?? 0} /{" "}
+                                                {data.frozen_dataset?.test_count ?? 0}
                                             </dd>
                                         </dl>
                                         {data.frozen_dataset_source_table && (

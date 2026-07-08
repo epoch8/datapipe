@@ -233,7 +233,7 @@ function FrozenDatasetTable({ specId, rows }: { specId: string; rows: OpsRowsRes
         { title: "Dataset", dataIndex: "dataset_id", key: "dataset", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="frozen_dataset" /> },
         { title: "Frozen at", dataIndex: "frozen_at", key: "frozen_at", render: displayValue },
         { title: "Split", dataIndex: "split", key: "split", render: (v) => <span className="ops-split-cell">{displayValue(v)}</span> },
-        { title: "Models", dataIndex: "models_count", key: "models", render: (v, row) => <Link className="dp-entity-link" to={`/metrics/${encodeURIComponent(specId)}?frozen_dataset=${encodeURIComponent(String(row.dataset_id ?? ""))}`}>{Number(v ?? 0)} models</Link> },
+        { title: "Models", dataIndex: "models_count", key: "models", render: (v, row) => <Link className="dp-entity-link" to={`/frozen-datasets/${encodeURIComponent(specId)}/datasets/${encodeURIComponent(String(row.dataset_id ?? ""))}`}>{Number(v ?? 0)} models</Link> },
     ];
     return <Table className="ops-table ops-spec-table" size="middle" columns={cols} dataSource={rows?.rows ?? []} rowKey={(row, i) => String(row.dataset_id ?? i)} pagination={{ pageSize: 10, total: rows?.total ?? 0, showSizeChanger: true }} scroll={{ x: "max-content" }} />;
 }

@@ -39,13 +39,13 @@ function App() {
                     <Route path="/runs" element={<RunsPage />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
                     <Route path="/frozen-datasets" element={<OpsOverviewSpecPage kind="frozen-datasets" />} />
-                    <Route path="/frozen-datasets/:specId/datasets/:entityId" element={<OpsEntityDetailPage kind="frozen-dataset" />} />
+                    <Route path="/frozen-datasets/:specId/datasets/:entityId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/frozen-datasets/:specId" element={<OpsSpecificSpecPage kind="frozen-datasets" />} />
                     <Route path="/training" element={<OpsOverviewSpecPage kind="training" />} />
                     <Route path="/training/:specId/runs/:entityId" element={<OpsEntityDetailPage kind="training-run" />} />
                     <Route path="/training/:specId" element={<OpsSpecificSpecPage kind="training" />} />
                     <Route path="/metrics" element={<OpsOverviewSpecPage kind="metrics" />} />
-                    <Route path="/metrics/:specId/models/:entityId" element={<OpsEntityDetailPage kind="model" />} />
+                    <Route path="/metrics/:specId/models/:entityId" element={<ModelDetailPage />} />
                     <Route path="/metrics/:specId" element={<OpsSpecificSpecPage kind="metrics" />} />
                     <Route path="/class-metrics" element={<OpsOverviewSpecPage kind="class-metrics" />} />
                     <Route path="/class-metrics/:specId" element={<OpsSpecificSpecPage kind="class-metrics" />} />
