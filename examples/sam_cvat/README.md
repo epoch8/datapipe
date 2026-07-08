@@ -1,5 +1,7 @@
 # SAM3 + CVAT Pipeline
 
+**Claude Code skill:** `/setup-sam-cvat` — auto-loads when relevant, or invoke it directly.
+
 Datapipe example for:
 
 - loading images (local folder or Hugging Face dataset fallback)

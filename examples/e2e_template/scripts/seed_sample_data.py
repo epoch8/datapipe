@@ -178,8 +178,8 @@ def upload_images(local_paths: list[Path]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download sample COCO images and upload them to local MinIO.")
-    parser.add_argument("--detection-limit", type=int, default=30, help="Number of cat/dog images")
-    parser.add_argument("--keypoints-limit", type=int, default=30, help="Number of person keypoint images")
+    parser.add_argument("--detection-limit", type=int, default=120, help="Number of cat/dog images")
+    parser.add_argument("--keypoints-limit", type=int, default=10, help="Number of person keypoint images")
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
     parser.add_argument("--skip-models", action="store_true", help="Do not download YOLO smoke weights")

@@ -1,5 +1,8 @@
 # Datapipe E2E Template
 
+**Claude Code skill:** `/setup-e2e-template` — auto-loads when relevant, or invoke it directly. It
+carries the prerequisites, env knobs, and gotchas below.
+
 This example contains end-to-end Datapipe pipeline templates:
 
 - `image_detection` for bbox detection.
