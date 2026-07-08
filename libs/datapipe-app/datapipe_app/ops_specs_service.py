@@ -5,6 +5,7 @@ from typing import Any, Literal, Sequence
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 
+from datapipe_app.ops_filters import OpsFilterMode, OpsFilterRule
 from datapipe_app.ops_query import OpsQuery, format_snapshot_label, metric_table_columns
 from datapipe_app.spec_registry import OpsSpecRegistry
 from datapipe_app.specs import DatapipeOpsSpec, OpsColumn, OpsRelationSpec, ops_spec_to_dict
@@ -133,7 +134,17 @@ class OpsSpecsService:
             row["artifact_uris"] = {key: row.get(column) for key, column in training.artifact_columns.items()}
         return {"rows": rows, "total": total}
 
-    def metric_table_rows(self, spec_id: str, table_id: str, *, class_metrics: bool = False, filters: dict[str, str | Sequence[str]] | None = None, **params: Any) -> dict[str, Any]:
+    def metric_table_rows(
+        self,
+        spec_id: str,
+        table_id: str,
+        *,
+        class_metrics: bool = False,
+        filters: dict[str, str | Sequence[str]] | None = None,
+        filter_rules: Sequence[OpsFilterRule] | None = None,
+        filter_mode: OpsFilterMode = "or",
+        **params: Any,
+    ) -> dict[str, Any]:
         spec = self.registry.get(spec_id)
         table_specs = spec.class_metrics if class_metrics else spec.metrics
         table_spec = next((table for table in table_specs if table.id == table_id), None)
@@ -141,7 +152,14 @@ class OpsSpecsService:
             raise KeyError(f'Metric table "{table_id}" is not configured for spec "{spec_id}".')
         if params.get("sort_by") is None and table_spec.default_sort:
             params["sort_by"], params["sort_dir"] = table_spec.default_sort[0]
-        rows, total = self.query.rows(table_spec.table, allowed_columns=metric_table_columns(table_spec), filters=filters, **params)
+        rows, total = self.query.rows(
+            table_spec.table,
+            allowed_columns=metric_table_columns(table_spec),
+            filters=filters,
+            filter_rules=filter_rules,
+            filter_mode=filter_mode,
+            **params,
+        )
         for row in rows:
             for entity, column in table_spec.entity_links.items():
                 row[f"{entity}_id"] = row.get(column)

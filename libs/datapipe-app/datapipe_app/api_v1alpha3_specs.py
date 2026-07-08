@@ -2,8 +2,9 @@
 
 from typing import Any, Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
+from datapipe_app.ops_filters import merge_filter_rules, parse_filter_rules
 from datapipe_app.ops_specs_service import OpsSpecsService
 from datapipe_app.spec_registry import OpsSpecValidationError
 
@@ -97,6 +98,10 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
         sort_dir: Literal["asc", "desc"] = "desc",
         limit: int = 50,
         offset: int = 0,
+        filters: Optional[str] = None,
+        filter_mode: Literal["or", "and"] = "or",
+        model: list[str] = Query(default=[]),
+        subset: list[str] = Query(default=[]),
     ) -> dict[str, Any]:
         try:
             return service.metric_table_rows(
@@ -107,6 +112,12 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
                 sort_dir=sort_dir,
                 limit=limit,
                 offset=offset,
+                filter_rules=merge_filter_rules(
+                    parse_filter_rules(filters),
+                    model=model or None,
+                    subset=subset or None,
+                ),
+                filter_mode=filter_mode,
             )
         except (KeyError, OpsSpecValidationError) as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -128,6 +139,10 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
         sort_dir: Literal["asc", "desc"] = "desc",
         limit: int = 50,
         offset: int = 0,
+        filters: Optional[str] = None,
+        filter_mode: Literal["or", "and"] = "or",
+        model: list[str] = Query(default=[]),
+        subset: list[str] = Query(default=[]),
     ) -> dict[str, Any]:
         try:
             return service.metric_table_rows(
@@ -139,6 +154,12 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
                 sort_dir=sort_dir,
                 limit=limit,
                 offset=offset,
+                filter_rules=merge_filter_rules(
+                    parse_filter_rules(filters),
+                    model=model or None,
+                    subset=subset or None,
+                ),
+                filter_mode=filter_mode,
             )
         except (KeyError, OpsSpecValidationError) as exc:
             raise HTTPException(400, str(exc)) from exc

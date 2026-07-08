@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button, Space, Table, Tabs, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -21,8 +21,18 @@ import {
 } from "@ant-design/icons";
 import { opsApi } from "../../../api/ops";
 import { usePipelineId } from "../../../hooks/usePipelineId";
-import type { OpsColumn, OpsMetricColumn, OpsOverviewResponse, OpsRowsResponse, OpsSpecDetail, OpsTableSchema } from "../../../types/opsSpecs";
+import type { OpsColumn, OpsFilterRule, OpsMetricColumn, OpsOverviewResponse, OpsRowsParams, OpsRowsResponse, OpsSpecDetail, OpsTableSchema } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
+import { TableFilterBar } from "../shared/TableFilterBar";
+import {
+    collectFilterColumns,
+    expandChipValueRules,
+    formatRule,
+    parseUrlFilterState,
+    serializeFilterRules,
+    writeUrlFilterState,
+    type OpsFilterState,
+} from "../shared/tableFilters";
 
 type PageKind = "frozen-datasets" | "training" | "metrics" | "class-metrics";
 type EntityKind = "frozen-dataset" | "model" | "training-run";
@@ -120,58 +130,104 @@ function metricColumns(table: OpsTableSchema, specId: string): ColumnsType<Row> 
     const simple = (column: OpsColumn) => ({ title: column.label, dataIndex: column.source, key: column.id, width: column.width ?? undefined, ellipsis: column.kind === "text" || column.kind === "link", render: renderColumn(column, specId, entityBySource.get(column.source)), sorter: column.sortable ? true : undefined });
     return [...table.primary_columns.map(simple), ...table.metric_columns.map((column) => isGroup(column) ? { title: column.label, key: column.label, children: column.columns.map(simple) } : simple(column))];
 }
-function Pickers({ models, subsets, modelFilter, setModelFilter, subsetFilter, setSubsetFilter }: { models: string[]; subsets: string[]; modelFilter: string[]; setModelFilter: React.Dispatch<React.SetStateAction<string[]>>; subsetFilter: string[]; setSubsetFilter: React.Dispatch<React.SetStateAction<string[]>>; }) {
-    return <div className="ops-table-filter-area">
-        <div className="ops-table-filter-line">
-            <span className="ops-filter-inline-label">Model ID</span>
-            <Space wrap size={6}>
-                {models.map((value) => <Tag key={value} className={modelFilter.includes(value) ? "ops-filter-chip ops-filter-chip-active" : "ops-filter-chip"} onClick={() => setModelFilter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value])}>{value}</Tag>)}
-            </Space>
-        </div>
-        <div className="ops-table-filter-line">
-            <span className="ops-filter-inline-label">Subset ID</span>
-            <Space wrap size={6}>
-                {subsets.map((value) => <Tag key={value} className={subsetFilter.includes(value) ? "ops-filter-chip ops-filter-chip-active" : "ops-filter-chip"} onClick={() => setSubsetFilter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value])}>{value}</Tag>)}
-            </Space>
-        </div>
-    </div>;
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+    const [debounced, setDebounced] = React.useState(value);
+    React.useEffect(() => {
+        const timer = window.setTimeout(() => setDebounced(value), delayMs);
+        return () => window.clearTimeout(timer);
+    }, [value, delayMs]);
+    return debounced;
 }
+
 function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipelineId: string; specId: string; table: OpsTableSchema; classMetrics?: boolean }) {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const filterColumns = React.useMemo(() => collectFilterColumns(table), [table]);
+    const entityLinks = table.entity_links ?? {};
+    const [filterState, setFilterState] = React.useState<OpsFilterState>(() => parseUrlFilterState(searchParams));
     const [data, setData] = React.useState<OpsRowsResponse | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [sortState, setSortState] = React.useState<{ sort_by?: string; sort_dir?: "asc" | "desc" }>({ sort_by: table.default_sort[0]?.[0], sort_dir: table.default_sort[0]?.[1] });
-    const [modelFilter, setModelFilter] = React.useState<string[]>([]);
-    const [subsetFilter, setSubsetFilter] = React.useState<string[]>(["val"]);
+    const [page, setPage] = React.useState(1);
+    const [pageSize, setPageSize] = React.useState(10);
+    const [sortState, setSortState] = React.useState<{ sort_by?: string; sort_dir?: "asc" | "desc" }>({
+        sort_by: table.default_sort[0]?.[0],
+        sort_dir: table.default_sort[0]?.[1],
+    });
+    const debouncedSearch = useDebouncedValue(filterState.search ?? "", 300);
+    const debouncedRules = useDebouncedValue(filterState.rules, 300);
 
-    const filterChoices = React.useMemo(() => {
-        const rows = data?.rows ?? [];
-        const models = Array.from(new Set(rows.map((row) => String(row.model_id ?? row.model ?? row[table.entity_links?.model ?? ""] ?? "")).filter(Boolean)));
-        const subsets = Array.from(new Set(rows.map((row) => String(row.subset_id ?? row.subset ?? row[table.entity_links?.subset ?? ""] ?? "")).filter(Boolean)));
-        return { models, subsets };
-    }, [data, table.entity_links]);
+    React.useEffect(() => {
+        setSearchParams((prev) => writeUrlFilterState(prev, filterState, filterColumns), { replace: true });
+    }, [filterColumns, filterState, setSearchParams]);
 
     const load = React.useCallback(() => {
         setLoading(true);
         setError(null);
         const call = classMetrics ? opsApi.getOpsClassMetricRows : opsApi.getOpsMetricRows;
-        const params: Record<string, string | string[] | number | undefined> = { limit: 100, ...sortState };
-        if (modelFilter.length) params.model = modelFilter;
-        if (subsetFilter.length) params.subset = subsetFilter;
-        call(pipelineId, specId, table.id, params)
-            .then(setData)
-            .catch((e) => setError(String(e)))
-            .finally(() => setLoading(false));
-    }, [classMetrics, modelFilter, pipelineId, specId, sortState, subsetFilter, table.id]);
+        const params: OpsRowsParams = {
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            ...sortState,
+            search: debouncedSearch.trim() || undefined,
+            filter_mode: filterState.mode,
+            filters: serializeFilterRules(expandChipValueRules(debouncedRules, filterColumns), filterColumns),
+        };
+        call(pipelineId, specId, table.id, params).then(setData).catch((e) => setError(String(e))).finally(() => setLoading(false));
+    }, [classMetrics, debouncedRules, debouncedSearch, filterColumns, filterState.mode, page, pageSize, pipelineId, specId, sortState, table.id]);
 
+    React.useEffect(() => { setPage(1); }, [debouncedSearch, debouncedRules, filterState.mode]);
     React.useEffect(() => { load(); }, [load]);
-    const selectedChips = [
-        ...modelFilter.map((value) => ({ kind: "Model", value, onClose: () => setModelFilter((prev) => prev.filter((item) => item !== value)) })),
-        ...subsetFilter.map((value) => ({ kind: "Subset", value, onClose: () => setSubsetFilter((prev) => prev.filter((item) => item !== value)) })),
-    ];
 
-    return <div className="ops-panel ops-polished-panel ops-spec-table-panel"><div className="ops-spec-table-head"><div><div className="ops-panel-title">{table.title} - {table.metric_source}</div><div className="ops-muted">{classMetrics ? "Class metrics" : "Metric rows"}</div></div><Space><Tag>Metric source: {table.metric_source}</Tag><Button icon={<TableOutlined />}>Columns</Button></Space></div>{selectedChips.length ? <div className="ops-active-filter-row">{selectedChips.map((chip) => <Tag key={`${chip.kind}-${chip.value}`} closable onClose={(e) => { e.preventDefault(); chip.onClose(); }}>{chip.kind}: {chip.value}</Tag>)}<Button type="link" className="ops-inline-link" onClick={() => { setModelFilter([]); setSubsetFilter(["val"]); }}>Clear all</Button></div> : <div className="ops-muted ops-table-filter-hint">Filters are applied above this table</div>}<Pickers models={filterChoices.models} subsets={filterChoices.subsets} modelFilter={modelFilter} setModelFilter={setModelFilter} subsetFilter={subsetFilter} setSubsetFilter={setSubsetFilter} /><EmptyState loading={loading} error={error} empty={!data?.rows.length && !loading}><Table className="ops-table ops-spec-table ops-table-compact" size="small" columns={metricColumns(table, specId)} dataSource={data?.rows ?? []} rowKey={(row, i) => `${table.id}-${String(row.model_id ?? row.dataset_id ?? row.class_id ?? i)}`} pagination={{ pageSize: 10, total: data?.total ?? 0, showSizeChanger: true }} scroll={{ x: "max-content" }} onChange={(_pagination, _filters, sorter) => { const s = Array.isArray(sorter) ? sorter[0] : sorter; const field = (s as any)?.field; setSortState({ sort_by: field ? String(field) : table.default_sort[0]?.[0], sort_dir: s?.order === "ascend" ? "asc" : "desc" }); }} /></EmptyState></div>;
+    const appliedRules = serializeFilterRules(expandChipValueRules(filterState.rules, filterColumns), filterColumns);
+
+    return (
+        <div className="ops-panel ops-polished-panel ops-spec-table-panel">
+            <TableFilterBar
+                columns={filterColumns}
+                entityLinks={entityLinks}
+                value={filterState}
+                onChange={setFilterState}
+                metricSource={table.metric_source}
+                searchPlaceholder="Search by text..."
+            />
+            <div className="ops-spec-table-head">
+                <div>
+                    <div className="ops-panel-title">{table.title} - {table.metric_source}</div>
+                    <div className="ops-muted">{classMetrics ? "Class metrics" : "Metric rows"}</div>
+                    {data ? <div className="ops-table-filter-summary">Showing {data.rows.length} of {data.total} rows</div> : null}
+                    {appliedRules.length ? (
+                        <div className="ops-table-filter-summary">
+                            Filtered by: {appliedRules.map((rule) => formatRule(rule, filterColumns)).join(", ")}
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+            <EmptyState loading={loading} error={error} empty={!data?.rows.length && !loading}>
+                <Table
+                    className="ops-table ops-spec-table ops-table-compact"
+                    size="small"
+                    columns={metricColumns(table, specId)}
+                    dataSource={data?.rows ?? []}
+                    rowKey={(row, i) => `${table.id}-${String(row.model_id ?? row.dataset_id ?? row.class_id ?? i)}`}
+                    pagination={{
+                        current: page,
+                        pageSize,
+                        total: data?.total ?? 0,
+                        showSizeChanger: true,
+                        onChange: (nextPage, nextSize) => { setPage(nextPage); if (nextSize) setPageSize(nextSize); },
+                    }}
+                    scroll={{ x: "max-content" }}
+                    onChange={(_pagination, _filters, sorter) => {
+                        const s = Array.isArray(sorter) ? sorter[0] : sorter;
+                        const field = (s as { field?: string })?.field;
+                        setSortState({ sort_by: field ? String(field) : table.default_sort[0]?.[0], sort_dir: s?.order === "ascend" ? "asc" : "desc" });
+                    }}
+                />
+            </EmptyState>
+        </div>
+    );
 }
+
 function FrozenDatasetTable({ specId, rows }: { specId: string; rows: OpsRowsResponse | null }) {
     const cols: ColumnsType<Row> = [
         { title: "Dataset", dataIndex: "dataset_id", key: "dataset", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="frozen_dataset" /> },

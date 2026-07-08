@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any, Iterable, Literal, Sequence
 
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
-from sqlalchemy import MetaData, String, Table, asc, desc, func, inspect, select
+from sqlalchemy import MetaData, String, Table, and_, asc, desc, event, func, inspect, not_, or_, select
 from sqlalchemy.exc import OperationalError
 
+from datapipe_app.ops_filters import OpsFilterMode, OpsFilterRule, compile_regex_pattern
 from datapipe_app.spec_registry import OpsSpecValidationError
 from datapipe_app.specs import OpsColumn, OpsColumnGroup, OpsMetricTableSpec
 
@@ -76,6 +78,8 @@ class OpsQuery:
         sort_dir: Literal["asc", "desc"] = "desc",
         search: str | None = None,
         filters: dict[str, str | Sequence[str]] | None = None,
+        filter_rules: Sequence[OpsFilterRule] | None = None,
+        filter_mode: OpsFilterMode = "or",
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -88,33 +92,38 @@ class OpsQuery:
 
         query = select(*(table.c[source] for source in selected_sources))
         count_query = select(func.count()).select_from(table)
-        conditions = []
+        where_parts: list[Any] = []
 
-        for key, value in (filters or {}).items():
-            spec_col = allowed_by_id.get(key) or allowed_by_source.get(key)
-            if spec_col is None or not spec_col.filterable:
-                raise OpsSpecValidationError(f'Filter "{key}" is not configured for table "{table_name}".')
-            values = value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else [value]
-            values = [item for item in values if item not in {None, ""}]
-            if not values:
-                continue
-            if len(values) == 1:
-                conditions.append(table.c[spec_col.source] == values[0])
-            else:
-                conditions.append(table.c[spec_col.source].in_(list(values)))
+        rule_conditions = self._build_filter_rule_conditions(
+            table,
+            table_name,
+            allowed_by_id,
+            allowed_by_source,
+            filter_rules or [],
+        )
+        if rule_conditions:
+            combined = or_(*rule_conditions) if filter_mode == "or" else and_(*rule_conditions)
+            where_parts.append(combined)
+
+        legacy_conditions = self._build_legacy_filter_conditions(
+            table,
+            table_name,
+            allowed_by_id,
+            allowed_by_source,
+            filters or {},
+        )
+        where_parts.extend(legacy_conditions)
 
         if search:
             search_conditions = [
-                table.c[col.source].cast(String).like(f"%{search}%")
+                table.c[col.source].cast(String).ilike(f"%{search}%")
                 for col in allowed_columns
                 if col.kind in {"text", "link", "chip", "status"} and col.source in table.c
             ]
             if search_conditions:
-                from sqlalchemy import or_
+                where_parts.append(or_(*search_conditions))
 
-                conditions.append(or_(*search_conditions))
-
-        for condition in conditions:
+        for condition in where_parts:
             query = query.where(condition)
             count_query = count_query.where(condition)
 
@@ -140,10 +149,108 @@ class OpsQuery:
             return [], 0
         return rows, total
 
+    def _build_filter_rule_conditions(
+        self,
+        table: Table,
+        table_name: str,
+        allowed_by_id: dict[str, OpsColumn],
+        allowed_by_source: dict[str, OpsColumn],
+        filter_rules: Sequence[OpsFilterRule],
+    ) -> list[Any]:
+        conditions: list[Any] = []
+        for rule in filter_rules:
+            spec_col = allowed_by_id.get(rule.column_id) or allowed_by_source.get(rule.column_id)
+            if spec_col is None or not spec_col.filterable:
+                raise OpsSpecValidationError(
+                    f'Filter "{rule.column_id}" is not configured for table "{table_name}".'
+                )
+            condition = self._filter_condition(table, spec_col, rule.operator, rule.value)
+            if condition is not None:
+                conditions.append(condition)
+        return conditions
+
+    def _build_legacy_filter_conditions(
+        self,
+        table: Table,
+        table_name: str,
+        allowed_by_id: dict[str, OpsColumn],
+        allowed_by_source: dict[str, OpsColumn],
+        filters: dict[str, str | Sequence[str]],
+    ) -> list[Any]:
+        conditions: list[Any] = []
+        for key, value in filters.items():
+            spec_col = allowed_by_id.get(key) or allowed_by_source.get(key)
+            if spec_col is None or not spec_col.filterable:
+                raise OpsSpecValidationError(f'Filter "{key}" is not configured for table "{table_name}".')
+            values = value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else [value]
+            values = [item for item in values if item not in {None, ""}]
+            if not values:
+                continue
+            if len(values) == 1:
+                conditions.append(table.c[spec_col.source] == values[0])
+            else:
+                conditions.append(table.c[spec_col.source].in_(list(values)))
+        return conditions
+
+    def _filter_condition(
+        self,
+        table: Table,
+        col: OpsColumn,
+        operator: str,
+        value: str | None,
+    ) -> Any | None:
+        raw = table.c[col.source]
+        expr = raw.cast(String)
+        if operator == "contains":
+            return expr.ilike(f"%{value}%")
+        if operator == "not_contains":
+            return not_(expr.ilike(f"%{value}%"))
+        if operator == "equal":
+            return expr == str(value)
+        if operator == "not_equal":
+            return expr != str(value)
+        if operator == "is_empty":
+            return or_(raw.is_(None), expr == "")
+        if operator == "regex":
+            return self._regex_condition(expr, str(value))
+        raise OpsSpecValidationError(f'Unknown filter operator "{operator}"')
+
+    def _regex_condition(self, expr: Any, value: str) -> Any:
+        compile_regex_pattern(value)
+        dialect = self._engine().dialect.name
+        if dialect == "postgresql":
+            return expr.op("~")(value)
+        if dialect == "sqlite":
+            return expr.op("REGEXP")(value)
+        raise OpsSpecValidationError(f'Regex filters are not supported for dialect "{dialect}"')
+
     def _engine(self):
         if self.ds is None:
             raise OpsSpecValidationError("Local datastore is not available for Ops spec queries.")
-        return self.ds.meta_dbconn.con
+        engine = self.ds.meta_dbconn.con
+        self._ensure_sqlite_regexp(engine)
+        return engine
+
+    @staticmethod
+    def _ensure_sqlite_regexp(engine) -> None:
+        if engine.dialect.name != "sqlite":
+            return
+        if getattr(engine, "_ops_regexp_registered", False):
+            return
+
+        @event.listens_for(engine, "connect")
+        def _register_regexp(dbapi_connection, _connection_record) -> None:
+            def regexp(pattern: str, value: object) -> int:
+                if value is None:
+                    return 0
+                try:
+                    return 1 if re.search(pattern, str(value)) else 0
+                except re.error:
+                    return 0
+
+            dbapi_connection.create_function("REGEXP", 2, regexp)
+
+        engine._ops_regexp_registered = True  # type: ignore[attr-defined]
 
     def _table(self, table_name: str) -> Table:
         if self.catalog is not None and table_name in self.catalog.catalog:

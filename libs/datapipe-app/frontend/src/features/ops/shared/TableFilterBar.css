@@ -1,0 +1,134 @@
+.ops-table-filter-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 8px 0;
+    flex-wrap: wrap;
+}
+
+.ops-table-toolbar-spacer {
+    flex: 1 1 auto;
+}
+
+.ops-filter-toggle.active {
+    border-color: #1677ff;
+    color: #1677ff;
+}
+
+.ops-filter-mode-select {
+    min-width: 140px;
+}
+
+.ops-filter-builder-panel {
+    border-top: 1px solid #eef0f4;
+    padding: 10px 0 6px;
+}
+
+.ops-filter-rule-row {
+    display: grid;
+    grid-template-columns: 24px minmax(140px, 1fr) minmax(130px, 0.8fr) minmax(180px, 1.4fr) 32px;
+    gap: 8px;
+    align-items: center;
+    min-height: 44px;
+    margin-bottom: 8px;
+}
+
+.ops-filter-rule-drag {
+    color: #98a2b3;
+    cursor: grab;
+    text-align: center;
+}
+
+.ops-filter-rule-column,
+.ops-filter-rule-operator,
+.ops-filter-rule-value {
+    width: 100%;
+}
+
+.ops-filter-subset-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.ops-filter-subset-chip {
+    cursor: pointer;
+    margin: 0;
+    border-radius: 6px;
+}
+
+.ops-filter-subset-chip-active {
+    background: #ede9fe;
+    border-color: #8b5cf6;
+    color: #5b21b6;
+}
+
+.ops-filter-builder-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 4px;
+}
+
+.ops-filter-builder-footer-spacer {
+    flex: 1;
+}
+
+.ops-active-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0 10px;
+}
+
+.ops-filter-chip {
+    border-radius: 6px;
+    margin: 0;
+    font-size: 12px;
+    line-height: 20px;
+}
+
+.ops-filter-chip-model {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.ops-filter-chip-subset {
+    background: #ede9fe;
+    border-color: #c4b5fd;
+    color: #6d28d9;
+}
+
+.ops-filter-chip-dataset {
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #7e22ce;
+}
+
+.ops-filter-chip-source {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #4b5563;
+}
+
+.ops-filter-chip-default {
+    background: #ecfeff;
+    border-color: #a5f3fc;
+    color: #0e7490;
+}
+
+.ops-table-filter-summary {
+    color: #667085;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.ops-table-search-input {
+    min-width: 220px;
+    flex: 1 1 240px;
+    max-width: 420px;
+}

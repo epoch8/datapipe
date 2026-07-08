@@ -74,11 +74,16 @@ function normalizeFrozenDatasetDetail(payload: FrozenDatasetDetailPayload): Froz
     return { ...payload, linked_models: Array.from(byModel.values()) };
 }
 
-function toQuery(params: Record<string, string | number | string[] | undefined>): string {
+function toQuery(params: Record<string, string | number | string[] | undefined | unknown>): string {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
-        if (v === undefined || v === "") return;
-        if (Array.isArray(v)) v.forEach((item) => q.append(k, item));
+        if (v === undefined || v === "" || v === null) return;
+        if (k === "filters") {
+            const rules = Array.isArray(v) ? v : [];
+            if (rules.length) q.set("filters", JSON.stringify(rules));
+            return;
+        }
+        if (Array.isArray(v)) v.forEach((item) => q.append(k, String(item)));
         else q.set(k, String(v));
     });
     const s = q.toString();

@@ -69,12 +69,33 @@ export type OpsRowsResponse = {
     table?: OpsTableSchema;
 };
 
+export type OpsFilterOperator =
+    | "contains"
+    | "not_contains"
+    | "regex"
+    | "equal"
+    | "not_equal"
+    | "is_empty";
+
+export type OpsFilterMode = "or" | "and";
+
+export type OpsFilterRule = {
+    id?: string;
+    column_id: string;
+    operator: OpsFilterOperator;
+    value?: string;
+};
+
 export type OpsRowsParams = {
     search?: string;
     sort_by?: string;
     sort_dir?: "asc" | "desc";
     limit?: number;
     offset?: number;
+    filter_mode?: OpsFilterMode;
+    filters?: OpsFilterRule[];
+    /** @deprecated use filters */
     model?: string[] | string;
+    /** @deprecated use filters */
     subset?: string[] | string;
 };
