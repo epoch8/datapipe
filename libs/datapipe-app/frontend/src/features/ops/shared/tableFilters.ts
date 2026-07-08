@@ -108,6 +108,22 @@ export function formatRule(rule: OpsFilterRule, columns: OpsColumn[]): string {
     return `${label} ${operator} ${rule.value ?? ""}`.trim();
 }
 
+export function formatRuleParts(
+    rule: OpsFilterRule,
+    columns: OpsColumn[],
+): { label: string; operator: string; values: string[] } {
+    const label = columnLabel(rule.column_id, columns);
+    const operator = FILTER_OPERATOR_LABELS[rule.operator];
+    if (rule.operator === "is_empty") {
+        return { label, operator, values: [] };
+    }
+    const values = (rule.value ?? "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    return { label, operator, values };
+}
+
 export function chipKind(
     columnId: string,
     columns: OpsColumn[],

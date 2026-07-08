@@ -7,6 +7,7 @@ import {
     encodeFiltersParam,
     expandChipValueRules,
     formatRule,
+    formatRuleParts,
     isChipColumn,
     isSubsetEntityColumn,
     resolveColumnEntity,
@@ -42,6 +43,20 @@ describe("tableFilters", () => {
     it("formats active rules with raw source column names", () => {
         const rule: OpsFilterRule = { column_id: "detection_model_id", operator: "contains", value: "cat_dog" };
         expect(formatRule(rule, columns)).toBe("detection_model_id contains cat_dog");
+        expect(formatRuleParts(rule, columns)).toEqual({
+            label: "detection_model_id",
+            operator: "contains",
+            values: ["cat_dog"],
+        });
+    });
+
+    it("splits comma-separated chip values for display", () => {
+        const rule: OpsFilterRule = { column_id: "subset_id", operator: "equal", value: "train,val" };
+        expect(formatRuleParts(rule, columns)).toEqual({
+            label: "subset_id",
+            operator: "equal",
+            values: ["train", "val"],
+        });
     });
 
     it("deduplicates filter columns by source from spec schema", () => {
