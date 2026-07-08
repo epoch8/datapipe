@@ -1,5 +1,10 @@
 version: '3'
 
+# DB/search images keep their internal users (cannot run as arbitrary host uid).
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f tests/docker-compose.yml up -d
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
 services:
   db:
     image: postgres:17

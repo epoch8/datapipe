@@ -1,8 +1,13 @@
 # Local services for datapipe-ml tests (FiftyOne + cloud storage / MinIO).
 #
 #   cd libs/datapipe-ml
-#   docker compose --env-file tests/.env.test -f tests/docker-compose.yml up -d
+#   mkdir -p tests/.docker-data/minio
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose --env-file tests/.env.test -f tests/docker-compose.yml up -d
 #   docker compose -f tests/docker-compose.yml down
+#
+# Mongo keeps image defaults (cannot run as arbitrary host uid).
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
 
 services:
   mongo:
@@ -17,6 +22,7 @@ services:
       start_period: 10s
 
   minio:
+    <<: *host-user
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     ports:
       - "9000:9000"
@@ -24,6 +30,10 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
@@ -32,6 +42,7 @@ services:
       start_period: 10s
 
   minio-setup:
+    <<: *host-user
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:

@@ -3,6 +3,8 @@ import {
     activeRules,
     chipKind,
     collectFilterColumns,
+    decodeFiltersParam,
+    encodeFiltersParam,
     expandChipValueRules,
     formatRule,
     isChipColumn,
@@ -80,5 +82,13 @@ describe("tableFilters", () => {
             { column_id: "subset_id", operator: "equal", value: "train" },
             { column_id: "subset_id", operator: "equal", value: "val" },
         ]);
+    });
+
+    it("roundtrips unicode filter values in URL state", () => {
+        const rules: OpsFilterRule[] = [
+            { column_id: "detection_model_id", operator: "contains", value: "кот_собака" },
+        ];
+        const restored = decodeFiltersParam(encodeFiltersParam(rules));
+        expect(restored[0]?.value).toBe("кот_собака");
     });
 });

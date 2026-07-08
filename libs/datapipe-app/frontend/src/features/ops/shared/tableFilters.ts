@@ -150,6 +150,24 @@ export function ensureRuleIds(rules: OpsFilterRule[]): OpsFilterRuleWithId[] {
     }));
 }
 
+export function encodeFiltersParam(rules: OpsFilterRule[]): string {
+    return encodeURIComponent(JSON.stringify(rules));
+}
+
+export function decodeFiltersParam(encoded: string): OpsFilterRule[] {
+    try {
+        const parsed = JSON.parse(decodeURIComponent(encoded)) as unknown;
+        return Array.isArray(parsed) ? (parsed as OpsFilterRule[]) : [];
+    } catch {
+        try {
+            const parsed = JSON.parse(atob(encoded)) as unknown;
+            return Array.isArray(parsed) ? (parsed as OpsFilterRule[]) : [];
+        } catch {
+            return [];
+        }
+    }
+}
+
 export function parseUrlFilterState(searchParams: URLSearchParams): OpsFilterState {
     const mode = searchParams.get("mode") === "and" ? "and" : "or";
     const search = searchParams.get("search") ?? "";
@@ -157,12 +175,7 @@ export function parseUrlFilterState(searchParams: URLSearchParams): OpsFilterSta
     if (!encoded) {
         return { mode, rules: [], search };
     }
-    try {
-        const parsed = JSON.parse(atob(encoded)) as OpsFilterRule[];
-        return { mode, rules: ensureRuleIds(Array.isArray(parsed) ? parsed : []), search };
-    } catch {
-        return { mode, rules: [], search };
-    }
+    return { mode, rules: ensureRuleIds(decodeFiltersParam(encoded)), search };
 }
 
 export function expandChipValueRules(rules: OpsFilterRule[], columns: OpsColumn[]): OpsFilterRule[] {
@@ -194,7 +207,7 @@ export function writeUrlFilterState(
     if (state.mode === "and") next.set("mode", "and");
     else next.delete("mode");
     const rules = serializeFilterRules(state.rules, columns);
-    if (rules.length) next.set("filters", btoa(JSON.stringify(rules)));
+    if (rules.length) next.set("filters", encodeFiltersParam(rules));
     else next.delete("filters");
     return next;
 }

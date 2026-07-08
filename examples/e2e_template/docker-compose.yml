@@ -1,3 +1,8 @@
+# Host-owned bind mounts: mkdir -p .docker-data/minio && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+# Postgres/Mongo/Label Studio keep image defaults (they cannot run as arbitrary host uid).
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
 services:
   postgres:
     image: postgres:14
@@ -26,11 +31,16 @@ services:
       start_period: 10s
 
   minio:
+    <<: *host-user
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -41,6 +51,7 @@ services:
       retries: 5
 
   minio-init:
+    <<: *host-user
     image: minio/mc:latest
     depends_on:
       minio:
@@ -88,6 +99,7 @@ services:
         condition: service_completed_successfully
 
   fiftyone:
+    <<: *host-user
     image: voxel51/fiftyone:1.17.0
     command: ["python", "-m", "fiftyone.server.main", "--port", "5151"]
     environment:

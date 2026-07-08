@@ -1,9 +1,14 @@
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
+FRONTEND_VOLUMES = -v ${CURDIR}/frontend:/app -v ${CURDIR}/datapipe_app/frontend:/app/build -w /app
+DOCKER_RUN_NODE = docker run --rm --user $(HOST_UID):$(HOST_GID) -e HOME=/tmp $(FRONTEND_VOLUMES)
+
 build-example:
 	docker build -f examples/datapipe_app/Dockerfile .
 
 build-frontend:
-	docker run --rm -v ${CURDIR}/frontend:/app -v ${CURDIR}/datapipe_app/frontend:/app/build -w /app node:18.7.0-slim yarn
-	docker run --rm -v ${CURDIR}/frontend:/app -v ${CURDIR}/datapipe_app/frontend:/app/build -w /app node:18.7.0-slim yarn build
+	$(DOCKER_RUN_NODE) node:18.7.0-slim yarn
+	$(DOCKER_RUN_NODE) node:18.7.0-slim yarn build
 
 build: build-frontend
 	uv build --package datapipe-app
