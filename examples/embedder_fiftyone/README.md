@@ -1,5 +1,7 @@
 # Embedder + FiftyOne Pipeline
 
+**Claude Code skill:** `/setup-embedder-fiftyone` — auto-loads when relevant, or invoke it directly.
+
 Datapipe example for:
 - loading images + class labels (local folder or FiftyOne zoo fallback)
 - running multiple embedders
