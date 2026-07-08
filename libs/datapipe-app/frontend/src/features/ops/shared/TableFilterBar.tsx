@@ -20,7 +20,7 @@ import {
     chipKind,
     defaultOperatorForColumn,
     findFilterColumn,
-    formatRule,
+    formatRuleParts,
     isSubsetEntityColumn,
     makeDefaultFilterRule,
     type OpsFilterRuleWithId,
@@ -270,7 +270,20 @@ export function TableFilterBar({
                                     removeRule(rule.id);
                                 }}
                             >
-                                {formatRule(rule, columns)}
+                                {(() => {
+                                    const parts = formatRuleParts(rule, columns);
+                                    return (
+                                        <>
+                                            <span className="ops-filter-chip-value">{parts.label}</span>
+                                            <span className="ops-filter-chip-meta">{parts.operator}</span>
+                                            {parts.values.map((chipValue) => (
+                                                <span className="ops-filter-chip-value" key={chipValue}>
+                                                    {chipValue}
+                                                </span>
+                                            ))}
+                                        </>
+                                    );
+                                })()}
                             </Tag>
                         ))}
                     <Button type="link" className="ops-inline-link" onClick={clearAll}>

@@ -49,7 +49,7 @@
 .ops-filter-subset-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
 }
 
@@ -57,12 +57,22 @@
     cursor: pointer;
     margin: 0;
     border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 10px;
+    border: 1px solid #d7e0ea;
+    background: #ffffff;
+    color: #23364f;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
 }
 
 .ops-filter-subset-chip-active {
-    background: #ede9fe;
-    border-color: #8b5cf6;
-    color: #5b21b6;
+    border-color: #f2bf8c !important;
+    background: #fff8ef !important;
+    color: #6b3500 !important;
 }
 
 .ops-filter-builder-footer {
@@ -84,41 +94,38 @@
     padding: 6px 0 10px;
 }
 
-.ops-filter-chip {
-    border-radius: 6px;
+.ops-filter-chip.ant-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
+    padding: 4px 8px 4px 10px;
+    border-radius: 8px;
+    border: 1px solid #d7e0ea;
+    background: #f8fafc;
+    color: #475467;
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.ops-filter-chip-meta {
+    color: #475467;
+    font-weight: 500;
+}
+
+.ops-filter-chip-value {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid #f2bf8c;
+    background: #fff8ef;
+    color: #6b3500;
     font-size: 12px;
-    line-height: 20px;
-}
-
-.ops-filter-chip-model {
-    background: #dbeafe;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-}
-
-.ops-filter-chip-subset {
-    background: #ede9fe;
-    border-color: #c4b5fd;
-    color: #6d28d9;
-}
-
-.ops-filter-chip-dataset {
-    background: #f3e8ff;
-    border-color: #d8b4fe;
-    color: #7e22ce;
-}
-
-.ops-filter-chip-source {
-    background: #f3f4f6;
-    border-color: #d1d5db;
-    color: #4b5563;
-}
-
-.ops-filter-chip-default {
-    background: #ecfeff;
-    border-color: #a5f3fc;
-    color: #0e7490;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .ops-table-filter-summary {

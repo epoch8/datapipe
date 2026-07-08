@@ -108,6 +108,22 @@ export function formatRule(rule: OpsFilterRule, columns: OpsColumn[]): string {
     return `${label} ${operator} ${rule.value ?? ""}`.trim();
 }
 
+export function formatRuleParts(
+    rule: OpsFilterRule,
+    columns: OpsColumn[],
+): { label: string; operator: string; values: string[] } {
+    const label = columnLabel(rule.column_id, columns);
+    const operator = FILTER_OPERATOR_LABELS[rule.operator];
+    if (rule.operator === "is_empty") {
+        return { label, operator, values: [] };
+    }
+    const values = (rule.value ?? "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    return { label, operator, values };
+}
+
 export function chipKind(
     columnId: string,
     columns: OpsColumn[],
@@ -176,6 +192,32 @@ export function parseUrlFilterState(searchParams: URLSearchParams): OpsFilterSta
         return { mode, rules: [], search };
     }
     return { mode, rules: ensureRuleIds(decodeFiltersParam(encoded)), search };
+}
+
+export function mergeTableFilterState(
+    searchParams: URLSearchParams,
+    table: { default_filters?: OpsFilterRule[] },
+    columns: OpsColumn[],
+): OpsFilterState {
+    const fromUrl = parseUrlFilterState(searchParams);
+    if (searchParams.has("filters")) {
+        return fromUrl;
+    }
+    const defaults = table.default_filters ?? [];
+    if (!defaults.length) {
+        return fromUrl;
+    }
+    return {
+        mode: fromUrl.mode,
+        search: fromUrl.search,
+        rules: ensureRuleIds(
+            defaults.map((rule) => ({
+                column_id: normalizeRuleColumnId(rule.column_id, columns),
+                operator: rule.operator,
+                value: rule.value,
+            })),
+        ),
+    };
 }
 
 export function expandChipValueRules(rules: OpsFilterRule[], columns: OpsColumn[]): OpsFilterRule[] {

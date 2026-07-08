@@ -7,6 +7,21 @@ from typing import Any, Literal, Sequence
 MetricDirection = Literal["max", "min"]
 ColumnKind = Literal["text", "number", "datetime", "duration", "status", "link", "chip"]
 SnapshotLabelMode = Literal["id", "short_id", "timestamp"]
+OpsFilterOperator = Literal[
+    "contains",
+    "not_contains",
+    "regex",
+    "equal",
+    "not_equal",
+    "is_empty",
+]
+
+
+@dataclass(frozen=True)
+class OpsFilterRule:
+    column_id: str
+    operator: OpsFilterOperator
+    value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +109,7 @@ class OpsMetricTableSpec:
     best_metric_direction: MetricDirection = "max"
     default_sort: Sequence[tuple[str, Literal["asc", "desc"]]] = field(default_factory=list)
     filters: Sequence[OpsColumn] = field(default_factory=list)
+    default_filters: Sequence[OpsFilterRule] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -2,15 +2,18 @@ import React from "react";
 import { Button } from "antd";
 import { Link } from "react-router-dom";
 import { EntityLink } from "./EntityLink";
+import { isPrimaryKeyField, recordFieldOrder } from "./recordFields";
 
 type Props = {
     title: string;
     record?: Record<string, unknown> | null;
-    preferredFields?: string[];
+    sourcePk?: Record<string, unknown> | null;
+    highlightFields?: Array<string | null | undefined>;
     sourceTable?: string | null;
     sourceTableUrl?: string | null;
     pipelineId?: string;
     emptyText?: string;
+    maxFields?: number;
 };
 
 function formatValue(value: unknown): React.ReactNode {
@@ -35,23 +38,18 @@ function entityRenderer(field: string, value: unknown): React.ReactNode {
 export function SourceRecordCard({
     title,
     record,
-    preferredFields = [],
+    sourcePk,
+    highlightFields = [],
     sourceTable,
     sourceTableUrl,
     pipelineId,
     emptyText = "No source record found.",
+    maxFields = 32,
 }: Props) {
-    const fields = React.useMemo(() => {
-        if (!record) return [];
-        const keys = new Set<string>();
-        for (const key of preferredFields) {
-            if (key in record) keys.add(key);
-        }
-        for (const key of Object.keys(record)) {
-            if (!keys.has(key) && keys.size < 12) keys.add(key);
-        }
-        return Array.from(keys);
-    }, [record, preferredFields]);
+    const fields = React.useMemo(
+        () => recordFieldOrder({ record, sourcePk, highlightFields, maxFields }),
+        [record, sourcePk, highlightFields, maxFields],
+    );
 
     return (
         <div className="ops-panel ops-source-record-card">
@@ -74,7 +72,12 @@ export function SourceRecordCard({
                 <dl className="ops-source-record-dl">
                     {fields.map((field) => (
                         <React.Fragment key={field}>
-                            <dt>{field}</dt>
+                            <dt>
+                                {field}
+                                {isPrimaryKeyField(field, sourcePk) ? (
+                                    <span className="dp-col-pk-badge ops-source-record-pk-badge">PK</span>
+                                ) : null}
+                            </dt>
                             <dd>{entityRenderer(field, record[field])}</dd>
                         </React.Fragment>
                     ))}

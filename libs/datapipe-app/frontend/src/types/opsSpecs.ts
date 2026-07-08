@@ -45,13 +45,58 @@ export type OpsTableSchema = {
     primary_columns: OpsColumn[];
     metric_columns: OpsMetricColumn[];
     filters: OpsColumn[];
+    default_filters?: OpsFilterRule[];
     default_sort: [string, "asc" | "desc"][];
     entity_links?: Record<string, string>;
+};
+
+export type OpsFrozenDatasetSpecPayload = {
+    table: string;
+    id_column: string;
+    created_at_column: string;
+    display_name_column?: string | null;
+    label_mode?: string;
+    split_columns?: Record<string, string>;
+    models_count_relation_id?: string | null;
+};
+
+export type OpsModelSpecPayload = {
+    table: string;
+    id_column: string;
+    display_name_column?: string | null;
+    created_at_column?: string | null;
+    artifact_uri_column?: string | null;
+    is_best_table?: string | null;
+    is_best_column?: string | null;
+};
+
+export type OpsTrainingSpecPayload = {
+    status_table: string;
+    model_id_column: string;
+    status_column: string;
+    started_at_column?: string | null;
+    finished_at_column?: string | null;
+    duration_seconds_column?: string | null;
+    artifact_columns?: Record<string, string>;
+    extra_columns?: OpsColumn[];
+};
+
+export type OpsRelationSpecPayload = {
+    id: string;
+    table: string;
+    from_entity: string;
+    from_column: string;
+    to_entity: string;
+    to_column: string;
 };
 
 export type OpsSpecDetail = OpsSpecSummary & {
     metrics: OpsTableSchema[];
     class_metrics: OpsTableSchema[];
+    frozen_dataset?: OpsFrozenDatasetSpecPayload | null;
+    model?: OpsModelSpecPayload | null;
+    training?: OpsTrainingSpecPayload | null;
+    relations?: OpsRelationSpecPayload[];
 };
 
 export type OpsOverviewResponse = {

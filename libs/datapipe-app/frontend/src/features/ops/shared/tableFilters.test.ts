@@ -7,6 +7,8 @@ import {
     encodeFiltersParam,
     expandChipValueRules,
     formatRule,
+    formatRuleParts,
+    mergeTableFilterState,
     isChipColumn,
     isSubsetEntityColumn,
     resolveColumnEntity,
@@ -19,6 +21,15 @@ const entityLinks = {
     subset: "subset_id",
     frozen_dataset: "detection_frozen_dataset_id",
 };
+
+beforeAll(() => {
+    if (!global.crypto?.randomUUID) {
+        Object.defineProperty(global, "crypto", {
+            value: { randomUUID: () => "test-uuid" },
+            configurable: true,
+        });
+    }
+});
 
 const columns: OpsColumn[] = [
     { id: "model", label: "Model", source: "detection_model_id", filterable: true, link_to: "model" },
@@ -42,6 +53,20 @@ describe("tableFilters", () => {
     it("formats active rules with raw source column names", () => {
         const rule: OpsFilterRule = { column_id: "detection_model_id", operator: "contains", value: "cat_dog" };
         expect(formatRule(rule, columns)).toBe("detection_model_id contains cat_dog");
+        expect(formatRuleParts(rule, columns)).toEqual({
+            label: "detection_model_id",
+            operator: "contains",
+            values: ["cat_dog"],
+        });
+    });
+
+    it("splits comma-separated chip values for display", () => {
+        const rule: OpsFilterRule = { column_id: "subset_id", operator: "equal", value: "train,val" };
+        expect(formatRuleParts(rule, columns)).toEqual({
+            label: "subset_id",
+            operator: "equal",
+            values: ["train", "val"],
+        });
     });
 
     it("deduplicates filter columns by source from spec schema", () => {
@@ -90,5 +115,29 @@ describe("tableFilters", () => {
         ];
         const restored = decodeFiltersParam(encodeFiltersParam(rules));
         expect(restored[0]?.value).toBe("кот_собака");
+    });
+
+    it("applies spec default_filters when URL has no filters param", () => {
+        const params = new URLSearchParams();
+        const state = mergeTableFilterState(
+            params,
+            { default_filters: [{ column_id: "subset_id", operator: "equal", value: "val" }] },
+            columns,
+        );
+        expect(state.rules).toHaveLength(1);
+        expect(state.rules[0]?.column_id).toBe("subset_id");
+        expect(state.rules[0]?.value).toBe("val");
+    });
+
+    it("keeps URL filters when filters param is present", () => {
+        const params = new URLSearchParams({
+            filters: encodeURIComponent(JSON.stringify([{ column_id: "subset_id", operator: "equal", value: "train" }])),
+        });
+        const state = mergeTableFilterState(
+            params,
+            { default_filters: [{ column_id: "subset_id", operator: "equal", value: "val" }] },
+            columns,
+        );
+        expect(state.rules[0]?.value).toBe("train");
     });
 });

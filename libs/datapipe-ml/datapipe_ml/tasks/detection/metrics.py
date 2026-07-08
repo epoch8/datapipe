@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -31,6 +31,17 @@ from datapipe_ml.core.datapipe import (
 )
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 from datapipe_ml.metrics.common import stable_unique
+from datapipe_ml.metrics.inputs import (
+    build_ground_truth_batch_inputs,
+    get_ground_truth_datatables,
+    ground_truth_convert_keys,
+    merged_ground_truth_primary_schema,
+    model_primary_key_columns,
+    model_primary_keys_in_table,
+    prediction_convert_keys,
+    primary_ground_truth_input,
+    wrap_ground_truth_inputs,
+)
 
 
 def count_detection_metrics_on_image(
@@ -60,12 +71,14 @@ def count_detection_metrics_on_image(
         )
     key_cols = stable_unique(primary_keys + detection_model_primary_keys + ["subset_id"])
     df__image__ground_truth__merge__subset = pd.merge(df__image__ground_truth, df__subset__has__image)
+    gt_convert_keys = ground_truth_convert_keys(primary_keys, detection_model_primary_keys, df__image__ground_truth__merge__subset)
     df__true_images_data = convert_df_with_bbox_to_df_with_image_data(
-        df__image__ground_truth__merge__subset, primary_keys + ["subset_id"], bbox_id__name
+        df__image__ground_truth__merge__subset, gt_convert_keys, bbox_id__name
     )
     df__detection_prediction__merge__subset = pd.merge(df__detection_prediction, df__subset__has__image)
+    pred_convert_keys = prediction_convert_keys(primary_keys, detection_model_primary_keys, df__detection_prediction__merge__subset)
     df__pred_images_data = convert_df_with_bbox_to_df_with_image_data(
-        df__detection_prediction__merge__subset, key_cols, bbox_id__name
+        df__detection_prediction__merge__subset, pred_convert_keys, bbox_id__name
     )
     df__images_data = pd.merge(
         df__true_images_data, df__pred_images_data, on=primary_keys + ["subset_id"], suffixes=("_true", "_pred")
@@ -215,7 +228,7 @@ def count_detection_metrics_on_subset(
 
 @dataclass
 class CountMetrics_Subset_DetectionModel(PipelineStep):
-    input__image__ground_truth: PipelineInput
+    input__image__ground_truth: PipelineInput | Sequence[PipelineInput]
     input__subset__has__image: PipelineInput
     input__detection_prediction: PipelineInput
     output__detection_model__metrics__on__image: PipelineOutput
@@ -235,33 +248,44 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
         if self.detection_model_primary_keys is None:
             self.detection_model_primary_keys = ["detection_model_id"]
         check_columns_are_in_table(ds, self.input__subset__has__image, ["subset_id"])
+        primary_gt = primary_ground_truth_input(self.input__image__ground_truth)
+        prediction_model_keys = model_primary_keys_in_table(
+            ds, self.input__detection_prediction, self.detection_model_primary_keys
+        )
+        check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys)
         if self.bbox_id__name is not None:
             check_columns_are_in_table(
                 ds,
-                self.input__image__ground_truth,
+                primary_gt,
                 self.primary_keys + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max"],
             )
             check_columns_are_in_table(
                 ds,
                 self.input__detection_prediction,
                 self.primary_keys
-                + self.detection_model_primary_keys
+                + prediction_model_keys
                 + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max"],
             )
         else:
             check_columns_are_in_table(
                 ds,
-                self.input__image__ground_truth,
+                primary_gt,
                 self.primary_keys + ["bboxes"],
             )
             check_columns_are_in_table(
                 ds,
                 self.input__detection_prediction,
-                self.primary_keys + self.detection_model_primary_keys + ["bboxes"],
+                self.primary_keys + prediction_model_keys + ["bboxes"],
             )
         # ---
-        dt__input__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__input__image__ground_truth_tables = get_ground_truth_datatables(ds, self.input__image__ground_truth)
         dt__input__detection_prediction = get_datatable(ds, self.input__detection_prediction)
+        model_key_columns = model_primary_key_columns(
+            ds,
+            self.detection_model_primary_keys,
+            prediction=self.input__detection_prediction,
+            ground_truth=self.input__image__ground_truth,
+        )
         catalog.add_datatable(
             get_pipeline_table_name(self.output__detection_model__metrics__on__image),
             Table(
@@ -270,11 +294,7 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__detection_model__metrics__on__image),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__image__ground_truth.primary_schema
-                            if column.name not in ["subset_id"]
-                        ]
+                        data_sql_schema=merged_ground_truth_primary_schema(dt__input__image__ground_truth_tables)
                         + [
                             column
                             for column in dt__input__detection_prediction.primary_schema
@@ -301,11 +321,7 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__detection_model__metrics__on__subset),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__detection_prediction.primary_schema
-                            if column.name in self.detection_model_primary_keys
-                        ]
+                        data_sql_schema=model_key_columns
                         + [
                             Column("subset_id", String, primary_key=True),
                             Column("calc__images_support", Integer),
@@ -325,12 +341,17 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
             ),
         )
         # ---
+        ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=count_detection_metrics_on_image,
+                    func=wrap_ground_truth_inputs(
+                        count_detection_metrics_on_image,
+                        n_ground_truth_inputs=len(ground_truth_inputs),
+                        primary_keys=self.primary_keys,
+                    ),
                     inputs=[
-                        self.input__image__ground_truth,
+                        *ground_truth_inputs,
                         required_pipeline_input(self.input__subset__has__image),
                         required_pipeline_input(self.input__detection_prediction),
                     ],

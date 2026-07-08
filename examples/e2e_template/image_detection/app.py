@@ -8,6 +8,7 @@ from datapipe_app import (
     OpsColumn,
     OpsColumnGroup,
     OpsDataSpec,
+    OpsFilterRule,
     OpsFrozenDatasetSpec,
     OpsMetricTableSpec,
     OpsModelSpec,
@@ -422,6 +423,7 @@ app.add_specs([
                 best_metric_column="calc__weighted_f1_score",
                 default_sort=[("weighted_f1", "desc")],
                 filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             )
         ],
         class_metrics=[
@@ -456,6 +458,7 @@ app.add_specs([
                     OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
                     OpsColumn("class_filter", "Class", "label", filterable=True),
                 ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             )
         ],
         tags=["yolo", "image", "training"],

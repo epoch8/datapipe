@@ -25,7 +25,16 @@ class OpsSpecsService:
         if debug:
             payload["debug_spec"] = ops_spec_to_dict(spec)
         else:
-            payload.update({"metrics": [self._table_schema(t) for t in spec.metrics], "class_metrics": [self._table_schema(t) for t in spec.class_metrics]})
+            payload.update(
+                {
+                    "metrics": [self._table_schema(t) for t in spec.metrics],
+                    "class_metrics": [self._table_schema(t) for t in spec.class_metrics],
+                    "frozen_dataset": ops_spec_to_dict(spec.frozen_dataset) if spec.frozen_dataset else None,
+                    "model": ops_spec_to_dict(spec.model) if spec.model else None,
+                    "training": ops_spec_to_dict(spec.training) if spec.training else None,
+                    "relations": ops_spec_to_dict(spec.relations),
+                }
+            )
         return payload
 
     def frozen_overview(self) -> dict[str, Any]:
@@ -169,7 +178,7 @@ class OpsSpecsService:
         return {"id": spec.id, "title": spec.title, "description": spec.description, "icon": spec.icon, "color": spec.color, "has_frozen_datasets": spec.frozen_dataset is not None, "has_training": spec.training is not None, "metric_tables_count": len(spec.metrics), "class_metric_tables_count": len(spec.class_metrics), "tags": list(spec.tags)}
 
     def _table_schema(self, table: Any) -> dict[str, Any]:
-        return {"id": table.id, "title": table.title, "table": table.table, "metric_source": table.metric_source, "primary_columns": ops_spec_to_dict(table.primary_columns), "metric_columns": ops_spec_to_dict(table.metric_columns), "filters": ops_spec_to_dict(table.filters), "default_sort": list(table.default_sort), "entity_links": dict(getattr(table, "entity_links", {}) or {})}
+        return {"id": table.id, "title": table.title, "table": table.table, "metric_source": table.metric_source, "primary_columns": ops_spec_to_dict(table.primary_columns), "metric_columns": ops_spec_to_dict(table.metric_columns), "filters": ops_spec_to_dict(table.filters), "default_filters": ops_spec_to_dict(getattr(table, "default_filters", []) or []), "default_sort": list(table.default_sort), "entity_links": dict(getattr(table, "entity_links", {}) or {})}
 
     def _overview_card(self, spec: DatapipeOpsSpec) -> dict[str, Any]:
         return {"spec_id": spec.id, "id": spec.id, "title": spec.title, "description": spec.description, "icon": spec.icon, "color": spec.color, "status": "healthy"}

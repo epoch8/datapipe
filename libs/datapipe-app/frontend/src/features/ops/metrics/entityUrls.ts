@@ -1,10 +1,12 @@
-type ModelUrlParams = { dataset_id?: string; subset?: string };
-type DatasetUrlParams = { subset?: string };
+type ModelUrlParams = { dataset_id?: string; subset?: string; specId?: string };
+type DatasetUrlParams = { subset?: string; specId?: string };
 
 export function buildModelUrl(modelId: string, pipelineId?: string, params?: ModelUrlParams): string {
-    const path = pipelineId
-        ? `/pipelines/${encodeURIComponent(pipelineId)}/metrics/models/${encodeURIComponent(modelId)}`
-        : `/metrics/models/${encodeURIComponent(modelId)}`;
+    const path = params?.specId
+        ? `/metrics/${encodeURIComponent(params.specId)}/models/${encodeURIComponent(modelId)}`
+        : pipelineId
+          ? `/pipelines/${encodeURIComponent(pipelineId)}/metrics/models/${encodeURIComponent(modelId)}`
+          : `/metrics/models/${encodeURIComponent(modelId)}`;
     const q = new URLSearchParams();
     if (params?.dataset_id) q.set("dataset_id", params.dataset_id);
     if (params?.subset) q.set("subset", params.subset);
@@ -13,9 +15,11 @@ export function buildModelUrl(modelId: string, pipelineId?: string, params?: Mod
 }
 
 export function buildDatasetUrl(datasetId: string, pipelineId?: string, params?: DatasetUrlParams): string {
-    const path = pipelineId
-        ? `/pipelines/${encodeURIComponent(pipelineId)}/metrics/datasets/${encodeURIComponent(datasetId)}`
-        : `/metrics/datasets/${encodeURIComponent(datasetId)}`;
+    const path = params?.specId
+        ? `/frozen-datasets/${encodeURIComponent(params.specId)}/datasets/${encodeURIComponent(datasetId)}`
+        : pipelineId
+          ? `/pipelines/${encodeURIComponent(pipelineId)}/metrics/datasets/${encodeURIComponent(datasetId)}`
+          : `/metrics/datasets/${encodeURIComponent(datasetId)}`;
     const q = new URLSearchParams();
     if (params?.subset) q.set("subset", params.subset);
     const qs = q.toString();
