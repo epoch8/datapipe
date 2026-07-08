@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
 
 _SKIP_MODULE_PREFIXES = ("datapipe_app.", "datapipe.", "importlib.", "click.")
+_SKIP_MODULE_NAMES = frozenset({"datapipe", "datapipe_app"})
 
 
 class OpsSettings(BaseSettings):
@@ -24,6 +25,7 @@ class OpsSettings(BaseSettings):
     pipeline_id: Optional[str] = None
     observability_db_url: Optional[str] = None
     show_step_status: bool = False
+    record_cli_runs: bool = True
 
 
 _active_ops: Optional[OpsSettings] = None
@@ -51,6 +53,8 @@ def pipeline_module_from_caller() -> ModuleType | None:
         if not isinstance(mod, ModuleType):
             continue
         if any(mod.__name__.startswith(prefix) for prefix in _SKIP_MODULE_PREFIXES):
+            continue
+        if mod.__name__ in _SKIP_MODULE_NAMES:
             continue
         if mod.__file__:
             return mod

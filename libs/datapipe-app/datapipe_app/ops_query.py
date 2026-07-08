@@ -160,7 +160,9 @@ class OpsQuery:
         conditions: list[Any] = []
         for rule in filter_rules:
             spec_col = allowed_by_id.get(rule.column_id) or allowed_by_source.get(rule.column_id)
-            if spec_col is None or not spec_col.filterable:
+            if spec_col is None:
+                continue
+            if not spec_col.filterable:
                 raise OpsSpecValidationError(
                     f'Filter "{rule.column_id}" is not configured for table "{table_name}".'
                 )
@@ -180,7 +182,9 @@ class OpsQuery:
         conditions: list[Any] = []
         for key, value in filters.items():
             spec_col = allowed_by_id.get(key) or allowed_by_source.get(key)
-            if spec_col is None or not spec_col.filterable:
+            if spec_col is None:
+                continue
+            if not spec_col.filterable:
                 raise OpsSpecValidationError(f'Filter "{key}" is not configured for table "{table_name}".')
             values = value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else [value]
             values = [item for item in values if item not in {None, ""}]

@@ -7,6 +7,7 @@ from datapipe.store.database import DBConn
 from datapipe_app.observability.settings import (
     pipeline_id_from_module,
     pipeline_id_from_spec,
+    pipeline_module_from_caller,
     resolve_ops_settings,
 )
 
@@ -60,3 +61,31 @@ def test_resolve_ops_settings_env_overrides(monkeypatch):
 
     assert settings.pipeline_id == "from_env"
     assert settings.observability_db_url == "sqlite:///override.db"
+
+
+def test_pipeline_module_from_caller_skips_datapipe_package(monkeypatch):
+    datapipe_pkg = ModuleType("datapipe")
+    datapipe_pkg.__file__ = "/venv/lib/python3.12/site-packages/datapipe/__init__.py"
+    app_module = ModuleType("app")
+    app_module.__file__ = "/srv/examples/detection_tags/detection/app.py"
+
+    frames = [
+        MagicMock(frame=MagicMock(f_globals={"__name__": "datapipe_app.observability.settings"})),
+        MagicMock(frame=MagicMock(f_globals={"__name__": "datapipe.cli"})),
+        MagicMock(frame=MagicMock(f_globals={"__name__": "app"})),
+    ]
+
+    def fake_getmodule(frame):
+        name = frame.f_globals["__name__"]
+        if name == "datapipe.cli":
+            return datapipe_pkg
+        if name == "app":
+            return app_module
+        return ModuleType("datapipe_app.observability.settings")
+
+    monkeypatch.setattr("datapipe_app.observability.settings.inspect.stack", lambda: frames)
+    monkeypatch.setattr("datapipe_app.observability.settings.inspect.getmodule", fake_getmodule)
+
+    found = pipeline_module_from_caller()
+    assert found is app_module
+    assert pipeline_id_from_module(found) == "app"

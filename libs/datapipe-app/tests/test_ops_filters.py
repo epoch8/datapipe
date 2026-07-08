@@ -170,11 +170,29 @@ def test_regex_filter_sqlite(filter_app):
     assert all(str(row["model"]).startswith("cat_dog") for row in res.json()["rows"])
 
 
-def test_unknown_column_returns_400(filter_app):
+def test_unknown_column_is_skipped(filter_app):
     client = TestClient(filter_app)
     filters = json.dumps([{"column_id": "missing", "operator": "equal", "value": "x"}])
     res = _rows(client, filters=filters)
-    assert res.status_code == 400
+    assert res.status_code == 200
+    assert res.json()["total"] == 5
+
+
+def test_shared_filter_skipped_when_column_absent_from_table(filter_app):
+    """Tag filter from a sibling metric table must not 400 on model_metrics."""
+    query = OpsQuery(filter_app.ds, filter_app.catalog)
+    columns = metrics_spec().metrics[0].primary_columns + metrics_spec().metrics[0].filters
+    rows, total = query.rows(
+        "metrics_rows",
+        allowed_columns=columns,
+        filter_rules=[
+            OpsFilterRule(column_id="subset", operator="equal", value="val"),
+            OpsFilterRule(column_id="tag_id", operator="equal", value="night"),
+        ],
+        filter_mode="and",
+    )
+    assert total == 2
+    assert all(row["subset"] == "val" for row in rows)
 
 
 def test_unknown_operator_returns_400():
@@ -204,6 +222,9 @@ def test_ops_query_direct_non_filterable_column(filter_app):
     with pytest.raises(OpsSpecValidationError, match="not configured"):
         query.rows(
             "metrics_rows",
-            allowed_columns=[OpsColumn("model", "Model ID", "model", filterable=True)],
+            allowed_columns=[
+                OpsColumn("model", "Model ID", "model", filterable=True),
+                OpsColumn("score", "Score", "score", "number", filterable=False),
+            ],
             filter_rules=[OpsFilterRule(column_id="score", operator="equal", value="1")],
         )

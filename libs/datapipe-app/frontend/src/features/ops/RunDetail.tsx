@@ -43,7 +43,8 @@ function formatDuration(started?: string, finished?: string): string | undefined
 function formatTrigger(trigger?: string): string {
     if (!trigger) return "manual";
     if (trigger === "api:pipeline") return "api";
-    if (trigger.startsWith("api:stage:")) return "api";
+    if (trigger.startsWith("api:stage:") || trigger === "api") return "api";
+    if (trigger.startsWith("cli:stage:") || trigger === "cli" || trigger === "cli:pipeline") return "cli";
     if (trigger.startsWith("api")) return "api";
     if (trigger.includes("schedule")) return "schedule";
     return trigger;

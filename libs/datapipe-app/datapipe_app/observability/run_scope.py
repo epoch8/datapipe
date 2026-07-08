@@ -5,6 +5,12 @@ from typing import Any, Literal, Optional
 
 from datapipe.types import Labels
 
+from datapipe_app.observability.run_triggers import (
+    API_PIPELINE_TRIGGER,
+    CLI_PIPELINE_TRIGGER,
+    stage_from_trigger,
+)
+
 RunScope = Literal["full_pipeline", "stage_run", "label_run"]
 
 
@@ -58,15 +64,15 @@ def derive_run_scope(
             "target_label_display": labels[0][1] if labels else "unknown",
         }
 
-    if trigger == "api:pipeline" or trigger is None:
+    if trigger == API_PIPELINE_TRIGGER or trigger == CLI_PIPELINE_TRIGGER or trigger is None:
         return {
             "run_scope": "full_pipeline",
             "target_labels": [],
             "target_label_display": "all labels",
         }
 
-    if trigger and trigger.startswith("api:stage:"):
-        stage = trigger[len("api:stage:") :]
+    stage = stage_from_trigger(trigger)
+    if stage:
         return {
             "run_scope": "stage_run",
             "target_labels": [["stage", stage]],
