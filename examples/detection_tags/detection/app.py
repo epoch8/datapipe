@@ -35,13 +35,13 @@ pipeline = Pipeline(
         BatchTransform(
             func=steps.load_batch,
             inputs=["load_request"],
-            outputs=["s3_images", "image__ground_truth", "tag", "image__tag"],
+            outputs=["s3_images", "image__ground_truth", "tag", "image__tag", "image__subset_hint"],
             transform_keys=["request_id"],
             labels=[("stage", "load")],
         ),
         BatchTransform(
             func=steps.split_df_train_val,
-            inputs=["image__ground_truth", "image__subset"],
+            inputs=["image__ground_truth", "image__subset", "image__subset_hint"],
             outputs=["image__subset"],
             transform_keys=["image_name"],
             kwargs=dict(primary_keys=["image_name"], val_perc=0.25, random_seed=42),
@@ -136,6 +136,39 @@ pipeline = Pipeline(
             outputs=["tag_metrics"],
             transform_keys=["detection_model_id"],
             labels=[("stage", "train"), ("stage", "count-metrics"), ("stage", "tag-metrics")],
+        ),
+        # --- FiftyOne (stage=fiftyone): browse GT + both models' predictions, filter by tag ---
+        BatchTransform(
+            func=steps.download_images,
+            inputs=["s3_images"],
+            outputs=["local_images"],
+            transform_keys=["image_name"],
+            kwargs=dict(image__image_path__name="image_url", image__local_image_path__name="local_path"),
+            labels=[("stage", "fiftyone")],
+        ),
+        BatchTransform(
+            func=steps.publish_gt_to_fiftyone,
+            inputs=["local_images", "image__ground_truth", "image__subset", "image__tag"],
+            outputs=["fiftyone_annotations"],
+            transform_keys=["image_name"],
+            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            labels=[("stage", "fiftyone")],
+        ),
+        BatchTransform(
+            func=steps.publish_predictions_to_fiftyone,
+            inputs=["local_images", "detection_prediction_train"],
+            outputs=["fiftyone_predictions_model_a"],
+            transform_keys=["image_name"],
+            kwargs=dict(slot="model_a", primary_keys=["image_name"], image__image_path__name="local_path"),
+            labels=[("stage", "fiftyone")],
+        ),
+        BatchTransform(
+            func=steps.publish_predictions_to_fiftyone,
+            inputs=["local_images", "detection_prediction_train"],
+            outputs=["fiftyone_predictions_model_b"],
+            transform_keys=["image_name"],
+            kwargs=dict(slot="model_b", primary_keys=["image_name"], image__image_path__name="local_path"),
+            labels=[("stage", "fiftyone")],
         ),
     ]
 )

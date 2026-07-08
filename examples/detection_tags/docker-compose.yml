@@ -40,3 +40,14 @@ services:
       mc mb --ignore-existing local/datapipe-tags &&
       mc anonymous set download local/datapipe-tags
       "
+
+  # FiftyOne dataset metadata store (the fiftyone stage). Point FIFTYONE_DATABASE_URI at it.
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
