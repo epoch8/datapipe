@@ -75,7 +75,7 @@ class OpsQuery:
         sort_by: str | None = None,
         sort_dir: Literal["asc", "desc"] = "desc",
         search: str | None = None,
-        filters: dict[str, str] | None = None,
+        filters: dict[str, str | Sequence[str]] | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -94,7 +94,14 @@ class OpsQuery:
             spec_col = allowed_by_id.get(key) or allowed_by_source.get(key)
             if spec_col is None or not spec_col.filterable:
                 raise OpsSpecValidationError(f'Filter "{key}" is not configured for table "{table_name}".')
-            conditions.append(table.c[spec_col.source] == value)
+            values = value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else [value]
+            values = [item for item in values if item not in {None, ""}]
+            if not values:
+                continue
+            if len(values) == 1:
+                conditions.append(table.c[spec_col.source] == values[0])
+            else:
+                conditions.append(table.c[spec_col.source].in_(list(values)))
 
         if search:
             search_conditions = [

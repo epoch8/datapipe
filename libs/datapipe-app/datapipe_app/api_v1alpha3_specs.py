@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 
 from datapipe_app.ops_specs_service import OpsSpecsService
-from datapipe_app.spec_registry import OpsSpecRegistry, OpsSpecValidationError
+from datapipe_app.spec_registry import OpsSpecValidationError
 
 
 def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:

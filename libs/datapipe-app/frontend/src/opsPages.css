@@ -1439,6 +1439,50 @@
     background: var(--dp-blue-100) !important;
 }
 
+.ops-table-filter-area {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 6px;
+}
+
+.ops-table-filter-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 8px;
+    align-items: center;
+}
+
+.ops-filter-inline-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--dp-gray-600);
+    min-width: 76px;
+}
+
+.ops-filter-chip {
+    margin: 0 !important;
+    border-radius: 6px !important;
+    border: 1px solid var(--dp-gray-200) !important;
+    background: #fff !important;
+    color: var(--dp-gray-700) !important;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ops-filter-chip-active {
+    border-color: var(--dp-blue-300) !important;
+    background: var(--dp-blue-100) !important;
+    color: var(--dp-blue-700) !important;
+}
+
+.ops-filter-chip:hover {
+    border-color: var(--dp-blue-300) !important;
+}
+
+.ops-table-filter-hint {
+    margin-top: 2px;
+}
+
 .ops-linked-actions {
     display: grid;
     gap: 10px;

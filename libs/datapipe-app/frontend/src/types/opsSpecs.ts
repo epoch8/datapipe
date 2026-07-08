@@ -75,4 +75,6 @@ export type OpsRowsParams = {
     sort_dir?: "asc" | "desc";
     limit?: number;
     offset?: number;
+    model?: string[] | string;
+    subset?: string[] | string;
 };
