@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+
+# Deterministic training: cuBLAS needs CUBLAS_WORKSPACE_CONFIG set BEFORE torch/CUDA init, so set it
+# here at the entrypoint — the train subprocess inherits it. Pairs with seed + deterministic=True in
+# YoloV8_TrainingConfig to keep model-A / model-B metrics reproducible run-to-run on the same GPU.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
@@ -86,7 +93,7 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True)
+                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True, seed=42, workers=0)
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
             resume_config=TrainingResumeConfig(
