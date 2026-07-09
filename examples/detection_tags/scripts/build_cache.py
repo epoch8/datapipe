@@ -19,7 +19,8 @@ import json
 import sys
 from pathlib import Path
 
-import coco_demo
+sys.path.insert(0, ".")  # run from examples/detection_tags/detection so `import coco_demo` resolves
+import coco_demo  # noqa: E402
 
 
 def main() -> int:
