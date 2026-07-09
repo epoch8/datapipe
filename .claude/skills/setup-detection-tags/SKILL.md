@@ -268,15 +268,31 @@ different left-hand port rather than killing whatever holds it.
 A/B twist: baseline vs retrained predictions in one dataset (`FIFTYONE_DATASET_NAME`, metadata in
 MongoDB).
 
-Pipeline steps (`detection/steps.py`):
+Pipeline steps (`detection/steps.py` + `detection/app.py` wiring):
+
 1. `download_images` → `local_images`
 2. `publish_to_fiftyone` → `fiftyone_images` (field `images`)
-3. `publish_to_fiftyone_ground_truth` → `fiftyone_annotations` (field `annotations`; merges
-   `subset_id` + `tag_id` onto each sample)
+3. `publish_to_fiftyone_ground_truth` → `fiftyone_annotations` (field `annotations`)
+   - Inputs: `local_images` + `Required(image__ground_truth|subset|tag)` (inner join on annotated images).
+   - Merges GT with `local_images` only; `subset_id` / `tag_id` come from dict lookups on
+     `image__subset` / `image__tag` — missing → `"none"` (do not left-merge subset/tag onto GT).
 4. `publish_to_fiftyone_predictions_baseline` → `fiftyone_predictions_model_a` (field
-   `predictions_model_a`; earliest `detection_model_id` → sample field `detection_model_id_a`)
+   `predictions_model_a`)
 5. `publish_to_fiftyone_predictions_retrained` → `fiftyone_predictions_model_b` (field
-   `predictions_model_b`; second model id → `detection_model_id_b`)
+   `predictions_model_b`)
+
+**Prediction publish wiring (important):** both steps use
+`inputs=[Required("local_images"), Required("detection_prediction_train")]` and
+`transform_keys=["image_name", "detection_model_id"]`. That inner-joins images to rows that actually
+have train predictions — a full join on all `local_images` puts `NaN` in `detection_model_id` for
+images without predictions (e.g. some `*__night.jpg` in val-only) and Postgres errors with
+`varchar = double precision`. Input order must stay `local_images` first, then
+`detection_prediction_train` — it matches `(images_df, predictions_df)` in `steps.py`.
+
+**A/B model assignment:** earliest sorted `detection_model_id` → baseline (A,
+`detection_model_id_a`); **every later** id → retrained (B, `detection_model_id_b`) — `ids[1:]`, not
+just the second model. With 3+ models, B publishes all non-baseline models (same as the old
+`publish_predictions_to_fiftyone` slot behaviour).
 
 Stores share one `fo_session` / dataset (`detection/data.py`). Separate `detection_model_id_a` /
 `detection_model_id_b` sample fields avoid the two prediction stores clobbering each other.
@@ -291,7 +307,8 @@ Docker created the bind mount as root. The service bind-mounts
 The pipeline still uses the **`fiftyone` Python lib** from `datapipe-ml[fiftyone]` to publish samples;
 only the App server runs in Docker (no host `fiftyone app launch` needed).
 
-`tag_id` and `subset_id` are ordinary **sample fields** (from the GT publish merge) — NOT FiftyOne's
+`tag_id` and `subset_id` are ordinary **sample fields** (set in GT publish via dict lookup on
+`image__subset` / `image__tag`) — NOT FiftyOne's
 native "sample tags". Filter in the sidebar: `tag_id = night` AND `subset_id = val` (field filters,
 not native TAGS OR-semantics). After part 2, `predictions_model_b` shows model B catching boxes model A
 missed in the dark.
@@ -327,6 +344,11 @@ to a file + `grep`, not inline.
 - **Metrics 0 on a trained model** → tiny/noisy val latches an early "best" checkpoint; use enough
   data (~450 total) and the shipped epoch config.
 - **Training exits 0 but no model** → datapipe swallows step errors; check `detection_training_status`.
+- **`stage=fiftyone` fails: `operator does not exist: character varying = double precision`** on
+  `detection_prediction_train_meta` — batch index included `local_images` without matching
+  predictions (`detection_model_id` = `NaN`). Fix: both prediction publish inputs must be
+  `Required(...)` and `transform_keys` must include `detection_model_id` (see FiftyOne section).
+  Re-run `datapipe step --labels=stage=fiftyone run` after fixing `app.py`.
 
 ## Real data
 
