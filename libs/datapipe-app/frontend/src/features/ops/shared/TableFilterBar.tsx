@@ -156,6 +156,18 @@ export function TableFilterBar({
         onChange({ ...value, rules: [] });
     };
 
+    const columnOptions = React.useMemo(() => {
+        const seen = new Set<string>();
+        return columns
+            .filter((item) => {
+                if (!item.filterable || !item.source) return false;
+                if (seen.has(item.source)) return false;
+                seen.add(item.source);
+                return true;
+            })
+            .map((item) => ({ value: item.source, label: item.label || item.source }));
+    }, [columns]);
+
     return (
         <div className="ops-table-filter-bar">
             <div className="ops-table-filter-toolbar">
@@ -208,7 +220,7 @@ export function TableFilterBar({
                                 <Select
                                     className="ops-filter-rule-column"
                                     value={columnSource}
-                                    options={columns.map((item) => ({ value: item.source, label: item.source }))}
+                                    options={columnOptions}
                                     onChange={(source) => {
                                         const nextColumn = findFilterColumn(source, columns);
                                         updateRule(rule.id, {

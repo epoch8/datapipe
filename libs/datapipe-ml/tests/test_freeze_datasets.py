@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from tests.utils import assert_columns_present, assert_no_nulls
@@ -8,6 +10,25 @@ from tests.utils import assert_columns_present, assert_no_nulls
 def _require_datapipe_runtime():
     pytest.importorskip("tqdm")
     pytest.importorskip("datapipe")
+
+
+def test_frozen_dataset_created_at_timestamp_treats_naive_as_utc():
+    _require_datapipe_runtime()
+    from datapipe_ml.datasets.freeze import frozen_dataset_created_at_timestamp
+
+    naive = datetime(2026, 7, 8, 21, 47, 0)
+    expected = naive.replace(tzinfo=timezone.utc).timestamp()
+    assert frozen_dataset_created_at_timestamp(naive) == expected
+    if datetime.now().astimezone().utcoffset().total_seconds() != 0:
+        assert frozen_dataset_created_at_timestamp(naive) != naive.timestamp()
+
+
+def test_frozen_dataset_created_at_timestamp_keeps_aware_values():
+    _require_datapipe_runtime()
+    from datapipe_ml.datasets.freeze import frozen_dataset_created_at_timestamp
+
+    aware = datetime(2026, 7, 8, 21, 47, 0, tzinfo=timezone.utc)
+    assert frozen_dataset_created_at_timestamp(aware) == aware.timestamp()
 
 
 def _store_base_inputs(ds, catalog, smoke_dataset):

@@ -191,13 +191,16 @@ def publish_to_fiftyone_ground_truth(
     primary_keys: list[str],
     image__image_path__name: str,
 ) -> pd.DataFrame:
-    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys, how="left")
-    images_df = pd.merge(images_df, subset_df, on=primary_keys, how="left")
-    return convert_df_with_bbox_to_df_with_image_data(
+    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys)
+    images_df = pd.merge(images_df, subset_df, on=primary_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
         df__with_bbox=images_df,
-        primary_keys=primary_keys,
+        primary_keys=primary_keys + ["subset_id"],
         image__image_path__name=image__image_path__name
     )
+    for image_data, subset_id in zip(df__image_data["image_data"], df__image_data["subset_id"]):
+        image_data.additional_info["subset_id"] = subset_id
+    return df__image_data[primary_keys + ["image_data"]]
 
 
 def publish_to_fiftyone_predictions_from_best_model(
@@ -208,10 +211,13 @@ def publish_to_fiftyone_predictions_from_best_model(
     model_keys: list[str],
     image__image_path__name: str,
 ) -> pd.DataFrame:
-    df = pd.merge(predictions_df, images_df, on=primary_keys, how="left")
-    df = pd.merge(df, best_detection_model_df, on=model_keys, how="left")
-    return convert_df_with_bbox_to_df_with_image_data(
+    df = pd.merge(predictions_df, images_df, on=primary_keys)
+    df = pd.merge(df, best_detection_model_df, on=model_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
         df__with_bbox=df,
-        primary_keys=primary_keys,
+        primary_keys=primary_keys + ["detection_model_id"],
         image__image_path__name=image__image_path__name,
     )
+    for image_data, detection_model_id in zip(df__image_data["image_data"], df__image_data["detection_model_id"]):
+        image_data.additional_info["detection_model_id"] = detection_model_id
+    return df__image_data[primary_keys + ["image_data"]]

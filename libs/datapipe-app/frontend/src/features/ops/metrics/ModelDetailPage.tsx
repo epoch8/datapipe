@@ -13,6 +13,7 @@ import { buildMetricColumns } from "./metricTableColumns";
 import { buildMetricSchema } from "./metricsSchema";
 import { buildMetricsUrl } from "./entityUrls";
 import { splitSizeLabel } from "./FrozenDatasetsCompact";
+import { ImageRecordsTable } from "../images/ImageRecordsTable";
 import { modelHighlightFields } from "./recordFields";
 
 function resolveLinkedDatasetId(data: MetricsModelDetailResponse): string | undefined {
@@ -208,6 +209,17 @@ export function ModelDetailPage() {
                                 scroll={{ x: "max-content" }}
                             />
                         </div>
+
+                        {spec?.model?.prediction_view?.kind === "image" && pipelineId && specId ? (
+                            <ImageRecordsTable
+                                pipelineId={pipelineId}
+                                specId={specId}
+                                parentId={modelId}
+                                scope="model_prediction"
+                                mode="prediction"
+                                title="Predictions for this model"
+                            />
+                        ) : null}
                     </>
                 )}
             </EmptyState>

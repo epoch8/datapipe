@@ -58,7 +58,7 @@ export function modelHighlightFields(spec: OpsSpecDetail): string[] {
         model.is_best_column,
     ];
 
-    for (const column of spec.training?.extra_columns ?? []) {
+    for (const column of spec.training?.columns ?? []) {
         if (column.link_to === "frozen_dataset") {
             fields.push(column.source);
         }

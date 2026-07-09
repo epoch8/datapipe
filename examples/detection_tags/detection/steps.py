@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import random
 import time
@@ -27,6 +28,8 @@ COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
 COCO_ANN_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
 CACHE = Path(os.environ.get("DATAPIPE_TAGS_CACHE_DIR", "/tmp/datapipe-tags-cache"))
 RNG_SEED = 1234
+
+logger = logging.getLogger("datapipe_ml.detection_tags")
 
 
 # --- COCO helpers ---------------------------------------------------------------
@@ -80,6 +83,24 @@ def load_batch(df_request: pd.DataFrame):
         return (pd.DataFrame(columns=s3_cols), pd.DataFrame(columns=gt_cols),
                 pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols))
 
+    requests = [
+        {
+            "n": int(req["n"]),
+            "offset": int(req.get("offset") or 0),
+            "tag": req.get("tag") or None,
+            "darken": float(req["darken"])
+            if req.get("darken") is not None and str(req.get("darken")) != ""
+            else None,
+        }
+        for _, req in df_request.iterrows()
+    ]
+    total_images = sum(req["n"] for req in requests)
+    logger.info(
+        "load_batch: %d request(s), %d image(s) to upload",
+        len(requests),
+        total_images,
+    )
+
     # Prefer a pre-staged local cache (fast, no COCO): CACHE/images/<fn> + CACHE/gt.json.
     # Download the cache once on a fast machine and copy it here — avoids per-image COCO fetches.
     cache_gt_path = CACHE / "gt.json"
@@ -90,23 +111,24 @@ def load_batch(df_request: pd.DataFrame):
         random.seed(RNG_SEED)
         random.shuffle(pool)
         anns = None
+        logger.info("load_batch: using local cache at %s (%d images available)", CACHE, len(pool))
     else:
+        logger.info("load_batch: local cache missing, downloading COCO annotations")
         id_to_img, anns = _coco_annotations_by_image()
         by_id = sorted(anns.keys())
         random.seed(RNG_SEED)
         random.shuffle(by_id)
         pool = [id_to_img[i]["file_name"] for i in by_id]  # file names, same order semantics
+        logger.info("load_batch: COCO pool ready (%d cat/dog images available)", len(pool))
 
-    fs = fsspec.filesystem("s3", **input_storage_options())
-    bucket = input_bucket()
+    if not use_cache:
+        _fn_to_id = {id_to_img[i]["file_name"]: i for i in anns.keys()}
 
     def raw_bytes_and_gt(fn: str):
         if use_cache:
             data = (CACHE / "images" / fn).read_bytes()
             g = cache_gt[fn]
             return data, g["bboxes"], g["labels"]
-        # COCO fallback
-        # map filename back to id via anns lookup (filename -> id): rebuild once
         raw = _get(COCO_IMG_BASE + fn).content
         iid = _fn_to_id[fn]
         boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
@@ -114,19 +136,22 @@ def load_batch(df_request: pd.DataFrame):
         labels = [COCO_CAT_IDS[a["category_id"]] for a in anns[iid]]
         return raw, boxes, labels
 
-    if not use_cache:
-        _fn_to_id = {id_to_img[i]["file_name"]: i for i in anns.keys()}
+    fs = fsspec.filesystem("s3", **input_storage_options())
+    bucket = input_bucket()
+    logger.info("load_batch: uploading to s3://%s/images/", bucket)
 
     s3_rows, gt_rows, tag_rows, tag_defs = [], [], [], {}
-    for _, req in df_request.iterrows():
-        n = int(req["n"])
-        offset = int(req.get("offset") or 0)
-        tag = req.get("tag") or None
-        darken = req.get("darken")
-        darken = float(darken) if darken is not None and str(darken) != "" else None
-        for fn in pool[offset: offset + n]:
+    processed = 0
+    for req_idx, req in enumerate(requests, start=1):
+        logger.info(
+            "load_batch: request %d/%d offset=%d n=%d tag=%s darken=%s",
+            req_idx, len(requests), req["offset"], req["n"], req["tag"], req["darken"],
+        )
+        for fn in pool[req["offset"] : req["offset"] + req["n"]]:
+            processed += 1
             stem, ext = os.path.splitext(fn)
             raw, boxes, labels = raw_bytes_and_gt(fn)
+            tag, darken = req["tag"], req["darken"]
             if darken is not None:
                 name = f"{stem}__{tag or 'dark'}{ext}"
                 buf = io.BytesIO()
@@ -140,6 +165,17 @@ def load_batch(df_request: pd.DataFrame):
             if tag:
                 tag_rows.append({"image_name": name, "tag_id": tag})
                 tag_defs[tag] = tag
+            logger.info(
+                "load_batch: uploaded %s (%d/%d done, %d remaining)",
+                name, processed, total_images, total_images - processed,
+            )
+
+    logger.info(
+        "load_batch: finished, uploaded %d image(s), %d tag assignment(s), %d unique tag(s)",
+        len(s3_rows),
+        len(tag_rows),
+        len(tag_defs),
+    )
 
     return (
         pd.DataFrame(s3_rows, columns=s3_cols),

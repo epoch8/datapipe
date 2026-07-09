@@ -1521,6 +1521,124 @@
     color: var(--dp-blue-600);
 }
 
+.ops-record-preview-thumb {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--dp-gray-200);
+    cursor: pointer;
+    background: #f8fafc;
+}
+
+.ops-image-records-size-dl {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 13px;
+}
+
+.ops-image-records-size-dl dt {
+    margin: 0;
+    color: var(--dp-gray-500);
+    font-weight: 500;
+}
+
+.ops-image-records-size-dl dd {
+    margin: 0;
+}
+
+.ops-image-records-count-error {
+    padding: 0 16px 8px;
+    color: var(--dp-red-500);
+    font-size: 12px;
+}
+
+.ops-image-records-pagination {
+    justify-content: flex-end;
+}
+
+.ops-records-table .ant-table-cell {
+    padding: 8px 12px;
+}
+
+.ops-pk-badge {
+    margin-left: 6px;
+}
+
+.ops-bboxes-chip {
+    white-space: nowrap;
+}
+
+.ops-image-preview-modal img {
+    max-width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+}
+
+.ops-record-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.8fr);
+    gap: 16px;
+}
+
+.ops-record-json {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow: auto;
+}
+
+.ops-prediction-compare-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.ops-image-panel {
+    border: 1px solid var(--dp-gray-200);
+    border-radius: 12px;
+    overflow: hidden;
+    background: white;
+}
+
+.ops-image-panel-header {
+    padding: 10px 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--dp-gray-200);
+}
+
+.ops-image-panel-body {
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.ops-image-panel-body img {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+.ops-image-panel-gt {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.ops-image-panel-gt .ops-image-panel-header {
+    background: #dcfce7;
+}
+
+.ops-image-panel-prediction {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.ops-image-panel-prediction .ops-image-panel-header {
+    background: #fef3c7;
+}
+
 @media (max-width: 1280px) {
     .ops-spec-kpi-grid,
     .ops-landing-grid,

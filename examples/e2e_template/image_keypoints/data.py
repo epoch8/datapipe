@@ -22,34 +22,6 @@ catalog = Catalog(
                 ],
             )
         ),
-        "keypoints_model": Table(
-            TableStoreDB(
-                dbconn=DBCONN,
-                name="keypoints_model",
-                data_sql_schema=[
-                    Column("keypoints_model_id", String(), primary_key=True),
-                    Column("keypoints_model__type", String()),
-                    Column("keypoints_model__model_path", String()),
-                    Column("keypoints_model__input_size", JSON),
-                    Column("keypoints_model__class_names", JSON),
-                    Column("keypoints_model__score_threshold", Float),
-                ],
-            )
-        ),
-        "keypoints_models": Table(
-            TableStoreDB(
-                dbconn=DBCONN,
-                name="keypoints_models",
-                data_sql_schema=[
-                    Column("keypoints_model_id", String(), primary_key=True),
-                    Column("keypoints_model__type", String()),
-                    Column("keypoints_model__model_path", String()),
-                    Column("keypoints_model__input_size", JSON),
-                    Column("keypoints_model__class_names", JSON),
-                    Column("keypoints_model__score_threshold", Float),
-                ],
-            )
-        ),
         "keypoints_model_train": Table(
             TableStoreDB(
                 dbconn=DBCONN,

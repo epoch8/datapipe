@@ -33,6 +33,9 @@ import type {
     TrainingCompareResponse,
     TrainingRunsParams,
     TrainingRunsResponse,
+    OpsImageRecordsResponse,
+    OpsImageRecordsCountResponse,
+    OpsImageRecordDetailResponse,
 } from "../types/ops";
 import { ApiError, apiFetch, readApiErrorBody } from "./http";
 import type { OpsOverviewResponse, OpsRowsParams, OpsRowsResponse, OpsSpecDetail, OpsSpecsResponse } from "../types/opsSpecs";
@@ -122,6 +125,66 @@ export const opsApi = {
         fetchJson<OpsSpecsResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-specs`),
     getOpsSpec: (pipelineId: string, specId: string) =>
         fetchJson<OpsSpecDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}`),
+    getImageRecords: (
+        pipelineId: string,
+        specId: string,
+        params: OpsRowsParams & { include_total?: boolean } = {},
+    ) =>
+        fetchJson<OpsImageRecordsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/image/records${toQuery(params as Record<string, string | number | string[] | boolean | undefined>)}`,
+        ),
+    getImageRecordsCount: (pipelineId: string, specId: string, params: OpsRowsParams = {}) =>
+        fetchJson<OpsImageRecordsCountResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/image/records/count${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getImageRecordDetail: (pipelineId: string, specId: string, recordKey: string) =>
+        fetchJson<OpsImageRecordDetailResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/image/records/${encodeURIComponent(recordKey)}`,
+        ),
+    getFrozenDatasetRecordRows: (
+        pipelineId: string,
+        specId: string,
+        datasetId: string,
+        params: OpsRowsParams & { include_total?: boolean } = {},
+    ) =>
+        fetchJson<OpsImageRecordsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets/${encodeURIComponent(datasetId)}/records${toQuery(params as Record<string, string | number | string[] | boolean | undefined>)}`,
+        ),
+    getFrozenDatasetRecordsCount: (
+        pipelineId: string,
+        specId: string,
+        datasetId: string,
+        params: OpsRowsParams = {},
+    ) =>
+        fetchJson<OpsImageRecordsCountResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets/${encodeURIComponent(datasetId)}/records/count${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getFrozenDatasetRecordDetail: (pipelineId: string, specId: string, datasetId: string, recordKey: string) =>
+        fetchJson<OpsImageRecordDetailResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets/${encodeURIComponent(datasetId)}/records/${encodeURIComponent(recordKey)}`,
+        ),
+    getModelPredictionRows: (
+        pipelineId: string,
+        specId: string,
+        modelId: string,
+        params: OpsRowsParams & { include_total?: boolean } = {},
+    ) =>
+        fetchJson<OpsImageRecordsResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/models/${encodeURIComponent(modelId)}/predictions${toQuery(params as Record<string, string | number | string[] | boolean | undefined>)}`,
+        ),
+    getModelPredictionRecordsCount: (
+        pipelineId: string,
+        specId: string,
+        modelId: string,
+        params: OpsRowsParams = {},
+    ) =>
+        fetchJson<OpsImageRecordsCountResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/models/${encodeURIComponent(modelId)}/predictions/count${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+    getModelPredictionDetail: (pipelineId: string, specId: string, modelId: string, recordKey: string) =>
+        fetchJson<OpsImageRecordDetailResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/models/${encodeURIComponent(modelId)}/predictions/${encodeURIComponent(recordKey)}`,
+        ),
     getOpsPageOverview: (pipelineId: string, page: "frozen-datasets" | "training" | "metrics" | "class-metrics") =>
         fetchJson<OpsOverviewResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/ops-pages/${page}/overview`),
     getOpsFrozenRows: (pipelineId: string, specId: string, params: OpsRowsParams = {}) =>

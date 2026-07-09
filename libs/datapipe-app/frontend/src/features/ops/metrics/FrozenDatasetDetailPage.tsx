@@ -6,6 +6,7 @@ import { usePipelineId } from "../../../hooks/usePipelineId";
 import type { FrozenDatasetDetailResponse } from "../../../types/ops";
 import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
+import { ImageRecordsTable } from "../images/ImageRecordsTable";
 import { EntityLink } from "./EntityLink";
 import { MetricKpiStrip } from "./MetricKpiStrip";
 import { SourceRecordCard } from "./SourceRecordCard";
@@ -175,6 +176,17 @@ export function FrozenDatasetDetailPage() {
                                 pagination={false}
                             />
                         </div>
+
+                        {spec?.frozen_dataset?.record_view?.kind === "image" && pipelineId && specId ? (
+                            <ImageRecordsTable
+                                pipelineId={pipelineId}
+                                specId={specId}
+                                parentId={datasetId}
+                                scope="frozen_dataset"
+                                mode="frozen_dataset"
+                                title="Records in this frozen dataset"
+                            />
+                        ) : null}
 
                         <div className="ops-entity-footer-strip">
                             <span>

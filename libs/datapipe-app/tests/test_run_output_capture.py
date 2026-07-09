@@ -99,3 +99,30 @@ def test_capture_run_output_isolates_concurrent_threads(tmp_path) -> None:
     assert "message-b" in messages_b
     assert "message-b" not in messages_a
     assert "message-a" not in messages_b
+
+
+def test_capture_run_output_teardown_from_different_thread(tmp_path) -> None:
+    """Simulates background pipeline runs: enter in request thread, exit in worker thread."""
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-cross.db'}")
+    buffer = RunLogBuffer(store)
+    run_id = "run-cross"
+    buffer.start_run(run_id)
+
+    cm = capture_run_output(buffer, run_id)
+    cm.__enter__()
+    errors: list[str] = []
+
+    def worker() -> None:
+        try:
+            print("worker stdout", flush=True)
+            cm.__exit__(None, None, None)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert not errors
+    messages = [line.message for line in buffer.get_lines(run_id)]
+    assert "worker stdout" in messages

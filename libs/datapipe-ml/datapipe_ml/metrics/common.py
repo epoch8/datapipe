@@ -2,6 +2,11 @@ from typing import Any, Iterable, List, Sequence, Tuple
 
 from sqlalchemy import Column, Float, func
 
+# Storage sentinel for per-image metrics rows computed with label=None (detection-level).
+# Distinct from the string "None", which may appear as a real class name in datasets.
+# Do not use "\\x00": pandas treats it as NA in Series equality filters.
+METRICS_NULL_LABEL = "__metrics_label_none__"
+
 CLASS_METRIC_COLUMNS = [
     "calc__images_support",
     "calc__support",
@@ -49,6 +54,16 @@ KNOWN_OVERALL_METRIC_COLUMNS = [
 
 def stable_unique(items: Iterable[str]) -> List[str]:
     return list(dict.fromkeys(items))
+
+
+def metrics_label_to_storage(label: Any) -> str:
+    if label is None:
+        return METRICS_NULL_LABEL
+    return str(label)
+
+
+def is_metrics_null_label(stored: str) -> bool:
+    return stored == METRICS_NULL_LABEL
 
 
 def overall_metric_columns(include_known: bool) -> List[str]:

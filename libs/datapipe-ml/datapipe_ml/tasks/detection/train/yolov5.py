@@ -75,7 +75,6 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         params["resume"] = resolved_path
         params.pop("initial_weights_path", None)
         params["exist_ok"] = True
-        params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
     def launch_training(

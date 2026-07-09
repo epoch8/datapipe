@@ -6,6 +6,7 @@ import {
     ExperimentOutlined,
     HistoryOutlined,
     QuestionCircleOutlined,
+    PictureOutlined,
     ReloadOutlined,
     TableOutlined,
     DatabaseOutlined,
@@ -149,7 +150,7 @@ export function OpsShell() {
         allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
     const isGraph = location.pathname.startsWith("/graph");
-    const isObsPage = ["/frozen-datasets", "/metrics", "/classes", "/class-metrics", "/training"].some((p) =>
+    const isObsPage = ["/image", "/frozen-datasets", "/metrics", "/classes", "/class-metrics", "/training"].some((p) =>
         location.pathname.startsWith(p),
     );
 
@@ -217,6 +218,7 @@ export function OpsShell() {
                 <div className="datapipe-sidebar-logo">Datapipe Ops</div>
                 <nav className="datapipe-sidebar-nav">
                     {primaryItems.map(renderItem)}
+                    {hasExplicitSpecs && renderSpecGroup("/image", "Image", <PictureOutlined />, (spec) => spec.has_image)}
                     {hasExplicitSpecs && renderSpecGroup("/frozen-datasets", "Frozen Datasets", <DatabaseOutlined />, (spec) => spec.has_frozen_datasets)}
                     {hasExplicitSpecs && renderSpecGroup("/training", "Training", <ExperimentOutlined />, (spec) => spec.has_training)}
                     {hasExplicitSpecs && renderSpecGroup("/metrics", "Metrics", <BarChartOutlined />, (spec) => spec.metric_tables_count > 0)}

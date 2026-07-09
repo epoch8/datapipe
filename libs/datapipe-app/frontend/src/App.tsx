@@ -17,6 +17,11 @@ import { TrainingRuns } from "./features/ops/TrainingRuns";
 import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
 import { ModelDetailPage } from "./features/ops/metrics/ModelDetailPage";
 import { FrozenDatasetDetailPage } from "./features/ops/metrics/FrozenDatasetDetailPage";
+import { ImageOverviewPage } from "./features/ops/images/ImageOverviewPage";
+import { ImageSpecPage } from "./features/ops/images/ImageSpecPage";
+import { ImageRecordDetailPage } from "./features/ops/images/ImageRecordDetailPage";
+import { FrozenDatasetRecordDetailPage } from "./features/ops/images/FrozenDatasetRecordDetailPage";
+import { ModelPredictionRecordDetailPage } from "./features/ops/images/ModelPredictionRecordDetailPage";
 import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
 import { OpsEntityDetailPage, OpsOverviewSpecPage, OpsSpecificSpecPage } from "./features/ops/specs/OpsSpecPages";
@@ -38,13 +43,24 @@ function App() {
                     <Route path="/" element={<Overview />} />
                     <Route path="/runs" element={<RunsPage />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
+                    <Route path="/image" element={<ImageOverviewPage />} />
+                    <Route path="/image/:specId" element={<ImageSpecPage />} />
+                    <Route path="/image/:specId/records/:recordKey" element={<ImageRecordDetailPage />} />
                     <Route path="/frozen-datasets" element={<OpsOverviewSpecPage kind="frozen-datasets" />} />
+                    <Route
+                        path="/frozen-datasets/:specId/datasets/:entityId/records/:recordKey"
+                        element={<FrozenDatasetRecordDetailPage />}
+                    />
                     <Route path="/frozen-datasets/:specId/datasets/:entityId" element={<FrozenDatasetDetailPage />} />
                     <Route path="/frozen-datasets/:specId" element={<OpsSpecificSpecPage kind="frozen-datasets" />} />
                     <Route path="/training" element={<OpsOverviewSpecPage kind="training" />} />
                     <Route path="/training/:specId/runs/:entityId" element={<OpsEntityDetailPage kind="training-run" />} />
                     <Route path="/training/:specId" element={<OpsSpecificSpecPage kind="training" />} />
                     <Route path="/metrics" element={<OpsOverviewSpecPage kind="metrics" />} />
+                    <Route
+                        path="/metrics/:specId/models/:entityId/predictions/:recordKey"
+                        element={<ModelPredictionRecordDetailPage />}
+                    />
                     <Route path="/metrics/:specId/models/:entityId" element={<ModelDetailPage />} />
                     <Route path="/metrics/:specId" element={<OpsSpecificSpecPage kind="metrics" />} />
                     <Route path="/class-metrics" element={<OpsOverviewSpecPage kind="class-metrics" />} />

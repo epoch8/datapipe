@@ -81,6 +81,15 @@ export function flattenMetricColumns(columns: OpsMetricColumn[]): OpsColumn[] {
     return flat;
 }
 
+export function dedupeFilterColumns(columns: OpsColumn[]): OpsColumn[] {
+    const bySource = new Map<string, OpsColumn>();
+    for (const col of columns) {
+        if (!col.filterable || !col.source) continue;
+        if (!bySource.has(col.source)) bySource.set(col.source, col);
+    }
+    return Array.from(bySource.values());
+}
+
 export function collectFilterColumns(table: {
     primary_columns: OpsColumn[];
     metric_columns: OpsMetricColumn[];

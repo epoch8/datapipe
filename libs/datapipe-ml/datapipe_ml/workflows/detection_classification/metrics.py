@@ -33,9 +33,11 @@ from datapipe_ml.core.image_data import (
 from datapipe_ml.metrics.common import (
     CLASS_METRIC_COLUMNS,
     KNOWN_OVERALL_METRIC_COLUMNS,
+    METRICS_NULL_LABEL,
     OVERALL_BASE_METRIC_COLUMNS,
     float_columns,
     macro_weighted_metric_selects,
+    metrics_label_to_storage,
     precision_recall_f1,
     stable_unique,
 )
@@ -131,7 +133,7 @@ def count_pipeline_metrics_on_image(
         true_labels = [bbox.label for bbox in true_img.bboxes_data]
         pred_labels = [bbox.label for bbox in pred_img_orig.bboxes_data]
         labels = natsorted(set(true_labels).union(pred_labels))
-        labels = [label for label in labels if label != extra_label]
+        labels = [label for label in labels if label != extra_label and label is not None]
 
         for threshold in thresholds:
             pred_img = copy.deepcopy(pred_img_orig)
@@ -173,6 +175,23 @@ def count_pipeline_metrics_on_image(
                     "calc__FN_extra_bbox": FN_extra,
                 }
                 rows.append(row)
+
+            images_support = int(len(true_img.bboxes_data) > 0 or len(pred_img.bboxes_data) > 0)
+            rows.append(
+                {
+                    **base_row,
+                    "label": metrics_label_to_storage(None),
+                    "threshold": threshold,
+                    "calc__images_support": images_support,
+                    "calc__support": len(true_img.bboxes_data),
+                    "calc__TP": matching.get_pipeline_TP(label=None),
+                    "calc__FP": matching.get_pipeline_FP(label=None),
+                    "calc__FN": matching.get_pipeline_FN(label=None),
+                    "calc__TP_extra_bbox": matching.get_pipeline_TP_extra_bbox(label=None),
+                    "calc__FP_extra_bbox": matching.get_pipeline_FP_extra_bbox(label=None),
+                    "calc__FN_extra_bbox": matching.get_pipeline_FN_extra_bbox(label=None),
+                }
+            )
 
     if not rows:
         return pd.DataFrame(columns=out_cols)
@@ -271,6 +290,7 @@ def count_pipeline_metrics_on_subset(
         )
         .select_from(tbl)
         .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(col_label != METRICS_NULL_LABEL)
         .group_by(*grp_keys_tbl, col_label)
         .cte("class_agg")
     )

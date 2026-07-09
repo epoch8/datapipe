@@ -718,7 +718,7 @@ def test_yolo_resume_hook_sets_typed_training_params() -> None:
     assert updated["initial_weights_path"] == "checkpoint.pt"
     assert updated["resume"] is True
     assert updated["exist_ok"] is True
-    assert updated["save_period"] == 1
+    assert updated["save_period"] == -1
     assert "initial_weights_path" not in params
 
 
