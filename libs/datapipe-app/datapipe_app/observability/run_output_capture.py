@@ -173,8 +173,15 @@ def capture_run_output(
     finally:
         _flush_stream_buffer(state)
         with _CAPTURE_LOCK:
-            _CAPTURE_STACK.remove(state)
-        _CAPTURE.reset(token)
+            try:
+                _CAPTURE_STACK.remove(state)
+            except ValueError:
+                pass
+        try:
+            _CAPTURE.reset(token)
+        except ValueError:
+            # Token was created in another context (e.g. FastAPI background thread).
+            pass
 
 
 def active_capture_run_id() -> Optional[str]:

@@ -14,7 +14,7 @@ def _assert_yolo_resume_params(algo) -> None:  # noqa: ANN001
     assert updated["initial_weights_path"] == "checkpoint.pt"
     assert updated["resume"] is True
     assert updated["exist_ok"] is True
-    assert updated["save_period"] == 1
+    assert updated["save_period"] == -1
     assert "initial_weights_path" not in params
 
 
@@ -34,7 +34,7 @@ def test_yolov8_detection_resume_adapter_applies_after_user_interrupt_checkpoint
     assert updated["initial_weights_path"] == str(checkpoint)
     assert updated["resume"] is True
     assert updated["exist_ok"] is True
-    assert updated["save_period"] == 1
+    assert updated["save_period"] == -1
 
 
 @pytest.mark.torch
@@ -51,7 +51,7 @@ def test_yolov5_detection_resume_adapter_applies_after_user_interrupt_checkpoint
 
     assert updated["resume"] == str(checkpoint)
     assert updated["exist_ok"] is True
-    assert updated["save_period"] == 1
+    assert updated["save_period"] == -1
 
 
 @pytest.mark.torch
@@ -73,7 +73,7 @@ def test_yolov5_detection_resume_adapter_sets_typed_params() -> None:
     assert updated["resume"] == "checkpoint.pt"
     assert "initial_weights_path" not in updated
     assert updated["exist_ok"] is True
-    assert updated["save_period"] == 1
+    assert updated["save_period"] == -1
     assert "initial_weights_path" not in params
 
 

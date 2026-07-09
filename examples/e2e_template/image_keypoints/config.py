@@ -26,7 +26,7 @@ LABEL_CONFIG = """
   <RectangleLabels name="bbox" toName="image">
     <Label value="Person" background="#4ECDC4"/>
   </RectangleLabels>
-  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="2">
+  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="0.5">
     <Label value="nose" background="#1f77b4"/>
     <Label value="left_eye" background="#ff7f0e"/>
     <Label value="right_eye" background="#2ca02c"/>

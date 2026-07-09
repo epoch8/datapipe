@@ -342,3 +342,74 @@ class FrozenDatasetDetailResponse(BaseModel):
     source_table_url: Optional[str] = None
     linked_models: list[FrozenDatasetLinkedModelRow] = Field(default_factory=list)
     coverage: FrozenDatasetCoverage = Field(default_factory=FrozenDatasetCoverage)
+
+
+class OpsBBoxRow(BaseModel):
+    label: str | None = None
+    confidence: float | None = None
+    x1: float | None = None
+    y1: float | None = None
+    x2: float | None = None
+    y2: float | None = None
+
+
+class OpsImageRecordListRow(BaseModel):
+    record_key: str
+    pk: dict[str, Any]
+    preview_url: str | None = None
+    visualization_url: str | None = None
+    detail_url: str | None = None
+    subset: str | None = None
+    bbox_count: int | None = None
+    gt_bbox_count: int | None = None
+    prediction_bbox_count: int | None = None
+    metrics: dict[str, Any] | None = None
+
+
+class OpsImageRecordsResponse(BaseModel):
+    pipeline_id: str
+    spec_id: str
+    scope: Literal["data", "frozen_dataset", "model_prediction"]
+    parent_id: str | None = None
+    primary_key_columns: list[str]
+    rows: list[OpsImageRecordListRow]
+    total: int | None = None
+    limit: int
+    offset: int
+
+
+class OpsImageRecordsCountResponse(BaseModel):
+    pipeline_id: str
+    spec_id: str
+    scope: Literal["data", "frozen_dataset", "model_prediction"]
+    parent_id: str | None = None
+    total: int
+
+
+class OpsImageRecordDetailResponse(BaseModel):
+    pipeline_id: str
+    spec_id: str
+    scope: Literal["data", "frozen_dataset", "model_prediction"]
+    parent_id: str | None = None
+    record_key: str
+    pk: dict[str, Any]
+    record: dict[str, Any]
+    image_url: str | None = None
+    subset: str | None = None
+    preview_url: str | None = None
+    visualization_url: str | None = None
+    plain_image_url: str | None = None
+    gt_visualization_url: str | None = None
+    prediction_visualization_url: str | None = None
+    plain_gt_image_url: str | None = None
+    plain_prediction_image_url: str | None = None
+    bbox_count: int | None = None
+    gt_bbox_count: int | None = None
+    prediction_bbox_count: int | None = None
+    bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)
+    gt_bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)
+    prediction_bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)
+    index: int | None = None
+    total: int | None = None
+    prev_record_key: str | None = None
+    next_record_key: str | None = None

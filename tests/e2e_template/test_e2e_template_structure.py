@@ -72,8 +72,7 @@ def test_keypoints_template_catalog_has_expected_tables():
     catalog = load_template_module("keypoints", "data").catalog
     assert {
         "s3_images",
-        "keypoints_model",
-        "keypoints_models",
+        "keypoints_model_train",
         "best_keypoints_model",
         "keypoints_prediction_train",
         "ls_keypoints_prediction",

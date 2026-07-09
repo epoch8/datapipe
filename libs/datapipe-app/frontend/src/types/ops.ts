@@ -707,3 +707,83 @@ export interface TrainingRunsParams {
     limit?: number;
     offset?: number;
 }
+
+/* --- Ops image views types --- */
+
+export interface OpsBBoxRow {
+    label?: string | null;
+    confidence?: number | null;
+    x1?: number | null;
+    y1?: number | null;
+    x2?: number | null;
+    y2?: number | null;
+}
+
+export interface OpsImageRecordListRow {
+    record_key: string;
+    pk: Record<string, unknown>;
+    preview_url?: string | null;
+    visualization_url?: string | null;
+    detail_url?: string | null;
+    subset?: string | null;
+    bbox_count?: number | null;
+    gt_bbox_count?: number | null;
+    prediction_bbox_count?: number | null;
+    metrics?: Record<string, unknown> | null;
+}
+
+export interface OpsImageRecordsResponse {
+    pipeline_id: string;
+    spec_id: string;
+    scope: "data" | "frozen_dataset" | "model_prediction";
+    parent_id?: string | null;
+    primary_key_columns: string[];
+    rows: OpsImageRecordListRow[];
+    total: number | null;
+    limit: number;
+    offset: number;
+}
+
+export interface OpsImageRecordsCountResponse {
+    pipeline_id: string;
+    spec_id: string;
+    scope: "data" | "frozen_dataset" | "model_prediction";
+    parent_id?: string | null;
+    total: number;
+}
+
+export interface OpsImageRecordDetailResponse {
+    pipeline_id: string;
+    spec_id: string;
+    scope: "data" | "frozen_dataset" | "model_prediction";
+    parent_id?: string | null;
+
+    record_key: string;
+    pk: Record<string, unknown>;
+    record: Record<string, unknown>;
+
+    image_url?: string | null;
+    subset?: string | null;
+
+    preview_url?: string | null;
+    visualization_url?: string | null;
+    plain_image_url?: string | null;
+
+    gt_visualization_url?: string | null;
+    prediction_visualization_url?: string | null;
+    plain_gt_image_url?: string | null;
+    plain_prediction_image_url?: string | null;
+
+    bbox_count?: number | null;
+    gt_bbox_count?: number | null;
+    prediction_bbox_count?: number | null;
+
+    bbox_rows?: OpsBBoxRow[];
+    gt_bbox_rows?: OpsBBoxRow[];
+    prediction_bbox_rows?: OpsBBoxRow[];
+
+    index?: number | null;
+    total?: number | null;
+    prev_record_key?: string | null;
+    next_record_key?: string | null;
+}

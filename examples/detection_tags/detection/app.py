@@ -12,6 +12,10 @@ from datapipe_app import (
     OpsColumnGroup,
     OpsDataSpec,
     OpsFilterRule,
+    OpsImageAnnotationSpec,
+    OpsImageDataSpec,
+    OpsImagePredictionViewSpec,
+    OpsImageRecordViewSpec,
     OpsFrozenDatasetSpec,
     OpsMetricTableSpec,
     OpsModelSpec,
@@ -216,14 +220,11 @@ app = DatapipeApp(ds, catalog, pipeline)
 
 app.add_specs([
     DatapipeOpsSpec(
-        id="detection_tags_yolo",
-        title="Detection Tags YOLO",
-        description=(
-            "YOLO detection with tagged scenario batches. Compare overall subset metrics and "
-            "per-tag precision/recall after retraining on tagged data."
-        ),
-        icon="tags",
-        color="purple",
+        id="cat_dog",
+        title="Cat/Dog Detection",
+        description="YOLO training pipeline over frozen image snapshots.",
+        icon="shield",
+        color="blue",
         data=OpsDataSpec(
             tables=[
                 "s3_images",
@@ -241,6 +242,26 @@ app.add_specs([
             item_table="s3_images",
             label_table="image__ground_truth",
             subset_table="image__subset",
+            image_view=OpsImageDataSpec(
+                kind="image",
+                image_table="s3_images",
+                image_primary_key_columns=("image_name",),
+                image_url_column="image_url",
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
         ),
         frozen_dataset=OpsFrozenDatasetSpec(
             table="detection_frozen_dataset",
@@ -253,6 +274,38 @@ app.add_specs([
                 "test": "detection_frozen_dataset__test_images_count",
             },
             models_count_relation_id="model_trained_on_frozen_dataset",
+            record_view=OpsImageRecordViewSpec(
+                kind="image",
+                table="detection_frozen_dataset__has__image_gt",
+                scope_column="detection_frozen_dataset_id",
+                primary_key_columns=("image_name", "subset_id"),
+                image_url_column="image__image_path",
+                bboxes_column="bboxes",
+                labels_column="labels",
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+            columns=[
+                OpsColumn(
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "created_at",
+                    "Frozen at",
+                    "detection_frozen_dataset__created_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("split", "Split", "split", kind="split"),
+                OpsColumn("models", "Models", "models_count", kind="models_count"),
+            ],
+            default_sort=[("created_at", "desc")],
         ),
         model=OpsModelSpec(
             table="detection_model_train",
@@ -260,21 +313,103 @@ app.add_specs([
             artifact_uri_column="detection_model__model_path",
             is_best_table="attr__detection_model__is_best",
             is_best_column="detection_model__is_best",
+            prediction_view=OpsImagePredictionViewSpec(
+                kind="image",
+                table="detection_prediction_train",
+                model_id_column="detection_model_id",
+                image_primary_key_columns=("image_name",),
+                image_url_table="s3_images",
+                image_url_column="image_url",
+                image_url_join_columns={"image_name": "image_name"},
+                prediction=OpsImageAnnotationSpec(
+                    table="detection_prediction_train",
+                    primary_key_columns=("image_name", "detection_model_id"),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    scores_column="prediction__detection_scores",
+                    role="prediction",
+                ),
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                metrics_on_image=OpsMetricTableSpec(
+                    id="prediction_image_metrics",
+                    title="Per-image metrics",
+                    table="pipeline_model__metrics_on_image",
+                    metric_source="pipeline_model__metrics_on_image",
+                    primary_key_columns=["image_name", "detection_model_id", "subset_id", "label"],
+                    entity_links={},
+                    primary_columns=[],
+                    metric_columns=[
+                        OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                        OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                        OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                        OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                        OpsColumn("fp_extra", "FP (extra bbox)", "calc__FP_extra_bbox", kind="number"),
+                        OpsColumn("tp_extra", "TP (extra bbox)", "calc__TP_extra_bbox", kind="number"),
+                    ],
+                ),
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
         ),
         training=OpsTrainingSpec(
             status_table="detection_training_status",
-            model_id_column="detection_model_id",
-            status_column="training_status__status",
-            started_at_column="training_status__started_at",
-            finished_at_column="training_status__finished_at",
             artifact_columns={
                 "manifest": "training_status__manifest_path",
                 "run_dir": "training_status__run_dir",
             },
-            extra_columns=[
-                OpsColumn("run_key", "Run ID", "training_status__run_key", link_to="training_run"),
-                OpsColumn("frozen_dataset", "Frozen dataset", "detection_frozen_dataset_id", link_to="frozen_dataset"),
+            columns=[
+                OpsColumn(
+                    "run_id",
+                    "Run ID",
+                    "training_status__run_key",
+                    kind="link",
+                    link_to="training_run",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "detection_model_id",
+                    "detection_model_id",
+                    "detection_model_id",
+                    kind="link",
+                    link_to="model",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "started_at",
+                    "Started",
+                    "training_status__started_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("duration", "Duration", "duration_seconds", kind="duration"),
+                OpsColumn(
+                    "status",
+                    "Status",
+                    "training_status__status",
+                    kind="status",
+                    filterable=True,
+                ),
             ],
+            default_sort=[("started_at", "desc")],
         ),
         relations=[
             OpsRelationSpec(
@@ -298,8 +433,14 @@ app.add_specs([
                     "subset": "subset_id",
                 },
                 primary_columns=[
-                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
-                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
                 ],
                 metric_columns=[
                     OpsColumnGroup(
@@ -328,7 +469,7 @@ app.add_specs([
                 ],
                 best_metric_column="calc__weighted_f1_score",
                 default_sort=[("weighted_f1", "desc")],
-                filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+                filters=[OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True)],
                 default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             ),
             OpsMetricTableSpec(
@@ -343,9 +484,15 @@ app.add_specs([
                     "tag": "tag_id",
                 },
                 primary_columns=[
-                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
-                    OpsColumn("tag", "Tag", "tag_id", filterable=True),
-                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("tag_id", "tag_id", "tag_id", filterable=True),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
                 ],
                 metric_columns=[
                     OpsColumnGroup(
@@ -375,8 +522,8 @@ app.add_specs([
                 best_metric_column="calc__weighted_f1_score",
                 default_sort=[("weighted_f1", "desc")],
                 filters=[
-                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
-                    OpsColumn("tag_filter", "Tag", "tag_id", filterable=True),
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("tag_filter", "tag_id", "tag_id", filterable=True),
                 ],
                 default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             ),
@@ -394,8 +541,14 @@ app.add_specs([
                     "class": "label",
                 },
                 primary_columns=[
-                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
-                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
                     OpsColumn("label", "Class", "label", filterable=True),
                 ],
                 metric_columns=[
@@ -410,7 +563,7 @@ app.add_specs([
                 best_metric_column="calc__f1_score",
                 default_sort=[("f1", "desc")],
                 filters=[
-                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
                     OpsColumn("class_filter", "Class", "label", filterable=True),
                 ],
                 default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
@@ -428,9 +581,15 @@ app.add_specs([
                     "class": "label",
                 },
                 primary_columns=[
-                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
-                    OpsColumn("tag", "Tag", "tag_id", filterable=True),
-                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("tag_id", "tag_id", "tag_id", filterable=True),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
                     OpsColumn("label", "Class", "label", filterable=True),
                 ],
                 metric_columns=[
@@ -445,13 +604,13 @@ app.add_specs([
                 best_metric_column="calc__f1_score",
                 default_sort=[("f1", "desc")],
                 filters=[
-                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
-                    OpsColumn("tag_filter", "Tag", "tag_id", filterable=True),
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("tag_filter", "tag_id", "tag_id", filterable=True),
                     OpsColumn("class_filter", "Class", "label", filterable=True),
                 ],
                 default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             ),
         ],
         tags=["yolo", "image", "tags", "training"],
-    )
+    ),
 ])

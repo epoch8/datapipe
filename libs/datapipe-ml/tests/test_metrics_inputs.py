@@ -14,6 +14,8 @@ def test_wrap_ground_truth_inputs_merges_tables_before_metrics_func():
         n_ground_truth_inputs=2,
         primary_keys=["image_name"],
     )
+    assert wrapped.__name__ == "count_metrics"
+
     gt = pd.DataFrame({"image_name": ["img-1"], "bboxes": [[[]]], "labels": [[[]]]})
     tags = pd.DataFrame({"image_name": ["img-1"], "tag_id": ["batch_night"]})
     subset = pd.DataFrame({"image_name": ["img-1"], "subset_id": ["val"]})

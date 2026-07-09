@@ -24,8 +24,8 @@ LABEL_CONFIG = """
 <View>
   <Image name="image" value="$image_url"/>
   <RectangleLabels name="label" toName="image">
-    <Label value="cat" background="#FF6B6B"/>
-    <Label value="dog" background="#4ECDC4"/>
+    <Label value="Cat" background="#FF6B6B"/>
+    <Label value="Dog" background="#4ECDC4"/>
   </RectangleLabels>
 </View>
 """
@@ -56,7 +56,7 @@ DETECTION_MODEL_CONFIG = {
     "detection_model_id": "cat_dog_yolo_smoke",
     "detection_model__type": "yolov8",
     "detection_model__model_path": str(DEFAULT_DETECTION_MODEL_PATH),
-    "detection_model__input_size": [16, 16],
+    "detection_model__input_size": [640, 640],
     "detection_model__class_names": COCO_CLASSES,
     "detection_model__score_threshold": 0.01,
 }

@@ -43,6 +43,12 @@ def _get_datatable_sql_meta_table(dt: DataTable):
     return cast(_SqlTableMetaLike, dt.meta).sql_table
 
 
+def frozen_dataset_created_at_timestamp(created_at: datetime) -> float:
+    if created_at.tzinfo is None:
+        return created_at.replace(tzinfo=timezone.utc).timestamp()
+    return created_at.timestamp()
+
+
 def get_changed_idxs_since_last_freeze_sql(
     ds: DataStore,
     dt__frozen_dataset: DataTable,
@@ -58,7 +64,10 @@ def get_changed_idxs_since_last_freeze_sql(
 
         stmt = select(*[image_ground_truth_meta_table.c[k] for k in dt__image__ground_truth.primary_keys])
         if max_created_at is not None:
-            stmt = stmt.where(image_ground_truth_meta_table.c["update_ts"] > max_created_at.timestamp())
+            stmt = stmt.where(
+                image_ground_truth_meta_table.c["update_ts"]
+                > frozen_dataset_created_at_timestamp(max_created_at)
+            )
 
         df_changed = pd.read_sql(stmt, conn)
 
@@ -217,7 +226,11 @@ def freeze_dataset(
         [
             {
                 **{frozen_dataset_id__name: frozen_dataset_id},
-                **{f"{model_type}_frozen_dataset__created_at": datetime.strptime(date, "%Y%m%d_%H%M")},
+                **{
+                    f"{model_type}_frozen_dataset__created_at": datetime.strptime(
+                        date, "%Y%m%d_%H%M"
+                    ).replace(tzinfo=timezone.utc)
+                },
                 **{
                     f"{model_type}_frozen_dataset__folder_filepath": str(
                         Pathy.fluid(working_dir) / f"{model_type}_frozen_dataset" / frozen_dataset_id

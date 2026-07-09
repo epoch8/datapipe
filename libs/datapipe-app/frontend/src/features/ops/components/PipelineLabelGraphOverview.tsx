@@ -28,6 +28,43 @@ export type PipelineLabelGraphOverviewProps = {
     onStageRun?: (label: string) => void;
 };
 
+function LabelGraphContextMenu({
+    nodeId,
+    onSelect,
+    onRun,
+    children,
+}: {
+    nodeId: string;
+    onSelect?: (label: string) => void;
+    onRun?: (label: string) => void;
+    children: React.ReactElement;
+}) {
+    if (!onSelect && !onRun) {
+        return children;
+    }
+
+    const menu = (
+        <Menu>
+            {onSelect && (
+                <Menu.Item key="open" onClick={() => onSelect(nodeId)}>
+                    Open graph
+                </Menu.Item>
+            )}
+            {onRun && (
+                <Menu.Item key="run" onClick={() => onRun(nodeId)}>
+                    Run label
+                </Menu.Item>
+            )}
+        </Menu>
+    );
+
+    return (
+        <Dropdown overlay={menu} trigger={["contextMenu"]}>
+            {children}
+        </Dropdown>
+    );
+}
+
 function LabelGraphNodeCard({
     layoutNode,
     selected,
@@ -49,21 +86,6 @@ function LabelGraphNodeCard({
 }) {
     const id = layoutNode.nodeId;
     const label = layoutNode.label ?? id;
-
-    const menu = (
-        <Menu>
-            {onSelect && (
-                <Menu.Item key="open" onClick={() => onSelect(id)}>
-                    Open graph
-                </Menu.Item>
-            )}
-            {onRun && (
-                <Menu.Item key="run" onClick={() => onRun(id)}>
-                    Run label
-                </Menu.Item>
-            )}
-        </Menu>
-    );
 
     const nodeBody = (
         <div
@@ -109,9 +131,9 @@ function LabelGraphNodeCard({
 
     if (onSelect || onRun) {
         return (
-            <Dropdown overlay={menu} trigger={["contextMenu"]}>
+            <LabelGraphContextMenu nodeId={id} onSelect={onSelect} onRun={onRun}>
                 {card}
-            </Dropdown>
+            </LabelGraphContextMenu>
         );
     }
 
@@ -341,9 +363,8 @@ export function PipelineLabelGraphOverview({
                                 activeIds.has(cn.nodeId) ||
                                 (cn.childIds?.some((c) => activeIds.has(c)) ?? false);
                             const muted = isNodeMuted(cn.nodeId);
-                            return (
+                            const containerBody = (
                                 <div
-                                    key={cn.id}
                                     className={[
                                         "label-container",
                                         isSelected ? "selected" : "",
@@ -363,9 +384,25 @@ export function PipelineLabelGraphOverview({
                                     onClick={() => onLabelSelect?.(cn.nodeId)}
                                     role="button"
                                     tabIndex={0}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            onLabelSelect?.(cn.nodeId);
+                                        }
+                                    }}
                                 >
                                     <div className="label-container-title">{cn.label}</div>
                                 </div>
+                            );
+                            return (
+                                <LabelGraphContextMenu
+                                    key={cn.id}
+                                    nodeId={cn.nodeId}
+                                    onSelect={onLabelSelect}
+                                    onRun={onStageRun}
+                                >
+                                    {containerBody}
+                                </LabelGraphContextMenu>
                             );
                         })}
 

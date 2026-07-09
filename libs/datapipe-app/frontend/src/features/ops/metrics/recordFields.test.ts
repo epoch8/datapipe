@@ -31,12 +31,21 @@ describe("recordFields", () => {
         },
         training: {
             status_table: "detection_training_status",
-            model_id_column: "detection_model_id",
-            status_column: "training_status__status",
-            started_at_column: "training_status__started_at",
-            extra_columns: [
+            columns: [
                 {
-                    id: "frozen_dataset",
+                    id: "run_id",
+                    label: "Run ID",
+                    source: "training_status__run_key",
+                    link_to: "training_run",
+                },
+                {
+                    id: "detection_model_id",
+                    label: "Model",
+                    source: "detection_model_id",
+                    link_to: "model",
+                },
+                {
+                    id: "detection_frozen_dataset_id",
                     label: "Frozen dataset",
                     source: "detection_frozen_dataset_id",
                     link_to: "frozen_dataset",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 import fsspec
@@ -14,6 +15,9 @@ from config import (
     input_image_url,
     input_storage_options,
 )
+
+logger = logging.getLogger("datapipe_ml.detection_tags")
+
 
 # --- load step (demo: pulls images/GT from coco_demo; swap that module for real data) -----------
 def load_batch(df_request: pd.DataFrame):
@@ -35,22 +39,43 @@ def load_batch(df_request: pd.DataFrame):
     fs = fsspec.filesystem("s3", **input_storage_options())
     bucket = input_bucket()
 
-    s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
+    requests = []
     for _, req in df_request.iterrows():
-        n = int(req["n"])
-        offset = int(req.get("offset") or 0)
-        # NB: when several requests load in one batch, a NULL in a numeric column arrives as NaN
-        # (not None) because pandas upcasts the column — so guard with pd.isna, else a base batch
-        # with darken=NULL would be "darkened" with gamma=NaN and produce garbage images.
         tag = req.get("tag")
         tag = None if pd.isna(tag) or str(tag) == "" else str(tag)
         subset = req.get("subset")
         subset = None if pd.isna(subset) or str(subset) == "" else str(subset)
         darken = req.get("darken")
         darken = None if pd.isna(darken) or str(darken) == "" else float(darken)
-        for fn in source.pool[offset: offset + n]:
+        requests.append({
+            "n": int(req["n"]),
+            "offset": int(req.get("offset") or 0),
+            "tag": tag,
+            "subset": subset,
+            "darken": darken,
+        })
+
+    total_images = sum(req["n"] for req in requests)
+    logger.info(
+        "load_batch: %d request(s), %d image(s) to upload",
+        len(requests),
+        total_images,
+    )
+    logger.info("load_batch: uploading to s3://%s/images/", bucket)
+
+    s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
+    processed = 0
+    for req_idx, req in enumerate(requests, start=1):
+        logger.info(
+            "load_batch: request %d/%d offset=%d n=%d tag=%s subset=%s darken=%s",
+            req_idx, len(requests), req["offset"], req["n"],
+            req["tag"], req["subset"], req["darken"],
+        )
+        for fn in source.pool[req["offset"]: req["offset"] + req["n"]]:
+            processed += 1
             stem, ext = os.path.splitext(fn)
             raw, boxes, labels = source.fetch(fn)
+            tag, darken, subset = req["tag"], req["darken"], req["subset"]
             if darken is not None:
                 name = f"{stem}__{tag or 'dark'}{ext}"
                 data = demo_darken(raw, darken)
@@ -61,11 +86,21 @@ def load_batch(df_request: pd.DataFrame):
             gt_rows.append({"image_name": name, "bboxes": boxes, "labels": labels})
             if tag:
                 tag_rows.append({"image_name": name, "tag_id": tag})
-                # tag_defs[name] = readable description; note darkening if any
                 desc = tag if darken is None else f"{tag} (low-light, gamma {darken})"
                 tag_defs[tag] = desc
             if subset:
                 hint_rows.append({"image_name": name, "subset_id": subset})
+            logger.info(
+                "load_batch: uploaded %s (%d/%d done, %d remaining)",
+                name, processed, total_images, total_images - processed,
+            )
+
+    logger.info(
+        "load_batch: finished, uploaded %d image(s), %d tag assignment(s), %d unique tag(s)",
+        len(s3_rows),
+        len(tag_rows),
+        len(tag_defs),
+    )
 
     return (
         pd.DataFrame(s3_rows, columns=s3_cols),
@@ -99,32 +134,6 @@ def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, hint_df: pd.Da
     df__missing.loc[unpinned.index, "subset_id"] = "train"
     df__missing.loc[df__val.index, "subset_id"] = "val"
     return pd.concat([subset_df, df__missing], ignore_index=True)[primary_keys + ["subset_id"]]
-
-
-# --- tag metrics ----------------------------------------------------------------
-def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.DataFrame) -> pd.DataFrame:
-    cols = ["detection_model_id", "tag_id", "subset_id", "calc__images_support",
-            "calc__support", "calc__TP", "calc__FP", "calc__FN",
-            "calc__precision", "calc__recall", "calc__f1_score"]
-    if df_metrics_on_image.empty or df_image_tag.empty:
-        return pd.DataFrame(columns=cols)
-    m = df_metrics_on_image.merge(df_image_tag[["image_name", "tag_id"]], on="image_name")
-    if m.empty:
-        return pd.DataFrame(columns=cols)
-    g = (m.groupby(["detection_model_id", "tag_id", "subset_id"], as_index=False)
-           .agg(images_support=("image_name", "count"),
-                tp=("calc__TP", "sum"), fp=("calc__FP", "sum"), fn=("calc__FN", "sum")))
-    tp, fp, fn = g["tp"], g["fp"], g["fn"]
-    g["calc__precision"] = (tp / (tp + fp)).where((tp + fp) > 0, 0.0)
-    g["calc__recall"] = (tp / (tp + fn)).where((tp + fn) > 0, 0.0)
-    p, r = g["calc__precision"], g["calc__recall"]
-    g["calc__f1_score"] = (2 * p * r / (p + r)).where((p + r) > 0, 0.0)
-    g["calc__support"] = (tp + fn).astype(int)
-    g["calc__images_support"] = g["images_support"].astype(int)
-    g["calc__TP"] = tp.astype(int)
-    g["calc__FP"] = fp.astype(int)
-    g["calc__FN"] = fn.astype(int)
-    return g[cols]
 
 
 # --- FiftyOne (stage=fiftyone) --------------------------------------------------

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from functools import wraps
 from typing import List
 
 import pandas as pd
@@ -26,6 +27,7 @@ def wrap_ground_truth_inputs(
     if n_ground_truth_inputs < 1:
         raise ValueError("n_ground_truth_inputs must be at least 1")
 
+    @wraps(func)
     def wrapped(*dfs, **kwargs):
         gt_df = merge_inputs_on_keys(dfs[:n_ground_truth_inputs], primary_keys)
         return func(gt_df, *dfs[n_ground_truth_inputs:], **kwargs)

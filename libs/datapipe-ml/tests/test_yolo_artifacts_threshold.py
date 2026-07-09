@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from datapipe_ml.frameworks.yolo.artifacts import (
+    YOLO_MIN_SCORE_THRESHOLD,
     yolo_best_threshold_from_ultralytics_metrics,
     yolo_smooth_f1_curve,
 )
@@ -34,4 +35,13 @@ def test_yolo_best_threshold_accepts_ultralytics_curve_with_extra_values():
 
     threshold = yolo_best_threshold_from_ultralytics_metrics(metrics, "F1-Confidence(B)")
 
-    assert 0.3 <= threshold <= 1.0
+    assert YOLO_MIN_SCORE_THRESHOLD <= threshold <= 1.0
+
+
+def test_yolo_best_threshold_floor_is_001_when_f1_peak_at_zero() -> None:
+    from datapipe_ml.frameworks.yolo.artifacts import yolo_best_threshold_from_curve
+
+    x = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    y = np.array([0.9, 0.5, 0.3, 0.2, 0.1])
+
+    assert yolo_best_threshold_from_curve(x, y) == YOLO_MIN_SCORE_THRESHOLD

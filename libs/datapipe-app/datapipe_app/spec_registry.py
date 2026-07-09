@@ -6,6 +6,7 @@ from typing import Iterable, Sequence
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 
+from datapipe_app.ops_spec_resolve import is_db_column
 from datapipe_app.specs import (
     DatapipeOpsSpec,
     OpsClassMetricTableSpec,
@@ -69,14 +70,16 @@ class OpsSpecRegistry:
 
         if spec.frozen_dataset is not None:
             schema = self._schema_for(spec, spec.frozen_dataset.table, catalog, db)
+            frozen = spec.frozen_dataset
             for column in [
-                spec.frozen_dataset.id_column,
-                spec.frozen_dataset.created_at_column,
-                spec.frozen_dataset.display_name_column,
-                *spec.frozen_dataset.split_columns.values(),
+                frozen.id_column,
+                frozen.created_at_column,
+                frozen.display_name_column,
+                *frozen.split_columns.values(),
             ]:
                 if column:
-                    self._require_column(spec, spec.frozen_dataset.table, column, schema)
+                    self._require_column(spec, frozen.table, column, schema)
+            self._validate_page_columns(spec, frozen.table, "frozen_dataset", frozen.columns, schema)
 
         if spec.model is not None:
             schema = self._schema_for(spec, spec.model.table, catalog, db)
@@ -95,22 +98,39 @@ class OpsSpecRegistry:
 
         if spec.training is not None:
             schema = self._schema_for(spec, spec.training.status_table, catalog, db)
-            for column in [
-                spec.training.model_id_column,
-                spec.training.status_column,
-                spec.training.started_at_column,
-                spec.training.finished_at_column,
-                spec.training.duration_seconds_column,
-                *spec.training.artifact_columns.values(),
-                *(col.source for col in spec.training.extra_columns),
-            ]:
+            training = spec.training
+            for column in [*training.artifact_columns.values()]:
                 if column:
-                    self._require_column(spec, spec.training.status_table, column, schema)
+                    self._require_column(spec, training.status_table, column, schema)
+            self._validate_page_columns(spec, training.status_table, "training", training.columns, schema)
+            if any(column.source == "duration_seconds" for column in training.columns):
+                started_col = next((column.source for column in training.columns if column.source.endswith("started_at")), None)
+                if started_col:
+                    finished_col = started_col.replace("started_at", "finished_at")
+                    self._require_column(spec, training.status_table, finished_col, schema)
 
         for relation in spec.relations:
             schema = self._schema_for(spec, relation.table, catalog, db)
             self._require_column(spec, relation.table, relation.from_column, schema)
             self._require_column(spec, relation.table, relation.to_column, schema)
+
+    def _validate_page_columns(
+        self,
+        spec: DatapipeOpsSpec,
+        table: str,
+        section: str,
+        columns: Sequence[OpsColumn],
+        schema: TableSchema,
+    ) -> None:
+        if not columns:
+            raise OpsSpecValidationError(f'Spec "{spec.id}": {section} must define at least one column.')
+        seen: set[str] = set()
+        for column in columns:
+            if column.id in seen:
+                raise OpsSpecValidationError(f'Spec "{spec.id}": {section} has duplicate column id "{column.id}".')
+            seen.add(column.id)
+            if is_db_column(column):
+                self._require_column(spec, table, column.source, schema)
 
     def _validate_metric_table(
         self,
@@ -192,12 +212,36 @@ class OpsSpecRegistry:
 
     def _table_ids(self, spec: DatapipeOpsSpec) -> set[str]:
         tables = set(spec.data.tables if spec.data else [])
+        if spec.data and spec.data.image_view is not None:
+            view = spec.data.image_view
+            tables.add(view.image_table)
+            if view.subset_table:
+                tables.add(view.subset_table)
+            if view.ground_truth is not None:
+                tables.add(view.ground_truth.table)
         if spec.frozen_dataset:
             tables.add(spec.frozen_dataset.table)
+            if spec.frozen_dataset.record_view is not None and spec.frozen_dataset.record_view.kind == "image":
+                record_view = spec.frozen_dataset.record_view
+                tables.add(record_view.table)
+                if record_view.image_url_table:
+                    tables.add(record_view.image_url_table)
         if spec.model:
             tables.add(spec.model.table)
             if spec.model.is_best_table:
                 tables.add(spec.model.is_best_table)
+            if spec.model.prediction_view is not None:
+                pred_view = spec.model.prediction_view
+                tables.add(pred_view.table)
+                tables.add(pred_view.image_url_table)
+                if pred_view.subset_table:
+                    tables.add(pred_view.subset_table)
+                if pred_view.prediction is not None:
+                    tables.add(pred_view.prediction.table)
+                if pred_view.ground_truth is not None:
+                    tables.add(pred_view.ground_truth.table)
+                if pred_view.metrics_on_image is not None:
+                    tables.add(pred_view.metrics_on_image.table)
         if spec.training:
             tables.add(spec.training.status_table)
         tables.update(relation.table for relation in spec.relations)

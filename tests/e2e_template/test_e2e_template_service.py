@@ -316,7 +316,7 @@ def test_keypoints_template_annotation_stage():
     app = run_template_stage("keypoints", "annotation")
 
     assert not app.ds.get_table("s3_images").get_data().empty
-    assert not app.ds.get_table("keypoints_model").get_data().empty
+    assert not app.ds.get_table("keypoints_model_train").get_data().empty
     assert not app.ds.get_table("ls_keypoints_prediction").get_data().empty
     assert not app.ds.get_table("images_with_predictions").get_data().empty
     assert not app.ds.get_table("ls_task").get_data().empty

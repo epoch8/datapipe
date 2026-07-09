@@ -309,7 +309,6 @@ class YoloBaseAlgo(Algo):
         params["initial_weights_path"] = resolved_path
         params["resume"] = True
         params["exist_ok"] = True
-        params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
     def select_resume_checkpoint(

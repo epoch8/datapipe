@@ -334,7 +334,7 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
     assert any(
         check_columns_are_in_table(ds, input__image, [config.image__image_path__name], raise_exc=False)
         for input__image in input__images
-    )
+    ), f"Image input {input__images} does not have image path column {config.image__image_path__name}"
     dt__input__images = [get_datatable(ds, input__image) for input__image in input__image_names]
     dt__input_model = get_datatable(ds, primary_model)
     check_columns_are_in_table(ds, input__models[0], model_primary_keys + config.spec.model_columns)

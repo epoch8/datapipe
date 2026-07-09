@@ -27,6 +27,7 @@ import { EmptyState, PageHeader } from "../shared";
 import { TableFilterBar } from "../shared/TableFilterBar";
 import {
     collectFilterColumns,
+    dedupeFilterColumns,
     expandChipValueRules,
     formatRule,
     mergeTableFilterState,
@@ -45,6 +46,63 @@ import {
 type PageKind = "frozen-datasets" | "training" | "metrics" | "class-metrics";
 type EntityKind = "frozen-dataset" | "model" | "training-run";
 type Row = Record<string, unknown>;
+
+function entityLinksFromColumns(columns: OpsColumn[] | undefined): Record<string, string> {
+    const links: Record<string, string> = {};
+    for (const column of columns ?? []) {
+        if (column.link_to && column.source) {
+            links[column.link_to] = column.source;
+        }
+    }
+    return links;
+}
+
+function specPageColumns(
+    columns: OpsColumn[],
+    specId: string,
+    options?: { frozenDatasetIdSource?: string },
+): ColumnsType<Row> {
+    const entityBySource = new Map(
+        Object.entries(entityLinksFromColumns(columns)).map(([entity, source]) => [source, entity]),
+    );
+    return columns.map((column) => ({
+        title: column.label,
+        dataIndex: column.source,
+        key: column.id,
+        width: column.width ?? undefined,
+        render: (value: unknown, row: Row) => {
+            if (column.kind === "status") return <StatusTag value={value} />;
+            if (column.kind === "chip") return <Tag className="ops-soft-chip">{displayValue(value)}</Tag>;
+            if (column.kind === "split") {
+                return <span className="ops-split-cell">{displayValue(value)}</span>;
+            }
+            if (column.kind === "models_count") {
+                const datasetId = options?.frozenDatasetIdSource ? row[options.frozenDatasetIdSource] : undefined;
+                const count = Number(value ?? 0);
+                if (datasetId) {
+                    return (
+                        <Link
+                            className="dp-entity-link"
+                            to={`/frozen-datasets/${encodeURIComponent(specId)}/datasets/${encodeURIComponent(String(datasetId))}`}
+                        >
+                            {count} models
+                        </Link>
+                    );
+                }
+                return `${count} models`;
+            }
+            if (column.kind === "duration") {
+                const seconds = Number(value);
+                if (!Number.isFinite(seconds)) return displayValue(value);
+                if (seconds < 60) return `${seconds}s`;
+                const minutes = Math.floor(seconds / 60);
+                const rest = seconds % 60;
+                return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+            }
+            return renderColumn(column, specId, entityBySource.get(column.source))(value);
+        },
+    }));
+}
 
 const pageTitles: Record<PageKind, string> = { "frozen-datasets": "Frozen Datasets", training: "Training", metrics: "Metrics", "class-metrics": "Class Metrics" };
 const pageSubtitles: Record<PageKind, string> = {
@@ -245,42 +303,216 @@ function SpecMetricTable({ pipelineId, specId, table, classMetrics }: { pipeline
     );
 }
 
-function FrozenDatasetTable({ specId, rows }: { specId: string; rows: OpsRowsResponse | null }) {
-    const cols: ColumnsType<Row> = [
-        { title: "Dataset", dataIndex: "dataset_id", key: "dataset", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="frozen_dataset" /> },
-        { title: "Frozen at", dataIndex: "frozen_at", key: "frozen_at", render: displayValue },
-        { title: "Split", dataIndex: "split", key: "split", render: (v) => <span className="ops-split-cell">{displayValue(v)}</span> },
-        { title: "Models", dataIndex: "models_count", key: "models", render: (v, row) => <Link className="dp-entity-link" to={`/frozen-datasets/${encodeURIComponent(specId)}/datasets/${encodeURIComponent(String(row.dataset_id ?? ""))}`}>{Number(v ?? 0)} models</Link> },
-    ];
-    return <Table className="ops-table ops-spec-table" size="middle" columns={cols} dataSource={rows?.rows ?? []} rowKey={(row, i) => String(row.dataset_id ?? i)} pagination={{ pageSize: 10, total: rows?.total ?? 0, showSizeChanger: true }} scroll={{ x: "max-content" }} />;
+function SpecDataRowsTable({
+    pipelineId,
+    specId,
+    kind,
+    fetchRows,
+    columns,
+    rowColumns,
+    defaultFilterColumns,
+    entityLinks = {},
+    title,
+    onRowSelect,
+    selectedKey,
+    selectedSource,
+}: {
+    pipelineId: string;
+    specId: string;
+    kind: "frozen-datasets" | "training";
+    fetchRows: (params: OpsRowsParams) => Promise<OpsRowsResponse>;
+    columns: ColumnsType<Row>;
+    rowColumns: OpsColumn[];
+    defaultFilterColumns: OpsColumn[];
+    entityLinks?: Record<string, string>;
+    title: string;
+    onRowSelect?: (row: Row) => void;
+    selectedKey?: string;
+    selectedSource?: string;
+}) {
+    const [filterColumns, setFilterColumns] = React.useState(() => dedupeFilterColumns(defaultFilterColumns));
+    const filterColumnsRef = React.useRef(filterColumns);
+    filterColumnsRef.current = filterColumns;
+    const filterColumnsSynced = React.useRef(false);
+    const [entityLinksState, setEntityLinksState] = React.useState(entityLinks);
+
+    React.useEffect(() => {
+        setEntityLinksState(entityLinks);
+    }, [entityLinks]);
+
+    React.useEffect(() => {
+        setFilterColumns(dedupeFilterColumns(defaultFilterColumns));
+        filterColumnsSynced.current = false;
+    }, [defaultFilterColumns, specId]);
+
+    const [filterState, setFilterState] = React.useState<OpsFilterState>({ mode: "or", rules: [] });
+    const [data, setData] = React.useState<OpsRowsResponse | null>(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+    const [page, setPage] = React.useState(1);
+    const [pageSize, setPageSize] = React.useState(10);
+    const debouncedSearch = useDebouncedValue(filterState.search ?? "", 300);
+    const debouncedRules = useDebouncedValue(filterState.rules, 300);
+
+    const load = React.useCallback(() => {
+        setLoading(true);
+        setError(null);
+        const columns = filterColumnsRef.current;
+        fetchRows({
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            search: debouncedSearch.trim() || undefined,
+            filter_mode: filterState.mode,
+            filters: serializeFilterRules(expandChipValueRules(debouncedRules, columns), columns),
+        })
+            .then((res) => {
+                setData(res);
+                if (!filterColumnsSynced.current && res.filter_columns?.length) {
+                    filterColumnsSynced.current = true;
+                    setFilterColumns(dedupeFilterColumns(res.filter_columns));
+                }
+                if (res.entity_links) {
+                    setEntityLinksState(res.entity_links);
+                }
+            })
+            .catch((e) => setError(String(e)))
+            .finally(() => setLoading(false));
+    }, [debouncedRules, debouncedSearch, fetchRows, filterState.mode, page, pageSize]);
+
+    React.useEffect(() => {
+        setPage(1);
+    }, [debouncedSearch, debouncedRules, filterState.mode, specId]);
+    React.useEffect(() => {
+        load();
+    }, [load]);
+
+    const appliedRules = serializeFilterRules(expandChipValueRules(filterState.rules, filterColumns), filterColumns);
+
+    return (
+        <div className="ops-panel ops-polished-panel ops-spec-table-panel">
+            <TableFilterBar
+                columns={filterColumns}
+                entityLinks={entityLinksState}
+                value={filterState}
+                onChange={setFilterState}
+                searchPlaceholder={kind === "training" ? "Search runs..." : "Search datasets..."}
+            />
+            <div className="ops-spec-table-head">
+                <div>
+                    <div className="ops-panel-title">{title}</div>
+                    {data ? <div className="ops-table-filter-summary">Showing {data.rows.length} of {data.total} rows</div> : null}
+                    {appliedRules.length ? (
+                        <div className="ops-table-filter-summary">
+                            Filtered by: {appliedRules.map((rule) => formatRule(rule, filterColumns)).join(", ")}
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+            <EmptyState loading={loading} error={error} empty={!data?.rows.length && !loading}>
+                <Table
+                    className="ops-table ops-spec-table"
+                    size="middle"
+                    columns={columns}
+                    dataSource={data?.rows ?? []}
+                    rowKey={(row, i) => String(row[rowColumns[0]?.source ?? ""] ?? i)}
+                    rowClassName={onRowSelect ? (row) => (String(selectedSource ? row[selectedSource] : row[rowColumns[0]?.source ?? ""]) === selectedKey ? "ops-selected-row" : "") : undefined}
+                    onRow={onRowSelect ? (row) => ({ onClick: () => onRowSelect(row) }) : undefined}
+                    pagination={{
+                        current: page,
+                        pageSize,
+                        total: data?.total ?? 0,
+                        showSizeChanger: true,
+                        onChange: (nextPage, nextSize) => {
+                            setPage(nextPage);
+                            if (nextSize) setPageSize(nextSize);
+                        },
+                    }}
+                    scroll={{ x: "max-content" }}
+                />
+            </EmptyState>
+        </div>
+    );
 }
-function TrainingTable({ specId, rows, selected, onSelect }: { specId: string; rows: OpsRowsResponse | null; selected?: string; onSelect: (row: Row) => void }) {
-    const cols: ColumnsType<Row> = [
-        { title: "Run ID", dataIndex: "run_id", key: "run_id", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="training_run" /> },
-        { title: "Model", dataIndex: "model_id", key: "model", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="model" /> },
-        { title: "Frozen dataset", dataIndex: "frozen_dataset_id", key: "dataset", render: (v) => <EntityValue value={v} specId={specId} fallbackKind="frozen_dataset" /> },
-        { title: "Started", dataIndex: "started_at", key: "started", render: displayValue },
-        { title: "Duration", dataIndex: "duration_seconds", key: "duration", render: displayValue },
-        { title: "Status", dataIndex: "status", key: "status", render: (v) => <StatusTag value={v} /> },
-    ];
-    return <Table className="ops-table ops-spec-table" size="middle" columns={cols} dataSource={rows?.rows ?? []} rowKey={(row, i) => String(row.run_id ?? row.model_id ?? i)} rowClassName={(row) => String(row.run_id ?? row.model_id) === selected ? "ops-selected-row" : ""} onRow={(row) => ({ onClick: () => onSelect(row) })} pagination={{ pageSize: 10, total: rows?.total ?? 0, showSizeChanger: true }} scroll={{ x: "max-content" }} />;
+
+function FrozenDatasetTable({ specId, pipelineId, spec }: { specId: string; pipelineId: string; spec: OpsSpecDetail }) {
+    const columns = spec.frozen_dataset?.columns ?? [];
+    const fetchRows = React.useCallback(
+        (params: OpsRowsParams) => opsApi.getOpsFrozenRows(pipelineId, specId, params),
+        [pipelineId, specId],
+    );
+    const defaultFilterColumns = React.useMemo(() => dedupeFilterColumns(columns), [columns]);
+    const entityLinks = React.useMemo(() => entityLinksFromColumns(columns), [columns]);
+    const tableColumns = React.useMemo(
+        () => specPageColumns(columns, specId, { frozenDatasetIdSource: spec.frozen_dataset?.id_column }),
+        [columns, spec.frozen_dataset?.id_column, specId],
+    );
+    return (
+        <SpecDataRowsTable
+            pipelineId={pipelineId}
+            specId={specId}
+            kind="frozen-datasets"
+            title="Frozen datasets"
+            fetchRows={fetchRows}
+            columns={tableColumns}
+            rowColumns={columns}
+            defaultFilterColumns={defaultFilterColumns}
+            entityLinks={entityLinks}
+        />
+    );
 }
-function TrainingRail({ row, specId }: { row?: Row; specId: string }) {
+function TrainingTable({ specId, pipelineId, spec, selected, onSelect }: { specId: string; pipelineId: string; spec: OpsSpecDetail; selected?: string; onSelect: (row: Row) => void }) {
+    const columns = spec.training?.columns ?? [];
+    const fetchRows = React.useCallback(
+        (params: OpsRowsParams) => opsApi.getOpsTrainingRows(pipelineId, specId, params),
+        [pipelineId, specId],
+    );
+    const defaultFilterColumns = React.useMemo(() => dedupeFilterColumns(columns), [columns]);
+    const entityLinks = React.useMemo(() => entityLinksFromColumns(columns), [columns]);
+    const tableColumns = React.useMemo(() => specPageColumns(columns, specId), [columns, specId]);
+    const selectedSource = columns.find((column) => column.link_to === "training_run")?.source ?? columns.find((column) => column.link_to === "model")?.source;
+    return (
+        <SpecDataRowsTable
+            pipelineId={pipelineId}
+            specId={specId}
+            kind="training"
+            title="Training runs"
+            fetchRows={fetchRows}
+            columns={tableColumns}
+            rowColumns={columns}
+            defaultFilterColumns={defaultFilterColumns}
+            entityLinks={entityLinks}
+            selectedKey={selected}
+            selectedSource={selectedSource}
+            onRowSelect={onSelect}
+        />
+    );
+}
+function TrainingRail({ row, specId, columns }: { row?: Row; specId: string; columns: OpsColumn[] }) {
     if (!row) return <div className="ops-panel ops-polished-panel ops-side-rail"><div className="ops-panel-title">Selected run</div><p className="ops-muted">Select a run from the table.</p></div>;
-    return <div className="ops-panel ops-polished-panel ops-side-rail"><div className="ops-panel-title">Selected run</div><div className="ops-run-id">{displayValue(row.run_id ?? row.model_id)}</div><StatusTag value={row.status} /><dl className="ops-detail-list ops-detail-list-wide"><dt>Model</dt><dd><EntityValue value={row.model_id} specId={specId} fallbackKind="model" /></dd><dt>Frozen dataset</dt><dd><EntityValue value={row.frozen_dataset_id} specId={specId} fallbackKind="frozen_dataset" /></dd><dt>Started</dt><dd>{displayValue(row.started_at)}</dd><dt>Duration</dt><dd>{displayValue(row.duration_seconds)}</dd></dl><div className="ops-rail-divider" /><div className="ops-panel-title">Best metrics so far</div><table className="ops-mini-table"><tbody><tr><td>W-F1</td><td>0.782</td></tr><tr><td>mAP@0.5</td><td>0.774</td></tr><tr><td>Recall</td><td>0.756</td></tr></tbody></table></div>;
+    const byId = new Map(columns.map((column) => [column.id, column]));
+    const runColumn = columns.find((column) => column.link_to === "training_run") ?? byId.get("run_id");
+    const modelColumn = columns.find((column) => column.link_to === "model");
+    const frozenColumn = columns.find((column) => column.link_to === "frozen_dataset");
+    const startedColumn = columns.find((column) => column.id === "started_at" || column.source.endsWith("started_at"));
+    const durationColumn = columns.find((column) => column.kind === "duration");
+    const statusColumn = columns.find((column) => column.kind === "status");
+    return <div className="ops-panel ops-polished-panel ops-side-rail"><div className="ops-panel-title">Selected run</div><div className="ops-run-id">{displayValue(runColumn ? row[runColumn.source] : undefined)}</div><StatusTag value={statusColumn ? row[statusColumn.source] : undefined} /><dl className="ops-detail-list ops-detail-list-wide"><dt>Model</dt><dd><EntityValue value={modelColumn ? row[modelColumn.source] : undefined} specId={specId} column={modelColumn} fallbackKind="model" /></dd><dt>Frozen dataset</dt><dd><EntityValue value={frozenColumn ? row[frozenColumn.source] : undefined} specId={specId} column={frozenColumn} fallbackKind="frozen_dataset" /></dd><dt>Started</dt><dd>{displayValue(startedColumn ? row[startedColumn.source] : undefined)}</dd><dt>Duration</dt><dd>{displayValue(durationColumn ? row[durationColumn.source] : undefined)}</dd></dl><div className="ops-rail-divider" /><div className="ops-panel-title">Best metrics so far</div><table className="ops-mini-table"><tbody><tr><td>W-F1</td><td>0.782</td></tr><tr><td>mAP@0.5</td><td>0.774</td></tr><tr><td>Recall</td><td>0.756</td></tr></tbody></table></div>;
 }
-function DataSpecificPage({ kind, specId, spec, rows, load }: { kind: PageKind; specId: string; spec: OpsSpecDetail; rows: OpsRowsResponse | null; load: () => void }) {
-    const [selected, setSelected] = React.useState<Row | undefined>(rows?.rows?.[0]);
-    React.useEffect(() => { if (!selected && rows?.rows?.[0]) setSelected(rows.rows[0]); }, [rows, selected]);
+function DataSpecificPage({ kind, specId, spec, pipelineId, load }: { kind: PageKind; specId: string; spec: OpsSpecDetail; pipelineId: string; load: () => void }) {
+    const [selected, setSelected] = React.useState<Row | undefined>();
     const isTraining = kind === "training";
-    return <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${isTraining ? "Training" : "Frozen Datasets"}`} subtitle={isTraining ? `Training runs for the ${spec.title} specification` : `Snapshot registry for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} primaryAction={isTraining ? { label: "New Training Run" } : undefined} />{isTraining ? <div className="ops-detail-with-rail"><div><div className="ops-spec-mini-summary"><MiniMetric label="Total runs" value={rows?.total ?? 0} /><MiniMetric label="Completed" value="-" /><MiniMetric label="Failed" value="-" /><MiniMetric label="Best W-F1" value="-" /></div><div className="ops-panel ops-polished-panel"><TrainingTable specId={specId} rows={rows} selected={String(selected?.run_id ?? selected?.model_id ?? "")} onSelect={setSelected} /></div><div className="ops-panel ops-polished-panel ops-curves-placeholder"><Tabs defaultActiveKey="curves"><Tabs.TabPane tab="Curves" key="curves"><div className="ops-placeholder-charts"><div /><div /></div></Tabs.TabPane><Tabs.TabPane tab="Parameters" key="parameters"><div className="ops-muted">Parameters will appear when the run exposes them.</div></Tabs.TabPane><Tabs.TabPane tab="Artifacts" key="artifacts"><div className="ops-muted">Artifacts are linked from the selected run.</div></Tabs.TabPane></Tabs></div></div><TrainingRail row={selected} specId={specId} /></div> : <div className="ops-panel ops-polished-panel ops-spec-table-panel"><div className="ops-panel-title">Frozen datasets</div><FrozenDatasetTable specId={specId} rows={rows} /></div>}</>;
+    const trainingColumns = spec.training?.columns ?? [];
+    const trainingSelectSource = trainingColumns.find((column) => column.link_to === "training_run")?.source
+        ?? trainingColumns.find((column) => column.link_to === "model")?.source;
+    const selectedKey = selected && trainingSelectSource ? String(selected[trainingSelectSource] ?? "") : "";
+    return <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${isTraining ? "Training" : "Frozen Datasets"}`} subtitle={isTraining ? `Training runs for the ${spec.title} specification` : `Snapshot registry for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} primaryAction={isTraining ? { label: "New Training Run" } : undefined} />{isTraining ? <div className="ops-detail-with-rail"><div><div className="ops-spec-mini-summary"><MiniMetric label="Total runs" value="-" /><MiniMetric label="Completed" value="-" /><MiniMetric label="Failed" value="-" /><MiniMetric label="Best W-F1" value="-" /></div><TrainingTable specId={specId} pipelineId={pipelineId} spec={spec} selected={selectedKey} onSelect={setSelected} /><div className="ops-panel ops-polished-panel ops-curves-placeholder"><Tabs defaultActiveKey="curves"><Tabs.TabPane tab="Curves" key="curves"><div className="ops-placeholder-charts"><div /><div /></div></Tabs.TabPane><Tabs.TabPane tab="Parameters" key="parameters"><div className="ops-muted">Parameters will appear when the run exposes them.</div></Tabs.TabPane><Tabs.TabPane tab="Artifacts" key="artifacts"><div className="ops-muted">Artifacts are linked from the selected run.</div></Tabs.TabPane></Tabs></div></div><TrainingRail row={selected} specId={specId} columns={trainingColumns} /></div> : <FrozenDatasetTable specId={specId} pipelineId={pipelineId} spec={spec} />}</>;
 }
 export function OpsSpecificSpecPage({ kind }: { kind: PageKind }) {
     const { specId = "" } = useParams(); const { pipelineId, loading: pidLoading } = usePipelineId();
-    const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null); const [rows, setRows] = React.useState<OpsRowsResponse | null>(null); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState<string | null>(null);
-    const load = React.useCallback(() => { if (!pipelineId || !specId) return; setLoading(true); setError(null); const detail = opsApi.getOpsSpec(pipelineId, specId); const rowData = kind === "frozen-datasets" ? opsApi.getOpsFrozenRows(pipelineId, specId, { limit: 50 }) : kind === "training" ? opsApi.getOpsTrainingRows(pipelineId, specId, { limit: 50 }) : Promise.resolve(null); Promise.all([detail, rowData]).then(([s, r]) => { setSpec(s); setRows(r); }).catch((e) => setError(String(e))).finally(() => setLoading(false)); }, [pipelineId, specId, kind]);
+    const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState<string | null>(null);
+    const load = React.useCallback(() => { if (!pipelineId || !specId) return; setLoading(true); setError(null); opsApi.getOpsSpec(pipelineId, specId).then(setSpec).catch((e) => setError(String(e))).finally(() => setLoading(false)); }, [pipelineId, specId]);
     React.useEffect(() => { load(); }, [load]);
-    return <div className="ops-page ops-spec-page"><EmptyState loading={pidLoading || loading} error={error} empty={!spec && !loading}>{spec && pipelineId && (kind === "frozen-datasets" || kind === "training") && <DataSpecificPage kind={kind} specId={specId} spec={spec} rows={rows} load={load} />}{spec && pipelineId && (kind === "metrics" || kind === "class-metrics") && <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${pageTitles[kind]}`} subtitle={kind === "metrics" ? `Metric tables for the ${spec.title} specification` : `Per-class metrics for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} extra={kind === "metrics" ? <Button icon={<CodeOutlined />}>View JSON Spec</Button> : undefined} />{(kind === "metrics" ? spec.metrics : spec.class_metrics).map((table) => <SpecMetricTable key={table.id} pipelineId={pipelineId} specId={specId} table={table} classMetrics={kind === "class-metrics"} />)}</>}</EmptyState></div>;
+    return <div className="ops-page ops-spec-page"><EmptyState loading={pidLoading || loading} error={error} empty={!spec && !loading}>{spec && pipelineId && (kind === "frozen-datasets" || kind === "training") && <DataSpecificPage kind={kind} specId={specId} spec={spec} pipelineId={pipelineId} load={load} />}{spec && pipelineId && (kind === "metrics" || kind === "class-metrics") && <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${pageTitles[kind]}`} subtitle={kind === "metrics" ? `Metric tables for the ${spec.title} specification` : `Per-class metrics for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} extra={kind === "metrics" ? <Button icon={<CodeOutlined />}>View JSON Spec</Button> : undefined} />{(kind === "metrics" ? spec.metrics : spec.class_metrics).map((table) => <SpecMetricTable key={table.id} pipelineId={pipelineId} specId={specId} table={table} classMetrics={kind === "class-metrics"} />)}</>}</EmptyState></div>;
 }
 export function OpsEntityDetailPage({ kind }: { kind: EntityKind }) {
     const { specId = "", entityId = "" } = useParams(); const { pipelineId, loading: pidLoading } = usePipelineId();

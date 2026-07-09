@@ -1,7 +1,23 @@
 from __future__ import annotations
 
 from datapipe.compute import Pipeline
-from datapipe_app import DatapipeAPI
+from datapipe_app import (
+    DatapipeAPI,
+    DatapipeOpsSpec,
+    OpsColumn,
+    OpsColumnGroup,
+    OpsDataSpec,
+    OpsFilterRule,
+    OpsFrozenDatasetSpec,
+    OpsImageAnnotationSpec,
+    OpsImageDataSpec,
+    OpsImagePredictionViewSpec,
+    OpsImageRecordViewSpec,
+    OpsMetricTableSpec,
+    OpsModelSpec,
+    OpsRelationSpec,
+    OpsTrainingSpec,
+)
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -39,8 +55,9 @@ pipeline = Pipeline(
         ),
         BatchGenerate(
             steps.list_keypoints_models,
-            outputs=["keypoints_model"],
+            outputs=["keypoints_model_train"],
             labels=[("stage", "annotation")],
+            delete_stale=False
         ),
         BatchTransform(
             func=steps.get_images_without_ground_truth,
@@ -51,16 +68,8 @@ pipeline = Pipeline(
             labels=[("stage", "annotation")],
         ),
         BatchTransform(
-            func=steps.combine_keypoints_models,
-            inputs=["keypoints_model", "keypoints_model_train"],
-            outputs=["keypoints_models"],
-            transform_keys=["keypoints_model_id"],
-            kwargs=dict(model_id_column="keypoints_model_id"),
-            labels=[("stage", "annotation")],
-        ),
-        BatchTransform(
             func=steps.resolve_best_keypoints_model,
-            inputs=["keypoints_models", "best_keypoints_model"],
+            inputs=["keypoints_model_train", "best_keypoints_model"],
             outputs=["best_keypoints_model"],
             transform_keys=["keypoints_model_id"],
             kwargs=dict(
@@ -71,7 +80,7 @@ pipeline = Pipeline(
         ),
         Inference_KeypointsModel(
             input__image=["s3_images", "sec__image_without_ground_truth"],
-            input__keypoints_model=["keypoints_models", "best_keypoints_model"],
+            input__keypoints_model=["keypoints_model_train", "best_keypoints_model"],
             output__keypoints_prediction="ls_keypoints_prediction_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
@@ -158,7 +167,7 @@ pipeline = Pipeline(
             output__keypoints_frozen_dataset="keypoints_frozen_dataset",
             output__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
             working_dir=str(DATAPIPE_DIR),
-            min_within_time="1d",
+            min_within_time="15min",
             min_delta=10,
             primary_keys=["image_name"],
             bbox_id__name=None,
@@ -188,7 +197,6 @@ pipeline = Pipeline(
                     batch=8,
                     epochs=30,
                     exist_ok=True,
-                    save_period=1,
                 )
             ],
             sync_config=TrainingSyncConfig(
@@ -307,3 +315,243 @@ pipeline = Pipeline(
 
 ds = DataStore(DBCONN)
 app = DatapipeAPI(ds, catalog, pipeline)
+
+app.add_specs([
+    DatapipeOpsSpec(
+        id="person_pose",
+        title="Person Pose Detection",
+        description="YOLO pose training pipeline over frozen image snapshots.",
+        icon="activity",
+        color="teal",
+        data=OpsDataSpec(
+            tables=[
+                "s3_images",
+                "image__ground_truth",
+                "image__subset",
+                "keypoints_frozen_dataset",
+                "keypoints_model_train",
+                "keypoints_model_train__metrics_on_frozen_dataset",
+            ],
+            item_table="s3_images",
+            label_table="image__ground_truth",
+            subset_table="image__subset",
+            image_view=OpsImageDataSpec(
+                kind="image",
+                image_table="s3_images",
+                image_primary_key_columns=("image_name",),
+                image_url_column="image_url",
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+        ),
+        frozen_dataset=OpsFrozenDatasetSpec(
+            table="keypoints_frozen_dataset",
+            id_column="keypoints_frozen_dataset_id",
+            created_at_column="keypoints_frozen_dataset__created_at",
+            label_mode="timestamp",
+            split_columns={
+                "train": "keypoints_frozen_dataset__train_images_count",
+                "val": "keypoints_frozen_dataset__val_images_count",
+                "test": "keypoints_frozen_dataset__test_images_count",
+            },
+            models_count_relation_id="model_trained_on_frozen_dataset",
+            record_view=OpsImageRecordViewSpec(
+                kind="image",
+                table="keypoints_frozen_dataset__has__image_gt",
+                scope_column="keypoints_frozen_dataset_id",
+                primary_key_columns=("image_name", "subset_id"),
+                image_url_column="image__image_path",
+                bboxes_column="bboxes",
+                labels_column="labels",
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+            columns=[
+                OpsColumn(
+                    "keypoints_frozen_dataset_id",
+                    "Dataset",
+                    "keypoints_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "created_at",
+                    "Frozen at",
+                    "keypoints_frozen_dataset__created_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("split", "Split", "split", kind="split"),
+                OpsColumn("models", "Models", "models_count", kind="models_count"),
+            ],
+            default_sort=[("created_at", "desc")],
+        ),
+        model=OpsModelSpec(
+            table="keypoints_model_train",
+            id_column="keypoints_model_id",
+            artifact_uri_column="keypoints_model__model_path",
+            is_best_table="attr__keypoints_model__is_best",
+            is_best_column="keypoints_model__is_best",
+            prediction_view=OpsImagePredictionViewSpec(
+                kind="image",
+                table="keypoints_prediction_train",
+                model_id_column="keypoints_model_id",
+                image_primary_key_columns=("image_name",),
+                image_url_table="s3_images",
+                image_url_column="image_url",
+                image_url_join_columns={"image_name": "image_name"},
+                prediction=OpsImageAnnotationSpec(
+                    table="keypoints_prediction_train",
+                    primary_key_columns=("image_name", "keypoints_model_id"),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    scores_column="prediction__detection_scores",
+                    role="prediction",
+                ),
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+        ),
+        training=OpsTrainingSpec(
+            status_table="keypoints_training_status",
+            artifact_columns={
+                "manifest": "training_status__manifest_path",
+                "run_dir": "training_status__run_dir",
+            },
+            columns=[
+                OpsColumn(
+                    "run_id",
+                    "Run ID",
+                    "training_status__run_key",
+                    kind="link",
+                    link_to="training_run",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "keypoints_model_id",
+                    "Model",
+                    "keypoints_model_id",
+                    kind="link",
+                    link_to="model",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "keypoints_frozen_dataset_id",
+                    "Frozen dataset",
+                    "keypoints_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "started_at",
+                    "Started",
+                    "training_status__started_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("duration", "Duration", "duration_seconds", kind="duration"),
+                OpsColumn(
+                    "status",
+                    "Status",
+                    "training_status__status",
+                    kind="status",
+                    filterable=True,
+                ),
+            ],
+            default_sort=[("started_at", "desc")],
+        ),
+        relations=[
+            OpsRelationSpec(
+                id="model_trained_on_frozen_dataset",
+                table="keypoints_model_is_trained_on_keypoints_frozen_dataset",
+                from_entity="model",
+                from_column="keypoints_model_id",
+                to_entity="frozen_dataset",
+                to_column="keypoints_frozen_dataset_id",
+            )
+        ],
+        metrics=[
+            OpsMetricTableSpec(
+                id="model_metrics",
+                title="Model metrics",
+                table="keypoints_model_train__metrics_on_frozen_dataset",
+                metric_source="keypoints_model_train__metrics_on_frozen_dataset",
+                primary_key_columns=["keypoints_model_id", "keypoints_frozen_dataset_id", "subset_id"],
+                entity_links={
+                    "model": "keypoints_model_id",
+                    "frozen_dataset": "keypoints_frozen_dataset_id",
+                    "subset": "subset_id",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "keypoints_model_id",
+                        "Model",
+                        "keypoints_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn(
+                        "keypoints_frozen_dataset_id",
+                        "Frozen dataset",
+                        "keypoints_frozen_dataset_id",
+                        link_to="frozen_dataset",
+                    ),
+                    OpsColumn("subset_id", "Subset", "subset_id", kind="chip", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumnGroup(
+                        "Pose",
+                        [
+                            OpsColumn("pose_mAP50_95", "Pose mAP50-95", "calc__pose_mAP50_95", kind="number"),
+                            OpsColumn("pose_mAP50", "Pose mAP50", "calc__pose_mAP50", kind="number"),
+                            OpsColumn("pose_P", "Pose P", "calc__pose_P", kind="number"),
+                            OpsColumn("pose_R", "Pose R", "calc__pose_R", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Detection",
+                        [
+                            OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                            OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                            OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                        ],
+                    ),
+                    OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
+                best_metric_column="calc__pose_mAP50_95",
+                default_sort=[("pose_mAP50_95", "desc")],
+                filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            )
+        ],
+        tags=["yolo", "image", "keypoints", "training"],
+    )
+])

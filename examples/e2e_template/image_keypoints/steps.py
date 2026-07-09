@@ -38,14 +38,6 @@ def list_keypoints_models() -> Iterator[pd.DataFrame]:
     yield pd.DataFrame([KEYPOINTS_MODEL_CONFIG])
 
 
-def combine_keypoints_models(
-    fallback_models_df: pd.DataFrame,
-    trained_models_df: pd.DataFrame,
-    model_id_column: str,
-) -> pd.DataFrame:
-    return pd.concat([fallback_models_df, trained_models_df]).drop_duplicates(model_id_column)
-
-
 def resolve_best_keypoints_model(
     models_df: pd.DataFrame,
     best_model_df: pd.DataFrame,
@@ -196,8 +188,12 @@ def download_images(
     return s3_images_df[["image_name", image__local_image_path__name]]
 
 
-def publish_to_fiftyone(images_df: pd.DataFrame) -> pd.DataFrame:
-    return convert_df_with_bbox_to_df_with_image_data(df__with_bbox=images_df)
+def publish_to_fiftyone(images_df: pd.DataFrame, primary_keys: list[str], image__image_path__name: str) -> pd.DataFrame:
+    return convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=images_df,
+        image__image_path__name=image__image_path__name,
+        primary_keys=primary_keys,
+    )
 
 
 def publish_to_fiftyone_ground_truth(
@@ -207,11 +203,16 @@ def publish_to_fiftyone_ground_truth(
     primary_keys: list[str],
     image__image_path__name: str,
 ) -> pd.DataFrame:
-    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys, how="left")
-    images_df = pd.merge(images_df, subset_df, on=primary_keys, how="left")
-    return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=images_df, image__image_path__name=image__image_path__name
+    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys)
+    images_df = pd.merge(images_df, subset_df, on=primary_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=images_df,
+        primary_keys=primary_keys + ["subset_id"],
+        image__image_path__name=image__image_path__name,
     )
+    for image_data, subset_id in zip(df__image_data["image_data"], df__image_data["subset_id"]):
+        image_data.additional_info["subset_id"] = subset_id
+    return df__image_data[primary_keys + ["image_data"]]
 
 
 def publish_to_fiftyone_predictions_from_best_model(
@@ -222,8 +223,13 @@ def publish_to_fiftyone_predictions_from_best_model(
     model_keys: list[str],
     image__image_path__name: str,
 ) -> pd.DataFrame:
-    df = pd.merge(predictions_df, images_df, on=primary_keys, how="left")
-    df = pd.merge(df, best_keypoints_model_df, on=model_keys, how="left")
-    return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=df, image__image_path__name=image__image_path__name
+    df = pd.merge(predictions_df, images_df, on=primary_keys)
+    df = pd.merge(df, best_keypoints_model_df, on=model_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=primary_keys + ["keypoints_model_id"],
+        image__image_path__name=image__image_path__name,
     )
+    for image_data, keypoints_model_id in zip(df__image_data["image_data"], df__image_data["keypoints_model_id"]):
+        image_data.additional_info["keypoints_model_id"] = keypoints_model_id
+    return df__image_data[primary_keys + ["image_data"]]
