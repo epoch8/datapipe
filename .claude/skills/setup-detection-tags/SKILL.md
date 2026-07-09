@@ -114,8 +114,11 @@ port is busy** — pick a different left-hand port (`-L 5433:localhost:5432`), d
 ```bash
 cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151); HOST_UID/GID avoid sudo perms. No Label Studio.
-uv sync                       # cu124 torch + datapipe-ml[torch,fiftyone] + fiftyone + pi-heif
-# On a pre-AVX2 host, force the lts polars to win (else the training subprocess SIGILLs):
+uv sync                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
+                              # that drifts lib versions across machines (e.g. a different ultralytics)
+                              # and changes training results. The lock pins everyone to the same stack.
+# Legacy host (e.g. epoch8 gpu5: pre-AVX2 CPU) ONLY — extras + force the lts polars to win:
+uv sync --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
 # DB_SCHEMA defaults to `public` (already exists). Only if you set a dedicated schema (to share the

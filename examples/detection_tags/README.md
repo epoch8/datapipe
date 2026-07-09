@@ -12,9 +12,10 @@ is split into **two parts around a checkpoint** so you can prep part 1 and rehea
 ```bash
 cp .env.example .env && set -a && source .env && set +a
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151)
-uv sync                         # cu124 torch + datapipe-ml[torch,fiftyone]
-# pre-AVX2 host only: force the lts polars to win (else training SIGILLs)
-uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
+uv sync                         # modern hosts: as-is. Do NOT edit deps/re-lock (drifts lib versions
+                                # across machines and changes training results — reproducibility!)
+# legacy pre-AVX2 host (e.g. epoch8 gpu5) only:
+#   uv sync --extra old-cpu && uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
 # DB_SCHEMA defaults to `public` (exists already). For a dedicated schema (sharing the Postgres with
 # other pipelines) create it first: psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"
