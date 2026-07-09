@@ -129,17 +129,20 @@ def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.Data
 
 # --- FiftyOne (stage=fiftyone) --------------------------------------------------
 # Same pattern as examples/e2e_template/image_detection: download images locally,
-# then publish bbox rows into a FiftyOne dataset via FiftyOneImagesDataTableStore.
-def download_images(s3_images_df: pd.DataFrame, image__image_path__name: str,
-                    image__local_image_path__name: str) -> pd.DataFrame:
+# register samples, then publish GT / predictions into separate fields of one dataset.
+
+
+def download_images(
+    s3_images_df: pd.DataFrame,
+    image__image_path__name: str,
+    image__local_image_path__name: str,
+) -> pd.DataFrame:
     LOCAL_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     local_paths = []
     for _, row in s3_images_df.iterrows():
         s3_path = row[image__image_path__name]
         local_path = LOCAL_IMAGES_DIR / os.path.basename(str(s3_path))
         if not local_path.exists():
-            # image_url is the public HTTP URL of the MinIO object (anonymous download), so open it
-            # plainly — passing S3 storage options here would hit the http filesystem with s3 kwargs.
             with fsspec.open(s3_path, "rb") as f_src:
                 local_path.write_bytes(f_src.read())
         local_paths.append(str(local_path.resolve()))
@@ -147,50 +150,87 @@ def download_images(s3_images_df: pd.DataFrame, image__image_path__name: str,
     return s3_images_df[["image_name", image__local_image_path__name]]
 
 
-def publish_gt_to_fiftyone(images_df: pd.DataFrame, gt_df: pd.DataFrame, subset_df: pd.DataFrame,
-                           tag_df: pd.DataFrame, primary_keys: list[str],
-                           image__image_path__name: str) -> pd.DataFrame:
-    """Publish ground-truth boxes and attach per-sample subset/tag (so you can filter tag=night)."""
-    pk = primary_keys[0]
-    df = convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=pd.merge(gt_df, images_df, on=pk),
+def publish_to_fiftyone(
+    images_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    return convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=images_df,
+        image__image_path__name=image__image_path__name,
+        primary_keys=primary_keys,
+    )
+
+
+def publish_to_fiftyone_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    tag_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    df = pd.merge(images_df, ground_truth_df, on=primary_keys, how="left")
+    df = pd.merge(df, subset_df, on=primary_keys, how="left")
+    if tag_df is not None and not tag_df.empty:
+        df = pd.merge(df, tag_df[primary_keys + ["tag_id"]], on=primary_keys, how="left")
+    return convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
         primary_keys=primary_keys,
         image__image_path__name=image__image_path__name,
     )
-    subset_by_image = (subset_df.drop_duplicates(subset=[pk]).set_index(pk)["subset_id"].to_dict()
-                       if not subset_df.empty else {})
-    tagid_by_image = (tag_df.drop_duplicates(subset=[pk]).set_index(pk)["tag_id"].to_dict()
-                      if not tag_df.empty else {})
-    for _, row in df.iterrows():
-        tid = tagid_by_image.get(row[pk])
-        # tag_id is already the readable tag name (text), so write it straight to the sample field
-        row["image_data"].additional_info = {
-            "subset": subset_by_image.get(row[pk]) or "none",
-            "tag": tid if tid is not None else "none",
-        }
-    return df
 
 
-def publish_predictions_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame,
-                                    slot: str, primary_keys: list[str],
-                                    image__image_path__name: str) -> pd.DataFrame:
-    """Publish one model's predictions into the slot's FiftyOne field. slot='model_a' is the
-    earliest-trained model (baseline), 'model_b' the next (retrained). Model ids are
-    timestamp-prefixed, so sorting them yields a stable A/B assignment across all images."""
-    pk = primary_keys[0]
-    empty = pd.DataFrame(columns=primary_keys + ["image_data"])
-    if predictions_df.empty:
-        return empty
+def _baseline_and_retrained_model_ids(predictions_df: pd.DataFrame) -> tuple[list[str], list[str]]:
+    """Earliest-trained model = baseline; the next one = retrained (stable A/B across images)."""
     ids = sorted(predictions_df["detection_model_id"].dropna().unique().tolist())
-    if not ids:
+    return ([ids[0]] if ids else []), (ids[1:2] if len(ids) > 1 else [])
+
+
+def _publish_predictions_for_models(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    model_ids: list[str],
+    model_id_sample_field: str,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    empty = pd.DataFrame(columns=primary_keys + ["image_data"])
+    if predictions_df.empty or not model_ids:
         return empty
-    slot_of = {mid: ("model_a" if i == 0 else "model_b") for i, mid in enumerate(ids)}
-    target_ids = [mid for mid, s in slot_of.items() if s == slot]
-    pred = predictions_df[predictions_df["detection_model_id"].isin(target_ids)]
+    pred = predictions_df[predictions_df["detection_model_id"].isin(model_ids)]
     if pred.empty:
         return empty
+    df = pd.merge(pred, images_df, on=primary_keys, how="left")
+    df[model_id_sample_field] = df["detection_model_id"]
     return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=pd.merge(pred, images_df, on=pk),
+        df__with_bbox=df,
         primary_keys=primary_keys,
         image__image_path__name=image__image_path__name,
+    )
+
+
+def publish_to_fiftyone_predictions_baseline(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    baseline_ids, _ = _baseline_and_retrained_model_ids(predictions_df)
+    return _publish_predictions_for_models(
+        images_df, predictions_df, baseline_ids, "detection_model_id_a",
+        primary_keys, image__image_path__name,
+    )
+
+
+def publish_to_fiftyone_predictions_retrained(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    _, retrained_ids = _baseline_and_retrained_model_ids(predictions_df)
+    return _publish_predictions_for_models(
+        images_df, predictions_df, retrained_ids, "detection_model_id_b",
+        primary_keys, image__image_path__name,
     )

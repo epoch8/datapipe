@@ -3,11 +3,15 @@ from __future__ import annotations
 from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
+from datapipe.types import Required
 from datapipe_app import (
     DatapipeApp,
     DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
     OpsColumn,
+    OpsColumnGroup,
     OpsDataSpec,
+    OpsFilterRule,
     OpsFrozenDatasetSpec,
     OpsMetricTableSpec,
     OpsModelSpec,
@@ -17,9 +21,9 @@ from datapipe_app import (
 from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
-from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
 from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
+from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_Subset_PipelineModel
 
 import steps
 from config import DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
@@ -104,71 +108,105 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "inference")],
             create_table=True,
         ),
-        CountMetrics_Subset_DetectionModel(
+        CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",
             input__subset__has__image="image__subset",
-            input__detection_prediction="detection_prediction_train",
-            output__detection_model__metrics__on__image="detection_model_train__metrics_on_image",
-            output__detection_model__metrics__on__subset="detection_model_train__metrics_on_subset",
+            input__pipeline_prediction="detection_prediction_train",
+            output__pipeline_model__metrics_on__image="pipeline_model__metrics_on_image",
+            output__pipeline_model__metrics_by_cls_on__subset="pipeline_model__metrics_by_cls_on_subset",
+            output__pipeline_model__metrics_on__subset="pipeline_model__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
+            pipeline_model_primary_keys=["detection_model_id"],
             minimum_iou=0.5,
             labels=[("stage", "train"), ("stage", "count-metrics")],
             create_table=True,
         ),
         FindBestModel(
             input__model="detection_model_train",
-            input__model__metrics_on__subset="detection_model_train__metrics_on_subset",
+            input__model__metrics_on__subset="pipeline_model__metrics_on_subset",
             output__attr__model__is_best="attr__detection_model__is_best",
             output__best_model="best_detection_model",
             subset_id="val",
             is_best__name="detection_model__is_best",
             primary_keys=["detection_model_id"],
-            metric__name="calc__f1_score",
+            metric__name="calc__weighted_f1_score",
             func="max",
             group_by=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],
         ),
-        # tag arc: aggregate per-image metrics by (model, tag, subset)
-        BatchTransform(
-            func=steps.compute_tag_metrics,
-            inputs=["detection_model_train__metrics_on_image", "image__tag"],
-            outputs=["tag_metrics"],
-            transform_keys=["detection_model_id"],
+        CountMetrics_Subset_PipelineModel(
+            input__image__ground_truth=["image__ground_truth", "image__tag"],
+            input__subset__has__image="image__subset",
+            input__pipeline_prediction="detection_prediction_train",
+            output__pipeline_model__metrics_on__image="pipeline_model__metrics_by_tag_on_image",
+            output__pipeline_model__metrics_by_cls_on__subset="pipeline_model__metrics_by_tag_by_cls_on_subset",
+            output__pipeline_model__metrics_on__subset="pipeline_model__metrics_by_tag_on_subset",
+            primary_keys=["image_name"],
+            bbox_id__name=None,
+            pipeline_model_primary_keys=["detection_model_id", "tag_id"],
+            minimum_iou=0.5,
             labels=[("stage", "train"), ("stage", "count-metrics"), ("stage", "tag-metrics")],
+            create_table=True,
         ),
-        # --- FiftyOne (stage=fiftyone): browse GT + both models' predictions, filter by tag ---
+        # --- FiftyOne (stage=fiftyone): GT + baseline/retrained predictions, filter by tag_id ---
         BatchTransform(
             func=steps.download_images,
             inputs=["s3_images"],
             outputs=["local_images"],
             transform_keys=["image_name"],
-            kwargs=dict(image__image_path__name="image_url", image__local_image_path__name="local_path"),
             labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                image__image_path__name="image_url",
+                image__local_image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_gt_to_fiftyone,
-            inputs=["local_images", "image__ground_truth", "image__subset", "image__tag"],
+            func=steps.publish_to_fiftyone,
+            inputs=["local_images"],
+            outputs=["fiftyone_images"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_ground_truth,
+            inputs=[
+                "local_images",
+                Required("image__ground_truth"),
+                Required("image__subset"),
+                Required("image__tag"),
+            ],
             outputs=["fiftyone_annotations"],
-            transform_keys=["image_name"],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
             labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_predictions_to_fiftyone,
+            func=steps.publish_to_fiftyone_predictions_baseline,
             inputs=["local_images", "detection_prediction_train"],
             outputs=["fiftyone_predictions_model_a"],
-            transform_keys=["image_name"],
-            kwargs=dict(slot="model_a", primary_keys=["image_name"], image__image_path__name="local_path"),
+            transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_predictions_to_fiftyone,
+            func=steps.publish_to_fiftyone_predictions_retrained,
             inputs=["local_images", "detection_prediction_train"],
             outputs=["fiftyone_predictions_model_b"],
-            transform_keys=["image_name"],
-            kwargs=dict(slot="model_b", primary_keys=["image_name"], image__image_path__name="local_path"),
+            transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
     ]
 )
@@ -195,8 +233,10 @@ app.add_specs([
                 "image__tag",
                 "detection_frozen_dataset",
                 "detection_model_train",
-                "detection_model_train__metrics_on_subset",
-                "tag_metrics",
+                "pipeline_model__metrics_on_subset",
+                "pipeline_model__metrics_by_cls_on_subset",
+                "pipeline_model__metrics_by_tag_on_subset",
+                "pipeline_model__metrics_by_tag_by_cls_on_subset",
             ],
             item_table="s3_images",
             label_table="image__ground_truth",
@@ -250,8 +290,8 @@ app.add_specs([
             OpsMetricTableSpec(
                 id="model_metrics",
                 title="Model metrics",
-                table="detection_model_train__metrics_on_subset",
-                metric_source="detection_model_train__metrics_on_subset",
+                table="pipeline_model__metrics_on_subset",
+                metric_source="pipeline_model__metrics_on_subset",
                 primary_key_columns=["detection_model_id", "subset_id"],
                 entity_links={
                     "model": "detection_model_id",
@@ -262,26 +302,40 @@ app.add_specs([
                     OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
                 ],
                 metric_columns=[
-                    OpsColumn("images_support", "Images", "calc__images_support", kind="number"),
-                    OpsColumn("support", "Support", "calc__support", kind="number"),
-                    OpsColumn("tp", "TP", "calc__TP", kind="number"),
-                    OpsColumn("fp", "FP", "calc__FP", kind="number"),
-                    OpsColumn("fn", "FN", "calc__FN", kind="number"),
-                    OpsColumn("iou_mean", "IoU mean", "calc__iou_mean", kind="number"),
+                    OpsColumnGroup(
+                        "Precision",
+                        [
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
+                        ],
+                    ),
                     OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
-                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
-                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
-                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
                 ],
-                best_metric_column="calc__f1_score",
-                default_sort=[("f1", "desc")],
+                best_metric_column="calc__weighted_f1_score",
+                default_sort=[("weighted_f1", "desc")],
                 filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             ),
             OpsMetricTableSpec(
-                id="tag_metrics",
-                title="Tag metrics",
-                table="tag_metrics",
-                metric_source="tag_metrics",
+                id="tag_metrics_on_subset",
+                title="Tag metrics on subset",
+                table="pipeline_model__metrics_by_tag_on_subset",
+                metric_source="pipeline_model__metrics_by_tag_on_subset",
                 primary_key_columns=["detection_model_id", "tag_id", "subset_id"],
                 entity_links={
                     "model": "detection_model_id",
@@ -294,24 +348,110 @@ app.add_specs([
                     OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
                 ],
                 metric_columns=[
-                    OpsColumn("images_support", "Images", "calc__images_support", kind="number"),
+                    OpsColumnGroup(
+                        "Precision",
+                        [
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
+                        ],
+                    ),
+                    OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
+                best_metric_column="calc__weighted_f1_score",
+                default_sort=[("weighted_f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("tag_filter", "Tag", "tag_id", filterable=True),
+                ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+        ],
+        class_metrics=[
+            OpsClassMetricTableSpec(
+                id="subset_class_metrics",
+                title="Subset class metrics",
+                table="pipeline_model__metrics_by_cls_on_subset",
+                metric_source="pipeline_model__metrics_by_cls_on_subset",
+                primary_key_columns=["detection_model_id", "subset_id", "label"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
+                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
                     OpsColumn("support", "Support", "calc__support", kind="number"),
                     OpsColumn("tp", "TP", "calc__TP", kind="number"),
                     OpsColumn("fp", "FP", "calc__FP", kind="number"),
                     OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                ],
+                best_metric_column="calc__f1_score",
+                default_sort=[("f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("class_filter", "Class", "label", filterable=True),
+                ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+            OpsClassMetricTableSpec(
+                id="tag_class_metrics_on_subset",
+                title="Tag class metrics on subset",
+                table="pipeline_model__metrics_by_tag_by_cls_on_subset",
+                metric_source="pipeline_model__metrics_by_tag_by_cls_on_subset",
+                primary_key_columns=["detection_model_id", "tag_id", "subset_id", "label"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "tag": "tag_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn("model", "Model", "detection_model_id", filterable=True, link_to="model"),
+                    OpsColumn("tag", "Tag", "tag_id", filterable=True),
+                    OpsColumn("subset", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True),
+                ],
+                metric_columns=[
                     OpsColumn("precision", "Precision", "calc__precision", kind="number"),
                     OpsColumn("recall", "Recall", "calc__recall", kind="number"),
                     OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                    OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                    OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                    OpsColumn("fn", "FN", "calc__FN", kind="number"),
                 ],
                 best_metric_column="calc__f1_score",
                 default_sort=[("f1", "desc")],
                 filters=[
                     OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True),
                     OpsColumn("tag_filter", "Tag", "tag_id", filterable=True),
+                    OpsColumn("class_filter", "Class", "label", filterable=True),
                 ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             ),
         ],
-        class_metrics=[],
         tags=["yolo", "image", "tags", "training"],
     )
 ])

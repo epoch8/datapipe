@@ -11,8 +11,9 @@ is split into **two parts around a checkpoint** so you can prep part 1 and rehea
 ## Deploy from scratch
 ```bash
 cp .env.example .env && set -a && source .env && set +a
-docker compose up -d            # postgres + minio + mongo (mongo backs FiftyOne)
-uv sync                         # cu124 torch + datapipe-ml[torch,fiftyone] + fiftyone + pi-heif
+mkdir -p .docker-data/minio
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151)
+uv sync                         # cu124 torch + datapipe-ml[torch,fiftyone]
 # pre-AVX2 host only: force the lts polars to win (else training SIGILLs)
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
@@ -59,13 +60,15 @@ docker exec <mongo> mongosh --quiet --eval "db.getSiblingDB('fiftyone').dropData
 ```
 
 ## What you get
-- `detection_model_train__metrics_on_subset` — overall metrics per (model, subset).
-- **`tag_metrics`** — `(detection_model_id, tag_id, subset_id)` → precision/recall/f1. Compare model
-  A vs model B at `tag=night, subset=val`: recall rises once the tagged batch is in training.
-- **FiftyOne** dataset `$FIFTYONE_DATASET_NAME`: `ground_truth`, `predictions_model_a`,
-  `predictions_model_b`, plus `tag`/`subset` sample fields. Launch:
-  `fiftyone app launch "$FIFTYONE_DATASET_NAME" --port 5151 --address 0.0.0.0` (tunnel that port if
-  remote — local port must equal the remote port; filter by the `tag`/`subset` fields).
+- `pipeline_model__metrics_on_subset` — overall metrics per (model, subset).
+- **`pipeline_model__metrics_by_tag_on_subset`** — per `(detection_model_id, tag_id, subset_id)`.
+  Compare model A vs B at `tag_id=night, subset_id=val`: weighted recall/F1 rise after retraining.
+- Class tables: `pipeline_model__metrics_by_cls_on_subset`, `pipeline_model__metrics_by_tag_by_cls_on_subset`.
+- **FiftyOne** dataset `$FIFTYONE_DATASET_NAME`: fields `annotations`, `predictions_model_a`,
+  `predictions_model_b`; sample fields `tag_id` / `subset_id`. After `stage=fiftyone`, open the App
+  from docker compose: **http://localhost:5151** (remote → SSH tunnel `-L 5151:localhost:5151`).
+  Compose mounts `DATAPIPE_TAGS_TMP_DIR` (default `/tmp/datapipe-tags`); local images land in
+  `$DATAPIPE_TAGS_TMP_DIR/local_images`.
 
 ### Pre-staged cache (fast loads)
 If `DATAPIPE_TAGS_CACHE_DIR/gt.json` + `DATAPIPE_TAGS_CACHE_DIR/images/<file>.jpg` exist, the load

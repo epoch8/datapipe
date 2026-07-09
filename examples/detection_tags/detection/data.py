@@ -8,9 +8,6 @@ from sqlalchemy import Column, Float, Integer, JSON, String
 
 from config import DBCONN, FIFTYONE_DATASET_NAME
 
-# one FiftyOne session/dataset shared by the ground-truth + per-model prediction stores;
-# each store writes its own field (ground_truth / predictions_model_a / predictions_model_b)
-# into the SAME dataset, so a sample shows GT and both models side by side.
 fo_session = FifyOneSession()
 
 
@@ -18,12 +15,13 @@ def _t(name, schema):
     return Table(TableStoreDB(dbconn=DBCONN, name=name, data_sql_schema=schema, create_table=True))
 
 
-def _fo(field, additional_info_keys_in_sample=()):
+def _fo_table(fo_detections_label: str, *, rm_only_fo_fields: bool = True,
+              additional_info_keys_in_sample=()):
     return Table(FiftyOneImagesDataTableStore(
         dataset=FIFTYONE_DATASET_NAME,
         fo_session=fo_session,
-        fo_detections_label=field,
-        rm_only_fo_fields=True,
+        fo_detections_label=fo_detections_label,
+        rm_only_fo_fields=rm_only_fo_fields,
         additional_info_keys_in_sample=list(additional_info_keys_in_sample),
         primary_schema=[Column("image_name", String(255), primary_key=True)],
     ))
@@ -74,42 +72,26 @@ catalog = Catalog(
             Column("image_name", String, primary_key=True),
             Column("tag_id", String, primary_key=True),
         ]),
-        # per-image metrics produced by the CountMetrics step (declared so the
-        # tag-metrics transform can read it as an input)
-        "detection_model_train__metrics_on_image": _t("detection_model_train__metrics_on_image", [
-            Column("image_name", String, primary_key=True),
-            Column("detection_model_id", String, primary_key=True),
-            Column("subset_id", String, primary_key=True),
-            Column("calc__support", Integer),
-            Column("calc__TP", Integer),
-            Column("calc__FP", Integer),
-            Column("calc__FN", Integer),
-            Column("calc__iou_mean", Float),
-        ]),
-        # per-(model, tag, subset) metrics — the tag arc lives here
-        "tag_metrics": _t("tag_metrics", [
-            Column("detection_model_id", String, primary_key=True),
-            Column("tag_id", String, primary_key=True),
-            Column("subset_id", String, primary_key=True),
-            Column("calc__images_support", Integer),
-            Column("calc__support", Integer),
-            Column("calc__TP", Integer),
-            Column("calc__FP", Integer),
-            Column("calc__FN", Integer),
-            Column("calc__precision", Float),
-            Column("calc__recall", Float),
-            Column("calc__f1_score", Float),
-        ]),
         # --- FiftyOne (stage=fiftyone) ---------------------------------------
-        # images downloaded locally (FiftyOne renders from local files)
+        # Same layout as e2e_template/image_detection: one shared dataset, separate stores
+        # per field. Baseline vs retrained predictions stay side-by-side for A/B comparison;
+        # subset_id + tag_id are sample fields for filtering (e.g. tag_id=night).
         "local_images": _t("local_images", [
             Column("image_name", String(255), primary_key=True),
             Column("local_path", String(1024)),
         ]),
-        # GT boxes + per-sample subset/tag fields (filter tag=night in the FO App)
-        "fiftyone_annotations": _fo("ground_truth", additional_info_keys_in_sample=["subset", "tag"]),
-        # predictions of the baseline (model A) and the retrained model (model B)
-        "fiftyone_predictions_model_a": _fo("predictions_model_a"),
-        "fiftyone_predictions_model_b": _fo("predictions_model_b"),
+        "fiftyone_images": _fo_table("images", rm_only_fo_fields=False),
+        "fiftyone_annotations": _fo_table(
+            "annotations",
+            additional_info_keys_in_sample=["subset_id", "tag_id"],
+        ),
+        "fiftyone_predictions_model_a": _fo_table(
+            "predictions_model_a",
+            additional_info_keys_in_sample=["detection_model_id_a"],
+        ),
+        "fiftyone_predictions_model_b": _fo_table(
+            "predictions_model_b",
+            additional_info_keys_in_sample=["detection_model_id_b"],
+        ),
     }
 )

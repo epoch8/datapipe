@@ -12,8 +12,10 @@ description: >
 # detection_tags (tags demo — two-part, FiftyOne, no Label Studio)
 
 Detection pipeline whose whole point is **tags**: train a baseline (model A), then add a **tagged
-scenario TRAIN batch** and retrain (model B), and watch recall on that tag rise in a `tag_metrics`
-table. Ground truth is **injected** (COCO labels, lowercase `cat`/`dog`) — no human annotation.
+scenario TRAIN batch** and retrain (model B), and watch recall on that tag rise in
+`pipeline_model__metrics_by_tag_on_subset`. Ground truth is **injected** (COCO cat/dog via
+`coco_demo`, lowercase labels) — no Label Studio. Metrics use two **`CountMetrics_Subset_PipelineModel`**
+steps (subset + tag arc); ops-spec id **`detection_tags_yolo`**.
 
 The two-part / checkpoint split below is a **presentation device for the live demo only** — it lets
 you prep part 1 ahead of time, present part 2, and rehearse it. It is NOT required to use the pipeline:
@@ -103,8 +105,9 @@ port is busy** — pick a different left-hand port (`-L 5433:localhost:5432`), d
 
 ```bash
 cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI
-docker compose up -d          # postgres + minio + mongo (mongo is for FiftyOne). No Label Studio.
-uv sync                       # cu124 torch + datapipe-ml[torch,fiftyone] + fiftyone + pi-heif
+mkdir -p .docker-data/minio
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151). No Label Studio.
+uv sync                       # cu124 torch + datapipe-ml[torch,fiftyone] (+ pi-heif if needed)
 # On a pre-AVX2 host, force the lts polars to win (else the training subprocess SIGILLs):
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
@@ -114,8 +117,9 @@ datapipe db create-all
 ```
 
 Then bring up the **datapipe-app UI front** — it serves the pipeline graph, the observability panels
-(training status/curves + the `detection_tags_yolo` ops-spec with the `model_metrics` and `tag_metrics`
-tables), and the **run triggers** you use to launch training:
+(training status/curves + the `detection_tags_yolo` ops-spec with `model_metrics`,
+`tag_metrics_on_subset`, and the two **class_metrics** tables), and the **run triggers** you use to
+launch training:
 
 ```bash
 # from examples/detection_tags/detection, .env sourced; run it under tmux/nohup so it survives ssh drops
@@ -151,17 +155,19 @@ observability panels (training status/curves). When it finishes, compute metrics
 ```bash
 # CLI equivalent (no-UI) of what you trigger in the front:
 datapipe step --labels=stage=train run                # split -> freeze -> train model A -> inference
-datapipe step --labels=stage=count-metrics run        # metrics_on_image/subset + tag_metrics
+datapipe step --labels=stage=count-metrics run        # subset metrics + tag metrics (two PipelineModel steps)
 #   count-metrics can print "Batches to process 0" right after training — RE-RUN it once. (Troubleshooting.)
-datapipe step --labels=stage=fiftyone run             # download_images -> GT + model-A predictions
+datapipe step --labels=stage=fiftyone run             # download → images → annotations → model_a → model_b
 # (demo-only) snapshot the post-A state to rehearse part 2 later:
 docker exec <pg> pg_dump -U postgres -n "$DB_SCHEMA" postgres > /tmp/checkpoint.sql
 ```
 
 **After model A, hand the baseline over:**
-- show the **full** metric tables (`model_metrics` / `metrics_on_subset` + `tag_metrics`) — in the
-  front's `detection_tags_yolo` spec or via the RULE query below; `tag_metrics` for model A at
-  `night/val` is **low** (baseline blind in the dark);
+- show the **full** metric tables (`model_metrics` → `pipeline_model__metrics_on_subset`;
+  `tag_metrics_on_subset` → `pipeline_model__metrics_by_tag_on_subset`; plus class tables
+  `pipeline_model__metrics_by_cls_on_subset` / `pipeline_model__metrics_by_tag_by_cls_on_subset`)
+  — in the front's `detection_tags_yolo` spec or via the RULE query below; `tag_id=night, subset_id=val`
+  recall for model A is **low** (baseline blind in the dark);
 - point the user at the **datapipe-app front** (graph + observability + the two metric tables) and the
   **FiftyOne App** (GT vs model-A predictions) — give the addresses / tunnels (see "Let the user watch");
 - then ask whether to proceed to part 2 (retrain). That's the problem part 2 fixes.
@@ -181,8 +187,8 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 python ../scripts/add_request.py --id night-train --n 50 --offset 450 --subset train --tag night --darken 0.25
 datapipe step --labels=stage=load run                 # 500 images total
 # VERIFY val stayed frozen (night went to TRAIN only):
-#   SELECT h.subset_id, count(*) FROM image__tag it JOIN tag t USING(tag_id)
-#     JOIN image__subset_hint h USING(image_name) WHERE t.tag_name='night' GROUP BY h.subset_id
+#   SELECT h.subset_id, count(*) FROM image__tag it
+#     JOIN image__subset_hint h USING(image_name) WHERE it.tag_id='night' GROUP BY h.subset_id
 #   -- expect train=50, val=25
 ```
 
@@ -215,15 +221,17 @@ When you show metrics, dump the **whole** table, not a truncated view. Both of t
 
 ```bash
 docker exec <pg> psql -U postgres -x -c \
-  "SELECT * FROM $DB_SCHEMA.detection_model_train__metrics_on_subset ORDER BY detection_model_id, subset_id"
+  "SELECT * FROM $DB_SCHEMA.pipeline_model__metrics_on_subset ORDER BY detection_model_id, subset_id"
 docker exec <pg> psql -U postgres -x -c \
-  "SELECT * FROM $DB_SCHEMA.tag_metrics ORDER BY detection_model_id, tag_id, subset_id"
+  "SELECT * FROM $DB_SCHEMA.pipeline_model__metrics_by_tag_on_subset ORDER BY detection_model_id, tag_id, subset_id"
 ```
 
 `tag_id` **is the tag name itself** (text, e.g. `night`) — no numeric surrogate, no join needed. The
 `tag` dimension is two columns: `tag_id` (name) + `tag_description` (readable, notes darkening).
 
-The payoff comparison: `tag_metrics` at `tag=night, subset=val`, model A vs model B — recall rises.
+The payoff comparison: `pipeline_model__metrics_by_tag_on_subset` at `tag_id=night, subset_id=val`,
+model A vs model B — `calc__weighted_recall` / `calc__weighted_f1_score` rise. FindBestModel also uses
+`calc__weighted_f1_score` on `pipeline_model__metrics_on_subset`.
 The night/val set is small (25 images), so treat the rise as **directional**.
 
 ## Let the user watch (offer it — work out the specifics per setup)
@@ -236,12 +244,14 @@ directly in chat:
 
 - **the datapipe-app front** (`datapipe --pipeline app api --host 127.0.0.1 --port 8000`, tunnel 8000)
   — the pipeline graph, observability panels (training status/curves), the `detection_tags_yolo`
-  ops-spec with the `model_metrics` + `tag_metrics` tables, and the **run triggers** the user presses
+  ops-spec with `model_metrics` + `tag_metrics_on_subset` + **class_metrics** (`subset_class_metrics`,
+  `tag_class_metrics_on_subset`), and the **run triggers** the user presses
   to launch model A / model B. This is the primary surface in the UI setup.
-- **tables** in DBeaver (Postgres → the `$DB_SCHEMA` schema): `tag_metrics`,
-  `detection_model_train__metrics_on_subset`, `detection_training_status`.
-- **images** in the FiftyOne App: `ground_truth` vs `predictions_model_a` vs `predictions_model_b`,
-  filterable by `tag`/`subset`.
+- **tables** in DBeaver (Postgres → the `$DB_SCHEMA` schema): `pipeline_model__metrics_on_subset`,
+  `pipeline_model__metrics_by_tag_on_subset`, `pipeline_model__metrics_by_cls_on_subset`,
+  `detection_training_status`.
+- **images** in the FiftyOne App: `annotations` vs `predictions_model_a` vs `predictions_model_b`,
+  filterable by sample fields `tag_id` / `subset_id`.
 - **training progress**: the run streams to a log file — tail it; trust
   `detection_training_status.status`, not exit codes.
 
@@ -255,21 +265,37 @@ different left-hand port rather than killing whatever holds it.
 
 ## FiftyOne
 
-`stage=fiftyone` downloads images locally then publishes to one dataset (`FIFTYONE_DATASET_NAME`,
-metadata in MongoDB): fields `ground_truth`, `predictions_model_a` (baseline), `predictions_model_b`
-(retrained), plus sample fields `tag` and `subset`. Ported straight from
-`examples/e2e_template/image_detection` (same `download_images` + `publish_to_fiftyone` +
-`FiftyOneImagesDataTableStore`); the two model fields are assigned by sorted model-id (earliest =
-`model_a`). Launch: `fiftyone app launch "$FIFTYONE_DATASET_NAME" --port 5151 --address 0.0.0.0`,
-tunnel 5151 (local port MUST equal remote port — the App's WebSocket calls the same port).
+`stage=fiftyone` follows **`examples/e2e_template/image_detection`** (same step order), with an
+A/B twist: baseline vs retrained predictions in one dataset (`FIFTYONE_DATASET_NAME`, metadata in
+MongoDB).
 
-`tag` and `subset` are ordinary **sample fields** (set in-pipeline by `publish_gt_to_fiftyone`, no
-scripts) — NOT FiftyOne's native "sample tags". Filter by the **fields** in the sidebar: pick
-`tag = night` and `subset = val` — different fields AND together, so you get exactly the night-val
-set. (Selecting multiple values inside FiftyOne's native TAGS panel ORs them, which is why we do NOT
-mirror tag/subset into native tags.) That isolates where model A misses in the dark; after part 2,
-`predictions_model_b` shows model B catching it. Fields stay `predictions_model_a` (baseline,
-earliest model id) / `predictions_model_b` (retrained); the exact model ids are in the DB tables.
+Pipeline steps (`detection/steps.py`):
+1. `download_images` → `local_images`
+2. `publish_to_fiftyone` → `fiftyone_images` (field `images`)
+3. `publish_to_fiftyone_ground_truth` → `fiftyone_annotations` (field `annotations`; merges
+   `subset_id` + `tag_id` onto each sample)
+4. `publish_to_fiftyone_predictions_baseline` → `fiftyone_predictions_model_a` (field
+   `predictions_model_a`; earliest `detection_model_id` → sample field `detection_model_id_a`)
+5. `publish_to_fiftyone_predictions_retrained` → `fiftyone_predictions_model_b` (field
+   `predictions_model_b`; second model id → `detection_model_id_b`)
+
+Stores share one `fo_session` / dataset (`detection/data.py`). Separate `detection_model_id_a` /
+`detection_model_id_b` sample fields avoid the two prediction stores clobbering each other.
+
+**App UI:** `docker compose up` starts **`fiftyone`** (`voxel51/fiftyone:1.17.0` on **:5151**), wired
+to the same MongoDB. Open **http://localhost:5151** (remote → SSH tunnel `-L 5151:localhost:5151`).
+Like e2e: run `mkdir -p .docker-data/minio` then
+`HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d` so **minio** / **fiftyone** bind mounts
+use the host uid (no root-owned files breaking the pipeline). The service bind-mounts
+`DATAPIPE_TAGS_TMP_DIR` (default `/tmp/datapipe-tags`) read-only; local images go to
+`$DATAPIPE_TAGS_TMP_DIR/local_images` (override with `LOCAL_IMAGES_DIR` if needed).
+The pipeline still uses the **`fiftyone` Python lib** from `datapipe-ml[fiftyone]` to publish samples;
+only the App server runs in Docker (no host `fiftyone app launch` needed).
+
+`tag_id` and `subset_id` are ordinary **sample fields** (from the GT publish merge) — NOT FiftyOne's
+native "sample tags". Filter in the sidebar: `tag_id = night` AND `subset_id = val` (field filters,
+not native TAGS OR-semantics). After part 2, `predictions_model_b` shows model B catching boxes model A
+missed in the dark.
 
 ## How to work
 
@@ -288,8 +314,8 @@ to a file + `grep`, not inline.
   then verify `python -c "import polars; print(polars.__version__)"` is the lts one.
 - **`No labels found` / every image "corrupt: No module named 'pi_heif'`** → reinstall `pi-heif`.
 - **count-metrics prints "Batches to process 0" right after training** → datapipe hasn't propagated
-  the fresh predictions in the same pass. Re-run `count-metrics` once; then `metrics_on_image/subset`
-  and `tag_metrics` fill.
+  the fresh predictions in the same pass. Re-run `count-metrics` once; then `pipeline_model__metrics_*`
+  tables fill (subset + tag + class metrics).
 - **Two identical models get trained** → you ran `stage=train-prepare` and then `stage=train`
   separately; the split between them changes `image__subset`, which re-freezes the dataset and
   retrains. Run `stage=train` as one step (it includes prepare), and show the split with a query.

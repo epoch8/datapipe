@@ -92,5 +92,14 @@ DBCONN = DBConn(DB_URL, DB_SCHEMA)
 # FiftyOne stores dataset metadata in MongoDB (FIFTYONE_DATABASE_URI, brought up by
 # docker compose) and renders samples from LOCAL image files, so the fiftyone stage
 # downloads S3 images to LOCAL_IMAGES_DIR first.
+def _local_images_dir() -> Path:
+    explicit = os.environ.get("LOCAL_IMAGES_DIR")
+    if explicit:
+        return Path(explicit).resolve()
+    if _is_cloud_path(DATAPIPE_DIR_ROOT):
+        return Path(os.environ.get("DATAPIPE_TAGS_TMP_DIR", "/tmp/datapipe-tags")).resolve() / "local_images"
+    return Path(DATAPIPE_DIR).resolve().parent / "local_images"
+
+
 FIFTYONE_DATASET_NAME = os.environ.get("FIFTYONE_DATASET_NAME", "datapipe_detection_tags")
-LOCAL_IMAGES_DIR = Path(os.environ.get("LOCAL_IMAGES_DIR", "/tmp/datapipe-tags-fiftyone-images"))
+LOCAL_IMAGES_DIR = _local_images_dir()
