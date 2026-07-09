@@ -72,23 +72,30 @@ def darken(raw: bytes, gamma: float) -> bytes:
 class CocoDemoSource:
     """Deterministic shuffled pool of COCO cat/dog filenames + per-file (bytes, boxes, labels).
 
-    Prefers a pre-staged cache (`$DATAPIPE_TAGS_CACHE_DIR/gt.json` + `images/<fn>`) so loads are fast
-    and offline; falls back to fetching from COCO. Order is a fixed shuffle (RNG_SEED) so `offset`/`n`
-    slices are reproducible across runs.
+    Canonical pool order = filenames sorted, then a fixed seeded shuffle (RNG_SEED), so `offset`/`n`
+    slices are reproducible across runs and machines. Prefers a pre-staged cache
+    (`$DATAPIPE_TAGS_CACHE_DIR/gt.json` + `images/<fn>`, built by scripts/build_cache.py, which persists
+    the first N of that canonical order); loads then read the cached key order AS-IS. Falls back to
+    downloading from COCO in the same canonical order, so cache and download select identically.
     """
 
     def __init__(self) -> None:
         cache_gt_path = CACHE / "gt.json"
         self._use_cache = cache_gt_path.exists() and (CACHE / "images").is_dir()
         if self._use_cache:
+            # The cache is pre-shuffled at build time (build_cache.py bakes in the canonical order),
+            # so read the persisted key order AS-IS. Re-sorting/re-shuffling here would diverge from
+            # the download path's selection for the same offset/n slices.
             self._cache_gt = json.loads(cache_gt_path.read_text())
-            pool = sorted(self._cache_gt.keys())
+            pool = list(self._cache_gt.keys())
         else:
+            # Canonical order: sort by FILENAME (machine-independent) then a fixed seeded shuffle.
+            # build_cache.py persists the first N of THIS order, so cache == download for any offset.
             self._id_to_img, self._anns = _coco_annotations_by_image()
-            pool = [self._id_to_img[i]["file_name"] for i in sorted(self._anns.keys())]
             self._fn_to_id = {self._id_to_img[i]["file_name"]: i for i in self._anns.keys()}
-        random.seed(RNG_SEED)
-        random.shuffle(pool)
+            pool = sorted(self._fn_to_id.keys())
+            random.seed(RNG_SEED)
+            random.shuffle(pool)
         self.pool = pool
 
     def fetch(self, fn: str) -> tuple[bytes, list, list]:
