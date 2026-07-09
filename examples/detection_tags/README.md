@@ -11,7 +11,6 @@ is split into **two parts around a checkpoint** so you can prep part 1 and rehea
 ## Deploy from scratch
 ```bash
 cp .env.example .env && set -a && source .env && set +a
-mkdir -p .docker-data/minio
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151)
 uv sync                         # cu124 torch + datapipe-ml[torch,fiftyone]
 # pre-AVX2 host only: force the lts polars to win (else training SIGILLs)

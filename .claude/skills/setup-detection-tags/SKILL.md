@@ -105,7 +105,6 @@ port is busy** — pick a different left-hand port (`-L 5433:localhost:5432`), d
 
 ```bash
 cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI
-mkdir -p .docker-data/minio
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151). No Label Studio.
 uv sync                       # cu124 torch + datapipe-ml[torch,fiftyone] (+ pi-heif if needed)
 # On a pre-AVX2 host, force the lts polars to win (else the training subprocess SIGILLs):
@@ -284,9 +283,9 @@ Stores share one `fo_session` / dataset (`detection/data.py`). Separate `detecti
 
 **App UI:** `docker compose up` starts **`fiftyone`** (`voxel51/fiftyone:1.17.0` on **:5151**), wired
 to the same MongoDB. Open **http://localhost:5151** (remote → SSH tunnel `-L 5151:localhost:5151`).
-Like e2e: run `mkdir -p .docker-data/minio` then
-`HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d` so **minio** / **fiftyone** bind mounts
-use the host uid (no root-owned files breaking the pipeline). The service bind-mounts
+Like e2e: run `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d` — compose includes
+**minio-data-init** (root `chown` on `.docker-data/minio`) so MinIO can write as your uid even if
+Docker created the bind mount as root. The service bind-mounts
 `DATAPIPE_TAGS_TMP_DIR` (default `/tmp/datapipe-tags`) read-only; local images go to
 `$DATAPIPE_TAGS_TMP_DIR/local_images` (override with `LOCAL_IMAGES_DIR` if needed).
 The pipeline still uses the **`fiftyone` Python lib** from `datapipe-ml[fiftyone]` to publish samples;

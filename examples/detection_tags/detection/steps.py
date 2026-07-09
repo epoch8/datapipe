@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import fsspec
-import numpy as np
 import pandas as pd
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 
@@ -36,8 +37,10 @@ def load_batch(df_request: pd.DataFrame):
                 pd.DataFrame(columns=hint_cols))
 
     source = CocoDemoSource()   # demo data (COCO cat/dog); for real data swap coco_demo.py
-    fs = fsspec.filesystem("s3", **input_storage_options())
     bucket = input_bucket()
+    workers = int(os.environ["DATAPIPE_TAGS_LOAD_WORKERS"]) if os.environ.get("DATAPIPE_TAGS_LOAD_WORKERS") else min(
+        32, (os.cpu_count() or 4) * 4,
+    )
 
     requests = []
     for _, req in df_request.iterrows():
@@ -55,16 +58,7 @@ def load_batch(df_request: pd.DataFrame):
             "darken": darken,
         })
 
-    total_images = sum(req["n"] for req in requests)
-    logger.info(
-        "load_batch: %d request(s), %d image(s) to upload",
-        len(requests),
-        total_images,
-    )
-    logger.info("load_batch: uploading to s3://%s/images/", bucket)
-
-    s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
-    processed = 0
+    tasks: list[tuple[str, str | None, str | None, float | None]] = []
     for req_idx, req in enumerate(requests, start=1):
         logger.info(
             "load_batch: request %d/%d offset=%d n=%d tag=%s subset=%s darken=%s",
@@ -72,28 +66,52 @@ def load_batch(df_request: pd.DataFrame):
             req["tag"], req["subset"], req["darken"],
         )
         for fn in source.pool[req["offset"]: req["offset"] + req["n"]]:
-            processed += 1
-            stem, ext = os.path.splitext(fn)
-            raw, boxes, labels = source.fetch(fn)
-            tag, darken, subset = req["tag"], req["darken"], req["subset"]
-            if darken is not None:
-                name = f"{stem}__{tag or 'dark'}{ext}"
-                data = demo_darken(raw, darken)
-            else:
-                name, data = fn, raw
-            fs.pipe(f"{bucket}/images/{name}", data)
-            s3_rows.append({"image_name": name, "image_url": input_image_url(name)})
-            gt_rows.append({"image_name": name, "bboxes": boxes, "labels": labels})
-            if tag:
-                tag_rows.append({"image_name": name, "tag_id": tag})
-                desc = tag if darken is None else f"{tag} (low-light, gamma {darken})"
-                tag_defs[tag] = desc
-            if subset:
-                hint_rows.append({"image_name": name, "subset_id": subset})
-            logger.info(
-                "load_batch: uploaded %s (%d/%d done, %d remaining)",
-                name, processed, total_images, total_images - processed,
-            )
+            tasks.append((fn, req["tag"], req["subset"], req["darken"]))
+
+    total_images = len(tasks)
+    log_every = max(1, total_images // 10)
+    logger.info(
+        "load_batch: %d request(s), %d image(s) to upload to s3://%s/images/ (%d workers)",
+        len(requests), total_images, bucket, workers,
+    )
+
+    tls = threading.local()
+
+    def upload(task: tuple[str, str | None, str | None, float | None]):
+        fn, tag, subset, darken = task
+        stem, ext = os.path.splitext(fn)
+        raw, boxes, labels = source.fetch(fn)
+        if darken is not None:
+            name = f"{stem}__{tag or 'dark'}{ext}"
+            data = demo_darken(raw, darken)
+        else:
+            name, data = fn, raw
+        if not hasattr(tls, "fs"):
+            tls.fs = fsspec.filesystem("s3", **input_storage_options())
+        tls.fs.pipe(f"{bucket}/images/{name}", data)
+        tag_row = {"image_name": name, "tag_id": tag} if tag else None
+        tag_desc = (tag if darken is None else f"{tag} (low-light, gamma {darken})") if tag else None
+        hint_row = {"image_name": name, "subset_id": subset} if subset else None
+        return (
+            {"image_name": name, "image_url": input_image_url(name)},
+            {"image_name": name, "bboxes": boxes, "labels": labels},
+            tag_row,
+            tag_desc,
+            hint_row,
+        )
+
+    s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for i, (s3_row, gt_row, tag_row, tag_desc, hint_row) in enumerate(executor.map(upload, tasks), 1):
+            s3_rows.append(s3_row)
+            gt_rows.append(gt_row)
+            if tag_row:
+                tag_rows.append(tag_row)
+                tag_defs[tag_row["tag_id"]] = tag_desc
+            if hint_row:
+                hint_rows.append(hint_row)
+            if i % log_every == 0 or i == total_images:
+                logger.info("load_batch: uploaded %d/%d", i, total_images)
 
     logger.info(
         "load_batch: finished, uploaded %d image(s), %d tag assignment(s), %d unique tag(s)",
@@ -127,12 +145,15 @@ def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, hint_df: pd.Da
         hint = hint_df[primary_keys + ["subset_id"]].drop_duplicates(subset=primary_keys)
         df__missing = df__missing.merge(hint, on=primary_keys, how="left")
     else:
-        df__missing["subset_id"] = np.nan
+        df__missing["subset_id"] = None
+    # all-NaN column becomes float64; cast before assigning "train"/"val"
+    df__missing["subset_id"] = df__missing["subset_id"].astype(object)
     df__missing = df__missing.reset_index(drop=True)
-    unpinned = df__missing[df__missing["subset_id"].isna()]
-    df__val = unpinned.sample(frac=val_perc, random_state=random_seed)
-    df__missing.loc[unpinned.index, "subset_id"] = "train"
-    df__missing.loc[df__val.index, "subset_id"] = "val"
+    unpinned = df__missing["subset_id"].isna()
+    if unpinned.any():
+        df__val = df__missing[unpinned].sample(frac=val_perc, random_state=random_seed)
+        df__missing.loc[unpinned, "subset_id"] = "train"
+        df__missing.loc[df__val.index, "subset_id"] = "val"
     return pd.concat([subset_df, df__missing], ignore_index=True)[primary_keys + ["subset_id"]]
 
 
@@ -179,21 +200,32 @@ def publish_to_fiftyone_ground_truth(
     primary_keys: list[str],
     image__image_path__name: str,
 ) -> pd.DataFrame:
-    df = pd.merge(images_df, ground_truth_df, on=primary_keys, how="left")
-    df = pd.merge(df, subset_df, on=primary_keys, how="left")
-    if tag_df is not None and not tag_df.empty:
-        df = pd.merge(df, tag_df[primary_keys + ["tag_id"]], on=primary_keys, how="left")
-    return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=df,
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=pd.merge(ground_truth_df, images_df, on=primary_keys),
         primary_keys=primary_keys,
         image__image_path__name=image__image_path__name,
     )
+    pk = primary_keys[0]
+    subset_by_image = (
+        subset_df.drop_duplicates(subset=[pk]).set_index(pk)["subset_id"].to_dict()
+        if not subset_df.empty
+        else {}
+    )
+    tag_by_image = (
+        tag_df.drop_duplicates(subset=[pk]).set_index(pk)["tag_id"].to_dict()
+        if not tag_df.empty
+        else {}
+    )
+    for _, row in df__image_data.iterrows():
+        row["image_data"].additional_info["subset_id"] = subset_by_image.get(row[pk]) or "none"
+        row["image_data"].additional_info["tag_id"] = tag_by_image.get(row[pk]) or "none"
+    return df__image_data[primary_keys + ["image_data"]]
 
 
 def _baseline_and_retrained_model_ids(predictions_df: pd.DataFrame) -> tuple[list[str], list[str]]:
-    """Earliest-trained model = baseline; the next one = retrained (stable A/B across images)."""
+    """Earliest-trained model = baseline (A); every later model goes to B (stable A/B across images)."""
     ids = sorted(predictions_df["detection_model_id"].dropna().unique().tolist())
-    return ([ids[0]] if ids else []), (ids[1:2] if len(ids) > 1 else [])
+    return ([ids[0]] if ids else []), (ids[1:] if len(ids) > 1 else [])
 
 
 def _publish_predictions_for_models(
@@ -210,13 +242,19 @@ def _publish_predictions_for_models(
     pred = predictions_df[predictions_df["detection_model_id"].isin(model_ids)]
     if pred.empty:
         return empty
-    df = pd.merge(pred, images_df, on=primary_keys, how="left")
+    df = pd.merge(pred, images_df, on=primary_keys)
     df[model_id_sample_field] = df["detection_model_id"]
-    return convert_df_with_bbox_to_df_with_image_data(
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
         df__with_bbox=df,
-        primary_keys=primary_keys,
+        primary_keys=primary_keys + [model_id_sample_field],
         image__image_path__name=image__image_path__name,
     )
+    for image_data, model_id in zip(
+        df__image_data["image_data"],
+        df__image_data[model_id_sample_field],
+    ):
+        image_data.additional_info[model_id_sample_field] = model_id
+    return df__image_data[primary_keys + ["image_data"]]
 
 
 def publish_to_fiftyone_predictions_baseline(

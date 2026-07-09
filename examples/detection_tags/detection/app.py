@@ -67,8 +67,7 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
-            labels=[("stage", "train"), ("stage", "train-prepare")],
-            create_table=True,
+            labels=[("stage", "train"), ("stage", "train-prepare")]
         ),
         Train_YoloV8_DetectionModel(  # type: ignore[list-item]
             input__detection_frozen_dataset="detection_frozen_dataset",
@@ -97,7 +96,6 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],
-            create_table=True,
             allow_sample_size_mismatch=True,
             model_suffix="_tags",
         ),
@@ -110,7 +108,6 @@ pipeline = Pipeline(
             image__image_path__name="image_url",
             batch_size_default=1,
             labels=[("stage", "train"), ("stage", "inference")],
-            create_table=True,
         ),
         CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",
@@ -124,7 +121,6 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id"],
             minimum_iou=0.5,
             labels=[("stage", "train"), ("stage", "count-metrics")],
-            create_table=True,
         ),
         FindBestModel(
             input__model="detection_model_train",
@@ -151,7 +147,6 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id", "tag_id"],
             minimum_iou=0.5,
             labels=[("stage", "train"), ("stage", "count-metrics"), ("stage", "tag-metrics")],
-            create_table=True,
         ),
         # --- FiftyOne (stage=fiftyone): GT + baseline/retrained predictions, filter by tag_id ---
         BatchTransform(
@@ -192,7 +187,7 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone_predictions_baseline,
-            inputs=["local_images", "detection_prediction_train"],
+            inputs=[Required("local_images"), Required("detection_prediction_train")],
             outputs=["fiftyone_predictions_model_a"],
             transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "fiftyone")],
@@ -203,7 +198,7 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone_predictions_retrained,
-            inputs=["local_images", "detection_prediction_train"],
+            inputs=[Required("local_images"), Required("detection_prediction_train")],
             outputs=["fiftyone_predictions_model_b"],
             transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "fiftyone")],
@@ -215,7 +210,7 @@ pipeline = Pipeline(
     ]
 )
 
-ds = DataStore(DBCONN, create_meta_table=True)
+ds = DataStore(DBCONN)
 app = DatapipeApp(ds, catalog, pipeline)
 
 app.add_specs([

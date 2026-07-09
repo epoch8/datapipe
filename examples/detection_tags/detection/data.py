@@ -12,7 +12,7 @@ fo_session = FifyOneSession()
 
 
 def _t(name, schema):
-    return Table(TableStoreDB(dbconn=DBCONN, name=name, data_sql_schema=schema, create_table=True))
+    return Table(TableStoreDB(dbconn=DBCONN, name=name, data_sql_schema=schema))
 
 
 def _fo_table(fo_detections_label: str, *, rm_only_fo_fields: bool = True,
