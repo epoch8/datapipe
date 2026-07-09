@@ -69,14 +69,18 @@ the cache — see Troubleshooting):
 
 | batch | n | offset | subset | tag | darken | when |
 |-------|---|--------|--------|-----|--------|------|
-| `base-train` | 325 | 0   | train | —     | —    | part 1 |
-| `base-val`   | 100 | 325 | val   | —     | —    | part 1 |
-| `night-val`  | 25  | 425 | val   | night | 0.25 | part 1 |
-| `night-train`| 50  | 450 | train | night | 0.25 | part 2 |
+| `base-train` | 275 | 0   | train | —     | —    | part 1 |
+| `base-val`   | 75  | 275 | val   | —     | —    | part 1 |
+| `night-val`  | 75  | 350 | val   | night | 0.25 | part 1 |
+| `night-train`| 75  | 425 | train | night | 0.25 | part 2 |
 
-Validated on gpu5: model A → train recall ~0.95, night/val recall ~0.09 (blind in the dark); after
-part 2, model B → night/train recall ~0.86. Keep night/val small but not tiny (25 imgs / ~45 GT) —
-below ~20 the val payoff is pure ±1-box noise and can even go the wrong way.
+**Deterministic reference** (gpu5, GTX 1070, seed=42, epochs=10): model A → overall/train recall 0.819,
+night/val 0.176; model B → overall/train 0.944, **night/train 0.295 → 0.962** (the payoff), night/val
+0.165. The **reliable signal is night/train**. **night/val does NOT rise** at this size/epochs — model
+B memorizes the night-train images rather than generalizing low-light, so night/val stays ~flat; a real
+val gain needs more night-train + epochs (or milder `--darken`). These exact numbers reproduce on the
+**same GPU/CUDA/torch stack** (training determinism is per-hardware); the data/splits/tags reproduce on
+any machine (seeded canonical cache).
 
 ## Pre-flight — CHECK what's already there, then ASK (do this before deploying)
 
@@ -133,9 +137,9 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
-python ../scripts/add_request.py --id base-train --n 325 --offset 0   --subset train
-python ../scripts/add_request.py --id base-val   --n 100 --offset 325 --subset val
-python ../scripts/add_request.py --id night-val  --n 25  --offset 425 --subset val --tag night --darken 0.25
+python ../scripts/add_request.py --id base-train --n 275 --offset 0   --subset train
+python ../scripts/add_request.py --id base-val   --n 75 --offset 275 --subset val
+python ../scripts/add_request.py --id night-val  --n 75  --offset 350 --subset val --tag night --darken 0.25
 datapipe step --labels=stage=load run                 # 450 images; val frozen (100 base + 25 night)
 
 # VERIFY the data is in the pipe before handing off:
@@ -178,7 +182,7 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 
 ```bash
 # SKILL DOES — add the tagged TRAIN batch and load it (val stays frozen):
-python ../scripts/add_request.py --id night-train --n 50 --offset 450 --subset train --tag night --darken 0.25
+python ../scripts/add_request.py --id night-train --n 75 --offset 425 --subset train --tag night --darken 0.25
 datapipe step --labels=stage=load run                 # 500 images total
 # VERIFY val stayed frozen (night went to TRAIN only):
 #   SELECT h.subset_id, count(*) FROM image__tag it JOIN tag t USING(tag_id)
@@ -285,17 +289,23 @@ to a file + `grep`, not inline.
 
 ## Troubleshooting (verify against current files)
 
-- **Pre-staged cache is exactly 500 images** → `gt.json` in the cache dir caps the pool. An `offset`
-  past 500 yields an empty batch silently. Keep the batch total ≤ 500, or rebuild the cache larger
-  (or point `DATAPIPE_TAGS_CACHE_DIR` at a fresh dir to force a full COCO download).
+- **Building the cache / fresh host** → `python ../scripts/build_cache.py [N]` (default 500) downloads
+  the first N images of the canonical order + writes `gt.json` + `images/`; deterministic — byte-identical
+  on any COCO-reachable machine. Run once, then loads are fast + offline. The cache caps the pool at its
+  size, so keep the batch total ≤ N. NOTE: from RU (e.g. gpu5/Moscow) `images.cocodataset.org` is
+  unreachable — build the cache off-RU and copy `$DATAPIPE_TAGS_CACHE_DIR` (gt.json + images/) to the host.
 - **`SIGILL` / `Illegal instruction` in training** → `polars` built for a newer CPU than the host
   (pre-AVX2). The `polars-lts-cpu` pin isn't enough alone; the regular `polars` comes in transitively.
   After `uv sync`: `uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1`,
   then verify `python -c "import polars; print(polars.__version__)"` is the lts one.
 - **`No labels found` / every image "corrupt: No module named 'pi_heif'`** → reinstall `pi-heif`.
 - **count-metrics prints "Batches to process 0" right after training** → datapipe hasn't propagated
-  the fresh predictions in the same pass. Re-run `count-metrics` once; then `metrics_on_image/subset`
-  and `tag_metrics` fill.
+  the fresh predictions in the same pass. Re-run `count-metrics` once; then the metric tables fill.
+- **Model B didn't learn night-train (trains on the OLD frozen dataset)** → after loading `night-train`,
+  the first `stage=train` re-splits `image__subset` (→ 350 train) but may NOT re-freeze in the same pass
+  (same propagation lag). If `detection_frozen_dataset__train_images_count` didn't grow, **re-run
+  `stage=train` once** — the freeze then updates (a new `detection_frozen_dataset` row) and model B trains
+  on the full set (night/train recall jumps).
 - **Two identical models get trained** → you ran `stage=train-prepare` and then `stage=train`
   separately; the split between them changes `image__subset`, which re-freezes the dataset and
   retrains. Run `stage=train` as one step (it includes prepare), and show the split with a query.

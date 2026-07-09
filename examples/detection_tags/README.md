@@ -31,9 +31,9 @@ the split step honors it. The pre-staged cache holds **500 images**, so keep the
 ## Part 1 — baseline to checkpoint
 ```bash
 # from examples/detection_tags/detection
-python ../scripts/add_request.py --id base-train --n 325 --offset 0   --subset train
-python ../scripts/add_request.py --id base-val   --n 100 --offset 325 --subset val
-python ../scripts/add_request.py --id night-val  --n 25  --offset 425 --subset val --tag night --darken 0.25
+python ../scripts/add_request.py --id base-train --n 275 --offset 0   --subset train
+python ../scripts/add_request.py --id base-val   --n 75 --offset 275 --subset val
+python ../scripts/add_request.py --id night-val  --n 75  --offset 350 --subset val --tag night --darken 0.25
 datapipe step --labels=stage=load run
 datapipe step --labels=stage=train run            # model A
 datapipe step --labels=stage=count-metrics run    # re-run once if it prints "Batches to process 0"
@@ -44,7 +44,7 @@ datapipe step --labels=stage=fiftyone run         # GT + model-A predictions int
 
 ## Part 2 — retrain and watch the tag metric rise
 ```bash
-python ../scripts/add_request.py --id night-train --n 50 --offset 450 --subset train --tag night --darken 0.25
+python ../scripts/add_request.py --id night-train --n 75 --offset 425 --subset train --tag night --darken 0.25
 datapipe step --labels=stage=load run
 datapipe step --labels=stage=train run            # model B (night now in training)
 datapipe step --labels=stage=count-metrics run    # re-run once if "0 batches"
