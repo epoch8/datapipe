@@ -69,18 +69,24 @@ the cache — see Troubleshooting):
 
 | batch | n | offset | subset | tag | darken | when |
 |-------|---|--------|--------|-----|--------|------|
-| `base-train` | 275 | 0   | train | —     | —    | part 1 |
-| `base-val`   | 75  | 275 | val   | —     | —    | part 1 |
-| `night-val`  | 75  | 350 | val   | night | 0.25 | part 1 |
-| `night-train`| 75  | 425 | train | night | 0.25 | part 2 |
+| `base-train`   | 200 | 0   | train | —     | —    | part 1 |
+| `base-val`     | 75  | 200 | val   | —     | —    | part 1 |
+| `night-val`    | 75  | 275 | val   | night | 0.40 | part 1 |
+| `night-train-a`| 50  | 350 | train | night | 0.30 | part 2 |
+| `night-train-b`| 50  | 400 | train | night | 0.40 | part 2 |
+| `night-train-c`| 50  | 450 | train | night | 0.55 | part 2 |
 
-**Deterministic reference** (gpu5, GTX 1070, seed=42, epochs=10): model A → overall/train recall 0.819,
-night/val 0.176; model B → overall/train 0.944, **night/train 0.295 → 0.962** (the payoff), night/val
-0.165. The **reliable signal is night/train**. **night/val does NOT rise** at this size/epochs — model
-B memorizes the night-train images rather than generalizing low-light, so night/val stays ~flat; a real
-val gain needs more night-train + epochs (or milder `--darken`). These exact numbers reproduce on the
-**same GPU/CUDA/torch stack** (training determinism is per-hardware); the data/splits/tags reproduce on
-any machine (seeded canonical cache).
+**Why THREE night-train batches with different gammas (0.30/0.40/0.55 around val's 0.40):** a single
+gamma makes model B memorize that exact darkness (night/train ~0.95, night/val flat); gamma DIVERSITY
+forces it to generalize "low light", which is what lifts the held-out val. More epochs does NOT fix
+this (30 epochs = deeper memorization, val drops) — the lever is data diversity, keep epochs=10.
+
+**Deterministic reference** (gpu5, GTX 1070, seed=42, epochs=10, weighted recall/precision on val):
+model A → overall 0.324/0.440, night 0.282/0.449; model B → overall **0.415/0.546**, night
+**0.409/0.549**. **B beats A on BOTH val sets with fat margins (+0.09..+0.13)** — large enough to
+survive cross-hardware noise, so the story holds on any machine. Exact numbers reproduce bit-for-bit
+on the **same GPU/CUDA/torch stack** (training determinism is per-hardware); data/splits/tags
+reproduce byte-identically on any machine (seeded canonical cache).
 
 ## Pre-flight — CHECK what's already there, then ASK (do this before deploying)
 
@@ -137,9 +143,9 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
-python ../scripts/add_request.py --id base-train --n 275 --offset 0   --subset train
-python ../scripts/add_request.py --id base-val   --n 75 --offset 275 --subset val
-python ../scripts/add_request.py --id night-val  --n 75  --offset 350 --subset val --tag night --darken 0.25
+python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
+python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
+python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
 datapipe step --labels=stage=load run                 # 450 images; val frozen (100 base + 25 night)
 
 # VERIFY the data is in the pipe before handing off:
@@ -182,7 +188,9 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 
 ```bash
 # SKILL DOES — add the tagged TRAIN batch and load it (val stays frozen):
-python ../scripts/add_request.py --id night-train --n 75 --offset 425 --subset train --tag night --darken 0.25
+python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
+python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
+python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
 datapipe step --labels=stage=load run                 # 500 images total
 # VERIFY val stayed frozen (night went to TRAIN only):
 #   SELECT h.subset_id, count(*) FROM image__tag it JOIN tag t USING(tag_id)
@@ -301,11 +309,12 @@ to a file + `grep`, not inline.
 - **`No labels found` / every image "corrupt: No module named 'pi_heif'`** → reinstall `pi-heif`.
 - **count-metrics prints "Batches to process 0" right after training** → datapipe hasn't propagated
   the fresh predictions in the same pass. Re-run `count-metrics` once; then the metric tables fill.
-- **Model B didn't learn night-train (trains on the OLD frozen dataset)** → after loading `night-train`,
-  the first `stage=train` re-splits `image__subset` (→ 350 train) but may NOT re-freeze in the same pass
-  (same propagation lag). If `detection_frozen_dataset__train_images_count` didn't grow, **re-run
-  `stage=train` once** — the freeze then updates (a new `detection_frozen_dataset` row) and model B trains
-  on the full set (night/train recall jumps).
+- **Model B didn't retrain / trains on the OLD frozen dataset** → the freeze step has a time debounce:
+  `DetectionFreezeDataset(min_within_time=...)` refuses to create a new frozen dataset if the last one is
+  younger than that ("Not enough time passed since last frozen dataset" in the log). The demo app sets
+  `min_within_time="1s"` so part 2 retrains immediately; if you see the error (e.g. a config with "5min"),
+  either lower it or wait it out, then re-run `stage=train`. Verify via
+  `detection_frozen_dataset__train_images_count` growing (a second `detection_frozen_dataset` row).
 - **Two identical models get trained** → you ran `stage=train-prepare` and then `stage=train`
   separately; the split between them changes `image__subset`, which re-freezes the dataset and
   retrains. Run `stage=train` as one step (it includes prepare), and show the split with a query.

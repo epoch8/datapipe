@@ -3,11 +3,13 @@
 Fixed-val demo (freeze val up front, add the tagged train batch later):
 
     # loaded BEFORE training model A — val is frozen from the start
-    python ../scripts/add_request.py --id base-train --n 275 --offset 0   --subset train
-    python ../scripts/add_request.py --id base-val   --n 75 --offset 275 --subset val
-    python ../scripts/add_request.py --id night-val  --n 75  --offset 350 --subset val   --tag night --darken 0.25
+    python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
+    python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
+    python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
     # loaded BEFORE retraining model B (the tagged TRAIN batch — the fix)
-    python ../scripts/add_request.py --id night-train --n 75 --offset 425 --subset train --tag night --darken 0.25
+    python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
+    python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
+    python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
 
 --subset train|val pins every image of the batch to that subset so the random split never moves it.
 Run from examples/detection_tags/detection (so `import config` resolves)."""
