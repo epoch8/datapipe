@@ -23,6 +23,9 @@ dist/
 # Lock files (deps resolved inside the image)
 poetry.lock
 uv.lock
+# ...except detection_tags: its whole point is reproducible cross-machine runs — the lock pins the
+# training stack (ultralytics etc.); without it every machine resolves different versions.
+!examples/detection_tags/uv.lock
 
 # ML models & checkpoints
 *.pt
