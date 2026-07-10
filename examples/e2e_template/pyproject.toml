@@ -10,6 +10,7 @@ dependencies = [
     "stringzilla==4.4.0",  # needed for albumentations
     "fiftyone==1.17.0",
     "polars-lts-cpu==1.33.1",  # for ultralytics on old CPUs
+    "pi-heif",  # ultralytics image verification imports it
 ]
 
 [[tool.uv.index]]
