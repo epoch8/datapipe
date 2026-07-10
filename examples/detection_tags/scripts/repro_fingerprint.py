@@ -59,8 +59,14 @@ def main() -> int:
 
     print("== trained models: WEIGHT hashes (state_dict tensors, not file bytes) ==")
     # file md5 is misleading — checkpoints embed dates/paths; hash the tensors instead.
-    tmp = Path(os.environ.get("DATAPIPE_TAGS_TMP_DIR", "/tmp/datapipe-tags"))
-    found = sorted(tmp.rglob("best.pt"))
+    # Artifacts may sit under DATAPIPE_TAGS_TMP_DIR (training output) or DATAPIPE_TAGS_DIR
+    # (persisted models) — scan both when they are LOCAL paths (skip s3:// etc.).
+    dirs = []
+    for var, default in (("DATAPIPE_TAGS_TMP_DIR", "/tmp/datapipe-tags"), ("DATAPIPE_TAGS_DIR", "")):
+        v = os.environ.get(var, default)
+        if v and "://" not in v:
+            dirs.append(Path(v))
+    found = sorted({p for d in dirs if d.exists() for p in d.rglob("best.pt")})
     if found:
         import torch
 
