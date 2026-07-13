@@ -29,21 +29,6 @@ load `base-val` + `night-val` (pinned `--subset val`) before training A, and add
 (`--subset train`) only for part 2. `add_request.py --subset` pins a batch (`image__subset_hint`),
 the split step honors it. The pre-staged cache holds **500 images**, so keep the total ≤ 500.
 
-## Identical metrics on any machine — demo seed (no training)
-
-Live-training numbers are bit-stable on one GPU but DIFFER across GPU models (proven — different CUDA
-kernels; no software setting fixes it). For the same numbers everywhere, restore the reference state
-instead of training (~2 min): models A/B, all metrics and run history land exactly as validated.
-
-```bash
-# stack up + .env sourced + venv built + image cache present (scripts/build_cache.py)
-bash scripts/restore_demo_seed.sh        # wipes the public schema, restores demo_seed/db.sql.gz,
-                                         # re-uploads images byte-identically from the cache
-```
-
-Then open the front — `cat_dog` shows the reference metrics (A val recall 0.324 / B 0.415 etc.).
-Live (re)training stays available; treat its numbers as per-GPU.
-
 ## Part 1 — baseline to checkpoint
 ```bash
 # from examples/detection_tags/detection
