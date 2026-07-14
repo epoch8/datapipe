@@ -20,8 +20,8 @@ the datapipe examples convention so pattern cards apply verbatim later:
 
 ## Dependencies (decide once, record in SPEC)
 
-Check PyPI first: `datapipe-core` may be published for the needed version; `datapipe-ml` /
-`datapipe-app` / integrations usually are NOT — pin them as git deps to a monorepo rev:
+Git-subdirectory installs from the monorepo are VERIFIED to work outside the workspace (core and
+ml both resolve and import; tested on linux-x86 and mac). Pin as git deps to a monorepo rev:
 
 ```toml
 [project]
@@ -30,9 +30,13 @@ requires-python = ">=3.10,<3.13"
 dependencies = [
     "datapipe-core @ git+https://github.com/epoch8/datapipe@<REV>#subdirectory=libs/datapipe-core",
     # add per blocks: datapipe-ml (+#subdirectory=libs/datapipe-ml), datapipe-app, ...
+    # "stringzilla==4.4.0",  # REQUIRED whenever datapipe-ml is used (transitive albumentations dep breaks unpinned)
     "pandas", "sqlalchemy", "psycopg2-binary", "python-dotenv",
 ]
 ```
+
+Platform note: `datapipe-ml` does not install on macOS ARM (`ray` has no arm wheel) — ML-block
+projects run on linux-x86; plain-ETL projects (core only) work anywhere.
 
 Pin `<REV>` to a commit sha, not a branch. After `uv sync`, COMMIT `uv.lock`. Never edit deps
 ad-hoc later — re-locking drifts versions across machines and changes results.
