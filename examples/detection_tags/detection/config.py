@@ -88,6 +88,13 @@ if not DB_URL:
 DB_SCHEMA = os.environ.get("DB_SCHEMA", "public")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
 
+CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
+if not CLICKHOUSE_RUN_LOGS_URL:
+    raise RuntimeError(
+        "CLICKHOUSE_RUN_LOGS_URL is required. Copy examples/detection_tags/.env.example to .env, "
+        "start docker compose (clickhouse service), and run: set -a && source .env && set +a"
+    )
+
 # --- FiftyOne -------------------------------------------------------------------
 # FiftyOne stores dataset metadata in MongoDB (FIFTYONE_DATABASE_URI, brought up by
 # docker compose) and renders samples from LOCAL image files, so the fiftyone stage

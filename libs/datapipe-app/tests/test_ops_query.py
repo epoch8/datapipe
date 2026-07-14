@@ -8,8 +8,8 @@ from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 from sqlalchemy import Column, Integer, String
 
-from datapipe_app.ops_query import OpsQuery, format_snapshot_label
-from datapipe_app.specs import OpsColumn
+from datapipe_app.ops.ops_query import OpsQuery, format_snapshot_label
+from datapipe_app.ops.specs import OpsColumn
 
 
 def test_snapshot_labels_do_not_generate_semver():
@@ -57,7 +57,7 @@ def test_physical_table_exists_checks_table_schema(ops_app):
     table = ops_app.catalog.catalog["input"].store.data_table
     table.schema = "custom_schema"
 
-    with patch("datapipe_app.ops_query.inspect", return_value=FakeInspector()):
+    with patch("datapipe_app.ops.ops_query.inspect", return_value=FakeInspector()):
         assert OpsQuery(ops_app.ds, ops_app.catalog)._physical_table_exists(table)
 
     assert calls == [("input", "custom_schema")]

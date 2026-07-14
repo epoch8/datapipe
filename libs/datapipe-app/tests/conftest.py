@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import JSON, Boolean, Column, Integer, String
 
 from datapipe_app import DatapipeAPI
-from datapipe_app.observability.db import ObservabilityStore
+from datapipe_app.observability.store.db import ObservabilityStore
 
 
 @pytest.fixture
@@ -23,14 +23,6 @@ def observability_store():
 
 @pytest.fixture
 def agent_env(monkeypatch):
-    monkeypatch.delenv("DATAPIPE_APP_MODE", raising=False)
-    monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
-    monkeypatch.delenv("DATAPIPE_APP_OBSERVABILITY_DB_URL", raising=False)
-
-
-@pytest.fixture
-def central_env(monkeypatch):
-    monkeypatch.setenv("DATAPIPE_APP_MODE", "central")
     monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
 
 

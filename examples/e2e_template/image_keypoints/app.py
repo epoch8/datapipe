@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from datapipe.compute import Pipeline
-from datapipe_app import DatapipeAPI
-from datapipe_app.specs import (
+from datapipe_app import DatapipeAPI, RunLogsBackend
+from datapipe_app.ops.specs import (
     OpsColumn,
     OpsColumnGroup,
     OpsFilterRule,
     OpsMetricTableSpec,
     OpsRelationSpec,
 )
-from datapipe_app_ml_ops.ops_specs import (
+from datapipe_app_ml_ops.ops.ops_specs import (
     DatapipeOpsSpec,
     OpsDataSpec,
     OpsFrozenDatasetSpec,
@@ -39,6 +39,7 @@ from config import (
     DATAPIPE_DIR,
     KEYPOINTS_MODEL_CONFIG,
     datapipe_tmp_folder,
+    CLICKHOUSE_RUN_LOGS_URL,
     DBCONN,
     label_studio_storages,
     LABEL_CONFIG,
@@ -316,7 +317,12 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN)
-app = DatapipeAPI(ds, catalog, pipeline)
+app = DatapipeAPI(
+    ds,
+    catalog,
+    pipeline,
+    run_logs_backend=RunLogsBackend.clickhouse(CLICKHOUSE_RUN_LOGS_URL),
+)
 
 app.add_specs([
     DatapipeOpsSpec(

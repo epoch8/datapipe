@@ -1,12 +1,12 @@
 import pytest
 
-from datapipe_app.ops_spec_resolve import (
+from datapipe_app.ops.ops_spec_resolve import (
     column_source_by_link,
     entity_links_from_columns,
     is_db_column,
     query_columns,
 )
-from datapipe_app.specs import OpsColumn
+from datapipe_app.ops.specs import OpsColumn
 
 
 def test_column_source_by_link():

@@ -1,5 +1,5 @@
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.run_triggers import cli_trigger_from_labels
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.runs.run_triggers import cli_trigger_from_labels
 
 
 def test_cli_trigger_from_labels() -> None:

@@ -9,10 +9,10 @@ from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.store.database import DBConn, TableStoreDB
 
 from datapipe_app import DatapipeAPI, OpsSpecRegistry
-from datapipe_app_ml_ops.ops_image_records import OpsImageRecordsSupport
-from datapipe_app.ops_query import OpsQuery
-from datapipe_app.specs import OpsColumn
-from datapipe_app_ml_ops.ops_specs import (
+from datapipe_app_ml_ops.ops.ops_image_records import OpsImageRecordsSupport
+from datapipe_app.ops.ops_query import OpsQuery
+from datapipe_app.ops.specs import OpsColumn
+from datapipe_app_ml_ops.ops.ops_specs import (
     DatapipeOpsSpec,
     OpsDataSpec,
     OpsFrozenDatasetSpec,

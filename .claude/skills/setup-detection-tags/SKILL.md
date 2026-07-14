@@ -101,8 +101,8 @@ if it's occupied, ASK the user what to do (reuse / different port / different sc
 don't silently claim it or clobber someone else's work.
 
 ```bash
-# 1) ports free? (host)  — postgres 5432, minio 9000/9001, mongo 27017, fiftyone 5151, app 8000
-ss -ltn | grep -E ':(5432|9000|9001|27017|5151|8000)\b' || echo "all free"
+# 1) ports free? (host)  — postgres 5432, minio 9000/9001, mongo 27017, fiftyone 5151, clickhouse 8123, app 8000
+ss -ltn | grep -E ':(5432|9000|9001|27017|5151|8123|8000)\b' || echo "all free"
 # 2) is a stack already up?
 docker compose ls ; docker ps --format '{{.Names}}\t{{.Ports}}'
 # 3) does the target DB/schema already hold this pipeline's tables?
@@ -118,8 +118,8 @@ port is busy** — pick a different left-hand port (`-L 5433:localhost:5432`), d
 ## Deploy from scratch (standard ports; skip pieces already up)
 
 ```bash
-cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151); HOST_UID/GID avoid sudo perms. No Label Studio.
+cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI, CLICKHOUSE_RUN_LOGS_URL
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151) + clickhouse (:8123); HOST_UID/GID avoid sudo perms. No Label Studio.
 uv sync                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
                               # that drifts lib versions across machines (e.g. a different ultralytics)
                               # and changes training results. The lock pins everyone to the same stack.
@@ -145,7 +145,7 @@ datapipe --pipeline app api --host 127.0.0.1 --port 8000
 
 Bind to `127.0.0.1` (not `0.0.0.0`) and reach it over an SSH tunnel `-L 8000:localhost:8000`; open
 `http://localhost:8000`. The `app.add_specs([...])` block in `detection/app.py` (imports
-`datapipe_app_ml_ops.ops_specs`) registers the `cat_dog` spec; observability enrichers load via the
+`datapipe_app_ml_ops.ops.ops_specs`) registers the `cat_dog` spec; observability enrichers load via the
 `datapipe-app-ml-ops` plugin entry point (`datapipe.observability`).
 
 ## Part 1 — set up + load + verify, then STOP (you trigger model-A training from the UI)

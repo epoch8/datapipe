@@ -32,11 +32,16 @@ Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
 
 `DatapipeAPI` extends `DatapipeApp` with an **Ops dashboard** (default `/`) and **Debug UI** (`/debug`).
 
-Environment variables (all optional; defaults are inferred from the loaded pipeline):
+Environment variables (optional):
 
-- `DATAPIPE_APP_MODE=agent|central` — default `agent`; `central` reads all pipelines
 - `DATAPIPE_APP_PIPELINE_ID` — default: stem of the pipeline module file (e.g. `app` for `app.py`), else `--pipeline` module name
-- `DATAPIPE_APP_OBSERVABILITY_DB_URL` — default: pipeline `DB_URL` / `DataStore` connection
+
+Observability storage is configured via `DatapipeAPI` constructor arguments:
+
+- `observability_dbconn` — defaults to `ds.meta_dbconn` (same DB as pipeline metadata)
+- `run_logs_backend` — optional `RunLogsBackend.clickhouse(...)` for dedicated run logs storage
+
+When observability shares the pipeline `DBConn`, catalog table names are validated against observability tables to prevent collisions.
 
 Ops API: `/api/v1alpha3/overview`, `/runs`, spec-driven `/ops-specs/*`, catalog metrics under `/pipelines/{id}/metrics/*`.
 

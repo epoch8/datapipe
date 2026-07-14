@@ -11,15 +11,15 @@ from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.types import Required
-from datapipe_app import DatapipeApp
-from datapipe_app.specs import (
+from datapipe_app import DatapipeAPI, RunLogsBackend
+from datapipe_app.ops.specs import (
     OpsColumn,
     OpsColumnGroup,
     OpsFilterRule,
     OpsMetricTableSpec,
     OpsRelationSpec,
 )
-from datapipe_app_ml_ops.ops_specs import (
+from datapipe_app_ml_ops.ops.ops_specs import (
     DatapipeOpsSpec,
     OpsClassMetricTableSpec,
     OpsDataSpec,
@@ -39,7 +39,7 @@ from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_Subset_PipelineModel
 
 import steps
-from config import DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
+from config import CLICKHOUSE_RUN_LOGS_URL, DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
 from data import catalog
 
 # Data is loaded via the `load` step: add a row to `load_request` (request_id, n, offset, tag,
@@ -220,7 +220,12 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeAPI(
+    ds,
+    catalog,
+    pipeline,
+    run_logs_backend=RunLogsBackend.clickhouse(CLICKHOUSE_RUN_LOGS_URL),
+)
 
 app.add_specs([
     DatapipeOpsSpec(

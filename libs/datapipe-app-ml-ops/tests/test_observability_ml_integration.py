@@ -4,11 +4,11 @@ import pytest
 
 pytest.importorskip("datapipe_ml")
 
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.log_buffer import RunLogBuffer
-from datapipe_app.observability.registry import ObservabilityRegistry, load_observability_plugins
-from datapipe_app.observability.run_output_capture import capture_run_output
-from datapipe_app_ml_ops.observability.training_service import TrainingService
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.logging.log_buffer import RunLogBuffer
+from datapipe_app.observability.plugins.registry import ObservabilityRegistry, load_observability_plugins
+from datapipe_app.observability.runs.run_output_capture import capture_run_output
+from datapipe_app_ml_ops.observability.training.training_service import TrainingService
 from datapipe_ml.core.multiprocessing import _spawn
 
 
@@ -21,8 +21,8 @@ def _subprocess_print_child(queue, message: str) -> None:
 
 
 def test_ml_observability_plugin_registers_enricher_on_attach() -> None:
-    from datapipe_app_ml_ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
-    from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
+    from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
+    from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 
     registry = ObservabilityRegistry()
     load_observability_plugins(registry)

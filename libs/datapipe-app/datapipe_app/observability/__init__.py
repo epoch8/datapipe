@@ -1,6 +1,6 @@
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.registry import ObservabilityRegistry, load_observability_plugins
-from datapipe_app.observability.recorder import RunRecorder
+from datapipe_app.observability.plugins.registry import ObservabilityRegistry, load_observability_plugins
+from datapipe_app.observability.runs.recorder import RunRecorder
+from datapipe_app.observability.store.db import ObservabilityStore
 
 __all__ = [
     "ObservabilityStore",

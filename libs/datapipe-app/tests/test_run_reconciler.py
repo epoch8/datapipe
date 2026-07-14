@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.run_reconciler import reconcile_orphaned_runs
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.runs.run_reconciler import reconcile_orphaned_runs
 
 
 def test_reconcile_orphaned_runs_marks_running_run_and_steps(tmp_path):

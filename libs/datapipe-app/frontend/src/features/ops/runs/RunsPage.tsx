@@ -102,7 +102,7 @@ export function RunsPage() {
                 subtitle="All pipeline executions and stage runs"
                 onRefresh={loadRuns}
                 extra={
-                    pipeline?.agent_mode ? (
+                    pipeline ? (
                         <RunStepsDropdown stages={pipeline.stages} onStart={runStage} />
                     ) : undefined
                 }

@@ -64,11 +64,7 @@ export function PipelineDetail({
                 breadcrumbs={[{ label: "Overview" }]}
                 title={detail.display_name}
                 onRefresh={load}
-                extra={
-                    detail.agent_mode ? (
-                        <RunStepsDropdown stages={detail.stages} onStart={runStage} />
-                    ) : undefined
-                }
+                extra={<RunStepsDropdown stages={detail.stages} onStart={runStage} />}
             />
             <div style={{ marginBottom: 16 }}>
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
@@ -83,11 +79,7 @@ export function PipelineDetail({
                 onLabelSelect={(label) =>
                     navigate(`/graph?stage=${encodeURIComponent(label)}`)
                 }
-                onStageRun={
-                    detail.agent_mode
-                        ? (label) => runStage([["stage", label]])
-                        : undefined
-                }
+                onStageRun={(label) => runStage([["stage", label]])}
             />
             {detail.last_error && (
                 <Card title="Error" style={{ marginBottom: 16 }}>

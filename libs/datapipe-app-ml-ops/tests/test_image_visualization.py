@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("cv_pipeliner")
 
-from datapipe_app_ml_ops.image_visualization import bboxes_data_from_record
+from datapipe_app_ml_ops.viz.image_visualization import bboxes_data_from_record
 
 
 def test_bboxes_data_from_record_includes_keypoints_and_masks():

@@ -74,11 +74,7 @@ export function Overview() {
                 breadcrumbs={[{ label: "Overview" }]}
                 title={detail.display_name}
                 onRefresh={load}
-                extra={
-                    detail.agent_mode ? (
-                        <RunStepsDropdown stages={detail.stages} onStart={runStage} />
-                    ) : undefined
-                }
+                extra={<RunStepsDropdown stages={detail.stages} onStart={runStage} />}
             />
             <div style={{ marginBottom: 16 }}>
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
@@ -88,7 +84,7 @@ export function Overview() {
             <PipelineOverviewGraphCard
                 pipelineId={pipelineId}
                 detail={detail}
-                onStageRun={detail.agent_mode ? runStage : undefined}
+                onStageRun={runStage}
             />
 
             <PipelineRunStats

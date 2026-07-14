@@ -9,16 +9,16 @@ from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 from sqlalchemy import Column, Integer, String
 
-from datapipe_app.errors import OpsSpecValidationError
-from datapipe_app.specs import (
+from datapipe_app.app.errors import OpsSpecValidationError
+from datapipe_app.ops.specs import (
     OpsColumn,
     OpsColumnGroup,
     OpsFilterRule,
     OpsMetricTableSpec,
 )
-from datapipe_app_ml_ops.ops_spec_metrics import latest_eval_metric_from_specs
-from datapipe_app_ml_ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
-from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
+from datapipe_app_ml_ops.ops.ops_spec_metrics import latest_eval_metric_from_specs
+from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
+from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 
 
 def input_spec(**overrides):

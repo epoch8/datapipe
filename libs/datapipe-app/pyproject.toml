@@ -20,18 +20,19 @@ dependencies = [
 [project.optional-dependencies]
 gcp = ["opentelemetry-exporter-gcp-trace>=1.3.0,<2"]
 jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
+clickhouse = ["clickhouse-connect>=0.7.0", "clickhouse-sqlalchemy>=0.3.0"]
 
 [project.entry-points."datapipe.cli"]
-datapipe_app = "datapipe_app.cli:register_commands"
+datapipe_app = "datapipe_app.app.cli:register_commands"
 
 [project.entry-points."datapipe.pipeline_init"]
-datapipe_app = "datapipe_app.observability.settings:bind_pipeline_ops"
+datapipe_app = "datapipe_app.observability.config.settings:bind_pipeline_ops"
 
 [project.entry-points."datapipe.run_steps"]
-datapipe_app = "datapipe_app.observability.cli_runner:try_run_steps_observed"
+datapipe_app = "datapipe_app.observability.cli.cli_runner:try_run_steps_observed"
 
 [project.entry-points."datapipe.db_create_all"]
-datapipe_app = "datapipe_app.db_schema:create_observability_tables_hook"
+datapipe_app = "datapipe_app.app.db_schema:create_observability_tables_hook"
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -47,6 +48,8 @@ dev = [
     "sqlalchemy[mypy]",
     "datapipe-app-ml-ops",
     "datapipe-ml[sqlite]",
+    "clickhouse-connect>=0.7.0",
+    "clickhouse-sqlalchemy>=0.3.0",
 ]
 
 [tool.uv.sources]

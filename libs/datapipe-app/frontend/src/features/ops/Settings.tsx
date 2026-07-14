@@ -32,9 +32,6 @@ export function Settings() {
                         Pipeline ID: <strong>{info.pipeline_id || "—"}</strong>
                     </Paragraph>
                     <Paragraph>
-                        Mode: <strong>{info.mode}</strong>
-                    </Paragraph>
-                    <Paragraph>
                         Observability DB:{" "}
                         {info.observability_db_connected ? (
                             <span style={{ color: "green" }}>connected</span>

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datapipe_app.observability.db import ObservabilityStore
+from datapipe_app.observability.store.db import ObservabilityStore
 
 
 def test_finish_run_updates_created_run(tmp_path):

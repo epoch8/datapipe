@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 
-from datapipe_app.observability.db import ObservabilityStore
+from datapipe_app.observability.store.db import ObservabilityStore
 
 
 def main() -> None:

@@ -112,6 +112,16 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  # Bind-mount tmp dir is often created as root by Docker; host pipeline writes as HOST_UID.
+  e2e-tmp-init:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_E2E_TMP_DIR:-/tmp/datapipe-e2e}
+        target: /data
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data && chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /data"]
+
   fiftyone:
     <<: *host-user
     image: voxel51/fiftyone:1.17.0
@@ -130,8 +140,24 @@ services:
         target: /tmp/datapipe-e2e
         read_only: true
     depends_on:
+      e2e-tmp-init:
+        condition: service_completed_successfully
       mongo:
         condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - ./clickhouse/users.d/default-user.xml:/etc/clickhouse-server/users.d/default-user.xml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # Ops UI: run agents on the host (one process per pipeline), e.g.:
   #   cd image_detection && source ../.env && uv run datapipe --pipeline app:app api --port 8001

@@ -1,10 +1,11 @@
+import pytest
 from types import ModuleType
 from unittest.mock import MagicMock
 
 from datapipe.compute import Catalog, DataStore, Pipeline
 from datapipe.store.database import DBConn
 
-from datapipe_app.observability.settings import (
+from datapipe_app.observability.config.settings import (
     pipeline_id_from_module,
     pipeline_id_from_spec,
     pipeline_module_from_caller,
@@ -30,37 +31,95 @@ def test_pipeline_id_from_module():
 
 def test_resolve_ops_settings_from_pipeline_module(monkeypatch):
     monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
-    monkeypatch.delenv("DATAPIPE_APP_OBSERVABILITY_DB_URL", raising=False)
 
-    dbconn = DBConn("sqlite+pysqlite3:///:memory:", "my_schema")
-    ds = DataStore(dbconn, create_meta_table=False)
     module = ModuleType("pipeline")
     module.__file__ = "/srv/examples/my_pipeline/app.py"
 
-    settings = resolve_ops_settings(ds=ds, pipeline_module=module)
+    settings = resolve_ops_settings(pipeline_module=module)
 
-    assert settings.mode == "agent"
     assert settings.pipeline_id == "app"
-    assert settings.observability_db_url == dbconn.connstr
 
 
 def test_resolve_ops_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("DATAPIPE_APP_PIPELINE_ID", "from_env")
-    monkeypatch.setenv("DATAPIPE_APP_OBSERVABILITY_DB_URL", "sqlite:///override.db")
 
-    dbconn = DBConn("sqlite+pysqlite3:///:memory:", "my_schema")
-    ds = DataStore(dbconn, create_meta_table=False)
     module = MagicMock()
     module.__file__ = "/srv/examples/my_pipeline/app.py"
 
     settings = resolve_ops_settings(
-        ds=ds,
         pipeline_module=module,
         pipeline_spec="image_detection.app:app",
     )
 
     assert settings.pipeline_id == "from_env"
-    assert settings.observability_db_url == "sqlite:///override.db"
+
+
+def test_resolve_ops_settings_constructor_overrides_env(monkeypatch):
+    monkeypatch.setenv("DATAPIPE_APP_PIPELINE_ID", "from_env")
+
+    settings = resolve_ops_settings(pipeline_id="from-constructor")
+
+    assert settings.pipeline_id == "from-constructor"
+
+
+def test_datapipe_api_accepts_run_logs_backend_constructor(tmp_path, monkeypatch):
+    from test_clickhouse_run_logs import FakeClickHouseClient
+
+    monkeypatch.setattr(
+        "datapipe_app.observability.run_logs.store._create_clickhouse_client",
+        lambda _url: FakeClickHouseClient(),
+    )
+
+    from datapipe.compute import Catalog, Pipeline
+    from datapipe_app import DatapipeAPI, RunLogsBackend
+
+    dbconn = DBConn(f"sqlite+pysqlite3:///{tmp_path / 'pipeline.db'}", None)
+    ds = DataStore(dbconn, create_meta_table=False)
+    catalog = Catalog({})
+    pipeline = Pipeline([])
+    run_logs_backend = RunLogsBackend.clickhouse("clickhouse://default:@localhost:8123/default")
+
+    api = DatapipeAPI(
+        ds,
+        catalog,
+        pipeline,
+        pipeline_id="test_pipeline",
+        run_logs_backend=run_logs_backend,
+    )
+
+    assert api.run_logs_backend is run_logs_backend
+    assert api.observability_dbconn is ds.meta_dbconn
+    assert api.observability_store.use_external_run_logs is True
+
+
+def test_datapipe_api_defaults_observability_dbconn_to_ds(tmp_path):
+    from datapipe.compute import Catalog, Pipeline
+    from datapipe_app import DatapipeAPI
+
+    dbconn = DBConn(f"sqlite+pysqlite3:///{tmp_path / 'pipeline.db'}", None)
+    ds = DataStore(dbconn, create_meta_table=False)
+    catalog = Catalog({})
+    pipeline = Pipeline([])
+
+    api = DatapipeAPI(ds, catalog, pipeline, pipeline_id="test_pipeline")
+
+    assert api.observability_dbconn.connstr == ds.meta_dbconn.connstr
+    assert api.observability_dbconn.schema == ds.meta_dbconn.schema
+
+
+def test_datapipe_api_rejects_wrapping_datapipe_api(tmp_path):
+    from datapipe.compute import Catalog, Pipeline
+    from datapipe_app import DatapipeAPI
+
+    dbconn = DBConn(f"sqlite+pysqlite3:///{tmp_path / 'pipeline.db'}", None)
+    ds = DataStore(dbconn, create_meta_table=False)
+    catalog = Catalog({})
+    pipeline = Pipeline([])
+
+    existing = DatapipeAPI(ds, catalog, pipeline, pipeline_id="test_pipeline")
+
+    with pytest.raises(TypeError, match="Cannot wrap DatapipeAPI"):
+        DatapipeAPI(app=existing, pipeline_spec="app:app")
 
 
 def test_pipeline_module_from_caller_skips_datapipe_package(monkeypatch):
@@ -70,7 +129,7 @@ def test_pipeline_module_from_caller_skips_datapipe_package(monkeypatch):
     app_module.__file__ = "/srv/examples/detection_tags/detection/app.py"
 
     frames = [
-        MagicMock(frame=MagicMock(f_globals={"__name__": "datapipe_app.observability.settings"})),
+        MagicMock(frame=MagicMock(f_globals={"__name__": "datapipe_app.observability.config.settings"})),
         MagicMock(frame=MagicMock(f_globals={"__name__": "datapipe.cli"})),
         MagicMock(frame=MagicMock(f_globals={"__name__": "app"})),
     ]
@@ -81,10 +140,10 @@ def test_pipeline_module_from_caller_skips_datapipe_package(monkeypatch):
             return datapipe_pkg
         if name == "app":
             return app_module
-        return ModuleType("datapipe_app.observability.settings")
+        return ModuleType("datapipe_app.observability.config.settings")
 
-    monkeypatch.setattr("datapipe_app.observability.settings.inspect.stack", lambda: frames)
-    monkeypatch.setattr("datapipe_app.observability.settings.inspect.getmodule", fake_getmodule)
+    monkeypatch.setattr("datapipe_app.observability.config.settings.inspect.stack", lambda: frames)
+    monkeypatch.setattr("datapipe_app.observability.config.settings.inspect.getmodule", fake_getmodule)
 
     found = pipeline_module_from_caller()
     assert found is app_module

@@ -26,7 +26,6 @@ export function TransformDetail() {
     const { id: pipelineId = "", transformName = "" } = useParams();
     const decodedName = decodeURIComponent(transformName);
     const { graph, loading, error, refresh } = usePipelineGraph();
-    const [agentMode, setAgentMode] = useState(false);
     const [resetting, setResetting] = useState(false);
     const [metaRefreshKey, setMetaRefreshKey] = useState(0);
     const [metaSize, setMetaSize] = useState<number | null>(null);
@@ -37,11 +36,8 @@ export function TransformDetail() {
     );
 
     useEffect(() => {
-        opsApi
-            .getCapabilities()
-            .then((capabilities) => setAgentMode(capabilities.mode === "agent"))
-            .catch(() => setAgentMode(false));
-    }, []);
+        setMetaRefreshKey(0);
+    }, [decodedName]);
 
     const step = graph ? findTransformInGraph(graph, decodedName) : null;
     const node = step
@@ -126,7 +122,7 @@ export function TransformDetail() {
             <Card title="Run transform" style={{ marginBottom: 16 }}>
                 <TransformRunPanel transformName={decodedName} indexKeys={indexKeys} />
             </Card>
-            {agentMode && hasTransformMeta && (
+            {hasTransformMeta && (
                 <Card title="Actions" style={{ marginBottom: 16 }}>
                     <Space direction="vertical" style={{ width: "100%" }}>
                         <Popconfirm

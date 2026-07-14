@@ -38,8 +38,8 @@ useful results. The per-example skill lists the exact knobs.
 
 ## Universal prerequisites (every example)
 1. **PostgreSQL** at `DB_URL`. embedder + sam_cvat + ocr need an EXTERNAL Postgres (they don't start one);
-   e2e_template / detection_tags bundle Postgres in `docker compose`. Empty DB is fine; tables auto-create via
-   `datapipe db create-all`. `.env.example` default `...postgres:postgres@localhost:5432/postgres`.
+   e2e_template / detection_tags bundle Postgres (+ ClickHouse for ops run logs) in `docker compose`. Empty DB is fine; tables auto-create via
+   `datapipe db create-all`. `.env.example` sets `DB_URL` and `CLICKHOUSE_RUN_LOGS_URL` (required for `datapipe --pipeline app api`).
    External quick start: `docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=postgres -p 5432:5432 postgres:16`
    (k8s pod / no docker → conda postgres, `initdb` as non-root with `--locale=C`.)
 2. **A GPU big enough** (`nvidia-smi`): DINOv2/YOLO fit ~8 GB; SAM3 wants >8 GB (OOM'd on an 8 GB Pascal in our tests).

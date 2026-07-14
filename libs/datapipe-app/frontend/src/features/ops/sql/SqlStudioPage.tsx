@@ -5,17 +5,13 @@ import type { SqlQueryResponse, SqlSchemaResponse } from "../../../types/ops";
 import { ChartCard, EmptyState, PageHeader, SortableDataTable } from "../shared";
 
 const DEFAULT_SQL = `SELECT
-  run_id,
-  model_id,
-  subset,
-  metric_timestamp,
-  mAP50,
-  precision,
-  recall,
-  f1_score AS f1
+  detection_model_id,
+  subset_id,
+  calc__weighted_f1_score,
+  calc__weighted_precision,
+  calc__support
 FROM datapipe_analytics.metrics_on_subset
-WHERE metric_timestamp >= CURRENT_DATE - INTERVAL '30' DAY
-ORDER BY metric_timestamp DESC
+ORDER BY calc__weighted_f1_score DESC
 LIMIT 1000;`;
 
 const SAVED_KEY = "datapipe_sql_saved_queries";

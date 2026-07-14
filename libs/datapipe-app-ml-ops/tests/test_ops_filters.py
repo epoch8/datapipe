@@ -11,11 +11,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Column, Integer, String
 
 from datapipe_app import DatapipeAPI
-from datapipe_app.ops_filters import OpsFilterRule, parse_filter_rules
-from datapipe_app.ops_query import OpsQuery
-from datapipe_app.errors import OpsSpecValidationError
-from datapipe_app_ml_ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
-from datapipe_app.specs import OpsColumn, OpsMetricTableSpec
+from datapipe_app.ops.ops_filters import OpsFilterRule, parse_filter_rules
+from datapipe_app.ops.ops_query import OpsQuery
+from datapipe_app.app.errors import OpsSpecValidationError
+from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
+from datapipe_app.ops.specs import OpsColumn, OpsMetricTableSpec
 
 
 def metrics_spec(table_name: str = "metrics_rows") -> DatapipeOpsSpec:

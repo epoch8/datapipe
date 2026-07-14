@@ -1,4 +1,4 @@
-from datapipe_app.observability.run_scope import (
+from datapipe_app.observability.runs.run_scope import (
     derive_run_scope,
     labels_from_json,
     labels_to_json,

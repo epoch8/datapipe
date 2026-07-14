@@ -212,7 +212,7 @@ export function RunDetail() {
                 statusChips={[{ label: run.status, variant: run.status === "completed" ? "success" : "default" }]}
                 onRefresh={refresh}
                 extra={
-                    pipeline?.agent_mode ? (
+                    pipeline ? (
                         <Dropdown overlay={runStepsMenu}>
                             <Button type="primary">Run steps</Button>
                         </Dropdown>
@@ -254,11 +254,7 @@ export function RunDetail() {
                         onLabelSelect={(label) =>
                             navigate(`/graph?stage=${encodeURIComponent(label)}`)
                         }
-                        onStageRun={
-                            pipeline.agent_mode
-                                ? (label) => startRun([["stage", label]])
-                                : undefined
-                        }
+                        onStageRun={(label) => startRun([["stage", label]])}
                     />
                 </div>
             )}

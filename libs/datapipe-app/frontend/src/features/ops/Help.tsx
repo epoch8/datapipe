@@ -8,33 +8,45 @@ export function Help() {
         <Card>
             <Title level={4}>Help & documentation</Title>
             <Paragraph>
-                <strong>Pipeline lifecycle:</strong> annotation → Label Studio sync → train →
-                inference → metrics → optional FiftyOne export.
+                <strong>Datapipe Ops</strong> is bound to one pipeline agent. The sidebar shows
+                Overview, Graph, Runs, and — when the pipeline registers ops specs — per-spec
+                sections for Image, Frozen Datasets, Training, Metrics, and Class Metrics.
             </Paragraph>
             <Paragraph>
-                <strong>Pipeline graph</strong> — right-click any node for options: open a detail page,
-                or expand/collapse multi-step pipeline groups. Table names show in full (up to 64
-                characters). Zoom in to read compact sub-graph labels.
+                <strong>Pipeline stages</strong> come from pipeline step labels (for example{" "}
+                <code>stage=annotation</code>, <code>stage=train</code>, <code>stage=fiftyone</code>
+                ). Exact stages depend on the pipeline; there is no single fixed lifecycle baked
+                into Ops.
             </Paragraph>
             <Paragraph>
-                <strong>Entity pages</strong> — tables, transforms, and pipeline steps have detail
-                pages with properties, table visualization (Ant Design table), transform run with
-                optional index filters, and execution logs.
+                <strong>Overview</strong> — pipeline health, label-graph summary, run stats, and
+                recent runs. Use <em>Run steps</em> to start a full pipeline or a single stage.
             </Paragraph>
             <Paragraph>
-                <strong>Pipeline run page</strong> — execution status at the top, live Logs panel
-                (ring-buffer, Airflow-style), graph hidden under “Pipeline steps” collapse.
+                <strong>Graph</strong> — Cytoscape DAG of tables and transforms. Right-click a node:
+                open its detail page, or expand/collapse grouped multi-step transforms. Table names
+                wrap up to 64 characters. Use <code>?stage=…</code> in the URL to focus one stage.
+                The compact label graph on Overview and Run pages supports right-click{" "}
+                <em>Open graph</em> / <em>Run label</em>.
             </Paragraph>
             <Paragraph>
-                <strong>Training run</strong> — one model training job tracked in
-                training_status.
+                <strong>Entity pages</strong> — tables, transforms, and meta-steps open detail pages
+                with schema, data preview, transform run (optional index filters), and logs.
+                Spec-driven pages add frozen datasets, models, training runs, per-class metrics, and
+                image record views linked from ops specs.
             </Paragraph>
             <Paragraph>
-                <strong>Eval metrics</strong> — post-training metrics on a validation subset
-                (Metrics page).
+                <strong>Run page</strong> — status and scope at the top, compact label graph, then
+                tabs: <em>Logs</em> (live ring-buffer logs plus step graph for the run) and{" "}
+                <em>Steps</em> (per-step table). <em>Run steps</em> in the header starts another
+                run with the same scope.
             </Paragraph>
             <Paragraph>
-                API docs: <a href="/api/v1alpha3/docs">/api/v1alpha3/docs</a>
+                <strong>Ops API</strong> — the dashboard uses <code>/api/v1alpha3</code>. OpenAPI
+                docs: <a href="/api/v1alpha3/docs">/api/v1alpha3/docs</a>. Legacy pipeline
+                endpoints under <code>/api/v1alpha1</code> and <code>/api/v1alpha2</code> may still
+                be mounted for compatibility; they are not part of this UI and are not documented
+                here.
             </Paragraph>
         </Card>
     );

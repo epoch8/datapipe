@@ -5,9 +5,9 @@ import logging
 import sys
 import threading
 
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.log_buffer import RunLogBuffer
-from datapipe_app.observability.run_output_capture import _TeeStream, capture_run_output
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.logging.log_buffer import RunLogBuffer
+from datapipe_app.observability.runs.run_output_capture import _TeeStream, capture_run_output
 
 
 def test_tee_stream_appends_complete_lines(tmp_path):

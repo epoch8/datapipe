@@ -23,12 +23,12 @@ This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR imag
   Modern hosts: run `uv sync` unmodified — do NOT edit/re-lock deps (drifts training across machines).
   **Legacy host (pre-AVX2 CPU, e.g. epoch8 gpu5):** `uv sync --extra old-cpu`, then force lts polars
   (`uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1`) — see detection_tags Troubleshooting.
-- **Ops specs / app UI:** `image_*/app.py` registers specs via `datapipe_app_ml_ops.ops_specs` +
+- **Ops specs / app UI:** `image_*/app.py` registers specs via `datapipe_app_ml_ops.ops.ops_specs` +
   `app.add_specs([...])`. Run the front with `datapipe --pipeline app api` (port 8000) after `uv sync`.
 - **Services:** `docker compose up` → Postgres 5432, MinIO (9000/9001, bucket `datapipe-e2e`,
-  anon-download for browser images), MongoDB 27017, Label Studio :8080.
+  anon-download for browser images), MongoDB 27017, Label Studio :8080, ClickHouse :8123 (ops run logs).
 - **Env:** `cp .env.example .env` then `set -a && source .env && set +a` before any `datapipe` command
-  (`config.py` raises if `DB_URL` unset). Detection/keypoints use separate schemas.
+  (`config.py` raises if `DB_URL` or `CLICKHOUSE_RUN_LOGS_URL` unset). Detection/keypoints use separate schemas.
 - **LS API token:** :8080 → Account & Settings → Access Token → `LABEL_STUDIO_API_KEY=...` in `.env`
   (or `scripts/label_studio_token.py`).
 - **GPU for training** (no CPU knob). **≥10 annotated images** to freeze a dataset (`min_delta=10`).

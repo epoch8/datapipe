@@ -82,7 +82,6 @@ function matchNav(pathname: string, href: string): boolean {
 export function OpsShell() {
     const location = useLocation();
     const [title, setTitle] = React.useState("Datapipe Ops");
-    const [agentMode, setAgentMode] = React.useState(false);
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [collapsed, setCollapsed] = React.useState(false);
     const [capabilitiesError, setCapabilitiesError] = React.useState<unknown>(null);
@@ -100,14 +99,9 @@ export function OpsShell() {
 
     React.useEffect(() => {
         opsApi.getCapabilities().then((c) => {
-            setAgentMode(c.mode === "agent");
             setPipelineId(c.pipeline_id ?? null);
             setCapabilitiesError(null);
-            setTitle(
-                c.mode === "central"
-                    ? "Datapipe Central Dashboard"
-                    : `Datapipe Ops · ${c.pipeline_id || "agent"}`,
-            );
+            setTitle(`Datapipe Ops · ${c.pipeline_id || "agent"}`);
             if (c.pipeline_id) {
                 opsApi.getOpsSpecs(c.pipeline_id)
                     .then((res) => setOpsSpecs(res.specs))
@@ -128,9 +122,7 @@ export function OpsShell() {
     const hasExplicitSpecs = opsSpecs.length > 0;
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
-        ...(agentMode
-            ? [{ key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> }]
-            : []),
+        { key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> },
         { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
         ...(hasExplicitSpecs
             ? []
@@ -248,7 +240,7 @@ export function OpsShell() {
                 {!isObsPage && (
                     <header className="datapipe-header">
                         <h1 className="datapipe-title">{title}</h1>
-                        {agentMode && pipelineId && (
+                        {pipelineId && (
                             <div className="run-status-pill">Running · {pipelineId}</div>
                         )}
                     </header>

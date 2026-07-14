@@ -13,9 +13,7 @@ from datapipe_app import DatapipeAPI
 
 @pytest.fixture
 def agent_env(monkeypatch):
-    monkeypatch.delenv("DATAPIPE_APP_MODE", raising=False)
     monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
-    monkeypatch.delenv("DATAPIPE_APP_OBSERVABILITY_DB_URL", raising=False)
 
 
 @pytest.fixture

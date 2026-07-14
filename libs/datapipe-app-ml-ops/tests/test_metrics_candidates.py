@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app_ml_ops.observability.metrics_service import MetricsService, _normalize_metric_nulls
-from datapipe_app_ml_ops.observability.schemas import MetricsCandidateCreate
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app_ml_ops.observability.metrics.metrics_service import MetricsService, _normalize_metric_nulls
+from datapipe_app_ml_ops.observability.schemas.models import MetricsCandidateCreate
 
 
 def test_metrics_candidates_persist_in_store(tmp_path) -> None:
@@ -53,7 +53,7 @@ def test_normalize_metric_nulls_fills_zero_recall_gaps() -> None:
 
 
 def test_parse_model_ids_or_filter() -> None:
-    from datapipe_app_ml_ops.observability.metrics_service import _parse_model_ids
+    from datapipe_app_ml_ops.observability.metrics.metrics_service import _parse_model_ids
 
     assert _parse_model_ids("a,b, c") == ["a", "b", "c"]
     assert _parse_model_ids(None) is None

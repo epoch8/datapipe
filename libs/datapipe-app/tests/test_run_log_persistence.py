@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.log_buffer import RunLogBuffer
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.logging.log_buffer import RunLogBuffer
 
 
 def test_run_logs_persist_without_finish_run(tmp_path):

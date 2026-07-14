@@ -23,7 +23,6 @@ export function GraphPage() {
     const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
 
     const pipelineId = capabilities?.pipeline_id;
-    const agentMode = capabilities?.mode === "agent";
 
     const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
@@ -111,7 +110,7 @@ export function GraphPage() {
                 title={title}
                 onRefresh={refresh}
                 extra={
-                    agentMode && detail ? (
+                    detail ? (
                         <RunStepsDropdown stages={detail.stages} onStart={startRun} />
                     ) : undefined
                 }
@@ -134,7 +133,7 @@ export function GraphPage() {
                             navigate(`/graph?stage=${encodeURIComponent(label)}`)
                         }
                         onLabelClear={() => navigate("/graph")}
-                        onStageRun={agentMode ? (label) => startRun([["stage", label]]) : undefined}
+                        onStageRun={(label) => startRun([["stage", label]])}
                     />
                 ) : (
                     <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>

@@ -155,4 +155,11 @@ if not DB_URL:
 DB_SCHEMA = os.environ.get("DB_SCHEMA_DETECTION", "datapipe_e2e_detection")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
 
+CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
+if not CLICKHOUSE_RUN_LOGS_URL:
+    raise RuntimeError(
+        "CLICKHOUSE_RUN_LOGS_URL is required. Copy examples/e2e_template/.env.example to .env, "
+        "start docker compose (clickhouse service), and run: set -a && source ../.env && set +a"
+    )
+
 FIFTYONE_DATASET_NAME = "datapipe_detection_e2e"

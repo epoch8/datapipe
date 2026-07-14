@@ -7,8 +7,9 @@ import pytest
 from sqlalchemy import Column, Integer, String, inspect, text
 
 from datapipe.store.database import DBConn, ensure_db_schema
-from datapipe_app.observability.db import ObservabilityStore
-from datapipe_app.observability.schema_resolution import assert_safe_drop_schema, is_datapipe_owned_table
+from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.config.schema_resolution import assert_safe_drop_schema, is_datapipe_owned_table
+from datapipe_app.observability.config.tables import ObservabilityTableConfig
 
 pytestmark_postgres = pytest.mark.skipif(
     os.environ.get("TEST_DB_ENV") != "postgres",
@@ -46,6 +47,7 @@ def test_observability_tables_do_not_touch_public_ls_tables() -> None:
         )
         con.execute(text("INSERT INTO public.fake_ls_task (id, data) VALUES (1, 'keep') ON CONFLICT DO NOTHING"))
 
+    runs_table = ObservabilityTableConfig().pipeline_runs
     store = ObservabilityStore.from_url(connstr, schema=schema)
     store.register_pipeline("demo", display_name="Demo")
     store.create_run("demo", trigger="api:pipeline")
@@ -53,7 +55,7 @@ def test_observability_tables_do_not_touch_public_ls_tables() -> None:
     with dbconn.con.begin() as con:
         ls_count = con.execute(text("SELECT COUNT(*) FROM public.fake_ls_task")).scalar()
         obs_count = con.execute(
-            text(f'SELECT COUNT(*) FROM "{schema}".pipeline_runs')
+            text(f'SELECT COUNT(*) FROM "{schema}".{runs_table}')
         ).scalar()
 
     assert ls_count == 1
@@ -65,7 +67,7 @@ def test_observability_tables_do_not_touch_public_ls_tables() -> None:
 
 
 def test_is_datapipe_owned_table() -> None:
-    assert is_datapipe_owned_table("pipeline_runs")
+    assert is_datapipe_owned_table(ObservabilityTableConfig().pipeline_runs)
     assert not is_datapipe_owned_table("fake_ls_task")
 
 

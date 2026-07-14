@@ -34,7 +34,7 @@ Packages (see `pyproject.toml`):
 ## Deploy from scratch
 ```bash
 cp .env.example .env && set -a && source .env && set +a
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151)
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151) + clickhouse (:8123)
 cd detection
 # DB_SCHEMA defaults to `public`. For a dedicated schema: psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"
 datapipe db create-all
@@ -50,7 +50,7 @@ datapipe --pipeline app api --host 127.0.0.1 --port 8000
 
 Open `http://localhost:8000` (SSH tunnel `-L 8000:localhost:8000` on remote hosts). The front shows
 the pipeline graph, training status/curves, and the **`cat_dog`** ops spec (`model_metrics` +
-`tag_metrics` tables). Specs are defined in `detection/app.py` via `datapipe_app_ml_ops.ops_specs`.
+`tag_metrics` tables). Specs are defined in `detection/app.py` via `datapipe_app_ml_ops.ops.ops_specs`.
 
 ## Frozen val (why the load order matters)
 A `val` metric is an aggregate over whatever images are in val; if you add the tagged batch to val at

@@ -56,7 +56,7 @@ the `old-cpu` extra — re-run `uv sync --extra old-cpu`.
 What each piece is for:
 
 - `datapipe-app` — Ops UI (`datapipe --pipeline app api`), run history, pipeline graph.
-- `datapipe-app-ml-ops` — ML ops specs (`datapipe_app_ml_ops.ops_specs`), metrics/training panels,
+- `datapipe-app-ml-ops` — ML ops specs (`datapipe_app_ml_ops.ops.ops_specs`), metrics/training panels,
   image-record views; observability plugin entry point (not `datapipe-ml[observability]`).
 - `datapipe-label-studio` — Label Studio pipeline steps.
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
@@ -232,7 +232,7 @@ Each pipeline needs its own agent process (distinct port). `pipeline_id` is infe
 module filename (e.g. `app.py` → `app`); observability DB defaults to the pipeline `DB_URL`.
 
 Ops specs are registered in each template's `app.py` via `app.add_specs([...])` using types from
-`datapipe_app_ml_ops.ops_specs`. ML metrics/training enrichments load through the `datapipe-app-ml-ops`
+`datapipe_app_ml_ops.ops.ops_specs`. ML metrics/training enrichments load through the `datapipe-app-ml-ops`
 observability plugin (`datapipe.observability` entry point).
 
 Start local services first:

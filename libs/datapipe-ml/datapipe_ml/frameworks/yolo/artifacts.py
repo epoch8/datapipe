@@ -486,6 +486,7 @@ def yolo_collect_results_generic(
     ann = result_cls.__annotations__
     filesystem = fsspec.open(str(exp_pathy / weights_subdir / "best.pt")).fs
     best_epoch_resolved = False
+    skipped_epochs: List[int] = []
     for idx in df.index:
         epoch = int(float(cast(Any, df.loc[idx, "epoch"])))
         model_path = _resolve_yolo_epoch_weight_path(
@@ -497,11 +498,7 @@ def yolo_collect_results_generic(
             filesystem=filesystem,
         )
         if model_path is None:
-            logger.warning(
-                "Skipping epoch %s: no weight file in %s",
-                epoch,
-                exp_pathy / weights_subdir,
-            )
+            skipped_epochs.append(epoch)
             continue
         if epoch == best_epoch:
             best_epoch_resolved = True
@@ -528,6 +525,13 @@ def yolo_collect_results_generic(
             **missing_values,
         }
         results.append(result_cls(**payload))  # type: ignore
+
+    if skipped_epochs:
+        logger.debug(
+            "Skipped %s epochs without per-epoch weight files in %s",
+            len(skipped_epochs),
+            exp_pathy / weights_subdir,
+        )
 
     if not best_epoch_resolved:
         raise FileNotFoundError(

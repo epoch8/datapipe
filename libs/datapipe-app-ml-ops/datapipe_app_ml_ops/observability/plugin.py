@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datapipe_app.observability.registry import ObservabilityRegistry
-from datapipe_app_ml_ops.observability.enricher_registration import register_ops_spec_enricher
-from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
+from datapipe_app.observability.plugins.registry import ObservabilityRegistry
+from datapipe_app_ml_ops.observability.plugins.enricher_registration import register_ops_spec_enricher
+from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 
 
 def register(registry: ObservabilityRegistry) -> None:

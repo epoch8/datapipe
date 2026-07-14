@@ -21,9 +21,7 @@ export function PipelineOverviewGraphCard({ pipelineId, detail, onStageRun }: Pr
             mode="overview"
             onLabelSelect={(label) => navigate(`/graph?stage=${encodeURIComponent(label)}`)}
             onStageRun={
-                detail.agent_mode && onStageRun
-                    ? (label) => onStageRun([["stage", label]])
-                    : undefined
+                onStageRun ? (label) => onStageRun([["stage", label]]) : undefined
             }
         />
     );

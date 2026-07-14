@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datapipe_app.observability.db import ObservabilityStore
+from datapipe_app.observability.store.db import ObservabilityStore
 
 
 def test_list_runs_filters_and_paginates(tmp_path) -> None:

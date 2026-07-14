@@ -143,7 +143,6 @@ export interface PipelineDetail {
     next_run_at?: string;
     last_error?: string;
     enrichments?: Enrichment[];
-    agent_mode: boolean;
 }
 
 export interface RecentRunSummary {
@@ -235,7 +234,6 @@ export interface RunDetail {
 export interface Capabilities {
     ml_metrics: boolean;
     ml_training: boolean;
-    mode: string;
     pipeline_id?: string;
 }
 
@@ -246,7 +244,6 @@ export interface ResetTransformMetadataResponse {
 
 export interface SettingsInfo {
     pipeline_id?: string;
-    mode: string;
     observability_db_connected: boolean;
     version: string;
 }
