@@ -11,22 +11,24 @@ from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.types import Required
-from datapipe_app import (
-    DatapipeApp,
-    DatapipeOpsSpec,
-    OpsClassMetricTableSpec,
+from datapipe_app import DatapipeApp
+from datapipe_app.specs import (
     OpsColumn,
     OpsColumnGroup,
-    OpsDataSpec,
     OpsFilterRule,
+    OpsMetricTableSpec,
+    OpsRelationSpec,
+)
+from datapipe_ml.ops_specs import (
+    DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
+    OpsDataSpec,
     OpsImageAnnotationSpec,
     OpsImageDataSpec,
     OpsImagePredictionViewSpec,
     OpsImageRecordViewSpec,
     OpsFrozenDatasetSpec,
-    OpsMetricTableSpec,
     OpsModelSpec,
-    OpsRelationSpec,
     OpsTrainingSpec,
 )
 from datapipe_ml.metrics.model_selection import FindBestModel

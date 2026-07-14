@@ -78,6 +78,7 @@ export function ImageSpecPage() {
                             specId={specId}
                             scope="data"
                             mode="image"
+                            imageView={imageView}
                             title="Images"
                         />
                     </>

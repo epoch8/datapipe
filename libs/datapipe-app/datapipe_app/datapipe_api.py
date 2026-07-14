@@ -16,7 +16,7 @@ import datapipe_app.api_v1alpha1 as api_v1alpha1
 import datapipe_app.api_v1alpha2 as api_v1alpha2
 import datapipe_app.api_v1alpha3 as api_v1alpha3
 from datapipe_app.metrics import setup_prometheus_metrics
-from datapipe_app.spec_registry import OpsSpecRegistry
+from datapipe_ml.spec_registry import OpsSpecRegistry
 from datapipe_app.pipeline_binding import pipeline_module_for
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import get_log_buffer
@@ -62,6 +62,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
     catalog: Catalog
     pipeline: Pipeline
     steps: list
+    ops_specs: OpsSpecRegistry
     observability_table_config: Optional[ObservabilityTableConfig]
     ops_settings: OpsSettings
 
@@ -93,11 +94,12 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             self.catalog = app.catalog
             self.pipeline = app.pipeline
             self.steps = app.steps
-            self.ops_specs = getattr(app, "ops_specs", OpsSpecRegistry())
+            wrapped_ops = app.ops_specs if isinstance(app, DatapipeAPI) else None
+            self.ops_specs = wrapped_ops if wrapped_ops is not None else OpsSpecRegistry()
         else:
             assert ds is not None and catalog is not None and pipeline is not None
             DatapipeApp.__init__(self, ds, catalog, pipeline)
-            self.ops_specs = getattr(self, "ops_specs", OpsSpecRegistry())
+            self.ops_specs = OpsSpecRegistry()
 
         pipeline_module = pipeline_module_for(app)
         explicit_pipeline_id = pipeline_id
@@ -113,6 +115,8 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         if self.catalog is not None and self.catalog.catalog:
             validate_observability_tables_against_catalog(observability_tables, self.catalog)
             self.ops_specs.validate(self.catalog, self.ds, strict=True)
+
+        self.observability_registry.attach_ops_specs(self.ops_specs)
 
         if self.ds is not None:
             from datapipe_app.db_schema import register_observability_tables_in_metadata
@@ -143,6 +147,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
                 registry=self.observability_registry,
                 ds=self.ds,
                 catalog=self.catalog,
+                ops_specs=self.ops_specs,
                 log_buffer=get_log_buffer(self.observability_store),
             )
             from datapipe_app.observability.run_reconciler import reconcile_orphaned_runs_on_startup

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from datapipe_app.specs import DatapipeOpsSpec, OpsColumn, OpsImageRecordViewSpec, OpsTextRecordViewSpec
+from datapipe_app.specs import OpsColumn
 
 COMPUTED_SOURCES = frozenset({"split", "models_count", "duration_seconds"})
 COMPUTED_KINDS = frozenset({"split", "models_count"})
@@ -52,14 +52,3 @@ def column_by_source(columns: Sequence[OpsColumn], source: str) -> OpsColumn | N
         if column.source == source:
             return column
     return None
-
-
-def resolve_frozen_scope_column(
-    spec: DatapipeOpsSpec,
-    view: OpsImageRecordViewSpec | OpsTextRecordViewSpec,
-) -> str:
-    if view.scope_column:
-        return view.scope_column
-    if spec.frozen_dataset is not None:
-        return spec.frozen_dataset.id_column
-    raise ValueError("frozen_dataset.record_view.scope_column is not configured and frozen_dataset.id_column is missing")

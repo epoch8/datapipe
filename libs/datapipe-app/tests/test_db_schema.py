@@ -1,23 +1,6 @@
-from datapipe.store.database import DBConn
-from sqlalchemy import Column, Integer, inspect
+from sqlalchemy import inspect
 
-from datapipe_app.db_schema import (
-    create_observability_tables_hook,
-    register_observability_tables_in_metadata,
-)
-from datapipe_app.observability.tables import ObservabilityTableConfig
-
-
-def test_register_observability_tables_in_metadata() -> None:
-    dbconn = DBConn("sqlite:///:memory:")
-    register_observability_tables_in_metadata(dbconn)
-
-    table_names = {table.name for table in dbconn.sqla_metadata.tables.values()}
-    config = ObservabilityTableConfig()
-    assert config.pipeline_runs in table_names
-    assert config.pipeline_run_logs in table_names
-    assert config.metrics_candidates in table_names
-    assert config.analytics_metrics_on_subset in table_names
+from datapipe_app.db_schema import create_observability_tables_hook
 
 
 def test_create_observability_tables_hook_creates_tables(ops_app) -> None:

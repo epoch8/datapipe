@@ -6,6 +6,7 @@ from sqlalchemy import MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from datapipe_app.observability.tables import ObservabilityTableConfig
+from datapipe_ml.observability.tables import MLObservabilityTableConfig
 
 if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
@@ -23,15 +24,18 @@ class ObservabilityBase(DeclarativeBase):
 def apply_observability_table_config(
     tables: ObservabilityTableConfig,
     schema: str | None,
+    *,
+    ml_tables: MLObservabilityTableConfig | None = None,
 ) -> None:
     from datapipe_app.observability.db import (
-        PipelineMetricsCandidateRow,
         PipelineRegistryRow,
         PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
+    from datapipe_ml.observability.analytics_views import apply_analytics_table_config
+    from datapipe_ml.observability.db_models import apply_ml_table_config
 
     mapping: dict[type[ObservabilityBase], str] = {
         PipelineRegistryRow: tables.pipeline_registry,
@@ -39,36 +43,37 @@ def apply_observability_table_config(
         PipelineRunStepRow: tables.pipeline_run_steps,
         PipelineRunLogRow: tables.pipeline_run_logs,
         PipelineScheduleRow: tables.pipeline_schedules,
-        PipelineMetricsCandidateRow: tables.metrics_candidates,
     }
     for model_cls, table_name in mapping.items():
         table = cast(Table, model_cls.__table__)
         table.name = table_name
         table.schema = schema
 
-    from datapipe_app.observability.analytics_views import apply_analytics_table_config
-
-    apply_analytics_table_config(tables=tables, schema=schema)
+    ml_tables = ml_tables or MLObservabilityTableConfig()
+    apply_ml_table_config(tables=ml_tables, schema=schema)
+    apply_analytics_table_config(tables=ml_tables, schema=schema)
 
 
 def register_observability_tables_in_metadata(
     dbconn: DBConn,
     *,
     tables: ObservabilityTableConfig | None = None,
+    ml_tables: MLObservabilityTableConfig | None = None,
 ) -> None:
     """Attach datapipe-app observability tables to the pipeline ``sqla_metadata``."""
     tables = tables or ObservabilityTableConfig()
-    apply_observability_table_config(tables, dbconn.schema)
+    ml_tables = ml_tables or MLObservabilityTableConfig()
+    apply_observability_table_config(tables, dbconn.schema, ml_tables=ml_tables)
 
-    from datapipe_app.observability.analytics_views import analytics_metadata
     from datapipe_app.observability.db import (
-        PipelineMetricsCandidateRow,
         PipelineRegistryRow,
         PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
+    from datapipe_ml.observability.analytics_views import analytics_metadata
+    from datapipe_ml.observability.db_models import PipelineMetricsCandidateRow
 
     target = dbconn.sqla_metadata
     for model_cls in (

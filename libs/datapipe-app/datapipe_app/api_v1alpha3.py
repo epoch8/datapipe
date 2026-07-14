@@ -21,38 +21,13 @@ from datapipe_app.observability.run_scope import (
 from datapipe_app.observability.db import ObservabilityStore, PipelineRunRow, utc_now
 from datapipe_app.observability.discovery import build_stage_summary, build_stage_edges, discover_pipeline_stages
 from datapipe_app.observability.label_graph import build_label_graph
-from datapipe_app.observability.analytics_views import ensure_analytics_tables, get_schema, refresh_analytics_views
-from datapipe_app.observability.metrics_service import MetricsService
-from datapipe_app.observability.queries import build_chart_specs, build_overview, build_training_curves
-from datapipe_app.observability.schemas import (
-    ClassMetricDetailResponse,
-    ClassMetricsResponse,
-    FrozenDatasetDetailResponse,
-    FrozenDatasetsResponse,
-    MetricsCandidateCreate,
-    MetricsCandidateRow,
-    MetricsEvaluateRequest,
-    MetricsEvaluateResponse,
-    MetricsModelDetailResponse,
-    MetricsRunsResponse,
-    MetricsSummaryResponse,
-    MetricsTableSchema,
-    MetricsTimeseriesResponse,
-    SqlQueryRequest,
-    SqlQueryResponse,
-    SqlSchemaResponse,
-    TrainingCompareResponse,
-    TrainingRunsResponse,
-)
-from datapipe_app.observability.sql_executor import execute_readonly_query
-from datapipe_app.observability.training_service import TrainingService
+from datapipe_app.observability.queries import build_overview
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry
 from datapipe_app.observability.settings import get_ops_settings
 from datapipe_app.pipeline_ui import register_pipeline_ui_routes
-from datapipe_app.api_v1alpha3_specs import register_ops_spec_routes
-from datapipe_app.ops_specs_service import OpsSpecsService
-from datapipe_app.spec_registry import OpsSpecRegistry
+from datapipe_ml.observability.routes import register_ml_observability_routes
+from datapipe_ml.spec_registry import OpsSpecRegistry
 
 
 class StartRunRequest(BaseModel):
@@ -97,10 +72,6 @@ def make_app(
 ) -> FastAPI:
     app = FastAPI(title="Datapipe Ops API v1alpha3")
     ops_spec_registry = ops_specs or OpsSpecRegistry()
-    register_ops_spec_routes(
-        app,
-        OpsSpecsService(ops_spec_registry, ds=ds, catalog=catalog),
-    )
 
     def _pipeline_id() -> Optional[str]:
         return get_ops_settings().pipeline_id
@@ -112,14 +83,11 @@ def make_app(
             raise HTTPException(503, "Local pipeline not available")
 
     def _has_catalog_metrics() -> bool:
-        if ds is None or catalog is None:
-            return False
-        try:
-            from datapipe_ml.observability.discovery import discover_metrics_tables
-
-            return any(True for _table_name, _dt in discover_metrics_tables(catalog, ds))
-        except Exception:
-            return False
+        return any(
+            table_spec.best_metric_column
+            for spec in ops_spec_registry.list()
+            for table_spec in spec.metrics
+        )
 
     @app.get("/overview")
     def get_overview() -> dict[str, Any]:
@@ -127,7 +95,7 @@ def make_app(
 
     @app.get("/capabilities", response_model=CapabilitiesResponse)
     def get_capabilities() -> CapabilitiesResponse:
-        has_ml_plugin = len(registry.enrichers) > 0 or len(registry.publishers) > 0
+        has_ml_plugin = len(registry.enrichers) > 0 or len(registry.collectors) > 0
         return CapabilitiesResponse(
             ml_metrics=has_ml_plugin and _has_catalog_metrics(),
             ml_training=has_ml_plugin,
@@ -261,253 +229,6 @@ def make_app(
             "pipeline_id": pipeline_id,
             "stage": stage_name,
             "recent_runs": _serialize_recent_runs(runs),
-        }
-
-    @app.get("/pipelines/{pipeline_id}/training/runs", response_model=TrainingRunsResponse)
-    def list_training_runs_extended(
-        pipeline_id: str,
-        task_type: Optional[str] = None,
-        framework: Optional[str] = None,
-        status: Optional[str] = None,
-        tags: Optional[str] = None,
-        search: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_dir: str = "desc",
-        limit: int = 25,
-        offset: int = 0,
-    ) -> TrainingRunsResponse:
-        svc = TrainingService(store=store, ds=ds, catalog=catalog)
-        return svc.list_runs(
-            pipeline_id,
-            task_type=task_type.split(",") if task_type else None,
-            framework=framework.split(",") if framework else None,
-            status=status.split(",") if status else None,
-            tags=tags.split(",") if tags else None,
-            search=search,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            limit=min(limit, 200),
-            offset=offset,
-        )
-
-    def _metrics_svc() -> MetricsService:
-        return MetricsService(store=store, ds=ds, catalog=catalog)
-
-    @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets", response_model=FrozenDatasetsResponse)
-    def get_frozen_datasets(pipeline_id: str) -> FrozenDatasetsResponse:
-        return _metrics_svc().list_frozen_datasets(pipeline_id)
-
-    @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets/{dataset_id}", response_model=FrozenDatasetDetailResponse)
-    def get_frozen_dataset_detail(
-        pipeline_id: str,
-        dataset_id: str,
-        subset: Optional[str] = None,
-    ) -> FrozenDatasetDetailResponse:
-        return _metrics_svc().get_frozen_dataset_detail(
-            pipeline_id,
-            dataset_id,
-            subset=subset,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/models/{model_id}", response_model=MetricsModelDetailResponse)
-    def get_model_detail(
-        pipeline_id: str,
-        model_id: str,
-        dataset_id: Optional[str] = None,
-        subset: Optional[str] = None,
-    ) -> MetricsModelDetailResponse:
-        return _metrics_svc().get_model_detail(
-            pipeline_id,
-            model_id,
-            dataset_id=dataset_id,
-            subset=subset,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/runs", response_model=MetricsRunsResponse)
-    def get_metrics_runs(
-        pipeline_id: str,
-        subset: Optional[str] = None,
-        model_id: Optional[str] = None,
-        search: Optional[str] = None,
-        task_type: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_dir: str = "desc",
-        limit: int = 25,
-        offset: int = 0,
-    ) -> MetricsRunsResponse:
-        return _metrics_svc().list_runs(
-            pipeline_id,
-            subset=subset,
-            model_id=model_id,
-            search=search,
-            task_type=task_type,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            limit=min(limit, 200),
-            offset=offset,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/schema", response_model=MetricsTableSchema)
-    def get_metrics_schema(pipeline_id: str, task_type: Optional[str] = None) -> MetricsTableSchema:
-        return _metrics_svc().get_schema(pipeline_id, task_type=task_type)
-
-    @app.post("/pipelines/{pipeline_id}/metrics/candidates", response_model=MetricsCandidateRow)
-    def create_metrics_candidate(pipeline_id: str, body: MetricsCandidateCreate) -> MetricsCandidateRow:
-        return _metrics_svc().add_candidate(pipeline_id, body)
-
-    @app.delete("/pipelines/{pipeline_id}/metrics/candidates/{candidate_id}")
-    def delete_metrics_candidate(pipeline_id: str, candidate_id: str) -> dict[str, str]:
-        if not _metrics_svc().delete_candidate(pipeline_id, candidate_id):
-            raise HTTPException(404, f"Candidate {candidate_id} not found")
-        return {"status": "ok"}
-
-    @app.post("/pipelines/{pipeline_id}/metrics/evaluate", response_model=MetricsEvaluateResponse)
-    def evaluate_metrics(
-        pipeline_id: str,
-        req: MetricsEvaluateRequest,
-        background_tasks: BackgroundTasks,
-    ) -> MetricsEvaluateResponse:
-        _require_agent_pipeline(pipeline_id)
-        labels = Labels([(pair[0], pair[1]) for pair in req.labels if len(pair) >= 2]) if req.labels else Labels([("stage", "count-metrics")])
-        run_resp = start_run(StartRunRequest(labels=labels, background=req.background), background_tasks)
-        return MetricsEvaluateResponse(run_id=run_resp.run_id, status=run_resp.status)
-
-    @app.get("/pipelines/{pipeline_id}/metrics/summary", response_model=MetricsSummaryResponse)
-    def get_pipeline_metrics_summary(
-        pipeline_id: str,
-        subset: Optional[str] = None,
-        model_id: Optional[str] = None,
-        primary_metric: Optional[str] = None,
-    ) -> MetricsSummaryResponse:
-        return _metrics_svc().summary(
-            pipeline_id,
-            subset=subset,
-            model_id=model_id,
-            primary_metric=primary_metric,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/timeseries", response_model=MetricsTimeseriesResponse)
-    def get_metrics_timeseries(
-        pipeline_id: str,
-        metrics: str,
-        subset: Optional[str] = None,
-        group_by: str = "run",
-    ) -> MetricsTimeseriesResponse:
-        metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
-        subset_list = [s.strip() for s in subset.split(",")] if subset else None
-        return _metrics_svc().timeseries(
-            pipeline_id,
-            metrics=metric_list,
-            subset=subset_list,
-            group_by=group_by,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/classes", response_model=ClassMetricsResponse)
-    def get_class_metrics(
-        pipeline_id: str,
-        subset: Optional[str] = None,
-        model_id: Optional[str] = None,
-        label_search: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_dir: str = "desc",
-        limit: int = 50,
-        offset: int = 0,
-    ) -> ClassMetricsResponse:
-        return _metrics_svc().list_classes(
-            pipeline_id,
-            subset=subset,
-            model_id=model_id,
-            label_search=label_search,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            limit=min(limit, 500),
-            offset=offset,
-        )
-
-    @app.get("/pipelines/{pipeline_id}/metrics/classes/{label}", response_model=ClassMetricDetailResponse)
-    def get_class_metric_detail(
-        pipeline_id: str,
-        label: str,
-        subset: Optional[str] = None,
-    ) -> ClassMetricDetailResponse:
-        return _metrics_svc().class_detail(pipeline_id, label, subset=subset)
-
-    @app.post("/sql/query", response_model=SqlQueryResponse)
-    def run_sql_query(req: SqlQueryRequest) -> SqlQueryResponse:
-        ensure_analytics_tables(store.engine)
-        if get_ops_settings().pipeline_id:
-            try:
-                refresh_analytics_views(
-                    store.engine,
-                    pipeline_id=get_ops_settings().pipeline_id or "",
-                    store=store,
-                    ds=ds,
-                    catalog=catalog,
-                )
-            except Exception:
-                pass
-        try:
-            result = execute_readonly_query(
-                store.engine,
-                req.sql,
-                limit=req.limit or 1000,
-                offset=req.offset or 0,
-            )
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(400, f"Query failed: {exc}") from exc
-        return SqlQueryResponse(**result)
-
-    @app.get("/sql/schema", response_model=SqlSchemaResponse)
-    def get_sql_schema() -> SqlSchemaResponse:
-        ensure_analytics_tables(store.engine)
-        schema = get_schema(store.engine)
-        return SqlSchemaResponse(**schema)
-
-    @app.get("/pipelines/{pipeline_id}/training/runs/legacy")
-    def list_training_runs_legacy(pipeline_id: str) -> dict[str, Any]:
-        enrichments: list[dict[str, Any]] = []
-        for enricher in registry.enrichers:
-            try:
-                enrichments.extend(
-                    enricher.enrich_pipeline_detail(
-                        pipeline_id=pipeline_id,
-                        ds=ds,
-                        catalog=catalog,
-                        store=store,
-                    )
-                )
-            except Exception:
-                pass
-        runs: list[dict[str, Any]] = []
-        for item in enrichments:
-            if item.get("type") == "ml_training_runs":
-                runs = item.get("payload", {}).get("rows", [])
-        return {"pipeline_id": pipeline_id, "runs": runs}
-
-    @app.get("/metrics/charts")
-    def get_metrics_charts(
-        pipeline_id: str,
-        model_id: Optional[str] = None,
-    ) -> dict[str, Any]:
-        if not pipeline_id:
-            raise HTTPException(400, "pipeline_id is required")
-        charts = build_chart_specs(store, pipeline_id, model_id=model_id)
-        return {"pipeline_id": pipeline_id, "charts": charts}
-
-    @app.get("/metrics/summary")
-    def get_metrics_summary(pipeline_id: str) -> dict[str, Any]:
-        rows = store.list_metrics(pipeline_id)
-        if not rows:
-            return {"pipeline_id": pipeline_id, "has_metrics": False}
-        latest = rows[-1]
-        return {
-            "pipeline_id": pipeline_id,
-            "has_metrics": True,
-            "model_id": latest.model_id,
-            "subset_id": latest.subset_id,
-            "computed_at": latest.computed_at.isoformat() if latest.computed_at else None,
         }
 
     def _serialize_run_list_row(run: PipelineRunRow) -> dict[str, Any]:
@@ -690,51 +411,16 @@ def make_app(
         step.reset_metadata(ds)
         return ResetTransformMetadataResponse(transform_name=transform_name)
 
-    @app.get("/training/{run_key}")
-    def get_training_run(run_key: str, pipeline_id: Optional[str] = None) -> dict[str, Any]:
-        pid = pipeline_id or get_ops_settings().pipeline_id or ""
-        detail: dict[str, Any] = {"run_key": run_key, "pipeline_id": pid}
-        for enricher in registry.enrichers:
-            try:
-                items = enricher.enrich_pipeline_detail(
-                    pipeline_id=pid,
-                    ds=ds,
-                    catalog=catalog,
-                    store=store,
-                )
-                for item in items:
-                    if item.get("type") == "ml_training_detail":
-                        payload = item.get("payload", {})
-                        if payload.get("run_key") == run_key:
-                            detail.update(payload)
-            except Exception:
-                pass
-        detail["curves"] = build_training_curves(store, run_key)
-        return detail
-
-    @app.get("/training/{run_key}/curves")
-    def get_training_curves(
-        run_key: str,
-        limit_epochs: Optional[int] = None,
-    ) -> dict[str, Any]:
-        charts = build_training_curves(store, run_key, limit_epochs=limit_epochs)
-        return {"run_key": run_key, "charts": charts}
-
-    @app.get("/training/compare", response_model=TrainingCompareResponse)
-    def compare_training_runs(
-        run_keys: str,
-        pipeline_id: Optional[str] = None,
-        metrics: Optional[str] = None,
-    ) -> TrainingCompareResponse:
-        keys = [k.strip() for k in run_keys.split(",") if k.strip()]
-        if len(keys) < 1 or len(keys) > 4:
-            raise HTTPException(400, "Provide 1-4 run_keys comma-separated")
-        metric_list = [m.strip() for m in metrics.split(",") if m.strip()] if metrics else None
-        svc = TrainingService(store=store, ds=ds, catalog=catalog)
-        try:
-            return svc.compare(keys, metrics=metric_list, pipeline_id=pipeline_id)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
+    register_ml_observability_routes(
+        app,
+        store=store,
+        registry=registry,
+        ds=ds,
+        catalog=catalog,
+        ops_spec_registry=ops_spec_registry,
+        start_run_handler=start_run,
+        require_agent_pipeline=_require_agent_pipeline,
+    )
 
     if ds is not None and catalog is not None and pipeline is not None and steps is not None:
         register_pipeline_ui_routes(

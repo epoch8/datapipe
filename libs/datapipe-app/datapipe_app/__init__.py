@@ -1,82 +1,48 @@
-from datapipe.compute import DatapipeApp
+"""Datapipe app package."""
 
-from datapipe_app.datapipe_api import DatapipeAPI, setup_logging
-from datapipe_app.db_schema import register_observability_tables_in_metadata
-from datapipe_app.observability.tables import ObservabilityTableConfig
-from datapipe_app.spec_registry import OpsSpecRegistry
-from datapipe_app.specs import (
-    DatapipeOpsSpec,
-    OpsClassMetricTableSpec,
-    OpsColumn,
-    OpsColumnGroup,
-    OpsDataSpec,
-    OpsFilterRule,
-    OpsFrozenDatasetSpec,
-    OpsImageAnnotationSpec,
-    OpsImageDataSpec,
-    OpsImagePredictionViewSpec,
-    OpsImageRecordViewSpec,
-    OpsMetricTableSpec,
-    METRICS_NULL_LABEL,
-    OpsModelSpec,
-    OpsRelationSpec,
-    OpsTableRef,
-    OpsTextRecordViewSpec,
-    OpsTrainingSpec,
-)
+_LAZY_EXPORTS = {
+    "DatapipeAPI": ("datapipe_app.datapipe_api", "DatapipeAPI"),
+    "DatapipeApp": ("datapipe.compute", "DatapipeApp"),
+    "setup_logging": ("datapipe_app.datapipe_api", "setup_logging"),
+    "ObservabilityTableConfig": ("datapipe_app.observability.tables", "ObservabilityTableConfig"),
+    "OpsSpecRegistry": ("datapipe_ml.spec_registry", "OpsSpecRegistry"),
+    "OpsColumn": ("datapipe_app.specs", "OpsColumn"),
+    "OpsColumnGroup": ("datapipe_app.specs", "OpsColumnGroup"),
+    "OpsFilterRule": ("datapipe_app.specs", "OpsFilterRule"),
+    "OpsMetricTableSpec": ("datapipe_app.specs", "OpsMetricTableSpec"),
+    "OpsRelationSpec": ("datapipe_app.specs", "OpsRelationSpec"),
+    "OpsTableRef": ("datapipe_app.specs", "OpsTableRef"),
+    "register_observability_tables_in_metadata": (
+        "datapipe_app.db_schema",
+        "register_observability_tables_in_metadata",
+    ),
+}
 
 
-def _ensure_ops_registry(app: DatapipeApp) -> OpsSpecRegistry:
-    registry = getattr(app, "ops_specs", None)
-    if registry is None:
-        registry = OpsSpecRegistry()
-        setattr(app, "ops_specs", registry)
-    return registry
+def __getattr__(name: str):
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _LAZY_EXPORTS[name]
+    module = __import__(module_name, fromlist=[attr_name])
+    value = getattr(module, attr_name)
+    if name == "DatapipeApp":
+        from datapipe_ml.ops_registry_hooks import ensure_datapipe_app_add_specs
 
-
-def _add_specs(self: DatapipeApp, specs) -> None:
-    registry = _ensure_ops_registry(self)
-    previous = dict(registry._specs)
-    try:
-        registry.add_many(specs)
-        registry.validate(getattr(self, "catalog", None), getattr(self, "ds", None), strict=True)
-    except Exception:
-        registry._specs = previous
-        raise
-
-
-def _get_specs(self: DatapipeApp):
-    return _ensure_ops_registry(self).list()
-
-
-if not hasattr(DatapipeApp, "add_specs"):
-    DatapipeApp.add_specs = _add_specs  # type: ignore[attr-defined,method-assign]
-    DatapipeApp.get_specs = _get_specs  # type: ignore[attr-defined,method-assign]
+        ensure_datapipe_app_add_specs()
+    return value
 
 
 __all__ = [
     "DatapipeAPI",
     "DatapipeApp",
-    "DatapipeOpsSpec",
     "ObservabilityTableConfig",
-    "OpsClassMetricTableSpec",
     "OpsColumn",
     "OpsColumnGroup",
-    "OpsDataSpec",
     "OpsFilterRule",
-    "OpsFrozenDatasetSpec",
-    "OpsImageAnnotationSpec",
-    "OpsImageDataSpec",
-    "OpsImagePredictionViewSpec",
-    "OpsImageRecordViewSpec",
     "OpsMetricTableSpec",
-    "METRICS_NULL_LABEL",
-    "OpsModelSpec",
     "OpsRelationSpec",
     "OpsSpecRegistry",
     "OpsTableRef",
-    "OpsTextRecordViewSpec",
-    "OpsTrainingSpec",
     "register_observability_tables_in_metadata",
     "setup_logging",
 ]

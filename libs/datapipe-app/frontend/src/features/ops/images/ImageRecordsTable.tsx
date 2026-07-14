@@ -4,7 +4,7 @@ import { Button, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { opsApi } from "../../../api/ops";
 import type { OpsImageRecordListRow, OpsImageRecordsResponse } from "../../../types/ops";
-import type { OpsColumn, OpsMetricColumn, OpsRowsParams, OpsSpecDetail, OpsTableSchema } from "../../../types/opsSpecs";
+import type { OpsColumn, OpsMetricColumn, OpsRowsParams, OpsSpecDetail, OpsTableSchema, OpsImageDataSpecPayload } from "../../../types/opsSpecs";
 import { EmptyState, TableSizeControl } from "../shared";
 import { TableFilterBar } from "../shared/TableFilterBar";
 import {
@@ -147,6 +147,7 @@ export function ImageRecordsTable({
     parentId,
     title,
     mode,
+    imageView,
 }: {
     pipelineId: string;
     specId: string;
@@ -154,8 +155,12 @@ export function ImageRecordsTable({
     parentId?: string;
     title?: string;
     mode: "image" | "frozen_dataset" | "prediction";
+    imageView?: OpsImageDataSpecPayload | null;
 }) {
-    const filterColumns = React.useMemo(() => dedupeFilterColumns(imageRecordFilterColumns(mode)), [mode]);
+    const filterColumns = React.useMemo(
+        () => dedupeFilterColumns(imageRecordFilterColumns(mode, imageView)),
+        [mode, imageView],
+    );
     const sortTable = React.useMemo(() => imageRecordSortTable(filterColumns), [filterColumns]);
     const [filterState, setFilterState] = React.useState<OpsFilterState>({ mode: "or", rules: [] });
     const [sortState, setSortState] = React.useState<OpsTableSortState>(() => defaultSortState(sortTable));
@@ -274,7 +279,9 @@ export function ImageRecordsTable({
         };
 
         if (mode === "image") {
-            return [
+            const showSubset = imageView?.records_show_subset ?? false;
+            const showGroundTruth = imageView?.records_show_ground_truth ?? false;
+            const cols: ColumnsType<OpsImageRecordListRow> = [
                 previewCol,
                 {
                     title: "image_name",
@@ -282,15 +289,20 @@ export function ImageRecordsTable({
                     ...sortColumnProps(findFilterColumn(filterColumns, "image_name"), sortState),
                     render: (_v, row) => String(row.pk.image_name ?? ""),
                 },
-                {
+            ];
+            if (showSubset) {
+                cols.push({
                     title: "subset",
                     key: "subset",
                     ...sortColumnProps(findFilterColumn(filterColumns, "subset"), sortState),
                     render: (_v, row) => (row.subset ? <Tag className="ops-soft-chip">{row.subset}</Tag> : "-"),
-                },
-                bboxesCol,
-                viewCol,
-            ];
+                });
+            }
+            if (showGroundTruth) {
+                cols.push(bboxesCol);
+            }
+            cols.push(viewCol);
+            return cols;
         }
 
         if (mode === "frozen_dataset") {
@@ -338,7 +350,7 @@ export function ImageRecordsTable({
             ...metricCols,
             viewCol,
         ];
-    }, [mode, predictionMetricColumns, filterColumns, sortState]);
+    }, [mode, imageView, predictionMetricColumns, filterColumns, sortState]);
 
     return (
         <div className="ops-panel ops-polished-panel ops-spec-table-panel">

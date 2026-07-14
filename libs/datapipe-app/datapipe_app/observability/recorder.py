@@ -11,6 +11,7 @@ from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.registry import ObservabilityRegistry
+from datapipe_ml.spec_registry import OpsSpecRegistry
 from datapipe_app.observability.run_output_capture import capture_run_output
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class RunRecorder:
         registry: Optional[ObservabilityRegistry] = None,
         ds: Optional[DataStore] = None,
         catalog: Optional[Catalog] = None,
+        ops_specs: Optional[OpsSpecRegistry] = None,
         log_buffer: Optional[RunLogBuffer] = None,
     ):
         self.store = store
@@ -32,6 +34,7 @@ class RunRecorder:
         self.registry = registry
         self.ds = ds
         self.catalog = catalog
+        self.ops_specs = ops_specs
         self.log_buffer = log_buffer
         self._current_run_id: Optional[str] = None
         self._output_capture: Optional[AbstractContextManager[None]] = None
@@ -152,23 +155,18 @@ class RunRecorder:
     def _publish_metrics(self) -> None:
         if not self.registry or not self.ds or not self.catalog:
             return
-        for publisher in self.registry.publishers:
-            try:
-                publisher.publish_metrics(
-                    self.store,
-                    pipeline_id=self.pipeline_id,
-                    ds=self.ds,
-                    catalog=self.catalog,
-                )
-            except Exception:
-                logger.exception("Metrics publisher failed for pipeline %s", self.pipeline_id)
         try:
-            from datapipe_app.observability.analytics_views import refresh_analytics_views
-            from datapipe_app.observability.training_service import TrainingService
+            from datapipe_ml.observability.analytics_views import refresh_analytics_views
+            from datapipe_ml.observability.training_service import TrainingService
 
             training_rows = []
             try:
-                svc = TrainingService(store=self.store, ds=self.ds, catalog=self.catalog)
+                svc = TrainingService(
+                    store=self.store,
+                    ds=self.ds,
+                    catalog=self.catalog,
+                    ops_specs=self.ops_specs,
+                )
                 training_rows = [r.model_dump() for r in svc.list_runs(self.pipeline_id, limit=500).rows]
             except Exception:
                 training_rows = []
@@ -178,6 +176,7 @@ class RunRecorder:
                 store=self.store,
                 ds=self.ds,
                 catalog=self.catalog,
+                ops_specs=self.ops_specs,
                 training_runs=training_rows,
             )
         except Exception:

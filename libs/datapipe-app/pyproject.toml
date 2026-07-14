@@ -7,7 +7,6 @@ readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "datapipe-core",
-    "cv-pipeliner",
     "httpx",
     "fastapi>=0.69.0",
     "uvicorn[standard]>=0.17.0",
@@ -46,11 +45,12 @@ dev = [
     "mypy",
     "pytest<8",
     "sqlalchemy[mypy]",
+    "datapipe-ml",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
+datapipe-ml = { workspace = true }
 
 [tool.hatch.build.targets.sdist]
 exclude = ["tests", "frontend"]

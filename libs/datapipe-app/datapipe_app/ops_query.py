@@ -10,7 +10,7 @@ from sqlalchemy import MetaData, String, Table, and_, asc, desc, event, func, in
 from sqlalchemy.exc import OperationalError
 
 from datapipe_app.ops_filters import OpsFilterMode, OpsFilterRule, compile_regex_pattern
-from datapipe_app.spec_registry import OpsSpecValidationError
+from datapipe_app.errors import OpsSpecValidationError
 from datapipe_app.specs import OpsColumn, OpsColumnGroup, OpsMetricTableSpec
 
 
@@ -134,7 +134,7 @@ class OpsQuery:
                         f'Join column "{join_col}" is not present in table "{join_table_name}".'
                     )
                 join_conditions.append(table.c[main_col] == join_table.c[join_col])
-            from_clause = table.join(join_table, and_(*join_conditions))
+            from_clause = table.outerjoin(join_table, and_(*join_conditions))
 
         filter_tables = [table]
         if join_table is not None:

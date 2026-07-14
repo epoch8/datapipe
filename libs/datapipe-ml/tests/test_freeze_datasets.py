@@ -211,3 +211,82 @@ def test_classification_freeze_dataset(base_datastore, base_catalog_factory, smo
         len(smoke_dataset.image),
     )
     assert_no_nulls(base_datastore.get_table("classification_frozen_dataset__has__image_gt").get_data(), ["label"])
+
+
+def test_freeze_skips_repeat_when_ground_truth_unchanged(base_datastore, base_catalog_factory, smoke_dataset, datapipe_dir):
+    _require_datapipe_runtime()
+    from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
+
+    catalog = base_catalog_factory()
+    _store_base_inputs(base_datastore, catalog, smoke_dataset)
+
+    step = DetectionFreezeDataset(
+        input__image="image",
+        input__image__ground_truth="image__ground_truth",
+        input__subset__has__image="subset__has__image",
+        output__detection_frozen_dataset="detection_frozen_dataset",
+        output__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+        working_dir=str(datapipe_dir),
+        primary_keys=["image_id"],
+        min_delta=1,
+        min_within_time="0s",
+        create_table=True,
+        bbox_id__name=None,
+    )
+
+    _run_single_step(base_datastore, catalog, step)
+    frozen_after_first = len(base_datastore.get_table("detection_frozen_dataset").get_data())
+    assert frozen_after_first == 1
+
+    _run_single_step(base_datastore, catalog, step)
+
+    assert len(base_datastore.get_table("detection_frozen_dataset").get_data()) == frozen_after_first
+
+
+def test_get_changed_idxs_uses_gt_max_update_ts_watermark(base_datastore, base_catalog_factory, smoke_dataset, datapipe_dir):
+    _require_datapipe_runtime()
+    from datapipe_ml.datasets.freeze import (
+        get_changed_idxs_since_last_freeze_sql,
+        get_last_freeze_gt_watermark,
+    )
+    from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
+
+    catalog = base_catalog_factory()
+    _store_base_inputs(base_datastore, catalog, smoke_dataset)
+
+    _run_single_step(
+        base_datastore,
+        catalog,
+        DetectionFreezeDataset(
+            input__image="image",
+            input__image__ground_truth="image__ground_truth",
+            input__subset__has__image="subset__has__image",
+            output__detection_frozen_dataset="detection_frozen_dataset",
+            output__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+            working_dir=str(datapipe_dir),
+            primary_keys=["image_id"],
+            min_delta=1,
+            min_within_time="0s",
+            create_table=True,
+            bbox_id__name=None,
+        ),
+    )
+
+    dt__frozen_dataset = catalog.get_datatable(base_datastore, "detection_frozen_dataset")
+    dt__image__ground_truth = catalog.get_datatable(base_datastore, "image__ground_truth")
+    watermark = get_last_freeze_gt_watermark(
+        base_datastore,
+        dt__frozen_dataset,
+        created_at_col="detection_frozen_dataset__created_at",
+        gt_max_update_ts_col="detection_frozen_dataset__gt_max_update_ts",
+    )
+    assert watermark is not None
+
+    changed = get_changed_idxs_since_last_freeze_sql(
+        base_datastore,
+        dt__frozen_dataset,
+        dt__image__ground_truth,
+        created_at_col="detection_frozen_dataset__created_at",
+        gt_max_update_ts_col="detection_frozen_dataset__gt_max_update_ts",
+    )
+    assert changed.empty

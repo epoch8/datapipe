@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 from datapipe.compute import Pipeline
-from datapipe_app import (
-    DatapipeAPI,
-    DatapipeOpsSpec,
+from datapipe_app import DatapipeAPI
+from datapipe_app.specs import (
     OpsColumn,
     OpsColumnGroup,
-    OpsDataSpec,
     OpsFilterRule,
+    OpsMetricTableSpec,
+    OpsRelationSpec,
+)
+from datapipe_ml.ops_specs import (
+    DatapipeOpsSpec,
+    OpsDataSpec,
     OpsFrozenDatasetSpec,
     OpsImageAnnotationSpec,
     OpsImageDataSpec,
     OpsImagePredictionViewSpec,
     OpsImageRecordViewSpec,
-    OpsMetricTableSpec,
     OpsModelSpec,
-    OpsRelationSpec,
     OpsTrainingSpec,
 )
 from datapipe.datatable import DataStore

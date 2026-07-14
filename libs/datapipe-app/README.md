@@ -38,7 +38,7 @@ Environment variables (all optional; defaults are inferred from the loaded pipel
 - `DATAPIPE_APP_PIPELINE_ID` — default: stem of the pipeline module file (e.g. `app` for `app.py`), else `--pipeline` module name
 - `DATAPIPE_APP_OBSERVABILITY_DB_URL` — default: pipeline `DB_URL` / `DataStore` connection
 
-Ops API: `/api/v1alpha3/overview`, `/metrics/charts`, `/runs`, `/training/{run_key}/curves`.
+Ops API: `/api/v1alpha3/overview`, `/runs`, spec-driven `/ops-specs/*`, catalog metrics under `/pipelines/{id}/metrics/*`.
 
 ML metrics/training enrichments: install `datapipe-ml[observability]`.
 

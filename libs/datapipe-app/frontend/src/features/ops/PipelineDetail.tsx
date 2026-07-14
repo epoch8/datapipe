@@ -1,11 +1,9 @@
 import React from "react";
 import { Alert, Card, Spin, Tag } from "antd";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
-import type { ChartSpec, PipelineDetail as PipelineDetailType } from "../../types/ops";
-import { ChartGrid } from "./components/ChartGrid";
-import { PipelineMetrics } from "./components/PipelineMetrics";
+import type { PipelineDetail as PipelineDetailType } from "../../types/ops";
 import { PluginSection } from "./components/PluginSection";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
@@ -16,19 +14,16 @@ import { RunStepsDropdown } from "./components/RunStepsDropdown";
 type PipelineDetailProps = {
     pipelineId?: string;
     embedded?: boolean;
-    includeMetrics?: boolean;
 };
 
 export function PipelineDetail({
     pipelineId: pipelineIdProp,
     embedded = false,
-    includeMetrics = false,
 }: PipelineDetailProps = {}) {
     const { id: routeId = "" } = useParams();
     const id = pipelineIdProp ?? routeId;
     const navigate = useNavigate();
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
-    const [curves, setCurves] = React.useState<ChartSpec[]>([]);
     const [error, setError] = React.useState<unknown>(null);
 
     const load = React.useCallback(() => {
@@ -44,13 +39,6 @@ export function PipelineDetail({
         const timer = setInterval(load, getRefreshIntervalMs());
         return () => clearInterval(timer);
     }, [load]);
-
-    React.useEffect(() => {
-        const enrich = detail?.enrichments?.find((e) => e.type === "ml_training");
-        const runKey = (enrich?.payload as { run_key?: string })?.run_key;
-        if (!runKey) return;
-        opsApi.getTrainingCurves(runKey, 50).then((r) => setCurves(r.charts)).catch(() => undefined);
-    }, [detail]);
 
     const runStage = (labels: [string, string][]) => {
         opsApi
@@ -106,12 +94,6 @@ export function PipelineDetail({
                     <span style={{ color: "#ff4d4f" }}>{detail.last_error}</span>
                 </Card>
             )}
-            {curves.length > 0 && (
-                <Card title="Training preview" extra={<Link to={`/pipelines/${id}/training`}>Training runs</Link>}>
-                    <ChartGrid charts={curves} />
-                </Card>
-            )}
-            {includeMetrics && <PipelineMetrics pipelineId={id} />}
             <PluginSection enrichments={detail.enrichments} />
             <Card title="Recent runs" style={{ marginTop: 16 }}>
                 <RecentRunsList runs={detail.recent_runs} />

@@ -229,13 +229,6 @@ export const opsApi = {
         ),
     getRunLogs: (runId: string, after = 0, limit = 500) =>
         fetchJson<RunLogsResponse>(`/runs/${runId}/logs?after=${after}&limit=${limit}`),
-    getMetricsCharts: (pipelineId: string, modelId?: string) => {
-        const params = new URLSearchParams({ pipeline_id: pipelineId });
-        if (modelId) params.set("model_id", modelId);
-        return fetchJson<{ charts: ChartSpec[] }>(`/metrics/charts?${params}`);
-    },
-    getMetricsSummaryLegacy: (pipelineId: string) =>
-        fetchJson<Record<string, unknown>>(`/metrics/summary?pipeline_id=${pipelineId}`),
 
     getMetricsRuns: (pipelineId: string, params: MetricsListParams = {}) =>
         fetchJson<MetricsRunsResponse>(
@@ -317,10 +310,6 @@ export const opsApi = {
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/classes/${encodeURIComponent(label)}${toQuery(params)}`,
         ),
 
-    getTrainingCurves: (runKey: string, limitEpochs?: number) => {
-        const params = limitEpochs ? `?limit_epochs=${limitEpochs}` : "";
-        return fetchJson<{ charts: ChartSpec[] }>(`/training/${encodeURIComponent(runKey)}/curves${params}`);
-    },
     getTrainingRun: (runKey: string) =>
         fetchJson<Record<string, unknown>>(`/training/${encodeURIComponent(runKey)}`),
 

@@ -337,22 +337,10 @@ class TrainingStatusManager:
         self.row["training_status__heartbeat_at"] = utc_iso(now)
         self.row["training_status__lease_expires_at"] = utc_iso(now + timedelta(seconds=self.lease_ttl_s))
 
-    def _publish_curves(self) -> None:
-        run_dir = self.row.get("training_status__run_dir")
-        if not self.training_run_key or not run_dir or pd.isna(run_dir):
-            return
-        from datapipe_ml.observability.hooks import maybe_publish_training_curves
-
-        maybe_publish_training_curves(
-            training_run_key=self.training_run_key,
-            run_dir=str(run_dir),
-        )
-
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(self.heartbeat_interval_s):
             self._touch_lease()
             self._store()
-            self._publish_curves()
 
     def _finalize_status(
         self,

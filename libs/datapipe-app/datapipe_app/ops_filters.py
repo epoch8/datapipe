@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any, Literal, Sequence
 
-from datapipe_app.spec_registry import OpsSpecValidationError
+from datapipe_app.errors import OpsSpecValidationError
 from datapipe_app.specs import OpsFilterRule
 
 OpsFilterOperator = Literal[

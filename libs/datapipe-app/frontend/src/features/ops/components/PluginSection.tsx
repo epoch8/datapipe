@@ -31,16 +31,20 @@ export function PluginSection({ enrichments }: { enrichments?: Enrichment[] }) {
                         </Card>
                     );
                 }
-                if (e.type === "ml_metrics_summary") {
-                    const p = e.payload;
+                if (e.type === "ml_metrics_summary" || e.type === "ops_metrics_summary") {
+                    const p = e.payload as Record<string, unknown>;
+                    const name = p.metric_name ?? "metric";
+                    const value = p.metric_value ?? "—";
                     return (
                         <Card key={i} title="Latest metrics" style={{ marginTop: 16 }}>
-                            <Descriptions size="small" column={3}>
-                                {Object.entries(p).map(([k, v]) => (
-                                    <Descriptions.Item key={k} label={k}>
-                                        {String(v)}
-                                    </Descriptions.Item>
-                                ))}
+                            <Descriptions size="small" column={2}>
+                                <Descriptions.Item label={String(name)}>{String(value)}</Descriptions.Item>
+                                {p.model_id != null ? (
+                                    <Descriptions.Item label="Model">{String(p.model_id)}</Descriptions.Item>
+                                ) : null}
+                                {p.source_table != null ? (
+                                    <Descriptions.Item label="Table">{String(p.source_table)}</Descriptions.Item>
+                                ) : null}
                             </Descriptions>
                         </Card>
                     );

@@ -74,6 +74,8 @@ export type OpsImageDataSpecPayload = {
     subset_join_columns?: Record<string, string>;
     subset_column?: string | null;
     ground_truth?: OpsImageAnnotationSpecPayload | null;
+    records_show_subset?: boolean;
+    records_show_ground_truth?: boolean;
     visualizer?: string | null;
     preview_size?: number;
     modal_max_side?: number;

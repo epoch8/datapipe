@@ -738,6 +738,7 @@ export interface OpsImageRecordsResponse {
     scope: "data" | "frozen_dataset" | "model_prediction";
     parent_id?: string | null;
     primary_key_columns: string[];
+    list_columns?: string[];
     rows: OpsImageRecordListRow[];
     total: number | null;
     limit: number;

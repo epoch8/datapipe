@@ -27,6 +27,7 @@ from datapipe_app.observability.run_triggers import (
     stage_trigger_values,
 )
 from datapipe_app.observability.tables import ObservabilityTableConfig
+from datapipe_ml.observability.tables import MLObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
 
@@ -97,21 +98,6 @@ class PipelineScheduleRow(Base):
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
-class PipelineMetricsCandidateRow(Base):
-    __tablename__ = "metrics_candidates"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    pipeline_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    model_id: Mapped[str] = mapped_column(String(512), nullable=False)
-    model_source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual")
-    artifact_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    dataset_id: Mapped[str] = mapped_column(String(512), nullable=False)
-    subset: Mapped[str] = mapped_column(String(64), nullable=False, default="val")
-    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    metrics_state: Mapped[str] = mapped_column(String(32), nullable=False, default="not_computed")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
 class ObservabilityStore:
     def __init__(
         self,
@@ -119,12 +105,14 @@ class ObservabilityStore:
         *,
         schema: Optional[str] = None,
         tables: Optional[ObservabilityTableConfig] = None,
+        ml_tables: Optional[MLObservabilityTableConfig] = None,
     ):
         self.engine = engine
         self.schema = schema
         self.tables = tables or ObservabilityTableConfig()
+        self.ml_tables = ml_tables or MLObservabilityTableConfig()
         self._Session = sessionmaker(bind=engine, expire_on_commit=False)
-        apply_observability_table_config(self.tables, self.schema)
+        apply_observability_table_config(self.tables, self.schema, ml_tables=self.ml_tables)
 
     @classmethod
     def from_url(
@@ -145,9 +133,9 @@ class ObservabilityStore:
 
     def create_all(self) -> None:
         Base.metadata.create_all(self.engine)
-        from datapipe_app.observability.analytics_views import ensure_analytics_tables
+        from datapipe_ml.observability.analytics_views import ensure_analytics_tables
 
-        ensure_analytics_tables(self.engine, tables=self.tables, schema=self.schema)
+        ensure_analytics_tables(self.engine, tables=self.ml_tables, schema=self.schema)
 
     def session(self) -> Session:
         return self._Session()
@@ -539,44 +527,3 @@ class ObservabilityStore:
     def get_schedule(self, pipeline_id: str) -> Optional[PipelineScheduleRow]:
         with self.session() as session:
             return session.get(PipelineScheduleRow, pipeline_id)
-
-    def list_metrics(self, *args: Any, **kwargs: Any) -> list[Any]:
-        return []
-
-    def upsert_pipeline_metric(self, row: dict[str, Any]) -> None:
-        return None
-
-    def list_training_epoch_metrics(self, *args: Any, **kwargs: Any) -> list[Any]:
-        return []
-
-    def upsert_training_epoch_metric(self, row: dict[str, Any]) -> None:
-        return None
-
-    def has_metrics(self, pipeline_id: Optional[str] = None) -> bool:
-        return False
-
-    def list_metrics_candidates(self, pipeline_id: str) -> list[PipelineMetricsCandidateRow]:
-        with self.session() as session:
-            return list(
-                session.scalars(
-                    select(PipelineMetricsCandidateRow)
-                    .where(PipelineMetricsCandidateRow.pipeline_id == pipeline_id)
-                    .order_by(PipelineMetricsCandidateRow.created_at.desc())
-                ).all()
-            )
-
-    def add_metrics_candidate(self, row: PipelineMetricsCandidateRow) -> PipelineMetricsCandidateRow:
-        with self.session() as session:
-            session.add(row)
-            session.commit()
-            session.refresh(row)
-            return row
-
-    def delete_metrics_candidate(self, pipeline_id: str, candidate_id: str) -> bool:
-        with self.session() as session:
-            row = session.get(PipelineMetricsCandidateRow, candidate_id)
-            if row is None or row.pipeline_id != pipeline_id:
-                return False
-            session.delete(row)
-            session.commit()
-            return True

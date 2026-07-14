@@ -1,12 +1,18 @@
 import type { OpsColumn } from "../../../types/opsSpecs";
 
-export function imageRecordFilterColumns(mode: "image" | "frozen_dataset" | "prediction"): OpsColumn[] {
+export function imageRecordFilterColumns(
+    mode: "image" | "frozen_dataset" | "prediction",
+    imageView?: { records_show_subset?: boolean } | null,
+): OpsColumn[] {
     if (mode === "image") {
-        return [
+        const columns: OpsColumn[] = [
             { id: "image_name", label: "Image", source: "image_name", filterable: true, sortable: true },
             { id: "image_url", label: "URL", source: "image_url", filterable: true, sortable: true },
-            { id: "subset", label: "Subset", source: "subset_id", kind: "chip", filterable: true, sortable: true },
         ];
+        if (imageView?.records_show_subset) {
+            columns.push({ id: "subset", label: "Subset", source: "subset_id", kind: "chip", filterable: true, sortable: true });
+        }
+        return columns;
     }
     if (mode === "frozen_dataset") {
         return [

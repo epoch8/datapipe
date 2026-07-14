@@ -2,23 +2,16 @@ import React from "react";
 import { Alert, Card, Descriptions, Spin, Typography } from "antd";
 import { Link, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
-import type { ChartSpec } from "../../types/ops";
-import { ChartGrid } from "./components/ChartGrid";
 
 const { Text } = Typography;
 
 export function TrainingDetail() {
     const { runKey = "" } = useParams();
     const [detail, setDetail] = React.useState<Record<string, unknown>>({});
-    const [charts, setCharts] = React.useState<ChartSpec[]>([]);
     const [error, setError] = React.useState<string | null>(null);
 
     const load = React.useCallback(() => {
         opsApi.getTrainingRun(decodeURIComponent(runKey)).then(setDetail).catch((e) => setError(String(e)));
-        opsApi
-            .getTrainingCurves(decodeURIComponent(runKey))
-            .then((r) => setCharts(r.charts))
-            .catch(() => undefined);
     }, [runKey]);
 
     React.useEffect(() => {
@@ -55,9 +48,6 @@ export function TrainingDetail() {
                     </Descriptions>
                 )}
             </Card>
-            <div style={{ marginTop: 16 }}>
-                <ChartGrid charts={charts} />
-            </div>
         </div>
     );
 }
