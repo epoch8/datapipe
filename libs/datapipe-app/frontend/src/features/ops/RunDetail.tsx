@@ -16,10 +16,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/ops";
 import type { PipelineDetail, RunDetail as RunDetailType } from "../../types/ops";
 import { PageHeader } from "./shared";
+import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { RunLogsPanel } from "./components/RunLogsPanel";
 import { resolveRunScopeDisplay } from "./utils/runScope";
 import { formatRunTriggerLabel } from "./utils/recentRuns";
+import { workflowIconSvg } from "../cy/nodeIcons";
 
 const { Text } = Typography;
 
@@ -104,6 +106,10 @@ export function RunDetail() {
     const { scopeLabel, targetLabel, highlightLabel } = resolveRunScopeDisplay(run);
     const isStageRun = scopeLabel === "stage run";
     const duration = formatDuration(run.started_at, run.finished_at);
+    const runIsActive = run.status === "running";
+    const pipelineGraphTitle = highlightLabel
+        ? `Pipeline graph · ${highlightLabel}`
+        : "Pipeline graph";
 
     const startRun = (labels: [string, string][]) => {
         opsApi
@@ -241,8 +247,18 @@ export function RunDetail() {
                         stageEdges={pipeline.stage_edges}
                         labelGraph={pipeline.label_graph}
                         mode="compact"
+                        scopeHighlightAll={!isStageRun}
                         scopeHighlightLabel={highlightLabel}
                         scopeMuteOutside={isStageRun}
+                        allowClickSelect={false}
+                        onLabelSelect={(label) =>
+                            navigate(`/graph?stage=${encodeURIComponent(label)}`)
+                        }
+                        onStageRun={
+                            pipeline.agent_mode
+                                ? (label) => startRun([["stage", label]])
+                                : undefined
+                        }
                     />
                 </div>
             )}
@@ -254,6 +270,28 @@ export function RunDetail() {
             <Tabs defaultActiveKey="logs">
                 <Tabs.TabPane tab="Logs" key="logs">
                     <RunLogsPanel runId={run.run_id} status={run.status} />
+                    <div className="pipeline-card pipeline-card-main" style={{ marginTop: 16 }}>
+                        <div className="pipeline-card-header">
+                            <div className="pipeline-card-title">
+                                <span
+                                    className="pipeline-card-title-icon"
+                                    dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                                />
+                                {pipelineGraphTitle}
+                            </div>
+                        </div>
+                        <div className="pipeline-card-body">
+                            <PipelineGraphAgentOnly
+                                stageFilter={highlightLabel}
+                                runSteps={run.steps}
+                                height={480}
+                                rankDir="TB"
+                                refreshIntervalMs={runIsActive ? getRefreshIntervalMs() : 0}
+                                graphRefreshToken={refreshToken}
+                                pipelineId={run.pipeline_id}
+                            />
+                        </div>
+                    </div>
                 </Tabs.TabPane>
                 <Tabs.TabPane tab="Steps" key="steps">
                     <Table

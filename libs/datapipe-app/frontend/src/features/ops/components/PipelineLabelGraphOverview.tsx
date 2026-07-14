@@ -21,6 +21,8 @@ export type PipelineLabelGraphOverviewProps = {
     labelGraph?: LabelGraphPayload;
     selectedLabel?: string | null;
     scopeHighlightLabel?: string | null;
+    scopeHighlightAll?: boolean;
+    allowClickSelect?: boolean;
     scopeMuteOutside?: boolean;
     mode?: "overview" | "compact";
     onLabelSelect?: (label: string) => void;
@@ -71,7 +73,8 @@ function LabelGraphNodeCard({
     hovered,
     muted,
     onHover,
-    onSelect,
+    onClickSelect,
+    onContextSelect,
     onRun,
     tooltip,
 }: {
@@ -80,7 +83,8 @@ function LabelGraphNodeCard({
     hovered: boolean;
     muted: boolean;
     onHover: (id: string | null) => void;
-    onSelect?: (label: string) => void;
+    onClickSelect?: (label: string) => void;
+    onContextSelect?: (label: string) => void;
     onRun?: (label: string) => void;
     tooltip?: string;
 }) {
@@ -103,17 +107,21 @@ function LabelGraphNodeCard({
                 width: layoutNode.width,
                 height: layoutNode.height,
             }}
-            onClick={() => onSelect?.(id)}
+            onClick={onClickSelect ? () => onClickSelect(id) : undefined}
             onMouseEnter={() => onHover(id)}
             onMouseLeave={() => onHover(null)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelect?.(id);
-                }
-            }}
+            role={onClickSelect ? "button" : undefined}
+            tabIndex={onClickSelect ? 0 : undefined}
+            onKeyDown={
+                onClickSelect
+                    ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onClickSelect(id);
+                          }
+                      }
+                    : undefined
+            }
         >
             <div className="label-node-title">{label}</div>
         </div>
@@ -129,9 +137,9 @@ function LabelGraphNodeCard({
             nodeBody
         );
 
-    if (onSelect || onRun) {
+    if (onContextSelect || onRun) {
         return (
-            <LabelGraphContextMenu nodeId={id} onSelect={onSelect} onRun={onRun}>
+            <LabelGraphContextMenu nodeId={id} onSelect={onContextSelect} onRun={onRun}>
                 {card}
             </LabelGraphContextMenu>
         );
@@ -167,6 +175,8 @@ export function PipelineLabelGraphOverview({
     labelGraph: labelGraphProp,
     selectedLabel,
     scopeHighlightLabel = null,
+    scopeHighlightAll = false,
+    allowClickSelect = true,
     scopeMuteOutside = false,
     mode = "overview",
     onLabelSelect,
@@ -208,6 +218,8 @@ export function PipelineLabelGraphOverview({
         return ids;
     }, [selectedLabel, hoveredNodeId, nodeById, topMap]);
 
+    const clickLabelSelect = allowClickSelect ? onLabelSelect : undefined;
+
     const hasFocus = Boolean(selectedLabel) || activeIds.size > 0;
 
     const visibleExactEdges = layout.exactEdges.filter((e) =>
@@ -231,7 +243,8 @@ export function PipelineLabelGraphOverview({
     const leafNodes = layout.nodes.filter((n) => n.kind === "node");
 
     const isInRunScope = (nodeId: string): boolean => {
-        if (!scopeHighlightLabel) return true;
+        if (scopeHighlightAll) return true;
+        if (!scopeHighlightLabel) return false;
         if (nodeId === scopeHighlightLabel) return true;
         const top = topMap.get(nodeId);
         if (top === scopeHighlightLabel) return true;
@@ -239,6 +252,12 @@ export function PipelineLabelGraphOverview({
         if (highlightNode?.children_ids?.includes(nodeId)) return true;
         if (highlightNode?.parent_id === nodeId) return true;
         return false;
+    };
+
+    const isRunScopeHighlighted = (nodeId: string): boolean => {
+        if (scopeHighlightAll) return true;
+        if (!scopeHighlightLabel) return false;
+        return isInRunScope(nodeId);
     };
 
     const isNodeMuted = (nodeId: string): boolean => {
@@ -356,9 +375,9 @@ export function PipelineLabelGraphOverview({
 
                     <div className="pipeline-label-graph-nodes">
                         {containerNodes.map((cn) => {
-                            const isScopeSelected =
-                                scopeHighlightLabel != null && cn.nodeId === scopeHighlightLabel;
-                            const isSelected = selectedLabel === cn.nodeId || isScopeSelected;
+                            const isScopeSelected = isRunScopeHighlighted(cn.nodeId);
+                            const isSelected =
+                                (clickLabelSelect && selectedLabel === cn.nodeId) || isScopeSelected;
                             const isHovered =
                                 activeIds.has(cn.nodeId) ||
                                 (cn.childIds?.some((c) => activeIds.has(c)) ?? false);
@@ -381,15 +400,23 @@ export function PipelineLabelGraphOverview({
                                     }}
                                     onMouseEnter={() => setHoveredNodeId(cn.nodeId)}
                                     onMouseLeave={() => setHoveredNodeId(null)}
-                                    onClick={() => onLabelSelect?.(cn.nodeId)}
-                                    role="button"
-                                    tabIndex={0}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault();
-                                            onLabelSelect?.(cn.nodeId);
-                                        }
-                                    }}
+                                    onClick={
+                                        clickLabelSelect
+                                            ? () => clickLabelSelect(cn.nodeId)
+                                            : undefined
+                                    }
+                                    role={clickLabelSelect ? "button" : undefined}
+                                    tabIndex={clickLabelSelect ? 0 : undefined}
+                                    onKeyDown={
+                                        clickLabelSelect
+                                            ? (e) => {
+                                                  if (e.key === "Enter" || e.key === " ") {
+                                                      e.preventDefault();
+                                                      clickLabelSelect(cn.nodeId);
+                                                  }
+                                              }
+                                            : undefined
+                                    }
                                 >
                                     <div className="label-container-title">{cn.label}</div>
                                 </div>
@@ -447,20 +474,19 @@ export function PipelineLabelGraphOverview({
                                     ? isNodeMuted(parentInterleaved.nodeId)
                                     : false);
                             const isHovered = hoveredNodeId === ln.nodeId;
+                            const isScopeSelected = isRunScopeHighlighted(ln.nodeId);
+                            const isUserSelected =
+                                clickLabelSelect && selectedLabel === ln.nodeId;
                             return (
                                 <LabelGraphNodeCard
                                     key={ln.id}
                                     layoutNode={ln}
-                                    selected={
-                                        selectedLabel === ln.nodeId ||
-                                        (scopeHighlightLabel != null &&
-                                            isInRunScope(ln.nodeId) &&
-                                            scopeMuteOutside)
-                                    }
+                                    selected={isUserSelected || isScopeSelected}
                                     hovered={isHovered}
-                                    muted={muted && selectedLabel !== ln.nodeId}
+                                    muted={muted && !isScopeSelected && selectedLabel !== ln.nodeId}
                                     onHover={setHoveredNodeId}
-                                    onSelect={onLabelSelect}
+                                    onClickSelect={clickLabelSelect}
+                                    onContextSelect={onLabelSelect}
                                     onRun={onStageRun}
                                     tooltip={nodeTooltip(ln.nodeId)}
                                 />

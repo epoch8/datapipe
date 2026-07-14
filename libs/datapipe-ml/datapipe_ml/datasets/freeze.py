@@ -19,10 +19,9 @@ from datapipe.step.datatable_transform import DatatableTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
 from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
-from datapipe.sql_util import sql_apply_idx_filter_to_table
 from pathy import Pathy
 from sqlalchemy import Column, and_, func, select
-from sqlalchemy.sql.sqltypes import JSON, DateTime, Float, Integer, String
+from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer, String
 
 from datapipe_ml.core.datapipe import (
     check_columns_are_in_table,
@@ -44,100 +43,26 @@ def _get_datatable_sql_meta_table(dt: DataTable):
     return cast(_SqlTableMetaLike, dt.meta).sql_table
 
 
-def frozen_dataset_created_at_timestamp(created_at: datetime) -> float:
-    if created_at.tzinfo is None:
-        return created_at.replace(tzinfo=timezone.utc).timestamp()
-    return created_at.timestamp()
-
-
-def get_last_freeze_gt_watermark(
-    ds: DataStore,
-    dt__frozen_dataset: DataTable,
-    *,
-    created_at_col: str,
-    gt_max_update_ts_col: str,
-) -> float | None:
-    assert isinstance(dt__frozen_dataset.table_store, TableStoreDB)
-    frozen_dataset_table = dt__frozen_dataset.table_store.data_table
-
-    select_cols = [frozen_dataset_table.c[created_at_col]]
-    has_watermark_col = gt_max_update_ts_col in frozen_dataset_table.c
-    if has_watermark_col:
-        select_cols.append(frozen_dataset_table.c[gt_max_update_ts_col])
-
-    with ds.meta_dbconn.con.begin() as conn:
-        row = (
-            conn.execute(
-                select(*select_cols)
-                .order_by(frozen_dataset_table.c[created_at_col].desc())
-                .limit(1)
-            )
-            .mappings()
-            .first()
-        )
-
-    if row is None:
-        return None
-
-    if has_watermark_col:
-        watermark = row.get(gt_max_update_ts_col)
-        if watermark is not None:
-            return float(watermark)
-
-    created_at = row[created_at_col]
-    if created_at is None:
-        return None
-    return frozen_dataset_created_at_timestamp(created_at)
-
-
 def get_changed_idxs_since_last_freeze_sql(
     ds: DataStore,
     dt__frozen_dataset: DataTable,
     dt__image__ground_truth: DataTable,
-    *,
     created_at_col: str,
-    gt_max_update_ts_col: str,
 ) -> IndexDF:
     assert isinstance(dt__frozen_dataset.table_store, TableStoreDB)
+    frozen_dataset_table = dt__frozen_dataset.table_store.data_table
     image_ground_truth_meta_table = _get_datatable_sql_meta_table(dt__image__ground_truth)
 
-    watermark = get_last_freeze_gt_watermark(
-        ds,
-        dt__frozen_dataset,
-        created_at_col=created_at_col,
-        gt_max_update_ts_col=gt_max_update_ts_col,
-    )
-
-    stmt = select(*[image_ground_truth_meta_table.c[k] for k in dt__image__ground_truth.primary_keys])
-    if watermark is not None:
-        stmt = stmt.where(image_ground_truth_meta_table.c["update_ts"] > watermark)
-
     with ds.meta_dbconn.con.begin() as conn:
+        max_created_at = conn.execute(select(func.max(frozen_dataset_table.c[created_at_col]))).scalar_one_or_none()
+
+        stmt = select(*[image_ground_truth_meta_table.c[k] for k in dt__image__ground_truth.primary_keys])
+        if max_created_at is not None:
+            stmt = stmt.where(image_ground_truth_meta_table.c["update_ts"] > max_created_at.timestamp())
+
         df_changed = pd.read_sql(stmt, conn)
 
     return IndexDF(df_changed)
-
-
-def _gt_max_update_ts_for_idx(
-    ds: DataStore,
-    dt__image__ground_truth: DataTable,
-    idx: pd.DataFrame,
-    primary_keys: List[str],
-) -> float:
-    if idx.empty:
-        return 0.0
-    meta_table = _get_datatable_sql_meta_table(dt__image__ground_truth)
-    idx_df = IndexDF(idx[primary_keys].drop_duplicates())
-    sql = select(func.max(meta_table.c["update_ts"]))
-    sql = sql_apply_idx_filter_to_table(
-        sql=sql,
-        table=meta_table,
-        primary_keys=list(primary_keys),
-        idx=idx_df,
-    )
-    with ds.meta_dbconn.con.begin() as conn:
-        value = conn.execute(sql).scalar_one_or_none()
-    return float(value or 0.0)
 
 
 def freeze_dataset(
@@ -174,14 +99,11 @@ def freeze_dataset(
         raise ValueError("Not enough time passed since last frozen dataset.")
 
     # drop nulls in idx and check delta
-    created_at_col = f"{model_type}_frozen_dataset__created_at"
-    gt_max_update_ts_col = f"{model_type}_frozen_dataset__gt_max_update_ts"
     idx = get_changed_idxs_since_last_freeze_sql(
         ds=ds,
         dt__frozen_dataset=dt__frozen_dataset,
         dt__image__ground_truth=dt__image__ground_truth,
-        created_at_col=created_at_col,
-        gt_max_update_ts_col=gt_max_update_ts_col,
+        created_at_col=f"{model_type}_frozen_dataset__created_at",
     ).dropna()
     if len(idx) < min_delta:
         raise ValueError(f"Not enough changed idx for freezing ({len(idx)} < {min_delta})")
@@ -266,8 +188,7 @@ def freeze_dataset(
         )
 
     # generate new frozen dataset ID
-    frozen_at = datetime.now(timezone.utc)
-    date = frozen_at.strftime("%Y%m%d_%H%M")
+    date = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     frozen_dataset_id = f"{date}_{uuid.uuid4()}"
     logger.info(f"Freezing '{frozen_dataset_id}'")
 
@@ -290,29 +211,25 @@ def freeze_dataset(
     if counts["val"] == 0:
         raise ValueError("No val samples.")
     total = counts["train"] + counts["val"] + counts["test"]
-    gt_max_update_ts = _gt_max_update_ts_for_idx(
-        ds,
-        dt__image__ground_truth,
-        df__frozen_dataset__has__image_gt,
-        primary_keys,
-    )
 
     # prepare metadata row for frozen_dataset table
-    assert isinstance(dt__frozen_dataset.table_store, TableStoreDB)
-    frozen_dataset_row: Dict[str, Any] = {
-        frozen_dataset_id__name: frozen_dataset_id,
-        created_at_col: frozen_at,
-        f"{model_type}_frozen_dataset__folder_filepath": str(
-            Pathy.fluid(working_dir) / f"{model_type}_frozen_dataset" / frozen_dataset_id
-        ),
-        f"{model_type}_frozen_dataset__images_count": total,
-        f"{model_type}_frozen_dataset__train_images_count": counts["train"],
-        f"{model_type}_frozen_dataset__val_images_count": counts["val"],
-        f"{model_type}_frozen_dataset__test_images_count": counts["test"],
-    }
-    if gt_max_update_ts_col in dt__frozen_dataset.table_store.data_table.c:
-        frozen_dataset_row[gt_max_update_ts_col] = gt_max_update_ts
-    df__frozen_dataset = pd.DataFrame([frozen_dataset_row])
+    df__frozen_dataset = pd.DataFrame(
+        [
+            {
+                **{frozen_dataset_id__name: frozen_dataset_id},
+                **{f"{model_type}_frozen_dataset__created_at": datetime.strptime(date, "%Y%m%d_%H%M")},
+                **{
+                    f"{model_type}_frozen_dataset__folder_filepath": str(
+                        Pathy.fluid(working_dir) / f"{model_type}_frozen_dataset" / frozen_dataset_id
+                    )
+                },
+                **{f"{model_type}_frozen_dataset__images_count": total},
+                **{f"{model_type}_frozen_dataset__train_images_count": counts["train"]},
+                **{f"{model_type}_frozen_dataset__val_images_count": counts["val"]},
+                **{f"{model_type}_frozen_dataset__test_images_count": counts["test"]},
+            }
+        ]
+    )
 
     # build new has_image_gt rows
     cols_to_keep = primary_keys + [frozen_dataset_id__name] + ["subset_id", "image__image_path"] + extra_gt_columns
@@ -400,7 +317,6 @@ class FreezeDatasetStep(PipelineStep):
                         data_sql_schema=prim_schema
                         + [
                             Column(f"{prefix}__created_at", DateTime),
-                            Column(f"{prefix}__gt_max_update_ts", Float),
                             Column(f"{prefix}__folder_filepath", String),
                             Column(f"{prefix}__images_count", Integer),
                             Column(f"{prefix}__train_images_count", Integer),
