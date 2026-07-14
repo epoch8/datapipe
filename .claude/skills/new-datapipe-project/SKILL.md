@@ -64,17 +64,18 @@ Knowledge sources, in order:
 1. **Project-specific one-off** (e.g. a fully custom annotation service or format that exists
    nowhere else): implement it locally in the project and move on — no issue, don't involve the
    team. Note it in SPEC.md as a local integration.
-2. **Reusable block** (other projects would plausibly use it): dual track — implement a custom step
-   in-project NOW so the task isn't blocked, AND file a **GitHub issue in `epoch8/datapipe`**
+2. **Reusable block** (other projects would plausibly use it): dual track — FILE THE ISSUE FIRST
+   (at decision time, not after the fact), then implement a custom step in-project so the task isn't
+   blocked. The **GitHub issue in `epoch8/datapipe`**
    (`gh issue create`, else hand the user ready-to-paste text) carrying: task context (2-3 lines
    from SPEC.md), the missing block, the **proposed interface** (Step-class signature: input/output
    tables, keys, config), a pointer to the interim implementation, who else would use it. Record the
    issue URL in SPEC.md; when the block lands in the lib, swap the custom step for it.
 3. **Core-machinery change** (new store type, meta/scheduling semantics, UI capability — not
-   expressible from a project at all): never silently fork core. Design first — turn the issue into
-   a mini-spec and discuss with the team BEFORE building; implement on a **branch in the monorepo
-   `libs/*`**, and let the project pin its git-dep to that branch rev so it isn't blocked while the
-   PR goes through review; re-pin to master after merge. If timelines demand, a workaround OUTSIDE
+   expressible from a project at all): never silently fork core, and **no code before the issue**.
+   Order is strict: file the issue as a mini-spec → the team agrees on the design → only then
+   implement on a **branch in the monorepo `libs/*`**; the project pins its git-dep to that branch
+   rev so it isn't blocked while the PR goes through review; re-pin to master after merge. If timelines demand, a workaround OUTSIDE
    the pipe (external preprocessing feeding a table) is honest interim — marked as tech debt in
    SPEC.md.
 
