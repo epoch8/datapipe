@@ -72,15 +72,30 @@ section collected from real runs.
 
 ## Running with an AI agent
 
-Every full example ships an **operational skill** in [`.claude/skills/`](../.claude/skills)
-(`setup-detection-tags`, `setup-e2e-template`, `setup-ocr`, `setup-embedder-fiftyone`,
-`setup-sam-cvat`, plus the umbrella `datapipe-examples`). Open this repository in
-[Claude Code](https://claude.com/claude-code) and type `/setup-<example>` — the agent will check your
-environment, prepare `.env`, run the stages with logs, and knows the example's failure modes. The
-skills encode the same instructions as the READMEs, but in a form an agent can execute.
+There are **two different skills for two different situations** — pick by what you are trying to do:
 
-To assemble a **new** pipeline for your own task (outside this repo), install the
-[`new-datapipe-project`](../.claude/skills/new-datapipe-project) skill globally
-(`cp -r .claude/skills/new-datapipe-project ~/.claude/skills/`) and invoke it in an empty project
-directory — it interviews you about the task, maps it onto these examples' patterns, and brings up
-a working project on your data.
+### Path 1: run or adapt an existing example — `setup-*` skills
+
+Every full example ships an **operational skill** in [`.claude/skills/`](../.claude/skills):
+`setup-detection-tags`, `setup-e2e-template`, `setup-ocr`, `setup-embedder-fiftyone`,
+`setup-sam-cvat` — plus the umbrella router `datapipe-examples` that helps choose when you are not
+sure which example fits. Open **this repository** in [Claude Code](https://claude.com/claude-code)
+and type `/setup-<example>`. The agent will check your environment, prepare `.env` (pausing for your
+review), run the stages with logs, and it knows the example's real failure modes. Use this path both
+for the bundled demo data and for pointing an example at **your own data** (each skill documents its
+"run on your data" knobs).
+
+### Path 2: build a NEW pipeline for your own task — `new-datapipe-project`
+
+When no example matches — you need your own pipeline (any size: plain ETL, ML training with
+metrics, LLM steps, annotation loops, viewers) as a **standalone project outside this repo** — use
+[`new-datapipe-project`](../.claude/skills/new-datapipe-project). Install it globally once
+(`cp -r .claude/skills/new-datapipe-project ~/.claude/skills/`), then invoke it in an empty project
+directory. It interviews you about the task (data, deployment, secrets, success criteria), maps the
+requirements onto the patterns these examples implement (flagging gaps explicitly), writes the
+project's `docs/SPEC.md` for your review, scaffolds a deterministic seed that must run before
+anything is added, and brings the pipeline up block by block on your real data — finishing with a
+README and the project's own operational skill.
+
+Rule of thumb: **inside this repo, running examples → Path 1; empty directory, your own task →
+Path 2.**

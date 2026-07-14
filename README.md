@@ -34,9 +34,16 @@ This repository contains the Datapipe Python packages as a `uv` monorepo workspa
 ## Examples
 
 Runnable example pipelines live in [`examples/`](examples/README.md) — from single-concept snippets
-to full ML loops (training, metrics, annotation, viewers). Each full example ships a **Claude Code
-skill** for agent-assisted setup: open this repo in Claude Code and type `/setup-<example>`
-(see [`.claude/skills/`](.claude/skills)).
+to full ML loops (training, metrics, annotation, viewers).
+
+Working with an AI agent (Claude Code), there are two entry points — pick by what you need:
+
+- **Run or adapt an existing example** → open this repo and type `/setup-<example>`
+  (the `datapipe-examples` skill routes you to the right one).
+- **Build a NEW pipeline for your own task** → the `new-datapipe-project` skill: install it globally
+  and invoke it in an empty directory, outside this repo.
+
+Details for both paths: [`examples/README.md`](examples/README.md).
 
 ## Development
 
