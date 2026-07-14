@@ -1,7 +1,7 @@
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, cast
 
 import pandas as pd
@@ -25,6 +25,8 @@ from sqlalchemy.sql.sqltypes import JSON, DateTime, Integer, String
 
 from datapipe_ml.core.datapipe import (
     check_columns_are_in_table,
+    freeze_created_at_to_ts,
+    freeze_now_utc,
     get_datatable,
     get_pipeline_table_name,
     is_last_frozen_dataset_old_enough,
@@ -58,12 +60,13 @@ def get_changed_idxs_since_last_freeze_sql(
 
         stmt = select(*[image_ground_truth_meta_table.c[k] for k in dt__image__ground_truth.primary_keys])
         if max_created_at is not None:
-            stmt = stmt.where(image_ground_truth_meta_table.c["update_ts"] > max_created_at.timestamp())
+            watermark = freeze_created_at_to_ts(max_created_at)
+            if watermark is not None:
+                stmt = stmt.where(image_ground_truth_meta_table.c["update_ts"] > watermark)
 
         df_changed = pd.read_sql(stmt, conn)
 
     return IndexDF(df_changed)
-
 
 def freeze_dataset(
     ds: DataStore,
@@ -188,7 +191,8 @@ def freeze_dataset(
         )
 
     # generate new frozen dataset ID
-    date = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    frozen_at = freeze_now_utc()
+    date = frozen_at.strftime("%Y%m%d_%H%M")
     frozen_dataset_id = f"{date}_{uuid.uuid4()}"
     logger.info(f"Freezing '{frozen_dataset_id}'")
 
@@ -217,7 +221,7 @@ def freeze_dataset(
         [
             {
                 **{frozen_dataset_id__name: frozen_dataset_id},
-                **{f"{model_type}_frozen_dataset__created_at": datetime.strptime(date, "%Y%m%d_%H%M")},
+                **{f"{model_type}_frozen_dataset__created_at": frozen_at},
                 **{
                     f"{model_type}_frozen_dataset__folder_filepath": str(
                         Pathy.fluid(working_dir) / f"{model_type}_frozen_dataset" / frozen_dataset_id
