@@ -46,7 +46,7 @@ Map each requirement to a verdict before writing code:
 |---|---|---|
 | ✅ ready block | a pattern card covers it | use it, follow its reference example |
 | 🔧 composable | primitives express it (any source is a BatchTransform away) | compose; verify API against the official docs, not memory |
-| ❌ gap | neither | STOP: present options (a) custom step in-project, (b) reusable block upstream (draft a short proposal), (c) workaround — with a recommendation; user picks before assembly |
+| ❌ gap | neither | STOP: present options (a) custom step in-project, (b) reusable block upstream (file the request — see below), (c) workaround — with a recommendation; user picks before assembly |
 
 Knowledge sources, in order:
 1. **Pattern cards**: `references/patterns.md` (ingest, transforms, ML loop, LLM steps, annotation,
@@ -58,6 +58,14 @@ Knowledge sources, in order:
 3. **Official docs**: https://epoch8.github.io/datapipe/ — authoritative for core API when composing
    beyond the examples. On a machine without a datapipe checkout this is your API source; **never
    write datapipe API from memory.**
+
+**Filing an upstream feature request (gap option b):** run both tracks — implement a custom step
+in-project NOW so the user's task isn't blocked, and file a **GitHub issue in `epoch8/datapipe`**
+(`gh issue create` when available; otherwise hand the user the ready-to-paste text). The issue
+carries: task context (2-3 lines from SPEC.md), the missing block, the **proposed interface**
+(Step-class signature: input/output tables, keys, config), a link/pointer to the interim in-project
+implementation, and who else would use it. Record the issue URL in SPEC.md's gap-resolution section
+as a follow-up: when the block lands in the lib, swap the custom step for it.
 
 ## SPEC.md before code
 

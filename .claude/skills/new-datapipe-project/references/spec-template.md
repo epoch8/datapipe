@@ -29,7 +29,8 @@ user's review BEFORE scaffolding. Future agent sessions read this file first.
 
 ## Gap resolutions (if any ❌)
 <For each gap: chosen option (custom step | upstream block proposal | workaround) and why.
-Upstream proposals: 3-5 lines — what, interface, who else needs it.>
+Upstream proposals: the epoch8/datapipe issue URL + one line on the proposed interface; interim
+custom step noted as tech-debt to swap once the block lands.>
 
 ## Secrets (REQUIRED — names only, values live in .env)
 <HF_TOKEN, OPENAI_API_KEY, … — or "none">
