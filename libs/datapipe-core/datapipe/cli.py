@@ -26,6 +26,13 @@ tracer = trace.get_tracer("datapipe_app")
 rich.reconfigure(highlight=False)
 
 
+def _entry_points(group: str):
+    try:
+        return metadata.entry_points(group=group)  # type: ignore
+    except TypeError:
+        return metadata.entry_points().get(group, [])  # type: ignore
+
+
 def load_pipeline(pipeline_name: str) -> DatapipeApp:
     pipeline_split = pipeline_name.split(":")
 
@@ -46,12 +53,9 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
 
     assert isinstance(app, DatapipeApp)
 
-    try:
-        from datapipe_app.observability.settings import bind_pipeline_ops
-
-        bind_pipeline_ops(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
-    except ImportError:
-        pass
+    for entry_point in _entry_points("datapipe.pipeline_init"):
+        init_fn = entry_point.load()
+        init_fn(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
 
     return app
 
@@ -91,7 +95,7 @@ def filter_steps_by_labels_and_name(
     return res
 
 
-def _try_run_steps_observed(
+def _try_run_steps_via_extensions(
     app: DatapipeApp,
     steps: list[ComputeStep],
     *,
@@ -100,19 +104,38 @@ def _try_run_steps_observed(
     pipeline_spec: str | None,
     record: bool = True,
 ) -> bool:
-    try:
-        from datapipe_app.observability.cli_runner import try_run_steps_observed
-
-        return try_run_steps_observed(
+    for entry_point in _entry_points("datapipe.run_steps"):
+        run_fn = entry_point.load()
+        if run_fn(
             app,
             steps,
             executor=executor,
             labels=labels,
             pipeline_spec=pipeline_spec,
             record=record,
-        )
-    except ImportError:
-        return False
+        ):
+            return True
+    return False
+
+
+def _run_steps_cli(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    executor: Executor,
+    labels: Labels,
+    pipeline_spec: str,
+    record: bool,
+) -> None:
+    if not _try_run_steps_via_extensions(
+        app,
+        steps,
+        executor=executor,
+        labels=labels,
+        pipeline_spec=pipeline_spec,
+        record=record,
+    ):
+        run_steps(app.ds, steps, executor=executor)
 
 
 @click.group()
@@ -247,15 +270,14 @@ def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -
 
     with tracer.start_as_current_span("run"):
         while True:
-            if not _try_run_steps_observed(
+            _run_steps_cli(
                 app,
                 app.steps,
                 executor=executor,
                 labels=[],
                 pipeline_spec=pipeline_spec,
                 record=not no_record,
-            ):
-                run_steps(app.ds, app.steps, executor=executor)
+            )
 
             if not loop:
                 break
@@ -276,25 +298,15 @@ def create_all(ctx: click.Context) -> None:
 
     dbconn = app.ds.meta_dbconn
 
-    if dbconn.schema is not None:
-        from sqlalchemy import inspect
-        from sqlalchemy.schema import CreateSchema
+    from datapipe.store.database import ensure_db_schema
 
-        if dbconn.schema not in inspect(dbconn.con).get_schema_names():
-            with dbconn.con.begin() as con:
-                con.execute(CreateSchema(dbconn.schema))
-
+    ensure_db_schema(dbconn)
     _run_db_create_all_extensions(app, dbconn)
     dbconn.sqla_metadata.create_all(dbconn.con)
-    _run_db_create_all_extensions(app, dbconn)
 
 
 def _run_db_create_all_extensions(app: DatapipeApp, dbconn) -> None:
-    try:
-        eps = metadata.entry_points(group="datapipe.db_create_all")
-    except TypeError:
-        eps = metadata.entry_points().get("datapipe.db_create_all", [])  # type: ignore
-    for entry_point in eps:
+    for entry_point in _entry_points("datapipe.db_create_all"):
         create_all_extension = entry_point.load()
         create_all_extension(app, dbconn)
 
@@ -450,15 +462,14 @@ def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -
 
     while True:
         if len(steps_to_run) > 0:
-            if not _try_run_steps_observed(
+            _run_steps_cli(
                 app,
                 steps_to_run,
                 executor=executor,
                 labels=labels,
                 pipeline_spec=pipeline_spec,
                 record=not no_record,
-            ):
-                run_steps(app.ds, steps_to_run, executor=executor)
+            )
 
         if not loop:
             break
@@ -583,13 +594,7 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
-try:
-    entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
-except TypeError:
-    # Compatibility with older versions of importlib.metadata (Python 3.8-3.9)
-    entry_points = metadata.entry_points().get("datapipe.cli", [])  # type: ignore
-
-for entry_point in entry_points:
+for entry_point in _entry_points("datapipe.cli"):
     register_commands = entry_point.load()  # type: ignore
     register_commands(cli)
 

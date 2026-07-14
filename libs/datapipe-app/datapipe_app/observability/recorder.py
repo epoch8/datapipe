@@ -6,6 +6,7 @@ from typing import Generator, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore
 from datapipe.executor import Executor
+from datapipe.step.batch_transform import BaseBatchTransformStep
 
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
@@ -197,7 +198,20 @@ class RunRecorder:
         for step in steps:
             self.start_step(step.name, run_id=rid)
             try:
-                step.run_full(ds=ds, run_config=None, executor=executor)  # type: ignore[arg-type]
+                run_kwargs: dict = {"ds": ds, "run_config": None, "executor": executor}
+                if isinstance(step, BaseBatchTransformStep):
+
+                    def on_batch_progress(processed: int, total: int) -> None:
+                        self.update_step_progress(
+                            step.name,
+                            processed=processed,
+                            total=total,
+                            run_id=rid,
+                        )
+
+                    run_kwargs["on_batch_progress"] = on_batch_progress
+
+                step.run_full(**run_kwargs)  # type: ignore[arg-type]
                 self.finish_step(step.name, status="completed", run_id=rid)
             except Exception as exc:
                 error = str(exc)

@@ -25,6 +25,12 @@ jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
 [project.entry-points."datapipe.cli"]
 datapipe_app = "datapipe_app.cli:register_commands"
 
+[project.entry-points."datapipe.pipeline_init"]
+datapipe_app = "datapipe_app.observability.settings:bind_pipeline_ops"
+
+[project.entry-points."datapipe.run_steps"]
+datapipe_app = "datapipe_app.observability.cli_runner:try_run_steps_observed"
+
 [project.entry-points."datapipe.db_create_all"]
 datapipe_app = "datapipe_app.db_schema:create_observability_tables_hook"
 

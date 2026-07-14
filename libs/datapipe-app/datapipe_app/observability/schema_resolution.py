@@ -7,7 +7,6 @@ from typing import Optional
 from sqlalchemy import text
 
 from datapipe.datatable import DataStore
-from datapipe.store.database import DBConn
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +42,6 @@ def resolve_datapipe_schema(
         "Datapipe schema not configured explicitly; observability tables may use default schema"
     )
     return None
-
-
-def ensure_db_schema(dbconn: DBConn) -> None:
-    if not dbconn.schema:
-        return
-    if dbconn.connstr.startswith("sqlite"):
-        return
-    with dbconn.con.begin() as con:
-        con.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{dbconn.schema}"'))
 
 
 def is_datapipe_owned_table(table_name: str) -> bool:
