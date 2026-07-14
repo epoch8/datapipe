@@ -78,3 +78,9 @@ Every full example ships an **operational skill** in [`.claude/skills/`](../.cla
 [Claude Code](https://claude.com/claude-code) and type `/setup-<example>` — the agent will check your
 environment, prepare `.env`, run the stages with logs, and knows the example's failure modes. The
 skills encode the same instructions as the READMEs, but in a form an agent can execute.
+
+To assemble a **new** pipeline for your own task (outside this repo), install the
+[`new-datapipe-project`](../.claude/skills/new-datapipe-project) skill globally
+(`cp -r .claude/skills/new-datapipe-project ~/.claude/skills/`) and invoke it in an empty project
+directory — it interviews you about the task, maps it onto these examples' patterns, and brings up
+a working project on your data.
