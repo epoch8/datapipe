@@ -228,7 +228,7 @@ class DatapipeOpsSpec:
 
 
 def ops_spec_to_dict(value: Any) -> Any:
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return asdict(value)
     if isinstance(value, (list, tuple)):
         return [ops_spec_to_dict(item) for item in value]

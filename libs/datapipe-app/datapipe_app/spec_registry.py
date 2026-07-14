@@ -142,15 +142,15 @@ class OpsSpecRegistry:
         schema = self._schema_for(spec, table_spec.table, catalog, db)
         for column in table_spec.primary_key_columns:
             self._require_column(spec, table_spec.table, column, schema)
-        for column in table_spec.entity_links.values():
-            self._require_column(spec, table_spec.table, column, schema)
+        for link_column in table_spec.entity_links.values():
+            self._require_column(spec, table_spec.table, link_column, schema)
 
         self._validate_columns_unique(spec, table_spec, "primary_columns", table_spec.primary_columns)
         self._validate_columns_unique(spec, table_spec, "filters", table_spec.filters)
         metric_columns = list(_flatten_columns(table_spec.metric_columns))
         self._validate_columns_unique(spec, table_spec, "metric_columns", metric_columns)
-        for column in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]:
-            self._require_column(spec, table_spec.table, column.source, schema)
+        for ops_column in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]:
+            self._require_column(spec, table_spec.table, ops_column.source, schema)
         if table_spec.best_metric_column:
             self._require_column(spec, table_spec.table, table_spec.best_metric_column, schema)
         allowed_sort_ids = {c.id for c in [*table_spec.primary_columns, *metric_columns, *table_spec.filters]}

@@ -5,6 +5,7 @@ from typing import Any, Literal, Sequence
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 
+from datapipe_app.observability.schemas import OpsImageRecordsCountResponse
 from datapipe_app.ops_filters import OpsFilterMode, OpsFilterRule
 from datapipe_app.ops_image_records import OpsImageRecordsSupport
 from datapipe_app.ops_query import OpsQuery, format_snapshot_label, metric_table_columns
@@ -118,7 +119,7 @@ class OpsSpecsService:
         cards = []
         total_classes = 0
         for spec in specs:
-            class_keys = set()
+            class_keys: set[Any] = set()
             for table in spec.class_metrics:
                 class_column = table.entity_links.get("class") or table.entity_links.get("tag")
                 if class_column:
@@ -225,9 +226,11 @@ class OpsSpecsService:
             pipeline_id=pipeline_id, spec_id=spec_id, limit=limit, offset=offset, include_total=include_total, **params
         )
 
-    def image_records_count(self, *, pipeline_id: str, spec_id: str, **params: Any) -> dict[str, Any]:
+    def image_records_count(self, *, pipeline_id: str, spec_id: str, **params: Any) -> OpsImageRecordsCountResponse:
         total = self._image_records.image_records_count(pipeline_id=pipeline_id, spec_id=spec_id, **params)
-        return {"pipeline_id": pipeline_id, "spec_id": spec_id, "scope": "data", "parent_id": None, "total": total}
+        return OpsImageRecordsCountResponse(
+            pipeline_id=pipeline_id, spec_id=spec_id, scope="data", parent_id=None, total=total
+        )
 
     def image_record_detail(self, *, pipeline_id: str, spec_id: str, record_key: str):
         return self._image_records.image_record_detail(pipeline_id=pipeline_id, spec_id=spec_id, record_key=record_key)
@@ -245,15 +248,15 @@ class OpsSpecsService:
             **params,
         )
 
-    def frozen_dataset_records_count(self, *, pipeline_id: str, spec_id: str, dataset_id: str, **params: Any) -> dict[str, Any]:
+    def frozen_dataset_records_count(self, *, pipeline_id: str, spec_id: str, dataset_id: str, **params: Any) -> OpsImageRecordsCountResponse:
         total = self._image_records.frozen_dataset_records_count(spec_id=spec_id, dataset_id=dataset_id, **params)
-        return {
-            "pipeline_id": pipeline_id,
-            "spec_id": spec_id,
-            "scope": "frozen_dataset",
-            "parent_id": dataset_id,
-            "total": total,
-        }
+        return OpsImageRecordsCountResponse(
+            pipeline_id=pipeline_id,
+            spec_id=spec_id,
+            scope="frozen_dataset",
+            parent_id=dataset_id,
+            total=total,
+        )
 
     def frozen_dataset_record_detail(self, *, pipeline_id: str, spec_id: str, dataset_id: str, record_key: str):
         return self._image_records.frozen_dataset_record_detail(
@@ -273,15 +276,15 @@ class OpsSpecsService:
             **params,
         )
 
-    def model_prediction_records_count(self, *, pipeline_id: str, spec_id: str, model_id: str, **params: Any) -> dict[str, Any]:
+    def model_prediction_records_count(self, *, pipeline_id: str, spec_id: str, model_id: str, **params: Any) -> OpsImageRecordsCountResponse:
         total = self._image_records.model_prediction_records_count(spec_id=spec_id, model_id=model_id, **params)
-        return {
-            "pipeline_id": pipeline_id,
-            "spec_id": spec_id,
-            "scope": "model_prediction",
-            "parent_id": model_id,
-            "total": total,
-        }
+        return OpsImageRecordsCountResponse(
+            pipeline_id=pipeline_id,
+            spec_id=spec_id,
+            scope="model_prediction",
+            parent_id=model_id,
+            total=total,
+        )
 
     def model_prediction_record_detail(self, *, pipeline_id: str, spec_id: str, model_id: str, record_key: str):
         return self._image_records.model_prediction_record_detail(
@@ -343,7 +346,7 @@ class OpsSpecsService:
             return None
 
     def _entity_count(self, entity: str) -> int:
-        values = set()
+        values: set[Any] = set()
         for spec in self.registry.list():
             if entity == "model" and spec.model is not None:
                 values.update(self.query.value_counts(spec.model.table, spec.model.id_column))
@@ -363,10 +366,3 @@ class OpsSpecsService:
 
     def _relation_by_id(self, spec: DatapipeOpsSpec, relation_id: str) -> OpsRelationSpec | None:
         return next((relation for relation in spec.relations if relation.id == relation_id), None)
-
-    def _split_label(self, split_counts: dict[str, Any]) -> str:
-        if not split_counts:
-            return "-"
-        preferred = ["train", "val", "test"]
-        keys = [key for key in preferred if key in split_counts] + [key for key in split_counts if key not in preferred]
-        return " / ".join(str(split_counts.get(key) or 0) for key in keys)

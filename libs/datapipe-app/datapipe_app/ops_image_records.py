@@ -619,7 +619,7 @@ class OpsImageRecordsSupport:
             else None
         )
         subset = self._load_subset_for_prediction(view, pk)
-        pred_rows = self._bbox_rows_from_record(prediction, view.prediction, view=view)
+        pred_rows = self._bbox_rows_from_record(prediction, view.prediction)
         gt_rows = self._bbox_rows_from_record(gt_record or {}, view.ground_truth)
         metrics = self._prediction_metrics_values(view, model_id=model_id, pk=pk)
         base = self._record_urls(pipeline_id, spec_id, "model_prediction", record_key, parent_id=model_id)
