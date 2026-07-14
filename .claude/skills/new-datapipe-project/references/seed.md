@@ -48,19 +48,19 @@ with a helpful message if `DB_URL` unset. Set determinism env at the TOP of `app
 torch import), e.g. `os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")` when training is
 planned.
 
-`data.py`:
+`data.py` — **catalogless style** (each table is a module variable; python catches a typo'd table
+name, a string in a Catalog dict doesn't — see `examples/ocr` for the reference idiom):
 ```python
-from datapipe.compute import Catalog, Table
+from datapipe.compute import Table
 from datapipe.store.database import TableStoreDB
 from sqlalchemy import Column, String, JSON
 from config import DBCONN
 
-catalog = Catalog({
-    "items": Table(store=TableStoreDB(name="items", dbconn=DBCONN, create_table=True,
-        data_sql_schema=[Column("item_id", String, primary_key=True), Column("payload", JSON)])),
-    "items_out": Table(store=TableStoreDB(name="items_out", dbconn=DBCONN, create_table=True,
-        data_sql_schema=[Column("item_id", String, primary_key=True), Column("payload", JSON)])),
-})
+items_tbl = Table(name="items", store=TableStoreDB(name="items", dbconn=DBCONN, create_table=True,
+    data_sql_schema=[Column("item_id", String, primary_key=True), Column("payload", JSON)]))
+
+items_out_tbl = Table(name="items_out", store=TableStoreDB(name="items_out", dbconn=DBCONN, create_table=True,
+    data_sql_schema=[Column("item_id", String, primary_key=True), Column("payload", JSON)]))
 ```
 
 `steps.py`:
@@ -71,21 +71,21 @@ def passthrough(df: pd.DataFrame) -> pd.DataFrame:
     return df
 ```
 
-`app.py`:
+`app.py` — reference tables as variables, empty `Catalog({})`:
 ```python
-from datapipe.compute import DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
+import data
 import steps
 from config import DBCONN
-from data import catalog
 
 pipeline = Pipeline([
-    BatchTransform(steps.passthrough, inputs=["items"], outputs=["items_out"],
+    BatchTransform(steps.passthrough, inputs=[data.items_tbl], outputs=[data.items_out_tbl],
                    transform_keys=["item_id"], labels=[("stage", "seed")]),
 ])
 ds = DataStore(DBCONN, create_meta_table=True)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeApp(ds, Catalog({}), pipeline)
 ```
 
 ## The bring-up gate (nothing is added until this passes)
