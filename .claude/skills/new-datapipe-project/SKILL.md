@@ -45,7 +45,7 @@ Map each requirement to a verdict before writing code:
 | verdict | meaning | action |
 |---|---|---|
 | ✅ ready block | a pattern card covers it | use it, follow its reference example |
-| 🔧 composable | primitives express it (any source is a BatchTransform away) | compose; verify API against the official docs, not memory |
+| 🔧 composable | an existing entity expresses it — datapipe ships MANY beyond `BatchTransform` (`UpdateExternalTable`, `DatatableBatchTransform`, store types, the `datapipe-ml`/label-studio/cvat Step classes) — or primitives compose it | SEARCH docs+examples for an existing entity FIRST; write custom only after that search comes up empty; verify API against the docs, not memory |
 | ❌ gap | neither | STOP: present options (a) custom step in-project, (b) reusable block upstream (file the request — see below), (c) workaround — with a recommendation; user picks before assembly |
 
 Knowledge sources, in order:
@@ -59,13 +59,24 @@ Knowledge sources, in order:
    beyond the examples. On a machine without a datapipe checkout this is your API source; **never
    write datapipe API from memory.**
 
-**Filing an upstream feature request (gap option b):** run both tracks — implement a custom step
-in-project NOW so the user's task isn't blocked, and file a **GitHub issue in `epoch8/datapipe`**
-(`gh issue create` when available; otherwise hand the user the ready-to-paste text). The issue
-carries: task context (2-3 lines from SPEC.md), the missing block, the **proposed interface**
-(Step-class signature: input/output tables, keys, config), a link/pointer to the interim in-project
-implementation, and who else would use it. Record the issue URL in SPEC.md's gap-resolution section
-as a follow-up: when the block lands in the lib, swap the custom step for it.
+**Handling a real gap — decide by REUSABILITY, then escalate only as far as needed:**
+
+1. **Project-specific one-off** (e.g. a fully custom annotation service or format that exists
+   nowhere else): implement it locally in the project and move on — no issue, don't involve the
+   team. Note it in SPEC.md as a local integration.
+2. **Reusable block** (other projects would plausibly use it): dual track — implement a custom step
+   in-project NOW so the task isn't blocked, AND file a **GitHub issue in `epoch8/datapipe`**
+   (`gh issue create`, else hand the user ready-to-paste text) carrying: task context (2-3 lines
+   from SPEC.md), the missing block, the **proposed interface** (Step-class signature: input/output
+   tables, keys, config), a pointer to the interim implementation, who else would use it. Record the
+   issue URL in SPEC.md; when the block lands in the lib, swap the custom step for it.
+3. **Core-machinery change** (new store type, meta/scheduling semantics, UI capability — not
+   expressible from a project at all): never silently fork core. Design first — turn the issue into
+   a mini-spec and discuss with the team BEFORE building; implement on a **branch in the monorepo
+   `libs/*`**, and let the project pin its git-dep to that branch rev so it isn't blocked while the
+   PR goes through review; re-pin to master after merge. If timelines demand, a workaround OUTSIDE
+   the pipe (external preprocessing feeding a table) is honest interim — marked as tech debt in
+   SPEC.md.
 
 ## SPEC.md before code
 

@@ -16,6 +16,10 @@ One card per block. Each names the reference implementation (read it in a shallo
 
 ## 2. Transform chains — the core
 - **Use for:** everything between ingest and outputs.
+- **First look for an existing entity:** the libs ship many ready Step classes and stores beyond
+  `BatchTransform` — `UpdateExternalTable`, `DatatableBatchTransform`, `BatchGenerate`, table/filedir
+  stores, and the whole `datapipe-ml` / label-studio / cvat step families. Docs + examples before
+  custom code.
 - **How:** `BatchTransform(func, inputs, outputs, transform_keys, chunk_size)`; funcs are stateless
   `pd.DataFrame → pd.DataFrame`. Aggregations = transform_keys on the GROUP key (many-to-few).
   Docs: core concepts + CLI; examples: `examples/datapipe_core/*` (one concept per folder).
