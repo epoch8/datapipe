@@ -4,7 +4,9 @@
 
 # VCS & IDE
 .git/
-.github/
+.github/*
+!.github/workflows/
+!.github/workflows/**
 .DS_Store
 .idea/
 

@@ -9,7 +9,7 @@ from datapipe_app.specs import (
     OpsMetricTableSpec,
     OpsRelationSpec,
 )
-from datapipe_ml.ops_specs import (
+from datapipe_app_ml_ops.ops_specs import (
     DatapipeOpsSpec,
     OpsClassMetricTableSpec,
     OpsDataSpec,

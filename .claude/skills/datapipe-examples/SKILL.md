@@ -48,6 +48,11 @@ useful results. The per-example skill lists the exact knobs.
    needs an external CVAT you provide (URL + creds + a project whose labels match its config).
 4. **`uv` + Python ≥3.10,<3.13.** Each example has a `pyproject.toml` → `uv sync` (cu124 torch pinned,
    CUDA OOTB; no manual venv/pip). Read-only/small `$HOME`: `export UV_CACHE_DIR=/tmp/uvcache HF_HOME=/tmp/hf`.
+   **ML UI / ops specs:** examples with `datapipe-app` + metrics/training panels also pull
+   **`datapipe-app-ml-ops`** (ops specs, image records, observability routes — not `datapipe-ml`).
+   Pipeline code imports `datapipe_app_ml_ops.ops_specs`; the observability plugin entry point lives there too.
+   **Legacy CPU (pre-AVX2, e.g. epoch8 gpu5):** on `e2e_template` / `detection_tags` only —
+   `uv sync --extra old-cpu` then force `polars-lts-cpu` (see those skills' Troubleshooting).
 5. **Human-in-the-loop** (e2e_template, sam_cvat): a human reviews and marks tasks completed before
    the pipeline advances.
 

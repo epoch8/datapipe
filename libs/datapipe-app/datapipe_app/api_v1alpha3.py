@@ -24,20 +24,11 @@ from datapipe_app.observability.label_graph import build_label_graph
 from datapipe_app.observability.queries import build_overview
 from datapipe_app.observability.recorder import RunRecorder
 from datapipe_app.observability.registry import ObservabilityRegistry
+from datapipe_app.observability.schemas import StartRunRequest, StartRunResponse
 from datapipe_app.observability.settings import get_ops_settings
 from datapipe_app.pipeline_ui import register_pipeline_ui_routes
-from datapipe_ml.observability.routes import register_ml_observability_routes
-from datapipe_ml.spec_registry import OpsSpecRegistry
-
-
-class StartRunRequest(BaseModel):
-    labels: Labels = []
-    background: bool = True
-
-
-class StartRunResponse(BaseModel):
-    run_id: str
-    status: str = "running"
+from datapipe_app_ml_ops.observability.routes import register_ml_observability_routes
+from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
 
 
 class ResetTransformMetadataResponse(BaseModel):

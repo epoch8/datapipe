@@ -10,6 +10,7 @@ on:
       - "datapipe-label-studio-v*"
       - "datapipe-cvat-v*"
       - "datapipe-app-v*"
+      - "datapipe-app-ml-ops-v*"
 
 jobs:
   build:
@@ -28,6 +29,7 @@ jobs:
             datapipe-label-studio-v*) echo "package-name=datapipe-label-studio" >> "$GITHUB_OUTPUT" ;;
             datapipe-cvat-v*) echo "package-name=datapipe-cvat" >> "$GITHUB_OUTPUT" ;;
             datapipe-app-v*) echo "package-name=datapipe-app" >> "$GITHUB_OUTPUT" ;;
+            datapipe-app-ml-ops-v*) echo "package-name=datapipe-app-ml-ops" >> "$GITHUB_OUTPUT" ;;
             *) echo "Unsupported tag: ${GITHUB_REF_NAME}" >&2; exit 1 ;;
           esac
 

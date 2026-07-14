@@ -11,7 +11,7 @@ from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import RunLogBuffer
 from datapipe_app.observability.registry import ObservabilityRegistry
-from datapipe_ml.spec_registry import OpsSpecRegistry
+from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
 from datapipe_app.observability.run_output_capture import capture_run_output
 
 logger = logging.getLogger(__name__)
@@ -156,8 +156,8 @@ class RunRecorder:
         if not self.registry or not self.ds or not self.catalog:
             return
         try:
-            from datapipe_ml.observability.analytics_views import refresh_analytics_views
-            from datapipe_ml.observability.training_service import TrainingService
+            from datapipe_app_ml_ops.observability.analytics_views import refresh_analytics_views
+            from datapipe_app_ml_ops.observability.training_service import TrainingService
 
             training_rows = []
             try:

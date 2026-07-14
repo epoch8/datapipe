@@ -11,7 +11,7 @@ FORBIDDEN = re.compile(
     re.IGNORECASE,
 )
 
-from datapipe_ml.observability.sql_analytics import BARE_TABLE_MAP, QUALIFIED_TABLE_MAP
+from datapipe_app_ml_ops.observability.sql_analytics import BARE_TABLE_MAP, QUALIFIED_TABLE_MAP
 
 
 def _validate_sql(sql: str) -> None:

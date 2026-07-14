@@ -16,7 +16,7 @@ import datapipe_app.api_v1alpha1 as api_v1alpha1
 import datapipe_app.api_v1alpha2 as api_v1alpha2
 import datapipe_app.api_v1alpha3 as api_v1alpha3
 from datapipe_app.metrics import setup_prometheus_metrics
-from datapipe_ml.spec_registry import OpsSpecRegistry
+from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
 from datapipe_app.pipeline_binding import pipeline_module_for
 from datapipe_app.observability.db import ObservabilityStore
 from datapipe_app.observability.log_buffer import get_log_buffer

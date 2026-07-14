@@ -5,7 +5,7 @@ _LAZY_EXPORTS = {
     "DatapipeApp": ("datapipe.compute", "DatapipeApp"),
     "setup_logging": ("datapipe_app.datapipe_api", "setup_logging"),
     "ObservabilityTableConfig": ("datapipe_app.observability.tables", "ObservabilityTableConfig"),
-    "OpsSpecRegistry": ("datapipe_ml.spec_registry", "OpsSpecRegistry"),
+    "OpsSpecRegistry": ("datapipe_app_ml_ops.spec_registry", "OpsSpecRegistry"),
     "OpsColumn": ("datapipe_app.specs", "OpsColumn"),
     "OpsColumnGroup": ("datapipe_app.specs", "OpsColumnGroup"),
     "OpsFilterRule": ("datapipe_app.specs", "OpsFilterRule"),
@@ -26,7 +26,7 @@ def __getattr__(name: str):
     module = __import__(module_name, fromlist=[attr_name])
     value = getattr(module, attr_name)
     if name == "DatapipeApp":
-        from datapipe_ml.ops_registry_hooks import ensure_datapipe_app_add_specs
+        from datapipe_app_ml_ops.ops_registry_hooks import ensure_datapipe_app_add_specs
 
         ensure_datapipe_app_add_specs()
     return value

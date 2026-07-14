@@ -123,6 +123,8 @@ HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + 
 uv sync                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
                               # that drifts lib versions across machines (e.g. a different ultralytics)
                               # and changes training results. The lock pins everyone to the same stack.
+                              # Declares datapipe-app + datapipe-app-ml-ops + datapipe-ml (ML ops UI is
+                              # datapipe-app-ml-ops, not datapipe-ml[observability]).
 # Legacy host (e.g. epoch8 gpu5: pre-AVX2 CPU) ONLY — extras + force the lts polars to win:
 uv sync --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
@@ -142,8 +144,9 @@ datapipe --pipeline app api --host 127.0.0.1 --port 8000
 ```
 
 Bind to `127.0.0.1` (not `0.0.0.0`) and reach it over an SSH tunnel `-L 8000:localhost:8000`; open
-`http://localhost:8000`. The `app.add_specs([...])` block in `detection/app.py` is what registers the
-`cat_dog` spec the front renders.
+`http://localhost:8000`. The `app.add_specs([...])` block in `detection/app.py` (imports
+`datapipe_app_ml_ops.ops_specs`) registers the `cat_dog` spec; observability enrichers load via the
+`datapipe-app-ml-ops` plugin entry point (`datapipe.observability`).
 
 ## Part 1 — set up + load + verify, then STOP (you trigger model-A training from the UI)
 

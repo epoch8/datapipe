@@ -25,11 +25,16 @@ class ObservabilityTableConfig:
 
 
 @runtime_checkable
+class _ObservabilityTableNames(Protocol):
+    def table_names(self) -> dict[str, str]: ...
+
+
+@runtime_checkable
 class _NamedTableStore(Protocol):
     name: str
 
 
-def validate_observability_table_names(config: ObservabilityTableConfig) -> None:
+def validate_observability_table_names(config: _ObservabilityTableNames) -> None:
     seen: dict[str, str] = {}
     for field_name, table_name in config.table_names().items():
         if table_name in seen:

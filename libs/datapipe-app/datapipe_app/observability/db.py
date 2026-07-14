@@ -27,7 +27,7 @@ from datapipe_app.observability.run_triggers import (
     stage_trigger_values,
 )
 from datapipe_app.observability.tables import ObservabilityTableConfig
-from datapipe_ml.observability.tables import MLObservabilityTableConfig
+from datapipe_app_ml_ops.observability.tables import MLObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ class ObservabilityStore:
 
     def create_all(self) -> None:
         Base.metadata.create_all(self.engine)
-        from datapipe_ml.observability.analytics_views import ensure_analytics_tables
+        from datapipe_app_ml_ops.observability.analytics_views import ensure_analytics_tables
 
         ensure_analytics_tables(self.engine, tables=self.ml_tables, schema=self.schema)
 

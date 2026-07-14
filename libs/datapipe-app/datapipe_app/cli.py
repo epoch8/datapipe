@@ -1,5 +1,4 @@
 import click
-from datapipe.compute import DatapipeApp
 
 from datapipe_app import DatapipeAPI
 
@@ -12,12 +11,14 @@ def register_commands(cli: click.Group):
     def api(ctx: click.Context, host: str, port: int) -> None:
         parent = ctx.parent
         assert parent is not None
-        app: DatapipeApp = ctx.obj["pipeline"]
+        pipeline = ctx.obj["pipeline"]
         pipeline_spec = parent.params.get("pipeline", "app")
 
         import uvicorn
 
-        if not isinstance(app, DatapipeAPI):
-            app = DatapipeAPI(app=app, pipeline_spec=pipeline_spec)
+        if isinstance(pipeline, DatapipeAPI):
+            api_app = pipeline
+        else:
+            api_app = DatapipeAPI(app=pipeline, pipeline_spec=pipeline_spec)
 
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(api_app, host=host, port=port)

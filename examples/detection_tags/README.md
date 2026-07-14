@@ -8,19 +8,49 @@ The point: train a baseline (model A), then add a **tagged scenario TRAIN batch*
 (model B), and watch recall on that tag rise — visible in a dedicated `tag_metrics` table. The demo
 is split into **two parts around a checkpoint** so you can prep part 1 and rehearse part 2.
 
+**Claude Code skill:** `/setup-detection-tags` — full deploy, frozen-val order, UI workflow, troubleshooting.
+
+## Installation
+
+Python **3.10–3.12** (`datapipe-ml` does not support 3.13+ yet). From `examples/detection_tags/`:
+
+```bash
+uv sync    # modern hosts: unmodified — do not edit/re-lock deps (drifts training across machines)
+```
+
+On **pre-AVX2 CPUs** (e.g. epoch8 gpu5), after `uv sync`:
+
+```bash
+uv sync --extra old-cpu
+uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
+```
+
+Packages (see `pyproject.toml`):
+
+- `datapipe-app` — Ops UI and run observability.
+- `datapipe-app-ml-ops` — `cat_dog` ops spec, metrics/training panels (`datapipe_app_ml_ops.ops_specs`).
+- `datapipe-ml[torch,fiftyone]` — YOLO train/infer/metrics and FiftyOne table stores.
+
 ## Deploy from scratch
 ```bash
 cp .env.example .env && set -a && source .env && set +a
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151)
-uv sync                         # modern hosts: as-is. Do NOT edit deps/re-lock (drifts lib versions
-                                # across machines and changes training results — reproducibility!)
-# legacy pre-AVX2 host (e.g. epoch8 gpu5) only:
-#   uv sync --extra old-cpu && uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
-# DB_SCHEMA defaults to `public` (exists already). For a dedicated schema (sharing the Postgres with
-# other pipelines) create it first: psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"
+# DB_SCHEMA defaults to `public`. For a dedicated schema: psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"
 datapipe db create-all
 ```
+
+## Ops UI
+
+From `examples/detection_tags/detection` (with `.env` sourced):
+
+```bash
+datapipe --pipeline app api --host 127.0.0.1 --port 8000
+```
+
+Open `http://localhost:8000` (SSH tunnel `-L 8000:localhost:8000` on remote hosts). The front shows
+the pipeline graph, training status/curves, and the **`cat_dog`** ops spec (`model_metrics` +
+`tag_metrics` tables). Specs are defined in `detection/app.py` via `datapipe_app_ml_ops.ops_specs`.
 
 ## Frozen val (why the load order matters)
 A `val` metric is an aggregate over whatever images are in val; if you add the tagged batch to val at
@@ -41,8 +71,9 @@ bash scripts/restore_demo_seed.sh        # wipes the public schema, restores dem
                                          # re-uploads images byte-identically from the cache
 ```
 
-Then open the front — `cat_dog` shows the reference metrics (A val recall 0.324 / B 0.415 etc.).
-Live (re)training stays available; treat its numbers as per-GPU.
+Then open the front — `cat_dog` shows the reference metrics (A val recall 0.324 / B 0.415 etc.) in the
+Ops UI (`datapipe --pipeline app api`, port 8000). Live (re)training stays available; treat its numbers
+as per-GPU.
 
 ## Part 1 — baseline to checkpoint
 ```bash

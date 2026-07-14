@@ -42,18 +42,25 @@ cd examples/e2e_template
 uv sync
 ```
 
-On CPUs **without AVX2+** (ultralytics may crash on `import polars` during YOLO training), use the LTS polars build instead of the default one pulled in by ultralytics:
+On CPUs **without AVX2+** (ultralytics may crash on `import polars` during YOLO training), use the
+`old-cpu` optional extra and force the LTS polars build (same as `detection_tags`):
 
 ```bash
 uv sync --extra old-cpu
-uv pip install --force-reinstall polars-lts-cpu==1.33.1
+uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 ```
+
+If ultralytics image verification fails with `No module named 'pi_heif'`, `pi-heif` is included in
+the `old-cpu` extra — re-run `uv sync --extra old-cpu`.
 
 What each piece is for:
 
+- `datapipe-app` — Ops UI (`datapipe --pipeline app api`), run history, pipeline graph.
+- `datapipe-app-ml-ops` — ML ops specs (`datapipe_app_ml_ops.ops_specs`), metrics/training panels,
+  image-record views; observability plugin entry point (not `datapipe-ml[observability]`).
 - `datapipe-label-studio` — Label Studio pipeline steps.
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
-`datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
+  `datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
 
 ### Local services
 
@@ -221,7 +228,12 @@ Then open `http://localhost:5151` and select `datapipe_keypoints_e2e` (or use lo
 
 ## Running via Ops UI
 
-Each pipeline needs its own agent process (distinct port). `pipeline_id` is inferred from the pipeline module filename (e.g. `app.py` → `app`); observability DB defaults to the pipeline `DB_URL`.
+Each pipeline needs its own agent process (distinct port). `pipeline_id` is inferred from the pipeline
+module filename (e.g. `app.py` → `app`); observability DB defaults to the pipeline `DB_URL`.
+
+Ops specs are registered in each template's `app.py` via `app.add_specs([...])` using types from
+`datapipe_app_ml_ops.ops_specs`. ML metrics/training enrichments load through the `datapipe-app-ml-ops`
+observability plugin (`datapipe.observability` entry point).
 
 Start local services first:
 

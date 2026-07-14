@@ -6,7 +6,7 @@ from sqlalchemy import MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from datapipe_app.observability.tables import ObservabilityTableConfig
-from datapipe_ml.observability.tables import MLObservabilityTableConfig
+from datapipe_app_ml_ops.observability.tables import MLObservabilityTableConfig
 
 if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
@@ -34,8 +34,8 @@ def apply_observability_table_config(
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
-    from datapipe_ml.observability.analytics_views import apply_analytics_table_config
-    from datapipe_ml.observability.db_models import apply_ml_table_config
+    from datapipe_app_ml_ops.observability.analytics_views import apply_analytics_table_config
+    from datapipe_app_ml_ops.observability.db_models import apply_ml_table_config
 
     mapping: dict[type[ObservabilityBase], str] = {
         PipelineRegistryRow: tables.pipeline_registry,
@@ -72,8 +72,8 @@ def register_observability_tables_in_metadata(
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
-    from datapipe_ml.observability.analytics_views import analytics_metadata
-    from datapipe_ml.observability.db_models import PipelineMetricsCandidateRow
+    from datapipe_app_ml_ops.observability.analytics_views import analytics_metadata
+    from datapipe_app_ml_ops.observability.db_models import PipelineMetricsCandidateRow
 
     target = dbconn.sqla_metadata
     for model_cls in (

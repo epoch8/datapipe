@@ -45,11 +45,13 @@ dev = [
     "mypy",
     "pytest<8",
     "sqlalchemy[mypy]",
-    "datapipe-ml",
+    "datapipe-app-ml-ops",
+    "datapipe-ml[sqlite]",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-app-ml-ops = { workspace = true }
 datapipe-ml = { workspace = true }
 
 [tool.hatch.build.targets.sdist]

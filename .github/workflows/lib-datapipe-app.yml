@@ -9,7 +9,9 @@ on:
       - ".github/workflows/lib-datapipe-app.yml"
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
+      - "libs/datapipe-app-ml-ops/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
       - "pyproject.toml"
   pull_request:
     branches:
@@ -18,7 +20,9 @@ on:
       - ".github/workflows/lib-datapipe-app.yml"
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
+      - "libs/datapipe-app-ml-ops/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
       - "pyproject.toml"
 
 jobs:
@@ -44,7 +48,9 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-ml[sqlite]"
           uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
           uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "flake8" "mypy" "httpx"
 
       - name: Lint with flake8
@@ -79,18 +85,14 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-ml[sqlite]"
           uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
           uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "httpx" "pytest<8"
 
       - name: Test with pytest
         run: |
           pytest libs/datapipe-app/tests
-
-      - name: Test ML observability integration
-        run: |
-          uv pip install --system -e "libs/datapipe-ml[sqlite,observability]" --no-deps
-          uv pip install --system -e "libs/datapipe-core[sqlite]"
-          pytest libs/datapipe-app/tests/test_observability_ml_integration.py
 
   test-example:
     runs-on: ubuntu-latest
@@ -114,7 +116,9 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-ml[sqlite]"
           uv pip install --system -e "libs/datapipe-app" --no-deps
+          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
           uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "alembic"
 
       - name: Test example

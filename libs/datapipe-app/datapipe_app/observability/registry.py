@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from datapipe_app.observability.protocols import OverviewEnricher, StatusCollector
 
 if TYPE_CHECKING:
-    from datapipe_ml.spec_registry import OpsSpecRegistry
+    from datapipe_app_ml_ops.spec_registry import OpsSpecRegistry
 
 logger = logging.getLogger(__name__)
 

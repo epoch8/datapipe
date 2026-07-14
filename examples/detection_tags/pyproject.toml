@@ -4,6 +4,7 @@ version = "0"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "datapipe-app",
+    "datapipe-app-ml-ops",
     "datapipe-ml[torch,fiftyone]",   # FiftyOneImagesDataTableStore + cv_pipeliner.fiftyone (+ fiftyone lib for stage=fiftyone)
     "torch==2.6.0",
     "torchvision==0.21.0",
@@ -27,6 +28,7 @@ explicit = true
 torch = { index = "pytorch-cu124" }
 torchvision = { index = "pytorch-cu124" }
 datapipe-app = { path = "../../libs/datapipe-app", editable = true }
+datapipe-app-ml-ops = { path = "../../libs/datapipe-app-ml-ops", editable = true }
 datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
 
