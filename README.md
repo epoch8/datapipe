@@ -31,6 +31,13 @@ This repository contains the Datapipe Python packages as a `uv` monorepo workspa
 - `libs/datapipe-cvat` - CVAT integration, import package `datapipe_cvat`.
 - `libs/datapipe-app` - REST API, debug UI, and CLI extensions, import package `datapipe_app`.
 
+## Examples
+
+Runnable example pipelines live in [`examples/`](examples/README.md) — from single-concept snippets
+to full ML loops (training, metrics, annotation, viewers). Each full example ships a **Claude Code
+skill** for agent-assisted setup: open this repo in Claude Code and type `/setup-<example>`
+(see [`.claude/skills/`](.claude/skills)).
+
 ## Development
 
 The workspace is configured in the root `pyproject.toml`. Package code and
@@ -57,8 +64,6 @@ Documentation lives in `libs/datapipe-core/docs`. Design notes live in
 
 * `master` — current development state, will become the `0.15.x` release
 * `v0.14` — current stable version
-
-## Version compatibility
 
 The library is under active development at `v0.*.*`. Each minor version should be considered incompatible with the previous one (`v0.7.0` is not compatible with `v0.6.1`). Pin dependencies to the exact minor version.
 
