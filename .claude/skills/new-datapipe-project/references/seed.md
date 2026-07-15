@@ -103,15 +103,21 @@ datapipe run
 Verify by querying the table, not by exit code. From here, grow block by block per the pattern
 cards, replacing the passthrough with the first real transform.
 
-**Clean up the seed leftovers.** The gate's throwaway pieces don't remove themselves: once the real
-tables/steps replace the passthrough, the `items`/`items_out` tables (and their `*_meta` /
-transform-meta rows) are dead weight in the DB. At this point only sample data exists, so the
-cheapest reliable cleanup is a full reset onto the real shape:
+**Seed leftovers — ASK the user before cleaning.** The gate's throwaway pieces don't remove
+themselves: after the real tables/steps replace the passthrough, the `items`/`items_out` tables and
+their `*_meta`/transform-meta rows stay in the DB as dead weight (a later reader will wonder "what
+is items_out?"). Since removal is destructive (schema reset), put it to the user as a question at
+that moment — recommended default is yes:
 
+> Seed-таблицы (`items`/`items_out` + их meta) больше не используются — почистить? Сейчас в БД
+> только сэмпл-данные, так что это дешёвый полный сброс на реальную форму.
+
+On "yes":
 ```bash
 # after rewiring data.py/app.py to the real tables and deleting the passthrough code:
 psql "$DB_URL" -c "DROP SCHEMA ${DB_SCHEMA:-public} CASCADE; CREATE SCHEMA ${DB_SCHEMA:-public};"
 datapipe db create-all && datapipe run
 ```
 
-Leaving seed tables behind confuses every later inspection of the DB ("what is items_out?").
+On "no" (e.g. the user already loaded data they care about): note the leftover tables in SPEC.md's
+decisions log so the debt is visible.
