@@ -40,6 +40,15 @@ import { FilterValue, SorterResult } from "antd/lib/table/interface";
 import { getDefaultTablePageSize, setDefaultTablePageSize } from "../../api/graph";
 import { renderEntityLink } from "../../plugins/registry";
 
+/** Defaults match `.env.local` / production API layout — required so production
+ * builds (where CRA env may be absent) don't `fetch(undefined)` → POST `/undefined`. */
+const GET_TABLE_URL =
+    (process.env["REACT_APP_GET_TABLE_URL"] as string) || "/api/v1alpha3/get-table-data";
+const GET_TRANSFORM_URL =
+    (process.env["REACT_APP_GET_TRANSFORM_URL"] as string) || "/api/v1alpha3/get-transform-data";
+const TRANSFORM_WS_BASE =
+    (process.env["REACT_APP_WEBSOCKET_URL"] as string) || "/api/v1alpha3/ws/transform/";
+
 function renderCellValue(value: unknown, columnName: string, pipelineId?: string): React.ReactNode {
     if (value === null || value === undefined) {
         return value as null | undefined;
@@ -106,9 +115,7 @@ const RunStepWebSocketComponent: FC<RunStepWebSocketComponentProps> = ({
     };
 
     useEffect(() => {
-        const ws = new WebSocket(
-            `${process.env["REACT_APP_WEBSOCKET_URL"]}${transform}/run-status`,
-        );
+        const ws = new WebSocket(`${TRANSFORM_WS_BASE}${transform}/run-status`);
         setWs(ws);
         ws.onopen = () => { };
         ws.onmessage = (event) => {
@@ -348,9 +355,9 @@ const loadTable = async (
         let reqUrl: string;
         let body = postBody as any; //quickfix for different (table_name, table) field names
         if (current.type === "transform") {
-            reqUrl = process.env["REACT_APP_GET_TRANSFORM_URL"] as string;
+            reqUrl = GET_TRANSFORM_URL;
         } else {
-            reqUrl = process.env["REACT_APP_GET_TABLE_URL"] as string;
+            reqUrl = GET_TABLE_URL;
         }
         const response = await fetch(reqUrl, {
             method: "POST",

@@ -14,6 +14,9 @@ import type { IdxRow } from "../../../types";
 
 const { Text } = Typography;
 
+const TRANSFORM_WS_BASE =
+    (process.env["REACT_APP_WEBSOCKET_URL"] as string) || "/api/v1alpha3/ws/transform/";
+
 type Props = {
     transformName: string;
     indexKeys: string[];
@@ -31,9 +34,7 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     useEffect(() => {
-        const socket = new WebSocket(
-            `${process.env["REACT_APP_WEBSOCKET_URL"]}${transformName}/run-status`,
-        );
+        const socket = new WebSocket(`${TRANSFORM_WS_BASE}${transformName}/run-status`);
         setWs(socket);
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
@@ -124,6 +125,7 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
                                         type="dashed"
                                         onClick={() => add({})}
                                         icon={<PlusOutlined />}
+                                        htmlType="button"
                                     >
                                         Add index row
                                     </Button>
@@ -133,7 +135,7 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
                     </Form.List>
                 </Form>
             )}
-            <Button type="primary" onClick={runStep}>
+            <Button type="primary" htmlType="button" onClick={runStep}>
                 Run transform
             </Button>
             {errorMsg && (
