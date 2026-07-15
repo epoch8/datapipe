@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Button, Space, Table, Tabs, Tag } from "antd";
+import { Button, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import {
@@ -205,8 +205,33 @@ function OverviewCard({ kind, spec }: { kind: PageKind; spec: Row }) {
 }
 function OverviewBottom({ kind, data }: { kind: PageKind; data: OpsOverviewResponse }) {
     const activity = ((data.recent_activity as Row[] | undefined) ?? data.specs).slice(0, 5);
-    const steps = kind === "training" ? ["Running", "Completed", "Needs attention"] : kind === "class-metrics" ? ["Browse by class", "Browse by tag", "Compare subsets", "Compare models"] : kind === "metrics" ? ["Model Metrics", "Tag Metrics", "Class Metrics", "Snapshot Views"] : ["Data", "Frozen Dataset", "Training", "Metrics"];
-    return <div className="ops-spec-bottom-grid"><div className="ops-panel ops-polished-panel"><div className="ops-panel-head"><div className="ops-panel-title">Recent activity</div><Link to={`/${kind}`}>View all activity <RightOutlined /></Link></div><div className="ops-activity-list">{activity.map((item, i) => <div className="ops-activity-row" key={`${i}-${String(item.title ?? item.message)}`}><span className={`ops-activity-dot ops-dot-${i % 4}`} /><div className="ops-activity-main"><strong>{String(item.title ?? "Activity")}</strong><span>{String(item.message ?? item.description ?? "Ready")}</span></div><StatusTag value={item.status ?? "success"} /></div>)}</div></div><div className="ops-panel ops-polished-panel"><div className="ops-panel-head"><div className="ops-panel-title">{kind === "frozen-datasets" ? "Snapshot lifecycle" : kind === "training" ? "Run board" : kind === "metrics" ? "Available views" : "How to explore"}</div><Button type="link" className="ops-inline-link">Learn more</Button></div><div className="ops-lifecycle-row">{steps.map((s, i) => <React.Fragment key={s}><div className="ops-lifecycle-step"><IconBubble icon={iconFor(kind, i)} color={i % 2 ? "green" : "blue"} /><strong>{s}</strong><span>{i === 0 ? "Source" : "Tracked"}</span></div>{i < steps.length - 1 && <RightOutlined className="ops-lifecycle-arrow" />}</React.Fragment>)}</div></div></div>;
+    return (
+        <div className="ops-spec-bottom-grid">
+            <div className="ops-panel ops-polished-panel">
+                <div className="ops-panel-head">
+                    <div className="ops-panel-title">Recent activity</div>
+                    <Link to={`/${kind}`}>
+                        View all activity <RightOutlined />
+                    </Link>
+                </div>
+                <div className="ops-activity-list">
+                    {activity.map((item, i) => (
+                        <div
+                            className="ops-activity-row"
+                            key={`${i}-${String(item.title ?? item.message)}`}
+                        >
+                            <span className={`ops-activity-dot ops-dot-${i % 4}`} />
+                            <div className="ops-activity-main">
+                                <strong>{String(item.title ?? "Activity")}</strong>
+                                <span>{String(item.message ?? item.description ?? "Ready")}</span>
+                            </div>
+                            <StatusTag value={item.status ?? "success"} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export function OpsOverviewSpecPage({ kind }: { kind: PageKind }) {
@@ -550,7 +575,51 @@ function DataSpecificPage({ kind, specId, spec, pipelineId, load }: { kind: Page
     const trainingSelectSource = trainingColumns.find((column) => column.link_to === "training_run")?.source
         ?? trainingColumns.find((column) => column.link_to === "model")?.source;
     const selectedKey = selected && trainingSelectSource ? String(selected[trainingSelectSource] ?? "") : "";
-    return <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${isTraining ? "Training" : "Frozen Datasets"}`} subtitle={isTraining ? `Training runs for the ${spec.title} specification` : `Snapshot registry for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} primaryAction={isTraining ? { label: "New Training Run" } : undefined} />{isTraining ? <div className="ops-detail-with-rail"><div><div className="ops-spec-mini-summary"><MiniMetric label="Total runs" value="-" /><MiniMetric label="Completed" value="-" /><MiniMetric label="Failed" value="-" /><MiniMetric label="Best W-F1" value="-" /></div><TrainingTable specId={specId} pipelineId={pipelineId} spec={spec} selected={selectedKey} onSelect={setSelected} /><div className="ops-panel ops-polished-panel ops-curves-placeholder"><Tabs defaultActiveKey="curves"><Tabs.TabPane tab="Curves" key="curves"><div className="ops-placeholder-charts"><div /><div /></div></Tabs.TabPane><Tabs.TabPane tab="Parameters" key="parameters"><div className="ops-muted">Parameters will appear when the run exposes them.</div></Tabs.TabPane><Tabs.TabPane tab="Artifacts" key="artifacts"><div className="ops-muted">Artifacts are linked from the selected run.</div></Tabs.TabPane></Tabs></div></div><TrainingRail row={selected} specId={specId} columns={trainingColumns} /></div> : <FrozenDatasetTable specId={specId} pipelineId={pipelineId} spec={spec} />}</>;
+    return (
+        <>
+            <PageHeader
+                breadcrumbs={[
+                    { label: "Datapipe Ops", href: "/" },
+                    { label: pageTitles[kind], href: `/${kind}` },
+                    { label: spec.title },
+                ]}
+                title={`${spec.title} - ${isTraining ? "Training" : "Frozen Datasets"}`}
+                subtitle={
+                    isTraining
+                        ? `Training runs for the ${spec.title} specification`
+                        : `Snapshot registry for the ${spec.title} specification`
+                }
+                statusChips={[
+                    { label: "Running", variant: "success" },
+                    { label: spec.title, variant: "purple" },
+                ]}
+                onRefresh={load}
+                primaryAction={isTraining ? { label: "New Training Run" } : undefined}
+            />
+            {isTraining ? (
+                <div className="ops-detail-with-rail">
+                    <div>
+                        <div className="ops-spec-mini-summary">
+                            <MiniMetric label="Total runs" value="-" />
+                            <MiniMetric label="Completed" value="-" />
+                            <MiniMetric label="Failed" value="-" />
+                            <MiniMetric label="Best W-F1" value="-" />
+                        </div>
+                        <TrainingTable
+                            specId={specId}
+                            pipelineId={pipelineId}
+                            spec={spec}
+                            selected={selectedKey}
+                            onSelect={setSelected}
+                        />
+                    </div>
+                    <TrainingRail row={selected} specId={specId} columns={trainingColumns} />
+                </div>
+            ) : (
+                <FrozenDatasetTable specId={specId} pipelineId={pipelineId} spec={spec} />
+            )}
+        </>
+    );
 }
 export function OpsSpecificSpecPage({ kind }: { kind: PageKind }) {
     const { specId = "" } = useParams(); const { pipelineId, loading: pidLoading } = usePipelineId();

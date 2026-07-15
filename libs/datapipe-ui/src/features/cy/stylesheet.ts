@@ -112,15 +112,11 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
     {
+        // Selection chrome is app-owned (see graphSelection.ts) and painted via
+        // HTML label classes / `node.focused` — cytoscape's native `:selected`
+        // state is never set, but this rule stays as a belt-and-suspenders no-op.
         selector: "node:selected",
-        style: {
-            "background-color": edgeColors.active,
-            "background-opacity": 0.08,
-            "border-width": 4,
-            "border-color": edgeColors.active,
-            "overlay-opacity": 0,
-            "z-index": 40,
-        },
+        style: {},
     },
     {
         selector: "edge[internalMeta]",

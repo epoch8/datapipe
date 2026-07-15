@@ -1,4 +1,5 @@
 import Cytoscape from "cytoscape";
+import { getSelectedNodeIds } from "./graphSelection";
 import type { InspectorState } from "./NodeInspectorPanel";
 
 export type GraphSessionState = {
@@ -70,7 +71,7 @@ export function captureGraphSessionState(
     }
 
     const pan = cy.pan();
-    const selected = cy.nodes(":selected").map((node) => node.id());
+    const selected = getSelectedNodeIds(cy);
 
     return {
         graphUrl,

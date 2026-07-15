@@ -1,47 +1,87 @@
 import Cytoscape from "cytoscape";
 import { getNodeHtmlLabelEl, nodeUsesHtmlLabel } from "./htmlLabelOpacity";
+import { getSelectedNodes } from "./graphSelection";
 import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 
-const FOCUS_CLASSES = "focused related muted dimmed";
+type HtmlFocusPaint = {
+    selectedIds: Set<string>;
+    highlightedIds: Set<string>;
+    edgeRelatedIds: Set<string>;
+};
 
-/** Stable fingerprint of the current selection for idempotent focus. */
+const htmlFocusPaintStore = new WeakMap<Cytoscape.Core, HtmlFocusPaint | null>();
 let lastFocusKey = "";
 
-function selectionFocusKey(selected: Cytoscape.NodeCollection): string {
-    return selected
-        .map((n) => n.id())
-        .sort()
-        .join("\0");
+function selectionFocusKey(selectedIds: Set<string>): string {
+    return Array.from(selectedIds).sort().join("\0");
 }
 
-export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
+function freezeViewport(cy: Cytoscape.Core): () => void {
+    const pan = { x: cy.pan().x, y: cy.pan().y };
+    const zoom = cy.zoom();
+    const restore = () => {
+        if (cy.destroyed()) return;
+        const cur = cy.pan();
+        if (cy.zoom() !== zoom || cur.x !== pan.x || cur.y !== pan.y) {
+            cy.viewport({ zoom, pan });
+        }
+    };
+    restore();
+    return restore;
+}
+
+function paintHtmlLabelFocus(cy: Cytoscape.Core, paint: HtmlFocusPaint | null): void {
     cy.nodes().forEach((node) => {
         if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
-
-        const n = node as Cytoscape.NodeSingular;
-        const selected = n.selected();
-        const related = n.hasClass("related");
-        // Selected stays blue; related neighbors are orange (not blue-focused).
-        const focused = (n.hasClass("focused") || selected) && !related;
-        const dimmed = n.hasClass("dimmed");
-
-        // Persist interaction state on node data so it is re-emitted by the
-        // html-label template whenever the plugin rebuilds the label DOM (which
-        // happens on any style change, e.g. selection border / dim opacity).
-        // Without this, classes applied directly below are wiped on rebuild.
-        if (Boolean(n.data("uiFocused")) !== focused) n.data("uiFocused", focused);
-        if (Boolean(n.data("uiSelected")) !== selected) n.data("uiSelected", selected);
-        if (Boolean(n.data("uiRelated")) !== related) n.data("uiRelated", related);
-        if (Boolean(n.data("uiDimmed")) !== dimmed) n.data("uiDimmed", dimmed);
-
-        // Immediate feedback on the current DOM element (before any rebuild).
         const labelEl = getNodeHtmlLabelEl(cy, node.id());
-        if (labelEl) {
-            labelEl.classList.toggle("is-focused", focused);
-            labelEl.classList.toggle("is-selected", selected);
-            labelEl.classList.toggle("is-related", related);
-            labelEl.classList.toggle("is-dimmed", dimmed);
+        if (!labelEl) return;
+
+        if (!paint) {
+            labelEl.classList.remove("is-focused", "is-selected", "is-related", "is-dimmed");
+            return;
         }
+
+        const id = node.id();
+        const selected = paint.selectedIds.has(id);
+        const related = paint.highlightedIds.has(id) && !selected;
+        const dimmed = !paint.highlightedIds.has(id);
+
+        labelEl.classList.toggle("is-focused", selected);
+        labelEl.classList.toggle("is-selected", selected);
+        labelEl.classList.toggle("is-related", related);
+        labelEl.classList.toggle("is-dimmed", dimmed);
+    });
+}
+
+/**
+ * Edge + native (non-HTML) node chrome only.
+ * Never touch HTML-labeled node classes/data — that rebuilds labels.
+ */
+function applyCyEdgeFocus(cy: Cytoscape.Core, paint: HtmlFocusPaint | null): void {
+    cy.batch(() => {
+        cy.edges().removeClass("related muted focused");
+        cy.nodes().forEach((n) => {
+            if (nodeUsesHtmlLabel(n as Cytoscape.NodeSingular)) return;
+            n.removeClass("focused related dimmed");
+        });
+
+        if (!paint) return;
+
+        cy.edges().forEach((edge) => {
+            if (paint.edgeRelatedIds.has(edge.id())) {
+                edge.addClass("related");
+            } else {
+                edge.addClass("muted");
+            }
+        });
+
+        cy.nodes().forEach((n) => {
+            if (nodeUsesHtmlLabel(n as Cytoscape.NodeSingular)) return;
+            const id = n.id();
+            if (paint.selectedIds.has(id)) n.addClass("focused");
+            else if (paint.highlightedIds.has(id)) n.addClass("related");
+            else n.addClass("dimmed");
+        });
     });
 }
 
@@ -51,29 +91,43 @@ function applyNeighborhoodFocus(
     highlightedEdges: Cytoscape.EdgeCollection,
     highlightedNodes: Cytoscape.NodeCollection,
 ): void {
-    const key = selectionFocusKey(selected);
-    // Skip churn when focus already matches this selection (label rebuilds +
-    // mouseover noise otherwise flash related/muted/orange edges).
-    if (key && key === lastFocusKey && selected.first()?.hasClass("focused")) return;
+    const selectedIds = new Set(selected.map((n) => n.id()));
+    const highlightedIds = new Set(highlightedNodes.map((n) => n.id()));
+    const edgeRelatedIds = new Set(highlightedEdges.map((e) => e.id()));
+    const key = selectionFocusKey(selectedIds);
+
+    const prev = htmlFocusPaintStore.get(cy);
+    if (
+        key &&
+        key === lastFocusKey &&
+        prev &&
+        prev.selectedIds.size === selectedIds.size &&
+        Array.from(selectedIds).every((id) => prev.selectedIds.has(id)) &&
+        prev.highlightedIds.size === highlightedIds.size &&
+        Array.from(highlightedIds).every((id) => prev.highlightedIds.has(id))
+    ) {
+        return;
+    }
     lastFocusKey = key;
 
-    // Update classes + ui* data inside one batch so html-label rebuilds (fired
-    // when styles flush) already see the correct template flags — otherwise
-    // labels briefly render with stale focused/related/dimmed and flash.
-    cy.batch(() => {
-        cy.elements().removeClass(FOCUS_CLASSES);
+    const paint: HtmlFocusPaint = { selectedIds, highlightedIds, edgeRelatedIds };
+    htmlFocusPaintStore.set(cy, paint);
 
-        selected.addClass("focused");
-        const relatedNodes = highlightedNodes.difference(selected);
-        relatedNodes.addClass("related");
-        highlightedEdges.addClass("related");
-        cy.nodes().not(highlightedNodes).addClass("dimmed");
-        cy.edges().not(highlightedEdges).addClass("muted");
+    const restoreViewport = freezeViewport(cy);
 
-        syncHtmlLabelInteractionState(cy);
-    });
-
+    applyCyEdgeFocus(cy, paint);
+    paintHtmlLabelFocus(cy, paint);
     refreshInternalEdgeOverlay(cy);
+
+    restoreViewport();
+    requestAnimationFrame(() => {
+        restoreViewport();
+        paintHtmlLabelFocus(cy, htmlFocusPaintStore.get(cy) ?? null);
+    });
+}
+
+export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
+    paintHtmlLabelFocus(cy, htmlFocusPaintStore.get(cy) ?? null);
 }
 
 export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): void {
@@ -83,7 +137,7 @@ export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): voi
 }
 
 export function focusSelection(cy: Cytoscape.Core): void {
-    const selected = cy.nodes(":selected");
+    const selected = getSelectedNodes(cy);
     if (selected.empty()) {
         clearFocus(cy);
         return;
@@ -93,7 +147,6 @@ export function focusSelection(cy: Cytoscape.Core): void {
         return;
     }
 
-    // OR: union of each selected node's neighborhood (not intersection of paths).
     let highlightedEdges = cy.collection() as Cytoscape.EdgeCollection;
     let highlightedNodes = selected;
 
@@ -108,11 +161,13 @@ export function focusSelection(cy: Cytoscape.Core): void {
 
 export function clearFocus(cy: Cytoscape.Core): void {
     lastFocusKey = "";
-    cy.batch(() => {
-        cy.elements().removeClass(FOCUS_CLASSES);
-        syncHtmlLabelInteractionState(cy);
-    });
+    htmlFocusPaintStore.set(cy, null);
+    const restoreViewport = freezeViewport(cy);
+    applyCyEdgeFocus(cy, null);
+    paintHtmlLabelFocus(cy, null);
     refreshInternalEdgeOverlay(cy);
+    restoreViewport();
+    requestAnimationFrame(restoreViewport);
 }
 
 export function applyFailedEdgeStyles(

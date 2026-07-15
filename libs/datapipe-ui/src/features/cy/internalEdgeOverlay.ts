@@ -2,6 +2,10 @@ import Cytoscape from "cytoscape";
 import { edgeColors } from "./graphColors";
 
 const overlayInitStore = new WeakMap<Cytoscape.Core, true>();
+/** Path elements are kept and mutated in place, keyed by edge id — never wiped
+ * and recreated on sync. Recreating them made the marker briefly fall back to
+ * the browser default arrow (before `marker-end` re-attached), flashing orange. */
+const overlayPathStore = new WeakMap<Cytoscape.Core, Map<string, SVGPathElement>>();
 
 /** Match cytoscape `arrow-scale: 1.08` triangle; userSpaceOnUse so stroke width doesn't inflate it. */
 const ARROW_MARKER = {
@@ -19,6 +23,15 @@ const ARROW_MARKERS: Array<{ id: string; fill: string }> = [
     { id: "cy-internal-edge-arrow-focused", fill: edgeColors.active },
     { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
 ];
+
+function pathStoreFor(cy: Cytoscape.Core): Map<string, SVGPathElement> {
+    let store = overlayPathStore.get(cy);
+    if (!store) {
+        store = new Map();
+        overlayPathStore.set(cy, store);
+    }
+    return store;
+}
 
 function modelToRendered(cy: Cytoscape.Core, x: number, y: number): { x: number; y: number } {
     const pan = cy.pan();
@@ -148,22 +161,35 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
     svg.setAttribute("height", String(container.clientHeight));
     svg.setAttribute("viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
 
-    while (svg.childNodes.length > 1) {
-        svg.removeChild(svg.lastChild!);
-    }
+    const paths = pathStoreFor(cy);
+    const seen = new Set<string>();
 
     cy.edges("[internalMeta]").forEach((edgeEle) => {
         const edge = edgeEle as Cytoscape.EdgeSingular;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const id = edge.id();
+        seen.add(id);
+
+        let path = paths.get(id);
+        if (!path) {
+            path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            paths.set(id, path);
+            svg.appendChild(path);
+        }
+
         path.setAttribute("d", edgePathD(cy, edge));
-        path.setAttribute("fill", "none");
         path.setAttribute("stroke", edgeStroke(edge));
         path.setAttribute("stroke-width", String(edgeWidth(edge)));
         path.setAttribute("opacity", String(edgeOpacity(edge)));
         path.setAttribute("marker-end", edgeArrowMarker(edge));
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        svg.appendChild(path);
+    });
+
+    paths.forEach((path, id) => {
+        if (seen.has(id)) return;
+        path.remove();
+        paths.delete(id);
     });
 }
 
@@ -172,7 +198,7 @@ export function initInternalEdgeOverlay(cy: Cytoscape.Core): void {
     overlayInitStore.set(cy, true);
 
     const update = () => syncInternalEdgeOverlay(cy);
-    cy.on("render pan zoom position add remove data", update);
+    cy.on("pan zoom position add remove", update);
     update();
 }
 

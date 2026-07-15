@@ -26,6 +26,13 @@ import {
     clearFocus,
     focusSelection,
 } from "./graphFocus";
+import {
+    clearSelectedNodeIds,
+    getSelectedNodeIds,
+    isNodeSelected,
+    setSelectedNodeIds,
+    toggleSelectedNodeId,
+} from "./graphSelection";
 import { Alert, AlertProps, Spin } from "antd";
 import { apiFetch, getApiErrorMessage } from "../../api/http";
 import { opsApi } from "../../api/client";
@@ -309,17 +316,7 @@ function PipelineGraphView({
                       : [];
 
             if (nodeIds.length > 0) {
-                cyInstance.batch(() => {
-                    cyInstance.$(":selected").unselect();
-                    nodeIds.forEach((id) => {
-                        const node = cyInstance.getElementById(id);
-                        if (!node.empty()) {
-                            node.selectify();
-                            node.select();
-                            node.unselectify();
-                        }
-                    });
-                });
+                setSelectedNodeIds(cyInstance, nodeIds);
                 focusSelection(cyInstance);
             }
 
@@ -540,11 +537,8 @@ function PipelineGraphView({
 
         let frame = 0;
         // Remember the last observed size so we only re-fit on a real dimension
-        // change. The observer fires once on observe() and can fire again as the
-        // flex layout settles (e.g. after a stage→full-graph navigation); without
-        // this guard it re-fits the camera right after the layout's own fit
-        // animation, producing a visible zoom jump. Padding matches the graph's
-        // own fit (FIT_PADDING = 60) so the two paths never disagree on zoom.
+        // change. Never autofit after the user has interacted (including node
+        // clicks) — opening inspector content must not yank the camera.
         let lastW = container.clientWidth;
         let lastH = container.clientHeight;
         const observer = new ResizeObserver(() => {
@@ -557,6 +551,8 @@ function PipelineGraphView({
                 lastW = w;
                 lastH = h;
                 cy.resize();
+                // Only autofit while the camera is still in "auto" mode (first load
+                // settle). Clicks/pans set userInteractedRef so selection never fits.
                 if (!userInteractedRef.current && cy.nodes().nonempty()) {
                     cy.fit(undefined, 60);
                 }
@@ -668,26 +664,18 @@ function PipelineGraphView({
         const handleNodeSelect = (node: Cytoscape.NodeSingular, multi: boolean) => {
             if (!canSelectNode(node)) return;
             if (multi) {
-                if (node.selected()) {
-                    node.unselect();
+                if (isNodeSelected(cy, node.id())) {
+                    toggleSelectedNodeId(cy, node.id());
                     setInspectorRef.current(null);
                 } else {
-                    node.selectify();
-                    node.select();
-                    node.unselectify();
+                    toggleSelectedNodeId(cy, node.id());
                     openInspectorForNode(node);
                 }
             } else {
-                const selected = cy.nodes(":selected");
-                const alreadySole =
-                    selected.length === 1 && selected[0].id() === node.id();
+                const selected = getSelectedNodeIds(cy);
+                const alreadySole = selected.length === 1 && selected[0] === node.id();
                 if (!alreadySole) {
-                    cy.batch(() => {
-                        cy.$(":selected").unselect();
-                        node.selectify();
-                        node.select();
-                        node.unselectify();
-                    });
+                    setSelectedNodeIds(cy, [node.id()]);
                 }
                 openInspectorForNode(node);
             }
@@ -786,23 +774,13 @@ function PipelineGraphView({
             eatNextClick || performance.now() < suppressSelectUntil;
 
         const freezeSelection = () => {
-            selectionFreeze = cy.nodes(":selected").map((n) => n.id());
+            selectionFreeze = getSelectedNodeIds(cy);
         };
 
         const restoreFrozenSelection = () => {
             if (selectionFreeze == null) return;
             const ids = selectionFreeze;
-            cy.batch(() => {
-                cy.nodes(":selected").unselect();
-                ids.forEach((id) => {
-                    const node = cy.getElementById(id);
-                    if (!node.empty()) {
-                        node.selectify();
-                        node.select();
-                        node.unselectify();
-                    }
-                });
-            });
+            setSelectedNodeIds(cy, ids);
             if (ids.length) focusSelection(cy);
             else clearFocus(cy);
         };
@@ -933,10 +911,10 @@ function PipelineGraphView({
                 releasedOnCanvas &&
                 !releasedOnNode &&
                 isShortClick &&
-                cy.nodes(":selected").length > 0;
+                getSelectedNodeIds(cy).length > 0;
 
             if (shouldClear) {
-                cy.$(":selected").unselect();
+                clearSelectedNodeIds(cy);
                 clearFocus(cy);
                 setInspectorRef.current(null);
                 setKeyPopoverRef.current(null);
@@ -946,16 +924,7 @@ function PipelineGraphView({
             // Restore multi-select after a background pan (cy may clear it).
             if (snapshot && snapshot.length > 1) {
                 const restore = () => {
-                    cy.batch(() => {
-                        snapshot.forEach((id) => {
-                            const node = cy.getElementById(id);
-                            if (!node.empty()) {
-                                node.selectify();
-                                node.select();
-                                node.unselectify();
-                            }
-                        });
-                    });
+                    setSelectedNodeIds(cy, snapshot);
                     focusSelection(cy);
                 };
                 restore();
@@ -1046,7 +1015,7 @@ function PipelineGraphView({
                     startY: event.clientY,
                     startPan: { x: pan.x, y: pan.y },
                     moved: false,
-                    selectedAtStart: cy.nodes(":selected").map((n) => n.id()),
+                    selectedAtStart: getSelectedNodeIds(cy),
                 };
                 document.addEventListener("mousemove", onNodePanMove, true);
                 document.addEventListener("mouseup", onNodePanEnd, true);
@@ -1054,9 +1023,8 @@ function PipelineGraphView({
             }
             if (!container.contains(event.target as Node)) return;
 
-            const selected = cy.nodes(":selected");
-            multiSelectSnapshot =
-                selected.length > 1 ? selected.map((node) => node.id()) : null;
+            const selected = getSelectedNodeIds(cy);
+            multiSelectSnapshot = selected.length > 1 ? selected : null;
 
             bgPress = {
                 x: event.clientX,
@@ -1127,7 +1095,7 @@ function PipelineGraphView({
         const onContainerMouseOut = (event: MouseEvent) => {
             const related = event.relatedTarget as Node | null;
             if (related && container.contains(related)) return;
-            if (cy.nodes(":selected").nonempty()) return;
+            if (getSelectedNodeIds(cy).length > 0) return;
             clearFocus(cy);
         };
 
@@ -1336,12 +1304,7 @@ function PipelineGraphView({
             if (!node.empty()) {
                 const type = node.data("type") as string;
                 if (type !== "group-expanded") {
-                    cy.batch(() => {
-                        cy.$(":selected").unselect();
-                        node.selectify();
-                        node.select();
-                        node.unselectify();
-                    });
+                    setSelectedNodeIds(cy, [node.id()]);
                     setInspector({ nodeId: node.id(), data: node.data() });
                     setKeyPopover(null);
                     focusSelection(cy);
@@ -1352,7 +1315,7 @@ function PipelineGraphView({
                 setInspector({ nodeId, data: fallbackData });
                 setKeyPopover(null);
                 if (!node.empty()) {
-                    cy.$(":selected").unselect();
+                    clearSelectedNodeIds(cy);
                     focusSelection(cy);
                 }
             }
