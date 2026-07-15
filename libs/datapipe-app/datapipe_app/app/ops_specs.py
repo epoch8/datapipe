@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence, cast
 
-from datapipe.compute import Catalog
-from datapipe.datatable import DataStore
+from datapipe.compute import DatapipeApp
 
 from datapipe_app.ops.spec_registry import OpsSpecRegistry
 from datapipe_app.ops.specs import OpsSpecBase
@@ -14,8 +13,6 @@ if TYPE_CHECKING:
 
 class OpsSpecsMixin:
     ops_specs: OpsSpecRegistry | None
-    catalog: Catalog | None
-    ds: DataStore | None
     observability_registry: ObservabilityRegistry | None
 
     def _ensure_ops_registry(self) -> OpsSpecRegistry:
@@ -26,11 +23,12 @@ class OpsSpecsMixin:
         return registry
 
     def add_specs(self, specs: Sequence[OpsSpecBase]) -> None:
+        host = cast(DatapipeApp, self)
         registry = self._ensure_ops_registry()
         previous = dict(registry._specs)
         try:
             registry.add_many(specs)
-            registry.validate(self.catalog, self.ds, strict=True)
+            registry.validate(host.catalog, host.ds, strict=True)
         except Exception:
             registry._specs = previous
             raise
