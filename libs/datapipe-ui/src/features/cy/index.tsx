@@ -59,8 +59,13 @@ const TAP_DEDUPE_MS = 350;
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 6.0;
-const WHEEL_ZOOM_SPEED = 2.0;
-const FAST_WHEEL_ZOOM_SPEED = 3.0;
+/** Per-event zoom gain. Kept moderate so Mac trackpad two-finger scroll is controllable. */
+const WHEEL_ZOOM_SPEED = 3.3;
+/** Optional boost (Shift only — Ctrl is used by macOS pinch-zoom wheel events). */
+const FAST_WHEEL_ZOOM_SPEED = 6.9;
+/** Soft cap on |deltaY| so one trackpad fling doesn't jump the camera. */
+const WHEEL_DELTA_CLAMP = 36;
+const WHEEL_ZOOM_COEFF = 0.0022;
 
 function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
     const opacity = typeof data.htmlLabelOpacity === "number" ? data.htmlLabelOpacity : 1;
@@ -71,6 +76,7 @@ function interactionStateClass(data: Cytoscape.NodeDataDefinition): string {
     return [
         data.uiFocused ? "is-focused" : "",
         data.uiSelected ? "is-selected" : "",
+        data.uiRelated ? "is-related" : "",
         data.uiDimmed ? "is-dimmed" : "",
     ]
         .filter(Boolean)
@@ -116,7 +122,7 @@ function buildNodeLabelTpl() {
         if (data.type === "table") {
             const primaryKeys = (data.indexes as string[]) || [];
             const tableType = data.store_class ? String(data.store_class) : "TableStoreDB";
-            const { w, h, lines } = tableNodeSize(fullName, primaryKeys, isSubgraph);
+            const { w, h, lines } = tableNodeSize(fullName, primaryKeys, false);
             return `
               <div
                 class="node-core node-core-table ${coreClass} ${stateClass}"
@@ -137,7 +143,7 @@ function buildNodeLabelTpl() {
         }
 
         const tpk = getTransformPrimaryKeys(data);
-        const { w, h, lines } = stepNodeSize(fullName, isSubgraph, tpk);
+        const { w, h, lines } = stepNodeSize(fullName, false, tpk);
         const transformType = data.transform_type ? String(data.transform_type) : "TransformStep";
 
         return `
@@ -963,12 +969,13 @@ function PipelineGraphView({
 
             event.preventDefault();
             userInteractedRef.current = true;
-            const normalizedDelta = Math.max(-100, Math.min(100, event.deltaY));
-            const speed =
-                event.shiftKey || event.ctrlKey || event.metaKey
-                    ? FAST_WHEEL_ZOOM_SPEED
-                    : WHEEL_ZOOM_SPEED;
-            const factor = Math.exp(-normalizedDelta * 0.003 * speed);
+            // Soften large trackpad deltas: clamp, then square-root so flings
+            // don't leap as hard as linear scaling would.
+            const raw = Math.max(-WHEEL_DELTA_CLAMP, Math.min(WHEEL_DELTA_CLAMP, event.deltaY));
+            const normalizedDelta = Math.sign(raw) * Math.sqrt(Math.abs(raw));
+            // Ctrl/meta arrive from macOS pinch gestures — keep those slow.
+            const speed = event.shiftKey ? FAST_WHEEL_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
+            const factor = Math.exp(-normalizedDelta * WHEEL_ZOOM_COEFF * speed);
             const rect = container.getBoundingClientRect();
             const renderedPosition = {
                 x: event.clientX - rect.left,

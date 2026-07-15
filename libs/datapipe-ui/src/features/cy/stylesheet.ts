@@ -9,26 +9,24 @@ function nodeName(node: Cytoscape.NodeSingular): string {
 
 function nodeWidth(node: Cytoscape.NodeSingular): number {
     const name = nodeName(node);
-    const compact = Boolean(node.data("metaGroup"));
     if (node.data("type") === "group") {
         return (node.data("boxW") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1, getTransformPrimaryKeys(node.data())).w;
     }
     if (node.data("type") === "table") {
-        return tableNodeSize(name, node.data("indexes") || [], compact).w;
+        return tableNodeSize(name, node.data("indexes") || [], false).w;
     }
-    return stepNodeSize(name, compact, getTransformPrimaryKeys(node.data())).w;
+    return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).w;
 }
 
 function nodeHeight(node: Cytoscape.NodeSingular): number {
     const name = nodeName(node);
-    const compact = Boolean(node.data("metaGroup"));
     if (node.data("type") === "group") {
         return (node.data("boxH") as number) ?? groupBoxSize(name, node.data("child_count") ?? 1, getTransformPrimaryKeys(node.data())).h;
     }
     if (node.data("type") === "table") {
-        return tableNodeSize(name, node.data("indexes") || [], compact).h;
+        return tableNodeSize(name, node.data("indexes") || [], false).h;
     }
-    return stepNodeSize(name, compact, getTransformPrimaryKeys(node.data())).h;
+    return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).h;
 }
 
 export const stylesheet: Cytoscape.Stylesheet[] = [
@@ -97,6 +95,17 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
     {
+        selector: "node.related",
+        style: {
+            "background-color": edgeColors.related,
+            "background-opacity": 0.08,
+            "border-width": 3,
+            "border-color": edgeColors.related,
+            "overlay-opacity": 0,
+            "z-index": 35,
+        },
+    },
+    {
         selector: "node.dimmed",
         style: {
             opacity: 0.35,
@@ -144,6 +153,16 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             opacity: 1,
             "line-color": edgeColors.active,
             "target-arrow-color": edgeColors.active,
+            "z-index": 20,
+        },
+    },
+    {
+        selector: "edge.related",
+        style: {
+            width: 3.2,
+            opacity: 1,
+            "line-color": edgeColors.related,
+            "target-arrow-color": edgeColors.related,
             "z-index": 20,
         },
     },

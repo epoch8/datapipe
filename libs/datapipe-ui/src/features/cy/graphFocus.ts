@@ -2,13 +2,17 @@ import Cytoscape from "cytoscape";
 import { getNodeHtmlLabelEl, nodeUsesHtmlLabel } from "./htmlLabelOpacity";
 import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 
+const FOCUS_CLASSES = "focused related muted dimmed";
+
 export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     cy.nodes().forEach((node) => {
         if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
 
         const n = node as Cytoscape.NodeSingular;
         const selected = n.selected();
-        const focused = n.hasClass("focused") || selected;
+        const related = n.hasClass("related");
+        // Selected stays blue; related neighbors are orange (not blue-focused).
+        const focused = (n.hasClass("focused") || selected) && !related;
         const dimmed = n.hasClass("dimmed");
 
         // Persist interaction state on node data so it is re-emitted by the
@@ -17,6 +21,7 @@ export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
         // Without this, classes applied directly below are wiped on rebuild.
         if (Boolean(n.data("uiFocused")) !== focused) n.data("uiFocused", focused);
         if (Boolean(n.data("uiSelected")) !== selected) n.data("uiSelected", selected);
+        if (Boolean(n.data("uiRelated")) !== related) n.data("uiRelated", related);
         if (Boolean(n.data("uiDimmed")) !== dimmed) n.data("uiDimmed", dimmed);
 
         // Immediate feedback on the current DOM element (before any rebuild).
@@ -24,24 +29,35 @@ export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
         if (labelEl) {
             labelEl.classList.toggle("is-focused", focused);
             labelEl.classList.toggle("is-selected", selected);
+            labelEl.classList.toggle("is-related", related);
             labelEl.classList.toggle("is-dimmed", dimmed);
         }
     });
 }
 
-export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): void {
-    const connectedEdges = node.connectedEdges();
-    const neighborNodes = connectedEdges.connectedNodes();
+function applyNeighborhoodFocus(
+    cy: Cytoscape.Core,
+    selected: Cytoscape.NodeCollection,
+    highlightedEdges: Cytoscape.EdgeCollection,
+    highlightedNodes: Cytoscape.NodeCollection,
+): void {
+    cy.elements().removeClass(FOCUS_CLASSES);
 
-    cy.elements().removeClass("focused muted dimmed");
-
-    node.addClass("focused");
-    connectedEdges.addClass("focused");
-    cy.edges().not(connectedEdges).addClass("muted");
-    cy.nodes().not(neighborNodes.union(node)).addClass("dimmed");
+    selected.addClass("focused");
+    const relatedNodes = highlightedNodes.difference(selected);
+    relatedNodes.addClass("related");
+    highlightedEdges.addClass("related");
+    cy.nodes().not(highlightedNodes).addClass("dimmed");
+    cy.edges().not(highlightedEdges).addClass("muted");
 
     syncHtmlLabelInteractionState(cy);
     refreshInternalEdgeOverlay(cy);
+}
+
+export function focusNode(cy: Cytoscape.Core, node: Cytoscape.NodeSingular): void {
+    const connectedEdges = node.connectedEdges();
+    const neighborNodes = connectedEdges.connectedNodes();
+    applyNeighborhoodFocus(cy, node, connectedEdges, neighborNodes.union(node));
 }
 
 export function focusSelection(cy: Cytoscape.Core): void {
@@ -56,28 +72,20 @@ export function focusSelection(cy: Cytoscape.Core): void {
     }
 
     // OR: union of each selected node's neighborhood (not intersection of paths).
-    let highlightedEdges = cy.collection();
+    let highlightedEdges = cy.collection() as Cytoscape.EdgeCollection;
     let highlightedNodes = selected;
 
     selected.forEach((node) => {
         const connectedEdges = node.connectedEdges();
-        highlightedEdges = highlightedEdges.union(connectedEdges);
+        highlightedEdges = highlightedEdges.union(connectedEdges) as Cytoscape.EdgeCollection;
         highlightedNodes = highlightedNodes.union(connectedEdges.connectedNodes());
     });
 
-    cy.elements().removeClass("focused muted dimmed");
-
-    selected.addClass("focused");
-    highlightedEdges.addClass("focused");
-    cy.nodes().not(highlightedNodes).addClass("dimmed");
-    cy.edges().not(highlightedEdges).addClass("muted");
-
-    syncHtmlLabelInteractionState(cy);
-    refreshInternalEdgeOverlay(cy);
+    applyNeighborhoodFocus(cy, selected, highlightedEdges, highlightedNodes);
 }
 
 export function clearFocus(cy: Cytoscape.Core): void {
-    cy.elements().removeClass("focused muted dimmed");
+    cy.elements().removeClass(FOCUS_CLASSES);
     syncHtmlLabelInteractionState(cy);
     refreshInternalEdgeOverlay(cy);
 }

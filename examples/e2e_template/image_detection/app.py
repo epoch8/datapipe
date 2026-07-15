@@ -199,8 +199,8 @@ pipeline = Pipeline(
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
                 YoloV8_TrainingConfig(
-                    model="yolov8n.pt",
-                    imgsz=320,
+                    model="yolov8s.pt",
+                    imgsz=640,
                     batch=10,
                     epochs=30,
                     exist_ok=True,

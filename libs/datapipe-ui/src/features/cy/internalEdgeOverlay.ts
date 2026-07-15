@@ -3,6 +3,23 @@ import { edgeColors } from "./graphColors";
 
 const overlayInitStore = new WeakMap<Cytoscape.Core, true>();
 
+/** Match cytoscape `arrow-scale: 1.08` triangle; userSpaceOnUse so stroke width doesn't inflate it. */
+const ARROW_MARKER = {
+    viewBox: "0 0 10 10",
+    refX: "9",
+    refY: "5",
+    markerWidth: "7",
+    markerHeight: "7",
+    path: "M 0 0 L 10 5 L 0 10 z",
+} as const;
+
+const ARROW_MARKERS: Array<{ id: string; fill: string }> = [
+    { id: "cy-internal-edge-arrow", fill: edgeColors.default },
+    { id: "cy-internal-edge-arrow-related", fill: edgeColors.related },
+    { id: "cy-internal-edge-arrow-focused", fill: edgeColors.active },
+    { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
+];
+
 function modelToRendered(cy: Cytoscape.Core, x: number, y: number): { x: number; y: number } {
     const pan = cy.pan();
     const zoom = cy.zoom();
@@ -41,18 +58,26 @@ function edgePathD(cy: Cytoscape.Core, edge: Cytoscape.EdgeSingular): string {
 
 function edgeStroke(edge: Cytoscape.EdgeSingular): string {
     if (edge.hasClass("failed")) return edgeColors.error;
+    if (edge.hasClass("related")) return edgeColors.related;
     if (edge.hasClass("focused")) return edgeColors.active;
     return edgeColors.default;
 }
 
+function edgeArrowMarker(edge: Cytoscape.EdgeSingular): string {
+    if (edge.hasClass("failed")) return "url(#cy-internal-edge-arrow-failed)";
+    if (edge.hasClass("related")) return "url(#cy-internal-edge-arrow-related)";
+    if (edge.hasClass("focused")) return "url(#cy-internal-edge-arrow-focused)";
+    return "url(#cy-internal-edge-arrow)";
+}
+
 function edgeOpacity(edge: Cytoscape.EdgeSingular): number {
     if (edge.hasClass("muted")) return 0.12;
-    if (edge.hasClass("focused") || edge.hasClass("failed")) return 1;
+    if (edge.hasClass("related") || edge.hasClass("focused") || edge.hasClass("failed")) return 1;
     return 0.78;
 }
 
 function edgeWidth(edge: Cytoscape.EdgeSingular): number {
-    if (edge.hasClass("focused") || edge.hasClass("failed")) return 3;
+    if (edge.hasClass("related") || edge.hasClass("focused") || edge.hasClass("failed")) return 3.2;
     return 2.15;
 }
 
@@ -83,21 +108,31 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
     let defs = svg.querySelector("defs") as SVGDefsElement | null;
     if (!defs) {
         defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-        marker.setAttribute("id", "cy-internal-edge-arrow");
-        marker.setAttribute("viewBox", "0 0 10 10");
-        marker.setAttribute("refX", "8");
-        marker.setAttribute("refY", "5");
-        marker.setAttribute("markerWidth", "6");
-        marker.setAttribute("markerHeight", "6");
-        marker.setAttribute("orient", "auto-start-reverse");
-        const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-        arrowPath.setAttribute("fill", edgeColors.default);
-        marker.appendChild(arrowPath);
-        defs.appendChild(marker);
-        svg.appendChild(defs);
+        svg.insertBefore(defs, svg.firstChild);
     }
+
+    ARROW_MARKERS.forEach(({ id, fill }) => {
+        let marker = defs!.querySelector(`#${id}`) as SVGMarkerElement | null;
+        if (!marker) {
+            marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+            marker.setAttribute("id", id);
+            defs!.appendChild(marker);
+            const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            marker.appendChild(arrowPath);
+        }
+        marker.setAttribute("viewBox", ARROW_MARKER.viewBox);
+        marker.setAttribute("refX", ARROW_MARKER.refX);
+        marker.setAttribute("refY", ARROW_MARKER.refY);
+        marker.setAttribute("markerWidth", ARROW_MARKER.markerWidth);
+        marker.setAttribute("markerHeight", ARROW_MARKER.markerHeight);
+        marker.setAttribute("markerUnits", "userSpaceOnUse");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const arrowPath = marker.querySelector("path");
+        if (arrowPath) {
+            arrowPath.setAttribute("d", ARROW_MARKER.path);
+            arrowPath.setAttribute("fill", fill);
+        }
+    });
 
     return { svg, defs };
 }
@@ -125,7 +160,7 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
         path.setAttribute("stroke", edgeStroke(edge));
         path.setAttribute("stroke-width", String(edgeWidth(edge)));
         path.setAttribute("opacity", String(edgeOpacity(edge)));
-        path.setAttribute("marker-end", "url(#cy-internal-edge-arrow)");
+        path.setAttribute("marker-end", edgeArrowMarker(edge));
         path.setAttribute("stroke-linecap", "round");
         path.setAttribute("stroke-linejoin", "round");
         svg.appendChild(path);

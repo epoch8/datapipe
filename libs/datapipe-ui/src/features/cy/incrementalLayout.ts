@@ -72,7 +72,8 @@ function bboxesOverlap(a: BBox, b: BBox): boolean {
 export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
     const id = (data.id as string) || (data.name as string);
     const name = (data.name as string) || id;
-    const compact = Boolean(data.metaGroup);
+    // Inner (metaGroup) nodes use the same card size as top-level nodes so
+    // expanded groups read like the rest of the graph.
     const type = data.type as string;
 
     if (type === "group") {
@@ -105,7 +106,7 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
         };
     }
     if (type === "table") {
-        const size = tableNodeSize(name, (data.indexes as string[]) || [], compact);
+        const size = tableNodeSize(name, (data.indexes as string[]) || [], false);
         return {
             id,
             type,
@@ -120,7 +121,7 @@ export function measureNode(data: Cytoscape.NodeDataDefinition): MeasuredNode {
         };
     }
     const tpk = getTransformPrimaryKeys(data);
-    const size = stepNodeSize(name, compact, tpk);
+    const size = stepNodeSize(name, false, tpk);
     return {
         id,
         type,
@@ -446,13 +447,83 @@ function getBoundaryNodes(
     return boundary;
 }
 
-function sortedExternalEntries(
-    layout: GraphLayout,
-    exclude: Set<string>,
-): Array<[string, LayoutEntry]> {
-    return Array.from(layout.entries())
-        .filter(([id, entry]) => !exclude.has(id) && entry.visible)
-        .sort(([, a], [, b]) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+type LayoutMoveUnit = {
+    members: Array<{ entry: LayoutEntry; origX: number; origY: number }>;
+    originX: number;
+    originY: number;
+    width: number;
+    height: number;
+};
+
+/**
+ * Group a blue frame with its inner nodes so expand/collapse shifts them as one
+ * rigid body. Without this, row-repacking treats each child as its own node and
+ * they drift out of the frame when another group expands above/beside them.
+ */
+function collectLayoutMoveUnits(layout: GraphLayout, exclude: Set<string>): LayoutMoveUnit[] {
+    const claimed = new Set<string>();
+    const units: LayoutMoveUnit[] = [];
+
+    layout.forEach((entry, id) => {
+        if (exclude.has(id) || !entry.visible) return;
+        if (entry.node.type !== "group-expanded") return;
+
+        const members: LayoutMoveUnit["members"] = [
+            { entry, origX: entry.bbox.x, origY: entry.bbox.y },
+        ];
+        claimed.add(id);
+
+        layout.forEach((childEntry, childId) => {
+            if (exclude.has(childId) || !childEntry.visible) return;
+            if (childEntry.node.metaGroup !== id) return;
+            members.push({
+                entry: childEntry,
+                origX: childEntry.bbox.x,
+                origY: childEntry.bbox.y,
+            });
+            claimed.add(childId);
+        });
+
+        let x1 = Infinity;
+        let y1 = Infinity;
+        let x2 = -Infinity;
+        let y2 = -Infinity;
+        members.forEach((m) => {
+            x1 = Math.min(x1, m.origX);
+            y1 = Math.min(y1, m.origY);
+            x2 = Math.max(x2, m.origX + m.entry.bbox.w);
+            y2 = Math.max(y2, m.origY + m.entry.bbox.h);
+        });
+
+        units.push({
+            members,
+            originX: x1,
+            originY: y1,
+            width: x2 - x1,
+            height: y2 - y1,
+        });
+    });
+
+    layout.forEach((entry, id) => {
+        if (exclude.has(id) || !entry.visible || claimed.has(id)) return;
+        units.push({
+            members: [{ entry, origX: entry.bbox.x, origY: entry.bbox.y }],
+            originX: entry.bbox.x,
+            originY: entry.bbox.y,
+            width: entry.bbox.w,
+            height: entry.bbox.h,
+        });
+    });
+
+    return units;
+}
+
+function translateUnit(unit: LayoutMoveUnit, dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+    unit.members.forEach((m) => {
+        m.entry.bbox.x = m.origX + dx;
+        m.entry.bbox.y = m.origY + dy;
+    });
 }
 
 function reassignExternalRowsOnExpand(
@@ -463,38 +534,45 @@ function reassignExternalRowsOnExpand(
 ): void {
     const startY = newGroupBBox.y + newGroupBBox.h + NODE_SEP;
 
-    const snapshots = sortedExternalEntries(layout, exclude)
-        .filter(([, entry]) => entry.bbox.y >= oldGroupBBox.y)
-        .map(([, entry]) => ({ entry, origY: entry.bbox.y, origX: entry.bbox.x }));
+    const units = collectLayoutMoveUnits(layout, exclude)
+        .filter((unit) => unit.originY >= oldGroupBBox.y)
+        .sort((a, b) => a.originY - b.originY || a.originX - b.originX);
 
-    if (!snapshots.length) return;
+    if (!units.length) return;
 
-    const rows: Array<typeof snapshots> = [];
-    snapshots.forEach((snap) => {
-        const row = rows.find((r) => Math.abs(r[0].origY - snap.origY) <= 32);
-        if (row) row.push(snap);
-        else rows.push([snap]);
+    const rows: LayoutMoveUnit[][] = [];
+    units.forEach((unit) => {
+        const row = rows.find((r) => Math.abs(r[0].originY - unit.originY) <= 32);
+        if (row) row.push(unit);
+        else rows.push([unit]);
     });
-    rows.sort((a, b) => a[0].origY - b[0].origY);
+    rows.sort((a, b) => a[0].originY - b[0].originY);
 
     let yCursor = startY;
     rows.forEach((row) => {
-        row.sort((a, b) => a.origX - b.origX);
-        const rowHeight = Math.max(...row.map((s) => s.entry.bbox.h));
-        row.forEach((snap) => {
-            snap.entry.bbox.y = yCursor;
+        row.sort((a, b) => a.originX - b.originX);
+        const rowHeight = Math.max(...row.map((u) => u.height));
+        row.forEach((unit) => {
+            translateUnit(unit, 0, yCursor - unit.originY);
         });
         yCursor += rowHeight + RANK_SEP;
     });
 
-    // Resolve horizontal crowding within each new row.
+    // Resolve horizontal crowding within each new row (units stay rigid).
     rows.forEach((row) => {
         for (let i = 1; i < row.length; i += 1) {
-            const prev = row[i - 1].entry.bbox;
-            const curr = row[i].entry;
-            const minX = prev.x + prev.w + NODE_SEP;
-            if (curr.bbox.x < minX) {
-                curr.bbox.x = minX;
+            const prev = row[i - 1];
+            const curr = row[i];
+            const prevRight = Math.max(
+                ...prev.members.map((m) => m.entry.bbox.x + m.entry.bbox.w),
+            );
+            const currLeft = Math.min(...curr.members.map((m) => m.entry.bbox.x));
+            const minLeft = prevRight + NODE_SEP;
+            if (currLeft < minLeft) {
+                const dx = minLeft - currLeft;
+                curr.members.forEach((m) => {
+                    m.entry.bbox.x += dx;
+                });
             }
         }
     });
@@ -503,7 +581,8 @@ function reassignExternalRowsOnExpand(
 /**
  * Upfront layout for expand/collapse: top-center anchor stays fixed; external nodes
  * at/ below the group top move by the group size delta. On expand, rows below the
- * blue frame are repacked from the pre-expand row structure.
+ * blue frame are repacked from the pre-expand row structure. Expanded groups move
+ * as rigid clusters (frame + inners) so multi-expand stays coherent.
  */
 function computeExternalPositionsAfterGroupResize(
     layout: GraphLayout,
@@ -522,9 +601,10 @@ function computeExternalPositionsAfterGroupResize(
         }
 
         // Collapse fallback (when pre-expand snapshot is unavailable).
-        sortedExternalEntries(layout, exclude).forEach(([, entry]) => {
-            if (entry.bbox.y >= newGroupBBox.y) {
-                entry.bbox.y += deltaH;
+        // Uniform delta keeps other expanded groups' internals aligned with their frame.
+        collectLayoutMoveUnits(layout, exclude).forEach((unit) => {
+            if (unit.originY >= newGroupBBox.y) {
+                translateUnit(unit, 0, deltaH);
             }
         });
         return;
@@ -534,15 +614,20 @@ function computeExternalPositionsAfterGroupResize(
     if (deltaW === 0) return;
 
     const floorX = newGroupBBox.x + newGroupBBox.w + NODE_SEP;
-    sortedExternalEntries(layout, exclude).forEach(([, entry]) => {
-        if (entry.bbox.x < oldGroupBBox.x) return;
+    collectLayoutMoveUnits(layout, exclude).forEach((unit) => {
+        if (unit.originX < oldGroupBBox.x) return;
 
-        let x = entry.bbox.x + deltaW;
-        const candidate: BBox = { ...entry.bbox, x };
+        let dx = deltaW;
+        const candidate: BBox = {
+            x: unit.originX + dx,
+            y: unit.originY,
+            w: unit.width,
+            h: unit.height,
+        };
         if (deltaW > 0 && bboxesOverlap(candidate, newGroupBBox)) {
-            x = floorX;
+            dx = floorX - unit.originX;
         }
-        entry.bbox.x = x;
+        translateUnit(unit, dx, 0);
     });
 }
 
@@ -724,18 +809,27 @@ export function buildCollapsedLayout(
         layout.set(id, { bbox, node, visible: true });
     });
 
-    sortIds(Array.from(expanded)).forEach((groupId) => {
-        if (!layout.has(groupId)) return;
-        const expandedLayout = expandGroupInLayout(
-            layout,
-            groupId,
-            nodes,
-            edges,
-            rankDir,
-            pipelineOrders.get(groupId) ?? [],
-        );
-        expandedLayout.forEach((entry, id) => layout.set(id, entry));
-    });
+    sortIds(Array.from(expanded))
+        .filter((groupId) => layout.has(groupId))
+        // Top-to-bottom (then left-to-right) so an upper expand never row-repacks
+        // a group that was already expanded below it.
+        .sort((a, b) => {
+            const ea = layout.get(a);
+            const eb = layout.get(b);
+            if (!ea || !eb) return a.localeCompare(b);
+            return ea.bbox.y - eb.bbox.y || ea.bbox.x - eb.bbox.x || a.localeCompare(b);
+        })
+        .forEach((groupId) => {
+            const expandedLayout = expandGroupInLayout(
+                layout,
+                groupId,
+                nodes,
+                edges,
+                rankDir,
+                pipelineOrders.get(groupId) ?? [],
+            );
+            expandedLayout.forEach((entry, id) => layout.set(id, entry));
+        });
 
     normalizeLayout(layout);
     return layout;

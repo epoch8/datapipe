@@ -196,6 +196,24 @@ function takePreExpandLayout(cy: Cytoscape.Core, groupId: string): GraphLayout |
     return layout;
 }
 
+function expandedGroupsInLayout(layout: GraphLayout): Set<string> {
+    const ids = new Set<string>();
+    layout.forEach((entry, id) => {
+        if (entry.node.type === "group-expanded" && entry.visible) {
+            ids.add(id);
+        }
+    });
+    return ids;
+}
+
+function sameIdSet(a: Set<string>, b: Set<string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const id of Array.from(a)) {
+        if (!b.has(id)) return false;
+    }
+    return true;
+}
+
 function graphStructureKey(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     edges: Iterable<Cytoscape.EdgeDataDefinition>,
@@ -362,7 +380,13 @@ export function syncCyGraph(
             }
         });
         const restored = takePreExpandLayout(cy, anchorGroup);
-        const collapsedLayout = restored
+        // Only restore a pre-expand snapshot when it already matches the remaining
+        // expanded set. Expanding B after A makes A's snapshot stale (B missing).
+        const restoredUsable =
+            restored && sameIdSet(expandedGroupsInLayout(restored), expanded)
+                ? restored
+                : null;
+        const collapsedLayout = restoredUsable
             ?? collapseGroupInLayout(
                 workingLayout,
                 anchorGroup,
