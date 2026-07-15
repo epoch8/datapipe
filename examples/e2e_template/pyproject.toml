@@ -16,6 +16,9 @@ dependencies = [
 # Legacy-host extras (e.g. epoch8 gpu5: pre-AVX2 CPU, old image stack). On modern machines run plain
 # `uv sync` — do NOT edit dependencies (editing re-locks and drifts versions across machines).
 [project.optional-dependencies]
+ray = [
+    "datapipe-core[ray]",
+]
 old-cpu = [
     "polars-lts-cpu==1.33.1",   # ultralytics/datapipe on pre-AVX2 CPUs (avoids SIGILL)
     "pi-heif",                  # ultralytics image verification imports it on this host

@@ -230,6 +230,9 @@ def cli(
     if executor == "SingleThreadExecutor":
         ctx.obj["executor"] = SingleThreadExecutor()
     elif executor == "RayExecutor":
+        # Set before `import ray`: ray_constants reads this at import time.
+        os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
+
         import ray
 
         from datapipe.executor.ray import RayExecutor

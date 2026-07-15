@@ -162,4 +162,44 @@ if not CLICKHOUSE_RUN_LOGS_URL:
         "start docker compose (clickhouse service), and run: set -a && source ../.env && set +a"
     )
 
+from datapipe.executor import ExecutorConfig
+
+_MAX_CPU = os.cpu_count() or 4
+
+
+def _use_gpu() -> bool:
+    explicit = os.environ.get("DATAPIPE_USE_GPU")
+    if explicit is not None:
+        return explicit.strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        import torch
+
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2) -> ExecutorConfig:
+    """Embarrassingly parallel I/O and image prep (resize, download, upload)."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
+
+
+def inference_executor(*, parallelism: int | None = None) -> ExecutorConfig:
+    """GPU inference when CUDA is available; CPU fallback otherwise."""
+    if _use_gpu():
+        if parallelism is None:
+            try:
+                import torch
+
+                parallelism = max(1, torch.cuda.device_count())
+            except Exception:
+                parallelism = 1
+        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism)
+    return ExecutorConfig(cpu=1.0, parallelism=min(_MAX_CPU, 4))
+
+
+def metrics_executor(*, parallelism_cap: int = 8, cpu_per_task: float = 0.5) -> ExecutorConfig:
+    """CPU-bound metrics aggregation over image batches."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
+
 FIFTYONE_DATASET_NAME = "datapipe_detection_e2e"

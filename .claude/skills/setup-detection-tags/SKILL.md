@@ -35,7 +35,7 @@ and present/rehearse part 2 (the retraining) as often as you like:
 > and **verifies the data is in the pipe** — then **stops**. It does **not** run training. **You
 > trigger each training run yourself from the datapipe-app front** (the pipeline graph's
 > `stage=train` steps, port 8000): model A in part 1, then — after the skill tops up `night-train` —
-> model B in part 2. The `datapipe step --labels=stage=train run` commands below are the
+> model B in part 2. The `datapipe --executor RayExecutor step --labels=stage=train run` commands below are the
 > standalone/CLI equivalent for a no-UI setup; in the UI setup you (the human) press run in the front
 > instead.
 
@@ -120,13 +120,13 @@ port is busy** — pick a different left-hand port (`-L 5433:localhost:5432`), d
 ```bash
 cp .env.example .env && set -a && source .env && set +a   # DB_URL, S3/MinIO, FIFTYONE_DATABASE_URI, CLICKHOUSE_RUN_LOGS_URL
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + mongo + fiftyone (:5151) + clickhouse (:8123); HOST_UID/GID avoid sudo perms. No Label Studio.
-uv sync                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
+uv sync --extra ray                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
                               # that drifts lib versions across machines (e.g. a different ultralytics)
                               # and changes training results. The lock pins everyone to the same stack.
                               # Declares datapipe-app + datapipe-app-ml-ops + datapipe-ml (ML ops UI is
                               # datapipe-app-ml-ops, not datapipe-ml[observability]).
 # Legacy host (e.g. epoch8 gpu5: pre-AVX2 CPU) ONLY — extras + force the lts polars to win:
-uv sync --extra old-cpu
+uv sync --extra ray --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 cd detection
 # DB_SCHEMA defaults to `public` (already exists). Only if you set a dedicated schema (to share the
@@ -139,8 +139,9 @@ Then bring up the **datapipe-app UI front** — it serves the pipeline graph, th
 tables), and the **run triggers** you use to launch training:
 
 ```bash
-# from examples/detection_tags/detection, .env sourced; run it under tmux/nohup so it survives ssh drops
-datapipe --pipeline app api --host 127.0.0.1 --port 8000
+# from examples/detection_tags/detection, .env sourced; run under tmux/nohup so it survives ssh drops
+set -a && source ../.env && set +a
+uv run datapipe --executor RayExecutor --pipeline app api --host 127.0.0.1 --port 8000
 ```
 
 Bind to `127.0.0.1` (not `0.0.0.0`) and reach it over an SSH tunnel `-L 8000:localhost:8000`; open
@@ -155,10 +156,11 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
+set -a && source ../.env && set +a
 python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
 python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
 python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
-datapipe step --labels=stage=load run                 # 450 images; val frozen (100 base + 25 night)
+uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 450 images; val frozen (100 base + 25 night)
 
 # VERIFY the data is in the pipe before handing off:
 #   SELECT subset_id, count(*) FROM image__subset_hint GROUP BY subset_id      -- expect train=325, val=125
@@ -172,10 +174,10 @@ observability panels (training status/curves). When it finishes, compute metrics
 
 ```bash
 # CLI equivalent (no-UI) of what you trigger in the front:
-datapipe step --labels=stage=train run                # split -> freeze -> train model A -> inference
-datapipe step --labels=stage=count-metrics run        # metrics_on_image/subset + tag_metrics
+uv run datapipe --executor RayExecutor step --labels=stage=train run                # split -> freeze -> train model A -> inference
+uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run        # metrics_on_image/subset + tag_metrics
 #   count-metrics can print "Batches to process 0" right after training — RE-RUN it once. (Troubleshooting.)
-datapipe step --labels=stage=fiftyone run             # download_images -> GT + model-A predictions
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run             # download_images -> GT + model-A predictions
 # (demo-only) snapshot the post-A state to rehearse part 2 later:
 docker exec <pg> pg_dump -U postgres -n "$DB_SCHEMA" postgres > /tmp/checkpoint.sql
 ```
@@ -200,10 +202,11 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 
 ```bash
 # SKILL DOES — add the tagged TRAIN batch and load it (val stays frozen):
+set -a && source ../.env && set +a
 python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
 python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
 python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
-datapipe step --labels=stage=load run                 # 500 images total
+uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 500 images total
 # VERIFY val stayed frozen (night went to TRAIN only):
 #   SELECT h.subset_id, count(*) FROM image__tag it JOIN tag t USING(tag_id)
 #     JOIN image__subset_hint h USING(image_name) WHERE t.tag_name='night' GROUP BY h.subset_id
@@ -214,9 +217,9 @@ datapipe step --labels=stage=load run                 # 500 images total
 night is now in TRAIN, val unchanged). Then metrics + FiftyOne (front or CLI equivalent):
 
 ```bash
-datapipe step --labels=stage=train run                # model B (night in training)
-datapipe step --labels=stage=count-metrics run        # re-run if "0 batches"
-datapipe step --labels=stage=fiftyone run             # adds predictions_model_b
+uv run datapipe --executor RayExecutor step --labels=stage=train run                # model B (night in training)
+uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run        # re-run if "0 batches"
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run             # adds predictions_model_b
 ```
 
 `night/val` recall rises from model A to model B — the payoff. Show the full tables again (in the
@@ -263,7 +266,7 @@ one machine's host/ports/paths and mislead on the next). Compute the specifics f
 runtime (local vs remote host, which ports are free, tunnels if remote) and give the user the commands
 directly in chat:
 
-- **the datapipe-app front** (`datapipe --pipeline app api --host 127.0.0.1 --port 8000`, tunnel 8000)
+- **the datapipe-app front** (`uv run datapipe --executor RayExecutor --pipeline app api --host 127.0.0.1 --port 8000`, tunnel 8000)
   — the pipeline graph, observability panels (training status/curves), the `cat_dog`
   ops-spec with the `model_metrics` + `tag_metrics` tables, and the **run triggers** the user presses
   to launch model A / model B. This is the primary surface in the UI setup.

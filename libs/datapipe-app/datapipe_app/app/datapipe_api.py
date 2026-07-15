@@ -7,6 +7,7 @@ from typing import Optional
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
+from datapipe.executor import Executor
 from datapipe.store.database import DBConn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,6 +71,7 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
     observability_dbconn: DBConn
     run_logs_backend: Optional[RunLogsBackend]
     ops_settings: OpsSettings
+    executor: Executor | None
 
     def __init__(
         self,
@@ -82,6 +84,7 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
         observability_dbconn: Optional[DBConn] = None,
         run_logs_backend: Optional[RunLogsBackend] = None,
         pipeline_spec: Optional[str] = None,
+        executor: Executor | None = None,
     ):
         self.observability_registry = ObservabilityRegistry()
         load_observability_plugins(self.observability_registry)
@@ -118,6 +121,7 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
         )
         configure_active_ops(self.ops_settings)
         ops = self.ops_settings
+        self.executor = executor
 
         self.observability_dbconn = _resolve_observability_dbconn(self.ds, observability_dbconn)
 
@@ -217,6 +221,7 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
                 steps=self.steps,
                 recorder=self.run_recorder,
                 ops_specs=self.ops_specs,
+                executor_host=self,
             ),
             name="v1alpha3",
         )

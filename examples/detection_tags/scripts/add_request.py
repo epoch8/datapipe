@@ -1,4 +1,4 @@
-"""Add a load request, then run the load step:  datapipe step --labels=stage=load run
+"""Add a load request, then run the load step:  datapipe --executor RayExecutor step --labels=stage=load run
 
 Fixed-val demo (freeze val up front, add the tagged train batch later):
 
@@ -53,7 +53,7 @@ def main() -> int:
     }]))
     print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} "
           f"darken={a.darken} subset={a.subset}")
-    print("now run:  datapipe step --labels=stage=load run")
+    print("now run:  uv run datapipe --executor RayExecutor step --labels=stage=load run")
     return 0
 
 

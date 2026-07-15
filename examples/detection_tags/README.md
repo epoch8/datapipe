@@ -15,13 +15,16 @@ is split into **two parts around a checkpoint** so you can prep part 1 and rehea
 Python **3.10–3.12** (`datapipe-ml` does not support 3.13+ yet). From `examples/detection_tags/`:
 
 ```bash
-uv sync    # modern hosts: unmodified — do not edit/re-lock deps (drifts training across machines)
+uv sync --extra ray    # modern hosts: unmodified — do not edit/re-lock deps (drifts training across machines)
 ```
+
+Pipeline steps use `RayExecutor` for parallel I/O, inference, and metrics. Install the `ray` extra
+before running `datapipe step` or `datapipe api`.
 
 On **pre-AVX2 CPUs** (e.g. epoch8 gpu5), after `uv sync`:
 
 ```bash
-uv sync --extra old-cpu
+uv sync --extra ray --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 ```
 
@@ -52,7 +55,8 @@ datapipe db create-all
 From `examples/detection_tags/detection` (with `.env` sourced):
 
 ```bash
-datapipe --pipeline app api --host 127.0.0.1 --port 8000
+set -a && source ../.env && set +a
+uv run datapipe --executor RayExecutor --pipeline app api --host 127.0.0.1 --port 8000
 ```
 
 Open `http://localhost:8000` (SSH tunnel `-L 8000:localhost:8000` on remote hosts). The front shows
@@ -79,21 +83,22 @@ bash scripts/restore_demo_seed.sh        # wipes the public schema, restores dem
 ```
 
 Then open the front — `cat_dog` shows the reference metrics (A val recall 0.324 / B 0.415 etc.) in the
-Ops UI (`datapipe --pipeline app api`, port 8000). Live (re)training stays available; treat its numbers
+Ops UI (`uv run datapipe --executor RayExecutor --pipeline app api`, port 8000). Live (re)training stays available; treat its numbers
 as per-GPU.
 
 ## Part 1 — baseline to checkpoint
 ```bash
 # from examples/detection_tags/detection
+set -a && source ../.env && set +a
 python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
 python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
 python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
-datapipe step --labels=stage=load run
-datapipe step --labels=stage=train run            # model A
-datapipe step --labels=stage=count-metrics run    # re-run once if it prints "Batches to process 0"
+uv run datapipe --executor RayExecutor step --labels=stage=load run
+uv run datapipe --executor RayExecutor step --labels=stage=train run            # model A
+uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run    # re-run once if it prints "Batches to process 0"
 # (demo-only) snapshot the post-A state to rehearse part 2 later, before the fiftyone stage:
 docker exec <pg> pg_dump -U postgres -n "$DB_SCHEMA" postgres > /tmp/checkpoint.sql
-datapipe step --labels=stage=fiftyone run         # GT + model-A predictions into FiftyOne
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run         # GT + model-A predictions into FiftyOne
 ```
 
 ## Part 2 — retrain and watch the tag metric rise
@@ -101,10 +106,10 @@ datapipe step --labels=stage=fiftyone run         # GT + model-A predictions int
 python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
 python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
 python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
-datapipe step --labels=stage=load run
-datapipe step --labels=stage=train run            # model B (night now in training)
-datapipe step --labels=stage=count-metrics run    # re-run once if "0 batches"
-datapipe step --labels=stage=fiftyone run         # adds predictions_model_b
+uv run datapipe --executor RayExecutor step --labels=stage=load run
+uv run datapipe --executor RayExecutor step --labels=stage=train run            # model B (night now in training)
+uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run    # re-run once if "0 batches"
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run         # adds predictions_model_b
 ```
 Rehearse (demo-only): restore the snapshot + wipe the FiftyOne db, then re-run part 2 — no retraining
 of model A:

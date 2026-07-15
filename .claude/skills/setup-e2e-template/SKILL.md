@@ -18,13 +18,14 @@ This skill = run the YOLO/Label-Studio detection/keypoints pipeline on YOUR imag
 - **Where YOUR images go:** put them under `$DATAPIPE_E2E_DIR/images` (`DATAPIPE_E2E_DIR` defaults to `s3://datapipe-e2e`; the pipeline writes its own artifacts under `$DATAPIPE_E2E_DIR/datapipe`, a sibling — input and working dir don't overlap). Set `AWS_*`, `S3_ENDPOINT_URL`, and `S3_PUBLIC_URL` (browser-reachable — Label Studio loads images from it). Label Studio reaches S3 via its own `LABEL_STUDIO_S3_ENDPOINT_URL` (`minio:9000`), not `S3_ENDPOINT_URL`.
 
 ## Prerequisites
-- **Python 3.10–3.12** (hard pin `>=3.10,<3.13`). **Install:** `cd examples/e2e_template && uv sync`
+- **Python 3.10–3.12** (hard pin `>=3.10,<3.13`). **Install:** `cd examples/e2e_template && uv sync --extra ray`
   (`pyproject.toml`: editable `datapipe-app`, **`datapipe-app-ml-ops`**, `datapipe-ml`, cu124 `torch==2.6.0`).
-  Modern hosts: run `uv sync` unmodified — do NOT edit/re-lock deps (drifts training across machines).
-  **Legacy host (pre-AVX2 CPU, e.g. epoch8 gpu5):** `uv sync --extra old-cpu`, then force lts polars
+  Modern hosts: run `uv sync --extra ray` unmodified — do NOT edit/re-lock deps (drifts training across machines).
+  **Legacy host (pre-AVX2 CPU, e.g. epoch8 gpu5):** `uv sync --extra ray --extra old-cpu`, then force lts polars
   (`uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1`) — see detection_tags Troubleshooting.
 - **Ops specs / app UI:** `image_*/app.py` registers specs via `datapipe_app_ml_ops.ops.ops_specs` +
-  `app.add_specs([...])`. Run the front with `datapipe --pipeline app api` (port 8000) after `uv sync`.
+  `app.add_specs([...])`. Run the front with `uv run datapipe --executor RayExecutor --pipeline app api` (port 8000)
+  after `uv sync --extra ray`.
 - **Services:** `docker compose up` → Postgres 5432, MinIO (9000/9001, bucket `datapipe-e2e`,
   anon-download for browser images), MongoDB 27017, Label Studio :8080, ClickHouse :8123 (ops run logs).
 - **Env:** `cp .env.example .env` then `set -a && source .env && set +a` before any `datapipe` command
@@ -41,15 +42,14 @@ Skip if you have data: `uv run python scripts/seed_sample_data.py` downloads ~20
 ## Run (from the project subdir)
 ```bash
 cd image_detection                            # or image_keypoints
-source ../.venv/bin/activate                  # else prefix every command with `uv run`
 set -a && source ../.env && set +a            # config raises w/o DB_URL
-datapipe db create-all
-datapipe step --labels=stage=annotation run   # LS tasks + pre-annotations
+uv run datapipe db create-all
+uv run datapipe --executor RayExecutor step --labels=stage=annotation run   # LS tasks + pre-annotations
 # → annotate ≥10 images in LS (:8080), mark completed →
-datapipe step --labels=stage=ls-sync run      # → image__ground_truth
-datapipe step --labels=stage=train run        # freeze + train YOLO + metrics + best
-datapipe step --labels=stage=fiftyone run
-fiftyone app launch datapipe_detection_e2e    # or datapipe_keypoints_e2e
+uv run datapipe --executor RayExecutor step --labels=stage=ls-sync run      # → image__ground_truth
+uv run datapipe --executor RayExecutor step --labels=stage=train run        # freeze + train YOLO + metrics + best
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
+uv run fiftyone app launch datapipe_detection_e2e    # or datapipe_keypoints_e2e
 ```
 Train uses `yolov8n*.pt` (imgsz 320, 30 ep); pre-annotation fallback `yolo11n*.pt`; best on `subset_id=val`.
 
@@ -65,7 +65,7 @@ conventions, or the freeze join silently yields nothing / classes don't match:**
   — otherwise predictions and GT land in *different* classes and every metric is 0.
 - **`bboxes`** = pixel `[x1,y1,x2,y2]`; assign `image__subset.subset_id` (`train`/`val`) yourself.
 - Write via datapipe `DataStore`/`UpdateExternalTable` (keeps `*_meta` in sync) — not raw SQL `UPDATE`
-  on PK columns. Then `datapipe step --labels=stage=train run` (skip `annotation`/`ls-sync`).
+  on PK columns. Then `uv run datapipe --executor RayExecutor step --labels=stage=train run` (skip `annotation`/`ls-sync`).
 
 ## Per-scenario tag metrics → see the dedicated example
 Want to tag a scenario (e.g. dark-room pallets), add it to training, and measure the model on that
@@ -78,6 +78,6 @@ scenario separately (baseline vs retrained)? That lives as its own self-containe
 - **No model after `train`, exit 0** → datapipe swallows step errors; check `detection_training_status`, not the exit code.
 - **Demo pre-annotations are empty** → the fallback `DETECTION_MODEL_CONFIG` is a smoke model (`yolo11n`, `input_size:[16,16]`, `score_threshold:0.01`) used until a trained model exists, so it detects almost nothing. Expected for the demo; for useful pre-annotations set a real model + `input_size`/`score_threshold`.
 - **Training metrics ~0** → not a config bug: the trained model is `yolov8n` (imgsz 320, 30 ep), and the seed sample (~20 images) is simply too small to learn from. Real metrics need enough annotated data.
-- **`SIGILL` / pre-AVX2 CPU** → same as **setup-detection-tags**: `uv sync --extra old-cpu`, reinstall
+- **`SIGILL` / pre-AVX2 CPU** → same as **setup-detection-tags**: `uv sync --extra ray --extra old-cpu`, reinstall
   `polars-lts-cpu==1.33.1`, and `pi-heif` if ultralytics image verification fails.
 - **`cv_pipeliner` keypoint pre-annotation is broken** (pinned rev): inferencer drops keypoints, LS parser doesn't apply them → keypoint `train` needs real keypoint GT injected.

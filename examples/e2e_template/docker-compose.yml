@@ -160,5 +160,5 @@ services:
       start_period: 10s
 
   # Ops UI: run agents on the host (one process per pipeline), e.g.:
-  #   cd image_detection && source ../.env && uv run datapipe --pipeline app:app api --port 8001
-  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e uv run datapipe --pipeline app:app api --port 8002
+  #   cd image_detection && source ../.env && uv run datapipe --executor RayExecutor --pipeline app:app api --port 8001
+  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e source ../.env && uv run datapipe --executor RayExecutor --pipeline app:app api --port 8002

@@ -1336,6 +1336,9 @@ old-cpu = [
     { name = "pi-heif" },
     { name = "polars-lts-cpu" },
 ]
+ray = [
+    { name = "datapipe-core", extra = ["ray"] },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1348,6 +1351,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "datapipe-app", extras = ["clickhouse", "ml"], editable = "../../libs/datapipe-app" },
+    { name = "datapipe-core", extras = ["ray"], marker = "extra == 'ray'", editable = "../../libs/datapipe-core" },
     { name = "datapipe-ml", extras = ["torch", "fiftyone"], editable = "../../libs/datapipe-ml" },
     { name = "datapipe-ui-ml", editable = "../../libs/datapipe-ui-ml" },
     { name = "pi-heif", marker = "extra == 'old-cpu'" },
@@ -1356,7 +1360,7 @@ requires-dist = [
     { name = "torch", specifier = "==2.6.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "torchvision", specifier = "==0.21.0", index = "https://download.pytorch.org/whl/cu124" },
 ]
-provides-extras = ["old-cpu"]
+provides-extras = ["ray", "old-cpu"]
 
 [package.metadata.requires-dev]
 dev = [

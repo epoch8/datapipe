@@ -144,9 +144,6 @@ export function RunDetail() {
                     ))}
                 </Menu.SubMenu>
             )}
-            <Menu.Item key="run-all" onClick={() => startRun([])}>
-                Run all labels
-            </Menu.Item>
             {isStageRun && (
                 <>
                     <Menu.Divider />

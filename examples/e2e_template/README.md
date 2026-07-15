@@ -39,19 +39,22 @@ Dependencies live in `pyproject.toml`. Install with [uv](https://docs.astral.sh/
 ```bash
 cd examples/e2e_template
 
-uv sync
+uv sync --extra ray
 ```
+
+Pipeline steps use `RayExecutor` for parallel I/O, inference, and metrics (see `executor_config` in
+each template's `app.py`). Install the `ray` extra before running `datapipe step` or `datapipe api`.
 
 On CPUs **without AVX2+** (ultralytics may crash on `import polars` during YOLO training), use the
 `old-cpu` optional extra and force the LTS polars build (same as `detection_tags`):
 
 ```bash
-uv sync --extra old-cpu
+uv sync --extra ray --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 ```
 
 If ultralytics image verification fails with `No module named 'pi_heif'`, `pi-heif` is included in
-the `old-cpu` extra — re-run `uv sync --extra old-cpu`.
+the `old-cpu` extra — re-run `uv sync --extra ray --extra old-cpu`.
 
 What each piece is for:
 
@@ -170,26 +173,28 @@ Training hyperparameters (`epochs`, `batch`, `imgsz`, base checkpoint) are in `a
 
 ## Running
 
-Run by stage with `uv run datapipe step --labels=... run`. Plain `uv run datapipe run` executes the whole pipeline without label filtering.
+Run by stage with `uv run datapipe --executor RayExecutor step --labels=... run`. Plain
+`uv run datapipe --executor RayExecutor run` executes the whole pipeline without label filtering.
 
 Detection:
 
 ```bash
 cd image_detection
+set -a && source ../.env && set +a
 uv run datapipe db create-all
-uv run datapipe step --labels=stage=annotation run
+uv run datapipe --executor RayExecutor step --labels=stage=annotation run
 ```
 
 After tasks appear in Label Studio, annotate them and sync back:
 
 ```
-uv run datapipe step --labels=stage=annotation run
+uv run datapipe --executor RayExecutor step --labels=stage=annotation run
 ```
 
 Then train model and visualize results in fiftyone:
 ```bash
-uv run datapipe step --labels=stage=train run
-uv run datapipe step --labels=stage=fiftyone run
+uv run datapipe --executor RayExecutor step --labels=stage=train run
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
 ```
 
 After the FiftyOne stage, open the dataset in the FiftyOne App (`docker compose` must be running):
@@ -214,21 +219,22 @@ Keypoints:
 
 ```bash
 cd image_keypoints
+set -a && source ../.env && set +a
 uv run datapipe db create-all
-uv run datapipe step --labels=stage=annotation run
+uv run datapipe --executor RayExecutor step --labels=stage=annotation run
 ```
 
 After tasks appear in Label Studio, annotate them and sync back:
 ```
-uv run datapipe step --labels=stage=annotation run
+uv run datapipe --executor RayExecutor step --labels=stage=annotation run
 ```
 
 Then train model and visualize results in fiftyone:
 
 ```bash
-uv run datapipe step --labels=stage=ls-sync run
-uv run datapipe step --labels=stage=train run
-uv run datapipe step --labels=stage=fiftyone run
+uv run datapipe --executor RayExecutor step --labels=stage=ls-sync run
+uv run datapipe --executor RayExecutor step --labels=stage=train run
+uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
 ```
 
 Then open `http://localhost:5151` and select `datapipe_keypoints_e2e` (or use local launch below).
@@ -253,7 +259,7 @@ Run a pipeline **agent** (with `.env` loaded). Use a distinct port per pipeline:
 ```bash
 cd image_detection
 set -a && source ../.env && set +a
-uv run datapipe --pipeline app:app api --port 8001
+uv run datapipe --executor RayExecutor --pipeline app:app api --port 8001
 ```
 
 Open `http://localhost:8001` (title: `Datapipe Ops · app`). From there you can run stages, view the pipeline graph (Debug), and inspect runs.
@@ -263,7 +269,7 @@ For keypoints, port `8002`, and:
 ```bash
 cd image_keypoints
 set -a && source ../.env && set +a
-uv run datapipe --pipeline app:app api --port 8002
+uv run datapipe --executor RayExecutor --pipeline app:app api --port 8002
 ```
 
 The service-backed test path in `tests/e2e_template/` uses the same stack. See `.github/workflows/e2e-template.yml`.

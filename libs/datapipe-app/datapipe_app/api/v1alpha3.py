@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import importlib.metadata
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
+from datapipe.executor import Executor
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.types import Labels
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
@@ -29,6 +30,9 @@ from datapipe_app.observability.config.settings import get_ops_settings
 from datapipe_app.pipeline.pipeline_ui import register_pipeline_ui_routes
 from datapipe_app.ops.spec_registry import OpsSpecRegistry
 from datapipe_app.observability.extensions import register_v1alpha3_extensions
+
+if TYPE_CHECKING:
+    from datapipe_app.app.datapipe_api import DatapipeAPI
 
 
 class ResetTransformMetadataResponse(BaseModel):
@@ -58,9 +62,16 @@ def make_app(
     steps: List[ComputeStep],
     recorder: Optional[RunRecorder] = None,
     ops_specs: Optional[OpsSpecRegistry] = None,
+    executor: Executor | None = None,
+    executor_host: Optional["DatapipeAPI"] = None,
 ) -> FastAPI:
     app = FastAPI(title="Datapipe Ops API v1alpha3")
     ops_spec_registry = ops_specs or OpsSpecRegistry()
+
+    def _resolve_executor() -> Executor | None:
+        if executor_host is not None:
+            return executor_host.executor
+        return executor
 
     def _pipeline_id() -> Optional[str]:
         return get_ops_settings().pipeline_id
@@ -331,11 +342,11 @@ def make_app(
     def run_pipeline_legacy() -> dict[str, Any]:
         """Legacy full-pipeline run endpoint (formerly v1alpha1 /run with recorder)."""
         if recorder is None:
-            run_steps(ds=ds, steps=steps)
+            run_steps(ds=ds, steps=steps, executor=_resolve_executor())
             return {"result": "ok"}
         run_id = recorder.start_run(trigger="v1alpha1")
         try:
-            recorder.execute_steps(steps, ds=ds, run_id=run_id, on_step_failure="raise")
+            recorder.execute_steps(steps, ds=ds, run_id=run_id, executor=_resolve_executor(), on_step_failure="raise")
         except Exception:
             return {"run_id": run_id, "status": "failed"}
         return {"run_id": run_id, "status": "completed"}
@@ -360,6 +371,7 @@ def make_app(
                     selected,
                     ds=ds,
                     run_id=run_id,
+                    executor=_resolve_executor(),
                     on_step_failure="return",
                 )
 
@@ -368,7 +380,7 @@ def make_app(
 
         run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
         try:
-            recorder.execute_steps(selected, ds=ds, run_id=run_id)
+            recorder.execute_steps(selected, ds=ds, run_id=run_id, executor=_resolve_executor())
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
         return StartRunResponse(run_id=run_id, status="completed")
@@ -410,6 +422,7 @@ def make_app(
         pipeline=pipeline,
         steps=steps,
         recorder=recorder,
+        executor=_resolve_executor,
     )
 
     FastAPIInstrumentor.instrument_app(app, excluded_urls="docs")

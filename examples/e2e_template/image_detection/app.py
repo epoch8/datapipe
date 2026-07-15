@@ -47,6 +47,9 @@ from config import (
     LABEL_STUDIO_API_KEY,
     LABEL_STUDIO_URL,
     PROJECT_NAME,
+    inference_executor,
+    metrics_executor,
+    parallel_io_executor,
 )
 from data import catalog
 
@@ -90,6 +93,7 @@ pipeline = Pipeline(
             bbox_id__name=None,
             image__image_path__name="image_url",
             batch_size_default=1,
+            executor_config=inference_executor(),
             labels=[("stage", "annotation")],
         ),
         BatchTransform(
@@ -222,6 +226,7 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "train-yolo")],
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
+            prepare_data_executor_config=parallel_io_executor(),
         ),
         Inference_DetectionModel(
             input__image=["s3_images", "image__subset"],
@@ -232,6 +237,7 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
+            executor_config=inference_executor(),
         ),
         BatchTransform(
             func=steps.filter_bboxes_by_classes,
@@ -257,6 +263,7 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id"],
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
+            executor_config=metrics_executor(),
             # filters={"subset_id": "val"},
         ),
         FindBestModel(
@@ -278,6 +285,7 @@ pipeline = Pipeline(
             outputs=["local_images"],
             transform_keys=["image_name"],
             labels=[("stage", "fiftyone")],
+            executor_config=parallel_io_executor(),
             kwargs=dict(
                 image__image_path__name="image_url",
                 image__local_image_path__name="local_path",
@@ -354,6 +362,7 @@ app.add_specs([
                 subset_table="image__subset",
                 subset_join_columns={"image_name": "image_name"},
                 subset_column="subset_id",
+                records_show_subset=True,
                 ground_truth=OpsImageAnnotationSpec(
                     table="image__ground_truth",
                     primary_key_columns=("image_name",),
@@ -362,6 +371,7 @@ app.add_specs([
                     join_columns={"image_name": "image_name"},
                     role="gt",
                 ),
+                records_show_ground_truth=True,
                 preview_size=84,
                 modal_max_side=1100,
                 detail_max_side=1600,

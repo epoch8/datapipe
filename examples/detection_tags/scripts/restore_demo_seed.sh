@@ -23,4 +23,4 @@ docker exec "$PG" psql -U postgres -tAc \
 docker exec "$PG" psql -U postgres -tAc \
   "SELECT substring(detection_model_id,10,4)||' '||subset_id||' recall='||round(calc__weighted_recall::numeric,3) FROM public.pipeline_model__metrics_on_subset ORDER BY subset_id, detection_model_id"
 echo "done — start/refresh the datapipe front; the cat_dog spec shows the reference metrics."
-echo "(FiftyOne view: optionally run  ../.venv/bin/datapipe step --labels=stage=fiftyone run )"
+echo "(FiftyOne view: optionally run  uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run )"

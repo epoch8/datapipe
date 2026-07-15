@@ -13,12 +13,15 @@ def register_commands(cli: click.Group):
         assert parent is not None
         pipeline = ctx.obj["pipeline"]
         pipeline_spec = parent.params.get("pipeline", "app")
+        executor = parent.obj.get("executor")
 
         import uvicorn
 
         if isinstance(pipeline, DatapipeAPI):
             api_app = pipeline
+            if executor is not None:
+                api_app.executor = executor
         else:
-            api_app = DatapipeAPI(app=pipeline, pipeline_spec=pipeline_spec)
+            api_app = DatapipeAPI(app=pipeline, pipeline_spec=pipeline_spec, executor=executor)
 
         uvicorn.run(api_app, host=host, port=port)

@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep
+from datapipe.executor import Executor
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BaseBatchTransformStep, BatchTransform, DatatableBatchTransform
 from datapipe.step.datatable_transform import DatatableTransform
@@ -223,12 +224,22 @@ class RunningStepsHelper(Dict[str, models.RunStepResponse]):
         self[transform].status = "finished"
 
 
+ExecutorSource = Executor | Callable[[], Executor | None] | None
+
+
+def _resolve_executor(executor: ExecutorSource) -> Executor | None:
+    if callable(executor):
+        return executor()
+    return executor
+
+
 def run_step(
     ds: DataStore,
     step: BaseBatchTransformStep,
     transform_state: models.RunStepResponse,
     filters: Optional[List[Dict]],
     recorder: Optional[RunRecorder] = None,
+    executor: ExecutorSource = None,
 ) -> None:
     def on_batch_progress(batches_done: int, total_batches: int) -> None:
         transform_state.total = total_batches
@@ -252,7 +263,11 @@ def run_step(
                 transform_state.processed += step.chunk_size
             return
 
-        step.run_full(ds=ds, on_batch_progress=on_batch_progress)
+        step.run_full(
+            ds=ds,
+            on_batch_progress=on_batch_progress,
+            executor=_resolve_executor(executor),
+        )
 
     if recorder is not None:
         run_id = recorder.start_run(trigger="websocket")
@@ -277,6 +292,7 @@ def register_pipeline_ui_routes(
     pipeline: Pipeline,
     steps: List[ComputeStep],
     recorder: Optional[RunRecorder] = None,
+    executor: ExecutorSource = None,
 ) -> None:
     @app.get("/graph", response_model=models.GraphResponse)
     def get_graph(stage: Optional[str] = Query(None)) -> models.GraphResponse:
@@ -458,6 +474,7 @@ def register_pipeline_ui_routes(
                         running_steps_helper[transform],
                         json_data.filters,
                         recorder,
+                        executor,
                     )
                     run_steps_task = asyncio.create_task(run_step_thread)
                     run_steps_task.add_done_callback(
