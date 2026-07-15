@@ -15,7 +15,6 @@ import { opsApi } from "../api/client";
 import { ApiErrorAlert } from "../components/ApiErrorAlert";
 import { ConnectivityBanner } from "../components/ConnectivityBanner";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { loadLastGraphStage } from "../features/cy/graphSessionState";
 import { useResizableWidth } from "../hooks/useResizableWidth";
 import {
     collectLegacyNavItems,
@@ -122,11 +121,6 @@ export function OpsShell() {
         });
     }, []);
 
-    const lastGraphStage = loadLastGraphStage();
-    const graphHref = lastGraphStage
-        ? `/graph?stage=${encodeURIComponent(lastGraphStage)}`
-        : "/graph";
-
     const hasExplicitSpecs = opsSpecs.length > 0;
     const legacyIconFor = (href: string): React.ReactNode => {
         if (href.startsWith("/training")) return <ExperimentOutlined />;
@@ -140,7 +134,7 @@ export function OpsShell() {
     }));
     const primaryItems: NavItem[] = [
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
-        { key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> },
+        { key: "/graph", href: "/graph", label: "Graph", icon: <ApartmentOutlined /> },
         { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
         ...legacyPluginItems,
     ];

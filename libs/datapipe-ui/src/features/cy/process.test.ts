@@ -61,3 +61,56 @@ describe("reprocessData expanded boundary tables", () => {
         expect(nodes.get("out_x")?.metaGroup).toBeUndefined();
     });
 });
+
+describe("reprocessData sequential next-step edges", () => {
+    it("adds dashed sequential hops between consecutive top-level steps", () => {
+        const catalog = {
+            a_in: table("a_in"),
+            a_out: table("a_out"),
+            b_in: table("b_in"),
+            b_out: table("b_out"),
+        };
+        const data: GraphData = {
+            catalog,
+            pipeline: [
+                {
+                    id: "t1",
+                    name: "t1",
+                    type: "transform",
+                    inputs: ["a_in"],
+                    outputs: ["a_out"],
+                },
+                {
+                    id: "t2",
+                    name: "t2",
+                    type: "transform",
+                    inputs: ["b_in"],
+                    outputs: ["b_out"],
+                },
+            ],
+        };
+
+        const { edges } = reprocessData(data, new Set());
+        const sequential = Array.from(edges).filter((e) => e.sequential);
+        expect(sequential).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ source: "t1", target: "t2", sequential: true }),
+            ]),
+        );
+    });
+
+    it("adds sequential hops between consecutive transforms inside an expanded meta", () => {
+        const { edges } = reprocessData(makeMetaGraph(), new Set(["G"]));
+        const sequential = Array.from(edges).filter((e) => e.sequential);
+        expect(sequential).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    source: "t1",
+                    target: "t2",
+                    sequential: true,
+                    internalMeta: "G",
+                }),
+            ]),
+        );
+    });
+});

@@ -13,7 +13,6 @@ export type GraphSessionState = {
 };
 
 const STORAGE_PREFIX = "dp.graphSession.";
-const LAST_STAGE_KEY = "dp.graph.lastStage";
 
 function storageKey(graphUrl: string): string {
     return `${STORAGE_PREFIX}${graphUrl}`;
@@ -31,22 +30,11 @@ export function loadGraphSessionState(graphUrl: string): GraphSessionState | nul
     }
 }
 
-export function saveGraphSessionState(state: GraphSessionState, stageFilter?: string | null): void {
+export function saveGraphSessionState(state: GraphSessionState, _stageFilter?: string | null): void {
     try {
         sessionStorage.setItem(storageKey(state.graphUrl), JSON.stringify(state));
-        if (stageFilter) {
-            sessionStorage.setItem(LAST_STAGE_KEY, stageFilter);
-        }
     } catch {
         /* quota / private mode */
-    }
-}
-
-export function loadLastGraphStage(): string | null {
-    try {
-        return sessionStorage.getItem(LAST_STAGE_KEY);
-    } catch {
-        return null;
     }
 }
 

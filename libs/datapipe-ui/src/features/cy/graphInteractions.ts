@@ -53,26 +53,97 @@ function modelPosFromClient(
     };
 }
 
-/** Expanded blue frame under a point, only when no inner step/table is there. */
+/** Expanded blue frame containing a model-space point (events:no, so no native hits). */
 function findExpandedFrameAt(
     cy: Cytoscape.Core,
     x: number,
     y: number,
 ): Cytoscape.NodeSingular | null {
     let frame: Cytoscape.NodeSingular | null = null;
-    let hitContent = false;
-    cy.nodes().forEach((ele) => {
+    let bestArea = Infinity;
+    cy.nodes('node[type = "group-expanded"]').forEach((ele) => {
         if (!ele.visible()) return;
         const node = ele as Cytoscape.NodeSingular;
         const bb = node.boundingBox({ includeLabels: false, includeOverlays: false });
         if (x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2) return;
-        if ((node.data("type") as string) === "group-expanded") {
+        // Prefer the tightest (nested) frame if several overlap.
+        const area = bb.w * bb.h;
+        if (area < bestArea) {
+            bestArea = area;
             frame = node;
-            return;
         }
-        hitContent = true;
     });
-    return hitContent ? null : frame;
+    return frame;
+}
+
+/** Content card under a point when the HTML label did not receive the event. */
+function findContentNodeAt(
+    cy: Cytoscape.Core,
+    x: number,
+    y: number,
+): Cytoscape.NodeSingular | null {
+    let hit: Cytoscape.NodeSingular | null = null;
+    let bestArea = Infinity;
+    cy.nodes().forEach((ele) => {
+        if (!ele.visible()) return;
+        const node = ele as Cytoscape.NodeSingular;
+        const type = node.data("type") as string;
+        if (type === "group-expanded") return;
+        const bb = node.boundingBox({ includeLabels: false, includeOverlays: false });
+        if (x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2) return;
+        const area = bb.w * bb.h;
+        if (area < bestArea) {
+            bestArea = area;
+            hit = node;
+        }
+    });
+    return hit;
+}
+
+/**
+ * Resolve the context-menu/dblclick target for a container pointer event.
+ * HTML cards win; otherwise empty expanded-frame chrome; otherwise a content BB.
+ */
+function resolvePointerTarget(
+    cy: Cytoscape.Core,
+    container: HTMLElement,
+    event: MouseEvent,
+): Cytoscape.NodeSingular | null {
+    const fromLabel = (() => {
+        const label = (event.target as Element | null)?.closest?.("[data-cy-node-id]");
+        if (!label) return null;
+        const nodeId = label.getAttribute("data-cy-node-id");
+        if (!nodeId) return null;
+        const node = cy.getElementById(nodeId);
+        if (node.empty()) return null;
+        return node as Cytoscape.NodeSingular;
+    })();
+    if (fromLabel) return fromLabel;
+
+    const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
+    // Empty blue padding / title: open the frame menu even if a content node's
+    // cytoscape bbox also covers the point (HTML card was not hit).
+    const frame = findExpandedFrameAt(cy, pos.x, pos.y);
+    if (frame) return frame;
+    return findContentNodeAt(cy, pos.x, pos.y);
+}
+
+/**
+ * Expanded frames use `events: no`, so native RMB ends as core `cxttap` on mouseup
+ * when the cursor is over empty chrome (esp. the title padding band). That second
+ * `cxttap` resets cytoscape-context-menus and hides the menu we opened via a
+ * synthetic node emit. Mark the gesture as a cxt-drag so mouseup skips `cxttap`.
+ */
+function suppressUpcomingNativeCxttap(cy: Cytoscape.Core): void {
+    // cytoscape Core typings omit renderer(); it's the public accessor used elsewhere.
+    const renderer = (
+        cy as Cytoscape.Core & {
+            renderer?: () => { hoverData?: { cxtDragged?: boolean } };
+        }
+    ).renderer?.();
+    if (renderer?.hoverData) {
+        renderer.hoverData.cxtDragged = true;
+    }
 }
 
 /**
@@ -511,14 +582,13 @@ export function attachGraphInteractions(
     // cytoscape-context-menus never sees a native cxttap. Forward RMB on labels
     // and on empty areas of the (events:no) expanded blue frame.
     const onContainerContextMenu = (event: MouseEvent) => {
-        let node = resolveNodeFromLabel(event.target);
-        if (!node) {
-            const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
-            node = findExpandedFrameAt(cy, pos.x, pos.y);
-        }
+        const node = resolvePointerTarget(cy, container, event);
         if (!node) return;
         event.preventDefault();
         event.stopPropagation();
+        // Skip native mouseup→core cxttap that would wipe this menu on empty
+        // frame chrome (title band has no events:yes node under the cursor).
+        suppressUpcomingNativeCxttap(cy);
 
         const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
         // Cytoscape emit accepts a plain event object with position fields.
@@ -548,11 +618,7 @@ export function attachGraphInteractions(
     // Double-click: HTML group labels, or empty area of an expanded blue frame
     // (group-expanded uses events:no so dbltap does not fire there).
     const onContainerDblClick = (event: MouseEvent) => {
-        let node = resolveNodeFromLabel(event.target);
-        if (!node) {
-            const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
-            node = findExpandedFrameAt(cy, pos.x, pos.y);
-        }
+        const node = resolvePointerTarget(cy, container, event);
         if (!node) return;
         const type = node.data("type") as string;
         if (type === "group" || type === "group-expanded") {

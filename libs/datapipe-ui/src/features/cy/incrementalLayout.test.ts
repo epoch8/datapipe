@@ -1,10 +1,14 @@
 import {
     buildCollapsedLayout,
+    countBipartiteCrossings,
     expandGroupInLayout,
     GROUP_PADDING,
+    layoutLayeredDag,
     measureNode,
+    minimizeLayerCrossings,
 } from "./incrementalLayout";
 import { graphNodeDimensions } from "./graphNodeLayout";
+import type { LayoutEdge, MeasuredNode } from "./incrementalLayout";
 
 function makeGroupGraph() {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
@@ -137,5 +141,67 @@ describe("expandGroupInLayout multi-expand", () => {
         expect(frame!.bbox.w).toBeGreaterThan(graphNodeDimensions.groupCollapsed.width);
         expect(frame!.bbox.h).toBeGreaterThan(graphNodeDimensions.groupCollapsed.height);
         assertInnersInsideFrame(layout, "group_a");
+    });
+});
+
+describe("minimizeLayerCrossings (barycenter)", () => {
+    function stubNode(id: string): MeasuredNode {
+        return { id, type: "transform", name: id, w: 100, h: 40 };
+    }
+
+    it("removes a classic 2×2 bipartite crossing", () => {
+        // A B
+        // C D   with A→D, B→C  (crosses) → reorder lower to D C
+        const ranks = new Map<number, string[]>([
+            [0, ["A", "B"]],
+            [1, ["C", "D"]],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "A", target: "D" },
+            { source: "B", target: "C" },
+        ];
+        const nodes = new Map<string, MeasuredNode>([
+            ["A", stubNode("A")],
+            ["B", stubNode("B")],
+            ["C", stubNode("C")],
+            ["D", stubNode("D")],
+        ]);
+
+        expect(countBipartiteCrossings(["A", "B"], ["C", "D"], edges)).toBe(1);
+
+        const ordered = minimizeLayerCrossings(ranks, edges, nodes);
+        const upper = ordered.get(0)!;
+        const lower = ordered.get(1)!;
+        expect(countBipartiteCrossings(upper, lower, edges)).toBe(0);
+    });
+
+    it("layoutLayeredDag places uncrossed endpoints left-to-right consistently", () => {
+        const nodes = new Map<string, MeasuredNode>([
+            ["A", stubNode("A")],
+            ["B", stubNode("B")],
+            ["C", stubNode("C")],
+            ["D", stubNode("D")],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "A", target: "D" },
+            { source: "B", target: "C" },
+        ];
+        // Seed ranks so A,B stay on layer 0 and C,D on layer 1.
+        const rankEdges: LayoutEdge[] = [
+            { source: "A", target: "C" },
+            { source: "A", target: "D" },
+            { source: "B", target: "C" },
+            { source: "B", target: "D" },
+        ];
+        const positions = layoutLayeredDag(nodes, edges, "TB", rankEdges);
+        // After minimization, the left↔right pairing should not cross:
+        // whichever of C/D is under A should be on the same side as A.
+        const ax = positions.get("A")!.x + positions.get("A")!.w / 2;
+        const bx = positions.get("B")!.x + positions.get("B")!.w / 2;
+        const cx = positions.get("C")!.x + positions.get("C")!.w / 2;
+        const dx = positions.get("D")!.x + positions.get("D")!.w / 2;
+        // Edges A→D, B→C: after uncross, order should be A,B on top and D,C
+        // (or equivalent so (ax-bx)*(dx-cx) >= 0).
+        expect((ax - bx) * (dx - cx)).toBeGreaterThanOrEqual(0);
     });
 });

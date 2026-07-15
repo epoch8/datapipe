@@ -29,7 +29,7 @@ export const graphColors = {
 export const edgeColors = {
     default: "#52677F",
     active: "#1677FF",
-    /** Neighbor highlight when a node is selected (input/output / participants). */
-    related: "#0D9488",
+    /** Neighbor highlight when a node is selected (muted teal, softer than selection). */
+    related: "#5BA8A0",
     error: "#D92D20",
 } as const;

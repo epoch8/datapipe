@@ -29,6 +29,11 @@ function nodeHeight(node: Cytoscape.NodeSingular): number {
     return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).h;
 }
 
+/** Pipeline next-step hop (transform/group → transform/group) — dashed. */
+function isSequentialEdge(edge: Cytoscape.EdgeSingular): boolean {
+    return Boolean(edge.data("sequential"));
+}
+
 export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "node",
@@ -102,8 +107,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         selector: "node.related",
         style: {
             "background-color": edgeColors.related,
-            "background-opacity": 0.08,
-            "border-width": 3,
+            "background-opacity": 0.04,
+            "border-width": 2,
             "border-color": edgeColors.related,
             "overlay-opacity": 0,
             "z-index": 35,
@@ -142,6 +147,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "target-arrow-color": edgeColors.default,
             "target-arrow-shape": "triangle",
             "arrow-scale": 1.08,
+            "line-style": (edge: Cytoscape.EdgeSingular) =>
+                isSequentialEdge(edge) ? "dashed" : "solid",
             opacity: 0.78,
             "z-index": 1,
         },
@@ -159,8 +166,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "edge.related",
         style: {
-            width: 3.2,
-            opacity: 1,
+            width: 2.6,
+            opacity: 0.9,
             "line-color": edgeColors.related,
             "target-arrow-color": edgeColors.related,
             "z-index": 20,

@@ -139,25 +139,224 @@ function sortIds(ids: string[]): string[] {
     return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
+function comparePipelineOrder(
+    a: string,
+    b: string,
+    nodes: Map<string, MeasuredNode>,
+): number {
+    const na = nodes.get(a);
+    const nb = nodes.get(b);
+
+    const oa = na?.pipelineOrderKey;
+    const ob = nb?.pipelineOrderKey;
+    if (oa && ob && oa !== ob) {
+        return oa.localeCompare(ob);
+    }
+
+    const ia = na?.pipelineIndex;
+    const ib = nb?.pipelineIndex;
+    if (ia != null && ib != null && ia !== ib) {
+        return ia - ib;
+    }
+
+    return a.localeCompare(b);
+}
+
 function sortRankIds(ids: string[], nodes: Map<string, MeasuredNode>): string[] {
-    return [...ids].sort((a, b) => {
-        const na = nodes.get(a);
-        const nb = nodes.get(b);
+    return [...ids].sort((a, b) => comparePipelineOrder(a, b, nodes));
+}
 
-        const oa = na?.pipelineOrderKey;
-        const ob = nb?.pipelineOrderKey;
-        if (oa && ob && oa !== ob) {
-            return oa.localeCompare(ob);
+/** Count crossings between two consecutive ordered layers (straight-line bipartite). */
+export function countBipartiteCrossings(
+    upper: string[],
+    lower: string[],
+    edges: LayoutEdge[],
+): number {
+    const upperIndex = new Map(upper.map((id, index) => [id, index]));
+    const lowerIndex = new Map(lower.map((id, index) => [id, index]));
+    const pairs: Array<{ u: number; v: number }> = [];
+    edges.forEach(({ source, target }) => {
+        const u = upperIndex.get(source);
+        const v = lowerIndex.get(target);
+        if (u != null && v != null) {
+            pairs.push({ u, v });
+            return;
         }
-
-        const ia = na?.pipelineIndex;
-        const ib = nb?.pipelineIndex;
-        if (ia != null && ib != null && ia !== ib) {
-            return ia - ib;
-        }
-
-        return a.localeCompare(b);
+        const uRev = upperIndex.get(target);
+        const vRev = lowerIndex.get(source);
+        if (uRev != null && vRev != null) pairs.push({ u: uRev, v: vRev });
     });
+    let crossings = 0;
+    for (let i = 0; i < pairs.length; i += 1) {
+        for (let j = i + 1; j < pairs.length; j += 1) {
+            const a = pairs[i];
+            const b = pairs[j];
+            if ((a.u - b.u) * (a.v - b.v) < 0) crossings += 1;
+        }
+    }
+    return crossings;
+}
+
+function layerNeighborMap(
+    layer: string[],
+    other: string[],
+    edges: LayoutEdge[],
+): Map<string, string[]> {
+    const layerSet = new Set(layer);
+    const otherSet = new Set(other);
+    const neighbors = new Map<string, string[]>();
+    layer.forEach((id) => neighbors.set(id, []));
+    edges.forEach(({ source, target }) => {
+        if (layerSet.has(source) && otherSet.has(target)) {
+            neighbors.get(source)?.push(target);
+        } else if (layerSet.has(target) && otherSet.has(source)) {
+            neighbors.get(target)?.push(source);
+        }
+    });
+    return neighbors;
+}
+
+function orderByBarycenter(
+    layer: string[],
+    otherOrder: Map<string, number>,
+    neighbors: Map<string, string[]>,
+    nodes: Map<string, MeasuredNode>,
+): string[] {
+    const scored = layer.map((id, index) => {
+        const neigh = neighbors.get(id) ?? [];
+        const positions = neigh
+            .map((n) => otherOrder.get(n))
+            .filter((pos): pos is number => pos != null);
+        const bary =
+            positions.length > 0
+                ? positions.reduce((sum, pos) => sum + pos, 0) / positions.length
+                : index;
+        return { id, bary, index };
+    });
+    scored.sort((a, b) => {
+        if (a.bary !== b.bary) return a.bary - b.bary;
+        const byPipe = comparePipelineOrder(a.id, b.id, nodes);
+        if (byPipe !== 0) return byPipe;
+        return a.index - b.index;
+    });
+    return scored.map((entry) => entry.id);
+}
+
+/** Adjacent transposition pass — swap neighbors if that cuts crossings. */
+function transposeLayerPair(
+    upper: string[],
+    lower: string[],
+    edges: LayoutEdge[],
+    _nodes: Map<string, MeasuredNode>,
+    fixUpper: boolean,
+): { upper: string[]; lower: string[]; improved: boolean } {
+    let improved = false;
+    const nextUpper = [...upper];
+    const nextLower = [...lower];
+    const movable = fixUpper ? nextLower : nextUpper;
+
+    let swapped = true;
+    while (swapped) {
+        swapped = false;
+        for (let i = 0; i < movable.length - 1; i += 1) {
+            const before = countBipartiteCrossings(nextUpper, nextLower, edges);
+            const tmp = movable[i];
+            movable[i] = movable[i + 1];
+            movable[i + 1] = tmp;
+            const after = countBipartiteCrossings(nextUpper, nextLower, edges);
+            if (after < before) {
+                swapped = true;
+                improved = true;
+            } else {
+                movable[i + 1] = movable[i];
+                movable[i] = tmp;
+            }
+        }
+    }
+    return { upper: nextUpper, lower: nextLower, improved };
+}
+
+/**
+ * Sugiyama-style crossing minimization: barycenter sweeps + transpose, seeded by
+ * pipeline order. Keeps existing rank assignment; only reorders within layers.
+ */
+export function minimizeLayerCrossings(
+    ranks: Map<number, string[]>,
+    edges: LayoutEdge[],
+    nodes: Map<string, MeasuredNode>,
+    maxIters = 24,
+): Map<number, string[]> {
+    const rankKeys = Array.from(ranks.keys()).sort((a, b) => a - b);
+    if (rankKeys.length < 2) return ranks;
+
+    const ordered = new Map<number, string[]>();
+    rankKeys.forEach((r) => ordered.set(r, sortRankIds(ranks.get(r) ?? [], nodes)));
+
+    const totalCrossings = () => {
+        let total = 0;
+        for (let i = 0; i < rankKeys.length - 1; i += 1) {
+            total += countBipartiteCrossings(
+                ordered.get(rankKeys[i]) ?? [],
+                ordered.get(rankKeys[i + 1]) ?? [],
+                edges,
+            );
+        }
+        return total;
+    };
+
+    let best = new Map(Array.from(ordered.entries()).map(([k, v]) => [k, [...v]]));
+    let bestScore = totalCrossings();
+    let prevScore = bestScore;
+
+    for (let iter = 0; iter < maxIters; iter += 1) {
+        // Downward sweep: order layer i+1 from layer i.
+        for (let i = 0; i < rankKeys.length - 1; i += 1) {
+            const upper = ordered.get(rankKeys[i]) ?? [];
+            const lower = ordered.get(rankKeys[i + 1]) ?? [];
+            const upperOrder = new Map(upper.map((id, index) => [id, index]));
+            const neighbors = layerNeighborMap(lower, upper, edges);
+            ordered.set(
+                rankKeys[i + 1],
+                orderByBarycenter(lower, upperOrder, neighbors, nodes),
+            );
+        }
+
+        // Upward sweep: order layer i from layer i+1.
+        for (let i = rankKeys.length - 1; i > 0; i -= 1) {
+            const lower = ordered.get(rankKeys[i]) ?? [];
+            const upper = ordered.get(rankKeys[i - 1]) ?? [];
+            const lowerOrder = new Map(lower.map((id, index) => [id, index]));
+            const neighbors = layerNeighborMap(upper, lower, edges);
+            ordered.set(
+                rankKeys[i - 1],
+                orderByBarycenter(upper, lowerOrder, neighbors, nodes),
+            );
+        }
+
+        // Local transpose refinement on each consecutive pair.
+        for (let i = 0; i < rankKeys.length - 1; i += 1) {
+            const upperKey = rankKeys[i];
+            const lowerKey = rankKeys[i + 1];
+            let upper = ordered.get(upperKey) ?? [];
+            let lower = ordered.get(lowerKey) ?? [];
+            const down = transposeLayerPair(upper, lower, edges, nodes, true);
+            upper = down.upper;
+            lower = down.lower;
+            const up = transposeLayerPair(upper, lower, edges, nodes, false);
+            ordered.set(upperKey, up.upper);
+            ordered.set(lowerKey, up.lower);
+        }
+
+        const score = totalCrossings();
+        if (score < bestScore) {
+            bestScore = score;
+            best = new Map(Array.from(ordered.entries()).map(([k, v]) => [k, [...v]]));
+        }
+        if (score >= prevScore) break;
+        prevScore = score;
+    }
+
+    return best;
 }
 
 function densifyRanks(rank: Map<string, number>): Map<string, number> {
@@ -256,7 +455,8 @@ function computeRanks(
 
 /**
  * Deterministic layered layout (top-to-bottom or left-to-right).
- * Vertical rank from dependency depth; pipeline order sorts nodes within a layer.
+ * Vertical rank from dependency depth; within-layer order uses Sugiyama-style
+ * barycenter crossing minimization (seeded by pipeline order).
  */
 export function layoutLayeredDag(
     nodes: Map<string, MeasuredNode>,
@@ -275,15 +475,17 @@ export function layoutLayeredDag(
         if (!ranks.has(r)) ranks.set(r, []);
         ranks.get(r)?.push(id);
     });
-    ranks.forEach((rankIds, r) => ranks.set(r, sortRankIds(rankIds, nodes)));
+    // Use all render edges for crossing reduction (incl. long spans between
+    // adjacent layers after densify); rankEdges only drive layer assignment.
+    const orderedRanks = minimizeLayerCrossings(ranks, edges, nodes);
 
     const positions = new Map<string, BBox>();
-    const sortedRankKeys = Array.from(ranks.keys()).sort((a, b) => a - b);
+    const sortedRankKeys = Array.from(orderedRanks.keys()).sort((a, b) => a - b);
 
     if (rankDir === "TB") {
         let yCursor = 0;
         sortedRankKeys.forEach((r) => {
-            const rankIds = ranks.get(r) ?? [];
+            const rankIds = orderedRanks.get(r) ?? [];
             const widths = rankIds.map((id) => nodes.get(id)?.w ?? 0);
             const totalWidth =
                 widths.reduce((sum, w) => sum + w, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
@@ -296,13 +498,13 @@ export function layoutLayeredDag(
                 positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
                 xCursor += node.w + (index < rankIds.length - 1 ? NODE_SEP : 0);
             });
-            const rankHeight = Math.max(...rankIds.map((id) => nodes.get(id)?.h ?? 0));
+            const rankHeight = Math.max(...rankIds.map((id) => nodes.get(id)?.h ?? 0), 0);
             yCursor += rankHeight + RANK_SEP;
         });
     } else {
         let xCursor = 0;
         sortedRankKeys.forEach((r) => {
-            const rankIds = ranks.get(r) ?? [];
+            const rankIds = orderedRanks.get(r) ?? [];
             const heights = rankIds.map((id) => nodes.get(id)?.h ?? 0);
             const totalHeight =
                 heights.reduce((sum, h) => sum + h, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
@@ -315,7 +517,7 @@ export function layoutLayeredDag(
                 positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
                 yCursor += node.h + (index < rankIds.length - 1 ? NODE_SEP : 0);
             });
-            const rankWidth = Math.max(...rankIds.map((id) => nodes.get(id)?.w ?? 0));
+            const rankWidth = Math.max(...rankIds.map((id) => nodes.get(id)?.w ?? 0), 0);
             xCursor += rankWidth + RANK_SEP;
         });
     }

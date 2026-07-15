@@ -2,6 +2,7 @@ import Cytoscape from "cytoscape";
 import { edgeColors } from "./graphColors";
 
 const overlayInitStore = new WeakMap<Cytoscape.Core, true>();
+const overlayLayerStore = new WeakMap<Cytoscape.Core, HTMLDivElement>();
 /** Path elements are kept and mutated in place, keyed by edge id — never wiped
  * and recreated on sync. Recreating them made the marker briefly fall back to
  * the browser default arrow (before `marker-end` re-attached), flashing orange. */
@@ -12,8 +13,9 @@ const ARROW_MARKER = {
     viewBox: "0 0 10 10",
     refX: "9",
     refY: "5",
-    markerWidth: "7",
-    markerHeight: "7",
+    /** Screen-pixel size; divided by zoom because the layer is CSS-scaled. */
+    markerWidth: 7,
+    markerHeight: 7,
     path: "M 0 0 L 10 5 L 0 10 z",
 } as const;
 
@@ -37,12 +39,6 @@ function pathStoreFor(cy: Cytoscape.Core): Map<string, SVGPathElement> {
     return store;
 }
 
-function modelToRendered(cy: Cytoscape.Core, x: number, y: number): { x: number; y: number } {
-    const pan = cy.pan();
-    const zoom = cy.zoom();
-    return { x: x * zoom + pan.x, y: y * zoom + pan.y };
-}
-
 function taxiPathFromPoints(points: number[]): string {
     if (points.length < 4) return "";
     const segments: string[] = [];
@@ -53,24 +49,24 @@ function taxiPathFromPoints(points: number[]): string {
     return segments.join(" ");
 }
 
-function edgePathD(cy: Cytoscape.Core, edge: Cytoscape.EdgeSingular): string {
+/** Path in *model* coordinates — camera pan/zoom is applied via CSS on the layer. */
+function edgePathD(edge: Cytoscape.EdgeSingular): string {
     const scratch = (edge as unknown as { _private?: { rscratch?: { allpts?: number[] } } })._private
         ?.rscratch;
     const allpts = scratch?.allpts;
     if (allpts && allpts.length >= 4) {
-        const pairs: number[] = [];
-        for (let i = 0; i < allpts.length; i += 2) {
-            const p = modelToRendered(cy, allpts[i], allpts[i + 1]);
-            pairs.push(p.x, p.y);
-        }
-        const path = taxiPathFromPoints(pairs);
+        const path = taxiPathFromPoints(allpts);
         if (path) return path;
     }
 
-    const source = edge.source().renderedPosition();
-    const target = edge.target().renderedPosition();
+    const source = edge.source().position();
+    const target = edge.target().position();
     const midY = (source.y + target.y) / 2;
     return `M ${source.x} ${source.y} L ${source.x} ${midY} L ${target.x} ${midY} L ${target.x} ${target.y}`;
+}
+
+function isSequentialEdge(edge: Cytoscape.EdgeSingular): boolean {
+    return Boolean(edge.data("sequential"));
 }
 
 function edgeStroke(edge: Cytoscape.EdgeSingular): string {
@@ -89,16 +85,42 @@ function edgeArrowMarker(edge: Cytoscape.EdgeSingular): string {
 
 function edgeOpacity(edge: Cytoscape.EdgeSingular): number {
     if (edge.hasClass("muted")) return 0.12;
-    if (edge.hasClass("related") || edge.hasClass("focused") || edge.hasClass("failed")) return 1;
+    if (edge.hasClass("focused") || edge.hasClass("failed")) return 1;
+    if (edge.hasClass("related")) return 0.9;
     return 0.78;
 }
 
 function edgeWidth(edge: Cytoscape.EdgeSingular): number {
-    if (edge.hasClass("related") || edge.hasClass("focused") || edge.hasClass("failed")) return 3.2;
+    if (edge.hasClass("focused") || edge.hasClass("failed")) return 3.2;
+    if (edge.hasClass("related")) return 2.6;
     return 2.15;
 }
 
+/** Model-space dash; scales with the CSS layer like cytoscape dashed edges. */
+function edgeDashArray(edge: Cytoscape.EdgeSingular): string | null {
+    return isSequentialEdge(edge) ? "10 7" : null;
+}
+
+function updateOverlayCamera(cy: Cytoscape.Core, layer: HTMLDivElement, defs: SVGDefsElement): void {
+    const pan = cy.pan();
+    const zoom = Math.max(cy.zoom(), 1e-6);
+    layer.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
+    layer.style.transformOrigin = "top left";
+
+    // Marker sizes are in layer (model) units; divide by zoom so they stay ~constant
+    // on screen after the CSS scale.
+    const mw = String(ARROW_MARKER.markerWidth / zoom);
+    const mh = String(ARROW_MARKER.markerHeight / zoom);
+    ARROW_MARKERS.forEach(({ id }) => {
+        const marker = defs.querySelector(`#${id}`);
+        if (!marker) return;
+        setAttrIfChanged(marker, "markerWidth", mw);
+        setAttrIfChanged(marker, "markerHeight", mh);
+    });
+}
+
 function ensureOverlayRoot(cy: Cytoscape.Core): {
+    layer: HTMLDivElement;
     svg: SVGSVGElement;
     defs: SVGDefsElement;
 } | null {
@@ -108,11 +130,15 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
     const host = container.firstElementChild as HTMLElement | null;
     if (!host) return null;
 
-    let layer = host.querySelector(".cy-internal-edges-layer") as HTMLDivElement | null;
-    if (!layer) {
-        layer = document.createElement("div");
-        layer.className = "cy-internal-edges-layer";
-        host.appendChild(layer);
+    let layer = overlayLayerStore.get(cy) ?? null;
+    if (!layer || !host.contains(layer)) {
+        layer = host.querySelector(".cy-internal-edges-layer") as HTMLDivElement | null;
+        if (!layer) {
+            layer = document.createElement("div");
+            layer.className = "cy-internal-edges-layer";
+            host.appendChild(layer);
+        }
+        overlayLayerStore.set(cy, layer);
     }
 
     let svg = layer.querySelector("svg.cy-internal-edges-svg") as SVGSVGElement | null;
@@ -140,8 +166,6 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
         setAttrIfChanged(marker, "viewBox", ARROW_MARKER.viewBox);
         setAttrIfChanged(marker, "refX", ARROW_MARKER.refX);
         setAttrIfChanged(marker, "refY", ARROW_MARKER.refY);
-        setAttrIfChanged(marker, "markerWidth", ARROW_MARKER.markerWidth);
-        setAttrIfChanged(marker, "markerHeight", ARROW_MARKER.markerHeight);
         setAttrIfChanged(marker, "markerUnits", "userSpaceOnUse");
         setAttrIfChanged(marker, "orient", "auto-start-reverse");
         const arrowPath = marker.querySelector("path");
@@ -151,7 +175,7 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
         }
     });
 
-    return { svg, defs };
+    return { layer, svg, defs };
 }
 
 function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
@@ -159,11 +183,8 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
     const root = ensureOverlayRoot(cy);
     if (!root) return;
 
-    const { svg } = root;
-    const container = cy.container()!;
-    setAttrIfChanged(svg, "width", String(container.clientWidth));
-    setAttrIfChanged(svg, "height", String(container.clientHeight));
-    setAttrIfChanged(svg, "viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
+    const { layer, svg, defs } = root;
+    updateOverlayCamera(cy, layer, defs);
 
     const paths = pathStoreFor(cy);
     const seen = new Set<string>();
@@ -179,15 +200,23 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
             path.setAttribute("fill", "none");
             path.setAttribute("stroke-linecap", "round");
             path.setAttribute("stroke-linejoin", "round");
+            // Keep stroke thickness ~constant on screen while layer CSS-scales.
+            path.setAttribute("vector-effect", "non-scaling-stroke");
             paths.set(id, path);
             svg.appendChild(path);
         }
 
-        setAttrIfChanged(path, "d", edgePathD(cy, edge));
+        setAttrIfChanged(path, "d", edgePathD(edge));
         setAttrIfChanged(path, "stroke", edgeStroke(edge));
         setAttrIfChanged(path, "stroke-width", String(edgeWidth(edge)));
         setAttrIfChanged(path, "opacity", String(edgeOpacity(edge)));
         setAttrIfChanged(path, "marker-end", edgeArrowMarker(edge));
+        const dash = edgeDashArray(edge);
+        if (dash) {
+            setAttrIfChanged(path, "stroke-dasharray", dash);
+        } else if (path.hasAttribute("stroke-dasharray")) {
+            path.removeAttribute("stroke-dasharray");
+        }
     });
 
     paths.forEach((path, id) => {
@@ -197,22 +226,45 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
     });
 }
 
+/** Camera-only update — avoids rebuilding path `d` on every pan frame. */
+function syncOverlayCameraOnly(cy: Cytoscape.Core): void {
+    if (cy.destroyed()) return;
+    const root = ensureOverlayRoot(cy);
+    if (!root) return;
+    updateOverlayCamera(cy, root.layer, root.defs);
+}
+
 export function initInternalEdgeOverlay(cy: Cytoscape.Core): void {
     if (overlayInitStore.has(cy)) return;
     overlayInitStore.set(cy, true);
 
-    let frame = 0;
-    const update = () => {
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => {
+    let pathFrame = 0;
+    let cameraFrame = 0;
+
+    const updatePaths = () => {
+        cancelAnimationFrame(pathFrame);
+        pathFrame = requestAnimationFrame(() => {
             if (cy.destroyed()) return;
             syncInternalEdgeOverlay(cy);
         });
     };
-    // `render`/`resize` keep the SVG overlay aligned when the inspector panel is
-    // dragged — without them the SVG viewBox stays stale and taxi paths stretch.
-    cy.on("pan zoom position add remove render resize", update);
-    update();
+
+    const updateCamera = () => {
+        cancelAnimationFrame(cameraFrame);
+        cameraFrame = requestAnimationFrame(() => {
+            if (cy.destroyed()) return;
+            syncOverlayCameraOnly(cy);
+        });
+    };
+
+    // Pan/zoom: move the layer like HTML labels (no path rebuild).
+    cy.on("pan zoom", updateCamera);
+    // Geometry / membership refresh.
+    cy.on("position add remove", updatePaths);
+    // First paint so taxi `allpts` exist; layout complete also calls refresh.
+    cy.one("render", updatePaths);
+    cy.on("resize", updateCamera);
+    updatePaths();
 }
 
 export function refreshInternalEdgeOverlay(cy: Cytoscape.Core): void {

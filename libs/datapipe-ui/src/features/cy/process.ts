@@ -35,22 +35,55 @@ function shouldReplaceTableOrder(
     return nextOrderKey.localeCompare(currentOrderKey) < 0;
 }
 
-function hasTransformPath(
+/** Prefer marking an existing hop as sequential; otherwise add a synthetic dashed hop. */
+function ensureSequentialEdge(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     source: string,
     target: string,
-): boolean {
+    extra: Partial<Cytoscape.EdgeDataDefinition> = {},
+): void {
+    let found: Cytoscape.EdgeDataDefinition | null = null;
     for (const edge of Array.from(edges)) {
-        if (edge.source === source && edge.target === target) return true;
-    }
-    for (const edge of Array.from(edges)) {
-        if (edge.source !== source) continue;
-        const mid = edge.target as string;
-        for (const hop of Array.from(edges)) {
-            if (hop.source === mid && hop.target === target) return true;
+        if (edge.source === source && edge.target === target) {
+            found = edge;
+            break;
         }
     }
-    return false;
+    if (found) {
+        if (found.sequential) return;
+        edges.delete(found);
+        edges.add({ ...found, sequential: true, ...extra });
+        return;
+    }
+    edges.add({ source, target, sequential: true, synthetic: true, ...extra });
+}
+
+function isStepCardType(type: unknown): boolean {
+    return type === "transform" || type === "group";
+}
+
+/**
+ * Dashed next-step hops between consecutive transform/group cards in a pipeline list.
+ * Skips expanded metas (their children get their own sequential chain).
+ */
+function addSequentialStepEdges(
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edges: Set<Cytoscape.EdgeDataDefinition>,
+    pipeline: PipelineNode[],
+    expandedGroups: Set<string>,
+    extra: Partial<Cytoscape.EdgeDataDefinition> = {},
+): void {
+    const steps: string[] = [];
+    pipeline.forEach((pipe) => {
+        if (pipe.type === "meta" && expandedGroups.has(pipe.name)) return;
+        const type = nodes.get(pipe.name)?.type;
+        if (!isStepCardType(type)) return;
+        steps.push(pipe.name);
+    });
+
+    for (let index = 0; index < steps.length - 1; index += 1) {
+        ensureSequentialEdge(edges, steps[index], steps[index + 1], extra);
+    }
 }
 
 function ensureTable(
@@ -349,23 +382,15 @@ function addSequentialMetaEdges(
     data: GraphData,
     expandedGroups: Set<string>,
 ) {
+    // Top-level collapsed graph: consecutive transform/group cards.
+    addSequentialStepEdges(nodes, edges, data.pipeline, expandedGroups);
+
     expandedGroups.forEach((groupId) => {
-        const meta = data.pipeline.find(
-            (pipe): pipe is MetaNode => pipe.type === "meta" && pipe.name === groupId,
-        );
+        const meta = findMetaNode(data.pipeline, groupId);
         if (!meta) return;
-
-        const transforms = meta.graph.pipeline
-            .filter((step) => step.type !== "meta")
-            .map((step) => step.name)
-            .filter((name) => nodes.get(name)?.type === "transform");
-
-        for (let index = 0; index < transforms.length - 1; index += 1) {
-            const source = transforms[index];
-            const target = transforms[index + 1];
-            if (hasTransformPath(edges, source, target)) continue;
-            edges.add({ source, target, internalMeta: groupId, sequential: true, synthetic: true });
-        }
+        addSequentialStepEdges(nodes, edges, meta.graph.pipeline, expandedGroups, {
+            internalMeta: groupId,
+        });
     });
 }
 
