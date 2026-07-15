@@ -1,73 +1,45 @@
-# Datapipe Ops UI (`@datapipe/ui`)
+# datapipe-ui
 
-React SPA for the Datapipe Ops dashboard. ML-specific pages live in the sibling package [`@datapipe/ui-ml`](../datapipe-ui-ml/) and are compiled into the same bundle via a plugin registry.
+React Ops SPA (`@datapipe/ui`) + Python package that ships built static files (`datapipe.ui_static` entry point). ML pages come from the sibling plugin [`datapipe-ui-ml`](../datapipe-ui-ml/).
+
+## Quick start
+
+```bash
+make install    # yarn install (monorepo root)
+make start      # dev server
+make build-package   # production build → datapipe_ui/static/
+make test
+make package    # build-package + uv build
+```
+
+Docker build (Node 18, no local Node required): `make build-docker`.
+
+## Python install
+
+```bash
+make build-package
+uv pip install -e "libs/datapipe-ui"
+uv pip install -e "libs/datapipe-app[ui]"   # or [ml] for ML plugin + backend
+```
+
+The API serves the SPA at `/` when `datapipe-ui` is installed.
 
 ## Packages
 
 | Package | Role |
 |---------|------|
-| `libs/datapipe-ui` | Core Ops UI (graph, runs, pipelines) + CRA host |
-| `libs/datapipe-ui-ml` | ML plugin (metrics, training, images, ops-specs pages) |
-| `datapipe-ui` (Python) | Ships built static files; registered via `datapipe.ui_static` |
-| `datapipe-app` | FastAPI API; serves UI when `datapipe-ui` is installed |
+| `libs/datapipe-ui` | Core Ops UI + CRA host |
+| `libs/datapipe-ui-ml` | ML plugin (routes, nav, API client) |
+| `datapipe-app` | FastAPI; mounts static assets |
 
-## Development
-
-From the monorepo root:
-
-```bash
-yarn install
-yarn workspace @datapipe/ui start
-```
-
-Build with ML plugin (default):
-
-```bash
-yarn workspace @datapipe/ui build
-```
-
-Core-only build (stubs out `@datapipe/ui-ml`):
-
-```bash
-yarn workspace @datapipe/ui build:core
-```
-
-Copy build output into the Python wheel tree:
-
-```bash
-yarn workspace @datapipe/ui build:package
-```
-
-## Python install
-
-```bash
-uv pip install -e "libs/datapipe-ui"
-uv pip install -e "libs/datapipe-app[ui]"
-```
-
-Or install ML backend + UI together:
-
-```bash
-uv pip install -e "libs/datapipe-app[ml]"
-```
-
-The API serves the SPA at `/` when static assets are present.
+Core-only build (stubs ML plugin): `make build-core`.
 
 ## Tests
 
-Jest runs from the UI host (`@datapipe/ui`). ML plugin tests import `@datapipe/ui-ml` sources via webpack/jest aliases.
-
-| Location | What |
-|----------|------|
-| `libs/datapipe-ui/src/api/http.test.ts` | Core HTTP client |
-| `libs/datapipe-ui/src/api/mlOps.filters.test.ts` | ML API query serialization (`@datapipe/ui-ml`) |
-| `libs/datapipe-ui/src/features/ops/shared/tableFilters.test.ts` | Ops table filters (`@datapipe/ui-ml`) |
-| `libs/datapipe-ui/src/features/ops/shared/opsTableSort.test.ts` | Ops table sort (`@datapipe/ui-ml`) |
-| `libs/datapipe-ui/src/ml/recordFields.test.ts` | ML record field ordering (`@datapipe/ui-ml`) |
-| `libs/datapipe-ui/tests/test_static.py` | Python static dir resolution |
+Jest runs from this package; ML tests import `@datapipe/ui-ml` via aliases.
 
 ```bash
-yarn workspace @datapipe/ui test
+make test
 pytest libs/datapipe-ui/tests
 ```
 

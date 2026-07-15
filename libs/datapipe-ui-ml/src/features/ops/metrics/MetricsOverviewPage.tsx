@@ -17,8 +17,8 @@ import {
     parseSortParams,
     SelectedModelChips,
 } from "../shared";
-import { FrozenDatasetsCompact } from "./FrozenDatasetsCompact";
-import { ModelMetricsTable } from "./ModelMetricsTable";
+import { FrozenDatasetsCompact } from "./frozen-datasets/FrozenDatasetsCompact";
+import { ModelMetricsTable } from "./models/ModelMetricsTable";
 import { buildMetricSchema, type MetricsViewMode } from "./metricsSchema";
 
 export function MetricsOverviewPage() {

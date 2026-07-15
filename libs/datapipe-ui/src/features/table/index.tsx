@@ -158,6 +158,7 @@ const RunStepWebSocketComponent: FC<RunStepWebSocketComponentProps> = ({
         return () => {
             ws.close();
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect only when transform identity changes
     }, [transform]);
 
     return (
@@ -547,7 +548,7 @@ const Table: FC<TableProps> = ({
 
     const clearFocus = useCallback(() => {
         setTableFocus(undefined);
-    }, [current, options, tableFocus]);
+    }, []);
 
     useEffect(() => {
         setFilteredInfo(
@@ -575,6 +576,7 @@ const Table: FC<TableProps> = ({
             knownRowCount,
             pipelineId,
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- reset table state when the selected node changes
     }, [current.id, initialColumnFilter?.column, initialColumnFilter?.value]);
 
     useEffect(() => {
@@ -605,6 +607,7 @@ const Table: FC<TableProps> = ({
             knownRowCount,
             pipelineId,
         );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- reload is driven by explicit filter/pagination state
     }, [filteredInfo, tableFocus, pagination, dataIsProcessed, sorting.orderBy, sorting.order, knownRowCount, pipelineId]);
 
     const totalPages =

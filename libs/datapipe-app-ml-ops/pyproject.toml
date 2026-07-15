@@ -3,6 +3,7 @@ name = "datapipe-app-ml-ops"
 version = "0.1.0"
 description = "ML ops specs, image records, and observability routes for datapipe-app"
 authors = [{ name = "Aleksandr Kozlov", email = "bobokvsky@epoch8.co" }]
+readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "datapipe-app",

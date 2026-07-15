@@ -1,34 +1,37 @@
-# Datapipe Ops ML UI (`@datapipe/ui-ml`)
+# datapipe-ui-ml
 
-TypeScript plugin for ML observability pages in the Datapipe Ops dashboard:
+TypeScript ML plugin (`@datapipe/ui-ml`) for the Ops dashboard: metrics, models, frozen datasets, class metrics, training runs, image browsers, ops-spec pages.
 
-- Metrics, training runs, class metrics
-- Image / frozen-dataset record browsers
-- Ops-spec driven tables and detail pages
+Not a standalone SPA — compiled into [`datapipe-ui`](../datapipe-ui/) via webpack aliases and `registerUiMlPlugin()`. The PyPI package `datapipe-ui-ml` is a marker; install with `datapipe-app[ml]`.
 
-This package is **not** a standalone SPA. It is compiled into [`@datapipe/ui`](../datapipe-ui/) via webpack aliases and registered at runtime through `registerUiMlPlugin()`.
+## Commands
 
-## Python marker package
-
-`datapipe-ui-ml` on PyPI is a lightweight marker package. Install `datapipe-app[ml]` to get the API extensions; the UI itself ships in `datapipe-ui`.
+```bash
+make test       # Jest via @datapipe/ui host
+make build      # full SPA build (includes this plugin)
+make package    # uv build marker wheel
+```
 
 ## Layout
 
 ```
 src/
-  api/mlOps.ts       # ML REST client methods (merged into opsApi)
-  routes.tsx         # ML React Router routes
-  nav.tsx            # Sidebar sections for ops-specs
-  features/ops/      # Page components
-  types/             # ML + ops-spec TypeScript types
+  api/mlOps.ts          # ML REST client (merged into opsApi)
+  routes.tsx            # ML React Router routes
+  nav.tsx               # Sidebar sections
+  features/ops/
+    metrics/
+      models/           # model detail, metrics table, add candidate
+      frozen-datasets/  # frozen dataset pages & tables
+      classes/          # per-class metrics page
+      MetricsOverviewPage.tsx, metricsSchema.ts, …
+    training/
+    images/
+  types/
 ```
 
 ## Tests
 
-There is no separate Jest project. Tests for ML UI logic live in `libs/datapipe-ui/src/` and import this package via `@datapipe/ui-ml/...` aliases (see `libs/datapipe-ui/README.md`).
-
-```bash
-yarn workspace @datapipe/ui test
-```
+No separate Jest project — tests live in `libs/datapipe-ui/src/` and import `@datapipe/ui-ml/...`.
 
 CI: `.github/workflows/lib-datapipe-ui.yml`

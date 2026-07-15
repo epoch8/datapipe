@@ -5,14 +5,14 @@ import { TrainingRuns } from "./features/ops/TrainingRuns";
 import { TrainingDetail } from "./features/ops/TrainingDetail";
 import { TrainingCompare } from "./features/ops/TrainingCompare";
 import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
-import { ModelDetailPage } from "./features/ops/metrics/ModelDetailPage";
-import { FrozenDatasetDetailPage } from "./features/ops/metrics/FrozenDatasetDetailPage";
+import { ModelDetailPage } from "./features/ops/metrics/models/ModelDetailPage";
+import { FrozenDatasetDetailPage } from "./features/ops/metrics/frozen-datasets/FrozenDatasetDetailPage";
 import { ImageOverviewPage } from "./features/ops/images/ImageOverviewPage";
 import { ImageSpecPage } from "./features/ops/images/ImageSpecPage";
 import { ImageRecordDetailPage } from "./features/ops/images/ImageRecordDetailPage";
 import { FrozenDatasetRecordDetailPage } from "./features/ops/images/FrozenDatasetRecordDetailPage";
 import { ModelPredictionRecordDetailPage } from "./features/ops/images/ModelPredictionRecordDetailPage";
-import { ClassMetricsPage } from "./features/ops/classes/ClassMetricsPage";
+import { ClassMetricsPage } from "./features/ops/metrics/classes/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
 import { OpsEntityDetailPage, OpsOverviewSpecPage, OpsSpecificSpecPage } from "./features/ops/specs/OpsSpecPages";
 

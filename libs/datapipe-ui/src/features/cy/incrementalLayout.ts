@@ -224,14 +224,14 @@ function longestPathRanks(
     while (changed && guard < ids.length + 1) {
         changed = false;
         guard += 1;
-        edges.forEach(({ source, target }) => {
-            if (!nodes.has(source) || !nodes.has(target)) return;
+        for (const { source, target } of edges) {
+            if (!nodes.has(source) || !nodes.has(target)) continue;
             const nextRank = (rank.get(source) ?? 0) + 1;
             if (nextRank > (rank.get(target) ?? 0)) {
                 rank.set(target, nextRank);
                 changed = true;
             }
-        });
+        }
     }
     return rank;
 }
@@ -444,10 +444,6 @@ function getBoundaryNodes(
         }
     }
     return boundary;
-}
-
-function horizontalOverlap(a: BBox, b: BBox, margin = 0): boolean {
-    return a.x - margin < b.x + b.w + margin && a.x + a.w + margin > b.x - margin;
 }
 
 function sortedExternalEntries(
