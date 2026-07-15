@@ -1,6 +1,6 @@
 import React from "react";
 import { useSearchParams } from "react-router-dom";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type {
     FrozenDatasetRow,
@@ -17,8 +17,8 @@ import {
     parseSortParams,
     SelectedModelChips,
 } from "../shared";
-import { FrozenDatasetsCompact } from "./frozen-datasets/FrozenDatasetsCompact";
-import { ModelMetricsTable } from "./models/ModelMetricsTable";
+import { FrozenDatasetsCompact } from "../frozen-datasets/FrozenDatasetsCompact";
+import { ModelMetricsTable } from "../models/ModelMetricsTable";
 import { buildMetricSchema, type MetricsViewMode } from "./metricsSchema";
 
 export function MetricsOverviewPage() {

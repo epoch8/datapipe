@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { PageHeader, EmptyState } from "../shared";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsSpecSummary } from "../../../types/opsSpecs";
 

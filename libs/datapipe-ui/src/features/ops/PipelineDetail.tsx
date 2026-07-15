@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import type { PipelineDetail as PipelineDetailType } from "../../types/ops";
-import { getUiMlPlugin } from "../../plugins/registry";
+import { renderPluginSections } from "../../plugins/registry";
 import { RecentRunsList } from "./components/RecentRunsList";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { PageHeader } from "./shared";
@@ -23,8 +23,6 @@ export function PipelineDetail({
     const { id: routeId = "" } = useParams();
     const id = pipelineIdProp ?? routeId;
     const navigate = useNavigate();
-    const mlPlugin = getUiMlPlugin();
-    const MlPluginSection = mlPlugin.PluginSection;
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
     const [error, setError] = React.useState<unknown>(null);
 
@@ -88,7 +86,7 @@ export function PipelineDetail({
                     <span style={{ color: "#ff4d4f" }}>{detail.last_error}</span>
                 </Card>
             )}
-            <MlPluginSection enrichments={detail.enrichments} />
+            {renderPluginSections({ enrichments: detail.enrichments })}
             <Card title="Recent runs" style={{ marginTop: 16 }}>
                 <RecentRunsList runs={detail.recent_runs} />
             </Card>

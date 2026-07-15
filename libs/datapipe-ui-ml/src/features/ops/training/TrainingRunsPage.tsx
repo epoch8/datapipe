@@ -1,7 +1,7 @@
 import React from "react";
 import { Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import { useUrlState } from "@datapipe/ui/hooks/useUrlState";
 import type { TrainingRunRow } from "../../../types/opsMl";

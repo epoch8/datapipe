@@ -2,7 +2,7 @@ import React from "react";
 import { useParams } from "react-router-dom";
 import { Switch, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsBBoxRow, OpsImageRecordDetailResponse } from "../../../types/opsMl";
 import { EmptyState, PageHeader } from "../shared";

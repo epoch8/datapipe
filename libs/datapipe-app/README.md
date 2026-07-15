@@ -1,6 +1,6 @@
 # datapipe-app
 
-FastAPI REST API, `datapipe` CLI, and observability hooks for Datapipe pipelines. The Ops UI is **not** embedded here — it ships in [`datapipe-ui`](../datapipe-ui/) with optional ML pages from [`datapipe-ui-ml`](../datapipe-ui-ml/) and API extensions from [`datapipe-app-ml-ops`](../datapipe-app-ml-ops/).
+FastAPI REST API, `datapipe` CLI, and observability hooks for Datapipe pipelines. The Ops UI is **not** embedded here — it ships in [`datapipe-ui`](../datapipe-ui/) (core) and [`datapipe-ui-ml`](../datapipe-ui-ml/) (ML plugin SPA). ML API extensions live in [`datapipe-app-ml-ops`](../datapipe-app-ml-ops/).
 
 ## Install
 
@@ -15,10 +15,11 @@ uv pip install -e "libs/datapipe-app[ui]"
 uv pip install -e "libs/datapipe-app[ml]"
 ```
 
-Build static assets before running the API locally (or use `make build-ui`):
+Build static assets before running the API locally:
 
 ```bash
-make -C libs/datapipe-ui build-package
+make -C libs/datapipe-ui build-package      # core-only UI
+make -C libs/datapipe-ui-ml build-package   # ML UI (preferred when [ml] extra is installed)
 ```
 
 ## Usage

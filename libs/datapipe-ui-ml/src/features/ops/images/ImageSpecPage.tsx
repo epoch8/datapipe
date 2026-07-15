@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useParams } from "react-router-dom";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";

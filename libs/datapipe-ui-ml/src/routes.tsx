@@ -1,18 +1,18 @@
 import React from "react";
 import { Route } from "react-router-dom";
-import { Metrics } from "./features/ops/Metrics";
-import { TrainingRuns } from "./features/ops/TrainingRuns";
-import { TrainingDetail } from "./features/ops/TrainingDetail";
-import { TrainingCompare } from "./features/ops/TrainingCompare";
+import { Metrics } from "./features/ops/metrics/legacyExports";
+import { TrainingRuns } from "./features/ops/training/legacyExports";
+import { TrainingDetail } from "./features/ops/training/TrainingDetailPage";
+import { TrainingCompare } from "./features/ops/training/TrainingCompareRedirect";
 import { MetricsOverviewPage } from "./features/ops/metrics/MetricsOverviewPage";
-import { ModelDetailPage } from "./features/ops/metrics/models/ModelDetailPage";
-import { FrozenDatasetDetailPage } from "./features/ops/metrics/frozen-datasets/FrozenDatasetDetailPage";
+import { ModelDetailPage } from "./features/ops/models/ModelDetailPage";
+import { FrozenDatasetDetailPage } from "./features/ops/frozen-datasets/FrozenDatasetDetailPage";
 import { ImageOverviewPage } from "./features/ops/images/ImageOverviewPage";
 import { ImageSpecPage } from "./features/ops/images/ImageSpecPage";
 import { ImageRecordDetailPage } from "./features/ops/images/ImageRecordDetailPage";
-import { FrozenDatasetRecordDetailPage } from "./features/ops/images/FrozenDatasetRecordDetailPage";
-import { ModelPredictionRecordDetailPage } from "./features/ops/images/ModelPredictionRecordDetailPage";
-import { ClassMetricsPage } from "./features/ops/metrics/classes/ClassMetricsPage";
+import { FrozenDatasetRecordDetailPage } from "./features/ops/frozen-datasets/FrozenDatasetRecordDetailPage";
+import { ModelPredictionRecordDetailPage } from "./features/ops/models/ModelPredictionRecordDetailPage";
+import { ClassMetricsPage } from "./features/ops/metrics/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
 import { OpsEntityDetailPage, OpsOverviewSpecPage, OpsSpecificSpecPage } from "./features/ops/specs/OpsSpecPages";
 

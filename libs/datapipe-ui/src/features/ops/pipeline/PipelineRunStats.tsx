@@ -1,6 +1,6 @@
 import React from "react";
 import type { RecentRunSummary, RunListRow } from "../../../types/ops";
-import { KpiCard } from "@datapipe/ui-ml/shared/KpiCard";
+import { KpiCard } from "../shared/KpiCard";
 
 type Props = {
     runs: RecentRunSummary[] | RunListRow[];

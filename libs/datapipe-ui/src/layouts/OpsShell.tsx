@@ -17,9 +17,14 @@ import { ConnectivityBanner } from "../components/ConnectivityBanner";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { loadLastGraphStage } from "../features/cy/graphSessionState";
 import { useResizableWidth } from "../hooks/useResizableWidth";
-import { getUiMlPlugin } from "../plugins/registry";
+import {
+    collectLegacyNavItems,
+    getObsPagePrefixes,
+    invokeOpsApiExtension,
+    renderPluginNavSections,
+    type OpsSpecSummary,
+} from "../plugins/registry";
 import type { Capabilities } from "../types/ops";
-import type { OpsSpecSummary } from "@datapipe/ui-ml/types/opsSpecs";
 
 type NavItem = {
     key: string;
@@ -81,7 +86,6 @@ function matchNav(pathname: string, href: string): boolean {
 
 export function OpsShell() {
     const location = useLocation();
-    const mlPlugin = getUiMlPlugin();
     const [title, setTitle] = React.useState("Datapipe Ops");
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
@@ -105,11 +109,11 @@ export function OpsShell() {
             setPipelineId(c.pipeline_id ?? null);
             setCapabilitiesError(null);
             setTitle(`Datapipe Ops · ${c.pipeline_id || "agent"}`);
-            if (c.pipeline_id && "getOpsSpecs" in opsApi) {
-                (opsApi as typeof opsApi & { getOpsSpecs: (id: string) => Promise<{ specs: OpsSpecSummary[] }> })
-                    .getOpsSpecs(c.pipeline_id)
-                    .then((res) => setOpsSpecs(res.specs))
-                    .catch(() => setOpsSpecs([]));
+            const specsPromise = c.pipeline_id
+                ? invokeOpsApiExtension<{ specs: OpsSpecSummary[] }>("getOpsSpecs", c.pipeline_id)
+                : undefined;
+            if (specsPromise) {
+                specsPromise.then((res) => setOpsSpecs(res.specs)).catch(() => setOpsSpecs([]));
             } else {
                 setOpsSpecs([]);
             }
@@ -130,7 +134,7 @@ export function OpsShell() {
         if (href.startsWith("/classes")) return <PieChartOutlined />;
         return <HistoryOutlined />;
     };
-    const legacyMlItems = mlPlugin.renderLegacyNavItems({ hasExplicitSpecs, capabilities }).map((item) => ({
+    const legacyPluginItems = collectLegacyNavItems({ hasExplicitSpecs, capabilities }).map((item) => ({
         ...item,
         icon: legacyIconFor(item.href),
     }));
@@ -138,7 +142,7 @@ export function OpsShell() {
         { key: "/", href: "/", label: "Overview", icon: <DashboardOutlined /> },
         { key: "/graph", href: graphHref, label: "Graph", icon: <ApartmentOutlined /> },
         { key: "/runs", href: "/runs", label: "Runs", icon: <HistoryOutlined /> },
-        ...legacyMlItems,
+        ...legacyPluginItems,
     ];
 
     const secondaryItems: NavItem[] = [
@@ -150,7 +154,7 @@ export function OpsShell() {
         allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
     const isGraph = location.pathname.startsWith("/graph");
-    const isObsPage = mlPlugin.obsPagePrefixes.some((p) => location.pathname.startsWith(p));
+    const isObsPage = getObsPagePrefixes().some((p) => location.pathname.startsWith(p));
 
     const renderItem = (item: NavItem) => (
         <Link
@@ -186,12 +190,13 @@ export function OpsShell() {
                 <div className="datapipe-sidebar-logo">Datapipe Ops</div>
                 <nav className="datapipe-sidebar-nav">
                     {primaryItems.map(renderItem)}
-                    {hasExplicitSpecs && mlPlugin.renderNavSections({
-                        specs: opsSpecs,
-                        collapsed,
-                        pathname: location.pathname,
-                        capabilities,
-                    })}
+                    {hasExplicitSpecs &&
+                        renderPluginNavSections({
+                            specs: opsSpecs,
+                            collapsed,
+                            pathname: location.pathname,
+                            capabilities,
+                        })}
                 </nav>
                 <div className="ops-sidebar-section">
                     {!collapsed && <div className="ops-sidebar-section-label">More</div>}

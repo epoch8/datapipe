@@ -37,8 +37,14 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Unit tests (@datapipe/ui + @datapipe/ui-ml)
+      - name: Unit tests (@datapipe/ui core)
         run: yarn workspace @datapipe/ui test
+
+      - name: Unit tests (@datapipe/ui-ml)
+        run: yarn workspace @datapipe/ui-ml test
+
+      - name: Production build smoke test (@datapipe/ui-ml)
+        run: yarn workspace @datapipe/ui-ml test:build
 
   build:
     runs-on: ubuntu-latest
@@ -55,14 +61,17 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build with ML plugin
+      - name: Build core SPA
         run: yarn workspace @datapipe/ui build
 
-      - name: Build core-only (ML stub)
-        run: yarn workspace @datapipe/ui build:core
+      - name: Build ML SPA
+        run: yarn workspace @datapipe/ui-ml build
 
-      - name: Package static assets for Python wheel
+      - name: Package core static assets for Python wheel
         run: yarn workspace @datapipe/ui build:package
+
+      - name: Package ML static assets for Python wheel
+        run: yarn workspace @datapipe/ui-ml build:package
 
   test-python:
     runs-on: ubuntu-latest
@@ -82,6 +91,7 @@ jobs:
         run: |
           yarn install --frozen-lockfile
           yarn workspace @datapipe/ui build:package
+          yarn workspace @datapipe/ui-ml build:package
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -96,3 +106,9 @@ jobs:
           uv pip install --system -e "libs/datapipe-ui"
           uv pip install --system "pytest<8"
           pytest libs/datapipe-ui/tests
+
+      - name: Test datapipe-ui-ml Python package
+        run: |
+          uv pip install --system -e "libs/datapipe-ui-ml"
+          uv pip install --system "pytest<8"
+          pytest libs/datapipe-ui-ml/tests

@@ -1,13 +1,28 @@
 [project]
 name = "datapipe-ui-ml"
 version = "0.6.0"
-description = "ML UI plugin marker for Datapipe Ops (compiled into datapipe-ui)"
+description = "ML Ops UI plugin SPA for Datapipe (metrics, training, images, ops-specs)"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 
+[project.entry-points."datapipe.ui_static"]
+datapipe_ui_ml = "datapipe_ui_ml.static:resolve_frontend_dir"
+
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["node_modules", "build", "src", "public"]
+
+[tool.hatch.build.targets.wheel]
+exclude = ["node_modules", "build", "src", "public"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"datapipe_ui_ml/static" = "datapipe_ui_ml/static"
+
+[tool.hatch.build.targets.sdist.force-include]
+"datapipe_ui_ml/static" = "datapipe_ui_ml/static"
 
 [build-system]
 requires = ["hatchling"]

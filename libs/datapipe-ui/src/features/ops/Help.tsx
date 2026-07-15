@@ -10,7 +10,7 @@ export function Help() {
             <Paragraph>
                 <strong>Datapipe Ops</strong> is bound to one pipeline agent. The sidebar shows
                 Overview, Graph, Runs, and — when the pipeline registers ops specs — per-spec
-                sections for Image, Frozen Datasets, Training, Metrics, and Class Metrics.
+                sections contributed by installed UI plugins.
             </Paragraph>
             <Paragraph>
                 <strong>Pipeline stages</strong> come from pipeline step labels (for example{" "}

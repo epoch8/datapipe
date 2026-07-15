@@ -1,6 +1,8 @@
 import { coreOpsApi } from "./ops";
-import { mlOpsApi } from "@datapipe/ui-ml/api/mlOps";
+import { mergeOpsApiExtensions } from "../plugins/registry";
 
-export const opsApi = { ...coreOpsApi, ...mlOpsApi };
+export const opsApi = { ...coreOpsApi, ...mergeOpsApiExtensions() };
+
+export type OpsApi = typeof coreOpsApi;
 
 export { getRefreshIntervalMs, exportCsv } from "./ops";

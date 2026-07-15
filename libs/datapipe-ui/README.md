@@ -1,46 +1,49 @@
 # datapipe-ui
 
-React Ops SPA (`@datapipe/ui`) + Python package that ships built static files (`datapipe.ui_static` entry point). ML pages come from the sibling plugin [`datapipe-ui-ml`](../datapipe-ui-ml/).
+React Ops SPA (`@datapipe/ui`) + Python package that ships built static files (`datapipe.ui_static` entry point).
+
+Core-only dashboard: pipeline overview, graph, runs, tables, transforms. Optional UI plugins extend routes, navigation, and API via `registerUiPlugin()`.
 
 ## Quick start
 
 ```bash
-make install    # yarn install (monorepo root)
-make start      # dev server
-make build-package   # production build → datapipe_ui/static/
-make test
-make package    # build-package + uv build
+# from monorepo root (datapipe/)
+make -C libs/datapipe-ui install
+make -C libs/datapipe-ui start      # dev server
+make -C libs/datapipe-ui build      # production build
+make -C libs/datapipe-ui test
 ```
 
-Docker build (Node 18, no local Node required): `make build-docker`.
-
-## Python install
+Python (serves built static when installed):
 
 ```bash
-make build-package
-uv pip install -e "libs/datapipe-ui"
-uv pip install -e "libs/datapipe-app[ui]"   # or [ml] for ML plugin + backend
+uv pip install -e "libs/datapipe-app[ui]"
 ```
 
-The API serves the SPA at `/` when `datapipe-ui` is installed.
+## Layout
 
-## Packages
+| Path | Role |
+|------|------|
+| `src/` | Core Ops React app |
+| `src/plugins/` | Generic plugin registry (`registerUiPlugin`, route/nav/API aggregation) |
+| `datapipe_ui/static/` | Built SPA copied here for the Python wheel |
+| `scripts/copy-static.sh` | `build/` → `datapipe_ui/static/` |
 
-| Package | Role |
-|---------|------|
-| `libs/datapipe-ui` | Core Ops UI + CRA host |
-| `libs/datapipe-ui-ml` | ML plugin (routes, nav, API client) |
-| `datapipe-app` | FastAPI; mounts static assets |
+## Commands
 
-Core-only build (stubs ML plugin): `make build-core`.
+```bash
+make install
+make start
+make build
+make build-package   # build + copy static for Python packaging
+make test
+make package         # uv wheel (runs build-package first)
+```
 
 ## Tests
 
-Jest runs from this package; ML tests import `@datapipe/ui-ml` via aliases.
-
 ```bash
-make test
-pytest libs/datapipe-ui/tests
+yarn workspace @datapipe/ui test
 ```
 
-CI: `.github/workflows/lib-datapipe-ui.yml`
+Jest covers core API helpers (`src/api/http.test.ts`). Plugin packages add their own tests and production build checks.

@@ -8,18 +8,31 @@ export {
     EmptyState,
     TableSizeControl,
     ChartCard,
-} from "@datapipe/ui/features/ops/shared";
-
-export type { FilterDef, FilterOption, SortSpec } from "@datapipe/ui/features/ops/shared";
-
-export { KpiCard } from "../../../shared/KpiCard";
-export { MetricValue } from "../../../shared/MetricValue";
-export { TrendDelta } from "../../../shared/TrendDelta";
-export { Sparkline } from "../../../shared/Sparkline";
-export { SelectedModelChips } from "../../../shared/SelectedModelChips";
-export {
+    KpiCard,
+    MetricValue,
+    TrendDelta,
+    Sparkline,
+    SelectedModelChips,
     readMetricNumber,
     formatMetric,
     formatDelta,
     formatDeltaPct,
-} from "../../../shared/metricsFormat";
+} from "@datapipe/ui/features/ops/shared";
+
+export type { FilterDef, FilterOption, SortSpec } from "@datapipe/ui/features/ops/shared";
+
+export { TableFilterBar } from "./TableFilterBar";
+export * from "./tableFilters";
+export * from "./opsTableSort";
+export { EntityLink } from "./EntityLink";
+export {
+    buildModelUrl,
+    buildDatasetUrl,
+    buildMetricsUrl,
+    buildTableRowUrl,
+    truncateMiddle,
+} from "./entityUrls";
+export { recordFieldOrder, isPrimaryKeyField, columnSource } from "./recordFields";
+export { splitSizeLabel } from "./splitSizeLabel";
+export { MetricKpiStrip } from "./MetricKpiStrip";
+export { SourceRecordCard } from "./SourceRecordCard";

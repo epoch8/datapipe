@@ -8,7 +8,7 @@ import {
 } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import type { Capabilities } from "@datapipe/ui/types/ops";
-import type { OpsSpecSummary } from "./types/opsSpecs";
+import type { OpsSpecSummary } from "@datapipe/ui/plugins/types";
 
 function matchNav(pathname: string, href: string): boolean {
     const hrefPath = href.split("?")[0] ?? href;
@@ -57,11 +57,11 @@ export function renderMlNavSections(ctx: {
     if (!ctx.capabilities?.ml_metrics && !ctx.specs.length) return null;
     return (
         <>
-            {renderSpecGroup("/image", "Image", <PictureOutlined />, ctx.specs, (s) => s.has_image, ctx.collapsed, ctx.pathname)}
-            {renderSpecGroup("/frozen-datasets", "Frozen Datasets", <DatabaseOutlined />, ctx.specs, (s) => s.has_frozen_datasets, ctx.collapsed, ctx.pathname)}
-            {renderSpecGroup("/training", "Training", <ExperimentOutlined />, ctx.specs, (s) => s.has_training, ctx.collapsed, ctx.pathname)}
-            {renderSpecGroup("/metrics", "Metrics", <BarChartOutlined />, ctx.specs, (s) => s.metric_tables_count > 0, ctx.collapsed, ctx.pathname)}
-            {renderSpecGroup("/class-metrics", "Class Metrics", <TableOutlined />, ctx.specs, (s) => s.class_metric_tables_count > 0, ctx.collapsed, ctx.pathname)}
+            {renderSpecGroup("/image", "Image", <PictureOutlined />, ctx.specs, (s) => !!s.has_image, ctx.collapsed, ctx.pathname)}
+            {renderSpecGroup("/frozen-datasets", "Frozen Datasets", <DatabaseOutlined />, ctx.specs, (s) => !!s.has_frozen_datasets, ctx.collapsed, ctx.pathname)}
+            {renderSpecGroup("/training", "Training", <ExperimentOutlined />, ctx.specs, (s) => !!s.has_training, ctx.collapsed, ctx.pathname)}
+            {renderSpecGroup("/metrics", "Metrics", <BarChartOutlined />, ctx.specs, (s) => (s.metric_tables_count ?? 0) > 0, ctx.collapsed, ctx.pathname)}
+            {renderSpecGroup("/class-metrics", "Class Metrics", <TableOutlined />, ctx.specs, (s) => (s.class_metric_tables_count ?? 0) > 0, ctx.collapsed, ctx.pathname)}
         </>
     );
 }

@@ -2,26 +2,25 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Button, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import type { OpsImageRecordListRow, OpsImageRecordsResponse } from "../../../types/opsMl";
 import type { OpsColumn, OpsMetricColumn, OpsRowsParams, OpsSpecDetail, OpsTableSchema, OpsImageDataSpecPayload } from "../../../types/opsSpecs";
-import { EmptyState, TableSizeControl } from "../shared";
-import { TableFilterBar } from "@datapipe/ui-ml/shared/TableFilterBar";
 import {
+    EmptyState,
+    TableSizeControl,
+    TableFilterBar,
     expandChipValueRules,
     formatRule,
     dedupeFilterColumns,
     serializeFilterRules,
-    type OpsFilterState,
-} from "@datapipe/ui-ml/shared/tableFilters";
-import { IMAGE_RECORD_ENTITY_LINKS, imageRecordFilterColumns } from "../../../shared/imageRecordFilters";
-import {
     defaultSortState,
     resolveSortFromTableChange,
     serverSideSorter,
     sortOrderForColumn,
+    type OpsFilterState,
     type OpsTableSortState,
-} from "@datapipe/ui-ml/shared/opsTableSort";
+} from "../shared";
+import { IMAGE_RECORD_ENTITY_LINKS, imageRecordFilterColumns } from "./imageRecordFilters";
 import type { SortOrder } from "antd/es/table/interface";
 import { ImageRecordPreviewModal } from "./ImageRecordPreviewModal";
 

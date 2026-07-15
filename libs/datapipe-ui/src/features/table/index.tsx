@@ -38,7 +38,7 @@ import {
 } from "../../types";
 import { FilterValue, SorterResult } from "antd/lib/table/interface";
 import { getDefaultTablePageSize, setDefaultTablePageSize } from "../../api/graph";
-import { EntityLink } from "@datapipe/ui-ml/features/ops/metrics/EntityLink";
+import { renderEntityLink } from "../../plugins/registry";
 
 function renderCellValue(value: unknown, columnName: string, pipelineId?: string): React.ReactNode {
     if (value === null || value === undefined) {
@@ -54,10 +54,10 @@ function renderCellValue(value: unknown, columnName: string, pipelineId?: string
     const isFrozenDatasetIdColumn =
         columnName === "frozen_dataset_id" || columnName.endsWith("_frozen_dataset_id");
     if (typeof value === "string" && isModelIdColumn) {
-        return <EntityLink kind="model" id={value} />;
+        return renderEntityLink({ kind: "model", id: value });
     }
     if (typeof value === "string" && isFrozenDatasetIdColumn) {
-        return <EntityLink kind="dataset" id={value} />;
+        return renderEntityLink({ kind: "dataset", id: value });
     }
     if (typeof value === "object") {
         return (

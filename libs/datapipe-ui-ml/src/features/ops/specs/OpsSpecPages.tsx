@@ -20,12 +20,13 @@ import {
     TeamOutlined,
     WarningOutlined,
 } from "@ant-design/icons";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsColumn, OpsFilterRule, OpsMetricColumn, OpsOverviewResponse, OpsRowsParams, OpsRowsResponse, OpsSpecDetail, OpsTableSchema } from "../../../types/opsSpecs";
-import { EmptyState, PageHeader } from "../shared";
-import { TableFilterBar } from "@datapipe/ui-ml/shared/TableFilterBar";
 import {
+    EmptyState,
+    PageHeader,
+    TableFilterBar,
     collectFilterColumns,
     dedupeFilterColumns,
     expandChipValueRules,
@@ -34,14 +35,12 @@ import {
     parseUrlFilterState,
     serializeFilterRules,
     writeUrlFilterState,
-    type OpsFilterState,
-} from "@datapipe/ui-ml/shared/tableFilters";
-import {
     defaultSortState,
     resolveSortFromTableChange,
     serverSideSorter,
     sortOrderForColumn,
-} from "@datapipe/ui-ml/shared/opsTableSort";
+    type OpsFilterState,
+} from "../shared";
 
 type PageKind = "frozen-datasets" | "training" | "metrics" | "class-metrics";
 type EntityKind = "frozen-dataset" | "model" | "training-run";

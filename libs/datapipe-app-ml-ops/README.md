@@ -2,7 +2,7 @@
 
 Python backend for ML observability in the Ops dashboard: metrics, training runs, frozen datasets, class metrics, ops-spec tables, and image record browsers.
 
-Registered via entry points (`datapipe.observability`, `datapipe.v1alpha3_extensions`, …). Installed automatically with `datapipe-app[ml]`. UI for these endpoints lives in [`datapipe-ui-ml`](../datapipe-ui-ml/) (compiled into [`datapipe-ui`](../datapipe-ui/)).
+Registered via entry points (`datapipe.observability`, `datapipe.v1alpha3_extensions`, …). Installed automatically with `datapipe-app[ml]`. UI for these endpoints lives in [`datapipe-ui-ml`](../datapipe-ui-ml/).
 
 ## Install
 

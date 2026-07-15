@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Modal, Radio, Spin, Switch } from "antd";
-import { opsApi } from "@datapipe/ui/api/client";
+import { opsApi } from "@datapipe/ui-ml/api/client";
 import type { OpsImageRecordDetailResponse } from "../../../types/opsMl";
 import { ImagePanel } from "./ImagePanel";
 

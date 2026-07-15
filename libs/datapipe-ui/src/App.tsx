@@ -10,14 +10,11 @@ import { GraphPage } from "./features/ops/GraphPage";
 import { TableDetail } from "./features/ops/TableDetail";
 import { TransformDetail } from "./features/ops/TransformDetail";
 import { MetaStepDetail } from "./features/ops/MetaStepDetail";
-import { registerUiMlPlugin, getUiMlPlugin } from "./plugins/registry";
-import { mlUiPlugin } from "@datapipe/ui-ml";
+import { renderPluginRoutes } from "./plugins/registry";
 import "./App.css";
 import "./operatorLight.css";
 import "./opsPages.css";
 import "antd/dist/antd.css";
-
-registerUiMlPlugin(mlUiPlugin);
 
 function LegacyDebugRedirect() {
     const { search } = useLocation();
@@ -25,7 +22,6 @@ function LegacyDebugRedirect() {
 }
 
 function App() {
-    const mlPlugin = getUiMlPlugin();
     return (
         <BrowserRouter>
             <Routes>
@@ -33,7 +29,7 @@ function App() {
                     <Route path="/" element={<Overview />} />
                     <Route path="/runs" element={<RunsPage />} />
                     <Route path="/runs/:runId" element={<RunDetail />} />
-                    {mlPlugin.routes()}
+                    {renderPluginRoutes()}
                     <Route path="/graph" element={<GraphPage />} />
                     <Route path="/debug" element={<LegacyDebugRedirect />} />
                     <Route path="/help" element={<Help />} />

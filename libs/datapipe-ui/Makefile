@@ -4,7 +4,7 @@ HOST_GID := $(shell id -g)
 DOCKER_RUN_NODE = docker run --rm --user $(HOST_UID):$(HOST_GID) -e HOME=/tmp \
 	-v $(MONOREPO_ROOT):/monorepo -w /monorepo/libs/datapipe-ui node:18.7.0-slim
 
-.PHONY: install start build build-core build-package test package build-docker
+.PHONY: install start build build-package test package build-docker
 
 install:
 	cd $(MONOREPO_ROOT) && yarn install
@@ -14,9 +14,6 @@ start:
 
 build:
 	cd $(MONOREPO_ROOT) && yarn workspace @datapipe/ui build
-
-build-core:
-	cd $(MONOREPO_ROOT) && yarn workspace @datapipe/ui build:core
 
 build-package:
 	cd $(MONOREPO_ROOT) && yarn workspace @datapipe/ui build:package
