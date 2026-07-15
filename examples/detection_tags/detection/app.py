@@ -183,7 +183,7 @@ pipeline = Pipeline(
                 "local_images",
                 Required("image__ground_truth"),
                 Required("image__subset"),
-                Required("image__tag"),
+                "image__tag",
             ],
             outputs=["fiftyone_annotations"],
             labels=[("stage", "fiftyone")],
