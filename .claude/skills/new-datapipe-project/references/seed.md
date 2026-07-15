@@ -109,7 +109,7 @@ and their meta tables are dead weight. Removal is destructive — ask, recommend
 > Seed tables (`items`/`items_out` + meta) are unused now — clean up? Only sample data exists, so
 > this is a cheap full reset onto the real shape.
 
-Yes:
+Yes — first delete the passthrough code and seed tables from `data.py`/`steps.py`/`app.py`, then:
 ```bash
 psql "$DB_URL" -c "DROP SCHEMA ${DB_SCHEMA:-public} CASCADE; CREATE SCHEMA ${DB_SCHEMA:-public};"
 datapipe db create-all && datapipe run
