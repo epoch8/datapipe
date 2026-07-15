@@ -1,0 +1,15 @@
+{
+  "name": "@datapipe/ui-ml",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "@ant-design/icons": "^4.8.0",
+    "antd": "^4.22.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "recharts": "^2.15.0"
+  }
+}

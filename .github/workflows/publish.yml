@@ -11,6 +11,7 @@ on:
       - "datapipe-cvat-v*"
       - "datapipe-app-v*"
       - "datapipe-app-ml-ops-v*"
+      - "datapipe-ui-v*"
 
 jobs:
   build:
@@ -30,8 +31,17 @@ jobs:
             datapipe-cvat-v*) echo "package-name=datapipe-cvat" >> "$GITHUB_OUTPUT" ;;
             datapipe-app-v*) echo "package-name=datapipe-app" >> "$GITHUB_OUTPUT" ;;
             datapipe-app-ml-ops-v*) echo "package-name=datapipe-app-ml-ops" >> "$GITHUB_OUTPUT" ;;
+            datapipe-ui-v*) echo "package-name=datapipe-ui" >> "$GITHUB_OUTPUT" ;;
             *) echo "Unsupported tag: ${GITHUB_REF_NAME}" >&2; exit 1 ;;
           esac
+
+      - name: Set up Node.js
+        if: steps.package.outputs.package-name == 'datapipe-ui'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: yarn
+          cache-dependency-path: yarn.lock
 
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v5
@@ -40,6 +50,10 @@ jobs:
 
       - name: Build wheel
         run: |
+          if [ "${{ steps.package.outputs.package-name }}" = "datapipe-ui" ]; then
+            yarn install --frozen-lockfile
+            yarn workspace @datapipe/ui build:package
+          fi
           uv build --package "${{ steps.package.outputs.package-name }}"
 
       - name: Store the distribution packages

@@ -21,6 +21,8 @@ dependencies = [
 gcp = ["opentelemetry-exporter-gcp-trace>=1.3.0,<2"]
 jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
 clickhouse = ["clickhouse-connect>=0.7.0", "clickhouse-sqlalchemy>=0.3.0"]
+ui = ["datapipe-ui"]
+ml = ["datapipe-ui", "datapipe-ui-ml", "datapipe-app-ml-ops"]
 
 [project.entry-points."datapipe.cli"]
 datapipe_app = "datapipe_app.app.cli:register_commands"
@@ -56,18 +58,14 @@ dev = [
 datapipe-core = { workspace = true }
 datapipe-app-ml-ops = { workspace = true }
 datapipe-ml = { workspace = true }
+datapipe-ui = { workspace = true }
+datapipe-ui-ml = { workspace = true }
 
 [tool.hatch.build.targets.sdist]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [build-system]
 requires = ["hatchling"]

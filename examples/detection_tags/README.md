@@ -27,9 +27,16 @@ uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
 
 Packages (see `pyproject.toml`):
 
-- `datapipe-app` — Ops UI and run observability.
+- `datapipe-app[clickhouse,ml]` — Ops API/UI (`datapipe-ui`), run observability, ClickHouse run logs.
+- `datapipe-ui-ml` — ML Ops UI plugin marker (metrics/training/images pages compiled into `datapipe-ui`).
 - `datapipe-app-ml-ops` — `cat_dog` ops spec, metrics/training panels (`datapipe_app_ml_ops.ops_specs`).
 - `datapipe-ml[torch,fiftyone]` — YOLO train/infer/metrics and FiftyOne table stores.
+
+Build Ops UI static assets once from the monorepo root (needed for `datapipe api` to serve `/`):
+
+```bash
+cd ../.. && yarn install && yarn workspace @datapipe/ui build:package
+```
 
 ## Deploy from scratch
 ```bash

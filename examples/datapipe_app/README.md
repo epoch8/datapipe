@@ -1,6 +1,6 @@
 # Datapipe App example (SQLite + Alembic)
 
-Minimal pipeline with `datapipe-app` only: three SQL tables, one batch transform, Ops UI.
+Minimal pipeline with `datapipe-app[ui]`: three SQL tables, one batch transform, Ops UI.
 No `datapipe-app-ml-ops`.
 
 Pipeline tables and datapipe metadata are managed with **Alembic**, not `datapipe db create-all`.

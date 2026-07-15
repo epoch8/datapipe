@@ -1,0 +1,98 @@
+name: datapipe-ui
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-ui.yml"
+      - "libs/datapipe-ui/**"
+      - "libs/datapipe-ui-ml/**"
+      - "package.json"
+      - "yarn.lock"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-ui.yml"
+      - "libs/datapipe-ui/**"
+      - "libs/datapipe-ui-ml/**"
+      - "package.json"
+      - "yarn.lock"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Unit tests (@datapipe/ui + @datapipe/ui-ml)
+        run: yarn workspace @datapipe/ui test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build with ML plugin
+        run: yarn workspace @datapipe/ui build
+
+      - name: Build core-only (ML stub)
+        run: yarn workspace @datapipe/ui build:core
+
+      - name: Package static assets for Python wheel
+        run: yarn workspace @datapipe/ui build:package
+
+  test-python:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Build packaged static assets
+        run: |
+          yarn install --frozen-lockfile
+          yarn workspace @datapipe/ui build:package
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Test datapipe-ui Python package
+        run: |
+          uv pip install --system -e "libs/datapipe-ui"
+          uv pip install --system "pytest<8"
+          pytest libs/datapipe-ui/tests

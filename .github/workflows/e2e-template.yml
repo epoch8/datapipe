@@ -13,6 +13,8 @@ on:
       - "libs/datapipe-label-studio/**"
       - "libs/datapipe-app/**"
       - "libs/datapipe-app-ml-ops/**"
+      - "libs/datapipe-ui/**"
+      - "libs/datapipe-ui-ml/**"
       - "libs/datapipe-ml/**"
       - "pyproject.toml"
   pull_request:
@@ -26,6 +28,8 @@ on:
       - "libs/datapipe-label-studio/**"
       - "libs/datapipe-app/**"
       - "libs/datapipe-app-ml-ops/**"
+      - "libs/datapipe-ui/**"
+      - "libs/datapipe-ui-ml/**"
       - "libs/datapipe-ml/**"
       - "pyproject.toml"
 

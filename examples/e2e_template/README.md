@@ -55,12 +55,19 @@ the `old-cpu` extra — re-run `uv sync --extra old-cpu`.
 
 What each piece is for:
 
-- `datapipe-app` — Ops UI (`datapipe --pipeline app api`), run history, pipeline graph.
+- `datapipe-app[clickhouse,ml]` — Ops API/UI (`datapipe-ui`), run history, pipeline graph, ClickHouse run logs.
+- `datapipe-ui-ml` — ML Ops UI plugin marker (metrics/training/images pages compiled into `datapipe-ui`).
 - `datapipe-app-ml-ops` — ML ops specs (`datapipe_app_ml_ops.ops.ops_specs`), metrics/training panels,
   image-record views; observability plugin entry point (not `datapipe-ml[observability]`).
 - `datapipe-label-studio` — Label Studio pipeline steps.
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
   `datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
+
+Build Ops UI static assets once from the monorepo root (needed for `datapipe api` to serve `/`):
+
+```bash
+cd ../.. && yarn install && yarn workspace @datapipe/ui build:package
+```
 
 ### Local services
 

@@ -3,8 +3,8 @@ name = "datapipe-e2e-example"
 version = "0"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "datapipe-app[clickhouse]",
-    "datapipe-app-ml-ops",
+    "datapipe-app[clickhouse,ml]",
+    "datapipe-ui-ml",
     "datapipe-label-studio",
     "datapipe-ml[torch,fiftyone]",
     "torch==2.6.0", 
@@ -32,6 +32,8 @@ torchvision = { index = "pytorch-cu124" }
 datapipe-label-studio = { path = "../../libs/datapipe-label-studio", editable = true }
 datapipe-app = { path = "../../libs/datapipe-app", editable = true }
 datapipe-app-ml-ops = { path = "../../libs/datapipe-app-ml-ops", editable = true }
+datapipe-ui = { path = "../../libs/datapipe-ui", editable = true }
+datapipe-ui-ml = { path = "../../libs/datapipe-ui-ml", editable = true }
 datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
 cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }

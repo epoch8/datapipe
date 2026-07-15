@@ -32,9 +32,9 @@ from datapipe_app.observability.config.tables import (
     ensure_observability_tables_compatible_with_pipeline,
 )
 
-logger = logging.getLogger(__name__)
+from datapipe_app.app.frontend_static import resolve_frontend_dir
 
-_FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+logger = logging.getLogger(__name__)
 
 
 def _resolve_observability_dbconn(
@@ -222,26 +222,33 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
         )
 
         self.mount("/api", self.api, name="api")
-        self.mount(
-            "/static",
-            StaticFiles(directory=os.path.join(_FRONTEND_DIR, "static")),
-            name="assets",
-        )
+        frontend_dir = resolve_frontend_dir()
+        if frontend_dir is not None:
+            self.mount(
+                "/static",
+                StaticFiles(directory=os.path.join(frontend_dir, "static")),
+                name="assets",
+            )
 
-        index_path = os.path.join(_FRONTEND_DIR, "index.html")
+            index_path = os.path.join(frontend_dir, "index.html")
 
-        @self.get("/")
-        async def spa_index() -> FileResponse:
-            return FileResponse(index_path)
+            @self.get("/")
+            async def spa_index() -> FileResponse:
+                return FileResponse(index_path)
 
-        @self.get("/{spa_path:path}")
-        async def spa_fallback(spa_path: str) -> FileResponse:
-            if spa_path.startswith("api") or spa_path.startswith("static"):
-                raise HTTPException(status_code=404)
-            asset_path = os.path.join(_FRONTEND_DIR, spa_path)
-            if os.path.isfile(asset_path):
-                return FileResponse(asset_path)
-            return FileResponse(index_path)
+            @self.get("/{spa_path:path}")
+            async def spa_fallback(spa_path: str) -> FileResponse:
+                if spa_path.startswith("api") or spa_path.startswith("static"):
+                    raise HTTPException(status_code=404)
+                asset_path = os.path.join(frontend_dir, spa_path)
+                if os.path.isfile(asset_path):
+                    return FileResponse(asset_path)
+                return FileResponse(index_path)
+        else:
+            logger.warning(
+                "datapipe-ui is not installed; Ops UI static files will not be served. "
+                "Install with: pip install datapipe-app[ui]"
+            )
 
     def refresh_ops_settings(
         self,

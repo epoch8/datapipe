@@ -30,7 +30,21 @@ Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
 
 ## REST API + UI
 
-`DatapipeAPI` extends `DatapipeApp` with an **Ops dashboard** (default `/`) and **Debug UI** (`/debug`).
+`DatapipeAPI` extends `DatapipeApp` with an **Ops dashboard** (default `/`) and **Debug UI** (`/graph`).
+
+The UI is shipped separately as [`datapipe-ui`](../datapipe-ui/) (static assets) with optional ML pages from [`datapipe-ui-ml`](../datapipe-ui-ml/). Install with:
+
+```bash
+uv pip install -e "libs/datapipe-app[ui]"      # core Ops UI
+uv pip install -e "libs/datapipe-app[ml]"      # UI + datapipe-app-ml-ops
+```
+
+Build the frontend before packaging or local API use:
+
+```bash
+yarn install
+yarn workspace @datapipe/ui build:package
+```
 
 Environment variables (optional):
 
