@@ -114,12 +114,11 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies with uv
-        run: |
-          cd examples/datapipe_app
-          uv sync
+        working-directory: examples/datapipe_app
+        run: uv sync
 
       - name: Test example
+        working-directory: examples/datapipe_app
         run: |
-          cd examples/datapipe_app
           uv run alembic upgrade head
-          uv run datapipe run
+          uv run datapipe run --no-record
