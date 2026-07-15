@@ -21,7 +21,7 @@ export function TableDataPanel({
     const [alertMsg, setAlertMsg] = useState<AlertProps | null>(null);
 
     return (
-        <div>
+        <div className="dp-table-data-panel">
             {alertMsg && (
                 <Alert
                     style={{ marginBottom: 12 }}
@@ -31,14 +31,16 @@ export function TableDataPanel({
                     onClose={() => setAlertMsg(null)}
                 />
             )}
-            <Table
-                current={table}
-                setAlertMsg={setAlertMsg}
-                knownRowCount={knownRowCount}
-                hideRunStep={hideRunStep}
-                pipelineId={pipelineId}
-                initialColumnFilter={initialColumnFilter}
-            />
+            <div className="dp-table-data-scroll">
+                <Table
+                    current={table}
+                    setAlertMsg={setAlertMsg}
+                    knownRowCount={knownRowCount}
+                    hideRunStep={hideRunStep}
+                    pipelineId={pipelineId}
+                    initialColumnFilter={initialColumnFilter}
+                />
+            </div>
         </div>
     );
 }

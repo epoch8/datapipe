@@ -798,7 +798,20 @@ export function buildCollapsedLayout(
     const layoutNodes = new Map<string, MeasuredNode>();
     nodes.forEach((data, id) => {
         if (data.parent || data.metaGroup) return;
-        if (data.type === "group-expanded") return;
+        // reprocessData marks expanded metas as group-expanded. Seed them here as a
+        // collapsed group footprint so expandGroupInLayout can find and grow them —
+        // skipping left the blue frame stuck at default 450×168 with no boxW/boxH.
+        if (data.type === "group-expanded") {
+            layoutNodes.set(
+                id,
+                measureNode({
+                    ...data,
+                    id,
+                    type: "group",
+                }),
+            );
+            return;
+        }
         layoutNodes.set(id, measureNode({ ...data, id }));
     });
 
@@ -874,6 +887,10 @@ export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {
             const center = bboxCenter(entry.bbox);
             node.position(center);
             if (entry.node.type === "group" || entry.node.type === "group-expanded") {
+                // Drop any leftover style bypass from an interrupted morph — width/height
+                // are mapped from boxW/boxH; a stale bypass leaves the frame squashed.
+                node.removeStyle("width");
+                node.removeStyle("height");
                 node.data({
                     boxW: entry.bbox.w,
                     boxH: entry.bbox.h,
@@ -886,9 +903,164 @@ export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {
     });
 }
 
+const morphRafStore = new WeakMap<Cytoscape.Core, Set<number>>();
+const pendingMorphStore = new WeakMap<
+    Cytoscape.Core,
+    Map<
+        string,
+        {
+            to: BBox;
+            toCenter: { x: number; y: number };
+            opacityTo?: number;
+            onComplete?: () => void;
+        }
+    >
+>();
+
+function trackMorphRaf(cy: Cytoscape.Core, id: number): void {
+    let set = morphRafStore.get(cy);
+    if (!set) {
+        set = new Set();
+        morphRafStore.set(cy, set);
+    }
+    set.add(id);
+}
+
+function getPendingMorphs(cy: Cytoscape.Core) {
+    let map = pendingMorphStore.get(cy);
+    if (!map) {
+        map = new Map();
+        pendingMorphStore.set(cy, map);
+    }
+    return map;
+}
+
+function stopMorphAnimations(cy: Cytoscape.Core): void {
+    const rafs = morphRafStore.get(cy);
+    if (rafs) {
+        rafs.forEach((id) => cancelAnimationFrame(id));
+        rafs.clear();
+    }
+    // Jump unfinished morphs to their end state (mirrors cy.stop(true, true)).
+    // Cancelling mid-morph without this leaves group-expanded stuck at the
+    // collapsed 450×168 frame (the "squashed blue node" after expand/collapse).
+    const pending = pendingMorphStore.get(cy);
+    if (!pending?.size) return;
+    pending.forEach((morph, nodeId) => {
+        const ele = cy.getElementById(nodeId);
+        if (!ele.empty()) {
+            const node = ele as Cytoscape.NodeSingular;
+            node.removeStyle("width");
+            node.removeStyle("height");
+            node.data({ boxW: morph.to.w, boxH: morph.to.h });
+            node.position(morph.toCenter);
+            if (typeof morph.opacityTo === "number") {
+                node.style("opacity", morph.opacityTo);
+            }
+        }
+        morph.onComplete?.();
+    });
+    pending.clear();
+}
+
+function easeInOutCubic(t: number): number {
+    return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
+/**
+ * Animate group frame size via boxW/boxH data (stylesheet mappers), not style
+ * width/height bypasses. Cytoscape's style-animate of width fights function-mapped
+ * stylesheet rules and leaves expand stuck at the collapsed size.
+ */
+function animateNodeBoxMorph(
+    cy: Cytoscape.Core,
+    node: Cytoscape.NodeSingular,
+    from: BBox,
+    to: BBox,
+    fromCenter: { x: number; y: number },
+    toCenter: { x: number; y: number },
+    options: {
+        duration?: number;
+        opacityFrom?: number;
+        opacityTo?: number;
+        onComplete?: () => void;
+    } = {},
+): void {
+    const duration = options.duration ?? ANIMATION_MS;
+    const start = performance.now();
+    const fadeOpacity =
+        typeof options.opacityFrom === "number" && typeof options.opacityTo === "number";
+    const nodeId = node.id();
+    const pending = getPendingMorphs(cy);
+
+    node.removeStyle("width");
+    node.removeStyle("height");
+    node.position(fromCenter);
+    node.data({ boxW: from.w, boxH: from.h });
+    if (fadeOpacity) {
+        node.style("opacity", options.opacityFrom!);
+    }
+
+    pending.set(nodeId, {
+        to,
+        toCenter,
+        opacityTo: fadeOpacity ? options.opacityTo : undefined,
+        onComplete: options.onComplete,
+    });
+
+    const finish = () => {
+        pending.delete(nodeId);
+        if (cy.destroyed() || node.removed()) {
+            options.onComplete?.();
+            return;
+        }
+        node.removeStyle("width");
+        node.removeStyle("height");
+        node.data({ boxW: to.w, boxH: to.h });
+        node.position(toCenter);
+        if (fadeOpacity) {
+            node.style("opacity", options.opacityTo!);
+        }
+        options.onComplete?.();
+    };
+
+    const tick = (now: number) => {
+        if (!pending.has(nodeId)) return; // stopped / jumped to end
+        if (cy.destroyed() || node.removed()) {
+            pending.delete(nodeId);
+            options.onComplete?.();
+            return;
+        }
+        const t = Math.min(1, (now - start) / duration);
+        const e = easeInOutCubic(t);
+        const w = from.w + (to.w - from.w) * e;
+        const h = from.h + (to.h - from.h) * e;
+        const x = fromCenter.x + (toCenter.x - fromCenter.x) * e;
+        const y = fromCenter.y + (toCenter.y - fromCenter.y) * e;
+
+        node.position({ x, y });
+        node.removeStyle("width");
+        node.removeStyle("height");
+        node.data({ boxW: w, boxH: h });
+        if (fadeOpacity) {
+            const op = options.opacityFrom! + (options.opacityTo! - options.opacityFrom!) * e;
+            node.style("opacity", op);
+        }
+
+        if (t < 1) {
+            trackMorphRaf(cy, requestAnimationFrame(tick));
+            return;
+        }
+        finish();
+    };
+
+    trackMorphRaf(cy, requestAnimationFrame(tick));
+}
+
 export function stopLayoutAnimations(cy: Cytoscape.Core): void {
     if (cy.destroyed()) return;
     stopHtmlOpacityAnimations(cy);
+    stopMorphAnimations(cy);
     cy.stop(true, true);
 }
 
@@ -1010,8 +1182,11 @@ export function animateLayoutTransition(
                 if (n.data("type") === "group-expanded") {
                     ensureGroupExpandedVisible(n);
                 } else if (nodeUsesHtmlLabel(n)) {
-                    const targetOpacity = fadeOut.has(node.id()) ? 0 : 1;
-                    setNodeVisualOpacity(cy, n, targetOpacity);
+                    // Only leave fadeOut nodes invisible when they are gone from the
+                    // target layout. Boundary input tables must stay visible after collapse
+                    // even if they were wrongly included in fadeOut during expand.
+                    const leaves = fadeOut.has(node.id()) && !toLayout.has(node.id());
+                    setNodeVisualOpacity(cy, n, leaves ? 0 : 1);
                 }
             });
             resetEdgeOpacities(cy);
@@ -1037,16 +1212,13 @@ export function animateLayoutTransition(
 
         if (morph && target) {
             const fromCenter = bboxCenter(morph.from);
-            const shrinking = morph.to.w * morph.to.h < morph.from.w * morph.from.h;
             const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
             nodeEl.position(fromCenter);
-            nodeEl.style("width", morph.from.w);
-            nodeEl.style("height", morph.from.h);
+            nodeEl.removeStyle("width");
+            nodeEl.removeStyle("height");
             nodeEl.data("boxW", morph.from.w);
             nodeEl.data("boxH", morph.from.h);
-            if (shrinking && isNativeGroupFrame) {
-                nodeEl.style("opacity", 1);
-            } else if (isNativeGroupFrame) {
+            if (isNativeGroupFrame) {
                 ensureGroupExpandedVisible(nodeEl);
             }
         } else if (from) {
@@ -1074,27 +1246,20 @@ export function animateLayoutTransition(
         if (morph && target) {
             const shrinking = morph.to.w * morph.to.h < morph.from.w * morph.from.h;
             const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
-            const morphStyle: Record<string, number> = {
-                width: morph.to.w,
-                height: morph.to.h,
-            };
-            if (shrinking && isNativeGroupFrame) {
-                morphStyle.opacity = 0;
-            }
-
-            nodeEl.animate(
-                {
-                    position: target,
-                    style: morphStyle,
-                },
+            animateNodeBoxMorph(
+                cy,
+                nodeEl,
+                morph.from,
+                morph.to,
+                bboxCenter(morph.from),
+                target,
                 {
                     duration: ANIMATION_MS,
-                    easing: ANIMATION_EASING,
-                    complete: () => {
-                        nodeEl.removeStyle("width");
-                        nodeEl.removeStyle("height");
-                        nodeEl.data("boxW", morph.to.w);
-                        nodeEl.data("boxH", morph.to.h);
+                    // Shrinking native frame fades out while the HTML collapsed card fades in.
+                    ...(shrinking && isNativeGroupFrame
+                        ? { opacityFrom: 1, opacityTo: 0 }
+                        : {}),
+                    onComplete: () => {
                         if (shrinking && isNativeGroupFrame) {
                             nodeEl.style("opacity", 0);
                         } else if (isNativeGroupFrame) {

@@ -767,6 +767,7 @@ const Table: FC<TableProps> = ({
                 }
                 size="small"
                 style={{ width: "100%" }}
+                scroll={{ x: "max-content" }}
                 columns={columns}
                 dataSource={loading ? [] : (data ?? [])}
             />

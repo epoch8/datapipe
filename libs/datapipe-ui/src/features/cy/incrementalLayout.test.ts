@@ -102,4 +102,40 @@ describe("expandGroupInLayout multi-expand", () => {
             a1.bbox.h * 2 + GROUP_PADDING.top + GROUP_PADDING.bottom,
         );
     });
+
+    it("seeds group-expanded nodes so restored expand gets a full frame", () => {
+        // Mimic reprocessData: expanded metas arrive as type group-expanded.
+        const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
+            [
+                "group_a",
+                {
+                    id: "group_a",
+                    name: "group_a",
+                    type: "group-expanded",
+                    child_count: 2,
+                    frameLabel: "group_a · 2 steps",
+                },
+            ],
+            ["a1", { id: "a1", name: "a1", type: "transform", metaGroup: "group_a" }],
+            ["a2", { id: "a2", name: "a2", type: "transform", metaGroup: "group_a" }],
+            ["out", { id: "out", name: "out", type: "table" }],
+        ]);
+        const edges: Cytoscape.EdgeDataDefinition[] = [
+            { source: "a1", target: "a2" },
+            { source: "a2", target: "out" },
+        ];
+        const layout = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "TB",
+            new Map([["group_a", ["a1", "a2"]]]),
+        );
+        const frame = layout.get("group_a");
+        expect(frame).toBeTruthy();
+        expect(frame!.node.type).toBe("group-expanded");
+        expect(frame!.bbox.w).toBeGreaterThan(graphNodeDimensions.groupCollapsed.width);
+        expect(frame!.bbox.h).toBeGreaterThan(graphNodeDimensions.groupCollapsed.height);
+        assertInnersInsideFrame(layout, "group_a");
+    });
 });

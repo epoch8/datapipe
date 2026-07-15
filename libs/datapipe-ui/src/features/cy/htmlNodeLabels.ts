@@ -47,13 +47,17 @@ function buildAlign(config: HtmlNodeLabelConfig): [number, number, number, numbe
     ];
 }
 
-/** Stable key for label HTML — ignores transient UI/focus fields. */
+/** Stable key for label HTML — ignores transient UI/focus/size/opacity fields. */
 export function htmlLabelDataKey(data: Cytoscape.NodeDataDefinition): string {
     const copy: Record<string, unknown> = { ...data };
     delete copy.uiFocused;
     delete copy.uiSelected;
     delete copy.uiRelated;
     delete copy.uiDimmed;
+    // Size/opacity animate every frame during expand/collapse; rebuild only on content.
+    delete copy.boxW;
+    delete copy.boxH;
+    delete copy.htmlLabelOpacity;
     return JSON.stringify(copy);
 }
 
@@ -78,6 +82,14 @@ function renderLabelHtml(content: HTMLDivElement, html: string): void {
 }
 
 function applyLabelTransform(entry: LabelEntry, position: LabelPosition): void {
+    // Keep the painted card size in sync with cytoscape box (morph updates
+    // boxW/boxH without rebuilding label HTML). Size lives on the inner
+    // `.node-compound-label`, not the absolute positioning root.
+    const card = entry.content.firstElementChild as HTMLElement | null;
+    if (card) {
+        if (position.w > 0) card.style.width = `${position.w}px`;
+        if (position.h > 0) card.style.height = `${position.h}px`;
+    }
     const x = position.x + entry.align[0] * position.w;
     const y = position.y + entry.align[1] * position.h;
     const valRel = `translate(${entry.align[2]}%,${entry.align[3]}%) `;

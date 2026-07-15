@@ -503,11 +503,40 @@
     flex-shrink: 0;
 }
 
-/* On the wide detail page keep content within a comfortable reading width so
-   sections and tables don't stretch edge-to-edge with huge empty gaps. */
+/* On the wide detail page keep text/meta within a comfortable reading width.
+   Table data is excluded so wide grids can use the full card + horizontal scroll. */
 .graph-node-detail-page .node-inspector-panel-body {
     padding: 0;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.graph-node-detail-page .inspector-section:not(:has(.dp-table-data-scroll)) {
     max-width: 760px;
+}
+
+.graph-node-detail-page.ant-card,
+.graph-node-detail-page .ant-card-body {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.dp-table-data-panel {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.dp-table-data-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.dp-table-data-scroll .ant-table {
+    min-width: max-content;
 }
 
 /* Give the Inputs/Outputs columns (Source · Type · Keys) sensible proportions

@@ -99,6 +99,14 @@ function applyNodeDiff(cy: Cytoscape.Core, target: CyElement[], removeAbsent = t
                 const nextParent = (el.data.parent as string) ?? null;
                 const currentParent = node.isChild() ? node.parent().first().id() : null;
                 node.data(el.data);
+                // Cytoscape data() merges; fields absent from the next payload (e.g. metaGroup
+                // after collapse) would otherwise stick and break expand/collapse membership.
+                if (!("metaGroup" in el.data) && node.data("metaGroup") != null) {
+                    node.removeData("metaGroup");
+                }
+                if (!("frameLabel" in el.data) && node.data("frameLabel") != null) {
+                    node.removeData("frameLabel");
+                }
                 // Always keep nodes unselectable so only app gestures select.
                 if (node.selectable()) node.unselectify();
                 if (nextParent !== currentParent) {
@@ -404,6 +412,9 @@ export function syncCyGraph(
         const groupEle = cy.getElementById(anchorGroup);
         if (!groupEle.empty()) {
             const groupNode = groupEle as Cytoscape.NodeSingular;
+            // Clear native-frame size bypasses left by expand morph before HTML morph.
+            groupNode.removeStyle("width");
+            groupNode.removeStyle("height");
             setNodeVisualOpacity(cy, groupNode, 0);
             groupNode.data(
                 "labelRefresh",
@@ -411,11 +422,19 @@ export function syncCyGraph(
             );
         }
 
+        const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
+        const fromEntry = previousLayout.get(anchorGroup);
+        const toEntry = collapsedLayout.get(anchorGroup);
+        if (fromEntry && toEntry) {
+            morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+        }
+
         animateLayoutTransition(cy, fromCenters, collapsedLayout, {
             fadeOut: innerIds,
             fadeIn: new Set([anchorGroup]),
             fadeOutTiming: { duration: COLLAPSE_INNER_FADE_MS },
             fadeInTiming: { delay: COLLAPSE_GROUP_FADE_DELAY, duration: COLLAPSE_GROUP_FADE_MS },
+            morphBoxes,
             edgeFadeIn: new Set(edgeDiff.toAdd),
             edgeFadeOut: new Set(edgeDiff.toRemove),
             onComplete: () => {

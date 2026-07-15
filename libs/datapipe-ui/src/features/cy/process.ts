@@ -2,6 +2,7 @@ import { GraphData, MetaNode, TransformNode } from "../../types";
 import Cytoscape from "cytoscape";
 
 type TableOrderSource = "consumer" | "producer";
+type PipelineNode = MetaNode | TransformNode;
 
 function tableOrderKey(
     baseOrderKey: string | undefined,
@@ -255,7 +256,19 @@ function pruneDisconnectedTables(
 
 /**
  * Mark expanded meta subgraph members via metaGroup; the blue frame is a flat background node.
+ * Declared meta inputs/outputs stay outside the frame (boundary tables).
  */
+function findMetaNode(pipeline: PipelineNode[], name: string): MetaNode | undefined {
+    for (const pipe of pipeline) {
+        if (pipe.type === "meta" && pipe.name === name) return pipe;
+        if (pipe.type === "meta") {
+            const nested = findMetaNode(pipe.graph.pipeline, name);
+            if (nested) return nested;
+        }
+    }
+    return undefined;
+}
+
 function assignCompoundParents(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     edges: Set<Cytoscape.EdgeDataDefinition>,
@@ -269,10 +282,9 @@ function assignCompoundParents(
         });
         if (!memberIds.size) return;
 
-        const metaPipe = data.pipeline.find(
-            (pipe) => pipe.type === "meta" && pipe.name === group,
-        );
-        const metaOutputs = new Set(metaPipe?.type === "meta" ? metaPipe.outputs ?? [] : []);
+        const metaPipe = findMetaNode(data.pipeline, group);
+        const metaInputs = new Set(metaPipe?.inputs ?? []);
+        const metaOutputs = new Set(metaPipe?.outputs ?? []);
 
         const boundaryNodes = new Set<string>();
         edges.forEach((edge) => {
@@ -284,6 +296,13 @@ function assignCompoundParents(
                 if (sourceIn) boundaryNodes.add(source);
                 if (targetIn) boundaryNodes.add(target);
             }
+        });
+
+        // Declared meta inputs must stay outside the blue frame (same as outputs).
+        // Edge-crossing alone misses them: input→first_transform is both-in-member.
+        metaInputs.forEach((inputTable) => {
+            if (!memberIds.has(inputTable)) return;
+            boundaryNodes.add(inputTable);
         });
 
         metaOutputs.forEach((outputTable) => {
