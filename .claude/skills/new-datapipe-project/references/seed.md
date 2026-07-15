@@ -102,3 +102,16 @@ datapipe run
 
 Verify by querying the table, not by exit code. From here, grow block by block per the pattern
 cards, replacing the passthrough with the first real transform.
+
+**Clean up the seed leftovers.** The gate's throwaway pieces don't remove themselves: once the real
+tables/steps replace the passthrough, the `items`/`items_out` tables (and their `*_meta` /
+transform-meta rows) are dead weight in the DB. At this point only sample data exists, so the
+cheapest reliable cleanup is a full reset onto the real shape:
+
+```bash
+# after rewiring data.py/app.py to the real tables and deleting the passthrough code:
+psql "$DB_URL" -c "DROP SCHEMA ${DB_SCHEMA:-public} CASCADE; CREATE SCHEMA ${DB_SCHEMA:-public};"
+datapipe db create-all && datapipe run
+```
+
+Leaving seed tables behind confuses every later inspection of the DB ("what is items_out?").
