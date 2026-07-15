@@ -85,7 +85,11 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "text-margin-y": -12,
             "z-index": 0,
             ghost: "no",
-            events: "yes",
+            // Decorative frame only: must not steal pointer hits, otherwise LMB-drag
+            // inside the blue area cannot pan the camera. Inner step/table HTML
+            // labels still receive clicks; empty-frame gestures are handled in
+            // graphInteractions via hit-testing.
+            events: "no",
         } as Cytoscape.Css.Node,
     },
     {

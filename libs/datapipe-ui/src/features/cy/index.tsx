@@ -506,6 +506,7 @@ function PipelineGraphView({
                 lastW = w;
                 lastH = h;
                 cy.resize();
+                refreshInternalEdgeOverlay(cy);
                 // Autofit only while camera is still in auto mode (first load).
                 if (!userInteractedRef.current && cy.nodes().nonempty()) {
                     cy.fit(undefined, 60);

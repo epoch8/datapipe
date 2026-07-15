@@ -201,8 +201,17 @@ export function initInternalEdgeOverlay(cy: Cytoscape.Core): void {
     if (overlayInitStore.has(cy)) return;
     overlayInitStore.set(cy, true);
 
-    const update = () => syncInternalEdgeOverlay(cy);
-    cy.on("pan zoom position add remove", update);
+    let frame = 0;
+    const update = () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+            if (cy.destroyed()) return;
+            syncInternalEdgeOverlay(cy);
+        });
+    };
+    // `render`/`resize` keep the SVG overlay aligned when the inspector panel is
+    // dragged — without them the SVG viewBox stays stale and taxi paths stretch.
+    cy.on("pan zoom position add remove render resize", update);
     update();
 }
 

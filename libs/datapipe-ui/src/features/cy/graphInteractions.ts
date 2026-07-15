@@ -36,6 +36,45 @@ function canSelectNode(node: Cytoscape.NodeSingular): boolean {
     return (node.data("type") as string) !== "group-expanded";
 }
 
+function modelPosFromClient(
+    cy: Cytoscape.Core,
+    container: HTMLElement,
+    clientX: number,
+    clientY: number,
+): { x: number; y: number; rendered: { x: number; y: number } } {
+    const rect = container.getBoundingClientRect();
+    const pan = cy.pan();
+    const zoom = cy.zoom();
+    const rendered = { x: clientX - rect.left, y: clientY - rect.top };
+    return {
+        x: (rendered.x - pan.x) / zoom,
+        y: (rendered.y - pan.y) / zoom,
+        rendered,
+    };
+}
+
+/** Expanded blue frame under a point, only when no inner step/table is there. */
+function findExpandedFrameAt(
+    cy: Cytoscape.Core,
+    x: number,
+    y: number,
+): Cytoscape.NodeSingular | null {
+    let frame: Cytoscape.NodeSingular | null = null;
+    let hitContent = false;
+    cy.nodes().forEach((ele) => {
+        if (!ele.visible()) return;
+        const node = ele as Cytoscape.NodeSingular;
+        const bb = node.boundingBox({ includeLabels: false, includeOverlays: false });
+        if (x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2) return;
+        if ((node.data("type") as string) === "group-expanded") {
+            frame = node;
+            return;
+        }
+        hitContent = true;
+    });
+    return hitContent ? null : frame;
+}
+
 /**
  * Attach all pointer / wheel / tap handlers for pipeline graph selection.
  * Returns a cleanup function.
@@ -469,38 +508,51 @@ export function attachGraphInteractions(
     };
 
     // HTML labels sit above the canvas and swallow the browser contextmenu, so
-    // cytoscape-context-menus never sees a native cxttap. Forward RMB on labels.
+    // cytoscape-context-menus never sees a native cxttap. Forward RMB on labels
+    // and on empty areas of the (events:no) expanded blue frame.
     const onContainerContextMenu = (event: MouseEvent) => {
-        const node = resolveNodeFromLabel(event.target);
+        let node = resolveNodeFromLabel(event.target);
+        if (!node) {
+            const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
+            node = findExpandedFrameAt(cy, pos.x, pos.y);
+        }
         if (!node) return;
         event.preventDefault();
         event.stopPropagation();
 
-        const rect = container.getBoundingClientRect();
-        const renderedPosition = {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top,
-        };
-        const pan = cy.pan();
-        const zoom = cy.zoom();
-        const position = {
-            x: (renderedPosition.x - pan.x) / zoom,
-            y: (renderedPosition.y - pan.y) / zoom,
-        };
-
+        const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
         // Cytoscape emit accepts a plain event object with position fields.
         // @ts-expect-error cytoscape EventNames overload misses the object form
         node.emit({
             type: "cxttap",
-            position,
-            renderedPosition,
+            position: { x: pos.x, y: pos.y },
+            renderedPosition: pos.rendered,
             originalEvent: event,
+        });
+
+        // Plugin corner-flip math often drifts for HTML-label hits (esp. on the
+        // right half of the canvas). Pin the menu under the cursor instead.
+        queueMicrotask(() => {
+            const menu = container.querySelector(
+                ".cy-context-menus-cxt-menu",
+            ) as HTMLElement | null;
+            if (!menu || getComputedStyle(menu).display === "none") return;
+            const rect = container.getBoundingClientRect();
+            menu.style.left = `${event.clientX - rect.left}px`;
+            menu.style.top = `${event.clientY - rect.top}px`;
+            menu.style.right = "auto";
+            menu.style.bottom = "auto";
         });
     };
 
-    // Double-click on an HTML group label (dbltap only fires for bare canvas hits).
+    // Double-click: HTML group labels, or empty area of an expanded blue frame
+    // (group-expanded uses events:no so dbltap does not fire there).
     const onContainerDblClick = (event: MouseEvent) => {
-        const node = resolveNodeFromLabel(event.target);
+        let node = resolveNodeFromLabel(event.target);
+        if (!node) {
+            const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
+            node = findExpandedFrameAt(cy, pos.x, pos.y);
+        }
         if (!node) return;
         const type = node.data("type") as string;
         if (type === "group" || type === "group-expanded") {
