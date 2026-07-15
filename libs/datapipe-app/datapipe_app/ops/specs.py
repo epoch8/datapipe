@@ -96,6 +96,7 @@ class OpsSpecBase:
     data: OpsDataSpec | None = None
     relations: Sequence[OpsRelationSpec] = field(default_factory=list)
     metrics: Sequence[OpsMetricTableSpec] = field(default_factory=list)
+    class_metrics: Sequence[OpsMetricTableSpec] = field(default_factory=list)
     tags: Sequence[str] = field(default_factory=list)
 
 

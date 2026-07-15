@@ -26,8 +26,6 @@ import type {
     RunsListParams,
     RunsListResponse,
     SettingsInfo,
-    SqlQueryRequest,
-    SqlQueryResponse,
     SqlSchemaResponse,
     StageRecentRunsResponse,
     TrainingCompareResponse,
@@ -322,13 +320,6 @@ export const opsApi = {
         fetchJson<TrainingCompareResponse>(
             `/training/compare${toQuery({ run_keys: runKeys.join(","), ...params, metrics: params.metrics?.join(",") })}`,
         ),
-
-    runSqlQuery: (req: SqlQueryRequest) =>
-        fetchJson<SqlQueryResponse>("/sql/query", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(req),
-        }),
 
     getSqlSchema: () => fetchJson<SqlSchemaResponse>("/sql/schema"),
 

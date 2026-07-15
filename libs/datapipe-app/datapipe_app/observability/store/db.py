@@ -28,7 +28,6 @@ from datapipe_app.observability.runs.run_triggers import (
     stage_trigger_values,
 )
 from datapipe_app.observability.config.tables import ObservabilityTableConfig
-from datapipe_app_ml_ops.observability.config.tables import MLObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
 
@@ -106,18 +105,16 @@ class ObservabilityStore:
         *,
         schema: Optional[str] = None,
         tables: Optional[ObservabilityTableConfig] = None,
-        ml_tables: Optional[MLObservabilityTableConfig] = None,
         run_log_store: Optional[RunLogStore] = None,
         use_external_run_logs: bool = False,
     ):
         self.engine = engine
         self.schema = schema
         self.tables = tables or ObservabilityTableConfig()
-        self.ml_tables = ml_tables or MLObservabilityTableConfig()
         self._Session = sessionmaker(bind=engine, expire_on_commit=False)
         self.use_external_run_logs = use_external_run_logs
         self._run_log_store = run_log_store
-        apply_observability_table_config(self.tables, self.schema, ml_tables=self.ml_tables)
+        apply_observability_table_config(self.tables, self.schema)
 
     @classmethod
     def from_dbconn(

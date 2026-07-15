@@ -115,14 +115,11 @@ jobs:
 
       - name: Install dependencies with uv
         run: |
-          uv pip install --system -e "libs/datapipe-core[sqlite]"
-          uv pip install --system -e "libs/datapipe-ml[sqlite]"
-          uv pip install --system -e "libs/datapipe-app[clickhouse]"
-          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
-          uv pip install --system "alembic"
+          cd examples/datapipe_app
+          uv sync
 
       - name: Test example
         run: |
           cd examples/datapipe_app
-          datapipe db create-all
-          datapipe run
+          uv run alembic upgrade head
+          uv run datapipe run

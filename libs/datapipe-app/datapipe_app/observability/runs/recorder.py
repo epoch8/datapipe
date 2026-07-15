@@ -11,7 +11,7 @@ from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry
-from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.ops.spec_registry import OpsSpecRegistry
 from datapipe_app.observability.runs.run_output_capture import capture_run_output
 
 logger = logging.getLogger(__name__)

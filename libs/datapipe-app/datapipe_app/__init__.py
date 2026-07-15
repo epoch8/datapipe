@@ -6,7 +6,7 @@ _LAZY_EXPORTS = {
     "setup_logging": ("datapipe_app.app.datapipe_api", "setup_logging"),
     "RunLogsBackend": ("datapipe_app.observability.run_logs", "RunLogsBackend"),
     "ObservabilityTableConfig": ("datapipe_app.observability.config.tables", "ObservabilityTableConfig"),
-    "OpsSpecRegistry": ("datapipe_app_ml_ops.ops.spec_registry", "OpsSpecRegistry"),
+    "OpsSpecRegistry": ("datapipe_app.ops.spec_registry", "OpsSpecRegistry"),
     "OpsColumn": ("datapipe_app.ops.specs", "OpsColumn"),
     "OpsColumnGroup": ("datapipe_app.ops.specs", "OpsColumnGroup"),
     "OpsFilterRule": ("datapipe_app.ops.specs", "OpsFilterRule"),
@@ -25,12 +25,7 @@ def __getattr__(name: str):
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, attr_name = _LAZY_EXPORTS[name]
     module = __import__(module_name, fromlist=[attr_name])
-    value = getattr(module, attr_name)
-    if name == "DatapipeApp":
-        from datapipe_app_ml_ops.ops.ops_registry_hooks import ensure_datapipe_app_add_specs
-
-        ensure_datapipe_app_add_specs()
-    return value
+    return getattr(module, attr_name)
 
 
 __all__ = [

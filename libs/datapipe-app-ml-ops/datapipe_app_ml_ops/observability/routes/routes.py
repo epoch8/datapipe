@@ -11,18 +11,15 @@ from pydantic import BaseModel
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry
 from datapipe_app.observability.plugins.schemas import (
-    SqlQueryRequest,
-    SqlQueryResponse,
     SqlSchemaResponse,
     StartRunRequest,
     StartRunResponse,
 )
-from datapipe_app.observability.config.settings import get_ops_settings
-from datapipe_app.observability.sql.sql_executor import execute_readonly_query
 from datapipe_app_ml_ops.observability.analytics.sql_analytics import (
     build_sql_analytics_context,
     get_sql_schema_response,
 )
+from datapipe_app.observability.config.settings import get_ops_settings
 from datapipe_app_ml_ops.observability.metrics.metrics_service import MetricsService
 from datapipe_app_ml_ops.observability.routes.ops_spec_routes import register_ops_spec_routes
 from datapipe_app_ml_ops.observability.schemas.models import (
@@ -223,35 +220,10 @@ def register_ml_observability_routes(
     ) -> ClassMetricDetailResponse:
         return _metrics_svc().class_detail(pipeline_id, label, subset=subset)
 
-    @app.post("/sql/query", response_model=SqlQueryResponse)
-    def run_sql_query(req: SqlQueryRequest) -> SqlQueryResponse:
-        ctx = build_sql_analytics_context(
-            ops_spec_registry,
-            schema=store.schema,
-            ds=ds,
-            catalog=catalog,
-            engine=store.engine,
-        )
-        try:
-            result = execute_readonly_query(
-                store.engine,
-                req.sql,
-                qualified_table_map=ctx.qualified_table_map,
-                bare_table_map=ctx.bare_table_map,
-                limit=req.limit or 1000,
-                offset=req.offset or 0,
-            )
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(400, f"Query failed: {exc}") from exc
-        return SqlQueryResponse(**result)
-
     @app.get("/sql/schema", response_model=SqlSchemaResponse)
     def get_sql_schema() -> SqlSchemaResponse:
         ctx = build_sql_analytics_context(
             ops_spec_registry,
-            schema=store.schema,
             ds=ds,
             catalog=catalog,
             engine=store.engine,

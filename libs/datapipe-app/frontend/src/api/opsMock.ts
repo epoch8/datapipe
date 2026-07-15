@@ -13,7 +13,6 @@ import type {
     RunsListParams,
     RunsListResponse,
     RunListRow,
-    SqlQueryResponse,
     SqlSchemaResponse,
     TrainingCompareResponse,
     TrainingRunsResponse,
@@ -498,24 +497,6 @@ export const opsMock = {
                 { name: "predictions", row_count: 46, columns: [{ name: "run_id" }, { name: "image_id" }] },
                 { name: "artifacts", row_count: 16, columns: [{ name: "run_key" }, { name: "path" }, { name: "size_bytes" }] },
             ],
-        };
-    },
-
-    runSqlQuery(): SqlQueryResponse {
-        return {
-            columns: [{ name: "run_id" }, { name: "model_id" }, { name: "subset" }, { name: "run_date" }, { name: "mAP50" }, { name: "precision" }, { name: "recall" }, { name: "f1" }],
-            rows: MOCK_LEGACY_RUNS.slice(0, 25).map((r) => ({
-                run_id: r.run_id,
-                model_id: r.model_id,
-                subset: r.subset,
-                run_date: r.started_at?.slice(0, 10),
-                mAP50: r.metrics.mAP50,
-                precision: r.metrics.precision,
-                recall: r.metrics.recall,
-                f1: r.metrics.f1_score,
-            })),
-            total: 1000,
-            execution_ms: 123,
         };
     },
 };

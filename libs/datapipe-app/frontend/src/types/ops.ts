@@ -624,21 +624,6 @@ export interface SqlColumn {
     type?: string;
 }
 
-export interface SqlQueryRequest {
-    sql: string;
-    limit?: number;
-    offset?: number;
-    datasource?: string;
-}
-
-export interface SqlQueryResponse {
-    columns: SqlColumn[];
-    rows: Record<string, unknown>[];
-    total?: number;
-    execution_ms: number;
-    truncated?: boolean;
-}
-
 export interface SqlSchemaResponse {
     datasource: string;
     tables: {

@@ -31,12 +31,7 @@ def test_build_sql_analytics_context_maps_spec_tables() -> None:
         ]
     )
 
-    ctx = build_sql_analytics_context(registry, schema="datapipe_e2e_detection")
+    ctx = build_sql_analytics_context(registry)
 
-    assert (
-        ctx.qualified_table_map["datapipe_analytics.metrics_on_subset"]
-        == '"datapipe_e2e_detection"."pipeline_model__metrics_on_subset"'
-    )
-    assert ctx.bare_table_map["metrics_on_subset"] == '"datapipe_e2e_detection"."pipeline_model__metrics_on_subset"'
     assert ctx.schema_tables[0]["name"] == "metrics_on_subset"
     assert ctx.schema_tables[0]["physical_table"] == "pipeline_model__metrics_on_subset"

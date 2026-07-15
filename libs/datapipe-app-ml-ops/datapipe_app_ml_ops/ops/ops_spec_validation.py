@@ -3,7 +3,7 @@ from __future__ import annotations
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 
-from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.ops.spec_registry import OpsSpecRegistry
 from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec
 
 
@@ -78,30 +78,12 @@ def collect_ml_table_ids(spec: DatapipeOpsSpec) -> set[str]:
     frozen_dataset = spec.frozen_dataset
     if frozen_dataset:
         tables.add(frozen_dataset.table)
-        if frozen_dataset.record_view is not None and frozen_dataset.record_view.kind == "image":
-            record_view = frozen_dataset.record_view
-            tables.add(record_view.table)
-            if record_view.image_url_table:
-                tables.add(record_view.image_url_table)
     model = spec.model
     if model:
         tables.add(model.table)
         if model.is_best_table:
             tables.add(model.is_best_table)
-        if model.prediction_view is not None:
-            pred_view = model.prediction_view
-            tables.add(pred_view.table)
-            tables.add(pred_view.image_url_table)
-            if pred_view.subset_table:
-                tables.add(pred_view.subset_table)
-            if pred_view.prediction is not None:
-                tables.add(pred_view.prediction.table)
-            if pred_view.ground_truth is not None:
-                tables.add(pred_view.ground_truth.table)
-            if pred_view.metrics_on_image is not None:
-                tables.add(pred_view.metrics_on_image.table)
     training = spec.training
     if training:
         tables.add(training.status_table)
-    tables.update(metric.table for metric in spec.class_metrics)
     return tables

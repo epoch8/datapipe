@@ -27,8 +27,8 @@ from datapipe_app.observability.plugins.registry import ObservabilityRegistry
 from datapipe_app.observability.plugins.schemas import StartRunRequest, StartRunResponse
 from datapipe_app.observability.config.settings import get_ops_settings
 from datapipe_app.pipeline.pipeline_ui import register_pipeline_ui_routes
-from datapipe_app_ml_ops.observability.routes.routes import register_ml_observability_routes
-from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.observability.extensions import register_v1alpha3_extensions
 
 
 class ResetTransformMetadataResponse(BaseModel):
@@ -389,13 +389,16 @@ def make_app(
         step.reset_metadata(ds)
         return ResetTransformMetadataResponse(transform_name=transform_name)
 
-    register_ml_observability_routes(
-        app,
+    register_v1alpha3_extensions(
+        app=app,
         store=store,
         registry=registry,
         ds=ds,
         catalog=catalog,
         ops_spec_registry=ops_spec_registry,
+        recorder=recorder,
+        steps=steps,
+        pipeline=pipeline,
         start_run_handler=start_run,
         require_pipeline=_require_pipeline,
     )

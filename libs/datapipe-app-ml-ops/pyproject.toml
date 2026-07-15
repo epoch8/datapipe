@@ -14,6 +14,12 @@ dependencies = [
 [project.entry-points."datapipe.observability"]
 datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.plugin:register"
 
+[project.entry-points."datapipe.observability_db"]
+datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.db_plugin:extend_observability_db"
+
+[project.entry-points."datapipe.v1alpha3_extensions"]
+datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.api_plugin:register_v1alpha3_extension"
+
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
 

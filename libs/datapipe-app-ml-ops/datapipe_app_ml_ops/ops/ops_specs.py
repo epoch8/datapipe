@@ -146,7 +146,6 @@ class DatapipeOpsSpec(OpsSpecBase):
     frozen_dataset: OpsFrozenDatasetSpec | None = None
     model: OpsModelSpec | None = None
     training: OpsTrainingSpec | None = None
-    class_metrics: Sequence[OpsClassMetricTableSpec] = field(default_factory=list)
 
 
 __all__ = [

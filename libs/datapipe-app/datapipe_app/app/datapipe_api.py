@@ -17,7 +17,8 @@ import datapipe_app.api.v1alpha1 as api_v1alpha1
 import datapipe_app.api.v1alpha2 as api_v1alpha2
 import datapipe_app.api.v1alpha3 as api_v1alpha3
 from datapipe_app.app.metrics import setup_prometheus_metrics
-from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.app.ops_specs import OpsSpecsMixin
+from datapipe_app.ops.spec_registry import OpsSpecRegistry
 from datapipe_app.pipeline.pipeline_binding import pipeline_module_for
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.connections.dbconn import dbconn_same_target
@@ -59,11 +60,12 @@ def _make_lifespan(api: "DatapipeAPI"):
     return lifespan
 
 
-class DatapipeAPI(FastAPI, DatapipeApp):
+class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
     catalog: Catalog
     pipeline: Pipeline
     steps: list
     ops_specs: OpsSpecRegistry
+    observability_registry: ObservabilityRegistry
     observability_table_config: Optional[ObservabilityTableConfig]
     observability_dbconn: DBConn
     run_logs_backend: Optional[RunLogsBackend]

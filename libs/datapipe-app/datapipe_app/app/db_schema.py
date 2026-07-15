@@ -6,13 +6,12 @@ from sqlalchemy import MetaData, Table
 from sqlalchemy.orm import DeclarativeBase
 
 from datapipe_app.observability.config.tables import ObservabilityTableConfig
-from datapipe_app_ml_ops.observability.config.tables import MLObservabilityTableConfig
+from datapipe_app.observability.extensions import run_observability_db_extensions
 
 if TYPE_CHECKING:
     from datapipe.compute import DatapipeApp
     from datapipe.store.database import DBConn
     from datapipe_app.app.datapipe_api import DatapipeAPI
-
 
 metadata = MetaData()
 
@@ -24,8 +23,6 @@ class ObservabilityBase(DeclarativeBase):
 def apply_observability_table_config(
     tables: ObservabilityTableConfig,
     schema: str | None,
-    *,
-    ml_tables: MLObservabilityTableConfig | None = None,
 ) -> None:
     from datapipe_app.observability.store.db import (
         PipelineRegistryRow,
@@ -34,7 +31,6 @@ def apply_observability_table_config(
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
-    from datapipe_app_ml_ops.observability.store.db_models import apply_ml_table_config
 
     mapping: dict[type[ObservabilityBase], str] = {
         PipelineRegistryRow: tables.pipeline_registry,
@@ -48,21 +44,18 @@ def apply_observability_table_config(
         table.name = table_name
         table.schema = schema
 
-    ml_tables = ml_tables or MLObservabilityTableConfig()
-    apply_ml_table_config(tables=ml_tables, schema=schema)
+    run_observability_db_extensions(phase="apply_config", tables=tables, schema=schema)
 
 
 def register_observability_tables_in_metadata(
     dbconn: DBConn,
     *,
     tables: ObservabilityTableConfig | None = None,
-    ml_tables: MLObservabilityTableConfig | None = None,
     include_run_logs: bool = True,
 ) -> None:
     """Attach datapipe-app observability tables to the pipeline ``sqla_metadata``."""
     tables = tables or ObservabilityTableConfig()
-    ml_tables = ml_tables or MLObservabilityTableConfig()
-    apply_observability_table_config(tables, dbconn.schema, ml_tables=ml_tables)
+    apply_observability_table_config(tables, dbconn.schema)
 
     from datapipe_app.observability.store.db import (
         PipelineRegistryRow,
@@ -71,7 +64,6 @@ def register_observability_tables_in_metadata(
         PipelineRunStepRow,
         PipelineScheduleRow,
     )
-    from datapipe_app_ml_ops.observability.store.db_models import PipelineMetricsCandidateRow
 
     target = dbconn.sqla_metadata
     model_classes = [
@@ -79,7 +71,6 @@ def register_observability_tables_in_metadata(
         PipelineRunRow,
         PipelineRunStepRow,
         PipelineScheduleRow,
-        PipelineMetricsCandidateRow,
     ]
     if include_run_logs:
         model_classes.insert(3, PipelineRunLogRow)
@@ -90,6 +81,14 @@ def register_observability_tables_in_metadata(
                 src.to_metadata(target, schema=dbconn.schema)
             else:
                 src.to_metadata(target)
+
+    run_observability_db_extensions(
+        phase="register_metadata",
+        dbconn=dbconn,
+        tables=tables,
+        include_run_logs=include_run_logs,
+        metadata=target,
+    )
 
 
 def _metadata_has_table(metadata: MetaData, name: str, schema: str | None) -> bool:

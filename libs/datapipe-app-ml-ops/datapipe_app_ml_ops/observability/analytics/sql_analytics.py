@@ -15,15 +15,7 @@ DATASOURCE = "datapipe_analytics"
 
 @dataclass(frozen=True)
 class SqlAnalyticsContext:
-    qualified_table_map: dict[str, str]
-    bare_table_map: dict[str, str]
     schema_tables: list[dict[str, Any]]
-
-
-def _qualified_table(table: str, schema: str | None) -> str:
-    if schema:
-        return f'"{schema}"."{table}"'
-    return f'"{table}"'
 
 
 def _pick_metric_table(registry: OpsSpecRegistry) -> str | None:
@@ -132,20 +124,13 @@ def _table_row_count(
 def build_sql_analytics_context(
     registry: OpsSpecRegistry,
     *,
-    schema: str | None = None,
     ds: DataStore | None = None,
     catalog: Catalog | None = None,
     engine: Any = None,
 ) -> SqlAnalyticsContext:
-    qualified: dict[str, str] = {}
-    bare: dict[str, str] = {}
     schema_tables: list[dict[str, Any]] = []
 
     for alias, physical in _alias_entries(registry):
-        qphysical = _qualified_table(physical, schema)
-        qualified[f"{DATASOURCE}.{alias}"] = qphysical
-        bare[alias] = qphysical
-
         row_count = 0
         if engine is not None:
             try:
@@ -162,11 +147,7 @@ def build_sql_analytics_context(
             }
         )
 
-    return SqlAnalyticsContext(
-        qualified_table_map=qualified,
-        bare_table_map=bare,
-        schema_tables=schema_tables,
-    )
+    return SqlAnalyticsContext(schema_tables=schema_tables)
 
 
 def get_sql_schema_response(ctx: SqlAnalyticsContext) -> dict[str, Any]:

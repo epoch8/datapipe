@@ -3,12 +3,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from importlib.metadata import entry_points
-from typing import TYPE_CHECKING
 
 from datapipe_app.observability.plugins.protocols import OverviewEnricher, StatusCollector
 
-if TYPE_CHECKING:
-    from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app.ops.spec_registry import OpsSpecRegistry
 
 logger = logging.getLogger(__name__)
 
