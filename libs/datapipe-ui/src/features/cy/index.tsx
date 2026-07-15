@@ -4,15 +4,13 @@ import Cytoscape from "cytoscape";
 import CytoscapeComponent from "react-cytoscapejs";
 import "cytoscape-context-menus/cytoscape-context-menus.css";
 
-// @ts-ignore
-import nodeHtmlLabel from "cytoscape-node-html-label";
 import dagre from "cytoscape-dagre";
 import contextMenus from "cytoscape-context-menus";
 
 import "./style.css";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 import { groupIconSvg, tableIconSvg, transformIconSvg, slidersHorizontalIconSvg } from "./nodeIcons";
-import { escapeHtml, formatNodeLabels, getTransformPrimaryKeys, renderKeyChipList, renderLabelChipList } from "./nodeKeyChips";
+import { escapeHtml, getTransformPrimaryKeys, renderKeyChipList, renderLabelChipList } from "./nodeKeyChips";
 import { KeyListPopover, type KeyPopoverState } from "./KeyListPopover";
 import { NodeInspectorPanel, type InspectorState } from "./NodeInspectorPanel";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
@@ -23,16 +21,12 @@ import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpaci
 import { initInternalEdgeOverlay, refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 import {
     applyFailedEdgeStyles,
-    clearFocus,
-    focusSelection,
-} from "./graphFocus";
-import {
     clearSelectedNodeIds,
-    getSelectedNodeIds,
-    isNodeSelected,
+    initHtmlLabelInteractionStateSync,
     setSelectedNodeIds,
-    toggleSelectedNodeId,
-} from "./graphSelection";
+} from "./graphVisualState";
+import { attachGraphInteractions, MAX_ZOOM, MIN_ZOOM } from "./graphInteractions";
+import { initHtmlNodeLabels } from "./htmlNodeLabels";
 import { Alert, AlertProps, Spin } from "antd";
 import { apiFetch, getApiErrorMessage } from "../../api/http";
 import { opsApi } from "../../api/client";
@@ -45,7 +39,6 @@ import {
 import { GraphData } from "../../types";
 import type { PipelineGraphProps } from "../../types/pipelineGraph";
 
-Cytoscape.use(nodeHtmlLabel);
 Cytoscape.use(dagre);
 Cytoscape.use(contextMenus);
 
@@ -58,40 +51,9 @@ function buildGraphUrl(stageFilter?: string | null): string {
 
 const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
 
-/** Multi-select: clear only on short LMB click on canvas without pointer movement. */
-const BG_CLEAR_MOVE_PX = 5;
-/** Min drag distance on a node before the gesture is treated as camera pan (not a click). */
-const NODE_PAN_MOVE_PX = 14;
-const BG_CLEAR_MAX_MS = 280;
-/** Window during which a DOM click is treated as already handled by the cy tap. */
-const TAP_DEDUPE_MS = 350;
-/** After a drag-pan on a node, ignore select for long enough that cy tap + DOM click both die. */
-const PAN_SELECT_SUPPRESS_MS = 500;
-
-const MIN_ZOOM = 0.05;
-const MAX_ZOOM = 6.0;
-/** Per-event zoom gain. Kept moderate so Mac trackpad two-finger scroll is controllable. */
-const WHEEL_ZOOM_SPEED = 3.3;
-/** Optional boost (Shift only — Ctrl is used by macOS pinch-zoom wheel events). */
-const FAST_WHEEL_ZOOM_SPEED = 6.9;
-/** Soft cap on |deltaY| so one trackpad fling doesn't jump the camera. */
-const WHEEL_DELTA_CLAMP = 36;
-const WHEEL_ZOOM_COEFF = 0.0022;
-
 function labelOpacityStyle(data: Cytoscape.NodeDataDefinition): string {
     const opacity = typeof data.htmlLabelOpacity === "number" ? data.htmlLabelOpacity : 1;
     return `opacity:${opacity};`;
-}
-
-function interactionStateClass(data: Cytoscape.NodeDataDefinition): string {
-    return [
-        data.uiFocused ? "is-focused" : "",
-        data.uiSelected ? "is-selected" : "",
-        data.uiRelated ? "is-related" : "",
-        data.uiDimmed ? "is-dimmed" : "",
-    ]
-        .filter(Boolean)
-        .join(" ");
 }
 
 function buildNodeLabelTpl() {
@@ -104,7 +66,6 @@ function buildNodeLabelTpl() {
         const nodeId = (data.id as string) || fullName;
         const metaGroup = data.metaGroup as string | undefined;
         const isSubgraph = Boolean(metaGroup);
-        const stateClass = interactionStateClass(data);
         const renderName = (lines: string[]) => lines.join("<br>");
 
         if (data.type === "group") {
@@ -114,7 +75,7 @@ function buildNodeLabelTpl() {
             const w = (data.boxW as number) ?? fallback.w;
             const h = (data.boxH as number) ?? fallback.h;
             return `
-              <div class="node-compound-label node-compound-group ${stateClass}" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${escapeHtml(fullName)}">
+              <div class="node-compound-label node-compound-group" data-cy-node-id="${nodeId}" style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}" title="${escapeHtml(fullName)}">
                   <div class="node-content">
                       <div class="node-icon">${groupIconSvg}</div>
                       <div class="node-body">
@@ -136,7 +97,7 @@ function buildNodeLabelTpl() {
             const { w, h, lines } = tableNodeSize(fullName, primaryKeys, false);
             return `
               <div
-                class="node-core node-core-table ${coreClass} ${stateClass}"
+                class="node-core node-core-table ${coreClass}"
                 style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
                 data-cy-node-id="${nodeId}"
                 title="${escapeHtml(fullName)}"
@@ -159,7 +120,7 @@ function buildNodeLabelTpl() {
 
         return `
           <div
-            class="node-core node-core-step ${coreClass} ${stateClass}"
+            class="node-core node-core-step ${coreClass}"
             style="width:${w}px;height:${h}px;${labelOpacityStyle(data)}"
             data-cy-node-id="${nodeId}"
             title="${escapeHtml(fullName)}"
@@ -183,8 +144,7 @@ function initNodeLabels(cy: Cytoscape.Core) {
     labelsInitStore.set(cy, true);
     initHtmlLabelOpacitySync(cy);
     initInternalEdgeOverlay(cy);
-    // @ts-ignore
-    cy.nodeHtmlLabel([
+    initHtmlNodeLabels(cy, [
         {
             query: "node",
             halign: "center",
@@ -194,6 +154,7 @@ function initNodeLabels(cy: Cytoscape.Core) {
             tpl: buildNodeLabelTpl(),
         },
     ]);
+    initHtmlLabelInteractionStateSync(cy);
     cy.one("render", () => {
         cy.nodes().forEach((node) => setNodeVisualOpacity(cy, node, 1));
     });
@@ -317,7 +278,6 @@ function PipelineGraphView({
 
             if (nodeIds.length > 0) {
                 setSelectedNodeIds(cyInstance, nodeIds);
-                focusSelection(cyInstance);
             }
 
             if (saved.inspectorNodeId) {
@@ -525,20 +485,15 @@ function PipelineGraphView({
         initNodeLabels(cy);
     }, [cy]);
 
-    // Keep cytoscape's cached viewport dimensions in sync with the container.
-    // Without this, cy.width()/height() go stale whenever the flex layout, the
-    // inspector panel width, the stage sidebar, or the window changes size, and
-    // the next fit/pan centers against the wrong width — the graph then renders
-    // shifted toward an edge of the canvas.
+    // Keep cytoscape's cached viewport size in sync with the container.
+    // Only call cy.resize() on real dimension changes — never pan/fit on
+    // selection (that must not move the camera).
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
         const container = cy.container();
         if (!container || typeof ResizeObserver === "undefined") return;
 
         let frame = 0;
-        // Remember the last observed size so we only re-fit on a real dimension
-        // change. Never autofit after the user has interacted (including node
-        // clicks) — opening inspector content must not yank the camera.
         let lastW = container.clientWidth;
         let lastH = container.clientHeight;
         const observer = new ResizeObserver(() => {
@@ -551,630 +506,38 @@ function PipelineGraphView({
                 lastW = w;
                 lastH = h;
                 cy.resize();
-                // Only autofit while the camera is still in "auto" mode (first load
-                // settle). Clicks/pans set userInteractedRef so selection never fits.
+                // Autofit only while camera is still in auto mode (first load).
                 if (!userInteractedRef.current && cy.nodes().nonempty()) {
                     cy.fit(undefined, 60);
                 }
             });
         });
         observer.observe(container);
-
-        const markInteracted = () => {
-            userInteractedRef.current = true;
-        };
-        container.addEventListener("wheel", markInteracted, { passive: true });
-        container.addEventListener("mousedown", markInteracted, true);
-
         return () => {
             cancelAnimationFrame(frame);
             observer.disconnect();
-            container.removeEventListener("wheel", markInteracted);
-            container.removeEventListener("mousedown", markInteracted, true);
         };
     }, [cy]);
 
     useEffect(() => {
-        if (!cy || cy.destroyed() || !labelsInitStore.has(cy)) return;
-        cy.nodes().forEach((node) => {
-            node.data("labelRefresh", ((node.data("labelRefresh") as number) ?? 0) + 1);
-        });
-    }, [cy, runStatusByStep]);
-
-    useEffect(() => {
         if (!cy || cy.destroyed()) return;
-        applyFailedEdgeStyles(cy, runStatusByStep);
-    }, [cy, runStatusByStep]);
 
-    useEffect(() => {
-        if (!cy || cy.destroyed()) return;
-        const container = cy.container();
-        if (!container) return;
-
-        const canSelectNode = (node: Cytoscape.NodeSingular): boolean => {
-            const type = node.data("type") as string;
-            return type !== "group-expanded";
-        };
-
-        // Chip-row horizontal scroll positions survive html-label DOM rebuilds
-        // (selecting/focusing a node re-renders its label, which would otherwise
-        // reset scrollLeft to 0 and detach the element mid-drag).
-        const chipScrollStore = new Map<string, number>();
-        const chipScrollKey = (nodeId: string, kind: string) => `${nodeId}::${kind}`;
-        /** True while we apply saved scrollLeft — don't write those zeros back into the store. */
-        let ignoreChipScrollMemory = false;
-
-        const findChipScroller = (nodeId: string, kind: string): HTMLElement | null =>
-            container.querySelector(
-                `.node-key-chips[data-cy-node-id="${CSS.escape(nodeId)}"][data-key-kind="${kind}"]`,
-            );
-
-        const rememberChipScroll = (el: HTMLElement) => {
-            if (ignoreChipScrollMemory) return;
-            const nodeId = el.getAttribute("data-cy-node-id");
-            const kind = el.getAttribute("data-key-kind");
-            if (nodeId && kind) chipScrollStore.set(chipScrollKey(nodeId, kind), el.scrollLeft);
-        };
-
-        // Persist scroll during native scrollbar drag / track click / wheel.
-        const onChipScroll = (event: Event) => {
-            const el = event.target as HTMLElement | null;
-            if (el?.classList?.contains("node-key-chips")) {
-                rememberChipScroll(el);
-            }
-        };
-        container.addEventListener("scroll", onChipScroll, true);
-
-        // Reapply stored scroll offsets after the plugin rebuilds label DOM.
-        let restoreFrame = 0;
-        const restoreChipScrolls = () => {
-            cancelAnimationFrame(restoreFrame);
-            restoreFrame = requestAnimationFrame(() => {
-                ignoreChipScrollMemory = true;
-                chipScrollStore.forEach((left, key) => {
-                    const [nodeId, kind] = key.split("::");
-                    const el = findChipScroller(nodeId, kind);
-                    if (el && Math.abs(el.scrollLeft - left) > 0.5) {
-                        el.scrollLeft = left;
-                    }
+        return attachGraphInteractions(cy, {
+            onOpenInspector: (node) => {
+                setInspectorRef.current({
+                    nodeId: node.id(),
+                    data: node.data(),
                 });
-                // Second pass: html-label rebuilds sometimes settle one frame later.
-                requestAnimationFrame(() => {
-                    chipScrollStore.forEach((left, key) => {
-                        const [nodeId, kind] = key.split("::");
-                        const el = findChipScroller(nodeId, kind);
-                        if (el && Math.abs(el.scrollLeft - left) > 0.5) {
-                            el.scrollLeft = left;
-                        }
-                    });
-                    ignoreChipScrollMemory = false;
-                });
-            });
-        };
-        cy.on("render", restoreChipScrolls);
-
-        const openInspectorForNode = (node: Cytoscape.NodeSingular) => {
-            setInspectorRef.current({
-                nodeId: node.id(),
-                data: node.data(),
-            });
-            setKeyPopoverRef.current(null);
-        };
-
-        const handleNodeSelect = (node: Cytoscape.NodeSingular, multi: boolean) => {
-            if (!canSelectNode(node)) return;
-            if (multi) {
-                if (isNodeSelected(cy, node.id())) {
-                    toggleSelectedNodeId(cy, node.id());
-                    setInspectorRef.current(null);
-                } else {
-                    toggleSelectedNodeId(cy, node.id());
-                    openInspectorForNode(node);
-                }
-            } else {
-                const selected = getSelectedNodeIds(cy);
-                const alreadySole = selected.length === 1 && selected[0] === node.id();
-                if (!alreadySole) {
-                    setSelectedNodeIds(cy, [node.id()]);
-                }
-                openInspectorForNode(node);
-            }
-            focusSelection(cy);
-        };
-
-        const resolveOverflowChip = (target: EventTarget | null): HTMLElement | null => {
-            return (target as Element | null)?.closest?.("[data-key-overflow='true']") as HTMLElement | null;
-        };
-
-        const openKeyPopoverFromChip = (overflow: HTMLElement) => {
-            const nodeId = overflow.getAttribute("data-cy-node-id");
-            const kind = overflow.getAttribute("data-key-kind") as "pk" | "tpk" | "label" | null;
-            if (!nodeId || !kind) return;
-
-            const node = cy.getElementById(nodeId);
-            if (node.empty()) return;
-
-            const data = node.data();
-            const keys =
-                kind === "pk"
-                    ? ((data.indexes as string[]) ?? [])
-                    : kind === "label"
-                      ? formatNodeLabels((data.labels as string[][]) ?? [])
-                      : getTransformPrimaryKeys(data);
-
-            const containerRect = container.getBoundingClientRect();
-            const chipRect = overflow.getBoundingClientRect();
-
-            setKeyPopoverRef.current({
-                nodeId,
-                kind,
-                keys,
-                anchor: {
-                    x: chipRect.left - containerRect.left,
-                    y: chipRect.bottom - containerRect.top + 8,
-                },
-            });
-        };
-
-        const resolveNodeFromLabel = (target: EventTarget | null): Cytoscape.NodeSingular | null => {
-            const label = (target as Element | null)?.closest?.("[data-cy-node-id]");
-            if (!label) return null;
-            const nodeId = label.getAttribute("data-cy-node-id");
-            if (!nodeId) return null;
-            const node = cy.getElementById(nodeId);
-            if (node.empty()) return null;
-            return node as Cytoscape.NodeSingular;
-        };
-
-        type BgPress = { x: number; y: number; moved: boolean; downAt: number };
-        let bgPress: BgPress | null = null;
-        /** Snapshot while multi-select background gesture is active (pan / long-press). */
-        let multiSelectSnapshot: string[] | null = null;
-        /**
-         * Node captured at mousedown. The html-label plugin can rebuild a node's
-         * DOM label between mousedown and mouseup (e.g. on hover/selection focus),
-         * which makes the browser dispatch `click` on the container instead of the
-         * label. We fall back to this captured node so fast clicks still select.
-         */
-        let nodePress: { nodeId: string; x: number; y: number } | null = null;
-        /** Drag-to-pan started on a node HTML label (labels otherwise block cy pan). */
-        let nodePan:
-            | {
-                  nodeId: string;
-                  startX: number;
-                  startY: number;
-                  startPan: { x: number; y: number };
-                  moved: boolean;
-                  selectedAtStart: string[];
-              }
-            | null = null;
-        /** After a node-pan drag, suppress the synthetic tap/click selection. */
-        let suppressSelectUntil = 0;
-        /** One-shot: swallow the trailing DOM click after a drag-pan or scrollbar gesture. */
-        let eatNextClick = false;
-        /** Selection ids to restore when a pan/scrollbar gesture must not change select. */
-        let selectionFreeze: string[] | null = null;
-        /** True while the current press started on an overflow "+N more" chip. */
-        let pressStartedOnOverflow = false;
-        /** Timestamp of the last node selection handled via the cytoscape tap. */
-        let nodeTapHandledAt = 0;
-        /** Active drag-to-scroll gesture over a PK/TPK/labels chip row. */
-        let chipDrag:
-            | {
-                  kind: string;
-                  scrollNodeId: string;
-                  startX: number;
-                  startScrollLeft: number;
-                  moved: boolean;
-                  nodeId: string | null;
-              }
-            | null = null;
-
-        const shouldSuppressSelect = () =>
-            eatNextClick || performance.now() < suppressSelectUntil;
-
-        const freezeSelection = () => {
-            selectionFreeze = getSelectedNodeIds(cy);
-        };
-
-        const restoreFrozenSelection = () => {
-            if (selectionFreeze == null) return;
-            const ids = selectionFreeze;
-            setSelectedNodeIds(cy, ids);
-            if (ids.length) focusSelection(cy);
-            else clearFocus(cy);
-        };
-
-        const armSelectSuppress = (ms = PAN_SELECT_SUPPRESS_MS) => {
-            suppressSelectUntil = performance.now() + ms;
-            eatNextClick = true;
-            nodePress = null;
-            nodeTapHandledAt = performance.now();
-        };
-
-        const onChipDragMove = (event: MouseEvent) => {
-            if (!chipDrag) return;
-            const dx = event.clientX - chipDrag.startX;
-            if (Math.abs(dx) > NODE_PAN_MOVE_PX) chipDrag.moved = true;
-            // Re-resolve the live element every move: the html-label plugin may
-            // have replaced the DOM node (e.g. selection rebuild) since mousedown.
-            const el = findChipScroller(chipDrag.scrollNodeId, chipDrag.kind);
-            if (el) {
-                el.scrollLeft = chipDrag.startScrollLeft - dx;
-                rememberChipScroll(el);
-            }
-            event.preventDefault();
-            event.stopPropagation();
-        };
-
-        const onChipDragEnd = (event: MouseEvent) => {
-            document.removeEventListener("mousemove", onChipDragMove, true);
-            document.removeEventListener("mouseup", onChipDragEnd, true);
-            const drag = chipDrag;
-            chipDrag = null;
-            if (!drag) return;
-            findChipScroller(drag.scrollNodeId, drag.kind)?.classList.remove("is-grabbing");
-            event.preventDefault();
-            event.stopPropagation();
-            // Treat a press without movement as a plain click → select the node.
-            if (!drag.moved && drag.nodeId && !shouldSuppressSelect()) {
-                const node = cy.getElementById(drag.nodeId);
-                if (!node.empty() && canSelectNode(node as Cytoscape.NodeSingular)) {
-                    runSelectOnce(node as Cytoscape.NodeSingular, event.ctrlKey || event.metaKey);
-                }
-            }
-        };
-
-        // Primary selection path. Prefer mouseup-on-node (html labels are flaky
-        // for cy tap); DOM click / cy tap are backups — runSelectOnce dedupes.
-        let selectGestureAt = 0;
-        const runSelectOnce = (node: Cytoscape.NodeSingular, multi: boolean) => {
-            if (shouldSuppressSelect()) return;
-            if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) return;
-            selectGestureAt = performance.now();
-            nodeTapHandledAt = selectGestureAt;
-            handleNodeSelect(node, multi);
-        };
-
-        const onNodePanMove = (event: MouseEvent) => {
-            if (!nodePan) return;
-            const dx = event.clientX - nodePan.startX;
-            const dy = event.clientY - nodePan.startY;
-            if (!nodePan.moved) {
-                if (dx * dx + dy * dy <= NODE_PAN_MOVE_PX * NODE_PAN_MOVE_PX) return;
-                nodePan.moved = true;
-                userInteractedRef.current = true;
-            }
-            cy.pan({
-                x: nodePan.startPan.x + dx,
-                y: nodePan.startPan.y + dy,
-            });
-            event.preventDefault();
-        };
-
-        const onNodePanEnd = (event: MouseEvent) => {
-            document.removeEventListener("mousemove", onNodePanMove, true);
-            document.removeEventListener("mouseup", onNodePanEnd, true);
-            const pan = nodePan;
-            nodePan = null;
-            if (!pan) return;
-            if (pan.moved) {
-                // Block the cy tap / DOM click that fires after a drag on labels.
-                selectionFreeze = pan.selectedAtStart;
-                armSelectSuppress();
-                restoreFrozenSelection();
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            }
-            // Short press without meaningful drag = select. More reliable than
-            // waiting for cy tap (html-label often eats the gesture).
-            const node = cy.getElementById(pan.nodeId);
-            if (!node.empty() && canSelectNode(node as Cytoscape.NodeSingular)) {
-                runSelectOnce(
-                    node as Cytoscape.NodeSingular,
-                    event.ctrlKey || event.metaKey,
-                );
-            }
-        };
-
-        const onDocumentMouseMove = (event: MouseEvent) => {
-            if (!bgPress) return;
-            const dx = event.clientX - bgPress.x;
-            const dy = event.clientY - bgPress.y;
-            if (dx * dx + dy * dy > BG_CLEAR_MOVE_PX * BG_CLEAR_MOVE_PX) {
-                bgPress.moved = true;
-            }
-        };
-
-        const endBackgroundPress = (event: MouseEvent) => {
-            document.removeEventListener("mousemove", onDocumentMouseMove, true);
-            document.removeEventListener("mouseup", endBackgroundPress, true);
-
-            if (event.button !== 0 || !bgPress) {
-                bgPress = null;
-                multiSelectSnapshot = null;
-                return;
-            }
-
-            const press = bgPress;
-            bgPress = null;
-            const snapshot = multiSelectSnapshot;
-            multiSelectSnapshot = null;
-
-            const releasedOnNode = Boolean(resolveNodeFromLabel(event.target));
-            const releasedOnCanvas = container.contains(event.target as Node);
-
-            const duration = performance.now() - press.downAt;
-            const isShortClick = !press.moved && duration <= BG_CLEAR_MAX_MS;
-            const shouldClear =
-                releasedOnCanvas &&
-                !releasedOnNode &&
-                isShortClick &&
-                getSelectedNodeIds(cy).length > 0;
-
-            if (shouldClear) {
-                clearSelectedNodeIds(cy);
-                clearFocus(cy);
-                setInspectorRef.current(null);
                 setKeyPopoverRef.current(null);
-                return;
-            }
-
-            // Restore multi-select after a background pan (cy may clear it).
-            if (snapshot && snapshot.length > 1) {
-                const restore = () => {
-                    setSelectedNodeIds(cy, snapshot);
-                    focusSelection(cy);
-                };
-                restore();
-                requestAnimationFrame(restore);
-            }
-        };
-
-        const onContainerMouseDown = (event: MouseEvent) => {
-            if (event.button !== 0) return;
-            pressStartedOnOverflow = false;
-            nodePress = null;
-            // New gesture — previous pan/scrollbar suppress is finished.
-            selectionFreeze = null;
-            eatNextClick = false;
-
-            // PK/TPK/label chip rows:
-            //  - mousedown on a chip → optional drag-to-scroll (custom)
-            //  - mousedown on scrollbar / empty chrome → native scroll only
-            // Never let either start node select/pan (that rebuilds the HTML label
-            // and would reset scrollLeft to 0).
-            const scroller = (event.target as Element | null)?.closest?.(
-                ".node-key-chips",
-            ) as HTMLElement | null;
-            if (scroller) {
-                const chipEl = (event.target as Element | null)?.closest?.(
-                    ".node-key-chip",
-                ) as HTMLElement | null;
-                const onChip = Boolean(chipEl && scroller.contains(chipEl));
-                const canScroll = scroller.scrollWidth > scroller.clientWidth;
-                const rect = scroller.getBoundingClientRect();
-                // Classic scrollbar sits below clientHeight; overlay scrollbars can
-                // hit-test through to chips — treat the bottom band as chrome either way.
-                const sbH = Math.max(scroller.offsetHeight - scroller.clientHeight, 10);
-                const inScrollbarBand =
-                    canScroll &&
-                    event.clientY >= rect.bottom - sbH &&
-                    event.clientY <= rect.bottom + 2;
-
-                if (!onChip || inScrollbarBand) {
-                    // Scrollbar thumb/track or padding — leave default behaviour.
-                    rememberChipScroll(scroller);
-                    freezeSelection();
-                    armSelectSuppress(PAN_SELECT_SUPPRESS_MS);
-                    event.stopPropagation();
-                    return;
-                }
-
-                if (canScroll) {
-                    const scrollNodeId = scroller.getAttribute("data-cy-node-id");
-                    const kind = scroller.getAttribute("data-key-kind");
-                    if (scrollNodeId && kind) {
-                        chipDrag = {
-                            kind,
-                            scrollNodeId,
-                            startX: event.clientX,
-                            startScrollLeft: scroller.scrollLeft,
-                            moved: false,
-                            // Short click on a chip selects the node; drag scrolls only.
-                            nodeId: scrollNodeId,
-                        };
-                        scroller.classList.add("is-grabbing");
-                        event.preventDefault();
-                        event.stopPropagation();
-                        document.addEventListener("mousemove", onChipDragMove, true);
-                        document.addEventListener("mouseup", onChipDragEnd, true);
-                        return;
-                    }
-                }
-            }
-
-            const overflow = resolveOverflowChip(event.target);
-            if (overflow) {
-                pressStartedOnOverflow = true;
-                event.preventDefault();
-                event.stopPropagation();
-                openKeyPopoverFromChip(overflow);
-                return;
-            }
-            const nodeAtDown = resolveNodeFromLabel(event.target);
-            if (nodeAtDown) {
-                nodePress = { nodeId: nodeAtDown.id(), x: event.clientX, y: event.clientY };
-                // HTML labels sit above cytoscape and block viewport pan. Mirror
-                // background pan when the user drags after pressing on a node.
-                const pan = cy.pan();
-                nodePan = {
-                    nodeId: nodeAtDown.id(),
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    startPan: { x: pan.x, y: pan.y },
-                    moved: false,
-                    selectedAtStart: getSelectedNodeIds(cy),
-                };
-                document.addEventListener("mousemove", onNodePanMove, true);
-                document.addEventListener("mouseup", onNodePanEnd, true);
-                return;
-            }
-            if (!container.contains(event.target as Node)) return;
-
-            const selected = getSelectedNodeIds(cy);
-            multiSelectSnapshot = selected.length > 1 ? selected : null;
-
-            bgPress = {
-                x: event.clientX,
-                y: event.clientY,
-                moved: false,
-                downAt: performance.now(),
-            };
-
-            document.addEventListener("mousemove", onDocumentMouseMove, true);
-            document.addEventListener("mouseup", endBackgroundPress, true);
-        };
-
-        // Dom click / cy tap are backups when nodePanEnd didn't select (e.g. click
-        // landed after label rebuild). runSelectOnce above dedupes all three paths.
-        const onCyNodeTap = (event: Cytoscape.EventObject) => {
-            if (shouldSuppressSelect()) {
-                eatNextClick = false;
-                restoreFrozenSelection();
-                return;
-            }
-            const node = event.target as Cytoscape.NodeSingular;
-            if (!canSelectNode(node)) return;
-            const original = event.originalEvent as MouseEvent | undefined;
-            if (original?.button != null && original.button !== 0) return;
-            if (pressStartedOnOverflow || resolveOverflowChip(original?.target ?? null)) return;
-            runSelectOnce(node, Boolean(original?.ctrlKey || original?.metaKey));
-        };
-
-        const onContainerClick = (event: MouseEvent) => {
-            if (event.button !== 0) return;
-            if (shouldSuppressSelect()) {
-                eatNextClick = false;
-                nodePress = null;
-                restoreFrozenSelection();
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            }
-            const overflow = resolveOverflowChip(event.target);
-            if (overflow) {
-                event.preventDefault();
-                event.stopPropagation();
-                nodePress = null;
-                return;
-            }
-            if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) {
-                nodePress = null;
-                return;
-            }
-            let node = resolveNodeFromLabel(event.target);
-            if (!node && nodePress) {
-                const dx = event.clientX - nodePress.x;
-                const dy = event.clientY - nodePress.y;
-                if (dx * dx + dy * dy <= NODE_PAN_MOVE_PX * NODE_PAN_MOVE_PX) {
-                    const candidate = cy.getElementById(nodePress.nodeId);
-                    if (!candidate.empty()) node = candidate as Cytoscape.NodeSingular;
-                }
-            }
-            nodePress = null;
-            if (!node) return;
-            event.preventDefault();
-            event.stopPropagation();
-            runSelectOnce(node, event.ctrlKey || event.metaKey);
-        };
-
-        // Label DOM is rebuilt on select; don't re-run focusSelection on
-        // mouseover/out or related/muted classes flash with every rebuild.
-        const onContainerMouseOut = (event: MouseEvent) => {
-            const related = event.relatedTarget as Node | null;
-            if (related && container.contains(related)) return;
-            if (getSelectedNodeIds(cy).length > 0) return;
-            clearFocus(cy);
-        };
-
-        const onDblTapGroup = (event: Cytoscape.EventObject) => {
-            const node = event.target as Cytoscape.NodeSingular;
-            const type = node.data("type") as string;
-            if (type === "group" || type === "group-expanded") {
-                toggleGroupExpandRef.current(node.data("name") as string);
-            }
-        };
-
-        // Let the key/label chip rows scroll horizontally on wheel instead of
-        // zooming the graph, so overflowing PK/TPK/labels can be revealed.
-        const onContainerWheel = (event: WheelEvent) => {
-            const scroller = (event.target as Element | null)?.closest?.(
-                ".node-key-chips",
-            ) as HTMLElement | null;
-            if (scroller) {
-                if (scroller.scrollWidth <= scroller.clientWidth) return;
-                const delta =
-                    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-                if (delta === 0) return;
-                scroller.scrollLeft += delta;
-                rememberChipScroll(scroller);
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            }
-
-            event.preventDefault();
-            userInteractedRef.current = true;
-            // Soften large trackpad deltas: clamp, then square-root so flings
-            // don't leap as hard as linear scaling would.
-            const raw = Math.max(-WHEEL_DELTA_CLAMP, Math.min(WHEEL_DELTA_CLAMP, event.deltaY));
-            const normalizedDelta = Math.sign(raw) * Math.sqrt(Math.abs(raw));
-            // Ctrl/meta arrive from macOS pinch gestures — keep those slow.
-            const speed = event.shiftKey ? FAST_WHEEL_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
-            const factor = Math.exp(-normalizedDelta * WHEEL_ZOOM_COEFF * speed);
-            const rect = container.getBoundingClientRect();
-            const renderedPosition = {
-                x: event.clientX - rect.left,
-                y: event.clientY - rect.top,
-            };
-            const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, cy.zoom() * factor));
-            cy.zoom({ level: nextZoom, renderedPosition });
-        };
-
-        cy.boxSelectionEnabled(false);
-        cy.on("tap", "node", onCyNodeTap);
-
-        container.addEventListener("wheel", onContainerWheel, { capture: true, passive: false });
-        container.addEventListener("mousedown", onContainerMouseDown, true);
-        container.addEventListener("click", onContainerClick, true);
-        container.addEventListener("mouseout", onContainerMouseOut, true);
-        cy.on("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
-
-        return () => {
-            try {
-                document.removeEventListener("mousemove", onDocumentMouseMove, true);
-                document.removeEventListener("mouseup", endBackgroundPress, true);
-                document.removeEventListener("mousemove", onChipDragMove, true);
-                document.removeEventListener("mouseup", onChipDragEnd, true);
-                document.removeEventListener("mousemove", onNodePanMove, true);
-                document.removeEventListener("mouseup", onNodePanEnd, true);
-                cancelAnimationFrame(restoreFrame);
-                if (!cy.destroyed()) {
-                    cy.off("render", restoreChipScrolls);
-                    container.removeEventListener("scroll", onChipScroll, true);
-                    container.removeEventListener("wheel", onContainerWheel, true);
-                    container.removeEventListener("mousedown", onContainerMouseDown, true);
-                    container.removeEventListener("click", onContainerClick, true);
-                    container.removeEventListener("mouseout", onContainerMouseOut, true);
-                    cy.off("tap", "node", onCyNodeTap);
-                    cy.off("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
-                }
-            } catch {
-                /* cytoscape may already be torn down */
-            }
-        };
+            },
+            onCloseInspector: () => setInspectorRef.current(null),
+            onOpenKeyPopover: (state) => setKeyPopoverRef.current(state),
+            onCloseKeyPopover: () => setKeyPopoverRef.current(null),
+            onToggleGroup: (groupName) => toggleGroupExpandRef.current(groupName),
+            onUserInteracted: () => {
+                userInteractedRef.current = true;
+            },
+        });
     }, [cy]);
 
     useEffect(() => {
@@ -1307,7 +670,6 @@ function PipelineGraphView({
                     setSelectedNodeIds(cy, [node.id()]);
                     setInspector({ nodeId: node.id(), data: node.data() });
                     setKeyPopover(null);
-                    focusSelection(cy);
                     return;
                 }
             }
@@ -1316,15 +678,23 @@ function PipelineGraphView({
                 setKeyPopover(null);
                 if (!node.empty()) {
                     clearSelectedNodeIds(cy);
-                    focusSelection(cy);
                 }
             }
         },
         [cy, graphNodesById],
     );
 
+    const fillParent = height === "100%" || height === "100vh";
+
     return (
-        <div className="pipeline-graph-shell" style={{ height }}>
+        <div
+            className="pipeline-graph-shell"
+            style={
+                fillParent
+                    ? { flex: "1 1 auto", minHeight: 0, height: "auto" }
+                    : { height }
+            }
+        >
             <div className="pipeline-graph-embedded" style={{ position: "relative" }}>
             {alertMsg && (
                 <Alert

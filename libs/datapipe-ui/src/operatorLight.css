@@ -437,12 +437,21 @@
 }
 
 .pipeline-card-header {
+    box-sizing: border-box;
     height: 76px;
+    min-height: 76px;
+    max-height: 76px;
+    /* Selecting a node fills the inspector with tall content. Without this the
+       flex column crushes the header (~76→~36px) and the graph body grows
+       upward — perceived as a camera jump even though cy.pan() is unchanged. */
+    flex: 0 0 76px;
+    flex-shrink: 0;
     padding: 0 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--dp-border-subtle);
+    overflow: hidden;
 }
 
 .pipeline-card-title {
@@ -452,6 +461,11 @@
     font-size: 22px;
     font-weight: 800;
     color: var(--dp-text-primary);
+    flex: 0 1 auto;
+    min-width: 0;
+    /* Never let flex/scale squash the glyph box. */
+    white-space: nowrap;
+    transform: none;
 }
 
 .pipeline-card-title-icon {
@@ -461,13 +475,17 @@
 
 .pipeline-card-body {
     position: relative;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .pipeline-card-with-sidebar {
     display: flex;
     align-items: stretch;
+    min-height: 0;
 }
 
 .pipeline-card-main {
@@ -476,6 +494,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
 }
 
 .pipeline-stage-sidebar {

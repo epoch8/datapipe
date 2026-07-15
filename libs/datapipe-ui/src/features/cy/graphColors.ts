@@ -30,6 +30,6 @@ export const edgeColors = {
     default: "#52677F",
     active: "#1677FF",
     /** Neighbor highlight when a node is selected (input/output / participants). */
-    related: "#FF7A1A",
+    related: "#0D9488",
     error: "#D92D20",
 } as const;

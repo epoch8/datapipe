@@ -11,12 +11,17 @@
 .pipeline-graph-embedded {
     width: 100%;
     height: 100%;
+    min-width: 0;
+    min-height: 0;
     position: relative;
+    overflow: hidden;
 }
 
 .pipeline-graph-embedded .cy-container-embedded {
     height: 100%;
-    min-height: 340px;
+    /* Parent flex chain must own the height. A min-height here fights the
+       inspector panel and reflows the canvas on every select/deselect. */
+    min-height: 0;
 }
 
 .node-core,
@@ -30,7 +35,7 @@
         0 8px 18px rgba(16, 24, 40, 0.08);
     overflow: hidden;
     font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .node-content {
@@ -154,7 +159,7 @@
 }
 
 .node-key-row {
-    margin-top: 10px;
+    margin-top: 6px;
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr);
     column-gap: 8px;
@@ -308,6 +313,8 @@
     display: flex;
     align-items: flex-start;
     gap: 12px;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .inspector-kicker {
@@ -322,6 +329,8 @@
     font-size: calc(15px * var(--dp-font-scale, 1));
     font-weight: 800;
     color: #0b1220;
+    min-width: 0;
+    overflow-wrap: anywhere;
     word-break: break-word;
 }
 
@@ -441,18 +450,25 @@
     align-items: stretch;
     width: 100%;
     height: 100%;
-    min-height: 340px;
+    min-height: 0;
+    /* Cap intrinsic size so tall inspector content cannot inflate the flex
+       track and crush siblings (card header) above the graph. */
+    min-width: 0;
+    overflow: hidden;
 }
 
 .pipeline-graph-shell .pipeline-graph-embedded {
     flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
     width: auto;
 }
 
 .node-inspector-panel {
     position: relative;
     flex-shrink: 0;
+    align-self: stretch;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--dp-bg-surface, #fff);
@@ -586,10 +602,11 @@
 
 .node-core.is-related,
 .node-compound-label.is-related {
-    border-color: #ff7a1a;
+    border-color: #0d9488;
+    border-width: 3px;
     box-shadow:
-        0 0 0 3px rgba(255, 122, 26, 0.22),
-        0 8px 20px rgba(16, 24, 40, 0.12);
+        0 0 0 4px rgba(13, 148, 136, 0.45),
+        0 0 0 9px rgba(13, 148, 136, 0.18);
 }
 
 .node-core.is-dimmed,

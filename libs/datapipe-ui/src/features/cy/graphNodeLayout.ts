@@ -3,11 +3,14 @@ export const TABLE_NAME_MAX_LEN = 64;
 export const NODE_MAX_LINES = 3;
 
 // Card geometry.
-//  - Width is per-type (tables a touch narrower than transforms/groups) and is
-//    ~15% wider than the previous sizes.
-//  - Height is uniform across *every* normal card so the graph reads as a clean
-//    grid instead of a patchwork of different box heights.
-const NODE_HEIGHT = 128;
+//  - Tables (orange) and transforms (green) share one size so the graph reads
+//    as a clean grid.
+//  - Collapsed groups (blue) are slightly larger to signal they contain steps.
+//  - Height fits title + subtitle + TPK/PK row + Labels row without clipping.
+const NODE_WIDTH = 420;
+const NODE_HEIGHT = 156;
+const GROUP_WIDTH = 450;
+const GROUP_HEIGHT = 168;
 const COMPACT_HEIGHT = 72;
 
 // Mirrors `.node-content`: 16px side padding + 28px icon + 12px column gap.
@@ -22,12 +25,12 @@ function charsPerLine(cardWidth: number): number {
 }
 
 export const graphNodeDimensions = {
-    table: { width: 300, height: NODE_HEIGHT, heightTwoRows: NODE_HEIGHT },
-    transform: { width: 345, height: NODE_HEIGHT, heightTwoRows: NODE_HEIGHT },
-    groupCollapsed: { width: 345, height: NODE_HEIGHT, heightTwoRows: NODE_HEIGHT },
-    compactTable: { width: 240, height: COMPACT_HEIGHT },
-    compactTransform: { width: 264, height: COMPACT_HEIGHT },
-    compactGroup: { width: 264, height: COMPACT_HEIGHT },
+    table: { width: NODE_WIDTH, height: NODE_HEIGHT, heightTwoRows: NODE_HEIGHT },
+    transform: { width: NODE_WIDTH, height: NODE_HEIGHT, heightTwoRows: NODE_HEIGHT },
+    groupCollapsed: { width: GROUP_WIDTH, height: GROUP_HEIGHT, heightTwoRows: GROUP_HEIGHT },
+    compactTable: { width: 280, height: COMPACT_HEIGHT },
+    compactTransform: { width: 280, height: COMPACT_HEIGHT },
+    compactGroup: { width: 300, height: COMPACT_HEIGHT },
     horizontalGap: 58,
     verticalGap: 68,
 } as const;

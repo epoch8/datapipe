@@ -24,6 +24,10 @@ const ARROW_MARKERS: Array<{ id: string; fill: string }> = [
     { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
 ];
 
+function setAttrIfChanged(element: Element, name: string, value: string): void {
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
 function pathStoreFor(cy: Cytoscape.Core): Map<string, SVGPathElement> {
     let store = overlayPathStore.get(cy);
     if (!store) {
@@ -133,17 +137,17 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
             const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
             marker.appendChild(arrowPath);
         }
-        marker.setAttribute("viewBox", ARROW_MARKER.viewBox);
-        marker.setAttribute("refX", ARROW_MARKER.refX);
-        marker.setAttribute("refY", ARROW_MARKER.refY);
-        marker.setAttribute("markerWidth", ARROW_MARKER.markerWidth);
-        marker.setAttribute("markerHeight", ARROW_MARKER.markerHeight);
-        marker.setAttribute("markerUnits", "userSpaceOnUse");
-        marker.setAttribute("orient", "auto-start-reverse");
+        setAttrIfChanged(marker, "viewBox", ARROW_MARKER.viewBox);
+        setAttrIfChanged(marker, "refX", ARROW_MARKER.refX);
+        setAttrIfChanged(marker, "refY", ARROW_MARKER.refY);
+        setAttrIfChanged(marker, "markerWidth", ARROW_MARKER.markerWidth);
+        setAttrIfChanged(marker, "markerHeight", ARROW_MARKER.markerHeight);
+        setAttrIfChanged(marker, "markerUnits", "userSpaceOnUse");
+        setAttrIfChanged(marker, "orient", "auto-start-reverse");
         const arrowPath = marker.querySelector("path");
         if (arrowPath) {
-            arrowPath.setAttribute("d", ARROW_MARKER.path);
-            arrowPath.setAttribute("fill", fill);
+            setAttrIfChanged(arrowPath, "d", ARROW_MARKER.path);
+            setAttrIfChanged(arrowPath, "fill", fill);
         }
     });
 
@@ -157,9 +161,9 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
 
     const { svg } = root;
     const container = cy.container()!;
-    svg.setAttribute("width", String(container.clientWidth));
-    svg.setAttribute("height", String(container.clientHeight));
-    svg.setAttribute("viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
+    setAttrIfChanged(svg, "width", String(container.clientWidth));
+    setAttrIfChanged(svg, "height", String(container.clientHeight));
+    setAttrIfChanged(svg, "viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
 
     const paths = pathStoreFor(cy);
     const seen = new Set<string>();
@@ -179,11 +183,11 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
             svg.appendChild(path);
         }
 
-        path.setAttribute("d", edgePathD(cy, edge));
-        path.setAttribute("stroke", edgeStroke(edge));
-        path.setAttribute("stroke-width", String(edgeWidth(edge)));
-        path.setAttribute("opacity", String(edgeOpacity(edge)));
-        path.setAttribute("marker-end", edgeArrowMarker(edge));
+        setAttrIfChanged(path, "d", edgePathD(cy, edge));
+        setAttrIfChanged(path, "stroke", edgeStroke(edge));
+        setAttrIfChanged(path, "stroke-width", String(edgeWidth(edge)));
+        setAttrIfChanged(path, "opacity", String(edgeOpacity(edge)));
+        setAttrIfChanged(path, "marker-end", edgeArrowMarker(edge));
     });
 
     paths.forEach((path, id) => {
