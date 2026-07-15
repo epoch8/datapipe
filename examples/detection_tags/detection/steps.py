@@ -1,174 +1,117 @@
 from __future__ import annotations
 
-import io
-import json
 import logging
 import os
-import random
-import time
-import zipfile
-from pathlib import Path
-from typing import Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import fsspec
-import numpy as np
 import pandas as pd
-import requests
-from PIL import Image
+from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 
+from coco_demo import CocoDemoSource, darken as demo_darken
 from config import (
-    COCO_CAT_IDS,
-    DBCONN,
+    LOCAL_IMAGES_DIR,
     input_bucket,
     input_image_url,
     input_storage_options,
 )
 
-COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
-COCO_ANN_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
-CACHE = Path(os.environ.get("DATAPIPE_TAGS_CACHE_DIR", "/tmp/datapipe-tags-cache"))
-RNG_SEED = 1234
-
 logger = logging.getLogger("datapipe_ml.detection_tags")
 
 
-# --- COCO helpers ---------------------------------------------------------------
-def _get(url: str, attempts: int = 4) -> requests.Response:
-    last: Optional[Exception] = None
-    for a in range(attempts):
-        try:
-            r = requests.get(url, timeout=60, stream=True)
-            r.raise_for_status()
-            return r
-        except requests.RequestException as e:
-            last = e
-            time.sleep(min(2 ** a, 20))
-    assert last is not None
-    raise last
-
-
-def _coco_annotations_by_image() -> tuple[dict, dict]:
-    """Return (id_to_image_meta, {image_id: [cat/dog annotations]}), cached on disk."""
-    CACHE.mkdir(parents=True, exist_ok=True)
-    zip_path = CACHE / "annotations_trainval2017.zip"
-    if not zip_path.exists() or zip_path.stat().st_size < 1_000_000:
-        with _get(COCO_ANN_URL) as r, open(zip_path, "wb") as f:
-            for chunk in r.iter_content(1 << 20):
-                f.write(chunk)
-    with zipfile.ZipFile(zip_path) as zf, zf.open("annotations/instances_train2017.json") as h:
-        inst = json.load(h)
-    id_to_img = {im["id"]: im for im in inst["images"]}
-    anns: dict[int, list] = {}
-    for a in inst["annotations"]:
-        if a.get("category_id") in COCO_CAT_IDS and not a.get("iscrowd", 0) and a.get("bbox"):
-            anns.setdefault(a["image_id"], []).append(a)
-    return id_to_img, anns
-
-
-def _darken(im: Image.Image, gamma: float) -> Image.Image:
-    a = np.asarray(im.convert("RGB")).astype(np.float32) / 255.0
-    return Image.fromarray((np.power(a, 1.0 / gamma) * 255).clip(0, 255).astype(np.uint8))
-
-
-# --- load step ------------------------------------------------------------------
+# --- load step (demo: pulls images/GT from coco_demo; swap that module for real data) -----------
 def load_batch(df_request: pd.DataFrame):
-    """For each load_request row: download COCO cat/dog images, upload to object storage, and
-    return (s3_images, image__ground_truth, tag, image__tag). Ground truth uses lowercase COCO
-    labels; image_name is the object basename (what a listing would produce)."""
+    """For each load_request row: pull images + ground truth from the demo source (coco_demo),
+    optionally darken (a tagged scenario), upload to object storage, and return (s3_images,
+    image__ground_truth, tag, image__tag, image__subset_hint). image_name is the object basename.
+    For REAL data, replace coco_demo — this step itself is source-agnostic plumbing."""
     s3_cols = ["image_name", "image_url"]
     gt_cols = ["image_name", "bboxes", "labels"]
-    tag_cols = ["tag_id", "name"]
+    tag_cols = ["tag_id", "tag_description"]
     it_cols = ["image_name", "tag_id"]
+    hint_cols = ["image_name", "subset_id"]
     if df_request.empty:
         return (pd.DataFrame(columns=s3_cols), pd.DataFrame(columns=gt_cols),
-                pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols))
+                pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols),
+                pd.DataFrame(columns=hint_cols))
 
-    requests = [
-        {
-            "n": int(req["n"]),
-            "offset": int(req.get("offset") or 0),
-            "tag": req.get("tag") or None,
-            "darken": float(req["darken"])
-            if req.get("darken") is not None and str(req.get("darken")) != ""
-            else None,
-        }
-        for _, req in df_request.iterrows()
-    ]
-    total_images = sum(req["n"] for req in requests)
-    logger.info(
-        "load_batch: %d request(s), %d image(s) to upload",
-        len(requests),
-        total_images,
+    source = CocoDemoSource()   # demo data (COCO cat/dog); for real data swap coco_demo.py
+    bucket = input_bucket()
+    workers = int(os.environ["DATAPIPE_TAGS_LOAD_WORKERS"]) if os.environ.get("DATAPIPE_TAGS_LOAD_WORKERS") else min(
+        32, (os.cpu_count() or 4) * 4,
     )
 
-    # Prefer a pre-staged local cache (fast, no COCO): CACHE/images/<fn> + CACHE/gt.json.
-    # Download the cache once on a fast machine and copy it here — avoids per-image COCO fetches.
-    cache_gt_path = CACHE / "gt.json"
-    use_cache = cache_gt_path.exists() and (CACHE / "images").is_dir()
-    if use_cache:
-        cache_gt = json.loads(cache_gt_path.read_text())
-        pool = sorted(cache_gt.keys())  # deterministic order
-        random.seed(RNG_SEED)
-        random.shuffle(pool)
-        anns = None
-        logger.info("load_batch: using local cache at %s (%d images available)", CACHE, len(pool))
-    else:
-        logger.info("load_batch: local cache missing, downloading COCO annotations")
-        id_to_img, anns = _coco_annotations_by_image()
-        by_id = sorted(anns.keys())
-        random.seed(RNG_SEED)
-        random.shuffle(by_id)
-        pool = [id_to_img[i]["file_name"] for i in by_id]  # file names, same order semantics
-        logger.info("load_batch: COCO pool ready (%d cat/dog images available)", len(pool))
+    requests = []
+    for _, req in df_request.iterrows():
+        tag = req.get("tag")
+        tag = None if pd.isna(tag) or str(tag) == "" else str(tag)
+        subset = req.get("subset")
+        subset = None if pd.isna(subset) or str(subset) == "" else str(subset)
+        darken = req.get("darken")
+        darken = None if pd.isna(darken) or str(darken) == "" else float(darken)
+        requests.append({
+            "n": int(req["n"]),
+            "offset": int(req.get("offset") or 0),
+            "tag": tag,
+            "subset": subset,
+            "darken": darken,
+        })
 
-    if not use_cache:
-        _fn_to_id = {id_to_img[i]["file_name"]: i for i in anns.keys()}
-
-    def raw_bytes_and_gt(fn: str):
-        if use_cache:
-            data = (CACHE / "images" / fn).read_bytes()
-            g = cache_gt[fn]
-            return data, g["bboxes"], g["labels"]
-        raw = _get(COCO_IMG_BASE + fn).content
-        iid = _fn_to_id[fn]
-        boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
-                  int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])] for a in anns[iid]]
-        labels = [COCO_CAT_IDS[a["category_id"]] for a in anns[iid]]
-        return raw, boxes, labels
-
-    fs = fsspec.filesystem("s3", **input_storage_options())
-    bucket = input_bucket()
-    logger.info("load_batch: uploading to s3://%s/images/", bucket)
-
-    s3_rows, gt_rows, tag_rows, tag_defs = [], [], [], {}
-    processed = 0
+    tasks: list[tuple[str, str | None, str | None, float | None]] = []
     for req_idx, req in enumerate(requests, start=1):
         logger.info(
-            "load_batch: request %d/%d offset=%d n=%d tag=%s darken=%s",
-            req_idx, len(requests), req["offset"], req["n"], req["tag"], req["darken"],
+            "load_batch: request %d/%d offset=%d n=%d tag=%s subset=%s darken=%s",
+            req_idx, len(requests), req["offset"], req["n"],
+            req["tag"], req["subset"], req["darken"],
         )
-        for fn in pool[req["offset"] : req["offset"] + req["n"]]:
-            processed += 1
-            stem, ext = os.path.splitext(fn)
-            raw, boxes, labels = raw_bytes_and_gt(fn)
-            tag, darken = req["tag"], req["darken"]
-            if darken is not None:
-                name = f"{stem}__{tag or 'dark'}{ext}"
-                buf = io.BytesIO()
-                _darken(Image.open(io.BytesIO(raw)), darken).save(buf, format="JPEG", quality=92)
-                data = buf.getvalue()
-            else:
-                name, data = fn, raw
-            fs.pipe(f"{bucket}/images/{name}", data)
-            s3_rows.append({"image_name": name, "image_url": input_image_url(name)})
-            gt_rows.append({"image_name": name, "bboxes": boxes, "labels": labels})
-            if tag:
-                tag_rows.append({"image_name": name, "tag_id": tag})
-                tag_defs[tag] = tag
-            logger.info(
-                "load_batch: uploaded %s (%d/%d done, %d remaining)",
-                name, processed, total_images, total_images - processed,
-            )
+        for fn in source.pool[req["offset"]: req["offset"] + req["n"]]:
+            tasks.append((fn, req["tag"], req["subset"], req["darken"]))
+
+    total_images = len(tasks)
+    log_every = max(1, total_images // 10)
+    logger.info(
+        "load_batch: %d request(s), %d image(s) to upload to s3://%s/images/ (%d workers)",
+        len(requests), total_images, bucket, workers,
+    )
+
+    tls = threading.local()
+
+    def upload(task: tuple[str, str | None, str | None, float | None]):
+        fn, tag, subset, darken = task
+        stem, ext = os.path.splitext(fn)
+        raw, boxes, labels = source.fetch(fn)
+        if darken is not None:
+            name = f"{stem}__{tag or 'dark'}{ext}"
+            data = demo_darken(raw, darken)
+        else:
+            name, data = fn, raw
+        if not hasattr(tls, "fs"):
+            tls.fs = fsspec.filesystem("s3", **input_storage_options())
+        tls.fs.pipe(f"{bucket}/images/{name}", data)
+        tag_row = {"image_name": name, "tag_id": tag} if tag else None
+        tag_desc = (tag if darken is None else f"{tag} (low-light, gamma {darken})") if tag else None
+        hint_row = {"image_name": name, "subset_id": subset} if subset else None
+        return (
+            {"image_name": name, "image_url": input_image_url(name)},
+            {"image_name": name, "bboxes": boxes, "labels": labels},
+            tag_row,
+            tag_desc,
+            hint_row,
+        )
+
+    s3_rows, gt_rows, tag_rows, tag_defs, hint_rows = [], [], [], {}, []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for i, (s3_row, gt_row, tag_row, tag_desc, hint_row) in enumerate(executor.map(upload, tasks), 1):
+            s3_rows.append(s3_row)
+            gt_rows.append(gt_row)
+            if tag_row:
+                tag_rows.append(tag_row)
+                tag_defs[tag_row["tag_id"]] = tag_desc
+            if hint_row:
+                hint_rows.append(hint_row)
+            if i % log_every == 0 or i == total_images:
+                logger.info("load_batch: uploaded %d/%d", i, total_images)
 
     logger.info(
         "load_batch: finished, uploaded %d image(s), %d tag assignment(s), %d unique tag(s)",
@@ -180,17 +123,161 @@ def load_batch(df_request: pd.DataFrame):
     return (
         pd.DataFrame(s3_rows, columns=s3_cols),
         pd.DataFrame(gt_rows, columns=gt_cols),
-        pd.DataFrame([{"tag_id": t, "name": n} for t, n in tag_defs.items()], columns=tag_cols),
+        pd.DataFrame([{"tag_id": nm, "tag_description": d}
+                      for nm, d in tag_defs.items()], columns=tag_cols),
         pd.DataFrame(tag_rows, columns=it_cols),
+        pd.DataFrame(hint_rows, columns=hint_cols),
     )
 
 
 # --- train/val split ------------------------------------------------------------
-def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, primary_keys: list[str],
-                       val_perc: float = 0.25, random_seed: int = 42) -> pd.DataFrame:
+def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, hint_df: pd.DataFrame,
+                       primary_keys: list[str], val_perc: float = 0.25,
+                       random_seed: int = 42) -> pd.DataFrame:
+    """Assign a subset to every image that doesn't have one yet. An image whose subset the load
+    step pinned via ``image__subset_hint`` (batches loaded with ``--subset``) keeps that pinned
+    value; the rest are split train/val at random. Honoring the hint is what lets the demo FREEZE
+    val — load base-val + night-val up front (subset=val) and their assignment never changes when
+    train batches are added later, so a model's val metrics are stable across retrainings."""
     df__merged = pd.merge(df, subset_df, on=primary_keys, how="outer")
-    df__missing = df__merged[df__merged["subset_id"].isna()].copy()
-    df__val = df__missing.sample(frac=val_perc, random_state=random_seed)
-    df__missing["subset_id"] = "train"
-    df__missing.loc[df__val.index, "subset_id"] = "val"
+    df__missing = df__merged[df__merged["subset_id"].isna()][primary_keys].copy()
+    if hint_df is not None and not hint_df.empty:
+        hint = hint_df[primary_keys + ["subset_id"]].drop_duplicates(subset=primary_keys)
+        df__missing = df__missing.merge(hint, on=primary_keys, how="left")
+    else:
+        df__missing["subset_id"] = None
+    # all-NaN column becomes float64; cast before assigning "train"/"val"
+    df__missing["subset_id"] = df__missing["subset_id"].astype(object)
+    df__missing = df__missing.reset_index(drop=True)
+    unpinned = df__missing["subset_id"].isna()
+    if unpinned.any():
+        df__val = df__missing[unpinned].sample(frac=val_perc, random_state=random_seed)
+        df__missing.loc[unpinned, "subset_id"] = "train"
+        df__missing.loc[df__val.index, "subset_id"] = "val"
     return pd.concat([subset_df, df__missing], ignore_index=True)[primary_keys + ["subset_id"]]
+
+
+# --- FiftyOne (stage=fiftyone) --------------------------------------------------
+# Same pattern as examples/e2e_template/image_detection: download images locally,
+# register samples, then publish GT / predictions into separate fields of one dataset.
+
+
+def download_images(
+    s3_images_df: pd.DataFrame,
+    image__image_path__name: str,
+    image__local_image_path__name: str,
+) -> pd.DataFrame:
+    LOCAL_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    local_paths = []
+    for _, row in s3_images_df.iterrows():
+        s3_path = row[image__image_path__name]
+        local_path = LOCAL_IMAGES_DIR / os.path.basename(str(s3_path))
+        if not local_path.exists():
+            with fsspec.open(s3_path, "rb") as f_src:
+                local_path.write_bytes(f_src.read())
+        local_paths.append(str(local_path.resolve()))
+    s3_images_df[image__local_image_path__name] = local_paths
+    return s3_images_df[["image_name", image__local_image_path__name]]
+
+
+def publish_to_fiftyone(
+    images_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    return convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=images_df,
+        image__image_path__name=image__image_path__name,
+        primary_keys=primary_keys,
+    )
+
+
+def publish_to_fiftyone_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    tag_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=pd.merge(ground_truth_df, images_df, on=primary_keys),
+        primary_keys=primary_keys,
+        image__image_path__name=image__image_path__name,
+    )
+    pk = primary_keys[0]
+    subset_by_image = (
+        subset_df.drop_duplicates(subset=[pk]).set_index(pk)["subset_id"].to_dict()
+        if not subset_df.empty
+        else {}
+    )
+    tag_by_image = (
+        tag_df.drop_duplicates(subset=[pk]).set_index(pk)["tag_id"].to_dict()
+        if not tag_df.empty
+        else {}
+    )
+    for _, row in df__image_data.iterrows():
+        row["image_data"].additional_info["subset_id"] = subset_by_image.get(row[pk]) or "none"
+        row["image_data"].additional_info["tag_id"] = tag_by_image.get(row[pk]) or "none"
+    return df__image_data[primary_keys + ["image_data"]]
+
+
+def _baseline_and_retrained_model_ids(predictions_df: pd.DataFrame) -> tuple[list[str], list[str]]:
+    """Earliest-trained model = baseline (A); every later model goes to B (stable A/B across images)."""
+    ids = sorted(predictions_df["detection_model_id"].dropna().unique().tolist())
+    return ([ids[0]] if ids else []), (ids[1:] if len(ids) > 1 else [])
+
+
+def _publish_predictions_for_models(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    model_ids: list[str],
+    model_id_sample_field: str,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    empty = pd.DataFrame(columns=primary_keys + ["image_data"])
+    if predictions_df.empty or not model_ids:
+        return empty
+    pred = predictions_df[predictions_df["detection_model_id"].isin(model_ids)]
+    if pred.empty:
+        return empty
+    df = pd.merge(pred, images_df, on=primary_keys)
+    df[model_id_sample_field] = df["detection_model_id"]
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=primary_keys + [model_id_sample_field],
+        image__image_path__name=image__image_path__name,
+    )
+    for image_data, model_id in zip(
+        df__image_data["image_data"],
+        df__image_data[model_id_sample_field],
+    ):
+        image_data.additional_info[model_id_sample_field] = model_id
+    return df__image_data[primary_keys + ["image_data"]]
+
+
+def publish_to_fiftyone_predictions_baseline(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    baseline_ids, _ = _baseline_and_retrained_model_ids(predictions_df)
+    return _publish_predictions_for_models(
+        images_df, predictions_df, baseline_ids, "detection_model_id_a",
+        primary_keys, image__image_path__name,
+    )
+
+
+def publish_to_fiftyone_predictions_retrained(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    _, retrained_ids = _baseline_and_retrained_model_ids(predictions_df)
+    return _publish_predictions_for_models(
+        images_df, predictions_df, retrained_ids, "detection_model_id_b",
+        primary_keys, image__image_path__name,
+    )

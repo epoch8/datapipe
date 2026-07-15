@@ -18,7 +18,7 @@ Each `examples/*` pipeline has a dedicated setup skill — pick by what it does:
 | `e2e_template/image_detection` | YOLO detection + Label Studio human-in-the-loop → train → FiftyOne | **setup-e2e-template** |
 | `e2e_template/image_keypoints` | YOLO-pose keypoints + Label Studio → train → FiftyOne | **setup-e2e-template** |
 | `sam_cvat` | SAM3 text-prompt boxes+masks → CVAT pre-annotations | **setup-sam-cvat** |
-| `detection_tags` | YOLO detection + **tags** (per-scenario metrics), no Label Studio / FiftyOne, GT injected | **setup-detection-tags** |
+| `detection_tags` | YOLO detection + **tags** (per-scenario metrics), injected GT, FiftyOne A/B view | **setup-detection-tags** |
 
 ## Ask first — don't assume (only the unresolved)
 Clarify what's not obvious before acting — don't spin up services or pull data you don't need. Ask only the unresolved:

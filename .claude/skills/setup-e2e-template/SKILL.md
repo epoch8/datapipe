@@ -65,8 +65,9 @@ conventions, or the freeze join silently yields nothing / classes don't match:**
 ## Per-scenario tag metrics → see the dedicated example
 Want to tag a scenario (e.g. dark-room pallets), add it to training, and measure the model on that
 scenario separately (baseline vs retrained)? That lives as its own self-contained example —
-`examples/detection_tags` (`tag`/`image__tag`/`tag_metrics` built into the pipeline, **no Label Studio
-or FiftyOne**, ground truth injected). Use the **setup-detection-tags** skill.
+`examples/detection_tags` (`tag`/`image__tag`, `CountMetrics_Subset_PipelineModel` tag arc,
+**no Label Studio**, ground truth injected, **FiftyOne** baseline vs retrained). Use the
+**setup-detection-tags** skill.
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **No model after `train`, exit 0** → datapipe swallows step errors; check `detection_training_status`, not the exit code.

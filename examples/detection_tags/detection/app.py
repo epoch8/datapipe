@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import os
+
+# Deterministic training: cuBLAS needs CUBLAS_WORKSPACE_CONFIG set BEFORE torch/CUDA init, so set it
+# here at the entrypoint — the train subprocess inherits it. Pairs with seed + deterministic=True in
+# YoloV8_TrainingConfig to keep model-A / model-B metrics reproducible run-to-run on the same GPU.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
+from datapipe.types import Required
 from datapipe_app import (
     DatapipeApp,
     DatapipeOpsSpec,
@@ -36,21 +44,19 @@ from data import catalog
 # darken) and run `datapipe step --labels=stage=load run`. It downloads COCO cat/dog images,
 # uploads them to object storage, and produces s3_images + ground truth (+ tag) directly — there
 # is no Label Studio annotation stage.
-#
-# First-time setup: `datapipe db create-all` (see README).
 
 pipeline = Pipeline(
     [
         BatchTransform(
             func=steps.load_batch,
             inputs=["load_request"],
-            outputs=["s3_images", "image__ground_truth", "tag", "image__tag"],
+            outputs=["s3_images", "image__ground_truth", "tag", "image__tag", "image__subset_hint"],
             transform_keys=["request_id"],
             labels=[("stage", "load")],
         ),
         BatchTransform(
             func=steps.split_df_train_val,
-            inputs=["image__ground_truth", "image__subset"],
+            inputs=["image__ground_truth", "image__subset", "image__subset_hint"],
             outputs=["image__subset"],
             transform_keys=["image_name"],
             kwargs=dict(primary_keys=["image_name"], val_perc=0.25, random_seed=42),
@@ -68,7 +74,7 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
-            labels=[("stage", "train"), ("stage", "train-prepare")],
+            labels=[("stage", "train"), ("stage", "train-prepare")]
         ),
         Train_YoloV8_DetectionModel(  # type: ignore[list-item]
             input__detection_frozen_dataset="detection_frozen_dataset",
@@ -87,7 +93,7 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True)
+                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True, seed=42, workers=0)
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
             resume_config=TrainingResumeConfig(
@@ -148,6 +154,65 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id", "tag_id"],
             minimum_iou=0.5,
             labels=[("stage", "train"), ("stage", "count-metrics"), ("stage", "tag-metrics")],
+        ),
+        # --- FiftyOne (stage=fiftyone): GT + baseline/retrained predictions, filter by tag_id ---
+        BatchTransform(
+            func=steps.download_images,
+            inputs=["s3_images"],
+            outputs=["local_images"],
+            transform_keys=["image_name"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                image__image_path__name="image_url",
+                image__local_image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone,
+            inputs=["local_images"],
+            outputs=["fiftyone_images"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_ground_truth,
+            inputs=[
+                "local_images",
+                Required("image__ground_truth"),
+                Required("image__subset"),
+                "image__tag",
+            ],
+            outputs=["fiftyone_annotations"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_predictions_baseline,
+            inputs=[Required("local_images"), Required("detection_prediction_train")],
+            outputs=["fiftyone_predictions_model_a"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_predictions_retrained,
+            inputs=[Required("local_images"), Required("detection_prediction_train")],
+            outputs=["fiftyone_predictions_model_b"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
     ]
 )

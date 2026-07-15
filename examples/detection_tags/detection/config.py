@@ -21,6 +21,10 @@ S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL", S3_ENDPOINT_URL or "http://local
 DETECTION_CLASSES = ["cat", "dog"]
 COCO_CAT_IDS = {17: "cat", 18: "dog"}  # COCO category_id -> class name
 
+# --- tags -----------------------------------------------------------------------
+# tag_id is the human-readable tag NAME itself (text). Two columns only: (tag_id, tag_description).
+# No numeric surrogate / separate tag_name — the UI shows the tag by name directly.
+
 # --- single storage root --------------------------------------------------------
 # Input images live under <root>/images; the pipeline working_dir under <root>/datapipe
 # (siblings) so listing input images never re-ingests training artifacts.
@@ -81,5 +85,21 @@ if not DB_URL:
         "start docker compose, and run: set -a && source .env && set +a"
     )
 
-DB_SCHEMA = os.environ.get("DB_SCHEMA", "datapipe_tags")
+DB_SCHEMA = os.environ.get("DB_SCHEMA", "public")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
+
+# --- FiftyOne -------------------------------------------------------------------
+# FiftyOne stores dataset metadata in MongoDB (FIFTYONE_DATABASE_URI, brought up by
+# docker compose) and renders samples from LOCAL image files, so the fiftyone stage
+# downloads S3 images to LOCAL_IMAGES_DIR first.
+def _local_images_dir() -> Path:
+    explicit = os.environ.get("LOCAL_IMAGES_DIR")
+    if explicit:
+        return Path(explicit).resolve()
+    if _is_cloud_path(DATAPIPE_DIR_ROOT):
+        return Path(os.environ.get("DATAPIPE_TAGS_TMP_DIR", "/tmp/datapipe-tags")).resolve() / "local_images"
+    return Path(DATAPIPE_DIR).resolve().parent / "local_images"
+
+
+FIFTYONE_DATASET_NAME = os.environ.get("FIFTYONE_DATASET_NAME", "datapipe_detection_tags")
+LOCAL_IMAGES_DIR = _local_images_dir()

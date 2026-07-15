@@ -1,22 +1,30 @@
 """Add a load request, then run the load step:  datapipe step --labels=stage=load run
 
-    # batch 1 — base cat/dog
-    python ../scripts/add_request.py --id base --n 120
-    # batch 2 — tagged low-light scenario
-    python ../scripts/add_request.py --id night --n 40 --offset 120 --tag night --darken 0.1
+Fixed-val demo (freeze val up front, add the tagged train batch later):
 
-Run from examples/detection_tags/detection after `datapipe db create-all`."""
+    # loaded BEFORE training model A — val is frozen from the start
+    python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
+    python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
+    python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
+    # loaded BEFORE retraining model B (the tagged TRAIN batch — the fix)
+    python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
+    python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
+    python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
+
+--subset train|val pins every image of the batch to that subset so the random split never moves it.
+Run from examples/detection_tags/detection (so `import config` resolves)."""
 from __future__ import annotations
 
 import argparse
 import sys
 
 import pandas as pd
+from sqlalchemy import Column, Float, Integer, String
 
 sys.path.insert(0, ".")
 import config  # noqa: E402
-from data import catalog  # noqa: E402
 from datapipe.datatable import DataStore  # noqa: E402
+from datapipe.store.database import TableStoreDB  # noqa: E402
 
 
 def main() -> int:
@@ -26,13 +34,25 @@ def main() -> int:
     ap.add_argument("--offset", type=int, default=0, help="skip the first OFFSET picked COCO images")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--darken", type=float, default=None, help="gamma < 1 darkens (e.g. 0.1)")
+    ap.add_argument("--subset", default=None, choices=["train", "val"],
+                    help="pin every image of this batch to a subset (freezes val); omit to random-split")
     a = ap.parse_args()
 
-    ds = DataStore(config.DBCONN)
-    catalog.get_datatable(ds, "load_request").store_chunk(pd.DataFrame([{
-        "request_id": a.id, "n": a.n, "offset": a.offset, "tag": a.tag, "darken": a.darken,
+    ds = DataStore(config.DBCONN, create_meta_table=True)
+    dt = ds.get_or_create_table("load_request", TableStoreDB(
+        dbconn=config.DBCONN, name="load_request",
+        data_sql_schema=[
+            Column("request_id", String, primary_key=True),
+            Column("n", Integer), Column("offset", Integer),
+            Column("tag", String), Column("darken", Float),
+            Column("subset", String),
+        ], create_table=True))
+    dt.store_chunk(pd.DataFrame([{
+        "request_id": a.id, "n": a.n, "offset": a.offset, "tag": a.tag,
+        "darken": a.darken, "subset": a.subset,
     }]))
-    print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} darken={a.darken}")
+    print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} "
+          f"darken={a.darken} subset={a.subset}")
     print("now run:  datapipe step --labels=stage=load run")
     return 0
 

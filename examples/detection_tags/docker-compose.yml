@@ -1,3 +1,8 @@
+# Host-owned bind mounts: HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+# Postgres/Mongo keep image defaults (they cannot run as arbitrary host uid).
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
 services:
   postgres:
     image: postgres:14
@@ -15,22 +20,42 @@ services:
       retries: 5
 
   minio:
+    <<: *host-user
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
     ports:
       - "9000:9000"
       - "9001:9001"
+    depends_on:
+      minio-data-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # Bind-mount data dir is often created as root by Docker; MinIO runs as HOST_UID.
+  minio-data-init:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data && chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /data"]
+
   minio-init:
     image: minio/mc:latest
+    environment:
+      HOME: /tmp
     depends_on:
       minio:
         condition: service_healthy
@@ -40,3 +65,35 @@ services:
       mc mb --ignore-existing local/datapipe-tags &&
       mc anonymous set download local/datapipe-tags
       "
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  fiftyone:
+    <<: *host-user
+    image: voxel51/fiftyone:1.17.0
+    command: ["python", "-m", "fiftyone.server.main", "--port", "5151"]
+    environment:
+      FIFTYONE_DATABASE_URI: mongodb://mongo:27017
+      FIFTYONE_DEFAULT_APP_ADDRESS: 0.0.0.0
+      HOME: /tmp
+      MPLCONFIGDIR: /tmp/matplotlib
+    ports:
+      - "5151:5151"
+    volumes:
+      # Host paths written by the pipeline (e.g. /tmp/datapipe-tags/local_images) must match inside the container.
+      - type: bind
+        source: ${DATAPIPE_TAGS_TMP_DIR:-/tmp/datapipe-tags}
+        target: /tmp/datapipe-tags
+        read_only: true
+    depends_on:
+      mongo:
+        condition: service_healthy
