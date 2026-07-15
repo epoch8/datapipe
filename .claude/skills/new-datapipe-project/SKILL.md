@@ -26,7 +26,7 @@ carries its own SPEC, README and operational skill for future sessions.
 
 Under time pressure the tempting move is to guess the schema, the dedup semantics, the model, the
 aggregation slicing — and deliver fast. A wrong guess costs a rebuild; the interview costs minutes.
-**"Времени мало" means MORE reason to interview: it's the only way the first build is the right one.**
+**"No time" means MORE reason to interview: it's the only way the first build is the right one.**
 
 Ask one question at a time; dig until answers are concrete (never accept "recognize documents" —
 which documents, what output schema, what accuracy is acceptable?). Full checklist with the
