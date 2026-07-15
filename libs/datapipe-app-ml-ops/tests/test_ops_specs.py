@@ -4,12 +4,13 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from datapipe.compute import Catalog, Table
+from datapipe.compute import Catalog, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
 from sqlalchemy import Column, Integer, String
 
 from datapipe_app.app.errors import OpsSpecValidationError
+from datapipe_app import DatapipeAPI
 from datapipe_app.ops.specs import (
     OpsColumn,
     OpsColumnGroup,
@@ -17,7 +18,7 @@ from datapipe_app.ops.specs import (
     OpsMetricTableSpec,
 )
 from datapipe_app_ml_ops.ops.ops_spec_metrics import latest_eval_metric_from_specs
-from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec, OpsDataSpec
+from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec, OpsDataSpec, OpsFrozenDatasetSpec
 from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 
 
@@ -236,4 +237,79 @@ def test_metric_rows_return_configured_columns(ops_app):
     payload = res.json()
     assert payload["total"] == 2
     assert payload["rows"][0] == {"id": 1, "v": "a", "item_id": 1}
+
+
+def test_frozen_rows_split_counts(ops_app):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dbconn = DBConn(f"sqlite+pysqlite3:///{tmpdir}/frozen.sqlite")
+        ds = DataStore(dbconn, create_meta_table=True)
+        catalog = Catalog({
+            "detection_frozen_dataset": Table(
+                TableStoreDB(
+                    name="detection_frozen_dataset",
+                    dbconn=dbconn,
+                    data_sql_schema=[
+                        Column("detection_frozen_dataset_id", String(), primary_key=True),
+                        Column("detection_frozen_dataset__created_at", String()),
+                        Column("detection_frozen_dataset__train_images_count", Integer()),
+                        Column("detection_frozen_dataset__val_images_count", Integer()),
+                        Column("detection_frozen_dataset__test_images_count", Integer()),
+                    ],
+                    create_table=True,
+                )
+            )
+        })
+        dt = catalog.get_datatable(ds, "detection_frozen_dataset")
+        dt.store_chunk(
+            pd.DataFrame([
+                {
+                    "detection_frozen_dataset_id": "fd-1",
+                    "detection_frozen_dataset__created_at": "2026-01-01T00:00:00",
+                    "detection_frozen_dataset__train_images_count": 12,
+                    "detection_frozen_dataset__val_images_count": 4,
+                    "detection_frozen_dataset__test_images_count": 0,
+                }
+            ])
+        )
+
+        spec = DatapipeOpsSpec(
+            id="cat_dog",
+            title="Cat/Dog",
+            description="Frozen datasets",
+            data=OpsDataSpec(tables=["detection_frozen_dataset"]),
+            frozen_dataset=OpsFrozenDatasetSpec(
+                table="detection_frozen_dataset",
+                id_column="detection_frozen_dataset_id",
+                created_at_column="detection_frozen_dataset__created_at",
+                split_columns={
+                    "train": "detection_frozen_dataset__train_images_count",
+                    "val": "detection_frozen_dataset__val_images_count",
+                    "test": "detection_frozen_dataset__test_images_count",
+                },
+                columns=[
+                    OpsColumn(
+                        "detection_frozen_dataset_id",
+                        "Dataset",
+                        "detection_frozen_dataset_id",
+                        kind="link",
+                        link_to="frozen_dataset",
+                    ),
+                    OpsColumn(
+                        "created_at",
+                        "Frozen at",
+                        "detection_frozen_dataset__created_at",
+                        kind="datetime",
+                    ),
+                    OpsColumn("split", "Split", "split", kind="split"),
+                ],
+            ),
+        )
+        api = DatapipeAPI(ds, catalog, Pipeline([]), pipeline_id="test_pipeline")
+        api.add_specs([spec])
+        client = TestClient(api)
+
+        res = client.get("/api/v1alpha3/pipelines/test_pipeline/ops-specs/cat_dog/frozen-datasets")
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["rows"][0]["split"] == "12 / 4 / 0"
 

@@ -137,7 +137,8 @@ class OpsSpecsService:
         columns = list(frozen.columns)
         if params.get("sort_by") is None and frozen.default_sort:
             params["sort_by"], params["sort_dir"] = frozen.default_sort[0]
-        rows, total = self.query.rows(frozen.table, allowed_columns=query_columns(columns), **params)
+        allowed_columns = self._frozen_query_columns(frozen)
+        rows, total = self.query.rows(frozen.table, allowed_columns=allowed_columns, **params)
         relation_counts = self._frozen_model_counts(spec)
         needs_split = any(column.source == "split" for column in columns)
         needs_models = any(column.source == "models_count" for column in columns)
@@ -314,6 +315,15 @@ class OpsSpecsService:
             "class_metric_tables_count": len(spec.class_metrics),
             "tags": list(spec.tags),
         }
+
+    def _frozen_query_columns(self, frozen) -> list[OpsColumn]:
+        columns = query_columns(frozen.columns)
+        existing = {column.source for column in columns}
+        for source in frozen.split_columns.values():
+            if source and source not in existing:
+                columns.append(OpsColumn(source, source, source))
+                existing.add(source)
+        return columns
 
     def _split_label(self, split_counts: dict[str, Any]) -> str:
         if not split_counts:
