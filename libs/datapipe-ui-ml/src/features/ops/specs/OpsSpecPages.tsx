@@ -98,7 +98,12 @@ function specPageColumns(
                 const rest = seconds % 60;
                 return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
             }
-            return renderColumn(column, specId, entityBySource.get(column.source))(value);
+            return renderColumn(
+                column,
+                specId,
+                entityBySource.get(column.source),
+                entityLinksFromColumns(columns),
+            )(value, row);
         },
     }));
 }
@@ -144,16 +149,46 @@ function iconFor(kind: PageKind, i = 0) {
     }[kind];
     return list[i % list.length];
 }
-function entityHref(specId: string, target: string, value: unknown) {
+function entityHref(
+    specId: string,
+    target: string,
+    value: unknown,
+    row?: Row,
+    entityLinks?: Record<string, string>,
+) {
     const id = encodeURIComponent(textValue(value));
-    if (target.includes("dataset")) return `/frozen-datasets/${encodeURIComponent(specId)}/datasets/${id}`;
-    if (target.includes("model")) return `/metrics/${encodeURIComponent(specId)}/models/${id}`;
+    if (target.includes("dataset")) {
+        return `/frozen-datasets/${encodeURIComponent(specId)}/datasets/${id}`;
+    }
+    if (target.includes("model")) {
+        const path = `/metrics/${encodeURIComponent(specId)}/models/${id}`;
+        const datasetCol = entityLinks?.frozen_dataset ?? entityLinks?.dataset;
+        const datasetId = datasetCol && row ? row[datasetCol] : undefined;
+        if (datasetId != null && datasetId !== "") {
+            return `${path}?dataset_id=${encodeURIComponent(String(datasetId))}`;
+        }
+        return path;
+    }
     if (target.includes("run")) return `/training/${encodeURIComponent(specId)}/runs/${id}`;
     return null;
 }
-function EntityValue({ value, specId, column, fallbackKind = "" }: { value: unknown; specId: string; column?: OpsColumn; fallbackKind?: string }) {
+function EntityValue({
+    value,
+    specId,
+    column,
+    fallbackKind = "",
+    row,
+    entityLinks,
+}: {
+    value: unknown;
+    specId: string;
+    column?: OpsColumn;
+    fallbackKind?: string;
+    row?: Row;
+    entityLinks?: Record<string, string>;
+}) {
     if (value === null || value === undefined || value === "") return <span>-</span>;
-    const href = entityHref(specId, column?.link_to ?? fallbackKind, value);
+    const href = entityHref(specId, column?.link_to ?? fallbackKind, value, row, entityLinks);
     return href ? <Link className="dp-entity-link" to={href}>{textValue(value)}</Link> : <>{displayValue(value)}</>;
 }
 function SummaryCards({ kind, summary }: { kind: PageKind; summary: Record<string, unknown> }) {
@@ -182,11 +217,22 @@ export function OpsOverviewSpecPage({ kind }: { kind: PageKind }) {
     React.useEffect(() => { load(); }, [load]);
     return <div className="ops-page ops-spec-page"><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind] }]} title={pageTitles[kind]} subtitle={pageSubtitles[kind]} statusChips={[{ label: "Running", variant: "success" }, { label: "All specifications", variant: "purple" }]} onRefresh={load} primaryAction={kind === "training" ? { label: "New Training Run" } : undefined} /><EmptyState loading={pidLoading || loading} error={error} empty={!data?.specs?.length && !loading}>{data?.summary && <SummaryCards kind={kind} summary={data.summary} />}<div className="ops-landing-grid">{(data?.specs ?? []).map((spec) => <OverviewCard key={String(spec.spec_id ?? spec.id)} kind={kind} spec={spec} />)}</div>{data && <OverviewBottom kind={kind} data={data} />}</EmptyState></div>;
 }
-function renderColumn(column: OpsColumn, specId: string, fallbackKind?: string) {
-    return (value: unknown) => {
+function renderColumn(column: OpsColumn, specId: string, fallbackKind?: string, entityLinks?: Record<string, string>) {
+    return (value: unknown, row?: Row) => {
         if (column.kind === "status") return <StatusTag value={value} />;
         if (column.kind === "chip") return <Tag className="ops-soft-chip">{displayValue(value)}</Tag>;
-        if (column.kind === "link" || column.link_to || fallbackKind) return <EntityValue value={value} specId={specId} column={column} fallbackKind={fallbackKind} />;
+        if (column.kind === "link" || column.link_to || fallbackKind) {
+            return (
+                <EntityValue
+                    value={value}
+                    specId={specId}
+                    column={column}
+                    fallbackKind={fallbackKind}
+                    row={row}
+                    entityLinks={entityLinks}
+                />
+            );
+        }
         return displayValue(value);
     };
 }
@@ -198,7 +244,7 @@ function metricColumns(table: OpsTableSchema, specId: string, sortState: { sort_
         key: column.id,
         width: column.width ?? undefined,
         ellipsis: column.kind === "text" || column.kind === "link",
-        render: renderColumn(column, specId, entityBySource.get(column.source)),
+        render: renderColumn(column, specId, entityBySource.get(column.source), table.entity_links),
         sorter: serverSideSorter(column),
         sortDirections: ["ascend", "descend"] as SortOrder[],
         sortOrder: sortOrderForColumn(column, sortState),

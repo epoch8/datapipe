@@ -142,6 +142,18 @@ export const mlOpsApi = {
         fetchJson<FrozenDatasetsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets`,
         ),
+    resolveMetricsEntity: (
+        pipelineId: string,
+        params: { model_id?: string; dataset_id?: string },
+    ) =>
+        fetchJson<{
+            kind: "model" | "dataset";
+            spec_id: string;
+            model_id?: string | null;
+            dataset_id?: string | null;
+        }>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/resolve-entity${toQuery(params)}`,
+        ),
     getModelDetail: (
         pipelineId: string,
         modelId: string,

@@ -53,11 +53,13 @@ const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
 
 /** Multi-select: clear only on short LMB click on canvas without pointer movement. */
 const BG_CLEAR_MOVE_PX = 5;
+/** Min drag distance on a node before the gesture is treated as camera pan (not a click). */
+const NODE_PAN_MOVE_PX = 14;
 const BG_CLEAR_MAX_MS = 280;
 /** Window during which a DOM click is treated as already handled by the cy tap. */
 const TAP_DEDUPE_MS = 350;
 /** After a drag-pan on a node, ignore select for long enough that cy tap + DOM click both die. */
-const PAN_SELECT_SUPPRESS_MS = 800;
+const PAN_SELECT_SUPPRESS_MS = 500;
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 6.0;
@@ -311,7 +313,11 @@ function PipelineGraphView({
                     cyInstance.$(":selected").unselect();
                     nodeIds.forEach((id) => {
                         const node = cyInstance.getElementById(id);
-                        if (!node.empty()) node.select();
+                        if (!node.empty()) {
+                            node.selectify();
+                            node.select();
+                            node.unselectify();
+                        }
                     });
                 });
                 focusSelection(cyInstance);
@@ -599,6 +605,8 @@ function PipelineGraphView({
         // reset scrollLeft to 0 and detach the element mid-drag).
         const chipScrollStore = new Map<string, number>();
         const chipScrollKey = (nodeId: string, kind: string) => `${nodeId}::${kind}`;
+        /** True while we apply saved scrollLeft — don't write those zeros back into the store. */
+        let ignoreChipScrollMemory = false;
 
         const findChipScroller = (nodeId: string, kind: string): HTMLElement | null =>
             container.querySelector(
@@ -606,27 +614,10 @@ function PipelineGraphView({
             );
 
         const rememberChipScroll = (el: HTMLElement) => {
+            if (ignoreChipScrollMemory) return;
             const nodeId = el.getAttribute("data-cy-node-id");
             const kind = el.getAttribute("data-key-kind");
             if (nodeId && kind) chipScrollStore.set(chipScrollKey(nodeId, kind), el.scrollLeft);
-        };
-
-        /** Click landed on scrollbar / empty row chrome — not a chip. */
-        const isChipRowChromeClick = (scroller: HTMLElement, event: MouseEvent): boolean => {
-            const target = event.target as Element | null;
-            if (!target) return false;
-            // Scrollbar / padding clicks hit the scroller itself; chip clicks hit a child.
-            if (target === scroller) return true;
-            if (target.closest?.(".node-key-chip")) return false;
-            if (elOverHorizontalScrollbar(scroller, event)) return true;
-            return false;
-        };
-
-        const elOverHorizontalScrollbar = (el: HTMLElement, event: MouseEvent): boolean => {
-            if (el.scrollWidth <= el.clientWidth) return false;
-            const rect = el.getBoundingClientRect();
-            const sbH = Math.max(el.offsetHeight - el.clientHeight, 10);
-            return event.clientY >= rect.bottom - sbH && event.clientY <= rect.bottom + 2;
         };
 
         // Persist scroll during native scrollbar drag / track click / wheel.
@@ -643,6 +634,7 @@ function PipelineGraphView({
         const restoreChipScrolls = () => {
             cancelAnimationFrame(restoreFrame);
             restoreFrame = requestAnimationFrame(() => {
+                ignoreChipScrollMemory = true;
                 chipScrollStore.forEach((left, key) => {
                     const [nodeId, kind] = key.split("::");
                     const el = findChipScroller(nodeId, kind);
@@ -659,6 +651,7 @@ function PipelineGraphView({
                             el.scrollLeft = left;
                         }
                     });
+                    ignoreChipScrollMemory = false;
                 });
             });
         };
@@ -679,12 +672,23 @@ function PipelineGraphView({
                     node.unselect();
                     setInspectorRef.current(null);
                 } else {
+                    node.selectify();
                     node.select();
+                    node.unselectify();
                     openInspectorForNode(node);
                 }
             } else {
-                cy.$(":selected").unselect();
-                node.select();
+                const selected = cy.nodes(":selected");
+                const alreadySole =
+                    selected.length === 1 && selected[0].id() === node.id();
+                if (!alreadySole) {
+                    cy.batch(() => {
+                        cy.$(":selected").unselect();
+                        node.selectify();
+                        node.select();
+                        node.unselectify();
+                    });
+                }
                 openInspectorForNode(node);
             }
             focusSelection(cy);
@@ -792,7 +796,11 @@ function PipelineGraphView({
                 cy.nodes(":selected").unselect();
                 ids.forEach((id) => {
                     const node = cy.getElementById(id);
-                    if (!node.empty()) node.select();
+                    if (!node.empty()) {
+                        node.selectify();
+                        node.select();
+                        node.unselectify();
+                    }
                 });
             });
             if (ids.length) focusSelection(cy);
@@ -809,7 +817,7 @@ function PipelineGraphView({
         const onChipDragMove = (event: MouseEvent) => {
             if (!chipDrag) return;
             const dx = event.clientX - chipDrag.startX;
-            if (Math.abs(dx) > 3) chipDrag.moved = true;
+            if (Math.abs(dx) > NODE_PAN_MOVE_PX) chipDrag.moved = true;
             // Re-resolve the live element every move: the html-label plugin may
             // have replaced the DOM node (e.g. selection rebuild) since mousedown.
             const el = findChipScroller(chipDrag.scrollNodeId, chipDrag.kind);
@@ -834,9 +842,20 @@ function PipelineGraphView({
             if (!drag.moved && drag.nodeId && !shouldSuppressSelect()) {
                 const node = cy.getElementById(drag.nodeId);
                 if (!node.empty() && canSelectNode(node as Cytoscape.NodeSingular)) {
-                    handleNodeSelect(node as Cytoscape.NodeSingular, event.ctrlKey || event.metaKey);
+                    runSelectOnce(node as Cytoscape.NodeSingular, event.ctrlKey || event.metaKey);
                 }
             }
+        };
+
+        // Primary selection path. Prefer mouseup-on-node (html labels are flaky
+        // for cy tap); DOM click / cy tap are backups — runSelectOnce dedupes.
+        let selectGestureAt = 0;
+        const runSelectOnce = (node: Cytoscape.NodeSingular, multi: boolean) => {
+            if (shouldSuppressSelect()) return;
+            if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) return;
+            selectGestureAt = performance.now();
+            nodeTapHandledAt = selectGestureAt;
+            handleNodeSelect(node, multi);
         };
 
         const onNodePanMove = (event: MouseEvent) => {
@@ -844,7 +863,7 @@ function PipelineGraphView({
             const dx = event.clientX - nodePan.startX;
             const dy = event.clientY - nodePan.startY;
             if (!nodePan.moved) {
-                if (dx * dx + dy * dy <= BG_CLEAR_MOVE_PX * BG_CLEAR_MOVE_PX) return;
+                if (dx * dx + dy * dy <= NODE_PAN_MOVE_PX * NODE_PAN_MOVE_PX) return;
                 nodePan.moved = true;
                 userInteractedRef.current = true;
             }
@@ -863,12 +882,21 @@ function PipelineGraphView({
             if (!pan) return;
             if (pan.moved) {
                 // Block the cy tap / DOM click that fires after a drag on labels.
-                // Cytoscape still toggles :selected on tap — restore pre-pan selection.
                 selectionFreeze = pan.selectedAtStart;
                 armSelectSuppress();
                 restoreFrozenSelection();
                 event.preventDefault();
                 event.stopPropagation();
+                return;
+            }
+            // Short press without meaningful drag = select. More reliable than
+            // waiting for cy tap (html-label often eats the gesture).
+            const node = cy.getElementById(pan.nodeId);
+            if (!node.empty() && canSelectNode(node as Cytoscape.NodeSingular)) {
+                runSelectOnce(
+                    node as Cytoscape.NodeSingular,
+                    event.ctrlKey || event.metaKey,
+                );
             }
         };
 
@@ -915,13 +943,17 @@ function PipelineGraphView({
                 return;
             }
 
-            // Cytoscape may unselect on pan/tap despite autounselectify — restore multi-select.
+            // Restore multi-select after a background pan (cy may clear it).
             if (snapshot && snapshot.length > 1) {
                 const restore = () => {
                     cy.batch(() => {
                         snapshot.forEach((id) => {
                             const node = cy.getElementById(id);
-                            if (!node.empty()) node.select();
+                            if (!node.empty()) {
+                                node.selectify();
+                                node.select();
+                                node.unselectify();
+                            }
                         });
                     });
                     focusSelection(cy);
@@ -939,39 +971,58 @@ function PipelineGraphView({
             selectionFreeze = null;
             eatNextClick = false;
 
-            // Drag-to-scroll on a chip row (PK/TPK/labels) takes over the gesture
-            // so overflowing keys can be revealed by dragging left/right.
-            // Native scrollbar / empty-row clicks must NOT be captured — that
-            // resets scrollLeft, and the following click must not select the node.
+            // PK/TPK/label chip rows:
+            //  - mousedown on a chip → optional drag-to-scroll (custom)
+            //  - mousedown on scrollbar / empty chrome → native scroll only
+            // Never let either start node select/pan (that rebuilds the HTML label
+            // and would reset scrollLeft to 0).
             const scroller = (event.target as Element | null)?.closest?.(
                 ".node-key-chips",
             ) as HTMLElement | null;
-            if (scroller && scroller.scrollWidth > scroller.clientWidth) {
-                if (isChipRowChromeClick(scroller, event)) {
+            if (scroller) {
+                const chipEl = (event.target as Element | null)?.closest?.(
+                    ".node-key-chip",
+                ) as HTMLElement | null;
+                const onChip = Boolean(chipEl && scroller.contains(chipEl));
+                const canScroll = scroller.scrollWidth > scroller.clientWidth;
+                const rect = scroller.getBoundingClientRect();
+                // Classic scrollbar sits below clientHeight; overlay scrollbars can
+                // hit-test through to chips — treat the bottom band as chrome either way.
+                const sbH = Math.max(scroller.offsetHeight - scroller.clientHeight, 10);
+                const inScrollbarBand =
+                    canScroll &&
+                    event.clientY >= rect.bottom - sbH &&
+                    event.clientY <= rect.bottom + 2;
+
+                if (!onChip || inScrollbarBand) {
+                    // Scrollbar thumb/track or padding — leave default behaviour.
                     rememberChipScroll(scroller);
-                    // No node select for scrollbar / chrome; keep native scroll.
                     freezeSelection();
                     armSelectSuppress(PAN_SELECT_SUPPRESS_MS);
+                    event.stopPropagation();
                     return;
                 }
-                const scrollNodeId = scroller.getAttribute("data-cy-node-id");
-                const kind = scroller.getAttribute("data-key-kind");
-                if (scrollNodeId && kind) {
-                    const node = resolveNodeFromLabel(event.target);
-                    chipDrag = {
-                        kind,
-                        scrollNodeId,
-                        startX: event.clientX,
-                        startScrollLeft: scroller.scrollLeft,
-                        moved: false,
-                        nodeId: node ? node.id() : null,
-                    };
-                    scroller.classList.add("is-grabbing");
-                    event.preventDefault();
-                    event.stopPropagation();
-                    document.addEventListener("mousemove", onChipDragMove, true);
-                    document.addEventListener("mouseup", onChipDragEnd, true);
-                    return;
+
+                if (canScroll) {
+                    const scrollNodeId = scroller.getAttribute("data-cy-node-id");
+                    const kind = scroller.getAttribute("data-key-kind");
+                    if (scrollNodeId && kind) {
+                        chipDrag = {
+                            kind,
+                            scrollNodeId,
+                            startX: event.clientX,
+                            startScrollLeft: scroller.scrollLeft,
+                            moved: false,
+                            // Short click on a chip selects the node; drag scrolls only.
+                            nodeId: scrollNodeId,
+                        };
+                        scroller.classList.add("is-grabbing");
+                        event.preventDefault();
+                        event.stopPropagation();
+                        document.addEventListener("mousemove", onChipDragMove, true);
+                        document.addEventListener("mouseup", onChipDragEnd, true);
+                        return;
+                    }
                 }
             }
 
@@ -1018,9 +1069,8 @@ function PipelineGraphView({
             document.addEventListener("mouseup", endBackgroundPress, true);
         };
 
-        // Primary node-selection path: the cytoscape tap reliably fires (pointer
-        // events bubble to the container) even when the html-label DOM is rebuilt
-        // mid-click, which can otherwise suppress the browser "click" event.
+        // Dom click / cy tap are backups when nodePanEnd didn't select (e.g. click
+        // landed after label rebuild). runSelectOnce above dedupes all three paths.
         const onCyNodeTap = (event: Cytoscape.EventObject) => {
             if (shouldSuppressSelect()) {
                 eatNextClick = false;
@@ -1032,8 +1082,7 @@ function PipelineGraphView({
             const original = event.originalEvent as MouseEvent | undefined;
             if (original?.button != null && original.button !== 0) return;
             if (pressStartedOnOverflow || resolveOverflowChip(original?.target ?? null)) return;
-            nodeTapHandledAt = performance.now();
-            handleNodeSelect(node, Boolean(original?.ctrlKey || original?.metaKey));
+            runSelectOnce(node, Boolean(original?.ctrlKey || original?.metaKey));
         };
 
         const onContainerClick = (event: MouseEvent) => {
@@ -1053,9 +1102,7 @@ function PipelineGraphView({
                 nodePress = null;
                 return;
             }
-            // Already handled by the cytoscape tap for this gesture — avoid a
-            // second (double-toggling) selection call.
-            if (performance.now() - nodeTapHandledAt < TAP_DEDUPE_MS) {
+            if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) {
                 nodePress = null;
                 return;
             }
@@ -1063,7 +1110,7 @@ function PipelineGraphView({
             if (!node && nodePress) {
                 const dx = event.clientX - nodePress.x;
                 const dy = event.clientY - nodePress.y;
-                if (dx * dx + dy * dy <= BG_CLEAR_MOVE_PX * BG_CLEAR_MOVE_PX) {
+                if (dx * dx + dy * dy <= NODE_PAN_MOVE_PX * NODE_PAN_MOVE_PX) {
                     const candidate = cy.getElementById(nodePress.nodeId);
                     if (!candidate.empty()) node = candidate as Cytoscape.NodeSingular;
                 }
@@ -1072,27 +1119,15 @@ function PipelineGraphView({
             if (!node) return;
             event.preventDefault();
             event.stopPropagation();
-            handleNodeSelect(node, event.ctrlKey || event.metaKey);
+            runSelectOnce(node, event.ctrlKey || event.metaKey);
         };
 
-        const onContainerMouseOver = (event: MouseEvent) => {
-            const node = resolveNodeFromLabel(event.target);
-            if (!node) return;
-            if (cy.nodes(":selected").length > 0) {
-                focusSelection(cy);
-            }
-        };
-
+        // Label DOM is rebuilt on select; don't re-run focusSelection on
+        // mouseover/out or related/muted classes flash with every rebuild.
         const onContainerMouseOut = (event: MouseEvent) => {
             const related = event.relatedTarget as Node | null;
-            if (related && container.contains(related)) {
-                const stillOnNode = resolveNodeFromLabel(related);
-                if (stillOnNode) return;
-            }
-            if (cy.nodes(":selected").length > 0) {
-                focusSelection(cy);
-                return;
-            }
+            if (related && container.contains(related)) return;
+            if (cy.nodes(":selected").nonempty()) return;
             clearFocus(cy);
         };
 
@@ -1146,7 +1181,6 @@ function PipelineGraphView({
         container.addEventListener("wheel", onContainerWheel, { capture: true, passive: false });
         container.addEventListener("mousedown", onContainerMouseDown, true);
         container.addEventListener("click", onContainerClick, true);
-        container.addEventListener("mouseover", onContainerMouseOver, true);
         container.addEventListener("mouseout", onContainerMouseOut, true);
         cy.on("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
 
@@ -1165,7 +1199,6 @@ function PipelineGraphView({
                     container.removeEventListener("wheel", onContainerWheel, true);
                     container.removeEventListener("mousedown", onContainerMouseDown, true);
                     container.removeEventListener("click", onContainerClick, true);
-                    container.removeEventListener("mouseover", onContainerMouseOver, true);
                     container.removeEventListener("mouseout", onContainerMouseOut, true);
                     cy.off("tap", "node", onCyNodeTap);
                     cy.off("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
@@ -1303,8 +1336,12 @@ function PipelineGraphView({
             if (!node.empty()) {
                 const type = node.data("type") as string;
                 if (type !== "group-expanded") {
-                    cy.$(":selected").unselect();
-                    node.select();
+                    cy.batch(() => {
+                        cy.$(":selected").unselect();
+                        node.selectify();
+                        node.select();
+                        node.unselectify();
+                    });
                     setInspector({ nodeId: node.id(), data: node.data() });
                     setKeyPopover(null);
                     focusSelection(cy);

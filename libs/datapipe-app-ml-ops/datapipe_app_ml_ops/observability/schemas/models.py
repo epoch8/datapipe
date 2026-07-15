@@ -276,10 +276,18 @@ class MetricsModelDetailRelated(BaseModel):
     run_id: Optional[str] = None
 
 
+class MetricsEntityResolveResponse(BaseModel):
+    kind: Literal["model", "dataset"]
+    spec_id: str
+    model_id: Optional[str] = None
+    dataset_id: Optional[str] = None
+
+
 class MetricsModelDetailResponse(BaseModel):
     pipeline_id: str
     model_id: str
     title: str
+    spec_id: Optional[str] = None
     source_table: Optional[str] = None
     source_pk: dict[str, Any] | None = None
     source_record: dict[str, Any] | None = None
@@ -315,6 +323,7 @@ class FrozenDatasetDetailResponse(BaseModel):
     pipeline_id: str
     dataset_id: str
     title: str
+    spec_id: Optional[str] = None
     dataset: FrozenDatasetRow
     source_table: Optional[str] = None
     source_pk: dict[str, Any] | None = None

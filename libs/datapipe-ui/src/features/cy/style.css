@@ -176,12 +176,17 @@
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    /* Keep a stable scrollbar gutter so the thumb isn't overlaid on chips
+       (overlay scrollbars otherwise steal chip hit-tests and our custom drag
+       preventDefault then snaps scrollLeft to 0). */
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: rgba(16, 24, 40, 0.28) transparent;
+    padding-bottom: 2px;
 }
 
 .node-key-chips::-webkit-scrollbar {
-    height: 6px;
+    height: 8px;
 }
 
 .node-key-chips::-webkit-scrollbar-thumb {

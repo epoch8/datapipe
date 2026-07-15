@@ -4,6 +4,16 @@ import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
 
 const FOCUS_CLASSES = "focused related muted dimmed";
 
+/** Stable fingerprint of the current selection for idempotent focus. */
+let lastFocusKey = "";
+
+function selectionFocusKey(selected: Cytoscape.NodeCollection): string {
+    return selected
+        .map((n) => n.id())
+        .sort()
+        .join("\0");
+}
+
 export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     cy.nodes().forEach((node) => {
         if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
@@ -41,16 +51,28 @@ function applyNeighborhoodFocus(
     highlightedEdges: Cytoscape.EdgeCollection,
     highlightedNodes: Cytoscape.NodeCollection,
 ): void {
-    cy.elements().removeClass(FOCUS_CLASSES);
+    const key = selectionFocusKey(selected);
+    // Skip churn when focus already matches this selection (label rebuilds +
+    // mouseover noise otherwise flash related/muted/orange edges).
+    if (key && key === lastFocusKey && selected.first()?.hasClass("focused")) return;
+    lastFocusKey = key;
 
-    selected.addClass("focused");
-    const relatedNodes = highlightedNodes.difference(selected);
-    relatedNodes.addClass("related");
-    highlightedEdges.addClass("related");
-    cy.nodes().not(highlightedNodes).addClass("dimmed");
-    cy.edges().not(highlightedEdges).addClass("muted");
+    // Update classes + ui* data inside one batch so html-label rebuilds (fired
+    // when styles flush) already see the correct template flags — otherwise
+    // labels briefly render with stale focused/related/dimmed and flash.
+    cy.batch(() => {
+        cy.elements().removeClass(FOCUS_CLASSES);
 
-    syncHtmlLabelInteractionState(cy);
+        selected.addClass("focused");
+        const relatedNodes = highlightedNodes.difference(selected);
+        relatedNodes.addClass("related");
+        highlightedEdges.addClass("related");
+        cy.nodes().not(highlightedNodes).addClass("dimmed");
+        cy.edges().not(highlightedEdges).addClass("muted");
+
+        syncHtmlLabelInteractionState(cy);
+    });
+
     refreshInternalEdgeOverlay(cy);
 }
 
@@ -85,8 +107,11 @@ export function focusSelection(cy: Cytoscape.Core): void {
 }
 
 export function clearFocus(cy: Cytoscape.Core): void {
-    cy.elements().removeClass(FOCUS_CLASSES);
-    syncHtmlLabelInteractionState(cy);
+    lastFocusKey = "";
+    cy.batch(() => {
+        cy.elements().removeClass(FOCUS_CLASSES);
+        syncHtmlLabelInteractionState(cy);
+    });
     refreshInternalEdgeOverlay(cy);
 }
 

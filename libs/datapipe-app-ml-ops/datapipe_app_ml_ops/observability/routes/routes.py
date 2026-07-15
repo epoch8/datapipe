@@ -29,6 +29,7 @@ from datapipe_app_ml_ops.observability.schemas.models import (
     FrozenDatasetsResponse,
     MetricsCandidateCreate,
     MetricsCandidateRow,
+    MetricsEntityResolveResponse,
     MetricsEvaluateRequest,
     MetricsEvaluateResponse,
     MetricsModelDetailResponse,
@@ -93,6 +94,19 @@ def register_ml_observability_routes(
     @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets", response_model=FrozenDatasetsResponse)
     def get_frozen_datasets(pipeline_id: str) -> FrozenDatasetsResponse:
         return _metrics_svc().list_frozen_datasets(pipeline_id)
+
+    @app.get("/pipelines/{pipeline_id}/metrics/resolve-entity", response_model=MetricsEntityResolveResponse)
+    def resolve_metrics_entity(
+        pipeline_id: str,
+        model_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+    ) -> MetricsEntityResolveResponse:
+        try:
+            return _metrics_svc().resolve_entity(pipeline_id, model_id=model_id, dataset_id=dataset_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/pipelines/{pipeline_id}/metrics/frozen-datasets/{dataset_id}", response_model=FrozenDatasetDetailResponse)
     def get_frozen_dataset_detail(

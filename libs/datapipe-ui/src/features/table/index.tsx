@@ -49,7 +49,26 @@ const GET_TRANSFORM_URL =
 const TRANSFORM_WS_BASE =
     (process.env["REACT_APP_WEBSOCKET_URL"] as string) || "/api/v1alpha3/ws/transform/";
 
-function renderCellValue(value: unknown, columnName: string, pipelineId?: string): React.ReactNode {
+function pickFrozenDatasetId(row?: Record<string, unknown>): string | undefined {
+    if (!row) return undefined;
+    for (const [key, value] of Object.entries(row)) {
+        if (
+            (key === "frozen_dataset_id" || key.endsWith("_frozen_dataset_id")) &&
+            typeof value === "string" &&
+            value
+        ) {
+            return value;
+        }
+    }
+    return undefined;
+}
+
+function renderCellValue(
+    value: unknown,
+    columnName: string,
+    pipelineId?: string,
+    row?: Record<string, unknown>,
+): React.ReactNode {
     if (value === null || value === undefined) {
         return value as null | undefined;
     }
@@ -63,7 +82,11 @@ function renderCellValue(value: unknown, columnName: string, pipelineId?: string
     const isFrozenDatasetIdColumn =
         columnName === "frozen_dataset_id" || columnName.endsWith("_frozen_dataset_id");
     if (typeof value === "string" && isModelIdColumn) {
-        return renderEntityLink({ kind: "model", id: value });
+        return renderEntityLink({
+            kind: "model",
+            id: value,
+            datasetId: pickFrozenDatasetId(row),
+        });
     }
     if (typeof value === "string" && isFrozenDatasetIdColumn) {
         return renderEntityLink({ kind: "dataset", id: value });
@@ -421,7 +444,8 @@ const loadTable = async (
                 dataIndex: column,
                 className: isPk ? "dp-pk-col" : undefined,
                 sorter: typeof colValue !== "object",
-                render: (value: unknown) => renderCellValue(value, column, pipelineId),
+                render: (value: unknown, row: Record<string, unknown>) =>
+                    renderCellValue(value, column, pipelineId, row),
                 filterDropdown:
                     typeof colValue !== "object" &&
                     (({

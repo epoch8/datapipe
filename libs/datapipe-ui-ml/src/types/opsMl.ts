@@ -153,6 +153,7 @@ export interface MetricsModelDetailResponse {
     pipeline_id: string;
     model_id: string;
     title: string;
+    spec_id?: string | null;
     source_table?: string | null;
     source_pk?: Record<string, string | number | boolean | null> | null;
     source_record?: Record<string, unknown> | null;
@@ -188,6 +189,7 @@ export interface FrozenDatasetDetailResponse {
     pipeline_id: string;
     dataset_id: string;
     title: string;
+    spec_id?: string | null;
     dataset: FrozenDatasetRow;
     source_table?: string | null;
     source_pk?: Record<string, unknown> | null;

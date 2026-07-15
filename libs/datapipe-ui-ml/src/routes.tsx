@@ -41,11 +41,7 @@ export function mlOpsRouteElements(): React.ReactNode {
             <Route path="/metrics/:specId" element={<OpsSpecificSpecPage kind="metrics" />} />
             <Route path="/class-metrics" element={<OpsOverviewSpecPage kind="class-metrics" />} />
             <Route path="/class-metrics/:specId" element={<OpsSpecificSpecPage kind="class-metrics" />} />
-            <Route path="/metrics/models/:modelId" element={<ModelDetailPage />} />
-            <Route path="/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
             <Route path="/pipelines/:id/metrics" element={<MetricsOverviewPage />} />
-            <Route path="/pipelines/:id/metrics/models/:modelId" element={<ModelDetailPage />} />
-            <Route path="/pipelines/:id/metrics/datasets/:datasetId" element={<FrozenDatasetDetailPage />} />
             <Route path="/classes" element={<ClassMetricsPage />} />
             <Route path="/pipelines/:id/classes" element={<ClassMetricsPage />} />
             <Route path="/pipelines/:id/training" element={<TrainingRunsPage />} />

@@ -39,6 +39,7 @@ from datapipe_app_ml_ops.observability.schemas.models import (
     MetricsCandidateCreate,
     MetricsCandidateRow,
     MetricsCandidatesResponse,
+    MetricsEntityResolveResponse,
     MetricsModelDetailKpi,
     MetricsModelDetailRelated,
     MetricsModelDetailResponse,
@@ -1028,6 +1029,7 @@ class MetricsService:
             pipeline_id=pipeline_id,
             model_id=model_id,
             title=model_id,
+            spec_id=entity_index.model_to_spec.get(model_id),
             source_table=source.table_name if source else None,
             source_pk=source.pk if source else None,
             source_record=source.record if source else None,
@@ -1043,6 +1045,49 @@ class MetricsService:
                 run_key=primary_row.run_key if primary_row else None,
                 run_id=primary_row.run_id if primary_row else None,
             ),
+        )
+
+    def resolve_entity(
+        self,
+        pipeline_id: str,
+        *,
+        model_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+    ) -> MetricsEntityResolveResponse:
+        if bool(model_id) == bool(dataset_id):
+            raise ValueError("Provide exactly one of model_id or dataset_id")
+
+        entity_index = _load_entity_source_records(
+            self.ds,
+            self.catalog,
+            candidates=_load_candidates(self.store, pipeline_id),
+            ops_specs=self.ops_specs,
+        )
+        sole_spec_id = None
+        if self.ops_specs is not None:
+            specs = list(self.ops_specs.list())
+            if len(specs) == 1:
+                sole_spec_id = specs[0].id
+
+        if model_id:
+            spec_id = entity_index.model_to_spec.get(model_id) or sole_spec_id
+            if not spec_id:
+                raise KeyError(f'Model "{model_id}" is not linked to an ops spec')
+            return MetricsEntityResolveResponse(
+                kind="model",
+                spec_id=spec_id,
+                model_id=model_id,
+                dataset_id=dataset_id or entity_index.model_to_dataset.get(model_id),
+            )
+
+        assert dataset_id is not None
+        spec_id = entity_index.dataset_to_spec.get(dataset_id) or sole_spec_id
+        if not spec_id:
+            raise KeyError(f'Dataset "{dataset_id}" is not linked to an ops spec')
+        return MetricsEntityResolveResponse(
+            kind="dataset",
+            spec_id=spec_id,
+            dataset_id=dataset_id,
         )
 
     def get_frozen_dataset_detail(
@@ -1108,6 +1153,7 @@ class MetricsService:
             pipeline_id=pipeline_id,
             dataset_id=dataset_id,
             title=dataset_id,
+            spec_id=entity_index.dataset_to_spec.get(dataset_id),
             dataset=dataset.model_copy(update={"models_count": models_count or dataset.models_count}),
             source_table=source.table_name if source else None,
             source_pk=source.pk if source else None,

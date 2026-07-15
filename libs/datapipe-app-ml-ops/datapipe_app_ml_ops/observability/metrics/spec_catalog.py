@@ -70,6 +70,8 @@ class EntitySourceIndex:
     model_to_dataset: dict[str, str] = field(default_factory=dict)
     dataset_to_models: dict[str, list[str]] = field(default_factory=dict)
     dataset_model_link_records: dict[tuple[str, str], EntitySourceRecord] = field(default_factory=dict)
+    model_to_spec: dict[str, str] = field(default_factory=dict)
+    dataset_to_spec: dict[str, str] = field(default_factory=dict)
     _model_priority: dict[str, int] = field(default_factory=dict)
     _dataset_priority: dict[str, int] = field(default_factory=dict)
 
@@ -217,6 +219,7 @@ def _index_frozen_datasets(index: EntitySourceIndex, registry: OpsSpecRegistry, 
                 ),
                 priority=1,
             )
+            index.dataset_to_spec[did] = spec.id
 
 
 def _index_models(index: EntitySourceIndex, registry: OpsSpecRegistry, ds: DataStore) -> None:
@@ -246,6 +249,7 @@ def _index_models(index: EntitySourceIndex, registry: OpsSpecRegistry, ds: DataS
                 ),
                 priority=1,
             )
+            index.model_to_spec[mid] = spec.id
 
 
 def _index_relations(index: EntitySourceIndex, registry: OpsSpecRegistry, ds: DataStore) -> None:

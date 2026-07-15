@@ -54,9 +54,10 @@ function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
             return aParent - bParent;
         })
         .map(([nodeId, options]) => ({
-            // Collapsed groups are selectable (single-click opens the inspector +
-            // selection highlight); group-expanded frames are not.
-            selectable: options.type !== "group-expanded",
+            // Selection is driven only by our DOM/gesture handlers. Keeping
+            // nodes unselectable stops Cytoscape's native tap from racing
+            // unselect↔select with those handlers (which flashes focus styles).
+            selectable: false,
             grabbable: options.type !== "group" && options.type !== "group-expanded",
             data: {
                 id: nodeId,
@@ -98,12 +99,8 @@ function applyNodeDiff(cy: Cytoscape.Core, target: CyElement[], removeAbsent = t
                 const nextParent = (el.data.parent as string) ?? null;
                 const currentParent = node.isChild() ? node.parent().first().id() : null;
                 node.data(el.data);
-                // Keep selectability in sync when a node's type changes across
-                // collapse/expand (e.g. group ⇄ group-expanded).
-                if (typeof el.selectable === "boolean" && node.selectable() !== el.selectable) {
-                    if (el.selectable) node.selectify();
-                    else node.unselectify();
-                }
+                // Always keep nodes unselectable so only app gestures select.
+                if (node.selectable()) node.unselectify();
                 if (nextParent !== currentParent) {
                     node.move({ parent: nextParent });
                 }

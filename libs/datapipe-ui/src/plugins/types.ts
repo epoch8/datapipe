@@ -22,6 +22,7 @@ export type EntityLinkProps =
           id: string;
           datasetId?: string;
           subset?: string;
+          specId?: string;
           children?: React.ReactNode;
           className?: string;
       }
@@ -29,6 +30,7 @@ export type EntityLinkProps =
           kind: "dataset";
           id: string;
           subset?: string;
+          specId?: string;
           children?: React.ReactNode;
           className?: string;
       };
