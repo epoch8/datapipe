@@ -197,36 +197,114 @@ export function countBipartiteCrossings(
     return crossings;
 }
 
-function layerNeighborMap(
-    layer: string[],
-    other: string[],
-    edges: LayoutEdge[],
-): Map<string, string[]> {
-    const layerSet = new Set(layer);
-    const otherSet = new Set(other);
-    const neighbors = new Map<string, string[]>();
-    layer.forEach((id) => neighbors.set(id, []));
-    edges.forEach(({ source, target }) => {
-        if (layerSet.has(source) && otherSet.has(target)) {
-            neighbors.get(source)?.push(target);
-        } else if (layerSet.has(target) && otherSet.has(source)) {
-            neighbors.get(target)?.push(source);
-        }
-    });
-    return neighbors;
+/** Normalized lateral position of a node in its own layer (0..1). */
+function layerNormalizedPos(
+    id: string,
+    nodeRank: Map<string, number>,
+    ordered: Map<number, string[]>,
+): number | null {
+    const rank = nodeRank.get(id);
+    if (rank == null) return null;
+    const layer = ordered.get(rank);
+    if (!layer?.length) return null;
+    const index = layer.indexOf(id);
+    if (index < 0) return null;
+    return layer.length === 1 ? 0.5 : index / (layer.length - 1);
 }
 
-function orderByBarycenter(
+/**
+ * Crossings on the cut between two consecutive ranks, including long-span edges
+ * (e.g. sequential dashed hops) that jump over intermediate layers.
+ */
+export function countLayerCutCrossings(
+    ordered: Map<number, string[]>,
+    nodeRank: Map<string, number>,
+    upperRank: number,
+    lowerRank: number,
+    edges: LayoutEdge[],
+): number {
+    const pairs: Array<{ u: number; v: number }> = [];
+    edges.forEach(({ source, target }) => {
+        let src = source;
+        let tgt = target;
+        let rs = nodeRank.get(src);
+        let rt = nodeRank.get(tgt);
+        if (rs == null || rt == null || rs === rt) return;
+        if (rs > rt) {
+            src = target;
+            tgt = source;
+            const tmp = rs;
+            rs = rt;
+            rt = tmp;
+        }
+        // Edge crosses this cut if it starts at/above upper and ends at/below lower.
+        if (rs > upperRank || rt < lowerRank) return;
+        const u = layerNormalizedPos(src, nodeRank, ordered);
+        const v = layerNormalizedPos(tgt, nodeRank, ordered);
+        if (u == null || v == null) return;
+        pairs.push({ u, v });
+    });
+
+    let crossings = 0;
+    for (let i = 0; i < pairs.length; i += 1) {
+        for (let j = i + 1; j < pairs.length; j += 1) {
+            const a = pairs[i];
+            const b = pairs[j];
+            if ((a.u - b.u) * (a.v - b.v) < 0) crossings += 1;
+        }
+    }
+    return crossings;
+}
+
+function buildNodeRankMap(ordered: Map<number, string[]>): Map<string, number> {
+    const nodeRank = new Map<string, number>();
+    ordered.forEach((ids, rank) => {
+        ids.forEach((id) => nodeRank.set(id, rank));
+    });
+    return nodeRank;
+}
+
+/**
+ * Neighbors for barycenter: adjacent-layer edges plus long-span ends on the
+ * far side (so sequential dashed hops pull endpoints into uncrossed lanes).
+ */
+function layerNeighborPositions(
     layer: string[],
-    otherOrder: Map<string, number>,
-    neighbors: Map<string, string[]>,
+    layerRank: number,
+    toward: "above" | "below",
+    nodeRank: Map<string, number>,
+    ordered: Map<number, string[]>,
+    edges: LayoutEdge[],
+): Map<string, number[]> {
+    const layerSet = new Set(layer);
+    const positions = new Map<string, number[]>();
+    layer.forEach((id) => positions.set(id, []));
+
+    edges.forEach(({ source, target }) => {
+        const tryPush = (from: string, to: string) => {
+            if (!layerSet.has(from)) return;
+            const toRank = nodeRank.get(to);
+            if (toRank == null) return;
+            if (toward === "above" && !(toRank < layerRank)) return;
+            if (toward === "below" && !(toRank > layerRank)) return;
+            const pos = layerNormalizedPos(to, nodeRank, ordered);
+            if (pos == null) return;
+            positions.get(from)?.push(pos);
+        };
+        tryPush(source, target);
+        tryPush(target, source);
+    });
+
+    return positions;
+}
+
+function orderByFarBarycenter(
+    layer: string[],
+    neighborPositions: Map<string, number[]>,
     nodes: Map<string, MeasuredNode>,
 ): string[] {
     const scored = layer.map((id, index) => {
-        const neigh = neighbors.get(id) ?? [];
-        const positions = neigh
-            .map((n) => otherOrder.get(n))
-            .filter((pos): pos is number => pos != null);
+        const positions = neighborPositions.get(id) ?? [];
         const bary =
             positions.length > 0
                 ? positions.reduce((sum, pos) => sum + pos, 0) / positions.length
@@ -244,26 +322,42 @@ function orderByBarycenter(
 
 /** Adjacent transposition pass — swap neighbors if that cuts crossings. */
 function transposeLayerPair(
-    upper: string[],
-    lower: string[],
+    ordered: Map<number, string[]>,
+    nodeRank: Map<string, number>,
+    upperRank: number,
+    lowerRank: number,
     edges: LayoutEdge[],
-    _nodes: Map<string, MeasuredNode>,
     fixUpper: boolean,
 ): { upper: string[]; lower: string[]; improved: boolean } {
     let improved = false;
-    const nextUpper = [...upper];
-    const nextLower = [...lower];
+    const nextUpper = [...(ordered.get(upperRank) ?? [])];
+    const nextLower = [...(ordered.get(lowerRank) ?? [])];
     const movable = fixUpper ? nextLower : nextUpper;
+    const scratch = new Map(ordered);
+    scratch.set(upperRank, nextUpper);
+    scratch.set(lowerRank, nextLower);
 
     let swapped = true;
     while (swapped) {
         swapped = false;
         for (let i = 0; i < movable.length - 1; i += 1) {
-            const before = countBipartiteCrossings(nextUpper, nextLower, edges);
+            const before = countLayerCutCrossings(
+                scratch,
+                nodeRank,
+                upperRank,
+                lowerRank,
+                edges,
+            );
             const tmp = movable[i];
             movable[i] = movable[i + 1];
             movable[i + 1] = tmp;
-            const after = countBipartiteCrossings(nextUpper, nextLower, edges);
+            const after = countLayerCutCrossings(
+                scratch,
+                nodeRank,
+                upperRank,
+                lowerRank,
+                edges,
+            );
             if (after < before) {
                 swapped = true;
                 improved = true;
@@ -279,6 +373,8 @@ function transposeLayerPair(
 /**
  * Sugiyama-style crossing minimization: barycenter sweeps + transpose, seeded by
  * pipeline order. Keeps existing rank assignment; only reorders within layers.
+ * Long-span edges (sequential dashed hops) count on every cut they cross so they
+ * avoid colliding with solid mid-layer routes.
  */
 export function minimizeLayerCrossings(
     ranks: Map<number, string[]>,
@@ -291,13 +387,16 @@ export function minimizeLayerCrossings(
 
     const ordered = new Map<number, string[]>();
     rankKeys.forEach((r) => ordered.set(r, sortRankIds(ranks.get(r) ?? [], nodes)));
+    const nodeRank = buildNodeRankMap(ordered);
 
     const totalCrossings = () => {
         let total = 0;
         for (let i = 0; i < rankKeys.length - 1; i += 1) {
-            total += countBipartiteCrossings(
-                ordered.get(rankKeys[i]) ?? [],
-                ordered.get(rankKeys[i + 1]) ?? [],
+            total += countLayerCutCrossings(
+                ordered,
+                nodeRank,
+                rankKeys[i],
+                rankKeys[i + 1],
                 edges,
             );
         }
@@ -309,40 +408,58 @@ export function minimizeLayerCrossings(
     let prevScore = bestScore;
 
     for (let iter = 0; iter < maxIters; iter += 1) {
-        // Downward sweep: order layer i+1 from layer i.
+        // Downward sweep: order layer i+1 from everything above (incl. long spans).
         for (let i = 0; i < rankKeys.length - 1; i += 1) {
-            const upper = ordered.get(rankKeys[i]) ?? [];
-            const lower = ordered.get(rankKeys[i + 1]) ?? [];
-            const upperOrder = new Map(upper.map((id, index) => [id, index]));
-            const neighbors = layerNeighborMap(lower, upper, edges);
-            ordered.set(
-                rankKeys[i + 1],
-                orderByBarycenter(lower, upperOrder, neighbors, nodes),
+            const lowerKey = rankKeys[i + 1];
+            const lower = ordered.get(lowerKey) ?? [];
+            const neighborPos = layerNeighborPositions(
+                lower,
+                lowerKey,
+                "above",
+                nodeRank,
+                ordered,
+                edges,
             );
+            ordered.set(lowerKey, orderByFarBarycenter(lower, neighborPos, nodes));
         }
 
-        // Upward sweep: order layer i from layer i+1.
+        // Upward sweep: order layer i from everything below.
         for (let i = rankKeys.length - 1; i > 0; i -= 1) {
-            const lower = ordered.get(rankKeys[i]) ?? [];
-            const upper = ordered.get(rankKeys[i - 1]) ?? [];
-            const lowerOrder = new Map(lower.map((id, index) => [id, index]));
-            const neighbors = layerNeighborMap(upper, lower, edges);
-            ordered.set(
-                rankKeys[i - 1],
-                orderByBarycenter(upper, lowerOrder, neighbors, nodes),
+            const upperKey = rankKeys[i - 1];
+            const upper = ordered.get(upperKey) ?? [];
+            const neighborPos = layerNeighborPositions(
+                upper,
+                upperKey,
+                "below",
+                nodeRank,
+                ordered,
+                edges,
             );
+            ordered.set(upperKey, orderByFarBarycenter(upper, neighborPos, nodes));
         }
 
         // Local transpose refinement on each consecutive pair.
         for (let i = 0; i < rankKeys.length - 1; i += 1) {
             const upperKey = rankKeys[i];
             const lowerKey = rankKeys[i + 1];
-            let upper = ordered.get(upperKey) ?? [];
-            let lower = ordered.get(lowerKey) ?? [];
-            const down = transposeLayerPair(upper, lower, edges, nodes, true);
-            upper = down.upper;
-            lower = down.lower;
-            const up = transposeLayerPair(upper, lower, edges, nodes, false);
+            const down = transposeLayerPair(
+                ordered,
+                nodeRank,
+                upperKey,
+                lowerKey,
+                edges,
+                true,
+            );
+            ordered.set(upperKey, down.upper);
+            ordered.set(lowerKey, down.lower);
+            const up = transposeLayerPair(
+                ordered,
+                nodeRank,
+                upperKey,
+                lowerKey,
+                edges,
+                false,
+            );
             ordered.set(upperKey, up.upper);
             ordered.set(lowerKey, up.lower);
         }
@@ -440,6 +557,9 @@ export function buildRankEdges(
     nodes: Map<string, MeasuredNode>,
     renderEdges: LayoutEdge[],
 ): LayoutEdge[] {
+    // Sequential/synthetic next-step hops stay out of rank assignment (they are
+    // visual “pipeline order” overlays). Crossing minimization still sees them
+    // — including as long spans across intermediate layers.
     const rankCandidates = renderEdges.filter((edge) => !edge.sequential && !edge.synthetic);
     return makeAcyclicRankEdges(rankCandidates, nodes);
 }

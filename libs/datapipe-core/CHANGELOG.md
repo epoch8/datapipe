@@ -1,3 +1,33 @@
+# Unreleased (WIP)
+
+## Extension hooks for CLI
+
+* New `importlib.metadata` entry-point groups for extensions:
+  * `datapipe.pipeline_init` — runs after `load_pipeline()`
+  * `datapipe.run_steps` — optional wrapper around CLI step execution
+    (e.g. Ops run recording)
+  * `datapipe.db_create_all` — hooks into `datapipe db create-all`
+* `datapipe run` gains `--loop`, `--loop-delay`, and `--no-record`
+* `datapipe step run` gains `--no-record` (works with existing `--loop`)
+
+## Schema creation
+
+* Extracted `ensure_db_schema(dbconn)` in `datapipe.store.database`
+* Schema is created automatically on `TableStoreDB` / `SQLTableMeta` /
+  `SQLTransformMeta` when `create_table=True`, and from
+  `datapipe db create-all`
+
+## Executor / step progress
+
+* `Executor.run_process_batch` accepts optional `on_batch_complete`
+* `BaseBatchTransformStep.run_full` accepts optional `on_batch_progress`
+* Step logs include input/output table names
+
+## Fixes
+
+* Disable Ray UV runtime env by default (`RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`)
+  before importing Ray, avoiding misconfigured `uv run` worker startups
+
 # 0.15.0
 
 ## Important new stuff:

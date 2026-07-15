@@ -1,6 +1,7 @@
 import {
     buildCollapsedLayout,
     countBipartiteCrossings,
+    countLayerCutCrossings,
     expandGroupInLayout,
     GROUP_PADDING,
     layoutLayeredDag,
@@ -203,5 +204,69 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         // Edges A→D, B→C: after uncross, order should be A,B on top and D,C
         // (or equivalent so (ax-bx)*(dx-cx) >= 0).
         expect((ax - bx) * (dx - cx)).toBeGreaterThanOrEqual(0);
+    });
+
+    it("counts long-span sequential edges on multi-layer cuts", () => {
+        const ordered = new Map<number, string[]>([
+            [0, ["A", "B"]],
+            [1, ["M"]],
+            [2, ["C", "D"]],
+        ]);
+        const nodeRank = new Map([
+            ["A", 0],
+            ["B", 0],
+            ["M", 1],
+            ["C", 2],
+            ["D", 2],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "A", target: "D", sequential: true, synthetic: true },
+            { source: "B", target: "C", sequential: true, synthetic: true },
+        ];
+        // A left→D right and B left→C left-of-D? With bottom C,D: A→D and B→C cross.
+        expect(countLayerCutCrossings(ordered, nodeRank, 0, 2, edges)).toBe(1);
+        // Same endpoints uncrossed when bottom is D,C.
+        const uncrossed = new Map<number, string[]>([
+            [0, ["A", "B"]],
+            [1, ["M"]],
+            [2, ["D", "C"]],
+        ]);
+        expect(countLayerCutCrossings(uncrossed, nodeRank, 0, 2, edges)).toBe(0);
+    });
+
+    it("uncrosses a sequential long hop against a solid mid path", () => {
+        // A B
+        // M
+        // C D
+        // solid A→M→C, B→M→D plus sequential A→D (wants A above D / B above C → swap bottom)
+        const ranks = new Map<number, string[]>([
+            [0, ["A", "B"]],
+            [1, ["M"]],
+            [2, ["C", "D"]],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "A", target: "M" },
+            { source: "B", target: "M" },
+            { source: "M", target: "C" },
+            { source: "M", target: "D" },
+            { source: "A", target: "D", sequential: true, synthetic: true },
+            { source: "B", target: "C", sequential: true, synthetic: true },
+        ];
+        const nodes = new Map<string, MeasuredNode>([
+            ["A", stubNode("A")],
+            ["B", stubNode("B")],
+            ["M", stubNode("M")],
+            ["C", stubNode("C")],
+            ["D", stubNode("D")],
+        ]);
+        const ordered = minimizeLayerCrossings(ranks, edges, nodes);
+        const top = ordered.get(0)!;
+        const bottom = ordered.get(2)!;
+        const a = top.indexOf("A");
+        const b = top.indexOf("B");
+        const c = bottom.indexOf("C");
+        const d = bottom.indexOf("D");
+        // Sequential A→D and B→C are uncrossed when (a-b)*(d-c) >= 0.
+        expect((a - b) * (d - c)).toBeGreaterThanOrEqual(0);
     });
 });
