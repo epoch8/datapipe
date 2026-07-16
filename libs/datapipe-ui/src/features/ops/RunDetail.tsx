@@ -12,7 +12,7 @@ import {
     Tag,
     Typography,
 } from "antd";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import type { PipelineDetail, RunDetail as RunDetailType } from "../../types/ops";
 import { PageHeader } from "./shared";
@@ -24,6 +24,8 @@ import { formatRunTriggerLabel } from "./utils/recentRuns";
 import { workflowIconSvg } from "../cy/nodeIcons";
 
 const { Text } = Typography;
+
+const RUN_TABS = new Set(["logs", "steps", "outputs"]);
 
 function statusColor(status: string): string {
     if (status === "failed" || status === "interrupted") return "red";
@@ -55,12 +57,58 @@ function formatTrigger(trigger?: string): string {
 export function RunDetail() {
     const { runId = "" } = useParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [run, setRun] = React.useState<RunDetailType | null>(null);
     const [pipeline, setPipeline] = React.useState<PipelineDetail | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [refreshToken, setRefreshToken] = React.useState(0);
-    const [activeTab, setActiveTab] = React.useState("logs");
-    const [logStepFilter, setLogStepFilter] = React.useState<string | null>(null);
+
+    const tabParam = searchParams.get("tab");
+    const activeTab = tabParam && RUN_TABS.has(tabParam) ? tabParam : "logs";
+    const logStepFilter = searchParams.get("step");
+
+    const setActiveTab = React.useCallback(
+        (tab: string) => {
+            setSearchParams(
+                (prev) => {
+                    const next = new URLSearchParams(prev);
+                    if (tab === "logs") next.delete("tab");
+                    else next.set("tab", tab);
+                    // Step filter only applies on the Logs tab.
+                    if (tab !== "logs") next.delete("step");
+                    return next;
+                },
+                { replace: false },
+            );
+        },
+        [setSearchParams],
+    );
+
+    const openStepLogs = React.useCallback(
+        (stepName: string) => {
+            setSearchParams(
+                (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.delete("tab");
+                    next.set("step", stepName);
+                    return next;
+                },
+                { replace: false },
+            );
+        },
+        [setSearchParams],
+    );
+
+    const clearStepFilter = React.useCallback(() => {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("step");
+                return next;
+            },
+            { replace: true },
+        );
+    }, [setSearchParams]);
 
     const refresh = React.useCallback(() => {
         setRefreshToken((token) => token + 1);
@@ -93,11 +141,6 @@ export function RunDetail() {
             if (timer) clearInterval(timer);
         };
     }, [runId, refreshToken]);
-
-    React.useEffect(() => {
-        setLogStepFilter(null);
-        setActiveTab("logs");
-    }, [runId]);
 
     React.useEffect(() => {
         if (!run?.pipeline_id) return;
@@ -179,11 +222,6 @@ export function RunDetail() {
 
     const stepPageHref = (stepName: string) =>
         `/pipelines/${encodeURIComponent(run.pipeline_id)}/transforms/${encodeURIComponent(stepName)}`;
-
-    const openStepLogs = (stepName: string) => {
-        setLogStepFilter(stepName);
-        setActiveTab("logs");
-    };
 
     const stepColumns = [
         {
@@ -286,7 +324,7 @@ export function RunDetail() {
                         runId={run.run_id}
                         status={run.status}
                         stepFilter={logStepFilter}
-                        onClearStepFilter={() => setLogStepFilter(null)}
+                        onClearStepFilter={clearStepFilter}
                     />
                     <div className="pipeline-card pipeline-card-main" style={{ marginTop: 16 }}>
                         <div className="pipeline-card-header">
