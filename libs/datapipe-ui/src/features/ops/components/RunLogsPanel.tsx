@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Dropdown, Menu, Typography } from "antd";
 import { opsApi } from "../../../api/client";
 import type { RunLogLine } from "../../../types/ops";
@@ -40,9 +40,12 @@ function formatRefreshLabel(ms: number | null): string {
 type Props = {
     runId: string;
     status: string;
+    /** When set, only lines whose message mentions this step name are shown. */
+    stepFilter?: string | null;
+    onClearStepFilter?: () => void;
 };
 
-export function RunLogsPanel({ runId, status }: Props) {
+export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilter }: Props) {
     const [lines, setLines] = useState<RunLogLine[]>([]);
     const [refreshMs, setRefreshMs] = useState<number | null>(() => readStoredRefreshMs());
     const lastSeqRef = useRef(0);
@@ -105,11 +108,17 @@ export function RunLogsPanel({ runId, status }: Props) {
         fetchLogs();
     }, [status, fetchLogs]);
 
+    const visibleLines = useMemo(() => {
+        if (!stepFilter) return lines;
+        const needle = stepFilter.toLowerCase();
+        return lines.filter((ln) => ln.message.toLowerCase().includes(needle));
+    }, [lines, stepFilter]);
+
     useEffect(() => {
         const el = containerRef.current;
         if (!el || !stickToBottomRef.current) return;
         el.scrollTop = el.scrollHeight;
-    }, [lines]);
+    }, [visibleLines]);
 
     const onScroll = () => {
         const el = containerRef.current;
@@ -124,14 +133,15 @@ export function RunLogsPanel({ runId, status }: Props) {
     };
 
     const downloadLogs = () => {
-        const text = lines
+        const text = visibleLines
             .map((ln) => `${ln.logged_at} [${ln.level}] ${ln.message}`)
             .join("\n");
         const blob = new Blob([text], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = `run-${runId.slice(0, 8)}-logs.txt`;
+        const suffix = stepFilter ? `-${stepFilter.slice(0, 24)}` : "";
+        anchor.download = `run-${runId.slice(0, 8)}${suffix}-logs.txt`;
         anchor.click();
         URL.revokeObjectURL(url);
     };
@@ -163,15 +173,23 @@ export function RunLogsPanel({ runId, status }: Props) {
                             Refresh: {formatRefreshLabel(refreshMs)}
                         </Button>
                     </Dropdown>
-                    {lines.length > 0 && (
+                    {visibleLines.length > 0 && (
                         <Text type="secondary" style={{ marginRight: 8 }}>
-                            {lines.length.toLocaleString()} lines
+                            {visibleLines.length.toLocaleString()} lines
+                            {stepFilter && lines.length !== visibleLines.length
+                                ? ` / ${lines.length.toLocaleString()} total`
+                                : ""}
                         </Text>
                     )}
                     <Button size="small" onClick={fetchLogs} style={{ marginRight: 8 }}>
                         Refresh
                     </Button>
-                    <Button size="small" onClick={downloadLogs} disabled={!lines.length} style={{ marginRight: 8 }}>
+                    <Button
+                        size="small"
+                        onClick={downloadLogs}
+                        disabled={!visibleLines.length}
+                        style={{ marginRight: 8 }}
+                    >
                         Download
                     </Button>
                     <Button size="small" onClick={clearLogs} disabled={!lines.length}>
@@ -180,15 +198,32 @@ export function RunLogsPanel({ runId, status }: Props) {
                 </>
             }
         >
-            {lines.length === 0 ? (
-                <Text type="secondary">No log lines yet.</Text>
+            {stepFilter && (
+                <div style={{ marginBottom: 8 }}>
+                    <Text type="secondary">
+                        Filtered by step{" "}
+                        <Text code>{stepFilter}</Text>
+                    </Text>
+                    {onClearStepFilter && (
+                        <Button type="link" size="small" onClick={onClearStepFilter}>
+                            Show all
+                        </Button>
+                    )}
+                </div>
+            )}
+            {visibleLines.length === 0 ? (
+                <Text type="secondary">
+                    {stepFilter && lines.length > 0
+                        ? "No log lines mention this step."
+                        : "No log lines yet."}
+                </Text>
             ) : (
                 <pre
                     ref={containerRef}
                     onScroll={onScroll}
                     className="run-logs-viewer"
                 >
-                    {lines.map((ln) => (
+                    {visibleLines.map((ln) => (
                         <div
                             key={ln.seq}
                             className={`run-log-line run-log-${ln.level.toLowerCase()}`}

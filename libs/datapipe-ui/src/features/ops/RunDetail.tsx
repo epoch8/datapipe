@@ -59,6 +59,8 @@ export function RunDetail() {
     const [pipeline, setPipeline] = React.useState<PipelineDetail | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [refreshToken, setRefreshToken] = React.useState(0);
+    const [activeTab, setActiveTab] = React.useState("logs");
+    const [logStepFilter, setLogStepFilter] = React.useState<string | null>(null);
 
     const refresh = React.useCallback(() => {
         setRefreshToken((token) => token + 1);
@@ -91,6 +93,11 @@ export function RunDetail() {
             if (timer) clearInterval(timer);
         };
     }, [runId, refreshToken]);
+
+    React.useEffect(() => {
+        setLogStepFilter(null);
+        setActiveTab("logs");
+    }, [runId]);
 
     React.useEffect(() => {
         if (!run?.pipeline_id) return;
@@ -170,8 +177,21 @@ export function RunDetail() {
         </Menu>
     );
 
+    const stepPageHref = (stepName: string) =>
+        `/pipelines/${encodeURIComponent(run.pipeline_id)}/transforms/${encodeURIComponent(stepName)}`;
+
+    const openStepLogs = (stepName: string) => {
+        setLogStepFilter(stepName);
+        setActiveTab("logs");
+    };
+
     const stepColumns = [
-        { title: "Step", dataIndex: "step_name", key: "step_name" },
+        {
+            title: "Step",
+            dataIndex: "step_name",
+            key: "step_name",
+            render: (name: string) => <Link to={stepPageHref(name)}>{name}</Link>,
+        },
         {
             title: "Status",
             dataIndex: "status",
@@ -189,8 +209,8 @@ export function RunDetail() {
         {
             title: "Logs",
             key: "logs",
-            render: () => (
-                <Button type="link" size="small" onClick={() => undefined}>
+            render: (_: unknown, row: RunDetailType["steps"][number]) => (
+                <Button type="link" size="small" onClick={() => openStepLogs(row.step_name)}>
                     View
                 </Button>
             ),
@@ -260,9 +280,14 @@ export function RunDetail() {
                 <Alert style={{ marginBottom: 16 }} type="error" message={run.error} showIcon />
             )}
 
-            <Tabs defaultActiveKey="logs">
+            <Tabs activeKey={activeTab} onChange={setActiveTab}>
                 <Tabs.TabPane tab="Logs" key="logs">
-                    <RunLogsPanel runId={run.run_id} status={run.status} />
+                    <RunLogsPanel
+                        runId={run.run_id}
+                        status={run.status}
+                        stepFilter={logStepFilter}
+                        onClearStepFilter={() => setLogStepFilter(null)}
+                    />
                     <div className="pipeline-card pipeline-card-main" style={{ marginTop: 16 }}>
                         <div className="pipeline-card-header">
                             <div className="pipeline-card-title">
