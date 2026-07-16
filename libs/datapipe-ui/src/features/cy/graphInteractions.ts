@@ -14,7 +14,6 @@ import {
 const BG_CLEAR_MOVE_PX = 5;
 const NODE_PAN_MOVE_PX = 14;
 const BG_CLEAR_MAX_MS = 280;
-const TAP_DEDUPE_MS = 350;
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 6.0;
@@ -277,6 +276,12 @@ export function attachGraphInteractions(
     let ignoreNextSelect = false;
     let selectionFreeze: string[] | null = null;
     let pressStartedOnOverflow = false;
+    /**
+     * One-shot per pointer gesture: mouseup/click/cy-tap can all try to select the
+     * same press. A time window (TAP_DEDUPE_MS) was wrong — it also blocked the
+     * *next* intentional select after a quick deselect. Reset on every mousedown.
+     */
+    let selectHandledThisGesture = false;
     let chipDrag: {
         kind: string;
         scrollNodeId: string;
@@ -303,14 +308,13 @@ export function attachGraphInteractions(
         setSelectedNodeIds(cy, selectionFreeze);
     };
 
-    let selectGestureAt = 0;
     const runSelectOnce = (node: Cytoscape.NodeSingular, multi: boolean) => {
         if (consumeSelectSuppress()) {
             restoreFrozenSelection();
             return;
         }
-        if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) return;
-        selectGestureAt = performance.now();
+        if (selectHandledThisGesture) return;
+        selectHandledThisGesture = true;
         handleNodeSelect(node, multi);
     };
 
@@ -431,15 +435,12 @@ export function attachGraphInteractions(
         // previous gesture. The trailing click after a drag has no new mousedown
         // before it, so it still sees ignoreNextSelect=true.
         ignoreNextSelect = false;
+        selectHandledThisGesture = false;
 
         const scroller = (event.target as Element | null)?.closest?.(
             ".node-key-chips",
         ) as HTMLElement | null;
         if (scroller) {
-            const chipEl = (event.target as Element | null)?.closest?.(
-                ".node-key-chip",
-            ) as HTMLElement | null;
-            const onChip = Boolean(chipEl && scroller.contains(chipEl));
             const canScroll = scroller.scrollWidth > scroller.clientWidth;
             const rect = scroller.getBoundingClientRect();
             const sbH = Math.max(scroller.offsetHeight - scroller.clientHeight, 10);
@@ -448,7 +449,10 @@ export function attachGraphInteractions(
                 event.clientY >= rect.bottom - sbH &&
                 event.clientY <= rect.bottom + 2;
 
-            if (!onChip || inScrollbarBand) {
+            // Only the real scrollbar thumb/track should freeze selection. Clicks on
+            // chip gaps / scrollbar-gutter used to armSelectSuppress and keep the
+            // *previous* node selected (orange stays selected when aiming at green).
+            if (inScrollbarBand) {
                 rememberChipScroll(scroller);
                 selectionFreeze = getSelectedNodeIds(cy);
                 armSelectSuppress();
@@ -460,6 +464,8 @@ export function attachGraphInteractions(
                 const scrollNodeId = scroller.getAttribute("data-cy-node-id");
                 const kind = scroller.getAttribute("data-key-kind");
                 if (scrollNodeId && kind) {
+                    // Drag scrolls chips; a press without move selects this node
+                    // (chip, gap, or gutter — all belong to the card).
                     chipDrag = {
                         kind,
                         scrollNodeId,
@@ -476,6 +482,8 @@ export function attachGraphInteractions(
                     return;
                 }
             }
+            // Non-scrollable chip row: fall through to normal node select via
+            // data-cy-node-id on the scroller.
         }
 
         const overflow = resolveOverflowChip(event.target);
@@ -543,7 +551,8 @@ export function attachGraphInteractions(
             nodePress = null;
             return;
         }
-        if (performance.now() - selectGestureAt < TAP_DEDUPE_MS) {
+        // mouseup already selected this press — swallow the trailing click.
+        if (selectHandledThisGesture) {
             nodePress = null;
             return;
         }
