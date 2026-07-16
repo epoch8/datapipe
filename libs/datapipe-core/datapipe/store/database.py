@@ -3,7 +3,6 @@ import logging
 import math
 from typing import Any, Callable, Iterator, cast
 
-import numpy as np
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func, text
@@ -249,10 +248,12 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
-        # TODO разобраться, нужен ли этот блок кода, написать тесты на заполнение None/NULL
-        insert_sql = self.dbconn.insert(self.data_table).values(
-            df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
-        )
+        # SQLAlchemy expects Python None for SQL NULL; keep object dtype to avoid
+        # pandas downcasting warnings while preserving scalar values.
+        df_records = df.astype(object)
+        df_records[pd.isna(df_records)] = None
+        records = df_records.to_dict(orient="records")
+        insert_sql = self.dbconn.insert(self.data_table).values(records)
 
         if len(self.data_keys) > 0:
             sql = insert_sql.on_conflict_do_update(
