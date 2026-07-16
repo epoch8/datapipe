@@ -10,8 +10,6 @@ from datapipe.datatable import DataStore
 from datapipe_app_ml_ops.ops.ops_specs import DatapipeOpsSpec
 from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 
-DATASOURCE = "datapipe_analytics"
-
 
 @dataclass(frozen=True)
 class SqlAnalyticsContext:
@@ -148,18 +146,3 @@ def build_sql_analytics_context(
         )
 
     return SqlAnalyticsContext(schema_tables=schema_tables)
-
-
-def get_sql_schema_response(ctx: SqlAnalyticsContext) -> dict[str, Any]:
-    return {
-        "datasource": DATASOURCE,
-        "tables": [
-            {
-                "name": table["name"],
-                "columns": table["columns"],
-                "row_count": table["row_count"],
-                "physical_table": table.get("physical_table"),
-            }
-            for table in ctx.schema_tables
-        ],
-    }

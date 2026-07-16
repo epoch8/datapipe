@@ -1,5 +1,4 @@
 import type {
-    OverviewResponse,
     PipelineDetail,
     RecentRunSummary,
     ResetTransformMetadataResponse,
@@ -69,7 +68,6 @@ async function fallbackStageRecentRuns(
 }
 
 export const coreOpsApi = {
-    getOverview: () => fetchJson<OverviewResponse>("/overview"),
     getCapabilities: () => fetchJson<Capabilities>("/capabilities"),
     getSettings: () => fetchJson<SettingsInfo>("/settings"),
     getPipeline: (id: string) => fetchJson<PipelineDetail>(`/pipelines/${id}`),

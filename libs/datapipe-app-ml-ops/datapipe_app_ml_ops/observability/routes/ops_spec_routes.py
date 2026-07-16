@@ -91,13 +91,6 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
         except (KeyError, OpsSpecValidationError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    @app.get("/pipelines/{pipeline_id}/ops-specs/{spec_id}/metrics")
-    def metrics_tables(pipeline_id: str, spec_id: str) -> dict[str, Any]:
-        try:
-            return {"tables": service.get_spec(spec_id)["metrics"]}
-        except KeyError as exc:
-            raise HTTPException(404, str(exc)) from exc
-
     @app.get("/pipelines/{pipeline_id}/ops-specs/{spec_id}/metrics/{table_id}/rows")
     def metric_rows(
         pipeline_id: str,
@@ -131,13 +124,6 @@ def register_ops_spec_routes(app: FastAPI, service: OpsSpecsService) -> None:
             )
         except (KeyError, OpsSpecValidationError) as exc:
             raise HTTPException(400, str(exc)) from exc
-
-    @app.get("/pipelines/{pipeline_id}/ops-specs/{spec_id}/class-metrics")
-    def class_metrics_tables(pipeline_id: str, spec_id: str) -> dict[str, Any]:
-        try:
-            return {"tables": service.get_spec(spec_id)["class_metrics"]}
-        except KeyError as exc:
-            raise HTTPException(404, str(exc)) from exc
 
     @app.get("/pipelines/{pipeline_id}/ops-specs/{spec_id}/class-metrics/{table_id}/rows")
     def class_metric_rows(

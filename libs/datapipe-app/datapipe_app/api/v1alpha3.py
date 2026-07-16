@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Any, List, Literal, Optional
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
 from datapipe.executor import Executor
 from datapipe.step.batch_transform import BaseBatchTransformStep
-from datapipe.types import Labels
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from datapipe_app.api.v1alpha1 import filter_steps_by_labels
 from datapipe_app.observability.runs.run_scope import (
@@ -19,10 +18,9 @@ from datapipe_app.observability.runs.run_scope import (
     labels_to_json,
     trigger_from_labels,
 )
-from datapipe_app.observability.store.db import ObservabilityStore, PipelineRunRow, utc_now
+from datapipe_app.observability.store.db import ObservabilityStore, PipelineRunRow
 from datapipe_app.observability.graph.discovery import build_stage_summary, build_stage_edges
 from datapipe_app.observability.graph.label_graph import build_label_graph
-from datapipe_app.observability.graph.queries import build_overview
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry
 from datapipe_app.observability.plugins.schemas import StartRunRequest, StartRunResponse
@@ -88,10 +86,6 @@ def make_app(
             for table_spec in spec.metrics
         )
 
-    @app.get("/overview")
-    def get_overview() -> dict[str, Any]:
-        return build_overview(store, registry, ds=ds, catalog=catalog)
-
     @app.get("/capabilities", response_model=CapabilitiesResponse)
     def get_capabilities() -> CapabilitiesResponse:
         has_ml_plugin = len(registry.enrichers) > 0 or len(registry.collectors) > 0
@@ -120,13 +114,6 @@ def make_app(
             observability_db_connected=connected,
             version=version,
         )
-
-    @app.get("/version")
-    def get_version() -> dict[str, str]:
-        try:
-            return {"version": importlib.metadata.version("datapipe-app")}
-        except Exception:
-            return {"version": "unknown"}
 
     def _serialize_recent_runs(runs: list[Any]) -> list[dict[str, Any]]:
         return [
@@ -338,24 +325,6 @@ def make_app(
             "last_seq": lines[-1].seq if lines else after,
         }
 
-    @app.post("/run")
-    def run_pipeline_legacy() -> dict[str, Any]:
-        """Legacy full-pipeline run endpoint (formerly v1alpha1 /run with recorder)."""
-        if recorder is None:
-            run_steps(ds=ds, steps=steps, executor=_resolve_executor())
-            return {"result": "ok"}
-        cb = recorder.create_callback(trigger="v1alpha1")
-        try:
-            run_steps(
-                ds=ds,
-                steps=steps,
-                executor=_resolve_executor(),
-                callbacks=[cb],
-            )
-        except Exception:
-            return {"run_id": cb.run_id, "status": "failed"}
-        return {"run_id": cb.run_id, "status": "completed"}
-
     @app.post("/runs", response_model=StartRunResponse)
     def start_run(req: StartRunRequest, background_tasks: BackgroundTasks) -> StartRunResponse:
         pid = _pipeline_id()
@@ -424,8 +393,6 @@ def make_app(
         recorder=recorder,
         steps=steps,
         pipeline=pipeline,
-        start_run_handler=start_run,
-        require_pipeline=_require_pipeline,
     )
 
     register_pipeline_ui_routes(

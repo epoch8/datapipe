@@ -5,21 +5,14 @@ import type {
     FrozenDatasetDetailResponse,
     FrozenDatasetLinkedModelRow,
     FrozenDatasetsResponse,
-    MetricsCandidateCreate,
-    MetricsEvaluateRequest,
-    MetricsEvaluateResponse,
     MetricsListParams,
     MetricsModelDetailResponse,
     MetricsModelRow,
     MetricsRunsResponse,
     MetricsSummaryResponse,
-    MetricsTableSchema,
-    MetricsTimeseriesResponse,
     OpsImageRecordDetailResponse,
     OpsImageRecordsCountResponse,
     OpsImageRecordsResponse,
-    SqlSchemaResponse,
-    TrainingCompareResponse,
     TrainingRunsParams,
     TrainingRunsResponse,
 } from "../types/opsMl";
@@ -170,41 +163,9 @@ export const mlOpsApi = {
         fetchJson<FrozenDatasetDetailPayload>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/frozen-datasets/${encodeURIComponent(datasetId)}${toQuery(params ?? {})}`,
         ).then(normalizeFrozenDatasetDetail),
-    getMetricsSchema: (pipelineId: string, taskType?: string) =>
-        fetchJson<MetricsTableSchema>(
-            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/schema${toQuery({ task_type: taskType })}`,
-        ),
-    addMetricsCandidate: (pipelineId: string, body: MetricsCandidateCreate) =>
-        fetchJson<{ id: string }>(`/pipelines/${encodeURIComponent(pipelineId)}/metrics/candidates`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        }),
-    deleteMetricsCandidate: (pipelineId: string, candidateId: string) =>
-        fetchJson<{ status: string }>(
-            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/candidates/${encodeURIComponent(candidateId)}`,
-            { method: "DELETE" },
-        ),
-    evaluateMetrics: (pipelineId: string, body: MetricsEvaluateRequest = {}) =>
-        fetchJson<MetricsEvaluateResponse>(`/pipelines/${encodeURIComponent(pipelineId)}/metrics/evaluate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                candidate_ids: body.candidate_ids ?? [],
-                labels: body.labels ?? [["stage", "count-metrics"]],
-                background: body.background ?? true,
-            }),
-        }),
     getMetricsSummary: (pipelineId: string, params: { subset?: string; model_id?: string; primary_metric?: string } = {}) =>
         fetchJson<MetricsSummaryResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/metrics/summary${toQuery(params)}`,
-        ),
-    getMetricsTimeseries: (
-        pipelineId: string,
-        params: { metrics: string[]; subset?: string[]; group_by?: string; model_id?: string; from?: string; to?: string },
-    ) =>
-        fetchJson<MetricsTimeseriesResponse>(
-            `/pipelines/${encodeURIComponent(pipelineId)}/metrics/timeseries${toQuery({ ...params, metrics: params.metrics.join(",") })}`,
         ),
     getClassMetrics: (pipelineId: string, params: ClassMetricsParams = {}) =>
         fetchJson<ClassMetricsResponse>(
@@ -220,9 +181,4 @@ export const mlOpsApi = {
         fetchJson<TrainingRunsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/training/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
         ),
-    compareTraining: (runKeys: string[], params: { metrics?: string[]; smoothing?: number; pipeline_id?: string } = {}) =>
-        fetchJson<TrainingCompareResponse>(
-            `/training/compare${toQuery({ run_keys: runKeys.join(","), ...params, metrics: params.metrics?.join(",") })}`,
-        ),
-    getSqlSchema: () => fetchJson<SqlSchemaResponse>("/sql/schema"),
 };

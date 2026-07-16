@@ -10,9 +10,6 @@ import type {
     MetricsRunsResponse,
     MetricsSummaryResponse,
     MetricsTableSchema,
-    MetricsTimeseriesResponse,
-    SqlSchemaResponse,
-    TrainingCompareResponse,
     TrainingRunsResponse,
 } from "../../types/opsMl";
 
@@ -346,10 +343,6 @@ export const opsMock = {
         };
     },
 
-    getMetricsSchema(): MetricsTableSchema {
-        return MOCK_SCHEMA;
-    },
-
     getMetricsSummary(pipelineId: string): MetricsSummaryResponse {
         const best = [...MOCK_LEGACY_RUNS].sort((a, b) => (b.metrics.mAP50_95 ?? 0) - (a.metrics.mAP50_95 ?? 0))[0];
         const latest = MOCK_LEGACY_RUNS[0];
@@ -374,15 +367,6 @@ export const opsMock = {
             anomalies: [
                 { severity: "warning", metric: "recall", title: "Recall dropped -1.0%", description: "Latest test run recall below previous run", run_id: latest.run_id, delta: -0.01 },
                 { severity: "info", metric: "iou_mean", title: "IoU mean below trend", description: "IoU slightly below 7-day moving average", run_id: latest.run_id },
-            ],
-        };
-    },
-
-    getMetricsTimeseries(): MetricsTimeseriesResponse {
-        return {
-            series: [
-                { key: "mAP50-test", label: "mAP50 (test)", metric: "mAP50", subset: "test", points: MOCK_LEGACY_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.mAP50, run_id: r.run_id })) },
-                { key: "f1-test", label: "F1 (test)", metric: "f1_score", subset: "test", points: MOCK_LEGACY_RUNS.filter((r) => r.subset === "test").slice(0, 15).reverse().map((r) => ({ x: r.started_at?.slice(0, 10) ?? r.run_id, y: r.metrics.f1_score, run_id: r.run_id })) },
             ],
         };
     },
@@ -458,43 +442,6 @@ export const opsMock = {
             rows,
             total: 42,
             filters: { task_types: ["detection", "keypoints"], frameworks: ["YOLOv8", "YOLOv5"], datasets: ["Coco 2017"], statuses: ["success", "failed", "running"], tags: ["baseline", "exp"] },
-        };
-    },
-
-    compareTraining(runKeys: string[]): TrainingCompareResponse {
-        const metrics = [
-            { key: "train_box_loss", label: "train/box_loss", group: "loss" },
-            { key: "metrics_mAP_0_5", label: "metrics/mAP50", group: "metrics", higher_is_better: true },
-            { key: "metrics_mAP_0_5_to_0_95", label: "metrics/mAP50-95", group: "metrics", higher_is_better: true },
-            { key: "lr_pg0", label: "lr/learning_rate", group: "learning_rate" },
-        ];
-        const charts = metrics.map((m) => ({
-            metric: m.key,
-            title: m.label,
-            x_label: "epoch",
-            series: runKeys.map((run_key, ri) => ({
-                run_key,
-                label: run_key,
-                color_key: String(ri),
-                points: Array.from({ length: 50 }, (_, e) => ({
-                    x: e,
-                    y: m.group === "loss" ? 2 - e * 0.03 + ri * 0.1 + Math.random() * 0.1 : 0.3 + e * 0.01 + ri * 0.02,
-                })),
-            })),
-        }));
-        return { runs: opsMock.getTrainingRuns().rows.filter((r) => runKeys.includes(r.run_key)), available_metrics: metrics, charts, run_keys: runKeys };
-    },
-
-    getSqlSchema(): SqlSchemaResponse {
-        return {
-            datasource: "datapipe_analytics",
-            tables: [
-                { name: "metrics_on_subset", row_count: 28, columns: [{ name: "run_id" }, { name: "model_id" }, { name: "subset" }, { name: "mAP50" }, { name: "precision" }, { name: "recall" }, { name: "f1_score" }] },
-                { name: "metrics_by_class", row_count: 34, columns: [{ name: "label" }, { name: "support" }, { name: "precision" }, { name: "recall" }, { name: "f1_score" }] },
-                { name: "training_runs", row_count: 18, columns: [{ name: "run_key" }, { name: "model_id" }, { name: "status" }] },
-                { name: "predictions", row_count: 46, columns: [{ name: "run_id" }, { name: "image_id" }] },
-                { name: "artifacts", row_count: 16, columns: [{ name: "run_key" }, { name: "path" }, { name: "size_bytes" }] },
-            ],
         };
     },
 };

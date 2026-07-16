@@ -4,7 +4,7 @@ import math
 from typing import Any, Optional
 
 from datapipe_app_ml_ops.ops.ops_spec_metrics import latest_eval_metric_from_specs
-from datapipe_app_ml_ops.observability.schemas.models import TrainingCompareResponse, TrainingRunRow, TrainingRunsResponse
+from datapipe_app_ml_ops.observability.schemas.models import TrainingRunRow, TrainingRunsResponse
 from datapipe_app_ml_ops.observability.training.spec_training import list_training_runs_from_specs
 
 
@@ -154,24 +154,3 @@ class TrainingService:
             "tags": sorted({t for r in rows for t in r.tags}),
         }
         return TrainingRunsResponse(rows=page, total=total, filters=filters)
-
-    def compare(
-        self,
-        run_keys: list[str],
-        *,
-        metrics: Optional[list[str]] = None,
-        pipeline_id: Optional[str] = None,
-    ) -> TrainingCompareResponse:
-        if len(run_keys) < 1 or len(run_keys) > 4:
-            raise ValueError("Provide 1-4 run_keys")
-
-        runs_resp = self.list_runs(pipeline_id or "", limit=100) if pipeline_id else TrainingRunsResponse(rows=[], total=0, filters={})
-        matched_runs = [r for r in runs_resp.rows if r.run_key in run_keys]
-
-        return TrainingCompareResponse(
-            runs=matched_runs,
-            available_metrics=[],
-            charts=[],
-            run_keys=run_keys,
-            charts_legacy=[],
-        )

@@ -47,8 +47,6 @@ from datapipe_app_ml_ops.observability.schemas.models import (
     MetricsRunRow,
     MetricsRunsResponse,
     MetricsSummaryResponse,
-    MetricsTableSchema,
-    MetricsTimeseriesResponse,
     SplitCounts,
 )
 
@@ -809,16 +807,6 @@ class MetricsService:
             schema=schema,
         )
 
-    def get_schema(self, pipeline_id: str, *, task_type: Optional[str] = None) -> MetricsTableSchema:
-        runs, discovered_task_type = self._all_runs(pipeline_id)
-        metric_keys = sorted({k for r in runs for k in r.metrics})
-        tt = task_type or discovered_task_type
-        return build_metric_schema(
-            tt,
-            metric_keys,
-            primary_metric=self._primary_metric() or primary_metric_for_task(tt),
-        )
-
     def list_candidates(self, pipeline_id: str) -> MetricsCandidatesResponse:
         rows = _load_candidates(self.store, pipeline_id)
         return MetricsCandidatesResponse(rows=rows, total=len(rows))
@@ -892,42 +880,6 @@ class MetricsService:
             kpis=build_kpis(runs, task_type, best),
             anomalies=detect_anomalies(runs, task_type),
         )
-
-    def timeseries(
-        self,
-        pipeline_id: str,
-        *,
-        metrics: list[str],
-        subset: Optional[list[str]] = None,
-        group_by: str = "run",
-    ) -> MetricsTimeseriesResponse:
-        runs, _ = self._all_runs(pipeline_id)
-        if subset:
-            runs = [r for r in runs if r.subset in subset]
-        series: list[dict[str, object]] = []
-        for metric in metrics:
-            for sub in sorted({r.subset for r in runs}) or [""]:
-                sub_runs = [r for r in runs if r.subset == sub] if sub else runs
-                points = []
-                for r in reversed(sub_runs):
-                    val = r.metrics.get(metric)
-                    if val is None:
-                        continue
-                    x = r.started_at[:10] if r.started_at else r.run_id
-                    if group_by == "model":
-                        x = r.model_id
-                    points.append({"x": x, "y": val, "run_id": r.run_id})
-                if points:
-                    series.append(
-                        {
-                            "key": f"{metric}-{sub or 'all'}",
-                            "label": f"{metric} ({sub or 'all'})",
-                            "metric": metric,
-                            "subset": sub or None,
-                            "points": points,
-                        }
-                    )
-        return MetricsTimeseriesResponse(series=series)
 
     def list_classes(
         self,

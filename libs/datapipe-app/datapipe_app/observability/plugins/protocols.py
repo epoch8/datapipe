@@ -20,15 +20,6 @@ class StatusCollector(Protocol):
 
 @runtime_checkable
 class OverviewEnricher(Protocol):
-    def enrich_overview_card(
-        self,
-        *,
-        pipeline_id: str,
-        ds: DataStore | None,
-        catalog: Catalog | None,
-        store: ObservabilityStore,
-    ) -> dict[str, Any] | None: ...
-
     def enrich_pipeline_detail(
         self,
         *,

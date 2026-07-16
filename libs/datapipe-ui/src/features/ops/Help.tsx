@@ -44,9 +44,10 @@ export function Help() {
             <Paragraph>
                 <strong>Ops API</strong> — the dashboard uses <code>/api/v1alpha3</code>. OpenAPI
                 docs: <a href="/api/v1alpha3/docs">/api/v1alpha3/docs</a>. Legacy pipeline
-                endpoints under <code>/api/v1alpha1</code> and <code>/api/v1alpha2</code> may still
-                be mounted for compatibility; they are not part of this UI and are not documented
-                here.
+                endpoints under{" "}
+                <a href="/api/v1alpha1/docs">/api/v1alpha1/docs</a> and{" "}
+                <a href="/api/v1alpha2/docs">/api/v1alpha2/docs</a> may still be mounted for
+                compatibility; they are not part of this UI.
             </Paragraph>
         </Card>
     );

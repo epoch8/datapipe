@@ -38,7 +38,7 @@ app = DatapipeApp(ds, catalog, pipeline)
 datapipe --pipeline app:app api
 ```
 
-Ops API: `/api/v1alpha3/overview`, `/runs`, spec-driven `/ops-specs/*`, catalog metrics under `/pipelines/{id}/metrics/*`.
+Ops API: `/api/v1alpha3/runs`, `/pipelines/{id}`, spec-driven `/ops-specs/*`, catalog metrics under `/pipelines/{id}/metrics/*`.
 
 Optional env: `DATAPIPE_APP_PIPELINE_ID` (default pipeline id for single-pipeline apps).
 

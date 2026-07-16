@@ -16,7 +16,7 @@ describe("toApiError", () => {
             value: { onLine: true },
         });
 
-        const error = toApiError(new TypeError("Failed to fetch"), "/api/v1alpha3/overview");
+        const error = toApiError(new TypeError("Failed to fetch"), "/api/v1alpha3/settings");
 
         expect(error).toBeInstanceOf(ApiError);
         expect(error.kind).toBe("network");

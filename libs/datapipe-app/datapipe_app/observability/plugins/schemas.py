@@ -14,8 +14,3 @@ class StartRunRequest(BaseModel):
 class StartRunResponse(BaseModel):
     run_id: str
     status: str = "running"
-
-
-class SqlSchemaResponse(BaseModel):
-    datasource: str
-    tables: list[dict[str, object]]

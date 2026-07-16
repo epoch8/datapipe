@@ -14,21 +14,6 @@ class OpsSpecOverviewEnricher:
     def __init__(self, ops_specs: OpsSpecRegistry) -> None:
         self.ops_specs = ops_specs
 
-    def enrich_overview_card(
-        self,
-        *,
-        pipeline_id: str,
-        ds: DataStore | None,
-        catalog: Catalog | None,
-        store: ObservabilityStore,
-    ) -> dict[str, Any] | None:
-        if ds is None or catalog is None or not self.ops_specs.list():
-            return None
-        latest = latest_eval_metric_from_specs(self.ops_specs, ds, catalog)
-        if latest is None:
-            return None
-        return {"type": "ops_metrics_summary", "payload": latest}
-
     def enrich_pipeline_detail(
         self,
         *,
