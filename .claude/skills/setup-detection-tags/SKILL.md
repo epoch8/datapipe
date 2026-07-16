@@ -158,9 +158,10 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
 set -a && source ../.env && set +a
-python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
-python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
-python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
+# Prefer `uv run python` (bare `python` misses venv deps like pathy). Cache: export DATAPIPE_TAGS_CACHE_DIR if not default.
+uv run python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
+uv run python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
+uv run python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
 uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 350 images; val frozen (75 base + 75 night)
 
 # VERIFY the data is in the pipe before handing off:
@@ -204,9 +205,9 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 ```bash
 # SKILL DOES — add the tagged TRAIN batch and load it (val stays frozen):
 set -a && source ../.env && set +a
-python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
-python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
-python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
+uv run python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
+uv run python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
+uv run python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
 uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 500 images total
 # VERIFY val stayed frozen (night went to TRAIN only; tag_id IS the tag name):
 #   SELECT h.subset_id, count(*) FROM image__tag it
