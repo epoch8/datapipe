@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import AbstractContextManager, contextmanager
-from typing import Generator, Literal, Optional
+from dataclasses import dataclass, field
+from typing import Generator, Optional, Sequence
 
 from datapipe.compute import Catalog, ComputeStep, DataStore
-from datapipe.executor import Executor
-from datapipe.step.batch_transform import BaseBatchTransformStep
 
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer
@@ -18,7 +17,71 @@ from datapipe_app.observability.runs.run_output_capture import capture_run_outpu
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class RecordingRunCallback:
+    """Immutable per-run ``RunCallback`` — safe for concurrent API runs."""
+
+    recorder: RunRecorder
+    run_id: str
+    cli_announce: bool = False
+    _finished: bool = field(default=False, init=False, repr=False)
+
+    def on_run_start(self, steps: Sequence[ComputeStep]) -> None:
+        if self.cli_announce:
+            print(
+                f"Recording run {self.run_id} for pipeline "
+                f"'{self.recorder.pipeline_id}' (view in Ops UI → Runs)"
+            )
+
+    def on_step_start(self, step: ComputeStep) -> None:
+        self.recorder.start_step(step.name, run_id=self.run_id)
+
+    def on_step_progress(
+        self,
+        step: ComputeStep,
+        completed: int,
+        total: int | None,
+    ) -> None:
+        self.recorder.update_step_progress(
+            step.name,
+            processed=completed,
+            total=total,
+            run_id=self.run_id,
+        )
+
+    def on_step_success(self, step: ComputeStep) -> None:
+        self.recorder.finish_step(step.name, status="completed", run_id=self.run_id)
+
+    def on_step_error(self, step: ComputeStep, error: BaseException) -> None:
+        self.recorder.finish_step(
+            step.name,
+            status="failed",
+            error=str(error),
+            run_id=self.run_id,
+        )
+
+    def on_run_success(self) -> None:
+        self.recorder.finish_run(status="completed", run_id=self.run_id)
+        self._finished = True
+        if self.cli_announce:
+            print(f"Run {self.run_id} completed")
+
+    def on_run_error(self, error: BaseException) -> None:
+        self.recorder.finish_run(status="failed", error=str(error), run_id=self.run_id)
+        self._finished = True
+        if self.cli_announce:
+            print(f"Run {self.run_id} failed (details in Ops UI → Runs → {self.run_id})")
+
+
 class RunRecorder:
+    """Persistence service for Run / RunStep rows.
+
+    Does not execute pipeline steps. Create a per-run callback::
+
+        cb = recorder.create_callback(trigger="api")
+        run_steps(ds, steps, executor=executor, callbacks=[cb])
+    """
+
     def __init__(
         self,
         store: ObservabilityStore,
@@ -38,43 +101,57 @@ class RunRecorder:
         self.ops_specs = ops_specs
         self.log_buffer = log_buffer
         self._current_run_id: Optional[str] = None
-        self._output_capture: Optional[AbstractContextManager[None]] = None
+        self._output_captures: dict[str, AbstractContextManager[None]] = {}
         # Throttle progress log lines per run/step (monotonic seconds).
         self._last_progress_log_at: dict[str, float] = {}
-        self._last_progress_logged: dict[str, tuple[int, int]] = {}
+        self._last_progress_logged: dict[str, tuple[int, int | None]] = {}
 
     @property
     def current_run_id(self) -> Optional[str]:
         return self._current_run_id
 
+    def create_callback(
+        self,
+        *,
+        trigger: Optional[str] = None,
+        labels_json: Optional[str] = None,
+        cli_announce: bool = False,
+    ) -> RecordingRunCallback:
+        run_id = self.start_run(trigger=trigger, labels_json=labels_json)
+        return RecordingRunCallback(
+            recorder=self,
+            run_id=run_id,
+            cli_announce=cli_announce,
+        )
+
     def _attach_log_handler(self, run_id: str) -> None:
         if not self.log_buffer:
             return
         self.log_buffer.start_run(run_id)
-        self._output_capture = capture_run_output(self.log_buffer, run_id)
-        self._output_capture.__enter__()
+        capture = capture_run_output(self.log_buffer, run_id)
+        capture.__enter__()
+        self._output_captures[run_id] = capture
         self.log_buffer.append(run_id, "INFO", f"Run {run_id} started")
 
     def _detach_log_handler(self, run_id: str) -> None:
-        if self._output_capture is not None:
-            self._output_capture.__exit__(None, None, None)
-            self._output_capture = None
+        capture = self._output_captures.pop(run_id, None)
+        if capture is not None:
+            capture.__exit__(None, None, None)
         if self.log_buffer:
             self.log_buffer.append(run_id, "INFO", f"Run {run_id} finished")
             self.log_buffer.finish_run(run_id)
 
     def start_run(self, *, trigger: Optional[str] = None, labels_json: Optional[str] = None) -> str:
-        self._current_run_id = self.store.create_run(
+        run_id = self.store.create_run(
             self.pipeline_id,
             trigger=trigger,
             labels_json=labels_json,
         )
-        self._attach_log_handler(self._current_run_id)
-        if trigger:
-            self.log_buffer and self.log_buffer.append(
-                self._current_run_id, "INFO", f"Trigger: {trigger}"
-            )
-        return self._current_run_id
+        self._attach_log_handler(run_id)
+        self._current_run_id = run_id
+        if trigger and self.log_buffer:
+            self.log_buffer.append(run_id, "INFO", f"Trigger: {trigger}")
+        return run_id
 
     def _run_id(self, run_id: Optional[str] = None) -> Optional[str]:
         return run_id or self._current_run_id
@@ -96,7 +173,7 @@ class RunRecorder:
         step_name: str,
         *,
         processed: int,
-        total: int,
+        total: int | None = None,
         run_id: Optional[str] = None,
     ) -> None:
         rid = self._run_id(run_id)
@@ -117,7 +194,7 @@ class RunRecorder:
         step_name: str,
         *,
         processed: int,
-        total: int,
+        total: int | None,
     ) -> None:
         """Emit tqdm-like progress lines into the run log (throttled).
 
@@ -132,7 +209,7 @@ class RunRecorder:
         last_at = self._last_progress_log_at.get(key, 0.0)
         last_vals = self._last_progress_logged.get(key)
         is_start = processed == 0
-        is_done = total > 0 and processed >= total
+        is_done = total is not None and total > 0 and processed >= total
         changed = last_vals != (processed, total)
         due = (now - last_at) >= 2.0
         if not changed:
@@ -142,7 +219,7 @@ class RunRecorder:
 
         self._last_progress_log_at[key] = now
         self._last_progress_logged[key] = (processed, total)
-        if total > 0:
+        if total is not None and total > 0:
             pct = int(round(100.0 * processed / total))
             msg = f"Progress: {step_name} {processed}/{total} ({pct}%)"
         else:
@@ -192,61 +269,38 @@ class RunRecorder:
             if error and self.log_buffer:
                 self.log_buffer.append(rid, "ERROR", error)
         finally:
+            self._detach_log_handler(rid)
             if self._current_run_id == rid:
-                self._detach_log_handler(rid)
                 self._current_run_id = None
 
-    def execute_steps(
-        self,
-        steps: list[ComputeStep],
-        *,
-        ds: DataStore,
-        run_id: Optional[str] = None,
-        executor: Executor | None = None,
-        on_step_failure: Literal["raise", "return"] = "raise",
-    ) -> None:
-        rid = self._run_id(run_id)
-        if not rid:
-            raise ValueError("run_id is required to execute steps")
-        for step in steps:
-            self.start_step(step.name, run_id=rid)
-            try:
-                run_kwargs: dict = {"ds": ds, "run_config": None, "executor": executor}
-                if isinstance(step, BaseBatchTransformStep):
-
-                    def on_batch_progress(processed: int, total: int) -> None:
-                        self.update_step_progress(
-                            step.name,
-                            processed=processed,
-                            total=total,
-                            run_id=rid,
-                        )
-
-                    run_kwargs["on_batch_progress"] = on_batch_progress
-
-                step.run_full(**run_kwargs)  # type: ignore[arg-type]
-                self.finish_step(step.name, status="completed", run_id=rid)
-            except Exception as exc:
-                error = str(exc)
-                self.finish_step(step.name, status="failed", error=error, run_id=rid)
-                self.finish_run(status="failed", error=error, run_id=rid)
-                if on_step_failure == "raise":
-                    raise
-                return
-        self.finish_run(status="completed", run_id=rid)
-
     @contextmanager
-    def record_steps(
+    def run_scope(
         self,
-        steps: list[ComputeStep],
         *,
         trigger: Optional[str] = None,
-    ) -> Generator[str, None, None]:
-        if self.ds is None:
-            raise ValueError("DataStore is required to record steps")
-        run_id = self.start_run(trigger=trigger)
+        labels_json: Optional[str] = None,
+        cli_announce: bool = False,
+    ) -> Generator[RecordingRunCallback, None, None]:
+        """Create a per-run callback and ensure the run is finished on exit.
+
+        Typical use::
+
+            with recorder.run_scope(trigger="api") as cb:
+                run_steps(ds, steps, callbacks=[cb])
+        """
+        cb = self.create_callback(
+            trigger=trigger,
+            labels_json=labels_json,
+            cli_announce=cli_announce,
+        )
         try:
-            self.execute_steps(steps, ds=self.ds, run_id=run_id)
-            yield run_id
-        except Exception:
+            yield cb
+        except BaseException as exc:
+            if not cb._finished:
+                self.finish_run(status="failed", error=str(exc), run_id=cb.run_id)
+                cb._finished = True
             raise
+        else:
+            if not cb._finished:
+                self.finish_run(status="completed", run_id=cb.run_id)
+                cb._finished = True

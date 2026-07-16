@@ -265,7 +265,7 @@ def run_step(
 
         step.run_full(
             ds=ds,
-            on_batch_progress=on_batch_progress,
+            progress=on_batch_progress,
             executor=_resolve_executor(executor),
         )
 

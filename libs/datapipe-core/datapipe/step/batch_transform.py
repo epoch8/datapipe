@@ -358,7 +358,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
-        on_batch_progress: Callable[[int, int], None] | None = None,
+        progress: Callable[[int, int | None], None] | None = None,
     ) -> None:
         if executor is None:
             executor = SingleThreadExecutor()
@@ -374,14 +374,14 @@ class BaseBatchTransformStep(ComputeStep):
             return
 
         batches_done = 0
-        if on_batch_progress is not None:
-            on_batch_progress(0, idx_count or 0)
+        if progress is not None:
+            progress(0, idx_count)
 
         def _on_batch_complete() -> None:
             nonlocal batches_done
             batches_done += 1
-            if on_batch_progress is not None:
-                on_batch_progress(batches_done, idx_count or 0)
+            if progress is not None:
+                progress(batches_done, idx_count)
 
         executor.run_process_batch(
             name=self.name,
@@ -391,10 +391,24 @@ class BaseBatchTransformStep(ComputeStep):
             process_fn=self.process_batch,
             run_config=run_config,
             executor_config=self.executor_config,
-            on_batch_complete=_on_batch_complete if on_batch_progress is not None else None,
+            on_batch_complete=_on_batch_complete if progress is not None else None,
         )
 
         ds.event_logger.log_step_full_complete(self.name)
+
+    def run_full_observed(
+        self,
+        ds: DataStore,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+        progress: Callable[[int, int | None], None] | None = None,
+    ) -> None:
+        self.run_full(
+            ds=ds,
+            run_config=run_config,
+            executor=executor,
+            progress=progress,
+        )
 
     def run_changelist(
         self,

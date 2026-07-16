@@ -20,13 +20,13 @@
 
 ## Observability
 
-* Persist pipeline runs (`ObservabilityStore`, `RunRecorder`, run scope /
-  reconciler) with optional CLI recording (`DATAPIPE_APP_RECORD_CLI_RUNS`,
-  `--no-record`)
+* Persist pipeline runs (`ObservabilityStore`, `RunRecorder` /
+  `RecordingRunCallback`) with optional CLI recording
+  (`DATAPIPE_APP_RECORD_CLI_RUNS`, `--no-callbacks`)
 * Buffered run log capture; optional ClickHouse backend
   (`RunLogsBackend.clickhouse`, extra `[clickhouse]`)
 * Entry points wired into core CLI:
-  `datapipe.pipeline_init`, `datapipe.run_steps`, `datapipe.db_create_all`
+  `datapipe.pipeline_init`, `datapipe.run_callbacks`, `datapipe.db_create_all`
 * Settings: `DATAPIPE_APP_PIPELINE_ID`, `DATAPIPE_APP_SHOW_STEP_STATUS`,
   `DATAPIPE_APP_RECORD_CLI_RUNS`
 

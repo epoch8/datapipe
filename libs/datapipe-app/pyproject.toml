@@ -30,8 +30,8 @@ datapipe_app = "datapipe_app.app.cli:register_commands"
 [project.entry-points."datapipe.pipeline_init"]
 datapipe_app = "datapipe_app.observability.config.settings:bind_pipeline_ops"
 
-[project.entry-points."datapipe.run_steps"]
-datapipe_app = "datapipe_app.observability.cli.cli_runner:try_run_steps_observed"
+[project.entry-points."datapipe.run_callbacks"]
+datapipe_app = "datapipe_app.observability.cli.cli_runner:create_run_callback"
 
 [project.entry-points."datapipe.db_create_all"]
 datapipe_app = "datapipe_app.app.db_schema:create_observability_tables_hook"

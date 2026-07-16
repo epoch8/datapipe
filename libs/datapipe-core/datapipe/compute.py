@@ -10,6 +10,7 @@ from sqlalchemy import Column
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
+from datapipe.run_callback import ProgressCallback, RunCallback
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -293,6 +294,21 @@ class ComputeStep:
     ) -> None:
         raise NotImplementedError()
 
+    def run_full_observed(
+        self,
+        ds: DataStore,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+        progress: ProgressCallback | None = None,
+    ) -> None:
+        """Execute the step, optionally reporting progress to callbacks.
+
+        Default implementation ignores ``progress`` and calls ``run_full``.
+        Legacy custom steps that only override ``run_full`` keep working.
+        Steps that support progress (e.g. batch transforms) override this.
+        """
+        self.run_full(ds=ds, run_config=run_config, executor=executor)
+
     def run_changelist(
         self,
         ds: DataStore,
@@ -365,21 +381,73 @@ def print_compute(steps: list[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
+def _format_step_span(step: ComputeStep) -> str:
+    return (
+        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
+    )
+
+
+def _notify(callbacks: Sequence[RunCallback], method: str, *args: object) -> None:
+    """Fail-open: callback errors are logged and must not mask pipeline errors."""
+    for callback in callbacks:
+        try:
+            getattr(callback, method)(*args)
+        except Exception:
+            logger.exception(
+                "Run callback %r failed during %s",
+                callback,
+                method,
+            )
+
+
+def _make_progress_callback(
+    callbacks: Sequence[RunCallback],
+    step: ComputeStep,
+) -> ProgressCallback | None:
+    if not callbacks:
+        return None
+
+    def progress(completed: int, total: int | None) -> None:
+        _notify(callbacks, "on_step_progress", step, completed, total)
+
+    return progress
+
+
 def run_steps(
     ds: DataStore,
     steps: Sequence[ComputeStep],
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
+    callbacks: Sequence[RunCallback] = (),
 ) -> None:
-    for step in steps:
-        with tracer.start_as_current_span(
-            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-        ):
-            logger.info(
-                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-            )
+    _notify(callbacks, "on_run_start", steps)
 
-            step.run_full(ds=ds, run_config=run_config, executor=executor)
+    try:
+        for step in steps:
+            _notify(callbacks, "on_step_start", step)
+
+            try:
+                with tracer.start_as_current_span(_format_step_span(step)):
+                    logger.info(
+                        f"Running {step.name} "
+                        f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
+                    )
+                    step.run_full_observed(
+                        ds=ds,
+                        run_config=run_config,
+                        executor=executor,
+                        progress=_make_progress_callback(callbacks, step),
+                    )
+            except BaseException as exc:
+                _notify(callbacks, "on_step_error", step, exc)
+                raise
+            else:
+                _notify(callbacks, "on_step_success", step)
+    except BaseException as exc:
+        _notify(callbacks, "on_run_error", exc)
+        raise
+    else:
+        _notify(callbacks, "on_run_success")
 
 
 def run_pipeline(

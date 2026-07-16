@@ -344,12 +344,17 @@ def make_app(
         if recorder is None:
             run_steps(ds=ds, steps=steps, executor=_resolve_executor())
             return {"result": "ok"}
-        run_id = recorder.start_run(trigger="v1alpha1")
+        cb = recorder.create_callback(trigger="v1alpha1")
         try:
-            recorder.execute_steps(steps, ds=ds, run_id=run_id, executor=_resolve_executor(), on_step_failure="raise")
+            run_steps(
+                ds=ds,
+                steps=steps,
+                executor=_resolve_executor(),
+                callbacks=[cb],
+            )
         except Exception:
-            return {"run_id": run_id, "status": "failed"}
-        return {"run_id": run_id, "status": "completed"}
+            return {"run_id": cb.run_id, "status": "failed"}
+        return {"run_id": cb.run_id, "status": "completed"}
 
     @app.post("/runs", response_model=StartRunResponse)
     def start_run(req: StartRunRequest, background_tasks: BackgroundTasks) -> StartRunResponse:
@@ -364,26 +369,34 @@ def make_app(
         labels_json = labels_to_json(req.labels)
 
         if req.background:
-            run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
+            cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
 
             def _execute() -> None:
-                recorder.execute_steps(
-                    selected,
-                    ds=ds,
-                    run_id=run_id,
-                    executor=_resolve_executor(),
-                    on_step_failure="return",
-                )
+                try:
+                    run_steps(
+                        ds=ds,
+                        steps=selected,
+                        executor=_resolve_executor(),
+                        callbacks=[cb],
+                    )
+                except Exception:
+                    # Failure already recorded via RunCallback hooks.
+                    return
 
             background_tasks.add_task(_execute)
-            return StartRunResponse(run_id=run_id, status="running")
+            return StartRunResponse(run_id=cb.run_id, status="running")
 
-        run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
+        cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
         try:
-            recorder.execute_steps(selected, ds=ds, run_id=run_id, executor=_resolve_executor())
+            run_steps(
+                ds=ds,
+                steps=selected,
+                executor=_resolve_executor(),
+                callbacks=[cb],
+            )
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
-        return StartRunResponse(run_id=run_id, status="completed")
+        return StartRunResponse(run_id=cb.run_id, status="completed")
 
     @app.post(
         "/pipelines/{pipeline_id}/transforms/{transform_name}/reset-metadata",

@@ -95,27 +95,25 @@ def filter_steps_by_labels_and_name(
     return res
 
 
-def _try_run_steps_via_extensions(
+def _load_run_callbacks(
     app: DatapipeApp,
     steps: list[ComputeStep],
     *,
-    executor: Executor,
     labels: Labels,
     pipeline_spec: str | None,
-    record: bool = True,
-) -> bool:
-    for entry_point in _entry_points("datapipe.run_steps"):
-        run_fn = entry_point.load()
-        if run_fn(
+):
+    callbacks = []
+    for entry_point in _entry_points("datapipe.run_callbacks"):
+        factory = entry_point.load()
+        callback = factory(
             app,
             steps,
-            executor=executor,
             labels=labels,
             pipeline_spec=pipeline_spec,
-            record=record,
-        ):
-            return True
-    return False
+        )
+        if callback is not None:
+            callbacks.append(callback)
+    return callbacks
 
 
 def _run_steps_cli(
@@ -125,17 +123,19 @@ def _run_steps_cli(
     executor: Executor,
     labels: Labels,
     pipeline_spec: str,
-    record: bool,
+    attach_callbacks: bool,
 ) -> None:
-    if not _try_run_steps_via_extensions(
-        app,
-        steps,
-        executor=executor,
-        labels=labels,
-        pipeline_spec=pipeline_spec,
-        record=record,
-    ):
-        run_steps(app.ds, steps, executor=executor)
+    callbacks = (
+        _load_run_callbacks(
+            app,
+            steps,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+        )
+        if attach_callbacks
+        else []
+    )
+    run_steps(app.ds, steps, executor=executor, callbacks=callbacks)
 
 
 @click.group()
@@ -280,9 +280,14 @@ def table_list(ctx: click.Context) -> None:
 @cli.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
-@click.option("--no-record", is_flag=True, default=False, help="Do not persist this run to Ops observability")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -> None:
+def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     executor: Executor = ctx.obj["executor"]
     pipeline_spec = ctx.params.get("pipeline", "app")
@@ -295,7 +300,7 @@ def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -
                 executor=executor,
                 labels=[],
                 pipeline_spec=pipeline_spec,
-                record=not no_record,
+                attach_callbacks=not no_callbacks,
             )
 
             if not loop:
@@ -465,9 +470,14 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 @step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
-@click.option("--no-record", is_flag=True, default=False, help="Do not persist this run to Ops observability")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -> None:
+def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: list[ComputeStep] = ctx.obj["steps"]
 
@@ -487,7 +497,7 @@ def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_record: bool) -
                 executor=executor,
                 labels=labels,
                 pipeline_spec=pipeline_spec,
-                record=not no_record,
+                attach_callbacks=not no_callbacks,
             )
 
         if not loop:

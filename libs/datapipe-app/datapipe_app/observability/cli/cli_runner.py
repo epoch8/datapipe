@@ -4,14 +4,13 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from datapipe.compute import ComputeStep
-from datapipe.executor import Executor
 from datapipe.types import Labels
 
 from datapipe_app.app.datapipe_api import DatapipeAPI
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.connections.dbconn import dbconn_same_target
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer, get_log_buffer
-from datapipe_app.observability.runs.recorder import RunRecorder
+from datapipe_app.observability.runs.recorder import RecordingRunCallback, RunRecorder
 from datapipe_app.observability.runs.run_scope import labels_to_json
 from datapipe_app.observability.runs.run_triggers import cli_trigger_from_labels
 from datapipe_app.observability.run_logs import warn_if_run_logs_share_pipeline_db
@@ -102,45 +101,39 @@ def _build_recorder(app: DatapipeApp, *, pipeline_spec: Optional[str] = None) ->
     return recorder, settings.pipeline_id
 
 
-def try_run_steps_observed(
+def create_run_callback(
     app: DatapipeApp,
     steps: list[ComputeStep],
     *,
-    executor: Executor,
     labels: Optional[Labels] = None,
     pipeline_spec: Optional[str] = None,
     record: bool = True,
-) -> bool:
-    """Execute steps through RunRecorder so the Ops UI can list logs.
+    **_kwargs,
+) -> Optional[RecordingRunCallback]:
+    """Factory for the ``datapipe.run_callbacks`` entry point.
 
-    Returns True when the observed path was used, False to fall back to bare ``run_steps``.
+    Returns a per-run ``RecordingRunCallback``, or ``None`` when recording is
+    disabled / unavailable. Does not execute steps.
     """
     if not record or not steps:
-        return False
+        return None
 
     settings = resolve_ops_settings(
         pipeline_spec=pipeline_spec,
         pipeline_module=pipeline_module_for(app),
     )
     if not settings.record_cli_runs:
-        return False
+        return None
 
     try:
-        recorder, pipeline_id = _build_recorder(app, pipeline_spec=pipeline_spec)
+        recorder, _pipeline_id = _build_recorder(app, pipeline_spec=pipeline_spec)
     except Exception as exc:
         logger.warning("CLI run recording disabled: %s", exc)
-        return False
+        return None
 
     effective_labels = labels if labels is not None else _labels_from_steps(steps)
-    trigger = cli_trigger_from_labels(effective_labels)
-    labels_json = labels_to_json(effective_labels)
-
-    run_id = recorder.start_run(trigger=trigger, labels_json=labels_json)
-    print(f"Recording run {run_id} for pipeline '{pipeline_id}' (view in Ops UI → Runs)")
-    try:
-        recorder.execute_steps(steps, ds=app.ds, run_id=run_id, executor=executor)
-    except Exception:
-        print(f"Run {run_id} failed (details in Ops UI → Runs → {run_id})")
-        raise
-    print(f"Run {run_id} completed")
-    return True
+    return recorder.create_callback(
+        trigger=cli_trigger_from_labels(effective_labels),
+        labels_json=labels_to_json(effective_labels),
+        cli_announce=True,
+    )

@@ -4,11 +4,18 @@
 
 * New `importlib.metadata` entry-point groups for extensions:
   * `datapipe.pipeline_init` — runs after `load_pipeline()`
-  * `datapipe.run_steps` — optional wrapper around CLI step execution
-    (e.g. Ops run recording)
+  * `datapipe.run_callbacks` — composable factories returning `RunCallback`
+    instances attached to core `run_steps` (e.g. Ops run recording)
   * `datapipe.db_create_all` — hooks into `datapipe db create-all`
-* `datapipe run` gains `--loop`, `--loop-delay`, and `--no-record`
-* `datapipe step run` gains `--no-record` (works with existing `--loop`)
+* `run_steps(..., callbacks=)` is the single execution path; callbacks receive
+  lifecycle events (`on_run_start` / `on_step_*` / `on_run_*`) and optional
+  progress via `ComputeStep.run_full(..., progress=)`
+* `datapipe run` gains `--loop`, `--loop-delay`, and `--no-callbacks`
+  (`--no-callbacks` skips attaching all run callbacks from entry points)
+* `datapipe step run` gains `--no-callbacks` (works with existing `--loop`)
+* `ComputeStep.run_full_observed` keeps legacy ``run_full`` subclasses working;
+  batch steps report progress through the observed path
+* Callback failures are fail-open (logged) and do not mask step errors
 
 ## Schema creation
 
@@ -20,7 +27,8 @@
 ## Executor / step progress
 
 * `Executor.run_process_batch` accepts optional `on_batch_complete`
-* `BaseBatchTransformStep.run_full` accepts optional `on_batch_progress`
+* `ComputeStep.run_full` / `BaseBatchTransformStep.run_full` accept optional
+  `progress` callback
 * Step logs include input/output table names
 
 ## Fixes
