@@ -184,8 +184,8 @@ def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2
     return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
 
 
-def inference_executor(*, parallelism: int | None = None) -> ExecutorConfig:
-    """GPU inference when CUDA is available; CPU fallback otherwise."""
+def gpu_executor(*, parallelism: int | None = None) -> ExecutorConfig:
+    """GPU when CUDA is available; CPU fallback otherwise."""
     if _use_gpu():
         if parallelism is None:
             try:

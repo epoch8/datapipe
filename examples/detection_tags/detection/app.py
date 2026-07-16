@@ -44,7 +44,7 @@ from config import (
     DATAPIPE_DIR,
     DBCONN,
     datapipe_tmp_folder,
-    inference_executor,
+    gpu_executor,
     metrics_executor,
     parallel_io_executor,
 )
@@ -126,7 +126,7 @@ pipeline = Pipeline(
             bbox_id__name=None,
             image__image_path__name="image_url",
             batch_size_default=1,
-            executor_config=inference_executor(),
+            executor_config=gpu_executor(),
             labels=[("stage", "train"), ("stage", "inference")],
         ),
         CountMetrics_Subset_PipelineModel(

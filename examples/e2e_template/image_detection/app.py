@@ -47,7 +47,7 @@ from config import (
     LABEL_STUDIO_API_KEY,
     LABEL_STUDIO_URL,
     PROJECT_NAME,
-    inference_executor,
+    gpu_executor,
     metrics_executor,
     parallel_io_executor,
 )
@@ -93,7 +93,7 @@ pipeline = Pipeline(
             bbox_id__name=None,
             image__image_path__name="image_url",
             batch_size_default=1,
-            executor_config=inference_executor(),
+            executor_config=gpu_executor(),
             labels=[("stage", "annotation")],
         ),
         BatchTransform(
@@ -237,7 +237,7 @@ pipeline = Pipeline(
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
-            executor_config=inference_executor(),
+            executor_config=gpu_executor(),
         ),
         BatchTransform(
             func=steps.filter_bboxes_by_classes,
