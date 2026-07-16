@@ -81,11 +81,9 @@ gamma makes model B memorize that exact darkness (night/train ~0.95, night/val f
 forces it to generalize "low light", which is what lifts the held-out val. More epochs does NOT fix
 this (30 epochs = deeper memorization, val drops) — the lever is data diversity, keep epochs=10.
 
-**Identical numbers on ANY machine — use the demo seed, not training:** live training is bit-stable
-per GPU but diverges across GPU models (proven: same data + same libs, different CUDA kernels — no
-software knob fixes it). `bash scripts/restore_demo_seed.sh` (~2 min) restores the exact reference
-state (models A/B + metrics + run history + byte-identical images re-derived from the cache). Train
-live only when per-GPU numbers are acceptable.
+**Cross-machine numbers:** training is bit-reproducible on one machine, but weights (and hence
+metrics) legitimately differ across GPU/CPU models — that is float arithmetic on different chips, not
+a bug (verified down to byte-identical augmented batches). Quote reference numbers per hardware.
 
 **Deterministic reference** (gpu5, GTX 1070, seed=42, epochs=10, weighted recall/precision on val):
 model A → overall 0.324/0.440, night 0.282/0.449; model B → overall **0.415/0.546**, night
