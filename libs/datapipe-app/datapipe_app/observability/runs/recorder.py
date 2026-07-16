@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import AbstractContextManager, contextmanager
 from typing import Generator, Literal, Optional
 
@@ -38,6 +39,9 @@ class RunRecorder:
         self.log_buffer = log_buffer
         self._current_run_id: Optional[str] = None
         self._output_capture: Optional[AbstractContextManager[None]] = None
+        # Throttle progress log lines per run/step (monotonic seconds).
+        self._last_progress_log_at: dict[str, float] = {}
+        self._last_progress_logged: dict[str, tuple[int, int]] = {}
 
     @property
     def current_run_id(self) -> Optional[str]:
@@ -105,6 +109,45 @@ class RunRecorder:
             processed=processed,
             total=total,
         )
+        self._maybe_log_step_progress(rid, step_name, processed=processed, total=total)
+
+    def _maybe_log_step_progress(
+        self,
+        run_id: str,
+        step_name: str,
+        *,
+        processed: int,
+        total: int,
+    ) -> None:
+        """Emit tqdm-like progress lines into the run log (throttled).
+
+        ``tqdm_loggable`` is also captured, but only every ~10s by default and
+        only if that logger is attached. This path always mirrors batch
+        progress into the Ops UI logs with a 2s / milestone throttle.
+        """
+        if not self.log_buffer:
+            return
+        key = f"{run_id}:{step_name}"
+        now = time.monotonic()
+        last_at = self._last_progress_log_at.get(key, 0.0)
+        last_vals = self._last_progress_logged.get(key)
+        is_start = processed == 0
+        is_done = total > 0 and processed >= total
+        changed = last_vals != (processed, total)
+        due = (now - last_at) >= 2.0
+        if not changed:
+            return
+        if not (is_start or is_done or due or last_vals is None):
+            return
+
+        self._last_progress_log_at[key] = now
+        self._last_progress_logged[key] = (processed, total)
+        if total > 0:
+            pct = int(round(100.0 * processed / total))
+            msg = f"Progress: {step_name} {processed}/{total} ({pct}%)"
+        else:
+            msg = f"Progress: {step_name} {processed}/?"
+        self.log_buffer.append(run_id, "INFO", msg)
 
     def finish_step(
         self,
@@ -126,6 +169,9 @@ class RunRecorder:
             finished_at=utc_now(),
             error=error,
         )
+        key = f"{rid}:{step_name}"
+        self._last_progress_log_at.pop(key, None)
+        self._last_progress_logged.pop(key, None)
         if self.log_buffer:
             level = "ERROR" if error else "INFO"
             msg = f"Step {status}: {step_name}" + (f" — {error}" if error else "")

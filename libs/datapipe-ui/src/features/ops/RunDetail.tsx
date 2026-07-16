@@ -236,6 +236,21 @@ export function RunDetail() {
             key: "status",
             render: (v: string) => <Tag color={statusColor(v)}>{v}</Tag>,
         },
+        {
+            title: "Progress",
+            key: "progress",
+            render: (_: unknown, row: RunDetailType["steps"][number]) => {
+                const processed = row.processed;
+                const total = row.total;
+                if (processed == null && total == null) return "—";
+                if (total != null && total > 0) {
+                    const pct = Math.round((100 * (processed ?? 0)) / total);
+                    return `${processed ?? 0}/${total} (${pct}%)`;
+                }
+                if (processed != null) return `${processed}/?`;
+                return "—";
+            },
+        },
         { title: "Started", dataIndex: "started_at", key: "started_at" },
         { title: "Finished", dataIndex: "finished_at", key: "finished_at" },
         {

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Generator, Optional, TextIO
 
-_LOGGER_NAMES = ("datapipe", "datapipe_ml", "ultralytics")
+_LOGGER_NAMES = ("datapipe", "datapipe_ml", "ultralytics", "tqdm_loggable")
 
 _CAPTURE: contextvars.ContextVar[Optional[_CaptureState]] = contextvars.ContextVar(
     "_run_output_capture", default=None
@@ -147,7 +147,9 @@ def _ensure_global_capture() -> None:
         handler = _ContextLogHandler()
         for logger_name in _LOGGER_NAMES:
             logger = logging.getLogger(logger_name)
-            if logger_name in ("datapipe", "datapipe_ml"):
+            # tqdm_loggable posts INFO progress lines; keep it at INFO so they
+            # reach the run log buffer (CLI also sets this explicitly).
+            if logger_name in ("datapipe", "datapipe_ml", "tqdm_loggable"):
                 logger.setLevel(logging.INFO)
             logger.addHandler(handler)
         _log_handler_installed = True

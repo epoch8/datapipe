@@ -54,6 +54,7 @@ def test_capture_run_output_records_logging_and_stdout(tmp_path):
     with capture_run_output(buffer, run_id):
         logging.getLogger("datapipe.test").info("from logger")
         logging.getLogger("datapipe_ml.core.files").info("Copying training sync file: a -> b")
+        logging.getLogger("tqdm_loggable.tqdm_logging").info("Sample progress: 3 / 10")
         print("from stdout", flush=True)
         sys.stderr.write("from stderr\n")
         sys.stderr.flush()
@@ -61,6 +62,7 @@ def test_capture_run_output_records_logging_and_stdout(tmp_path):
     messages = [line.message for line in buffer.get_lines(run_id)]
     assert any("from logger" in msg for msg in messages)
     assert any("Copying training sync file" in msg for msg in messages)
+    assert any("Sample progress: 3 / 10" in msg for msg in messages)
     assert "from stdout" in messages
     assert "from stderr" in messages
 
