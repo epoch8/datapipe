@@ -65,7 +65,8 @@ same val. `add_request.py --subset train|val` pins a batch; the load step emits 
 and the split step honors it (random split only fills images without a hint).
 
 Batches (COCO cat/dog; the pre-staged cache holds **500 images**, so keep the total ≤ 500 or expand
-the cache — see Troubleshooting):
+the cache — see Troubleshooting). Part 1 = **350** images (train 200 / val 150); part 2 adds **150**
+night-train → **500** total (train 350 / val 150, val unchanged):
 
 | batch | n | offset | subset | tag | darken | when |
 |-------|---|--------|--------|-----|--------|------|
@@ -121,11 +122,13 @@ HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d   # postgres + minio + 
 uv sync --extra ray                       # modern hosts: THIS, unmodified. Do NOT edit dependencies/re-lock —
                               # that drifts lib versions across machines (e.g. a different ultralytics)
                               # and changes training results. The lock pins everyone to the same stack.
-                              # Declares datapipe-app + datapipe-app-ml-ops + datapipe-ml (ML ops UI is
-                              # datapipe-app-ml-ops, not datapipe-ml[observability]).
+                              # Declares datapipe-app[clickhouse,ml] + datapipe-ui-ml + datapipe-app-ml-ops
+                              # + datapipe-ml[torch,fiftyone] (see pyproject.toml / README).
 # Legacy host (e.g. epoch8 gpu5: pre-AVX2 CPU) ONLY — extras + force the lts polars to win:
 uv sync --extra ray --extra old-cpu
 uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1
+# Ops UI static assets (needed once so `datapipe api` serves `/`):
+cd ../.. && yarn install && yarn workspace @datapipe/ui build:package && cd examples/detection_tags
 cd detection
 # DB_SCHEMA defaults to `public` (already exists). Only if you set a dedicated schema (to share the
 # Postgres with other pipelines) create it first:  psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA"
@@ -158,11 +161,11 @@ set -a && source ../.env && set +a
 python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
 python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
 python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
-uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 450 images; val frozen (100 base + 25 night)
+uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 350 images; val frozen (75 base + 75 night)
 
 # VERIFY the data is in the pipe before handing off:
-#   SELECT subset_id, count(*) FROM image__subset_hint GROUP BY subset_id      -- expect train=325, val=125
-#   SELECT count(*) FROM image__ground_truth                                   -- expect 450
+#   SELECT subset_id, count(*) FROM image__subset_hint GROUP BY subset_id      -- expect train=200, val=150
+#   SELECT count(*) FROM image__ground_truth                                   -- expect 350 (one row per image)
 ```
 
 **Stop here and hand off.** You now trigger **model-A training from the datapipe-app front** (port
@@ -205,10 +208,10 @@ python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset
 python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
 python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
 uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 500 images total
-# VERIFY val stayed frozen (night went to TRAIN only):
-#   SELECT h.subset_id, count(*) FROM image__tag it JOIN tag t USING(tag_id)
-#     JOIN image__subset_hint h USING(image_name) WHERE t.tag_name='night' GROUP BY h.subset_id
-#   -- expect train=50, val=25
+# VERIFY val stayed frozen (night went to TRAIN only; tag_id IS the tag name):
+#   SELECT h.subset_id, count(*) FROM image__tag it
+#     JOIN image__subset_hint h USING(image_name) WHERE it.tag_id='night' GROUP BY h.subset_id
+#   -- expect train=150, val=75
 ```
 
 **Stop here and hand off — you trigger model-B training from the datapipe-app front** (`stage=train`;
@@ -270,8 +273,8 @@ directly in chat:
   to launch model A / model B. This is the primary surface in the UI setup.
 - **tables** in DBeaver (Postgres → the `$DB_SCHEMA` schema): `pipeline_model__metrics_on_subset`,
   `pipeline_model__metrics_by_tag_on_subset`, `detection_training_status`.
-- **images** in the FiftyOne App: `ground_truth` vs `predictions_model_a` vs `predictions_model_b`,
-  filterable by `tag`/`subset`.
+- **images** in the FiftyOne App: `annotations` vs `predictions_model_a` vs `predictions_model_b`,
+  filterable by sample fields `tag_id` / `subset_id`.
 - **training progress**: the run streams to a log file — tail it; trust
   `detection_training_status.status`, not exit codes.
 
@@ -286,21 +289,23 @@ different left-hand port rather than killing whatever holds it.
 ## FiftyOne
 
 `stage=fiftyone` downloads images locally then publishes to one dataset (`FIFTYONE_DATASET_NAME`,
-metadata in MongoDB): fields `ground_truth`, `predictions_model_a` (baseline), `predictions_model_b`
-(retrained), plus sample fields `tag` and `subset`. Ported straight from
+metadata in MongoDB): fields `annotations` (GT), `predictions_model_a` (baseline),
+`predictions_model_b` (retrained), plus sample fields `tag_id` and `subset_id`. Ported straight from
 `examples/e2e_template/image_detection` (same `download_images` + `publish_to_fiftyone` +
 `FiftyOneImagesDataTableStore`); the two model fields are assigned by sorted model-id (earliest =
 `model_a`). The FiftyOne App is a **docker-compose service** (`fiftyone` on :5151) — no manual
 `fiftyone app launch`; after `stage=fiftyone`, open `http://localhost:5151` (tunnel 5151; local port
-MUST equal remote — the App's WebSocket calls the same port).
+MUST equal remote — the App's WebSocket calls the same port). Compose mounts `DATAPIPE_TAGS_TMP_DIR`
+(default `/tmp/datapipe-tags`); local images land in `$DATAPIPE_TAGS_TMP_DIR/local_images`.
 
-`tag` and `subset` are ordinary **sample fields** (set in-pipeline by `publish_gt_to_fiftyone`, no
-scripts) — NOT FiftyOne's native "sample tags". Filter by the **fields** in the sidebar: pick
-`tag = night` and `subset = val` — different fields AND together, so you get exactly the night-val
-set. (Selecting multiple values inside FiftyOne's native TAGS panel ORs them, which is why we do NOT
-mirror tag/subset into native tags.) That isolates where model A misses in the dark; after part 2,
-`predictions_model_b` shows model B catching it. Fields stay `predictions_model_a` (baseline,
-earliest model id) / `predictions_model_b` (retrained); the exact model ids are in the DB tables.
+`tag_id` and `subset_id` are ordinary **sample fields** (set in-pipeline by
+`publish_to_fiftyone_ground_truth`, no scripts) — NOT FiftyOne's native "sample tags". Filter by the
+**fields** in the sidebar: pick `tag_id = night` and `subset_id = val` — different fields AND
+together, so you get exactly the night-val set. (Selecting multiple values inside FiftyOne's native
+TAGS panel ORs them, which is why we do NOT mirror tag/subset into native tags.) That isolates where
+model A misses in the dark; after part 2, `predictions_model_b` shows model B catching it. Fields
+stay `predictions_model_a` (baseline, earliest model id) / `predictions_model_b` (retrained); the
+exact model ids are in the DB tables.
 
 ## How to work
 
@@ -338,7 +343,7 @@ to a file + `grep`, not inline.
   local images under a writable path like `/var/tmp`; `/tmp` and `/var/tmp` are writable.
 - **Flaky link to the cluster** (Moscow/RU hosts) → SSH may time out transiently; retry.
 - **Metrics 0 on a trained model** → tiny/noisy val latches an early "best" checkpoint; use enough
-  data (~450 total) and the shipped epoch config.
+  data (~500 total with the shipped batches) and the shipped epoch config.
 - **Training exits 0 but no model** → datapipe swallows step errors; check `detection_training_status`.
 
 ## Real data
