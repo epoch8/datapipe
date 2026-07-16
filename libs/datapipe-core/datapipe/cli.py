@@ -166,19 +166,35 @@ def cli(
     def setup_logging():
         import logging
 
+        from rich.console import Console
+        from rich.logging import RichHandler
+        from traceback_with_variables.color import supports_ansi
+
         if debug:
-            datapipe_logger = logging.getLogger("datapipe")
-            datapipe_logger.setLevel(logging.DEBUG)
-
-            datapipe_core_steps_logger = logging.getLogger("datapipe.core_steps")
-            datapipe_core_steps_logger.setLevel(logging.DEBUG)
-
-            logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+            log_level = logging.DEBUG
+            logging.getLogger("datapipe").setLevel(logging.DEBUG)
+            logging.getLogger("datapipe.core_steps").setLevel(logging.DEBUG)
         else:
+            log_level = logging.INFO
             for logger_name in [None, "datapipe", "tqdm_loggable"]:
-                logger = logging.getLogger(logger_name)
-                logger.setLevel(logging.INFO)
-            logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+                logging.getLogger(logger_name).setLevel(logging.INFO)
+
+        if supports_ansi(sys.stderr):
+            handler = RichHandler(
+                console=Console(stderr=True, force_terminal=True),
+                show_time=False,
+                show_path=False,
+                markup=False,
+                rich_tracebacks=False,
+            )
+            logging.basicConfig(level=log_level, format="%(message)s", handlers=[handler], force=True)
+        else:
+            logging.basicConfig(
+                level=log_level,
+                stream=sys.stderr,
+                format="%(levelname)s:%(name)s:%(message)s",
+                force=True,
+            )
 
         if debug_sql:
             logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
