@@ -234,6 +234,9 @@ class ComputeStep:
     def get_name(self) -> str:
         return self.name
 
+    def format_io(self) -> str:
+        return f"{[inp.dt.name for inp in self.input_dts]} -> {[out.dt.name for out in self.output_dts]}"
+
     @property
     def labels(self) -> Labels:
         return self._labels if self._labels else []
@@ -367,12 +370,6 @@ def print_compute(steps: list[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
-def _format_step_span(step: ComputeStep) -> str:
-    return (
-        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-    )
-
-
 def _notify(callbacks: Sequence[RunCallback], method: str, *args: object) -> None:
     """Fail-open: callback errors are logged and must not mask pipeline errors."""
     for callback in callbacks:
@@ -413,11 +410,8 @@ def run_steps(
             _notify(callbacks, "on_step_start", step)
 
             try:
-                with tracer.start_as_current_span(_format_step_span(step)):
-                    logger.info(
-                        f"Running {step.name} "
-                        f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                    )
+                with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                    logger.info(f"Running {step.name} {step.format_io()}")
                     step.run_full(
                         ds=ds,
                         run_config=run_config,
@@ -476,13 +470,8 @@ def run_steps_changelist(
         while not current_changes.empty() and iteration < 100:
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
-                    with tracer.start_as_current_span(
-                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                    ):
-                        logger.info(
-                            f"Running {step.name} "
-                            f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                        )
+                    with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                        logger.info(f"Running {step.name} {step.format_io()}")
 
                         if isinstance(step, BaseBatchTransformStep):
                             step_changes = step.run_changelist(
