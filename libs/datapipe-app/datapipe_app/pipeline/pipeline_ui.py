@@ -241,8 +241,8 @@ def run_step(
     recorder: Optional[RunRecorder] = None,
     executor: ExecutorSource = None,
 ) -> None:
-    def on_batch_progress(batches_done: int, total_batches: int) -> None:
-        transform_state.total = total_batches
+    def on_batch_progress(batches_done: int, total_batches: int | None) -> None:
+        transform_state.total = total_batches if total_batches is not None else 0
         transform_state.status = "running"
         transform_state.processed = batches_done * step.chunk_size
 

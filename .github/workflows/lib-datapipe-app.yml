@@ -121,4 +121,4 @@ jobs:
         working-directory: examples/datapipe_app
         run: |
           uv run alembic upgrade head
-          uv run datapipe run --no-record
+          uv run datapipe run --no-callbacks
