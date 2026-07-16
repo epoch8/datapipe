@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RecordingRunCallback:
-    """Immutable per-run ``RunCallback`` — safe for concurrent API runs."""
+    """Per-run ``RunCallback`` with a stable ``run_id``.
+
+    Safe for concurrent API runs: each callback binds writes to its own
+    ``run_id`` and does not rely on ``RunRecorder.current_run_id``.
+    """
 
     recorder: RunRecorder
     run_id: str
@@ -76,10 +80,14 @@ class RecordingRunCallback:
 class RunRecorder:
     """Persistence service for Run / RunStep rows.
 
-    Does not execute pipeline steps. Create a per-run callback::
+    Does not execute pipeline steps. Prefer a per-run callback for concurrent
+    or background runs::
 
         cb = recorder.create_callback(trigger="api")
         run_steps(ds, steps, executor=executor, callbacks=[cb])
+
+    ``current_run_id`` and methods called without an explicit ``run_id`` are
+    single-run convenience only — not safe if multiple runs share one recorder.
     """
 
     def __init__(
@@ -100,6 +108,7 @@ class RunRecorder:
         self.catalog = catalog
         self.ops_specs = ops_specs
         self.log_buffer = log_buffer
+        # Last started run; single-run convenience, not concurrency-safe.
         self._current_run_id: Optional[str] = None
         self._output_captures: dict[str, AbstractContextManager[None]] = {}
         # Throttle progress log lines per run/step (monotonic seconds).
@@ -108,6 +117,7 @@ class RunRecorder:
 
     @property
     def current_run_id(self) -> Optional[str]:
+        """Most recently started run id (single-run convenience; not concurrency-safe)."""
         return self._current_run_id
 
     def create_callback(
@@ -261,6 +271,7 @@ class RunRecorder:
         error: Optional[str] = None,
         run_id: Optional[str] = None,
     ) -> None:
+        """Finish a run. Pass ``run_id`` explicitly under concurrent use."""
         rid = self._run_id(run_id)
         if not rid:
             return
