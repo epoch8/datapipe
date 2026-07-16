@@ -13,8 +13,6 @@
 * `datapipe run` gains `--loop`, `--loop-delay`, and `--no-callbacks`
   (`--no-callbacks` skips attaching all run callbacks from entry points)
 * `datapipe step run` gains `--no-callbacks` (works with existing `--loop`)
-* `ComputeStep.run_full_observed` keeps legacy ``run_full`` subclasses working;
-  batch steps report progress through the observed path
 * Callback failures are fail-open (logged) and do not mask step errors
 
 ## Schema creation

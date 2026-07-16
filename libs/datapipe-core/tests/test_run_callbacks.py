@@ -88,12 +88,7 @@ class FakeStep(ComputeStep):
         self.report_progress = report_progress
         self.run_config_seen = None
 
-    def run_full(self, ds, run_config=None, executor=None):
-        self.run_config_seen = run_config
-        if self.fail:
-            raise RuntimeError(f"{self.name} failed")
-
-    def run_full_observed(self, ds, run_config=None, executor=None, progress=None):
+    def run_full(self, ds, run_config=None, executor=None, progress=None):
         self.run_config_seen = run_config
         if self.report_progress and progress is not None:
             progress(0, 2)
@@ -101,17 +96,6 @@ class FakeStep(ComputeStep):
             progress(2, 2)
         if self.fail:
             raise RuntimeError(f"{self.name} failed")
-
-
-class LegacyCustomStep(ComputeStep):
-    """Old-style subclass: only overrides run_full without progress."""
-
-    def __init__(self, name: str = "legacy"):
-        super().__init__(name=name, input_dts=[], output_dts=[])
-        self.ran = False
-
-    def run_full(self, ds, run_config=None, executor=None):
-        self.ran = True
 
 
 def test_run_steps_notifies_callbacks_in_order():
@@ -184,13 +168,6 @@ def test_run_config_is_passed_with_callback():
     cfg = RunConfig(labels={"k": "v"})
     run_steps(ds, [step], run_config=cfg, callbacks=[RecordingCallback()])
     assert step.run_config_seen is cfg
-
-
-def test_legacy_custom_step_without_progress_still_runs():
-    ds = MagicMock()
-    step = LegacyCustomStep()
-    run_steps(ds, [step], callbacks=[RecordingCallback()])
-    assert step.ran is True
 
 
 def test_progress_is_forwarded():

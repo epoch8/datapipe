@@ -291,23 +291,9 @@ class ComputeStep:
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
-    ) -> None:
-        raise NotImplementedError()
-
-    def run_full_observed(
-        self,
-        ds: DataStore,
-        run_config: RunConfig | None = None,
-        executor: Executor | None = None,
         progress: ProgressCallback | None = None,
     ) -> None:
-        """Execute the step, optionally reporting progress to callbacks.
-
-        Default implementation ignores ``progress`` and calls ``run_full``.
-        Legacy custom steps that only override ``run_full`` keep working.
-        Steps that support progress (e.g. batch transforms) override this.
-        """
-        self.run_full(ds=ds, run_config=run_config, executor=executor)
+        raise NotImplementedError()
 
     def run_changelist(
         self,
@@ -432,7 +418,7 @@ def run_steps(
                         f"Running {step.name} "
                         f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
                     )
-                    step.run_full_observed(
+                    step.run_full(
                         ds=ds,
                         run_config=run_config,
                         executor=executor,

@@ -396,20 +396,6 @@ class BaseBatchTransformStep(ComputeStep):
 
         ds.event_logger.log_step_full_complete(self.name)
 
-    def run_full_observed(
-        self,
-        ds: DataStore,
-        run_config: RunConfig | None = None,
-        executor: Executor | None = None,
-        progress: Callable[[int, int | None], None] | None = None,
-    ) -> None:
-        self.run_full(
-            ds=ds,
-            run_config=run_config,
-            executor=executor,
-            progress=progress,
-        )
-
     def run_changelist(
         self,
         ds: DataStore,

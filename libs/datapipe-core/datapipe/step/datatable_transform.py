@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from opentelemetry import trace
@@ -62,6 +63,7 @@ class DatatableTransformStep(ComputeStep):
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
+        progress: Callable[[int, int | None], None] | None = None,
     ) -> None:
         logger.info(f"Running: {self.name} {_format_step_io(self)}")
 

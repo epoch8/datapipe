@@ -18,11 +18,7 @@ class FakeStep(ComputeStep):
         self.fail = fail
         self.unknown_total = unknown_total
 
-    def run_full(self, ds, run_config=None, executor=None):
-        if self.fail:
-            raise RuntimeError(f"{self.name} failed")
-
-    def run_full_observed(self, ds, run_config=None, executor=None, progress=None):
+    def run_full(self, ds, run_config=None, executor=None, progress=None):
         if progress is not None:
             if self.unknown_total:
                 progress(3, None)
