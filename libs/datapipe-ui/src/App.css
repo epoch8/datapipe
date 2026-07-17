@@ -138,3 +138,12 @@ html,
 .run-log-warning {
     color: #dcdcaa;
 }
+
+/* ANSI spans from Rich / traceback-with-variables (see ansi.ts). */
+.run-log-msg {
+    color: inherit;
+}
+
+.run-log-msg span {
+    white-space: inherit;
+}
