@@ -145,6 +145,7 @@ def _build_yolo_pipeline_steps(
     image__image_path__name: str,
     bbox_id__name: Optional[str],
     labels: Optional[Labels],
+    executor_config: Optional[ExecutorConfig],
     prepare_data_executor_config: Optional[ExecutorConfig],
     resize_images: bool,
     max_within_time: str,
@@ -271,6 +272,7 @@ def _build_yolo_pipeline_steps(
                 **(extra_train_kwargs or {}),
             ),
             labels=labels,
+            executor_config=executor_config,
         ),
     ]
 
@@ -608,6 +610,7 @@ def build_yolo_compute(
         image__image_path__name=image__image_path__name,
         bbox_id__name=bbox_id__name,
         labels=labels,
+        executor_config=executor_config,
         prepare_data_executor_config=prepare_data_executor_config,
         resize_images=resize_images,
         max_within_time=max_within_time,
