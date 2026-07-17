@@ -292,3 +292,10 @@ def get_size_for_resize(
         df__detection_train_config_id["height"] = -1
     df__detection_train_config_id["width"] = df__detection_train_config_id["height"]
     return df__detection_train_config_id[[train_config_id_col, "width", "height"]]
+
+
+def dedupe_size_for_resize(df__model_size_for_resize: pd.DataFrame) -> pd.DataFrame:
+    """Collapse per-train-config sizes to unique (width, height) for resize invalidation."""
+    if len(df__model_size_for_resize) == 0:
+        return pd.DataFrame(columns=["width", "height"])
+    return df__model_size_for_resize[["width", "height"]].drop_duplicates()

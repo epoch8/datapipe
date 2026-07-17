@@ -172,6 +172,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov5_train_config: str
+    output__model_detection_size_for_resize: str
     output__detection_size_for_resize: str
     output__detection_frozen_dataset__class_names: str
     output__detection_frozen_dataset__resized_image_file: str
@@ -209,6 +210,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             input__frozen_dataset=self.input__detection_frozen_dataset,
             input__frozen_dataset__has__image_gt=self.input__detection_frozen_dataset__has__image_gt,
             output__train_config=self.output__yolov5_train_config,
+            output__model_size_for_resize=self.output__model_detection_size_for_resize,
             output__size_for_resize=self.output__detection_size_for_resize,
             output__frozen_dataset__class_names=self.output__detection_frozen_dataset__class_names,
             output__frozen_dataset__resized_image_file=self.output__detection_frozen_dataset__resized_image_file,

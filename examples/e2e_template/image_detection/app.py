@@ -185,6 +185,7 @@ pipeline = Pipeline(
             input__detection_frozen_dataset="detection_frozen_dataset",
             input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__model_detection_size_for_resize="model_detection_size_for_resize",
             output__detection_size_for_resize="detection_size_for_resize",
             output__detection_frozen_dataset__resized_image_file="detection_frozen_dataset__resized_image_file",
             output__detection_frozen_dataset__yolo_txt="detection_frozen_dataset__yolo_txt",

@@ -69,6 +69,7 @@ KEYPOINTS_YOLOV8_STEP_FIELDS = YoloV8TrainStepFields(
     input__frozen_dataset="input__keypoints_frozen_dataset",
     input__frozen_dataset__has__image_gt="input__keypoints_frozen_dataset__has__image_gt",
     output__train_config="output__yolov8_train_config",
+    output__model_size_for_resize="output__model_keypoints_size_for_resize",
     output__size_for_resize="output__keypoints_size_for_resize",
     output__frozen_dataset__class_names="output__keypoints_frozen_dataset__class_names",
     output__frozen_dataset__resized_image_file="output__keypoints_frozen_dataset__resized_image_file",
@@ -115,6 +116,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
     input__keypoints_frozen_dataset: str
     input__keypoints_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
+    output__model_keypoints_size_for_resize: str
     output__keypoints_size_for_resize: str
     output__keypoints_frozen_dataset__class_names: str
     output__keypoints_frozen_dataset__resized_image_file: str

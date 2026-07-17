@@ -101,6 +101,7 @@ class YoloV8TrainStepFields:
     input__frozen_dataset: str
     input__frozen_dataset__has__image_gt: str
     output__train_config: str
+    output__model_size_for_resize: str
     output__size_for_resize: str
     output__frozen_dataset__class_names: str
     output__frozen_dataset__resized_image_file: str
@@ -197,6 +198,7 @@ def build_yolov8_train_compute(
         input__frozen_dataset=_step_pipeline_io(step, fields.input__frozen_dataset),
         input__frozen_dataset__has__image_gt=_step_pipeline_io(step, fields.input__frozen_dataset__has__image_gt),
         output__train_config=_step_pipeline_io(step, fields.output__train_config),
+        output__model_size_for_resize=_step_pipeline_io(step, fields.output__model_size_for_resize),
         output__size_for_resize=_step_pipeline_io(step, fields.output__size_for_resize),
         output__frozen_dataset__class_names=_step_pipeline_io(step, fields.output__frozen_dataset__class_names),
         output__frozen_dataset__resized_image_file=_step_pipeline_io(

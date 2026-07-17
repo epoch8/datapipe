@@ -23,7 +23,7 @@ from sqlalchemy import JSON, Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable
-from datapipe_ml.frameworks.yolo.dataset import get_size_for_resize
+from datapipe_ml.frameworks.yolo.dataset import dedupe_size_for_resize, get_size_for_resize
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 
 
@@ -130,6 +130,7 @@ def _build_yolo_pipeline_steps(
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
     output__train_config: str,
+    output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
     output__frozen_dataset__resized_image_file: str,
@@ -168,7 +169,7 @@ def _build_yolo_pipeline_steps(
         BatchTransform(
             func=get_size_for_resize,
             inputs=[output__train_config],
-            outputs=[output__size_for_resize],
+            outputs=[output__model_size_for_resize],
             transform_keys=[mode.train_config_id_col],
             chunk_size=16,
             executor_config=prepare_data_executor_config,
@@ -178,6 +179,15 @@ def _build_yolo_pipeline_steps(
                 train_config_id_col=mode.train_config_id_col,
                 train_config_params_col=mode.train_config_params_col,
             ),
+        ),
+        BatchTransform(
+            func=dedupe_size_for_resize,
+            inputs=[output__model_size_for_resize],
+            outputs=[output__size_for_resize],
+            transform_keys=["width", "height"],
+            chunk_size=16,
+            executor_config=prepare_data_executor_config,
+            labels=labels,
         ),
         BatchTransform(
             func=mode.get_class_names_from_gt_func,
@@ -280,6 +290,7 @@ def _register_yolo_tables(
     ds: DataStore,
     catalog: Catalog,
     output__train_config: str,
+    output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
     output__frozen_dataset__resized_image_file: str,
@@ -317,6 +328,24 @@ def _register_yolo_tables(
         ),
     )
     catalog.add_datatable(
+        output__model_size_for_resize,
+        Table(
+            ds.get_or_create_table(
+                output__model_size_for_resize,
+                TableStoreDB(
+                    dbconn=ds.meta_dbconn,
+                    name=output__model_size_for_resize,
+                    data_sql_schema=[
+                        Column(mode.train_config_id_col, String, primary_key=True),
+                        Column("width", Integer, primary_key=True),
+                        Column("height", Integer, primary_key=True),
+                    ],
+                    create_table=create_table,
+                ),
+            ).table_store
+        ),
+    )
+    catalog.add_datatable(
         output__size_for_resize,
         Table(
             ds.get_or_create_table(
@@ -325,7 +354,6 @@ def _register_yolo_tables(
                     dbconn=ds.meta_dbconn,
                     name=output__size_for_resize,
                     data_sql_schema=[
-                        Column(mode.train_config_id_col, String, primary_key=True),
                         Column("width", Integer, primary_key=True),
                         Column("height", Integer, primary_key=True),
                     ],
@@ -507,6 +535,7 @@ def build_yolo_compute(
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
     output__train_config: str,
+    output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
     output__frozen_dataset__resized_image_file: str,
@@ -567,6 +596,7 @@ def build_yolo_compute(
         ds=ds,
         catalog=catalog,
         output__train_config=output__train_config,
+        output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,
         output__frozen_dataset__class_names=output__frozen_dataset__class_names,
         output__frozen_dataset__resized_image_file=output__frozen_dataset__resized_image_file,
@@ -593,6 +623,7 @@ def build_yolo_compute(
         input__frozen_dataset=input__frozen_dataset,
         input__frozen_dataset__has__image_gt=input__frozen_dataset__has__image_gt,
         output__train_config=output__train_config,
+        output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,
         output__frozen_dataset__class_names=output__frozen_dataset__class_names,
         output__frozen_dataset__resized_image_file=output__frozen_dataset__resized_image_file,
