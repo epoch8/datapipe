@@ -1,0 +1,198 @@
+name: datapipe-core
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-core.yml"
+      - ".vscode/**"
+      - "LICENSE"
+      - "README.md"
+      - "examples/datapipe_core/**"
+      - "libs/datapipe-core/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-core.yml"
+      - ".vscode/**"
+      - "LICENSE"
+      - "README.md"
+      - "examples/datapipe_core/**"
+      - "libs/datapipe-core/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic]" "flake8" "mypy"
+          uv pip install --system pandas-stubs pytest-cases types-setuptools types-redis types-tqdm types-pillow types-PyYAML
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-core/datapipe libs/datapipe-core/tests --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-core/datapipe libs/datapipe-core/tests --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        run: |
+          mypy -p datapipe --ignore-missing-imports --follow-imports=silent --namespace-packages
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - python-version: "3.10"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>2"'
+          - python-version: "3.11"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>1.4,<2" "pandas<2.2"'
+          - python-version: "3.11"
+            test-db-env: "postgres"
+            pip-extra: '"sqlalchemy>2"'
+          - python-version: "3.11"
+            test-db-env: "sqlite"
+            pip-extra: '"sqlalchemy>2"'
+          - python-version: "3.12"
+            test-db-env: "postgres"
+          - python-version: "3.12"
+            test-db-env: "sqlite"
+          - python-version: "3.13"
+            test-db-env: "postgres"
+
+    services:
+      postgres:
+        image: postgres:12
+        env:
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+      quadrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.4
+        env:
+          discovery.type: single-node
+          ES_JAVA_OPTS: -Xms4g -Xmx4g
+          xpack.security.enabled: false
+          xpack.security.http.ssl.enabled: false
+          node.name: node
+          cluster.name: cluster
+          http.cors.enabled: true
+        options: >-
+          --health-cmd "curl http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 20s
+          --health-retries 10
+        ports:
+          - 9200:9200
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow]" "pytest<8" "pytest_cases" "elasticsearch<9"
+
+      - name: Test with pytest
+        run: |
+          pytest libs/datapipe-core/tests
+        env:
+          TEST_DB_ENV: ${{ matrix.test-db-env }}
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          ELASTIC_HOST: localhost
+          ELASTIC_PORT: 9200
+
+  test-examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+        example:
+          - datatable_batch_transform
+          - image_resize
+          - key_mapping
+          - many_to_zero
+          - model_inference
+          - one_to_many_pipeline
+        executor:
+          - SingleThreadExecutor
+          - RayExecutor
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,ray,elastic]"
+
+      - name: Test example
+        working-directory: examples/datapipe_core/${{ matrix.example }}
+        run: |
+          datapipe db create-all
+          datapipe --executor ${{ matrix.executor }} step run
+        env:
+          PYTHONPATH: ${{ github.workspace }}

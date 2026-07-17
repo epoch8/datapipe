@@ -1,0 +1,105 @@
+[project]
+name = "datapipe-ml"
+version = "0.4.0"
+description = "`datapipe-ml` is a ML addon to realtime incremental ETL `datapipe`"
+readme = "README.md"
+authors = [{ name = "Aleksandr Kozlov", email = "bobokvsky@epoch8.co" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "albumentations>=2.0.0,<3",
+    "opencv-python>=4.8.0.76",
+    "opencv-python-headless>=4.8.0.76",
+    "datapipe-core[gcsfs,s3fs,ray]",
+    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.0",
+    "imageio>=2.31.3,<3",
+    "joblib>=1.3.2,<2",
+    "natsort>=8.4.0",
+    "pathy>=0.11.0",
+    "IPython>=7.0.0,<9",
+    "matplotlib>=3.8",
+    "psutil",
+    "scipy>=1.4.1",
+    "seaborn>=0.13.0",
+    "thop>=0.1.1",
+    "tqdm>=4.64.0",
+    "dill>=0.3.7",
+]
+
+[project.optional-dependencies]
+sqlite = [
+    "pysqlite3-binary>=0.5.0,<0.6 ; sys_platform != 'darwin'",
+    "sqlalchemy-pysqlite3-binary>=0.0.4,<0.0.5 ; sys_platform != 'darwin'",
+]
+tensorflow = [
+    "tensorflow>=2.13.0, <2.22.0",
+    "image-classifiers",
+]
+torch = [
+    "torch>=1.12.0",
+    "torchvision>=0.12.0",
+    "YOLOv5 @ git+https://github.com/epoch8/yolov5@943ad3c43a981ff81b05c779d2e051641b714f4a",
+    "huggingface-hub",
+    "requests-toolbelt>=1.0.0",
+    "ultralytics>=8.4.66, <9.0.0",
+]
+fiftyone = [
+    "fiftyone",
+]
+sky-vast = [
+    "skypilot[vast]==0.12.3.post1",
+    "vastai-sdk>=0.1.20,<0.2",
+    "sshfs",
+    "asyncssh",
+    "s3fs",
+]
+
+[project.urls]
+Repository = "https://github.com/epoch8/datapipe"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "flake8",
+    "mypy",
+    "black",
+    "isort",
+    "autoflake",
+    "ruff",
+    "pandas-stubs",
+    "pytest-cases",
+    "types-setuptools",
+    "types-redis",
+    "types-tqdm",
+    "types-pillow",
+    "types-PyYAML",
+]
+
+[tool.uv.sources]
+datapipe-core = { workspace = true }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
+YOLOv5 = { git = "https://github.com/epoch8/yolov5", rev = "943ad3c43a981ff81b05c779d2e051641b714f4a" }
+image-classifiers = { git = "https://github.com/qubvel/classification_models", rev = "a0f006e05485a34ccf871c421279864b0ccd220b" }
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that are too slow for the default local smoke run",
+    "smoke: small end-to-end tests that exercise real local behavior",
+    "training: tests that exercise model training or training-time imports",
+    "e2e: full end-to-end pipeline tests",
+    "e2e_examples: full end-to-end tests for repository examples",
+    "e2e_template: tests for examples/e2e_template pipelines",
+    "service_e2e: tests that require local service containers",
+    "cloud_storage: tests that require configured cloud or MinIO-compatible object storage",
+    "tensorflow: tests that require the tensorflow optional extra",
+    "torch: tests that require the torch optional extra",
+    "fiftyone: tests that require the fiftyone optional extra and MongoDB",
+    "sky_vast: tests that require SkyPilot and Vast credentials",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
