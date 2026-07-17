@@ -18,12 +18,42 @@ pipeline = Pipeline([
 
 Your transform functions stay simple and stateless — they receive a `pd.DataFrame` and return a `pd.DataFrame`. Datapipe figures out which rows need processing.
 
-**Documentation:** https://epoch8.github.io/datapipe/  
+**Documentation:** https://epoch8.github.io/datapipe/
 **Website:** https://datapipe.dev/
+
+This repository contains the Datapipe Python packages as a `uv` monorepo workspace.
+
+## Packages
+
+- `libs/datapipe-core` - core incremental ETL library, import package `datapipe`.
+- `libs/datapipe-ml` - ML addon for Datapipe, import package `datapipe_ml`.
+- `libs/datapipe-label-studio` - Label Studio integration, import package `datapipe_label_studio`.
+- `libs/datapipe-cvat` - CVAT integration, import package `datapipe_cvat`.
+- `libs/datapipe-app` - REST API, debug UI, and CLI extensions, import package `datapipe_app`.
 
 ## Development
 
-Active branches:
+The workspace is configured in the root `pyproject.toml`. Package code and
+package-local tests stay inside each `libs/*` directory. Shared docs and
+examples live at the repository root.
+
+Common commands:
+
+```bash
+uv sync --all-packages
+uv run pytest libs/datapipe-core/tests
+uv run pytest libs/datapipe-ml/tests -m "not training and not slow and not e2e and not tensorflow and not torch"
+uv run pytest -vv -x libs/datapipe-label-studio/tests
+uv run pytest libs/datapipe-app/tests
+uv run python -c "import datapipe_cvat.cvat_step, datapipe_cvat.utils"
+```
+
+## Documentation
+
+Documentation lives in `libs/datapipe-core/docs`. Design notes live in
+`libs/datapipe-core/design-docs`.
+
+## Version Compatibility
 
 * `master` — current development state, will become the `0.15.x` release
 * `v0.14` — current stable version

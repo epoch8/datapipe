@@ -1,0 +1,144 @@
+name: datapipe-cvat
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-cvat.yml"
+      - "examples/datapipe_cvat/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-cvat/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-cvat.yml"
+      - "examples/datapipe_cvat/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-cvat/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "flake8" "mypy"
+          uv pip install --system pandas-stubs pytest-cases types-setuptools types-requests
+
+      - name: Lint with flake8
+        run: |
+          flake8 libs/datapipe-cvat/datapipe_cvat --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 libs/datapipe-cvat/datapipe_cvat --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Lint with mypy
+        run: |
+          mypy -p datapipe_cvat --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "pytest<8" "pytest_cases"
+
+      - name: Import smoke test
+        run: |
+          pytest libs/datapipe-cvat/tests -m "not cvat"
+
+  test-cvat-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Start CVAT
+        run: |
+          CVAT_VERSION=v2.65.0 CVAT_REPO_DIR=/tmp/cvat libs/datapipe-cvat/tests/start-cvat.sh &
+          echo "CVAT_START_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 180); do
+            if curl -fsS "http://localhost:8080/api/server/about" >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml logs --tail=200
+          echo "CVAT didn't become ready in time"
+          exit 1
+
+      - name: Create CVAT superuser
+        run: |
+          docker exec cvat_server bash -lc "DJANGO_SUPERUSER_PASSWORD=admin python3 ~/manage.py createsuperuser --username admin --email admin@example.com --noinput || true"
+
+      - name: Install dependencies with uv
+        run: |
+          uv pip install --system -e "libs/datapipe-core[gcsfs,s3fs,sqlite]"
+          uv pip install --system -e "libs/datapipe-cvat" --no-deps
+          uv pip install --system "cvat-sdk==2.65.0" "pytest<8" "pytest_cases" "requests"
+
+      - name: Test with real CVAT
+        run: |
+          pytest libs/datapipe-cvat/tests -m "cvat"
+        env:
+          CVAT_URL: http://localhost:8080
+          CVAT_USERNAME: admin
+          CVAT_PASSWORD: admin
+
+      - name: Stop CVAT
+        if: always()
+        run: |
+          if [ -n "${CVAT_START_PID:-}" ]; then
+            kill "$CVAT_START_PID" || true
+            wait "$CVAT_START_PID" || true
+          fi
+          docker compose --project-directory /tmp/cvat -f /tmp/cvat/docker-compose.yml down

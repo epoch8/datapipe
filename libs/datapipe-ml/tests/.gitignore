@@ -1,0 +1,4 @@
+input/
+input_kps/
+output/
+db.sqlite*
