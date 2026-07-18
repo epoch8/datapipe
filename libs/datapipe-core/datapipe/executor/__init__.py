@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Protocol
+from typing import Generator, Protocol
 
 from tqdm_loggable.auto import tqdm
 
@@ -34,7 +34,7 @@ class Executor(ABC):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Iterable[IndexDF],
+        idx_gen: Generator[IndexDF, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -47,20 +47,23 @@ class SingleThreadExecutor(Executor):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Iterable[IndexDF],
+        idx_gen: Generator[IndexDF, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
-        for idx in tqdm(idx_gen, total=idx_count):
-            changes = process_fn(
-                ds=ds,
-                idx=idx,
-                run_config=run_config,
-            )
+        try:
+            for idx in tqdm(idx_gen, total=idx_count):
+                changes = process_fn(
+                    ds=ds,
+                    idx=idx,
+                    run_config=run_config,
+                )
 
-            res_changelist.extend(changes)
+                res_changelist.extend(changes)
+        finally:
+            idx_gen.close()
 
         return res_changelist
