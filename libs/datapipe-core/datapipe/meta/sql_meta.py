@@ -19,7 +19,7 @@ from opentelemetry import trace
 from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMeta
 from datapipe.run_config import LabelDict, RunConfig
-from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
+from datapipe.sql_util import chunk_records_for_insert, sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -296,20 +296,21 @@ class SQLTableMeta(TableMeta):
         if df.empty:
             return
 
-        insert_sql = self.dbconn.insert(self.sql_table).values(df.to_dict(orient="records"))
-
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.primary_keys,
-            set_={
-                "hash": insert_sql.excluded.hash,
-                "update_ts": insert_sql.excluded.update_ts,
-                "process_ts": insert_sql.excluded.process_ts,
-                "delete_ts": insert_sql.excluded.delete_ts,
-            },
-        )
-
         with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            for chunk in chunk_records_for_insert(df.to_dict(orient="records")):
+                insert_sql = self.dbconn.insert(self.sql_table).values(chunk)
+
+                sql = insert_sql.on_conflict_do_update(
+                    index_elements=self.primary_keys,
+                    set_={
+                        "hash": insert_sql.excluded.hash,
+                        "update_ts": insert_sql.excluded.update_ts,
+                        "process_ts": insert_sql.excluded.process_ts,
+                        "delete_ts": insert_sql.excluded.delete_ts,
+                    },
+                )
+
+                con.execute(sql)
 
     def mark_rows_deleted(
         self,
@@ -565,23 +566,22 @@ class SQLTransformMeta(TransformMeta):
     ) -> None:
         idx = cast(IndexDF, idx[self.transform_keys])
 
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": 0,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": None,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_nothing(index_elements=self.transform_keys)
+        records = [
+            {
+                "process_ts": 0,
+                "is_success": False,
+                "priority": 0,
+                "error": None,
+                **idx_dict,  # type: ignore
+            }
+            for idx_dict in idx.to_dict(orient="records")
+        ]
 
         with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            for chunk in chunk_records_for_insert(records):
+                insert_sql = self.dbconn.insert(self.sql_table).values(chunk)
+                sql = insert_sql.on_conflict_do_nothing(index_elements=self.transform_keys)
+                con.execute(sql)
 
     def mark_rows_processed_success(
         self,
@@ -619,31 +619,31 @@ class SQLTransformMeta(TransformMeta):
                 con.execute(insert_sql)
 
         else:
-            insert_sql = self.dbconn.insert(self.sql_table).values(
-                [
-                    {
-                        "process_ts": process_ts,
-                        "is_success": True,
-                        "priority": 0,
-                        "error": None,
-                        **idx_dict,  # type: ignore
-                    }
-                    for idx_dict in idx.to_dict(orient="records")
-                ]
-            )
-
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.transform_keys,
-                set_={
+            records = [
+                {
                     "process_ts": process_ts,
                     "is_success": True,
+                    "priority": 0,
                     "error": None,
-                },
-            )
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
 
-            # execute
             with self.dbconn.con.begin() as con:
-                con.execute(sql)
+                for chunk in chunk_records_for_insert(records):
+                    insert_sql = self.dbconn.insert(self.sql_table).values(chunk)
+
+                    sql = insert_sql.on_conflict_do_update(
+                        index_elements=self.transform_keys,
+                        set_={
+                            "process_ts": process_ts,
+                            "is_success": True,
+                            "error": None,
+                        },
+                    )
+
+                    con.execute(sql)
 
     def mark_rows_processed_error(
         self,
@@ -658,31 +658,31 @@ class SQLTransformMeta(TransformMeta):
         if len(idx) == 0:
             return
 
-        insert_sql = self.dbconn.insert(self.sql_table).values(
-            [
-                {
-                    "process_ts": process_ts,
-                    "is_success": False,
-                    "priority": 0,
-                    "error": error,
-                    **idx_dict,  # type: ignore
-                }
-                for idx_dict in idx.to_dict(orient="records")
-            ]
-        )
-
-        sql = insert_sql.on_conflict_do_update(
-            index_elements=self.transform_keys,
-            set_={
+        records = [
+            {
                 "process_ts": process_ts,
                 "is_success": False,
+                "priority": 0,
                 "error": error,
-            },
-        )
+                **idx_dict,  # type: ignore
+            }
+            for idx_dict in idx.to_dict(orient="records")
+        ]
 
-        # execute
         with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            for chunk in chunk_records_for_insert(records):
+                insert_sql = self.dbconn.insert(self.sql_table).values(chunk)
+
+                sql = insert_sql.on_conflict_do_update(
+                    index_elements=self.transform_keys,
+                    set_={
+                        "process_ts": process_ts,
+                        "is_success": False,
+                        "error": error,
+                    },
+                )
+
+                con.execute(sql)
 
     def get_metadata_size(self) -> int:
         sql = sa.select(sa.func.count()).select_from(self.sql_table)

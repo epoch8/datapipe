@@ -5,6 +5,10 @@
 * Added `fail_fast` flag to `RunConfig` (defaults from new `DATAPIPE_FAIL_FAST`
   setting); when set, `BatchTransformStep` re-raises processing errors instead
   of recording them as batch errors and continuing
+* Chunked bulk `INSERT ... VALUES` statements in `TableStoreDB.update_rows`
+  and `SQLTableMeta`'s insert/update paths so they stay under Postgres's
+  65535 bind-parameter limit; needed once the driver binds parameters
+  server-side (see following change)
 
 # 0.15.0
 
