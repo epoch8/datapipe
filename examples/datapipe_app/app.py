@@ -13,7 +13,7 @@ DB_CONN_URI = os.environ.get("DB_CONN_URI", "sqlite+pysqlite3:///store.sqlite")
 
 # dbconn = DBConn("sqlite:///store.sqlite")
 # dbconn = DBConn("sqlite:///:memory:")
-# dbconn = DBConn("postgresql://postgres:postgres@localhost:5432/postgres")
+# dbconn = DBConn("postgresql+psycopg://postgres:postgres@localhost:5432/postgres")
 dbconn = DBConn(DB_CONN_URI)
 
 catalog = Catalog(

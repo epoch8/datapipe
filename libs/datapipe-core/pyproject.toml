@@ -17,11 +17,11 @@ dependencies = [
     "opentelemetry-sdk>=1.8.0,<2",
     "pandas>=1.2.0",
     "Pillow>=12.2.0,<13",
-    "psycopg2_binary>=2.8.4",
+    "psycopg[binary]>=3.1",
     "pydantic-settings>=2.14.1",
     "PyYAML>=5.3.1",
     "rich>=13.3.2",
-    "SQLAlchemy>=1.4.0, <3.0.0",
+    "SQLAlchemy>=2.0.0, <3.0.0",
     "tqdm-loggable>=0.4.1,<0.5",
     "traceback-with-variables>=2.0.4,<3",
 ]
