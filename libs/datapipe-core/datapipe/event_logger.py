@@ -1,10 +1,17 @@
 import logging
+import sys
 
 from traceback_with_variables import format_exc
+from traceback_with_variables.color import supports_ansi
 
 from datapipe.run_config import RunConfig
 
 logger = logging.getLogger("datapipe.event_logger")
+
+
+def _format_exception(exc: Exception) -> str:
+    # for_file enables ANSI colors when stderr is an interactive terminal.
+    return format_exc(exc, for_file=sys.stderr)
 
 
 class EventLogger:
@@ -31,9 +38,19 @@ class EventLogger:
         run_config: RunConfig | None = None,
     ) -> None:
         if run_config is not None:
-            logger.error(f"Error in step {run_config.labels.get('step_name')}: {type} {message}\n{description}")
+            header = f"Error in step {run_config.labels.get('step_name')}: {type} {message}"
         else:
-            logger.error(f"Error: {type} {message}\n{description}")
+            header = f"Error: {type} {message}"
+
+        logger.error(header)
+        if not description:
+            return
+
+        # Write colored tracebacks directly to stderr so ANSI escapes are not altered by logging.
+        if supports_ansi(sys.stderr):
+            sys.stderr.write(f"{description}\n")
+        else:
+            logger.error(description)
 
     def log_exception(
         self,
@@ -43,7 +60,7 @@ class EventLogger:
         self.log_error(
             type=type(exc).__name__,
             message=str(exc),
-            description=format_exc(exc),
+            description=_format_exception(exc),
             params=[],  # exc.args, # Not all args can be serialized to JSON, dont really need them
             run_config=run_config,
         )
