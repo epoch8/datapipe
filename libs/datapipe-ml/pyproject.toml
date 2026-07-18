@@ -71,7 +71,7 @@ dev = [
     "types-redis",
     "types-tqdm",
     "types-pillow",
-    "types-PyYAML",
+    "types-pyyaml",
 ]
 
 [tool.uv.sources]
