@@ -9,6 +9,12 @@
   and `SQLTableMeta`'s insert/update paths so they stay under Postgres's
   65535 bind-parameter limit; needed once the driver binds parameters
   server-side (see following change)
+* Upgraded Postgres driver from `psycopg2-binary` to `psycopg` (v3) and raised
+  the SQLAlchemy dependency floor from `1.4.0` to `2.0.0`
+* Fixed `migrations/v013.py` to use `Engine.begin()` instead of the removed
+  SQLAlchemy 1.x implicit `Engine.execute()`
+* Dropped the SQLAlchemy 1.x fallback for `DeclarativeBase` in `types.py` now
+  that SQLAlchemy 2.0 is the minimum supported version
 
 # 0.15.0
 

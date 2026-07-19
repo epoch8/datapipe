@@ -31,7 +31,7 @@ dependencies = [
     "datapipe-core @ git+https://github.com/epoch8/datapipe@<REV>#subdirectory=libs/datapipe-core",
     # add per blocks: datapipe-ml (+#subdirectory=libs/datapipe-ml), datapipe-app, ...
     # "stringzilla==4.4.0",  # REQUIRED whenever datapipe-ml is used (transitive albumentations dep breaks unpinned)
-    "pandas", "sqlalchemy", "psycopg2-binary", "python-dotenv",
+    "pandas", "sqlalchemy", "psycopg[binary]", "python-dotenv",
 ]
 ```
 
