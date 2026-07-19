@@ -12,7 +12,7 @@ from sqlalchemy.sql.base import SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select
 
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
+from datapipe.sql_util import chunk_records_for_insert, sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
@@ -243,18 +243,24 @@ class TableStoreDB(TableStore):
         df_records = df.astype(object)
         df_records[pd.isna(df_records)] = None
         records = df_records.to_dict(orient="records")
-        insert_sql = self.dbconn.insert(self.data_table).values(records)
-
-        if len(self.data_keys) > 0:
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
-                set_={col.name: insert_sql.excluded[col.name] for col in self.data_sql_schema if not col.primary_key},
-            )
-        else:
-            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
 
         with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            for chunk in chunk_records_for_insert(records):
+                insert_sql = self.dbconn.insert(self.data_table).values(chunk)
+
+                if len(self.data_keys) > 0:
+                    sql = insert_sql.on_conflict_do_update(
+                        index_elements=self.primary_keys,
+                        set_={
+                            col.name: insert_sql.excluded[col.name]
+                            for col in self.data_sql_schema
+                            if not col.primary_key
+                        },
+                    )
+                else:
+                    sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+
+                con.execute(sql)
 
     # Fix numpy types in IndexDF
     def _get_sql_param(self, param):
