@@ -93,7 +93,7 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=10, epochs=10, exist_ok=True, seed=42, workers=0)
+                YoloV8_TrainingConfig(model="yolov8n.pt", imgsz=320, batch=32, epochs=5, freeze=10, exist_ok=True, seed=42, workers=0)
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
             resume_config=TrainingResumeConfig(
@@ -113,7 +113,9 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
-            batch_size_default=1,
+            batch_size_default=64,
+            chunk_size=1024,
+            prediction_threshold=0.10,
             labels=[("stage", "train"), ("stage", "inference")],
         ),
         CountMetrics_Subset_PipelineModel(
@@ -182,8 +184,8 @@ pipeline = Pipeline(
             inputs=[
                 "local_images",
                 Required("image__ground_truth"),
-                Required("image__subset"),
-                Required("image__tag"),
+                "image__subset",
+                "image__tag",
             ],
             outputs=["fiftyone_annotations"],
             labels=[("stage", "fiftyone")],
