@@ -17,4 +17,5 @@ def test_create_observability_tables_hook_creates_tables(ops_app) -> None:
 
     after = set(inspector.get_table_names())
     assert tables.pipeline_runs in after
-    assert tables.pipeline_run_logs in after
+    assert tables.pipeline_run_steps in after
+    assert "datapipe_api__run_logs" not in after

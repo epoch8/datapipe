@@ -44,12 +44,14 @@ class CapabilitiesResponse(BaseModel):
     ml_metrics: bool
     ml_training: bool
     pipeline_id: Optional[str] = None
+    run_logs_configured: bool = False
 
 
 class SettingsResponse(BaseModel):
     pipeline_id: Optional[str]
     observability_db_connected: bool
     version: str
+    run_logs_configured: bool = False
 
 
 def make_run_steps_callable(
@@ -176,6 +178,7 @@ def make_app(
             ml_metrics=has_ml_plugin and _has_catalog_metrics(),
             ml_training=has_ml_plugin,
             pipeline_id=get_ops_settings().pipeline_id,
+            run_logs_configured=store.run_logs_configured,
         )
 
     @app.get("/settings", response_model=SettingsResponse)
@@ -196,6 +199,7 @@ def make_app(
             pipeline_id=get_ops_settings().pipeline_id,
             observability_db_connected=connected,
             version=version,
+            run_logs_configured=store.run_logs_configured,
         )
 
     def _serialize_recent_runs(runs: list[Any]) -> list[dict[str, Any]]:

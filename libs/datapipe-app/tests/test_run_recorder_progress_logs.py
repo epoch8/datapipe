@@ -3,10 +3,14 @@ from __future__ import annotations
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.observability.store.db import ObservabilityStore
+from datapipe_app.observability.run_logs import RunLogsBackend
 
 
 def test_update_step_progress_writes_throttled_log_lines(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(
+        f"sqlite:///{tmp_path / 'obs.db'}",
+        run_logs_backend=RunLogsBackend.memory(),
+    )
     buffer = RunLogBuffer(store)
     recorder = RunRecorder(store, pipeline_id="pipe", log_buffer=buffer)
 

@@ -193,6 +193,7 @@ export interface Capabilities {
     ml_metrics: boolean;
     ml_training: boolean;
     pipeline_id?: string;
+    run_logs_configured?: boolean;
 }
 
 export interface ResetTransformMetadataResponse {
@@ -204,4 +205,5 @@ export interface SettingsInfo {
     pipeline_id?: string;
     observability_db_connected: boolean;
     version: string;
+    run_logs_configured?: boolean;
 }

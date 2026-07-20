@@ -80,6 +80,9 @@ class RunLogBuffer:
         pending = self._pending_flush.get(run_id, [])
         if not pending:
             return
+        if not getattr(self.store, "run_logs_configured", False):
+            pending.clear()
+            return
         rows = list(pending)
         try:
             self.store.append_run_logs(rows)
@@ -89,15 +92,17 @@ class RunLogBuffer:
         pending.clear()
 
     def get_lines(self, run_id: str, *, after: int = 0, limit: int = 500) -> list[LogLine]:
-        db_lines = [
-            LogLine(
-                seq=r.seq,
-                logged_at=r.logged_at.isoformat() if r.logged_at else "",
-                level=r.level,
-                message=r.message,
-            )
-            for r in self.store.get_run_logs(run_id, after=0, limit=MAX_LINES_PER_RUN)
-        ]
+        db_lines: list[LogLine] = []
+        if getattr(self.store, "run_logs_configured", False):
+            db_lines = [
+                LogLine(
+                    seq=r.seq,
+                    logged_at=r.logged_at.isoformat() if r.logged_at else "",
+                    level=r.level,
+                    message=r.message,
+                )
+                for r in self.store.get_run_logs(run_id, after=0, limit=MAX_LINES_PER_RUN)
+            ]
         with self._lock:
             buf = self._buffers.get(run_id)
             if buf is None:

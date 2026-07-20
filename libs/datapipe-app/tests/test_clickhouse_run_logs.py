@@ -4,8 +4,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from datapipe.store.database import DBConn
-
 from datapipe_app.observability.run_logs.clickhouse_schema import (
     clickhouse_max_run_log_seq_statement,
     clickhouse_run_log_column_names,
@@ -16,12 +14,11 @@ from datapipe_app.observability.run_logs.clickhouse_schema import (
 from datapipe_app.observability.run_logs.store import (
     ClickHouseRunLogStore,
     RunLogStore,
-    SHARED_RUN_LOGS_WARNING,
+    MISSING_RUN_LOGS_BACKEND_WARNING,
     SqlAlchemyRunLogStore,
-    warn_if_run_logs_share_pipeline_db,
+    warn_if_run_logs_backend_missing,
 )
-from datapipe_app.observability.run_logs import RunLogsBackend
-from datapipe_app.observability.config.tables import ObservabilityTableConfig
+from datapipe_app.observability.run_logs import DEFAULT_RUN_LOGS_TABLE_NAME, RunLogsBackend
 
 
 class FakeClickHouseClient:
@@ -109,7 +106,7 @@ def test_run_log_store_implementations_are_subclasses():
 def test_clickhouse_run_log_store_roundtrip(fake_clickhouse_client):
     store = ClickHouseRunLogStore(
         fake_clickhouse_client,
-        table_name=ObservabilityTableConfig().pipeline_run_logs,
+        table_name=DEFAULT_RUN_LOGS_TABLE_NAME,
     )
     store.ensure_table()
 
@@ -146,7 +143,7 @@ def test_clickhouse_run_log_store_concurrent_append_and_read(fake_clickhouse_cli
 
     store = ClickHouseRunLogStore(
         fake_clickhouse_client,
-        table_name=ObservabilityTableConfig().pipeline_run_logs,
+        table_name=DEFAULT_RUN_LOGS_TABLE_NAME,
     )
     store.ensure_table()
     logged_at = datetime(2026, 7, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -191,37 +188,24 @@ def test_clickhouse_run_log_store_concurrent_append_and_read(fake_clickhouse_cli
     assert store.get_last_log_seq("run-concurrent") == 50
 
 
-def test_warn_if_run_logs_share_pipeline_db(caplog):
+def test_warn_if_run_logs_backend_missing(caplog):
     caplog.set_level("WARNING")
 
-    pipeline_dbconn = DBConn("postgresql://postgres:password@localhost:5432/postgres")
-    observability_dbconn = DBConn("postgresql://postgres:password@localhost:5432/postgres")
+    warn_if_run_logs_backend_missing(None)
 
-    warn_if_run_logs_share_pipeline_db(
-        pipeline_dbconn=pipeline_dbconn,
-        observability_dbconn=observability_dbconn,
-        run_logs_backend=None,
-    )
-
-    assert any(SHARED_RUN_LOGS_WARNING.split("%s")[0] in record.message for record in caplog.records)
+    assert any(MISSING_RUN_LOGS_BACKEND_WARNING[:40] in record.message for record in caplog.records)
 
 
-def test_warn_if_run_logs_share_pipeline_db_skips_with_clickhouse(caplog, monkeypatch):
+def test_warn_if_run_logs_backend_missing_skips_with_clickhouse(caplog, monkeypatch):
     caplog.set_level("WARNING")
     monkeypatch.setattr(
         "datapipe_app.observability.run_logs.store._create_clickhouse_client",
         lambda _url: FakeClickHouseClient(),
     )
 
-    pipeline_dbconn = DBConn("postgresql://postgres:password@localhost:5432/postgres")
-    observability_dbconn = DBConn("postgresql://postgres:password@localhost:5432/postgres")
     run_logs_backend = RunLogsBackend.clickhouse("clickhouse://default:@localhost:8123/default")
 
-    warn_if_run_logs_share_pipeline_db(
-        pipeline_dbconn=pipeline_dbconn,
-        observability_dbconn=observability_dbconn,
-        run_logs_backend=run_logs_backend,
-    )
+    warn_if_run_logs_backend_missing(run_logs_backend)
 
     assert not caplog.records
 
@@ -240,6 +224,7 @@ def test_observability_store_uses_clickhouse_for_logs(tmp_path, fake_clickhouse_
         run_logs_backend=RunLogsBackend.clickhouse("clickhouse://default:@localhost:8123/default"),
     )
 
+    assert store.run_logs_configured is True
     assert store.use_external_run_logs is True
     store.append_run_logs(
         [
@@ -255,6 +240,25 @@ def test_observability_store_uses_clickhouse_for_logs(tmp_path, fake_clickhouse_
     lines = store.get_run_logs("run-ch")
     assert len(lines) == 1
     assert lines[0].message == "from clickhouse"
+
+
+def test_observability_store_without_backend_does_not_persist_logs(tmp_path):
+    from datapipe_app.observability.store.db import ObservabilityStore
+
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    assert store.run_logs_configured is False
+    store.append_run_logs(
+        [
+            {
+                "run_id": "run-null",
+                "seq": 1,
+                "logged_at": datetime.now(timezone.utc),
+                "level": "INFO",
+                "message": "ignored",
+            }
+        ]
+    )
+    assert store.get_run_logs("run-null") == []
 
 
 def test_sqlalchemy_run_log_store_delegates_to_observability_store(tmp_path):

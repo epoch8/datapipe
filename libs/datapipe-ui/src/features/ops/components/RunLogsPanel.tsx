@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Dropdown, Menu, Typography } from "antd";
+import { Alert, Button, Card, Dropdown, Menu, Typography } from "antd";
 import { opsApi } from "../../../api/client";
 import type { RunLogLine } from "../../../types/ops";
 import { ansiToHtml, stripAnsi } from "./ansi";
@@ -49,6 +49,7 @@ type Props = {
 export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilter }: Props) {
     const [lines, setLines] = useState<RunLogLine[]>([]);
     const [refreshMs, setRefreshMs] = useState<number | null>(() => readStoredRefreshMs());
+    const [runLogsConfigured, setRunLogsConfigured] = useState<boolean | null>(null);
     const lastSeqRef = useRef(0);
     const containerRef = useRef<HTMLPreElement>(null);
     const stickToBottomRef = useRef(true);
@@ -91,6 +92,13 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
             /* ignore */
         }
     };
+
+    useEffect(() => {
+        opsApi
+            .getSettings()
+            .then((info) => setRunLogsConfigured(info.run_logs_configured ?? false))
+            .catch(() => setRunLogsConfigured(null));
+    }, []);
 
     useEffect(() => {
         lastSeqRef.current = 0;
@@ -199,6 +207,24 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                 </>
             }
         >
+            {runLogsConfigured === false && (
+                <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="Run logs are not being recorded"
+                    description={
+                        <>
+                            Pass <Text code>run_logs_backend</Text> to{" "}
+                            <Text code>DatapipeAPI</Text> (for example{" "}
+                            <Text code>
+                                {"RunLogsBackend.clickhouse('clickhouse://...')"}
+                            </Text>
+                            ).
+                        </>
+                    }
+                />
+            )}
             {stepFilter && (
                 <div style={{ marginBottom: 8 }}>
                     <Text type="secondary">
