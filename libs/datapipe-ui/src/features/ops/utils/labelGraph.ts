@@ -439,11 +439,6 @@ export function layoutLabelGraph(
         }
     }
 
-    const containerHeightFor = (childCount: number): number =>
-        childCount > 0
-            ? cfg.containerInnerTop + cfg.childHeight + cfg.containerBottomPad
-            : cfg.nodeHeight;
-
     const measureNode = (nodeId: string): { w: number; h: number } => {
         const node = nodeById.get(nodeId);
         if (!node) return { w: cfg.nodeWidth, h: cfg.nodeHeight };

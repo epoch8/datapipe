@@ -116,7 +116,7 @@ class YoloTrainRuntimeConfig:
         context_cls: Type[YoloContextT],
         *,
         dt__frozen_dataset: DataTable,
-        dt__train_config: DataTable,
+        dt__train_config: Optional[DataTable],
         dt__class_names: DataTable,
         dt__resized_image_file: DataTable,
         dt__yolo_txt: DataTable,

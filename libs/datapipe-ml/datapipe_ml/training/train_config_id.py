@@ -108,7 +108,7 @@ def train_configs_to_dataframe(
         if display_name is None:
             display_name = summary
 
-        row = {id_column: config_id, params_column: params}
+        row: dict[str, Any] = {id_column: config_id, params_column: params}
         if config_type is not None:
             row.update(
                 {

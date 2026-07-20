@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
+from datapipe.types import IndexDF
 
 from datapipe_ml.training.train_config_id import (
     build_auto_training_request_id,
@@ -123,7 +124,7 @@ def make_build_auto_training_request(
 
     def build_auto_training_request_step(
         ds: DataStore,
-        idx: pd.DataFrame,
+        idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
         kwargs: Optional[Dict[str, Any]] = None,

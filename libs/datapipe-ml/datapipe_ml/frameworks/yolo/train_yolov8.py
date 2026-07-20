@@ -13,6 +13,7 @@ from typing import (
     Sequence,
     Type,
     Union,
+    cast,
 )
 
 import pandas as pd
@@ -67,14 +68,14 @@ class YoloV8TaskSpec:
 def make_yolov8_train_callable(
     spec: YoloV8TaskSpec,
     algo_cls: Type[YoloBaseAlgo],
-) -> Callable[..., tuple[pd.DataFrame, ...]]:
+) -> Callable[..., tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]]:
     def train_yolov8(
         ds: DataStore,
         idx: IndexDF,
         input_dts: List[DataTable],
         run_config: Optional[RunConfig] = None,
         kwargs: Optional[Dict[str, Any]] = None,
-    ) -> tuple[pd.DataFrame, ...]:
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         kwargs = kwargs or {}
         (
             dt__frozen_dataset,
@@ -97,7 +98,7 @@ def make_yolov8_train_callable(
                 f"Training request is missing required column {frozen_dataset_id_col!r}"
             )
         frozen_dataset_id = df_training_request.iloc[0][frozen_dataset_id_col]
-        data_idx = pd.DataFrame([{frozen_dataset_id_col: frozen_dataset_id}])
+        data_idx = IndexDF(pd.DataFrame([{frozen_dataset_id_col: frozen_dataset_id}]))
         df_frozen_dataset = dt__frozen_dataset.get_data(data_idx)
         df_class_names = dt__class_names.get_data(data_idx)
         df_resized_images = dt__resized_image_file.get_data(data_idx)
@@ -141,17 +142,20 @@ def make_yolov8_train_callable(
             )
             return out.df__model, out.df__link, out.df__training_status
 
-        return run_training_request(
-            df_frozen_dataset=df_frozen_dataset,
-            df_training_request=df_training_request,
-            df_class_names=df_class_names,
-            df_resized_images=df_resized_images,
-            df_yolo_txt=df_yolo_txt,
-            train_callable=_train_callable,
-            train_config_id_col=spec.train_config_id_col,
-            train_config_params_col=spec.train_params_col,
-            frozen_dataset_id_col=frozen_dataset_id_col,
-            dt_training_status=kwargs.get("dt__training_status"),
+        return cast(
+            tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+            run_training_request(
+                df_frozen_dataset=df_frozen_dataset,
+                df_training_request=df_training_request,
+                df_class_names=df_class_names,
+                df_resized_images=df_resized_images,
+                df_yolo_txt=df_yolo_txt,
+                train_callable=_train_callable,
+                train_config_id_col=spec.train_config_id_col,
+                train_config_params_col=spec.train_params_col,
+                frozen_dataset_id_col=frozen_dataset_id_col,
+                dt_training_status=kwargs.get("dt__training_status"),
+            ),
         )
 
     return train_yolov8

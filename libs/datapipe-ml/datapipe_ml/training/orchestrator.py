@@ -206,7 +206,12 @@ def orchestrate(
 
     # Fetch ids and configs
     df_fd = ctx.dt__frozen_dataset.get_data(idx)
-    df_tc = df_train_config if df_train_config is not None else ctx.dt__train_config.get_data(idx)
+    if df_train_config is not None:
+        df_tc = df_train_config
+    elif ctx.dt__train_config is not None:
+        df_tc = ctx.dt__train_config.get_data(idx)
+    else:
+        raise ValueError("orchestrate requires df_train_config or ctx.dt__train_config")
     if len(df_fd) == 0 or len(df_tc) == 0:
         return TrainOutputs(
             ctx.dt__model.get_data(idx),
