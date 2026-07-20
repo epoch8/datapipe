@@ -168,7 +168,8 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
 set -a && source ../.env && set +a
-# Prefer `uv run python` (bare `python` misses venv deps like pathy). Cache: export DATAPIPE_TAGS_CACHE_DIR if not default.
+# Prefer `uv run python` (bare `python` misses venv deps like pathy). The cache must already be in
+# $DATAPIPE_TAGS_CACHE_DIR (from .env) — see Troubleshooting "Getting the cache".
 uv run python ../scripts/add_request.py --id base-train --n 400 --offset 0   --subset train
 uv run python ../scripts/add_request.py --id base-val   --n 150 --offset 400 --subset val
 uv run python ../scripts/add_request.py --id night-val  --n 150 --offset 550 --subset val --tag night --darken 0.40
@@ -327,8 +328,10 @@ to a file + `grep`, not inline.
 ## Troubleshooting (verify against current files)
 
 - **Getting the cache (fresh host)** → easiest: fetch the pre-built 1000-image cache from the public
-  bucket (no auth, works from RU) into `$DATAPIPE_TAGS_CACHE_DIR`:
+  bucket (no auth, works from RU) into `$DATAPIPE_TAGS_CACHE_DIR` (set in `.env`; defaults to
+  `/tmp/datapipe-tags-cache` — the SAME dir the pipe reads, so fetch and load agree):
   ```bash
+  set -a && source ../.env && set +a          # exports DATAPIPE_TAGS_CACHE_DIR
   BASE=https://storage.yandexcloud.net/e8-demo/datasets/coco-cat-dog-1000
   mkdir -p "$DATAPIPE_TAGS_CACHE_DIR/images" && cd "$DATAPIPE_TAGS_CACHE_DIR"
   curl -sf "$BASE/gt.json" -o gt.json
