@@ -455,6 +455,7 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: list[str] | None = None
     kwargs: dict | None = None
     labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
@@ -475,6 +476,7 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
             )
         ]
 
@@ -491,6 +493,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
         labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -500,6 +503,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
         )
 
         self.func = func

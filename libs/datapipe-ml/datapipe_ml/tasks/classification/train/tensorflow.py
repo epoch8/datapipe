@@ -531,6 +531,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                         resume_config=self.resume_config,
                     ),
                     labels=self.labels,
+                    executor_config=self.executor_config,
                 ),
             ]
         )
