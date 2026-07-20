@@ -2,9 +2,15 @@ import type {
     ClassMetricDetailResponse,
     ClassMetricsParams,
     ClassMetricsResponse,
+    CreateTrainingExperimentPayload,
+    CreateTrainingRequestPayload,
+    CreateTrainingRequestResponse,
+    DuplicateTrainingExperimentPayload,
+    FreezeLaunchResponse,
     FrozenDatasetDetailResponse,
     FrozenDatasetLinkedModelRow,
     FrozenDatasetsResponse,
+    LaunchResponse,
     MetricsListParams,
     MetricsModelDetailResponse,
     MetricsModelRow,
@@ -13,6 +19,13 @@ import type {
     OpsImageRecordDetailResponse,
     OpsImageRecordsCountResponse,
     OpsImageRecordsResponse,
+    TrainConfigSchemaResponse,
+    TrainingExperimentDetailResponse,
+    TrainingExperimentModelsResponse,
+    TrainingExperimentRow,
+    TrainingExperimentsListParams,
+    TrainingExperimentsResponse,
+    UpdateTrainingExperimentPayload,
     TrainingRunsParams,
     TrainingRunsResponse,
 } from "../types/opsMl";
@@ -42,6 +55,32 @@ function normalizeFrozenDatasetDetail(payload: FrozenDatasetDetailPayload): Froz
         });
     }
     return { ...payload, linked_models: Array.from(byModel.values()) };
+}
+
+function trainingBase(pipelineId: string, specId: string): string {
+    return `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/training`;
+}
+
+type ExperimentDetailPayload = TrainingExperimentDetailResponse | TrainingExperimentRow;
+
+function normalizeExperimentDetail(payload: ExperimentDetailPayload): TrainingExperimentRow {
+    if (payload && typeof payload === "object" && "experiment" in payload) {
+        return (payload as TrainingExperimentDetailResponse).experiment;
+    }
+    return payload as TrainingExperimentRow;
+}
+
+type ConfigSchemaPayload = {
+    config_type: string;
+    schema?: Record<string, unknown>;
+    json_schema?: Record<string, unknown>;
+};
+
+function normalizeConfigSchema(payload: ConfigSchemaPayload): TrainConfigSchemaResponse {
+    return {
+        config_type: payload.config_type,
+        schema: payload.schema ?? payload.json_schema ?? {},
+    };
 }
 
 export const mlOpsApi = {
@@ -115,6 +154,11 @@ export const mlOpsApi = {
         fetchJson<OpsRowsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
         ),
+    launchFrozenDataset: (pipelineId: string, specId: string) =>
+        fetchJson<FreezeLaunchResponse>(
+            `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/frozen-datasets/launch`,
+            { method: "POST" },
+        ),
     getOpsTrainingRows: (pipelineId: string, specId: string, params: OpsRowsParams = {}) =>
         fetchJson<OpsRowsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/ops-specs/${encodeURIComponent(specId)}/training/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
@@ -180,5 +224,100 @@ export const mlOpsApi = {
     getTrainingRuns: (pipelineId: string, params: TrainingRunsParams = {}) =>
         fetchJson<TrainingRunsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/training/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
+        ),
+
+    /* --- Custom training experiments (spec §23) --- */
+
+    getTrainingExperiments: (
+        pipelineId: string,
+        specId: string,
+        params: TrainingExperimentsListParams = {},
+    ) =>
+        fetchJson<TrainingExperimentsResponse>(
+            `${trainingBase(pipelineId, specId)}/experiments${toQuery(params as Record<string, string | number | boolean | string[] | undefined>)}`,
+        ),
+    getTrainingExperiment: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<ExperimentDetailPayload>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}`,
+        ).then(normalizeExperimentDetail),
+    getTrainingExperimentDetail: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<TrainingExperimentDetailResponse>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}`,
+        ),
+    getTrainingExperimentModels: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<TrainingExperimentModelsResponse>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}/models`,
+        ),
+    createTrainingExperiment: (
+        pipelineId: string,
+        specId: string,
+        payload: CreateTrainingExperimentPayload,
+    ) =>
+        fetchJson<ExperimentDetailPayload>(`${trainingBase(pipelineId, specId)}/experiments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        }).then(normalizeExperimentDetail),
+    updateTrainingExperiment: (
+        pipelineId: string,
+        specId: string,
+        id: string,
+        payload: UpdateTrainingExperimentPayload,
+    ) =>
+        fetchJson<ExperimentDetailPayload>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}`,
+            {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            },
+        ).then(normalizeExperimentDetail),
+    deleteTrainingExperiment: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<void>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}`,
+            { method: "DELETE" },
+        ),
+    duplicateTrainingExperiment: (
+        pipelineId: string,
+        specId: string,
+        id: string,
+        payload: DuplicateTrainingExperimentPayload = {},
+    ) =>
+        fetchJson<ExperimentDetailPayload>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}/duplicate`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            },
+        ).then(normalizeExperimentDetail),
+    archiveTrainingExperiment: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<ExperimentDetailPayload>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}/archive`,
+            { method: "POST" },
+        ).then(normalizeExperimentDetail),
+    unarchiveTrainingExperiment: (pipelineId: string, specId: string, id: string) =>
+        fetchJson<ExperimentDetailPayload>(
+            `${trainingBase(pipelineId, specId)}/experiments/${encodeURIComponent(id)}/unarchive`,
+            { method: "POST" },
+        ).then(normalizeExperimentDetail),
+    getTrainConfigSchema: (pipelineId: string, specId: string, configType?: string) =>
+        fetchJson<ConfigSchemaPayload>(
+            `${trainingBase(pipelineId, specId)}/config-schema${toQuery({ config_type: configType })}`,
+        ).then(normalizeConfigSchema),
+    createTrainingRequest: (
+        pipelineId: string,
+        specId: string,
+        payload: CreateTrainingRequestPayload,
+    ) =>
+        fetchJson<CreateTrainingRequestResponse>(`${trainingBase(pipelineId, specId)}/requests`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        }),
+    launchTrainingRequest: (pipelineId: string, specId: string, requestId: string) =>
+        fetchJson<LaunchResponse>(
+            `${trainingBase(pipelineId, specId)}/requests/${encodeURIComponent(requestId)}/launch`,
+            { method: "POST" },
         ),
 };

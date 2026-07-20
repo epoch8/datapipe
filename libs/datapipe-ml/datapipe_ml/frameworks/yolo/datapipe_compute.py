@@ -13,18 +13,23 @@ from datapipe.compute import (
 )
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
-from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransform
+from datapipe.step.scoped_batch_generate import ScopedBatchGenerate, ScopedOutputPolicy
+from datapipe.step.scoped_batch_transform import ScopedDatatableBatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import PILFile, TableStoreFiledir
 from datapipe.types import Labels
 from pathy import Pathy
-from sqlalchemy import JSON, Column, Float
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable
-from datapipe_ml.frameworks.yolo.dataset import dedupe_size_for_resize, get_size_for_resize
+from datapipe_ml.frameworks.yolo.dataset import (
+    dedupe_size_for_resize,
+    get_size_for_resize_from_training_request,
+)
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
+from datapipe_ml.training.training_request import make_build_auto_training_request
 
 
 @dataclass
@@ -41,6 +46,15 @@ class YoloModeSpec:
     train_callable: Callable[..., Any]  # train_yolov5 / train_yolov8 / train_yolov8_segmentation
     # where to store models
     models_subdir: str  # "models" or "segmentation_models"
+    # config type used by the registry / codec and auto request id (spec §7)
+    train_config_type: str = "yolov8_detection"
+    # training request column names (spec §7)
+    training_request_id_col: str = "training_request_id"
+    training_request_kind_col: str = "training_request__kind"
+    training_request_enabled_col: str = "training_request__enabled"
+    training_request_force_col: str = "training_request__force"
+    training_request_params_col: str = "training_request__config_params_snapshot"
+    training_request_hash_col: str = "training_request__config_hash"
     sqlalchemy_class_names_type = JSON
     extra_class_names_columns: List[Column] = field(default_factory=list)
     extra_model_columns: List[Column] = field(default_factory=list)
@@ -130,6 +144,7 @@ def _build_yolo_pipeline_steps(
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
     output__train_config: str,
+    output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
@@ -160,34 +175,69 @@ def _build_yolo_pipeline_steps(
     extra_train_kwargs: Optional[Dict[str, Any]],
 ) -> List[PipelineStep]:
     return [
-        BatchGenerate(
+        # Built-in configs are managed by pipeline code within the "builtin" scope.
+        # Custom rows (source=custom) are owned by the API and never touched here.
+        ScopedBatchGenerate(
             func=mode.get_train_configs_func,
             outputs=[output__train_config],
             kwargs=dict(**train_configs_list),
             labels=labels,
+            policy=ScopedOutputPolicy(
+                scope_column="train_config__source",
+                scope_value="builtin",
+                missing_row_policy="deactivate",
+                active_column="train_config__is_active",
+            ),
+        ),
+        # Materialize automatic training requests for built-in configs before data prep.
+        # Manual (kind=manual) requests are outside this scope and stay untouched.
+        ScopedDatatableBatchTransform(
+            func=make_build_auto_training_request(
+                frozen_dataset_id_col=frozen_dataset_id__name,
+                train_config_id_col=mode.train_config_id_col,
+                train_config_params_col=mode.train_config_params_col,
+                train_config_type=mode.train_config_type,
+                max_within_time=max_within_time,
+            ),
+            inputs=[
+                input__frozen_dataset,
+                output__train_config,
+            ],
+            outputs=[output__training_request],
+            transform_keys=[frozen_dataset_id__name, mode.train_config_id_col],
+            policy=ScopedOutputPolicy(
+                scope_column=mode.training_request_kind_col,
+                scope_value="auto",
+                missing_row_policy="deactivate",
+                active_column=mode.training_request_enabled_col,
+            ),
+            labels=labels,
         ),
         BatchTransform(
-            func=get_size_for_resize,
-            inputs=[output__train_config],
+            func=get_size_for_resize_from_training_request,
+            inputs=[output__training_request],
             outputs=[output__model_size_for_resize],
-            transform_keys=[mode.train_config_id_col],
+            transform_keys=[mode.training_request_id_col],
             chunk_size=16,
             executor_config=prepare_data_executor_config,
             labels=labels,
             kwargs=dict(
                 resize_images=resize_images,
-                train_config_id_col=mode.train_config_id_col,
-                train_config_params_col=mode.train_config_params_col,
+                request_id_col=mode.training_request_id_col,
+                frozen_dataset_id_col=frozen_dataset_id__name,
+                params_snapshot_col=mode.training_request_params_col,
+                request_enabled_col=mode.training_request_enabled_col,
             ),
         ),
         BatchTransform(
             func=dedupe_size_for_resize,
             inputs=[output__model_size_for_resize],
             outputs=[output__size_for_resize],
-            transform_keys=["width", "height"],
+            transform_keys=[frozen_dataset_id__name, "width", "height"],
             chunk_size=16,
             executor_config=prepare_data_executor_config,
             labels=labels,
+            kwargs=dict(frozen_dataset_id_col=frozen_dataset_id__name),
         ),
         BatchTransform(
             func=mode.get_class_names_from_gt_func,
@@ -234,7 +284,7 @@ def _build_yolo_pipeline_steps(
             func=mode.train_callable,
             inputs=[
                 input__frozen_dataset,
-                output__train_config,
+                output__training_request,
                 output__frozen_dataset__class_names,
                 output__frozen_dataset__resized_image_file,
                 output__frozen_dataset__yolo_txt,
@@ -244,7 +294,7 @@ def _build_yolo_pipeline_steps(
                 output__model_is_trained_on_frozen_dataset,
                 output__training_status,
             ],
-            transform_keys=model_other_primary_keys + [frozen_dataset_id__name, mode.train_config_id_col],
+            transform_keys=model_other_primary_keys + [mode.training_request_id_col],
             chunk_size=1,
             kwargs=dict(
                 models_dir=str(Pathy.fluid(working_dir) / mode.models_subdir),
@@ -290,6 +340,7 @@ def _register_yolo_tables(
     ds: DataStore,
     catalog: Catalog,
     output__train_config: str,
+    output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
@@ -305,6 +356,7 @@ def _register_yolo_tables(
     model_context_dir: str,
     filename_pattern: str,
     frozen_dataset_id__name: str,
+    train_config_id__name: str,
     create_table: bool,
     mode: YoloModeSpec,
     dt__input_has_gt,
@@ -321,6 +373,46 @@ def _register_yolo_tables(
                     data_sql_schema=[
                         Column(mode.train_config_id_col, String, primary_key=True),
                         Column(mode.train_config_params_col, mode.sqlalchemy_class_names_type),
+                        Column("train_config__source", String, nullable=False),
+                        Column("train_config__display_name", String, nullable=False),
+                        Column("train_config__description", String, nullable=True),
+                        Column("train_config__config_type", String, nullable=False),
+                        Column("train_config__config_hash", String, nullable=False),
+                        Column("train_config__is_active", Boolean, nullable=False),
+                        Column("train_config__created_at", DateTime, nullable=False),
+                        Column("train_config__updated_at", DateTime, nullable=False),
+                        Column("train_config__revision", Integer, nullable=False),
+                    ],
+                    create_table=create_table,
+                ),
+            ).table_store
+        ),
+    )
+    # External mutable training request table (spec §3.2 / §8.2). Auto rows are
+    # managed by ScopedDatatableBatchTransform; manual rows are managed by the API.
+    catalog.add_datatable(
+        output__training_request,
+        Table(
+            ds.get_or_create_table(
+                output__training_request,
+                TableStoreDB(
+                    dbconn=ds.meta_dbconn,
+                    name=output__training_request,
+                    data_sql_schema=[
+                        Column("training_request_id", String, primary_key=True),
+                        Column(frozen_dataset_id__name, String),
+                        Column(train_config_id__name, String),
+                        Column("training_request__kind", String),
+                        Column("training_request__enabled", Boolean),
+                        Column("training_request__force", Boolean),
+                        Column("training_request__max_within_time", String, nullable=True),
+                        Column("training_request__config_source", String),
+                        Column("training_request__config_name_snapshot", String),
+                        Column("training_request__config_params_snapshot", mode.sqlalchemy_class_names_type),
+                        Column("training_request__config_hash", String),
+                        Column("training_request__requested_at", DateTime, nullable=True),
+                        Column("training_request__requested_by", String, nullable=True),
+                        Column("training_request__client_request_id", String, nullable=True),
                     ],
                     create_table=create_table,
                 ),
@@ -336,7 +428,8 @@ def _register_yolo_tables(
                     dbconn=ds.meta_dbconn,
                     name=output__model_size_for_resize,
                     data_sql_schema=[
-                        Column(mode.train_config_id_col, String, primary_key=True),
+                        Column("training_request_id", String, primary_key=True),
+                        Column(frozen_dataset_id__name, String, primary_key=True),
                         Column("width", Integer, primary_key=True),
                         Column("height", Integer, primary_key=True),
                     ],
@@ -354,6 +447,7 @@ def _register_yolo_tables(
                     dbconn=ds.meta_dbconn,
                     name=output__size_for_resize,
                     data_sql_schema=[
+                        Column(frozen_dataset_id__name, String, primary_key=True),
                         Column("width", Integer, primary_key=True),
                         Column("height", Integer, primary_key=True),
                     ],
@@ -462,6 +556,7 @@ def _register_yolo_tables(
                         Column(f"{mode.model_prefix}__model_path", String),
                         Column(f"{mode.model_prefix}__type", String),
                         Column(f"{mode.model_prefix}__class_names", mode.sqlalchemy_class_names_type),
+                        Column("training_request_id", String, nullable=True),
                     ]
                     + mode.extra_model_columns,
                     create_table=create_table,
@@ -482,6 +577,7 @@ def _register_yolo_tables(
                         Column(frozen_dataset_id__name, String, primary_key=True),
                         Column(mode.train_config_id_col, String, primary_key=True),
                         Column(mode.train_config_params_col, mode.sqlalchemy_class_names_type),
+                        Column("training_request_id", String, nullable=True),
                     ],
                     create_table=create_table,
                 ),
@@ -519,6 +615,7 @@ def _register_yolo_tables(
                         Column("training_status__owner_id", String),
                         Column("training_status__heartbeat_at", String),
                         Column("training_status__lease_expires_at", String),
+                        Column("training_request_id", String, nullable=True),
                     ],
                     create_table=create_table,
                 ),
@@ -535,6 +632,7 @@ def build_yolo_compute(
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
     output__train_config: str,
+    output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
     output__frozen_dataset__class_names: str,
@@ -596,6 +694,7 @@ def build_yolo_compute(
         ds=ds,
         catalog=catalog,
         output__train_config=output__train_config,
+        output__training_request=output__training_request,
         output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,
         output__frozen_dataset__class_names=output__frozen_dataset__class_names,
@@ -611,6 +710,7 @@ def build_yolo_compute(
         model_context_dir=model_context_dir,
         filename_pattern=pattern,
         frozen_dataset_id__name=frozen_dataset_id__name,
+        train_config_id__name=mode.train_config_id_col,
         create_table=create_table,
         mode=mode,
         dt__input_has_gt=dt__input_has_gt,
@@ -623,6 +723,7 @@ def build_yolo_compute(
         input__frozen_dataset=input__frozen_dataset,
         input__frozen_dataset__has__image_gt=input__frozen_dataset__has__image_gt,
         output__train_config=output__train_config,
+        output__training_request=output__training_request,
         output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,
         output__frozen_dataset__class_names=output__frozen_dataset__class_names,

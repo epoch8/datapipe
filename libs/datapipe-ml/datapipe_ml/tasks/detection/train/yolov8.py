@@ -14,13 +14,18 @@ from datapipe_ml.frameworks.yolo.dataset import (
 )
 from datapipe_ml.frameworks.yolo.train_yolov8 import (
     YoloV8TaskSpec,
+    YoloV8TrainConfigItem,
     YoloV8TrainStepFields,
     build_yolov8_train_compute,
     make_yolov8_get_train_configs,
     make_yolov8_train_callable,
 )
 from datapipe_ml.frameworks.yolo.training import YoloBaseAlgo
-from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig, train_process as _v8_train_process
+from datapipe_ml.frameworks.yolo.yolov8.runner import (
+    YoloV8DetectionTrainingConfig,
+    YoloV8_TrainingConfig,
+    train_process as _v8_train_process,
+)
 from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
@@ -50,6 +55,7 @@ DETECTION_YOLOV8_STEP_FIELDS = YoloV8TrainStepFields(
     input__frozen_dataset="input__detection_frozen_dataset",
     input__frozen_dataset__has__image_gt="input__detection_frozen_dataset__has__image_gt",
     output__train_config="output__yolov8_train_config",
+    output__training_request="output__detection_training_request",
     output__model_size_for_resize="output__model_detection_size_for_resize",
     output__size_for_resize="output__detection_size_for_resize",
     output__frozen_dataset__class_names="output__detection_frozen_dataset__class_names",
@@ -71,7 +77,7 @@ class YoloV8DetectionAlgo(YoloBaseAlgo):
     images_count_col = "detection_frozen_dataset__images_count"
     model_row_prefix = "detection_model"
     type_name = "yolov8"
-    TrainingConfigClass = YoloV8_TrainingConfig
+    TrainingConfigClass = YoloV8DetectionTrainingConfig
     train_process_func = staticmethod(_v8_train_process)  # type: ignore[assignment]
     model_key = "model"
     metrics_mAP_05_col = "metrics_mAP_0_5"
@@ -93,6 +99,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
+    output__detection_training_request: str
     output__model_detection_size_for_resize: str
     output__detection_size_for_resize: str
     output__detection_frozen_dataset__class_names: str
@@ -102,7 +109,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
     output__detection_model_is_trained_on_detection_frozen_dataset: str
     output__training_status: str
     working_dir: str
-    yolov8_train_configs: List[YoloV8_TrainingConfig]
+    yolov8_train_configs: List[YoloV8TrainConfigItem]
     primary_keys: List[str]
     max_within_time: str = "1w"
     bbox_id__name: Optional[str] = None

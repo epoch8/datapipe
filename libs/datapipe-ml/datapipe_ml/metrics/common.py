@@ -56,6 +56,32 @@ def stable_unique(items: Iterable[str]) -> List[str]:
     return list(dict.fromkeys(items))
 
 
+def idx_columns_present_on_table(tbl: Any, idx: Any) -> List[str]:
+    """Idx columns that exist on ``tbl``.
+
+    Datapipe stamps RunConfig filters that are not transform keys onto ``idx``
+    (e.g. ``training_request_id`` when launching a scoped training run). Those
+    keys must not be used when querying metrics input tables.
+    """
+    table_cols = set(tbl.c.keys())
+    return [str(k) for k in idx.columns if k in table_cols]
+
+
+def idx_in_table_clause(tbl: Any, idx: Any) -> Any:
+    """``tuple_(table cols).in_(idx rows)`` using only columns present on ``tbl``."""
+    from sqlalchemy import tuple_
+
+    keys = idx_columns_present_on_table(tbl, idx)
+    if not keys:
+        raise ValueError(
+            f"idx columns {list(idx.columns)!r} have no overlap with table columns "
+            f"{list(tbl.c.keys())!r}"
+        )
+    return tuple_(*([tbl.c[k] for k in keys])).in_(
+        list(idx.loc[:, keys].itertuples(index=False, name=None))
+    )
+
+
 def metrics_label_to_storage(label: Any) -> str:
     if label is None:
         return METRICS_NULL_LABEL

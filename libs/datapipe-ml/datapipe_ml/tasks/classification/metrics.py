@@ -17,7 +17,7 @@ from datapipe.run_config import LabelDict, RunConfig
 from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
-from sqlalchemy import Column, Float, and_, func, select, tuple_
+from sqlalchemy import Column, Float, and_, func, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name, pipeline_output_as_input
@@ -26,6 +26,7 @@ from datapipe_ml.metrics.common import (
     KNOWN_OVERALL_METRIC_COLUMNS,
     OVERALL_BASE_METRIC_COLUMNS,
     float_columns,
+    idx_in_table_clause,
     macro_weighted_metric_selects,
     precision_recall_f1,
     stable_unique,
@@ -152,7 +153,7 @@ def count_classification_metrics_on_subset(
             func.sum(col_FN).label("sum_FN"),
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
         .group_by(*grp_keys_tbl, col_label)
         .cte("class_agg")
     )

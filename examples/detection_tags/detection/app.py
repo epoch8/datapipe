@@ -29,6 +29,8 @@ from datapipe_app_ml_ops.ops.ops_specs import (
     OpsImageRecordViewSpec,
     OpsFrozenDatasetSpec,
     OpsModelSpec,
+    OpsTrainConfigRegistrySpec,
+    OpsTrainingRequestSpec,
     OpsTrainingSpec,
 )
 from datapipe_ml.metrics.model_selection import FindBestModel
@@ -36,6 +38,7 @@ from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
 from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
+from datapipe_ml.training.train_config_id import TrainingConfigPreset
 from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_Subset_PipelineModel
 
 import steps
@@ -91,6 +94,7 @@ pipeline = Pipeline(
             input__detection_frozen_dataset="detection_frozen_dataset",
             input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__detection_training_request="detection_training_request",
             output__model_detection_size_for_resize="model_detection_size_for_resize",
             output__detection_size_for_resize="detection_size_for_resize",
             output__detection_frozen_dataset__resized_image_file="detection_frozen_dataset__resized_image_file",
@@ -105,15 +109,19 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(
-                    model="yolov8n.pt",
-                    imgsz=320,
-                    batch=10,
-                    epochs=10,
-                    exist_ok=True,
-                    seed=42,
-                    workers=0,
-                    deterministic=True,
+                TrainingConfigPreset(
+                    name="Standard YOLOv8n 320",
+                    description="Default YOLOv8n detection preset for tags demo",
+                    config=YoloV8_TrainingConfig(
+                        model="yolov8n.pt",
+                        imgsz=320,
+                        batch=10,
+                        epochs=10,
+                        exist_ok=True,
+                        seed=42,
+                        workers=0,
+                        deterministic=True,
+                    ),
                 )
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
@@ -123,7 +131,7 @@ pipeline = Pipeline(
             ),
             primary_keys=["image_name"],
             bbox_id__name=None,
-            labels=[("stage", "train")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze")],
             allow_sample_size_mismatch=True,
             model_suffix="_tags",
             prepare_data_executor_config=parallel_io_executor(),
@@ -137,7 +145,7 @@ pipeline = Pipeline(
             image__image_path__name="image_url",
             batch_size_default=1,
             executor_config=gpu_executor(),
-            labels=[("stage", "train"), ("stage", "inference")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "inference")],
         ),
         CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",
@@ -151,7 +159,7 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id"],
             minimum_iou=0.5,
             executor_config=metrics_executor(),
-            labels=[("stage", "train"), ("stage", "count-metrics")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "count-metrics")],
         ),
         FindBestModel(
             input__model="detection_model_train",
@@ -164,7 +172,7 @@ pipeline = Pipeline(
             metric__name="calc__weighted_f1_score",
             func="max",
             group_by=None,
-            labels=[("stage", "train"), ("stage", "count-metrics")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "count-metrics")],
         ),
         CountMetrics_Subset_PipelineModel(
             input__image__ground_truth=["image__ground_truth", "image__tag"],
@@ -178,7 +186,12 @@ pipeline = Pipeline(
             pipeline_model_primary_keys=["detection_model_id", "tag_id"],
             minimum_iou=0.5,
             executor_config=metrics_executor(),
-            labels=[("stage", "train"), ("stage", "count-metrics"), ("stage", "tag-metrics")],
+            labels=[
+                ("stage", "train"),
+                ("stage", "train-without-freeze"),
+                ("stage", "count-metrics"),
+                ("stage", "tag-metrics"),
+            ],
         ),
         # --- FiftyOne (stage=fiftyone): GT + baseline/retrained predictions, filter by tag_id ---
         BatchTransform(
@@ -341,6 +354,7 @@ app.add_specs([
                 OpsColumn("models", "Models", "models_count", kind="models_count"),
             ],
             default_sort=[("created_at", "desc")],
+            run_labels=[("stage", "train-prepare")],
         ),
         model=OpsModelSpec(
             table="detection_model_train",
@@ -445,6 +459,44 @@ app.add_specs([
                 ),
             ],
             default_sort=[("started_at", "desc")],
+            experiments=OpsTrainConfigRegistrySpec(
+                table="yolov8_train_config",
+                id_column="detection_train_config_id",
+                params_column="detection_train_config__params",
+                source_column="train_config__source",
+                display_name_column="train_config__display_name",
+                description_column="train_config__description",
+                config_type_column="train_config__config_type",
+                hash_column="train_config__config_hash",
+                active_column="train_config__is_active",
+                created_at_column="train_config__created_at",
+                updated_at_column="train_config__updated_at",
+                revision_column="train_config__revision",
+                config_type="yolov8_detection",
+            ),
+            requests=OpsTrainingRequestSpec(
+                table="detection_training_request",
+                id_column="training_request_id",
+                frozen_dataset_id_column="detection_frozen_dataset_id",
+                train_config_id_column="detection_train_config_id",
+                kind_column="training_request__kind",
+                enabled_column="training_request__enabled",
+                force_column="training_request__force",
+                max_within_time_column="training_request__max_within_time",
+                max_within_time="1w",
+                config_source_column="training_request__config_source",
+                config_name_snapshot_column="training_request__config_name_snapshot",
+                config_params_snapshot_column="training_request__config_params_snapshot",
+                config_hash_column="training_request__config_hash",
+                requested_at_column="training_request__requested_at",
+                requested_by_column="training_request__requested_by",
+                client_request_id_column="training_request__client_request_id",
+                status_table="detection_training_status",
+                status_request_id_column="training_request_id",
+                run_labels=[
+                    ("stage", "train-without-freeze"),
+                ],
+            ),
         ),
         relations=[
             OpsRelationSpec(

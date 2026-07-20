@@ -9,6 +9,7 @@ import {
     isSharedVisible,
     layoutLabelGraph,
     nodeToTopLevel,
+    normalizeLabelGraphHierarchy,
     resolveLabelGraph,
     sharedBracketPath,
 } from "../utils/labelGraph";
@@ -189,8 +190,9 @@ export function PipelineLabelGraphOverview({
 
     const payload = React.useMemo(
         () =>
-            labelGraphProp ??
-            resolveLabelGraph({ stages, stage_edges: stageEdges }),
+            labelGraphProp
+                ? normalizeLabelGraphHierarchy(labelGraphProp)
+                : resolveLabelGraph({ stages, stage_edges: stageEdges }),
         [labelGraphProp, stages, stageEdges],
     );
 

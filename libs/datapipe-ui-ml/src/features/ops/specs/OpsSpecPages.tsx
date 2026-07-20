@@ -1,6 +1,6 @@
 import React from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Button, Space, Table, Tag } from "antd";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Table, Tag, notification } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import {
@@ -8,7 +8,6 @@ import {
     BarChartOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
-    CodeOutlined,
     DatabaseOutlined,
     FolderOpenOutlined,
     LinkOutlined,
@@ -21,6 +20,7 @@ import {
     WarningOutlined,
 } from "@ant-design/icons";
 import { opsApi } from "@datapipe/ui-ml/api/client";
+import { ApiError } from "@datapipe/ui/api/ops";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsColumn, OpsFilterRule, OpsMetricColumn, OpsOverviewResponse, OpsRowsParams, OpsRowsResponse, OpsSpecDetail, OpsTableSchema } from "../../../types/opsSpecs";
 import {
@@ -568,13 +568,45 @@ function TrainingRail({ row, specId, columns }: { row?: Row; specId: string; col
     const statusColumn = columns.find((column) => column.kind === "status");
     return <div className="ops-panel ops-polished-panel ops-side-rail"><div className="ops-panel-title">Selected run</div><div className="ops-run-id">{displayValue(runColumn ? row[runColumn.source] : undefined)}</div><StatusTag value={statusColumn ? row[statusColumn.source] : undefined} /><dl className="ops-detail-list ops-detail-list-wide"><dt>Model</dt><dd><EntityValue value={modelColumn ? row[modelColumn.source] : undefined} specId={specId} column={modelColumn} fallbackKind="model" /></dd><dt>Frozen dataset</dt><dd><EntityValue value={frozenColumn ? row[frozenColumn.source] : undefined} specId={specId} column={frozenColumn} fallbackKind="frozen_dataset" /></dd><dt>Started</dt><dd>{displayValue(startedColumn ? row[startedColumn.source] : undefined)}</dd><dt>Duration</dt><dd>{displayValue(durationColumn ? row[durationColumn.source] : undefined)}</dd></dl><div className="ops-rail-divider" /><div className="ops-panel-title">Best metrics so far</div><table className="ops-mini-table"><tbody><tr><td>W-F1</td><td>0.782</td></tr><tr><td>mAP@0.5</td><td>0.774</td></tr><tr><td>Recall</td><td>0.756</td></tr></tbody></table></div>;
 }
+function hasRunLabels(runLabels: unknown): boolean {
+    return Array.isArray(runLabels) && runLabels.length > 0;
+}
+
 function DataSpecificPage({ kind, specId, spec, pipelineId, load }: { kind: PageKind; specId: string; spec: OpsSpecDetail; pipelineId: string; load: () => void }) {
+    const navigate = useNavigate();
     const [selected, setSelected] = React.useState<Row | undefined>();
+    const [freezeBusy, setFreezeBusy] = React.useState(false);
     const isTraining = kind === "training";
     const trainingColumns = spec.training?.columns ?? [];
     const trainingSelectSource = trainingColumns.find((column) => column.link_to === "training_run")?.source
         ?? trainingColumns.find((column) => column.link_to === "model")?.source;
     const selectedKey = selected && trainingSelectSource ? String(selected[trainingSelectSource] ?? "") : "";
+    const freezeConfigured = hasRunLabels(spec.frozen_dataset?.run_labels);
+
+    const onFreeze = React.useCallback(async () => {
+        if (!freezeConfigured || freezeBusy) return;
+        setFreezeBusy(true);
+        try {
+            const result = await opsApi.launchFrozenDataset(pipelineId, specId);
+            const runId = result.run_id ?? null;
+            notification.success({
+                message: "Freeze started",
+                description: runId ? `Run ${runId}` : "Pipeline freeze steps launched",
+            });
+            load();
+            if (runId) {
+                navigate(`/runs/${encodeURIComponent(runId)}`);
+            }
+        } catch (err) {
+            notification.error({
+                message: "Freeze failed",
+                description: err instanceof ApiError ? err.message : String(err),
+            });
+        } finally {
+            setFreezeBusy(false);
+        }
+    }, [freezeBusy, freezeConfigured, load, navigate, pipelineId, specId]);
+
     return (
         <>
             <PageHeader
@@ -594,7 +626,18 @@ function DataSpecificPage({ kind, specId, spec, pipelineId, load }: { kind: Page
                     { label: spec.title, variant: "purple" },
                 ]}
                 onRefresh={load}
-                primaryAction={isTraining ? { label: "New Training Run" } : undefined}
+                primaryAction={
+                    isTraining
+                        ? { label: "New Training Run" }
+                        : {
+                              label: "Freeze new dataset",
+                              onClick: onFreeze,
+                              disabled: !freezeConfigured || freezeBusy,
+                              title: freezeConfigured
+                                  ? undefined
+                                  : "Immediate freeze is not configured (set run_labels on OpsFrozenDatasetSpec)",
+                          }
+                }
             />
             {isTraining ? (
                 <div className="ops-detail-with-rail">
@@ -626,7 +669,7 @@ export function OpsSpecificSpecPage({ kind }: { kind: PageKind }) {
     const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState<string | null>(null);
     const load = React.useCallback(() => { if (!pipelineId || !specId) return; setLoading(true); setError(null); opsApi.getOpsSpec(pipelineId, specId).then(setSpec).catch((e) => setError(String(e))).finally(() => setLoading(false)); }, [pipelineId, specId]);
     React.useEffect(() => { load(); }, [load]);
-    return <div className="ops-page ops-spec-page"><EmptyState loading={pidLoading || loading} error={error} empty={!spec && !loading}>{spec && pipelineId && (kind === "frozen-datasets" || kind === "training") && <DataSpecificPage kind={kind} specId={specId} spec={spec} pipelineId={pipelineId} load={load} />}{spec && pipelineId && (kind === "metrics" || kind === "class-metrics") && <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${pageTitles[kind]}`} subtitle={kind === "metrics" ? `Metric tables for the ${spec.title} specification` : `Per-class metrics for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} extra={kind === "metrics" ? <Button icon={<CodeOutlined />}>View JSON Spec</Button> : undefined} />{(kind === "metrics" ? spec.metrics : spec.class_metrics).map((table) => <SpecMetricTable key={table.id} pipelineId={pipelineId} specId={specId} table={table} classMetrics={kind === "class-metrics"} />)}</>}</EmptyState></div>;
+    return <div className="ops-page ops-spec-page"><EmptyState loading={pidLoading || loading} error={error} empty={!spec && !loading}>{spec && pipelineId && (kind === "frozen-datasets" || kind === "training") && <DataSpecificPage kind={kind} specId={specId} spec={spec} pipelineId={pipelineId} load={load} />}{spec && pipelineId && (kind === "metrics" || kind === "class-metrics") && <><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind], href: `/${kind}` }, { label: spec.title }]} title={`${spec.title} - ${pageTitles[kind]}`} subtitle={kind === "metrics" ? `Metric tables for the ${spec.title} specification` : `Per-class metrics for the ${spec.title} specification`} statusChips={[{ label: "Running", variant: "success" }, { label: spec.title, variant: "purple" }]} onRefresh={load} />{(kind === "metrics" ? spec.metrics : spec.class_metrics).map((table) => <SpecMetricTable key={table.id} pipelineId={pipelineId} specId={specId} table={table} classMetrics={kind === "class-metrics"} />)}</>}</EmptyState></div>;
 }
 export function OpsEntityDetailPage({ kind }: { kind: EntityKind }) {
     const { specId = "", entityId = "" } = useParams(); const { pipelineId, loading: pidLoading } = usePipelineId();

@@ -444,6 +444,178 @@ export interface TrainingRunsParams {
     offset?: number;
 }
 
+/* --- Custom training experiments types (spec §22) --- */
+
+/**
+ * Backend-computed action flags for one experiment. The UI must derive all
+ * available actions from these flags and MUST NOT re-compute them from
+ * ``source``/``active``/``requests_count``.
+ */
+export interface TrainingExperimentCapabilities {
+    can_edit: boolean;
+    can_delete: boolean;
+    can_duplicate: boolean;
+    can_launch: boolean;
+    can_archive: boolean;
+    lock_reason?: string | null;
+}
+
+export type TrainingExperimentSource = "builtin" | "custom" | string;
+
+export interface TrainingExperimentRow {
+    id: string;
+    source: TrainingExperimentSource;
+    display_name?: string | null;
+    description?: string | null;
+    config_type: string;
+    params: Record<string, unknown>;
+    config_hash?: string | null;
+    active: boolean;
+    revision: number;
+    created_at?: string | null;
+    updated_at?: string | null;
+    /** Codec-provided display metadata. ``summary.display`` holds the main params. */
+    summary: TrainingExperimentSummaryMeta;
+    requests_count: number;
+    runs_count: number;
+    last_used_at?: string | null;
+    capabilities: TrainingExperimentCapabilities;
+    /** Deprecated aliases still emitted by the backend for older clients. */
+    is_active?: boolean;
+    archived?: boolean;
+}
+
+export interface TrainingExperimentSummaryMeta {
+    /** Human-readable key/value pairs of the most important params. */
+    display?: Array<{ label: string; value: unknown }> | Record<string, unknown>;
+    [key: string]: unknown;
+}
+
+export interface TrainingExperimentsSummary {
+    total: number;
+    builtin: number;
+    custom: number;
+    editable: number;
+    locked: number;
+    archived: number;
+}
+
+export interface TrainingExperimentsResponse {
+    rows: TrainingExperimentRow[];
+    total: number;
+    summary: TrainingExperimentsSummary;
+    filters?: {
+        sources?: string[];
+        states?: string[];
+        [key: string]: unknown;
+    };
+}
+
+export interface TrainingExperimentDetailResponse {
+    experiment: TrainingExperimentRow;
+    models?: TrainingExperimentModelRow[];
+}
+
+export interface TrainingExperimentModelRow {
+    model_id: string;
+    frozen_dataset_id: string;
+    frozen_dataset_display_name?: string | null;
+    created_at?: string | null;
+    run_key?: string | null;
+    link_table?: string | null;
+}
+
+export interface TrainingExperimentModelsResponse {
+    experiment: TrainingExperimentRow;
+    models: TrainingExperimentModelRow[];
+    total: number;
+}
+
+export interface TrainingExperimentsListParams {
+    search?: string;
+    source?: string;
+    state?: "active" | "archived" | string;
+    include_archived?: boolean;
+    order?: string;
+    limit?: number;
+    offset?: number;
+}
+
+/** JSON schema for the config-type params form. */
+export interface TrainConfigSchemaResponse {
+    config_type: string;
+    /** JSON Schema. Backend may send it as ``schema`` or ``json_schema``. */
+    schema: Record<string, unknown>;
+}
+
+export interface CreateTrainingExperimentPayload {
+    display_name: string;
+    description?: string | null;
+    params: Record<string, unknown>;
+}
+
+export interface UpdateTrainingExperimentPayload {
+    display_name: string;
+    description?: string | null;
+    params: Record<string, unknown>;
+    expected_revision: number;
+}
+
+export interface DuplicateTrainingExperimentPayload {
+    display_name?: string | null;
+    description?: string | null;
+}
+
+export type TrainingRequestState = "queued" | "running" | "success" | "failed" | string;
+
+export interface TrainingRequest {
+    id: string;
+    kind: string;
+    state: TrainingRequestState;
+    frozen_dataset_id?: string | null;
+    train_config_id: string;
+    config_name?: string | null;
+    config_hash?: string | null;
+    enabled?: boolean;
+    force?: boolean;
+    max_within_time?: string | null;
+    config_source?: string | null;
+    config_params_snapshot?: Record<string, unknown>;
+    requested_at?: string | null;
+    requested_by?: string | null;
+    client_request_id?: string | null;
+}
+
+export interface LaunchInfo {
+    started: boolean;
+    run_id?: string | null;
+}
+
+export interface CreateTrainingRequestPayload {
+    frozen_dataset_id: string;
+    train_config_id: string;
+    client_request_id: string;
+    launch?: boolean;
+    /** Bypass max_within_time and allow training on a stale frozen dataset. */
+    force?: boolean;
+}
+
+export interface CreateTrainingRequestResponse {
+    request: TrainingRequest;
+    launch?: LaunchInfo | null;
+}
+
+export interface LaunchResponse {
+    training_request_id: string;
+    started: boolean;
+    run_id?: string | null;
+}
+
+export interface FreezeLaunchResponse {
+    started: boolean;
+    run_id?: string | null;
+}
+
 /* --- Ops image views types --- */
 
 export interface OpsBBoxRow {

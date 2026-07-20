@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Dropdown, Menu, Typography } from "antd";
 import { opsApi } from "../../../api/client";
 import type { RunLogLine } from "../../../types/ops";
+import { ansiToHtml, stripAnsi } from "./ansi";
 
 const { Text } = Typography;
 const MAX_LINES = 10_000;
@@ -134,7 +135,7 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
 
     const downloadLogs = () => {
         const text = visibleLines
-            .map((ln) => `${ln.logged_at} [${ln.level}] ${ln.message}`)
+            .map((ln) => `${ln.logged_at} [${ln.level}] ${stripAnsi(ln.message)}`)
             .join("\n");
         const blob = new Blob([text], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
@@ -230,7 +231,12 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                         >
                             <span className="run-log-ts">{ln.logged_at}</span>{" "}
                             <span className="run-log-level">[{ln.level}]</span>{" "}
-                            {ln.message}
+                            <span
+                                className="run-log-msg"
+                                dangerouslySetInnerHTML={{
+                                    __html: ansiToHtml(ln.message),
+                                }}
+                            />
                         </div>
                     ))}
                 </pre>

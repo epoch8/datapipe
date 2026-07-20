@@ -54,10 +54,11 @@ def test_resolve_yolo_model_label_raises_for_empty_params():
 def test_yolov8_detection_train_config_uses_checkpoint_architecture_for_local_model_path():
     from dataclasses import asdict
 
+    pytest.importorskip("torch")
+    pytest.importorskip("ultralytics")
+
     from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
     from datapipe_ml.tasks.detection.train.yolov8 import get_yolov8_detection_train_configs
-
-    pytest.importorskip("torch")
 
     checkpoint = Path("yolo11n-pose.pt")
     if not checkpoint.is_file():

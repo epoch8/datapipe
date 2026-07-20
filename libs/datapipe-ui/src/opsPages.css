@@ -94,6 +94,7 @@
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    margin-top: 12px;
 }
 
 .ops-status-chip {
@@ -455,6 +456,7 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    align-items: center;
 }
 
 .ops-metrics-toolbar {
@@ -1016,11 +1018,6 @@
 .ops-card-grid a.ops-panel {
     color: inherit;
     text-decoration: none;
-}
-
-/* Ops spec dashboard pages */
-.ops-spec-page .ops-page-header-main {
-    justify-content: space-between;
 }
 
 .ops-spec-kpi-grid {

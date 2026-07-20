@@ -16,13 +16,18 @@ from datapipe_ml.frameworks.yolo.dataset import (
 )
 from datapipe_ml.frameworks.yolo.train_yolov8 import (
     YoloV8TaskSpec,
+    YoloV8TrainConfigItem,
     YoloV8TrainStepFields,
     build_yolov8_train_compute,
     make_yolov8_get_train_configs,
     make_yolov8_train_callable,
 )
 from datapipe_ml.frameworks.yolo.training import YoloBaseAlgo
-from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig, train_process as _v8_train_process
+from datapipe_ml.frameworks.yolo.yolov8.runner import (
+    YoloV8KeypointsTrainingConfig,
+    YoloV8_TrainingConfig,
+    train_process as _v8_train_process,
+)
 from datapipe_ml.training.paths import default_tmp_folder
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
 
@@ -46,6 +51,7 @@ KEYPOINTS_YOLOV8_SPEC = YoloV8TaskSpec(
     runtime_model_other_primary_keys_key="keypoints_model_other_primary_keys",
     runtime_model_id_key="keypoints_model_id__name",
     runtime_frozen_dataset_id_key="keypoints_frozen_dataset_id__name",
+    train_config_type="yolov8_keypoints",
     extra_model_metric_map={
         "pose_P": "metrics_precision_pose",
         "pose_R": "metrics_recall_pose",
@@ -69,6 +75,7 @@ KEYPOINTS_YOLOV8_STEP_FIELDS = YoloV8TrainStepFields(
     input__frozen_dataset="input__keypoints_frozen_dataset",
     input__frozen_dataset__has__image_gt="input__keypoints_frozen_dataset__has__image_gt",
     output__train_config="output__yolov8_train_config",
+    output__training_request="output__keypoints_training_request",
     output__model_size_for_resize="output__model_keypoints_size_for_resize",
     output__size_for_resize="output__keypoints_size_for_resize",
     output__frozen_dataset__class_names="output__keypoints_frozen_dataset__class_names",
@@ -90,7 +97,7 @@ class YoloV8KeypointsAlgo(YoloBaseAlgo):
     images_count_col = "keypoints_frozen_dataset__images_count"
     model_row_prefix = "keypoints_model"
     type_name = "yolov8_pose"
-    TrainingConfigClass = YoloV8_TrainingConfig
+    TrainingConfigClass = YoloV8KeypointsTrainingConfig
     train_process_func = staticmethod(_v8_train_process)  # type: ignore[assignment]
     model_key = "model"
     metrics_mAP_05_col = "metrics_mAP_0_5_pose"
@@ -116,6 +123,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
     input__keypoints_frozen_dataset: str
     input__keypoints_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
+    output__keypoints_training_request: str
     output__model_keypoints_size_for_resize: str
     output__keypoints_size_for_resize: str
     output__keypoints_frozen_dataset__class_names: str
@@ -125,7 +133,7 @@ class Train_YoloV8_KeypointsModel(PipelineStep):
     output__keypoints_model_is_trained_on_keypoints_frozen_dataset: str
     output__training_status: str
     working_dir: str
-    yolov8_train_configs: List[YoloV8_TrainingConfig]
+    yolov8_train_configs: List[YoloV8TrainConfigItem]
     primary_keys: List[str]
     max_within_time: str = "1w"
     bbox_id__name: Optional[str] = None
