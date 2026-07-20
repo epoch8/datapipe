@@ -99,7 +99,6 @@ export interface PipelineDetail {
     stage_edges?: StageEdge[];
     label_graph?: LabelGraphPayload;
     recent_runs: RecentRunSummary[];
-    next_run_at?: string;
     last_error?: string;
     enrichments?: Enrichment[];
 }

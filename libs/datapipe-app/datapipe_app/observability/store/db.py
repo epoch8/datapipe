@@ -89,15 +89,6 @@ class PipelineRunLogRow(Base):
     __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_run_log_seq"),)
 
 
-class PipelineScheduleRow(Base):
-    __tablename__ = "datapipe_api__schedules"
-
-    pipeline_id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    cron_expression: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-
-
 class ObservabilityStore:
     def __init__(
         self,
@@ -159,7 +150,6 @@ class ObservabilityStore:
                 PipelineRegistryRow,
                 PipelineRunRow,
                 PipelineRunStepRow,
-                PipelineScheduleRow,
             ):
                 cast(Any, model.__table__).create(self.engine, checkfirst=True)
         else:
@@ -538,7 +528,3 @@ class ObservabilityStore:
 
             runs.sort(key=lambda row: row.started_at, reverse=True)
             return runs[:limit]
-
-    def get_schedule(self, pipeline_id: str) -> Optional[PipelineScheduleRow]:
-        with self.session() as session:
-            return session.get(PipelineScheduleRow, pipeline_id)

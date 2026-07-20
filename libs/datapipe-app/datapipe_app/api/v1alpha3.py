@@ -219,7 +219,6 @@ def make_app(
 
         last_run = store.get_last_run(pipeline_id)
         recent_runs = store.list_recent_runs(pipeline_id)
-        schedule = store.get_schedule(pipeline_id)
 
         stages: list[dict[str, Any]] = []
         stage_edges: list[dict[str, Any]] = []
@@ -265,7 +264,6 @@ def make_app(
             "stage_edges": stage_edges,
             "label_graph": label_graph,
             "recent_runs": _serialize_recent_runs(recent_runs),
-            "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
             "last_error": last_run.error if last_run else None,
             "enrichments": enrichments,
         }

@@ -29,7 +29,6 @@ def apply_observability_table_config(
         PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     )
 
     mapping: dict[type[ObservabilityBase], str] = {
@@ -37,7 +36,6 @@ def apply_observability_table_config(
         PipelineRunRow: tables.pipeline_runs,
         PipelineRunStepRow: tables.pipeline_run_steps,
         PipelineRunLogRow: tables.pipeline_run_logs,
-        PipelineScheduleRow: tables.pipeline_schedules,
     }
     for model_cls, table_name in mapping.items():
         table = cast(Table, model_cls.__table__)
@@ -62,7 +60,6 @@ def register_observability_tables_in_metadata(
         PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     )
 
     target = dbconn.sqla_metadata
@@ -70,7 +67,6 @@ def register_observability_tables_in_metadata(
         PipelineRegistryRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     ]
     if include_run_logs:
         model_classes.insert(3, PipelineRunLogRow)
