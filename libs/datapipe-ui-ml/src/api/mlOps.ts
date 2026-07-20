@@ -25,6 +25,7 @@ import type {
     TrainingExperimentRow,
     TrainingExperimentsListParams,
     TrainingExperimentsResponse,
+    TrainingRequestsListResponse,
     UpdateTrainingExperimentPayload,
     TrainingRunsParams,
     TrainingRunsResponse,
@@ -305,6 +306,14 @@ export const mlOpsApi = {
         fetchJson<ConfigSchemaPayload>(
             `${trainingBase(pipelineId, specId)}/config-schema${toQuery({ config_type: configType })}`,
         ).then(normalizeConfigSchema),
+    getTrainingRequests: (
+        pipelineId: string,
+        specId: string,
+        params: { limit?: number; offset?: number } = {},
+    ) =>
+        fetchJson<TrainingRequestsListResponse>(
+            `${trainingBase(pipelineId, specId)}/requests${toQuery(params)}`,
+        ),
     createTrainingRequest: (
         pipelineId: string,
         specId: string,
@@ -315,6 +324,11 @@ export const mlOpsApi = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         }),
+    deleteTrainingRequest: (pipelineId: string, specId: string, requestId: string) =>
+        fetchJson<{ deleted: string }>(
+            `${trainingBase(pipelineId, specId)}/requests/${encodeURIComponent(requestId)}`,
+            { method: "DELETE" },
+        ),
     launchTrainingRequest: (pipelineId: string, specId: string, requestId: string) =>
         fetchJson<LaunchResponse>(
             `${trainingBase(pipelineId, specId)}/requests/${encodeURIComponent(requestId)}/launch`,

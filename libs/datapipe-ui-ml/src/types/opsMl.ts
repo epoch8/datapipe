@@ -586,6 +586,28 @@ export interface TrainingRequest {
     client_request_id?: string | null;
 }
 
+export interface TrainingRequestListRow {
+    id: string;
+    kind: string;
+    state: TrainingRequestState;
+    frozen_dataset_id?: string | null;
+    train_config_id: string;
+    config_name?: string | null;
+    requested_at?: string | null;
+    force?: boolean;
+    enabled?: boolean;
+    run_key?: string | null;
+    model_id?: string | null;
+    status?: string | null;
+    started_at?: string | null;
+    can_delete?: boolean;
+}
+
+export interface TrainingRequestsListResponse {
+    rows: TrainingRequestListRow[];
+    total: number;
+}
+
 export interface LaunchInfo {
     started: boolean;
     run_id?: string | null;

@@ -52,6 +52,8 @@ from datapipe_app_ml_ops.ops.training_experiments_models import (
     TrainingExperimentsListResponse,
     TrainingExperimentsSummary,
     TrainingRequest,
+    TrainingRequestListRow,
+    TrainingRequestsListResponse,
     UpdateTrainingExperimentRequest,
 )
 
@@ -192,6 +194,24 @@ def _record_created_at(record: dict[str, Any]) -> Optional[str]:
             if text:
                 return text
     return None
+
+
+def _request_can_delete(
+    *,
+    kind: str,
+    run_key: Optional[str],
+    model_id: Optional[str],
+    status: Optional[str],
+    started_at: Optional[str],
+) -> bool:
+    """Manual requests may be deleted only before launch / training starts."""
+    if kind != "manual":
+        return False
+    if run_key or model_id or started_at:
+        return False
+    if status is None:
+        return True
+    return status.strip().lower() in {"", "queued", "pending"}
 
 
 class TrainingExperimentsService:
@@ -396,6 +416,119 @@ class TrainingExperimentsService:
                         continue
                     runs_count[config_id] = runs_count.get(config_id, 0) + 1
         return requests_count, runs_count, last_used_at
+
+    def list_training_requests(
+        self,
+        spec_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> TrainingRequestsListResponse:
+        """List training requests joined with status run/model when available."""
+        requests_spec = self._requests_spec(spec_id)
+        spec = self._spec(spec_id)
+        df_req = self._read_df(requests_spec.table)
+        if df_req.empty or requests_spec.id_column not in df_req.columns:
+            return TrainingRequestsListResponse(rows=[], total=0)
+
+        status_by_request = self._status_by_request_id(spec, requests_spec)
+
+        rows: list[TrainingRequestListRow] = []
+        for _, row in df_req.iterrows():
+            request_id = _clean_str(row.get(requests_spec.id_column))
+            if request_id is None:
+                continue
+            train_config_id = _clean_str(row.get(requests_spec.train_config_id_column)) or ""
+            status = status_by_request.get(request_id)
+            status_value = status.get("status") if status else None
+            run_key = status.get("run_key") if status else None
+            model_id = status.get("model_id") if status else None
+            started_at = status.get("started_at") if status else None
+            kind = _clean_str(row.get(requests_spec.kind_column)) or "manual"
+            rows.append(
+                TrainingRequestListRow(
+                    id=request_id,
+                    kind=kind,
+                    state=status_value or "queued",
+                    frozen_dataset_id=_clean_str(row.get(requests_spec.frozen_dataset_id_column)),
+                    train_config_id=train_config_id,
+                    config_name=_clean_str(row.get(requests_spec.config_name_snapshot_column)),
+                    requested_at=_clean_str(row.get(requests_spec.requested_at_column)),
+                    force=_clean_bool(row.get(requests_spec.force_column), default=False),
+                    enabled=_clean_bool(row.get(requests_spec.enabled_column), default=True),
+                    run_key=run_key,
+                    model_id=model_id,
+                    status=status_value,
+                    started_at=started_at,
+                    can_delete=_request_can_delete(
+                        kind=kind,
+                        run_key=run_key,
+                        model_id=model_id,
+                        status=status_value,
+                        started_at=started_at,
+                    ),
+                )
+            )
+
+        rows.sort(key=lambda r: r.requested_at or "", reverse=True)
+        total = len(rows)
+        page = rows[offset : offset + limit]
+        return TrainingRequestsListResponse(rows=page, total=total)
+
+    def _status_by_request_id(
+        self,
+        spec: DatapipeOpsSpec,
+        requests_spec: OpsTrainingRequestSpec,
+    ) -> dict[str, dict[str, Optional[str]]]:
+        """Map ``training_request_id`` → latest status fields (run/model/status)."""
+        status_table = requests_spec.status_table or (
+            spec.training.status_table if spec.training is not None else None
+        )
+        request_col = requests_spec.status_request_id_column
+        if not status_table or not request_col:
+            return {}
+
+        df = self._read_df(status_table)
+        if df.empty or request_col not in df.columns:
+            return {}
+
+        model_id_col = (
+            spec.model.id_column
+            if spec.model is not None
+            else _guess_column(df, suffixes=("_model_id",), exact=("model_id",))
+        )
+        run_key_col = _guess_column(
+            df,
+            suffixes=("__run_key",),
+            exact=("run_key", "training_status__run_key"),
+        )
+        status_col = _guess_column(
+            df,
+            suffixes=("__status",),
+            exact=("status", "training_status__status"),
+        )
+        started_col = _guess_column(
+            df,
+            suffixes=("__started_at", "__created_at"),
+            exact=("started_at", "created_at"),
+        )
+
+        # Prefer the chronologically latest status row per request.
+        if started_col and started_col in df.columns:
+            df = df.sort_values(by=started_col, ascending=True, na_position="first")
+
+        out: dict[str, dict[str, Optional[str]]] = {}
+        for _, r in df.iterrows():
+            request_id = _clean_str(r.get(request_col))
+            if request_id is None:
+                continue
+            out[request_id] = {
+                "run_key": _clean_str(r.get(run_key_col)) if run_key_col else None,
+                "model_id": _clean_str(r.get(model_id_col)) if model_id_col else None,
+                "status": _clean_str(r.get(status_col)) if status_col else None,
+                "started_at": _clean_str(r.get(started_col)) if started_col else None,
+            }
+        return out
 
     # ================================================================= read
 
@@ -1037,6 +1170,46 @@ class TrainingExperimentsService:
             started=launch_info.started,
             run_id=launch_info.run_id,
         )
+
+    def delete_training_request(self, spec_id: str, request_id: str) -> None:
+        """Delete a manual request that has not been launched or trained yet."""
+        requests_spec = self._requests_spec(spec_id)
+        spec = self._spec(spec_id)
+        df_req = self._read_df(requests_spec.table)
+        if df_req.empty or requests_spec.id_column not in df_req.columns:
+            raise self._request_not_found(request_id)
+        match = df_req[df_req[requests_spec.id_column].astype(str) == str(request_id)]
+        if match.empty:
+            raise self._request_not_found(request_id)
+
+        row = match.iloc[0]
+        kind = _clean_str(row.get(requests_spec.kind_column)) or "manual"
+        status = self._status_by_request_id(spec, requests_spec).get(request_id)
+        run_key = status.get("run_key") if status else None
+        model_id = status.get("model_id") if status else None
+        status_value = status.get("status") if status else None
+        started_at = status.get("started_at") if status else None
+        if not _request_can_delete(
+            kind=kind,
+            run_key=run_key,
+            model_id=model_id,
+            status=status_value,
+            started_at=started_at,
+        ):
+            raise TrainingExperimentError(
+                "request_not_deletable",
+                "Only manual training requests that have not been launched or "
+                "trained can be deleted.",
+                status_code=409,
+                details={
+                    "kind": kind,
+                    "run_key": run_key,
+                    "model_id": model_id,
+                    "status": status_value,
+                    "started_at": started_at,
+                },
+            )
+        self._delete_id(requests_spec.table, requests_spec.id_column, request_id)
 
     def _request_not_found(self, request_id: str) -> TrainingExperimentError:
         return TrainingExperimentError(

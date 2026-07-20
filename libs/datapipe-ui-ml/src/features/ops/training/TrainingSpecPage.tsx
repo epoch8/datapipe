@@ -5,15 +5,17 @@ import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
-import { TrainingRunsTab } from "./TrainingRunsTab";
+import { TrainingRequestsTab } from "./TrainingRequestsTab";
 import { TrainingExperimentsTab } from "./TrainingExperimentsTab";
 import { NewTrainingRunDrawer } from "./NewTrainingRunDrawer";
 import "./trainingExperiments.css";
 
-type TabKey = "runs" | "experiments";
+type TabKey = "requests" | "experiments";
 
 function normalizeTab(value: string | null): TabKey {
-    return value === "runs" ? "runs" : "experiments";
+    // Accept legacy ?tab=runs as an alias for requests.
+    if (value === "requests" || value === "runs") return "requests";
+    return "experiments";
 }
 
 export function TrainingSpecPage() {
@@ -71,7 +73,7 @@ export function TrainingSpecPage() {
                     { label: spec?.title ?? specId },
                 ]}
                 title={`${spec?.title ?? specId} - Training`}
-                subtitle="Training runs and custom experiments for this specification"
+                subtitle="Training requests and custom experiments for this specification"
                 statusChips={[{ label: spec?.title ?? specId, variant: "purple" }]}
                 onRefresh={load}
                 primaryAction={{
@@ -91,11 +93,10 @@ export function TrainingSpecPage() {
                                     refreshToken={refreshToken}
                                 />
                             </Tabs.TabPane>
-                            <Tabs.TabPane tab="Runs" key="runs">
-                                <TrainingRunsTab
+                            <Tabs.TabPane tab="Requests" key="requests">
+                                <TrainingRequestsTab
                                     pipelineId={pipelineId}
                                     specId={specId}
-                                    spec={spec}
                                     refreshToken={refreshToken}
                                 />
                             </Tabs.TabPane>

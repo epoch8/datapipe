@@ -3,6 +3,7 @@ name = "datapipe-e2e-example"
 version = "0"
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "datapipe-core[alembic]",
     "datapipe-app[clickhouse,ml]",
     "datapipe-ui-ml",
     "datapipe-label-studio",

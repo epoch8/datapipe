@@ -141,6 +141,21 @@ def test_create_request_route_with_train_config_id_in_body(env, client):
     assert body["launch"]["started"] is True
     assert body["launch"]["run_id"] == "run-123"
 
+    listed = client.get(f"{BASE}/requests")
+    assert listed.status_code == 200, listed.text
+    payload = listed.json()
+    assert payload["total"] >= 1
+    match = next(row for row in payload["rows"] if row["id"] == body["request"]["id"])
+    assert match["train_config_id"] == config_id
+    assert match["frozen_dataset_id"] == "fd-1"
+    assert match["can_delete"] is True
+
+    deleted = client.delete(f"{BASE}/requests/{body['request']['id']}")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted"] == body["request"]["id"]
+    after = client.get(f"{BASE}/requests").json()
+    assert all(row["id"] != body["request"]["id"] for row in after["rows"])
+
 
 def test_launch_route_invokes_run_steps(env, client):
     env.write_frozen_dataset("fd-1")

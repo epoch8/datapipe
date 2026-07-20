@@ -316,17 +316,36 @@ def db():
 
 
 @db.command()
+@click.option(
+    "--force-recreate",
+    is_flag=True,
+    default=False,
+    help="Drop all known SQL tables before creating them again. DESTRUCTIVE — deletes data.",
+)
 @click.pass_context
-def create_all(ctx: click.Context) -> None:
+def create_all(ctx: click.Context, force_recreate: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     dbconn = app.ds.meta_dbconn
 
     from datapipe.store.database import ensure_db_schema
+    from datapipe.store.schema_sync import AlembicNotInstalledError, sync_sqla_metadata
 
     ensure_db_schema(dbconn)
     _run_db_create_all_extensions(app, dbconn)
+    if force_recreate:
+        click.echo("Dropping all known tables (--force-recreate)...")
+        dbconn.sqla_metadata.drop_all(dbconn.con)
     dbconn.sqla_metadata.create_all(dbconn.con)
+    # create_all only creates missing tables; sync applies ADD COLUMN / ALTER
+    # when metadata drifted from an existing DB (optional Alembic extra).
+    try:
+        applied = sync_sqla_metadata(dbconn.con, dbconn.sqla_metadata, schema=dbconn.schema)
+    except AlembicNotInstalledError as exc:
+        click.echo(f"Skipping schema sync: {exc}")
+        return
+    if applied:
+        click.echo(f"Synced schema: applied {applied} change(s) to existing tables.")
 
 
 def _run_db_create_all_extensions(app: DatapipeApp, dbconn) -> None:

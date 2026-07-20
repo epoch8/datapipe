@@ -379,6 +379,14 @@ export function NewTrainingRunDrawer({
                 />
             </div>
 
+            {freshnessConfigured ? (
+                <div style={{ marginBottom: 12 }}>
+                    <Checkbox checked={bypassStale} onChange={(e) => setBypassStale(e.target.checked)}>
+                        Bypass max_within_time (<code>{maxWithinTime}</code>) — allow stale datasets
+                    </Checkbox>
+                </div>
+            ) : null}
+
             <div style={{ marginBottom: 16 }}>
                 <Typography.Text strong>Frozen dataset</Typography.Text>
                 <Select
@@ -430,14 +438,6 @@ export function NewTrainingRunDrawer({
                         </div>
                     }
                 />
-            ) : null}
-
-            {freshnessConfigured ? (
-                <div style={{ marginBottom: 12 }}>
-                    <Checkbox checked={bypassStale} onChange={(e) => setBypassStale(e.target.checked)}>
-                        Bypass max_within_time (<code>{maxWithinTime}</code>) — allow stale datasets
-                    </Checkbox>
-                </div>
             ) : null}
 
             {launchConfigured ? (

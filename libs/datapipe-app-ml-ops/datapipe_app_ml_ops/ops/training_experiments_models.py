@@ -151,6 +151,32 @@ class TrainingRequest(BaseModel):
     client_request_id: Optional[str] = None
 
 
+class TrainingRequestListRow(BaseModel):
+    """Request row enriched with optional status / run / model links."""
+
+    id: str
+    kind: str = "manual"
+    state: str = "queued"
+    frozen_dataset_id: Optional[str] = None
+    train_config_id: str
+    config_name: Optional[str] = None
+    requested_at: Optional[str] = None
+    force: bool = False
+    enabled: bool = True
+    # Joined from the training status table when present.
+    run_key: Optional[str] = None
+    model_id: Optional[str] = None
+    status: Optional[str] = None
+    started_at: Optional[str] = None
+    # True for manual requests that have not been launched / trained yet.
+    can_delete: bool = False
+
+
+class TrainingRequestsListResponse(BaseModel):
+    rows: list[TrainingRequestListRow] = Field(default_factory=list)
+    total: int = 0
+
+
 class LaunchInfo(BaseModel):
     started: bool
     run_id: Optional[str] = None
@@ -215,6 +241,8 @@ __all__ = [
     "TrainingExperimentModelsResponse",
     "ConfigSchemaResponse",
     "TrainingRequest",
+    "TrainingRequestListRow",
+    "TrainingRequestsListResponse",
     "LaunchInfo",
     "CreateTrainingRequestResponse",
     "LaunchResponse",

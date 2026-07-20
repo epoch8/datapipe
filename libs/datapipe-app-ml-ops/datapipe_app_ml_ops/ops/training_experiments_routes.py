@@ -19,6 +19,7 @@ from datapipe_app_ml_ops.ops.training_experiments_models import (
     TrainingExperimentError,
     TrainingExperimentModelsResponse,
     TrainingExperimentsListResponse,
+    TrainingRequestsListResponse,
     UpdateTrainingExperimentRequest,
 )
 from datapipe_app_ml_ops.ops.training_experiments_service import (
@@ -158,6 +159,21 @@ def register_training_experiments_routes(
     def unarchive_experiment(pipeline_id: str, spec_id: str, config_id: str) -> Any:
         return _guard(lambda: _service().unarchive_experiment(spec_id, config_id))
 
+    @app.get(_BASE + "/requests", response_model=TrainingRequestsListResponse)
+    def list_training_requests(
+        pipeline_id: str,
+        spec_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Any:
+        return _guard(
+            lambda: _service().list_training_requests(
+                spec_id,
+                limit=min(limit, 200),
+                offset=offset,
+            )
+        )
+
     @app.post(
         _BASE + "/requests",
         response_model=CreateTrainingRequestResponse,
@@ -178,6 +194,16 @@ def register_training_experiments_routes(
         pipeline_id: str, spec_id: str, request_id: str
     ) -> Any:
         return _guard(lambda: _service().launch_training_request(spec_id, request_id))
+
+    @app.delete(_BASE + "/requests/{request_id}")
+    def delete_training_request(
+        pipeline_id: str, spec_id: str, request_id: str
+    ) -> Any:
+        def _run() -> JSONResponse:
+            _service().delete_training_request(spec_id, request_id)
+            return JSONResponse(status_code=200, content={"deleted": request_id})
+
+        return _guard(_run)
 
 
 __all__ = ["register_training_experiments_routes"]

@@ -11,7 +11,7 @@ jest.mock("@datapipe/ui/hooks/usePipelineId", () => ({
 jest.mock("@datapipe/ui-ml/api/client", () => ({
     opsApi: {
         getOpsSpec: jest.fn(),
-        getOpsTrainingRows: jest.fn(),
+        getTrainingRequests: jest.fn(),
         getTrainingExperiments: jest.fn(),
     },
 }));
@@ -21,7 +21,7 @@ import { TrainingSpecPage } from "./TrainingSpecPage";
 
 const api = opsApi as unknown as {
     getOpsSpec: jest.Mock;
-    getOpsTrainingRows: jest.Mock;
+    getTrainingRequests: jest.Mock;
     getTrainingExperiments: jest.Mock;
 };
 
@@ -42,14 +42,23 @@ beforeEach(() => {
         class_metrics: [],
         training: {
             status_table: "runs",
-            columns: [
-                { id: "run", label: "Run", source: "run_key", link_to: "training_run" },
-                { id: "status", label: "Status", source: "status", kind: "status" },
-            ],
+            columns: [],
         },
     });
-    api.getOpsTrainingRows.mockResolvedValue({
-        rows: [{ run_key: "r1", status: "success" }],
+    api.getTrainingRequests.mockResolvedValue({
+        rows: [
+            {
+                id: "req-1",
+                kind: "manual",
+                state: "completed",
+                train_config_id: "cfg-1",
+                config_name: "Baseline",
+                frozen_dataset_id: "ds-1",
+                run_key: "r1",
+                model_id: "model-1",
+                status: "completed",
+            },
+        ],
         total: 1,
     });
     api.getTrainingExperiments.mockResolvedValue({
@@ -78,23 +87,40 @@ test("defaults to the experiments tab", async () => {
     const experimentsTab = await screen.findByRole("tab", { name: "Experiments" });
     expect(experimentsTab).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(api.getTrainingExperiments).toHaveBeenCalled());
-    expect(api.getOpsTrainingRows).not.toHaveBeenCalled();
+    expect(api.getTrainingRequests).not.toHaveBeenCalled();
 });
 
-test("switches to the runs tab and loads runs", async () => {
+test("switches to the requests tab and loads requests", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("tab", { name: "Runs" });
+    await screen.findByRole("tab", { name: "Requests" });
 
-    await user.click(screen.getByRole("tab", { name: "Runs" }));
+    await user.click(screen.getByRole("tab", { name: "Requests" }));
 
-    await waitFor(() => expect(api.getOpsTrainingRows).toHaveBeenCalled());
+    await waitFor(() => expect(api.getTrainingRequests).toHaveBeenCalled());
+    expect(await screen.findByText("req-1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "r1" })).toHaveAttribute(
+        "href",
+        "/training/spec-1/runs/r1",
+    );
+    expect(screen.getByRole("link", { name: "model-1" })).toHaveAttribute(
+        "href",
+        expect.stringContaining("/metrics/spec-1/models/model-1"),
+    );
 });
 
-test("honors the ?tab=runs URL parameter", async () => {
+test("honors the ?tab=requests URL parameter", async () => {
+    renderPage("/training/spec-1?tab=requests");
+    await waitFor(() => expect(api.getOpsSpec).toHaveBeenCalled());
+    const requestsTab = await screen.findByRole("tab", { name: "Requests" });
+    expect(requestsTab).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.getTrainingRequests).toHaveBeenCalled());
+});
+
+test("accepts legacy ?tab=runs as requests", async () => {
     renderPage("/training/spec-1?tab=runs");
     await waitFor(() => expect(api.getOpsSpec).toHaveBeenCalled());
-    const runsTab = await screen.findByRole("tab", { name: "Runs" });
-    expect(runsTab).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => expect(api.getOpsTrainingRows).toHaveBeenCalled());
+    const requestsTab = await screen.findByRole("tab", { name: "Requests" });
+    expect(requestsTab).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.getTrainingRequests).toHaveBeenCalled());
 });
