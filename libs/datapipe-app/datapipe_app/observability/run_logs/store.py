@@ -145,12 +145,16 @@ class SqlAlchemyRunLogStore(RunLogStore):
         *,
         table_name: str | None = None,
     ):
+        from typing import cast
+
+        from sqlalchemy import Table
+
         from datapipe_app.observability.run_logs.backend import DEFAULT_RUN_LOGS_TABLE_NAME
         from datapipe_app.observability.store.db import PipelineRunLogRow
 
         self._store = observability_store
         name = table_name or DEFAULT_RUN_LOGS_TABLE_NAME
-        table = PipelineRunLogRow.__table__
+        table = cast(Table, PipelineRunLogRow.__table__)
         table.name = name
         if getattr(observability_store, "schema", None) is not None:
             table.schema = observability_store.schema

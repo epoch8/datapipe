@@ -147,12 +147,14 @@ class ObservabilityStore:
         )
 
     def create_all(self) -> None:
-        for model in (
-            PipelineRegistryRow,
-            PipelineRunRow,
-            PipelineRunStepRow,
-        ):
-            cast(Any, model.__table__).create(self.engine, checkfirst=True)
+        # Create all ObservabilityBase tables (core + plugin extensions such as
+        # metrics_candidates). Run-log SQL tables are owned by RunLogsBackend and
+        # must not be auto-created here.
+        skip = {cast(Any, PipelineRunLogRow.__table__)}
+        for table in Base.metadata.sorted_tables:
+            if table in skip:
+                continue
+            table.create(self.engine, checkfirst=True)
 
     def session(self) -> Session:
         return self._Session()
