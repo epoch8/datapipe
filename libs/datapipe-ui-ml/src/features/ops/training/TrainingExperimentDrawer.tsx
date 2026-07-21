@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Drawer, Input, Space, Typography, notification } from "antd";
+import { Alert, Button, Input, Modal, Space, Typography, notification } from "antd";
 import { opsApi } from "@datapipe/ui-ml/api/client";
 import { ApiError } from "@datapipe/ui/api/ops";
 import type { TrainingExperimentRow } from "../../../types/opsMl";
@@ -16,8 +16,6 @@ type Props = {
     experiment?: TrainingExperimentRow | null;
     onClose: () => void;
     onSaved: (row: TrainingExperimentRow) => void;
-    /** Called after a successful create when the user chose "Save and start". */
-    onSaveAndStart?: (row: TrainingExperimentRow) => void;
     /** Notify the parent it should reload (e.g. after a lock/revision conflict). */
     onConflict?: () => void;
 };
@@ -42,7 +40,6 @@ export function TrainingExperimentDrawer({
     experiment,
     onClose,
     onSaved,
-    onSaveAndStart,
     onConflict,
 }: Props) {
     const [displayName, setDisplayName] = React.useState("");
@@ -144,11 +141,6 @@ export function TrainingExperimentDrawer({
         if (row) onSaved(row);
     };
 
-    const handleSaveAndStart = async () => {
-        const row = await persist();
-        if (row) onSaveAndStart?.(row);
-    };
-
     const title =
         mode === "create"
             ? "New experiment"
@@ -157,11 +149,12 @@ export function TrainingExperimentDrawer({
               : experiment?.display_name ?? experiment?.id ?? "Experiment";
 
     return (
-        <Drawer
+        <Modal
             title={title}
             visible={open}
+            centered
             width={640}
-            onClose={onClose}
+            onCancel={onClose}
             destroyOnClose
             footer={
                 readOnly ? (
@@ -173,11 +166,6 @@ export function TrainingExperimentDrawer({
                         <Button onClick={onClose} disabled={saving}>
                             Cancel
                         </Button>
-                        {onSaveAndStart ? (
-                            <Button onClick={handleSaveAndStart} loading={saving} disabled={!paramsValid}>
-                                Save and start training
-                            </Button>
-                        ) : null}
                         <Button type="primary" onClick={handleSave} loading={saving} disabled={!paramsValid}>
                             Save
                         </Button>
@@ -243,6 +231,6 @@ export function TrainingExperimentDrawer({
                     />
                 </div>
             </Space>
-        </Drawer>
+        </Modal>
     );
 }

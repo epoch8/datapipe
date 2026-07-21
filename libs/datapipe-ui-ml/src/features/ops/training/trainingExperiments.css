@@ -85,6 +85,63 @@
     margin-top: 6px;
 }
 
+.te-json-editor {
+    border: 1px solid var(--dp-gray-200, #d9d9d9);
+    border-radius: 6px;
+    background: #fafbfc;
+    overflow: auto;
+    max-height: 420px;
+}
+
+.te-json-editor:focus-within {
+    border-color: #40a9ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.te-json-editor-disabled {
+    opacity: 0.65;
+    background: #f5f5f5;
+}
+
+.te-json-code {
+    min-height: 180px;
+    background: transparent !important;
+}
+
+.te-json-code textarea.te-json-textarea,
+.te-json-code pre.te-json-pre {
+    outline: none !important;
+    white-space: pre !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+}
+
+.te-json-code textarea.te-json-textarea {
+    caret-color: #1f2430;
+}
+
+/* Prism tokens on a light surface (avoid default dark-ish contrast issues). */
+.te-json-editor .token.property {
+    color: #0550ae;
+}
+
+.te-json-editor .token.string {
+    color: #0a3069;
+}
+
+.te-json-editor .token.number {
+    color: #953800;
+}
+
+.te-json-editor .token.boolean,
+.te-json-editor .token.null {
+    color: #8250df;
+}
+
+.te-json-editor .token.punctuation {
+    color: #656d76;
+}
+
 .te-drawer-footer {
     display: flex;
     justify-content: flex-end;

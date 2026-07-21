@@ -1,5 +1,8 @@
 import React from "react";
-import { Input } from "antd";
+import Editor from "react-simple-code-editor";
+import { highlight, languages } from "prismjs";
+import "prismjs/components/prism-json";
+import "prismjs/themes/prism.css";
 
 type Props = {
     value: Record<string, unknown>;
@@ -49,14 +52,23 @@ export function TrainConfigJsonEditor({ value, onChange, onValidityChange, disab
     };
 
     return (
-        <div className="te-json-editor">
-            <Input.TextArea
+        <div className={`te-json-editor${disabled ? " te-json-editor-disabled" : ""}`}>
+            <Editor
                 aria-label="Config JSON"
                 value={text}
+                onValueChange={handleChange}
+                highlight={(code) => highlight(code, languages.json, "json")}
                 disabled={disabled}
-                autoSize={{ minRows: 8, maxRows: 24 }}
-                spellCheck={false}
-                onChange={(e) => handleChange(e.target.value)}
+                padding={12}
+                textareaClassName="te-json-textarea"
+                preClassName="te-json-pre"
+                className="te-json-code"
+                style={{
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    minHeight: 180,
+                }}
             />
             {error ? <div className="te-json-error">{error}</div> : null}
         </div>

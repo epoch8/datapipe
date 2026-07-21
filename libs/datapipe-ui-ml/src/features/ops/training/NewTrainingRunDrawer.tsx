@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Checkbox, Drawer, Select, Typography, notification } from "antd";
+import { Alert, Button, Checkbox, Modal, Select, Typography, notification } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { opsApi } from "@datapipe/ui-ml/api/client";
 import { ApiError } from "@datapipe/ui/api/ops";
@@ -343,11 +343,12 @@ export function NewTrainingRunDrawer({
         : 0;
 
     return (
-        <Drawer
+        <Modal
             title="New training run"
             visible={open}
-            width={480}
-            onClose={onClose}
+            centered
+            width={520}
+            onCancel={onClose}
             destroyOnClose
             footer={
                 <div className="te-drawer-footer">
@@ -450,6 +451,6 @@ export function NewTrainingRunDrawer({
                     <code>run_labels</code> on the training request spec).
                 </Typography.Paragraph>
             )}
-        </Drawer>
+        </Modal>
     );
 }

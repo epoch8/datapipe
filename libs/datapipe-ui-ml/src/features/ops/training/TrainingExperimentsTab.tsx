@@ -175,6 +175,9 @@ export function TrainingExperimentsTab({ pipelineId, specId, refreshToken }: Pro
 
             <div className="ops-spec-table-head" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <Space>
+                    <Button type="primary" onClick={() => openDrawer("create", undefined)}>
+                        New experiment
+                    </Button>
                     <Input.Search
                         allowClear
                         placeholder="Search experiments..."
@@ -197,9 +200,6 @@ export function TrainingExperimentsTab({ pipelineId, specId, refreshToken }: Pro
                         Show archived
                     </span>
                 </Space>
-                <Button type="primary" onClick={() => openDrawer("create", undefined)}>
-                    New experiment
-                </Button>
             </div>
 
             <div className="te-layout">
@@ -247,14 +247,6 @@ export function TrainingExperimentsTab({ pipelineId, specId, refreshToken }: Pro
                         load();
                         patchParams({ drawer: undefined, experiment: row.id });
                     }}
-                    onSaveAndStart={
-                        drawerMode === "create"
-                            ? (row) => {
-                                  load();
-                                  patchParams({ drawer: "run", experiment: row.id });
-                              }
-                            : undefined
-                    }
                 />
             ) : null}
         </div>

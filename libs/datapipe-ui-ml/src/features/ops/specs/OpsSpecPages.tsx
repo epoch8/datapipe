@@ -240,7 +240,7 @@ export function OpsOverviewSpecPage({ kind }: { kind: PageKind }) {
     const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState<string | null>(null);
     const load = React.useCallback(() => { if (!pipelineId) return; setLoading(true); setError(null); opsApi.getOpsPageOverview(pipelineId, kind).then(setData).catch((e) => setError(String(e))).finally(() => setLoading(false)); }, [pipelineId, kind]);
     React.useEffect(() => { load(); }, [load]);
-    return <div className="ops-page ops-spec-page"><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind] }]} title={pageTitles[kind]} subtitle={pageSubtitles[kind]} statusChips={[{ label: "Running", variant: "success" }, { label: "All specifications", variant: "purple" }]} onRefresh={load} primaryAction={kind === "training" ? { label: "New Training Run" } : undefined} /><EmptyState loading={pidLoading || loading} error={error} empty={!data?.specs?.length && !loading}>{data?.summary && <SummaryCards kind={kind} summary={data.summary} />}<div className="ops-landing-grid">{(data?.specs ?? []).map((spec) => <OverviewCard key={String(spec.spec_id ?? spec.id)} kind={kind} spec={spec} />)}</div>{data && <OverviewBottom kind={kind} data={data} />}</EmptyState></div>;
+    return <div className="ops-page ops-spec-page"><PageHeader breadcrumbs={[{ label: "Datapipe Ops", href: "/" }, { label: pageTitles[kind] }]} title={pageTitles[kind]} subtitle={pageSubtitles[kind]} statusChips={[{ label: "Running", variant: "success" }, { label: "All specifications", variant: "purple" }]} onRefresh={load} /><EmptyState loading={pidLoading || loading} error={error} empty={!data?.specs?.length && !loading}>{data?.summary && <SummaryCards kind={kind} summary={data.summary} />}<div className="ops-landing-grid">{(data?.specs ?? []).map((spec) => <OverviewCard key={String(spec.spec_id ?? spec.id)} kind={kind} spec={spec} />)}</div>{data && <OverviewBottom kind={kind} data={data} />}</EmptyState></div>;
 }
 function renderColumn(column: OpsColumn, specId: string, fallbackKind?: string, entityLinks?: Record<string, string>) {
     return (value: unknown, row?: Row) => {
@@ -628,7 +628,7 @@ function DataSpecificPage({ kind, specId, spec, pipelineId, load }: { kind: Page
                 onRefresh={load}
                 primaryAction={
                     isTraining
-                        ? { label: "New Training Run" }
+                        ? undefined
                         : {
                               label: "Freeze new dataset",
                               onClick: onFreeze,

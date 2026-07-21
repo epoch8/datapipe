@@ -14,7 +14,6 @@ from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BaseBatchTransformStep, BatchTransform, DatatableBatchTransform
 from datapipe.step.datatable_transform import DatatableTransform
 from datapipe.step.update_external_table import UpdateExternalTable
-from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.sql.expression import and_, or_, select
@@ -27,6 +26,7 @@ from datapipe_app.app.meta_sql import require_sql_transform_meta
 from datapipe_app.observability.graph.discovery import extract_stages
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.pipeline.pipeline_steps import pipeline_step_labels
+from datapipe_app.pipeline.table_data import get_table_data, get_table_store_schema
 from datapipe_app.app.settings import API_SETTINGS
 
 _PRIMITIVE_STEP_TYPES = (
@@ -58,64 +58,6 @@ def _group_boundaries(group_steps: List[ComputeStep]) -> tuple[Set[str], Set[str
     produced = {o.dt.name for step in group_steps for o in step.output_dts}
     consumed = {i.dt.name for step in group_steps for i in step.input_dts}
     return consumed - produced, produced - consumed
-
-
-def get_table_store_db_data(table_store: TableStoreDB, req: models.GetDataRequest) -> models.GetDataResponse:
-    sql_schema = table_store.data_sql_schema
-    sql_table = table_store.data_table
-
-    sql = select(*sql_schema).select_from(sql_table)
-    if req.focus is not None:
-        filtered_focus_idx = [
-            {k: v for k, v in row.items() if k in table_store.primary_keys} for row in req.focus.items_idx
-        ]
-        primary_key_selectors = [and_(*[sql_table.c[k] == v for k, v in row.items()]) for row in filtered_focus_idx]
-        sql = sql.where(or_(*primary_key_selectors))
-
-    for col, val in req.filters.items():
-        sql = sql.where(sql_table.c[col] == val)
-
-    sql_count = select(count()).select_from(sql.subquery())
-
-    if req.order_by:
-        sql = apply_table_order_by(sql, sql_table, req.order_by, req.order)
-
-    sql = sql.offset(req.page * req.page_size).limit(req.page_size)
-
-    data_df = pd.read_sql_query(sql, con=table_store.dbconn.con)
-
-    total: Optional[int] = None
-    if req.include_total:
-        with table_store.dbconn.con.begin() as conn:
-            total = conn.execute(sql_count).scalar_one_or_none()
-            assert total is not None
-
-    return models.GetDataResponse(
-        page=req.page,
-        page_size=req.page_size,
-        total=total,
-        data=data_df.fillna("-").to_dict(orient="records"),
-    )
-
-
-def get_table_data(ds: DataStore, catalog: Catalog, req: models.GetDataRequest) -> models.GetDataResponse:
-    dt = catalog.get_datatable(ds, req.table)
-    table_store = dt.table_store
-
-    if isinstance(table_store, TableStoreDB):
-        return get_table_store_db_data(table_store, req)
-
-    raise HTTPException(status_code=500, detail="Not implemented")
-
-
-def get_table_store_schema(table_store: Any) -> List[models.TableColumnResponse]:
-    if not isinstance(table_store, TableStoreDB):
-        return []
-
-    return [
-        models.TableColumnResponse(name=column.name, type=str(column.type))
-        for column in table_store.data_sql_schema
-    ]
 
 
 def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest) -> models.GetDataResponse:
