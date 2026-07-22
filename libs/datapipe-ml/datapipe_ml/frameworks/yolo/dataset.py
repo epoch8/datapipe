@@ -112,12 +112,17 @@ class YOLOPoseDataConverter(YOLODataConverter):
                 str(round(h / height, 6)),
             ]
             keypoints = bbox_data.keypoints if bbox_data.keypoints is not None else []
-            visibility = None
-            if isinstance(bbox_data.additional_info, dict):
-                visibility = bbox_data.additional_info.get("keypoints_visibility")
-            if visibility is None:
-                visibility = [2] * len(keypoints)
-            for (x, y), visible in zip(keypoints, visibility):
+            visibility = bbox_data.keypoints_visibility
+            if len(keypoints) > 0 and visibility is None:
+                raise ValueError(
+                    "keypoints_visibility is required on BboxData when keypoints are present; "
+                    "got None (refusing silent default of all-visible)"
+                )
+            if visibility is not None and len(visibility) != len(keypoints):
+                raise ValueError(
+                    f"Len keypoints_visibility={len(visibility)} not equal to len keypoints={len(keypoints)}"
+                )
+            for (x, y), visible in zip(keypoints, visibility or []):
                 parts.extend([str(round(x / width, 6)), str(round(y / height, 6)), str(int(visible))])
             txt_results.append(" ".join(parts))
         return txt_results

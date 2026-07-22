@@ -16,6 +16,7 @@ def test_bboxes_data_from_record_includes_keypoints_and_masks():
         "masks": [[[[1, 1], [2, 2]]], []],
         "prediction__detection_scores": [0.9, 0.8],
         "prediction__keypoints_scores": [[0.95, 0.85], [0.7, 0.6, 0.5]],
+        "keypoints_visibility": [[0, 2], [1, 2, 2]],
     }
 
     bboxes_data = bboxes_data_from_record(record)
@@ -26,4 +27,6 @@ def test_bboxes_data_from_record_includes_keypoints_and_masks():
     assert len(bboxes_data[0].mask) == 1
     assert bboxes_data[1].mask == []
     assert bboxes_data[0].detection_score == 0.9
-    assert bboxes_data[0].additional_info["prediction__keypoints_scores"] == [0.95, 0.85]
+    assert bboxes_data[0].keypoints_scores == [0.95, 0.85]
+    assert [int(v) for v in bboxes_data[0].keypoints_visibility] == [0, 2]
+    assert [int(v) for v in bboxes_data[1].keypoints_visibility] == [1, 2, 2]

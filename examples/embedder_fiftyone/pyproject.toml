@@ -23,4 +23,4 @@ torch = { index = "pytorch-cu124" }
 torchvision = { index = "pytorch-cu124" }
 datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "ef6afaab7694dc6e3c12d507ba38c9e74214958f" }
