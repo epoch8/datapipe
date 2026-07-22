@@ -5,12 +5,18 @@ import type { RunLogLine } from "../../../types/ops";
 import { ansiToHtml, stripAnsi } from "./ansi";
 
 const { Text } = Typography;
+
+/**
+ * Fetch / scroll chunk size.
+ * Kubernetes Dashboard defaults to 100 lines from the end; infinite-scroll
+ * log UIs commonly use 100–200. Stay under the API cap (1000).
+ */
+const PAGE_SIZE = 200;
 /** Max lines kept in the browser at once (sliding window). */
 const MAX_LINES = 10_000;
 const DEFAULT_POLL_MS = 5000;
-const BATCH_LIMIT = 500;
 const STORAGE_KEY = "datapipe.ops.logsRefreshMs";
-const SCROLL_LOAD_THRESHOLD_PX = 80;
+const SCROLL_EDGE_PX = 80;
 
 const REFRESH_OPTIONS: { label: string; value: number | null }[] = [
     { label: "Off", value: null },
@@ -60,35 +66,110 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
     const [lines, setLines] = useState<RunLogLine[]>([]);
     const [maxSeq, setMaxSeq] = useState(0);
     const [hasOlder, setHasOlder] = useState(false);
+    const [hasNewer, setHasNewer] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [loadingOlder, setLoadingOlder] = useState(false);
+    const [loadingNewer, setLoadingNewer] = useState(false);
     const [refreshMs, setRefreshMs] = useState<number | null>(() => readStoredRefreshMs());
     const lastSeqRef = useRef(0);
     const firstSeqRef = useRef(0);
+    const maxSeqRef = useRef(0);
     const loadingOlderRef = useRef(false);
+    const loadingNewerRef = useRef(false);
+    const loadingWindowRef = useRef(false);
     const containerRef = useRef<HTMLPreElement>(null);
     const stickToBottomRef = useRef(true);
 
-    const applyWindow = useCallback((next: RunLogLine[], trimFrom: "start" | "end") => {
-        let windowed = next;
-        if (windowed.length > MAX_LINES) {
-            windowed =
-                trimFrom === "end"
-                    ? windowed.slice(0, MAX_LINES)
-                    : windowed.slice(-MAX_LINES);
-        }
+    const syncCursor = useCallback((windowed: RunLogLine[], knownMax?: number) => {
         firstSeqRef.current = windowed[0]?.seq ?? 0;
-        lastSeqRef.current = windowed[windowed.length - 1]?.seq ?? 0;
+        lastSeqRef.current = windowed[windowed.length - 1]?.seq ?? lastSeqRef.current;
+        const max = knownMax ?? maxSeqRef.current;
         setHasOlder(firstSeqRef.current > 1);
-        return windowed;
+        setHasNewer(lastSeqRef.current > 0 && lastSeqRef.current < max);
     }, []);
+
+    const applyWindow = useCallback(
+        (next: RunLogLine[], trimFrom: "start" | "end") => {
+            let windowed = next;
+            if (windowed.length > MAX_LINES) {
+                windowed =
+                    trimFrom === "end"
+                        ? windowed.slice(0, MAX_LINES)
+                        : windowed.slice(-MAX_LINES);
+            }
+            syncCursor(windowed);
+            return windowed;
+        },
+        [syncCursor],
+    );
+
+    const noteMaxSeq = useCallback((value: number | undefined) => {
+        if (typeof value !== "number" || value <= 0) return;
+        maxSeqRef.current = Math.max(maxSeqRef.current, value);
+        setMaxSeq((m) => Math.max(m, value));
+    }, []);
+
+    const replaceWindow = useCallback(
+        async (after: number, stick: "top" | "bottom") => {
+            if (loadingWindowRef.current) return;
+            loadingWindowRef.current = true;
+            setLoading(true);
+            try {
+                const data = await opsApi.getRunLogs(runId, after, PAGE_SIZE);
+                noteMaxSeq(data.max_seq);
+                const windowed = applyWindow(data.lines, "start");
+                // Re-sync hasNewer against latest max after this fetch.
+                syncCursor(windowed, maxSeqRef.current);
+                setLines(windowed);
+                stickToBottomRef.current = stick === "bottom";
+                requestAnimationFrame(() => {
+                    const el = containerRef.current;
+                    if (!el) return;
+                    el.scrollTop = stick === "bottom" ? el.scrollHeight : 0;
+                });
+            } catch {
+                /* ignore */
+            } finally {
+                loadingWindowRef.current = false;
+                setLoading(false);
+            }
+        },
+        [runId, applyWindow, noteMaxSeq, syncCursor],
+    );
+
+    const jumpToStart = useCallback(async () => {
+        await replaceWindow(0, "top");
+    }, [replaceWindow]);
+
+    const jumpToEnd = useCallback(async () => {
+        try {
+            const probe = await opsApi.getRunLogs(runId, 0, 1);
+            const knownMax =
+                typeof probe.max_seq === "number" ? probe.max_seq : probe.last_seq;
+            noteMaxSeq(knownMax);
+            if (knownMax <= 0) {
+                setLines([]);
+                firstSeqRef.current = 0;
+                lastSeqRef.current = 0;
+                setHasOlder(false);
+                setHasNewer(false);
+                setLoading(false);
+                return;
+            }
+            const after = Math.max(0, knownMax - PAGE_SIZE);
+            await replaceWindow(after, "bottom");
+        } catch {
+            setLoading(false);
+        }
+    }, [runId, noteMaxSeq, replaceWindow]);
 
     const appendNewer = useCallback(
         (incoming: RunLogLine[]) => {
             if (!incoming.length) return;
             setLines((prev) => applyWindow(mergeUniqueBySeq(prev, incoming), "start"));
-            setMaxSeq((m) => Math.max(m, incoming[incoming.length - 1].seq));
+            noteMaxSeq(incoming[incoming.length - 1].seq);
         },
-        [applyWindow],
+        [applyWindow, noteMaxSeq],
     );
 
     const prependOlder = useCallback(
@@ -104,56 +185,44 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         [applyWindow],
     );
 
+    /**
+     * Append only lines after the current cursor.
+     * Never scans from seq 0 — that path caused Clear→Refresh to re-read 10k+.
+     * If the gap is larger than the memory window, jump to the tail instead.
+     */
     const fetchNewer = useCallback(async () => {
+        const after = lastSeqRef.current;
+        if (after <= 0) {
+            await jumpToEnd();
+            return;
+        }
         try {
-            let after = lastSeqRef.current;
-            while (true) {
-                const data = await opsApi.getRunLogs(runId, after, BATCH_LIMIT);
-                if (typeof data.max_seq === "number") {
-                    setMaxSeq((m) => Math.max(m, data.max_seq ?? 0));
-                }
+            const probe = await opsApi.getRunLogs(runId, after, 1);
+            noteMaxSeq(
+                typeof probe.max_seq === "number" ? probe.max_seq : undefined,
+            );
+            const knownMax = maxSeqRef.current;
+            if (knownMax - after > MAX_LINES) {
+                await jumpToEnd();
+                return;
+            }
+            let cursor = after;
+            while (cursor < knownMax) {
+                const data = await opsApi.getRunLogs(runId, cursor, PAGE_SIZE);
+                noteMaxSeq(data.max_seq);
                 if (!data.lines.length) break;
                 appendNewer(data.lines);
-                after = data.last_seq;
-                if (data.lines.length < BATCH_LIMIT) break;
+                cursor = data.last_seq;
+                if (data.lines.length < PAGE_SIZE) break;
             }
+            setHasNewer(lastSeqRef.current < maxSeqRef.current);
         } catch {
             /* ignore transient poll errors */
         }
-    }, [runId, appendNewer]);
-
-    const loadInitialTail = useCallback(async () => {
-        try {
-            // Probe max_seq with a tiny request, then load the last MAX_LINES window.
-            const probe = await opsApi.getRunLogs(runId, 0, 1);
-            const knownMax = typeof probe.max_seq === "number" ? probe.max_seq : probe.last_seq;
-            setMaxSeq(knownMax);
-            if (knownMax <= 0) {
-                setLines([]);
-                firstSeqRef.current = 0;
-                lastSeqRef.current = 0;
-                setHasOlder(false);
-                return;
-            }
-            let after = Math.max(0, knownMax - MAX_LINES);
-            const collected: RunLogLine[] = [];
-            while (after < knownMax) {
-                const data = await opsApi.getRunLogs(runId, after, BATCH_LIMIT);
-                if (!data.lines.length) break;
-                collected.push(...data.lines);
-                after = data.last_seq;
-                if (data.lines.length < BATCH_LIMIT) break;
-            }
-            const windowed = applyWindow(collected, "start");
-            setLines(windowed);
-            stickToBottomRef.current = true;
-        } catch {
-            /* ignore */
-        }
-    }, [runId, applyWindow]);
+    }, [runId, appendNewer, jumpToEnd, noteMaxSeq]);
 
     const loadOlder = useCallback(async () => {
-        if (loadingOlderRef.current) return;
+        if (loadingOlderRef.current || loadingWindowRef.current) return;
         const firstSeq = firstSeqRef.current;
         if (firstSeq <= 1) {
             setHasOlder(false);
@@ -165,23 +234,19 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         const prevHeight = el?.scrollHeight ?? 0;
         const prevTop = el?.scrollTop ?? 0;
         try {
-            const after = Math.max(0, firstSeq - BATCH_LIMIT - 1);
-            const data = await opsApi.getRunLogs(runId, after, BATCH_LIMIT);
-            if (typeof data.max_seq === "number") {
-                setMaxSeq((m) => Math.max(m, data.max_seq ?? 0));
-            }
+            const after = Math.max(0, firstSeq - PAGE_SIZE - 1);
+            const data = await opsApi.getRunLogs(runId, after, PAGE_SIZE);
+            noteMaxSeq(data.max_seq);
             const older = data.lines.filter((ln) => ln.seq < firstSeq);
             if (!older.length) {
                 setHasOlder(false);
                 return;
             }
             prependOlder(older);
-            // Preserve viewport after prepending DOM nodes above.
             requestAnimationFrame(() => {
                 const node = containerRef.current;
                 if (!node) return;
-                const delta = node.scrollHeight - prevHeight;
-                node.scrollTop = prevTop + delta;
+                node.scrollTop = prevTop + (node.scrollHeight - prevHeight);
             });
         } catch {
             /* ignore */
@@ -189,7 +254,33 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
             loadingOlderRef.current = false;
             setLoadingOlder(false);
         }
-    }, [runId, prependOlder]);
+    }, [runId, prependOlder, noteMaxSeq]);
+
+    const loadNewerPage = useCallback(async () => {
+        if (loadingNewerRef.current || loadingWindowRef.current) return;
+        const after = lastSeqRef.current;
+        if (after <= 0 || after >= maxSeqRef.current) {
+            setHasNewer(false);
+            return;
+        }
+        loadingNewerRef.current = true;
+        setLoadingNewer(true);
+        try {
+            const data = await opsApi.getRunLogs(runId, after, PAGE_SIZE);
+            noteMaxSeq(data.max_seq);
+            if (!data.lines.length) {
+                setHasNewer(false);
+                return;
+            }
+            appendNewer(data.lines);
+            setHasNewer(lastSeqRef.current < maxSeqRef.current);
+        } catch {
+            /* ignore */
+        } finally {
+            loadingNewerRef.current = false;
+            setLoadingNewer(false);
+        }
+    }, [runId, appendNewer, noteMaxSeq]);
 
     const setRefreshInterval = (value: number | null) => {
         setRefreshMs(value);
@@ -203,23 +294,23 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
     useEffect(() => {
         lastSeqRef.current = 0;
         firstSeqRef.current = 0;
+        maxSeqRef.current = 0;
         setLines([]);
         setMaxSeq(0);
         setHasOlder(false);
+        setHasNewer(false);
         stickToBottomRef.current = true;
-        loadInitialTail();
-    }, [runId, loadInitialTail]);
+        void jumpToEnd();
+    }, [runId, jumpToEnd]);
 
     useEffect(() => {
         if (status !== "running" || refreshMs == null) return;
-        const timer = window.setInterval(fetchNewer, refreshMs);
+        const timer = window.setInterval(() => {
+            if (!stickToBottomRef.current) return;
+            void fetchNewer();
+        }, refreshMs);
         return () => window.clearInterval(timer);
     }, [status, refreshMs, fetchNewer]);
-
-    useEffect(() => {
-        if (status === "running") return;
-        fetchNewer();
-    }, [status, fetchNewer]);
 
     const visibleLines = useMemo(() => {
         if (!stepFilter) return lines;
@@ -238,16 +329,25 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         if (!el) return;
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         stickToBottomRef.current = atBottom;
-        if (el.scrollTop < SCROLL_LOAD_THRESHOLD_PX && hasOlder && !loadingOlderRef.current) {
+        if (el.scrollTop < SCROLL_EDGE_PX && hasOlder && !loadingOlderRef.current) {
             void loadOlder();
+        }
+        // Older window: scrolling to the bottom loads the next ~PAGE_SIZE page.
+        // Live follow uses the poll path (fetchNewer) instead.
+        if (atBottom && hasNewer && !loadingNewerRef.current) {
+            void loadNewerPage();
         }
     };
 
     const clearLogs = () => {
-        lastSeqRef.current = 0;
+        // Keep the high-water mark so Refresh/poll only append truly new lines
+        // instead of re-reading history from seq 0.
+        const watermark = Math.max(lastSeqRef.current, maxSeqRef.current);
+        lastSeqRef.current = watermark;
         firstSeqRef.current = 0;
         setLines([]);
         setHasOlder(false);
+        setHasNewer(false);
     };
 
     const downloadLogs = () => {
@@ -280,13 +380,44 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         </Menu>
     );
 
+    const totalPages = Math.max(1, Math.ceil(maxSeq / PAGE_SIZE));
+    const currentPage = useMemo(() => {
+        if (!visibleLines.length || maxSeq <= 0) return null;
+        // Page 1 = seq 1..PAGE_SIZE; page N = last PAGE_SIZE of the run.
+        const mid = visibleLines[Math.floor(visibleLines.length / 2)].seq;
+        return Math.min(totalPages, Math.max(1, Math.ceil(mid / PAGE_SIZE)));
+    }, [visibleLines, maxSeq, totalPages]);
+
+    const jumpToPage = useCallback(
+        async (page: number) => {
+            const clamped = Math.min(totalPages, Math.max(1, page));
+            if (clamped >= totalPages) {
+                await jumpToEnd();
+                return;
+            }
+            const after = (clamped - 1) * PAGE_SIZE;
+            await replaceWindow(after, clamped === 1 ? "top" : "top");
+        },
+        [totalPages, jumpToEnd, replaceWindow],
+    );
+
     const windowLabel = useMemo(() => {
-        if (!visibleLines.length) return null;
+        if (!visibleLines.length) {
+            if (maxSeq > 0) {
+                return `cleared · ${maxSeq.toLocaleString()} total`;
+            }
+            return null;
+        }
         const from = visibleLines[0].seq;
         const to = visibleLines[visibleLines.length - 1].seq;
+        const pageHint =
+            currentPage != null ? ` · page ${currentPage}/${totalPages}` : "";
         const totalHint = maxSeq > to ? ` / ${maxSeq.toLocaleString()} total` : "";
-        return `${visibleLines.length.toLocaleString()} lines (seq ${from.toLocaleString()}–${to.toLocaleString()})${totalHint}`;
-    }, [visibleLines, maxSeq]);
+        return `${visibleLines.length.toLocaleString()} lines (seq ${from.toLocaleString()}–${to.toLocaleString()})${totalHint}${pageHint}`;
+    }, [visibleLines, maxSeq, currentPage, totalPages]);
+
+    const atStart = !hasOlder && lines.length > 0;
+    const atEnd = !hasNewer && lines.length > 0;
 
     return (
         <Card
@@ -307,7 +438,54 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                                 : ""}
                         </Text>
                     )}
-                    <Button size="small" onClick={fetchNewer} style={{ marginRight: 8 }}>
+                    <Button
+                        size="small"
+                        onClick={() => void jumpToStart()}
+                        disabled={loading || atStart}
+                        style={{ marginRight: 4 }}
+                        title={`First ~${PAGE_SIZE} lines`}
+                    >
+                        Start
+                    </Button>
+                    <Button
+                        size="small"
+                        onClick={() =>
+                            currentPage != null && void jumpToPage(currentPage - 1)
+                        }
+                        disabled={loading || currentPage == null || currentPage <= 1}
+                        style={{ marginRight: 4 }}
+                        title={`Previous ~${PAGE_SIZE} lines`}
+                    >
+                        Prev
+                    </Button>
+                    <Button
+                        size="small"
+                        onClick={() =>
+                            currentPage != null && void jumpToPage(currentPage + 1)
+                        }
+                        disabled={
+                            loading || currentPage == null || currentPage >= totalPages
+                        }
+                        style={{ marginRight: 4 }}
+                        title={`Next ~${PAGE_SIZE} lines`}
+                    >
+                        Next
+                    </Button>
+                    <Button
+                        size="small"
+                        onClick={() => void jumpToEnd()}
+                        disabled={loading || atEnd}
+                        style={{ marginRight: 8 }}
+                        title={`Last ~${PAGE_SIZE} lines`}
+                    >
+                        End
+                    </Button>
+                    <Button
+                        size="small"
+                        onClick={() => void jumpToEnd()}
+                        style={{ marginRight: 8 }}
+                        title="Reload the latest page"
+                    >
                         Refresh
                     </Button>
                     <Button
@@ -318,7 +496,12 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                     >
                         Download
                     </Button>
-                    <Button size="small" onClick={clearLogs} disabled={!lines.length}>
+                    <Button
+                        size="small"
+                        onClick={clearLogs}
+                        disabled={!lines.length}
+                        title="Clear the view; keep cursor so Refresh only loads new lines"
+                    >
                         Clear
                     </Button>
                 </>
@@ -336,11 +519,15 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                     )}
                 </div>
             )}
-            {visibleLines.length === 0 ? (
+            {loading && visibleLines.length === 0 ? (
+                <Text type="secondary">Loading logs…</Text>
+            ) : visibleLines.length === 0 ? (
                 <Text type="secondary">
                     {stepFilter && lines.length > 0
                         ? "No log lines mention this step."
-                        : "No log lines yet."}
+                        : maxSeq > 0
+                          ? "View cleared. Refresh/End to reload the latest page, or Start for the beginning."
+                          : "No log lines yet."}
                 </Text>
             ) : (
                 <pre ref={containerRef} onScroll={onScroll} className="run-logs-viewer">
@@ -348,7 +535,7 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                         <div className="run-log-line run-log-info" style={{ opacity: 0.7 }}>
                             {loadingOlder
                                 ? "Loading older logs…"
-                                : "Scroll up to load older logs"}
+                                : "Scroll up for older · or use Start / Prev"}
                         </div>
                     )}
                     {visibleLines.map((ln) => (
@@ -366,6 +553,13 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                             />
                         </div>
                     ))}
+                    {hasNewer && (
+                        <div className="run-log-line run-log-info" style={{ opacity: 0.7 }}>
+                            {loadingNewer
+                                ? "Loading newer logs…"
+                                : "Scroll down for newer · or use Next / End"}
+                        </div>
+                    )}
                 </pre>
             )}
         </Card>

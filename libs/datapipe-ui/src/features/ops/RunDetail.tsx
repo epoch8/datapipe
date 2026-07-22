@@ -25,7 +25,7 @@ import { workflowIconSvg } from "../cy/nodeIcons";
 
 const { Text } = Typography;
 
-const RUN_TABS = new Set(["logs", "steps", "outputs"]);
+const RUN_TABS = new Set(["logs", "steps"]);
 
 function statusColor(status: string): string {
     if (status === "failed" || status === "interrupted") return "red";
@@ -372,9 +372,6 @@ export function RunDetail() {
                         columns={stepColumns}
                         dataSource={run.steps}
                     />
-                </Tabs.TabPane>
-                <Tabs.TabPane tab="Outputs" key="outputs">
-                    <Text type="secondary">Pipeline data outputs live in catalog tables, not observability tables.</Text>
                 </Tabs.TabPane>
             </Tabs>
 
