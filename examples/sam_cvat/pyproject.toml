@@ -9,11 +9,11 @@ dependencies = [
     "sam3",
     "datapipe-core",
     "datapipe-cvat",
+    "datapipe-ml",
     "python-dotenv",
     "datasets",
     "opencv-python",
     "huggingface-hub==1.20.1",
-    "cv-pipeliner",
     "einops",
     "pycocotools",
     "psutil"
@@ -29,5 +29,5 @@ torch = { index = "pytorch-cu124" }
 torchvision = { index = "pytorch-cu124" }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
 datapipe-cvat = { path = "../../libs/datapipe-cvat", editable = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "ef6afaab7694dc6e3c12d507ba38c9e74214958f" }
+datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 sam3 = { git = "https://github.com/facebookresearch/sam3.git", rev = "5dd401d1c5c1d5c3eedff06d41b77af824517619" }
