@@ -311,6 +311,7 @@ def make_app(
 
         buf = get_log_buffer(store)
         lines = buf.get_lines(run_id, after=after, limit=min(limit, 1000))
+        max_seq = buf.get_max_seq(run_id)
         return {
             "run_id": run_id,
             "lines": [
@@ -323,6 +324,7 @@ def make_app(
                 for ln in lines
             ],
             "last_seq": lines[-1].seq if lines else after,
+            "max_seq": max_seq,
         }
 
     @app.post("/runs", response_model=StartRunResponse)

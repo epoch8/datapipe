@@ -166,6 +166,8 @@ export interface RunLogsResponse {
     run_id: string;
     lines: RunLogLine[];
     last_seq: number;
+    /** Highest seq known for this run (DB + in-memory). Used to jump to the tail. */
+    max_seq?: number;
 }
 
 export interface RunDetail {
