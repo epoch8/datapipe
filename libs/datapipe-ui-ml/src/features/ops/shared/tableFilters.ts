@@ -29,6 +29,26 @@ export const FILTER_OPERATORS: OpsFilterOperator[] = [
 /** Quick-pick values for subset entity columns (`entity_links.subset`). */
 export const SUBSET_CHIP_VALUES = ["train", "val", "test"] as const;
 
+/**
+ * UUID for client-side React keys. Prefers ``crypto.randomUUID`` (secure contexts),
+ * then ``crypto.getRandomValues`` (works over plain HTTP / IP hosts), then Math.random.
+ */
+export function createClientId(): string {
+    const webCrypto = globalThis.crypto;
+    if (typeof webCrypto?.randomUUID === "function") {
+        return webCrypto.randomUUID();
+    }
+    if (typeof webCrypto?.getRandomValues === "function") {
+        const bytes = new Uint8Array(16);
+        webCrypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+    return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 export function resolveColumnEntity(
     column: OpsColumn,
     entityLinks: Record<string, string> = {},
@@ -46,7 +66,7 @@ export function defaultOperatorForColumn(column: OpsColumn): OpsFilterOperator {
 
 export function makeDefaultFilterRule(column: OpsColumn): OpsFilterRule {
     return {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         column_id: column.source,
         operator: defaultOperatorForColumn(column),
         value: "",
@@ -171,7 +191,7 @@ export type OpsFilterRuleWithId = OpsFilterRule & { id: string };
 export function ensureRuleIds(rules: OpsFilterRule[]): OpsFilterRuleWithId[] {
     return rules.map((rule) => ({
         ...rule,
-        id: (rule as OpsFilterRuleWithId).id ?? crypto.randomUUID(),
+        id: (rule as OpsFilterRuleWithId).id ?? createClientId(),
     }));
 }
 
