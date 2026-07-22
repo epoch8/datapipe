@@ -1066,8 +1066,8 @@ wheels = [
 
 [[package]]
 name = "cv-pipeliner"
-version = "0.22.0"
-source = { git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.0#8f11269f52c303b370c8f0ac64ee11eadbb5b194" }
+version = "0.22.1"
+source = { git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.1#f52919b15f28922f7fe7dcfc44c99ab70964e78b" }
 dependencies = [
     { name = "dataframe-image" },
     { name = "filterpy" },
@@ -1216,7 +1216,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cv-pipeliner", git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.0" },
+    { name = "cv-pipeliner", git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.1" },
     { name = "datapipe-app", editable = "../../libs/datapipe-app" },
     { name = "datapipe-ml", editable = "../../libs/datapipe-ml" },
     { name = "httpx" },
@@ -1415,7 +1415,7 @@ torch = [
 requires-dist = [
     { name = "albumentations", specifier = ">=2.0.0,<3" },
     { name = "asyncssh", marker = "extra == 'sky-vast'" },
-    { name = "cv-pipeliner", git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.0" },
+    { name = "cv-pipeliner", git = "https://github.com/epoch8/cv-pipeliner?tag=0.22.1" },
     { name = "datapipe-core", extras = ["gcsfs", "s3fs", "ray"], editable = "../../libs/datapipe-core" },
     { name = "dill", specifier = ">=0.3.7" },
     { name = "fiftyone", marker = "extra == 'fiftyone'" },

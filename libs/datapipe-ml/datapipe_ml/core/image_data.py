@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -51,10 +51,30 @@ def _mask_as_list(mask: Any):
 
 
 def _get_prediction_keypoint_scores(bbox_data: BboxData):
-    value = bbox_data.additional_info.get("prediction__keypoint_scores")
+    return _as_list(bbox_data.keypoints_scores)
+
+
+def _get_keypoints_visibility(bbox_data: BboxData):
+    value = bbox_data.keypoints_visibility
     if value is None:
-        value = bbox_data.additional_info.get("prediction__keypoints_scores")
-    return _as_list(value)
+        return None
+    return [int(v) for v in value]
+
+
+def _get_additional_info(obj: Any) -> Dict[str, Any]:
+    value = getattr(obj, "additional_info", None)
+    if value is None:
+        return {}
+    return dict(value)
+
+
+def _aligned_per_bbox_field(row: pd.Series, field: str, *, length: int, default: Any) -> list[Any]:
+    values = row.get(field, [default] * length)
+    if values is None:
+        return [default] * length
+    if len(values) != length:
+        raise ValueError(f"Len {field}={len(values)} not equal to len bboxes={length}")
+    return list(values)
 
 
 def _convert_df_with_bbox_rows_to_df_with_image_data(
@@ -78,21 +98,17 @@ def _convert_df_with_bbox_rows_to_df_with_image_data(
                             xmax=row.get("x_max"),
                             ymax=row.get("y_max"),
                             keypoints=row.get("keypoints"),
+                            keypoints_visibility=row.get("keypoints_visibility"),
+                            keypoints_scores=(
+                                row.get("prediction__keypoints_scores")
+                                if row.get("prediction__keypoints_scores") is not None
+                                else row.get("prediction__keypoint_scores")
+                            ),
                             mask=row.get("mask"),
                             label=row.get("label"),
                             detection_score=row.get("prediction__detection_score"),
                             classification_score=row.get("prediction__classification_score"),
-                            additional_info=(
-                                {
-                                    "prediction__keypoints_scores": row.get("prediction__keypoints_scores")
-                                    or row.get("prediction__keypoint_scores")
-                                }
-                                if (
-                                    row.get("prediction__keypoints_scores") is not None
-                                    or row.get("prediction__keypoint_scores") is not None
-                                )
-                                else {}
-                            ),
+                            additional_info=dict(row.get("additional_info") or {}),
                         )
                         for _, row in df__grouped.iterrows()
                         if row[bbox_id__name] != "None"
@@ -106,30 +122,24 @@ def _convert_df_with_bbox_rows_to_df_with_image_data(
 
 
 def get_bboxes_data_from_json(row: pd.Series):
-    bboxes = row.get("bboxes", [])
-    all_keypoints = row.get("keypoints", [[]] * len(bboxes))
-    masks = row.get("masks", [[[]]] * len(bboxes))
-    labels = row.get("labels", [None] * len(bboxes))
-    if labels is None:
-        labels = [None] * len(bboxes)
-    prediction__detection_scores = row.get("prediction__detection_scores", [None] * len(bboxes))
-    if prediction__detection_scores is None:
-        prediction__detection_scores = [None] * len(bboxes)
-    prediction__classification_scores = row.get("prediction__classification_scores", [None] * len(bboxes))
-    if prediction__classification_scores is None:
-        prediction__classification_scores = [None] * len(bboxes)
-    prediction__keypoints_scores = row.get("prediction__keypoints_scores", [None] * len(bboxes))
-    if prediction__keypoints_scores is None:
-        prediction__keypoints_scores = [None] * len(bboxes)
+    bboxes = row.get("bboxes", []) or []
+    all_keypoints = _aligned_per_bbox_field(row, "keypoints", length=len(bboxes), default=[])
+    masks = _aligned_per_bbox_field(row, "masks", length=len(bboxes), default=[[]])
+    labels = _aligned_per_bbox_field(row, "labels", length=len(bboxes), default=None)
+    prediction__detection_scores = _aligned_per_bbox_field(
+        row, "prediction__detection_scores", length=len(bboxes), default=None
+    )
+    prediction__classification_scores = _aligned_per_bbox_field(
+        row, "prediction__classification_scores", length=len(bboxes), default=None
+    )
+    prediction__keypoints_scores = _aligned_per_bbox_field(
+        row, "prediction__keypoints_scores", length=len(bboxes), default=None
+    )
+    keypoints_visibility = _aligned_per_bbox_field(row, "keypoints_visibility", length=len(bboxes), default=None)
+    bboxes_additional_infos = _aligned_per_bbox_field(
+        row, "bboxes_additional_infos", length=len(bboxes), default={}
+    )
 
-    if len(labels) != len(bboxes):
-        raise ValueError(f"Len {len(labels)=} not equal to {len(bboxes)=}")
-    if len(prediction__detection_scores) != len(bboxes):
-        raise ValueError(f"Len {len(prediction__detection_scores)=} not equal to {len(bboxes)=}")
-    if len(prediction__classification_scores) != len(bboxes):
-        raise ValueError(f"Len {len(prediction__classification_scores)=} not equal to {len(bboxes)=}")
-    if len(prediction__keypoints_scores) != len(bboxes):
-        raise ValueError(f"Len {len(prediction__keypoints_scores)=} not equal to {len(bboxes)=}")
     return [
         BboxData(
             xmin=xmin,
@@ -138,14 +148,12 @@ def get_bboxes_data_from_json(row: pd.Series):
             ymax=ymax,
             label=label,
             keypoints=keypoints,
+            keypoints_visibility=keypoints_visibility_item,
+            keypoints_scores=prediction__keypoints_score,
             mask=mask,
             detection_score=prediction__detection_score,
             classification_score=prediction__classification_score,
-            additional_info=(
-                {"prediction__keypoints_scores": prediction__keypoints_score}
-                if prediction__keypoints_score is not None
-                else {}
-            ),
+            additional_info=dict(additional_info_item or {}),
         )
         for (
             (xmin, ymin, xmax, ymax),
@@ -155,6 +163,8 @@ def get_bboxes_data_from_json(row: pd.Series):
             prediction__detection_score,
             prediction__classification_score,
             prediction__keypoints_score,
+            keypoints_visibility_item,
+            additional_info_item,
         ) in zip(
             bboxes,
             all_keypoints,
@@ -163,6 +173,8 @@ def get_bboxes_data_from_json(row: pd.Series):
             prediction__detection_scores,
             prediction__classification_scores,
             prediction__keypoints_scores,
+            keypoints_visibility,
+            bboxes_additional_infos,
         )
     ]
 
@@ -178,6 +190,7 @@ def _convert_df_with_bbox_json_to_df_with_image_data(
                 **{primary_key: row[primary_key] for primary_key in primary_keys},
                 image_data=ImageData(
                     image_path=(row[image__image_path__name] if image__image_path__name is not None else None),
+                    additional_info=dict(row.get("additional_info") or {}),
                     bboxes_data=get_bboxes_data_from_json(row),
                 ),
             )
@@ -214,10 +227,11 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
     bbox_id__name: str,
     image__image_path__name: Optional[str] = None,
 ) -> pd.DataFrame:
-    n_records = [
-        (
-            [
-                dict(
+    n_records = []
+    for _, row in df__with_image_data.iterrows():
+        if len(row["image_data"].bboxes_data) > 0:
+            for bbox_data in cast(List[BboxData], row["image_data"].bboxes_data):
+                record = dict(
                     **{primary_key: row[primary_key] for primary_key in primary_keys},
                     **{
                         bbox_id__name: get_bbox_id(
@@ -241,11 +255,14 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     prediction__detection_score=bbox_data.detection_score,
                     prediction__classification_score=bbox_data.classification_score,
                     prediction__keypoints_scores=_get_prediction_keypoint_scores(bbox_data),
+                    keypoints_visibility=_get_keypoints_visibility(bbox_data),
                 )
-                for bbox_data in cast(List[BboxData], row["image_data"].bboxes_data)
-            ]
-            if len(row["image_data"].bboxes_data) > 0
-            else [
+                additional_info = _get_additional_info(bbox_data)
+                if additional_info:
+                    record["additional_info"] = additional_info
+                n_records.append(record)
+        else:
+            n_records.append(
                 dict(
                     **{primary_key: row[primary_key] for primary_key in primary_keys},
                     **{bbox_id__name: "None"},
@@ -264,15 +281,12 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     prediction__detection_score=None,
                     prediction__classification_score=None,
                     prediction__keypoints_scores=None,
+                    keypoints_visibility=None,
                 )
-            ]
-        )
-        for _, row in df__with_image_data.iterrows()
-    ]
-    records = [record for records in n_records for record in records]
-    return pd.DataFrame(
-        records,
-        columns=primary_keys
+            )
+
+    columns = (
+        primary_keys
         + [bbox_id__name]
         + ([image__image_path__name] if image__image_path__name is not None else [])
         + [
@@ -286,8 +300,12 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
             "prediction__detection_score",
             "prediction__classification_score",
             "prediction__keypoints_scores",
-        ],
+            "keypoints_visibility",
+        ]
     )
+    if any(record.get("additional_info") for record in n_records):
+        columns.append("additional_info")
+    return pd.DataFrame(n_records, columns=columns)
 
 
 def _convert_df_with_image_data_to_df_with_bbox_json(
@@ -295,43 +313,53 @@ def _convert_df_with_image_data_to_df_with_bbox_json(
     primary_keys: List[str],
     image__image_path__name: Optional[str] = None,
 ) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            dict(
-                **{primary_key: row[primary_key] for primary_key in primary_keys},
-                **(
-                    {image__image_path__name: str(row["image_data"].image_path)}
-                    if image__image_path__name is not None
-                    else {}
-                ),
-                bboxes=[bbox_data.coords for bbox_data in row["image_data"].bboxes_data],
-                keypoints=[_as_list(bbox_data.keypoints) for bbox_data in row["image_data"].bboxes_data],
-                masks=[_mask_as_list(bbox_data.mask) for bbox_data in row["image_data"].bboxes_data],
-                labels=[bbox_data.label for bbox_data in row["image_data"].bboxes_data],
-                prediction__detection_scores=[bbox_data.detection_score for bbox_data in row["image_data"].bboxes_data],
-                prediction__classification_scores=[
-                    bbox_data.classification_score for bbox_data in row["image_data"].bboxes_data
-                ],
-                prediction__keypoints_scores=[
-                    _get_prediction_keypoint_scores(bbox_data) for bbox_data in row["image_data"].bboxes_data
-                ],
-            )
-            for _, row in df__with_image_data.iterrows()
-        ],
-        columns=(
-            primary_keys
-            + ([image__image_path__name] if image__image_path__name is not None else [])
-            + [
-                "bboxes",
-                "labels",
-                "keypoints",
-                "masks",
-                "prediction__detection_scores",
-                "prediction__classification_scores",
-                "prediction__keypoints_scores",
-            ]
-        ),
-    )
+    records = []
+    for _, row in df__with_image_data.iterrows():
+        record = dict(
+            **{primary_key: row[primary_key] for primary_key in primary_keys},
+            **(
+                {image__image_path__name: str(row["image_data"].image_path)}
+                if image__image_path__name is not None
+                else {}
+            ),
+            bboxes=[bbox_data.coords for bbox_data in row["image_data"].bboxes_data],
+            keypoints=[_as_list(bbox_data.keypoints) for bbox_data in row["image_data"].bboxes_data],
+            masks=[_mask_as_list(bbox_data.mask) for bbox_data in row["image_data"].bboxes_data],
+            labels=[bbox_data.label for bbox_data in row["image_data"].bboxes_data],
+            prediction__detection_scores=[bbox_data.detection_score for bbox_data in row["image_data"].bboxes_data],
+            prediction__classification_scores=[
+                bbox_data.classification_score for bbox_data in row["image_data"].bboxes_data
+            ],
+            prediction__keypoints_scores=[
+                _get_prediction_keypoint_scores(bbox_data) for bbox_data in row["image_data"].bboxes_data
+            ],
+            keypoints_visibility=[
+                _get_keypoints_visibility(bbox_data) for bbox_data in row["image_data"].bboxes_data
+            ],
+        )
+        bboxes_additional_infos = [_get_additional_info(bbox_data) for bbox_data in row["image_data"].bboxes_data]
+        additional_info = _get_additional_info(row["image_data"])
+        if any(bboxes_additional_infos):
+            record["bboxes_additional_infos"] = bboxes_additional_infos
+        if additional_info:
+            record["additional_info"] = additional_info
+        records.append(record)
+
+    columns = primary_keys + ([image__image_path__name] if image__image_path__name is not None else []) + [
+        "bboxes",
+        "labels",
+        "keypoints",
+        "masks",
+        "prediction__detection_scores",
+        "prediction__classification_scores",
+        "prediction__keypoints_scores",
+        "keypoints_visibility",
+    ]
+    if any("additional_info" in record for record in records):
+        columns.append("additional_info")
+    if any("bboxes_additional_infos" in record for record in records):
+        columns.append("bboxes_additional_infos")
+    return pd.DataFrame(records, columns=columns)
 
 
 def convert_df_with_image_data_to_df_with_bbox(

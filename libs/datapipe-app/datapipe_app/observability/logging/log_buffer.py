@@ -89,6 +89,9 @@ class RunLogBuffer:
         pending.clear()
 
     def get_lines(self, run_id: str, *, after: int = 0, limit: int = 500) -> list[LogLine]:
+        # Pass after/limit through to the store so clients can page beyond the
+        # in-memory ring (MAX_LINES_PER_RUN). Previously this always loaded
+        # after=0..MAX_LINES_PER_RUN, so seq > 10_000 was unreachable via API.
         db_lines = [
             LogLine(
                 seq=r.seq,
@@ -96,17 +99,24 @@ class RunLogBuffer:
                 level=r.level,
                 message=r.message,
             )
-            for r in self.store.get_run_logs(run_id, after=0, limit=MAX_LINES_PER_RUN)
+            for r in self.store.get_run_logs(run_id, after=after, limit=limit)
         ]
         with self._lock:
             buf = self._buffers.get(run_id)
             if buf is None:
-                return [ln for ln in db_lines if ln.seq > after][:limit]
+                return db_lines
             by_seq = {ln.seq: ln for ln in db_lines}
             for ln in buf:
-                by_seq[ln.seq] = ln
+                if ln.seq > after:
+                    by_seq[ln.seq] = ln
             merged = sorted(by_seq.values(), key=lambda item: item.seq)
             return [ln for ln in merged if ln.seq > after][:limit]
+
+    def get_max_seq(self, run_id: str) -> int:
+        db_max = self.store.get_last_log_seq(run_id)
+        with self._lock:
+            mem_max = self._seq.get(run_id, 0)
+        return max(db_max, mem_max)
 
 
 class RunLogHandler(logging.Handler):

@@ -30,7 +30,7 @@ from datapipe.types import Required
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
-from datapipe_ml.tasks.keypoints.metrics import CountMetrics_FrozenDataset_KeypointsModel
+from datapipe_ml.tasks.keypoints.metrics import CountMetrics_Subset_KeypointsModel
 from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel, YoloV8_TrainingConfig
 
 import steps
@@ -252,21 +252,22 @@ pipeline = Pipeline(
                 model_id_column="keypoints_model_id",
             ),
         ),
-        CountMetrics_FrozenDataset_KeypointsModel(
-            input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
+        CountMetrics_Subset_KeypointsModel(
+            input__image__ground_truth="image__ground_truth",
+            input__subset__has__image="image__subset",
             input__keypoints_model="keypoints_model_train",
             input__keypoints_prediction="keypoints_prediction_train",
-            output__keypoints_model__metrics_on__frozen_dataset="keypoints_model_train__metrics_on_frozen_dataset",
+            output__keypoints_model__metrics__on__subset="keypoints_model_train__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
             executor_config=metrics_executor(),
-            filters={"subset_id": "val"},
+            # filters={"subset_id": "val"},
         ),
         FindBestModel(
             input__model="keypoints_model_train",
-            input__model__metrics_on__subset="keypoints_model_train__metrics_on_frozen_dataset",
+            input__model__metrics_on__subset="keypoints_model_train__metrics_on_subset",
             output__attr__model__is_best="attr__keypoints_model__is_best",
             output__best_model="best_keypoints_model",
             subset_id="val",
@@ -346,7 +347,7 @@ app.add_specs([
                 "image__subset",
                 "keypoints_frozen_dataset",
                 "keypoints_model_train",
-                "keypoints_model_train__metrics_on_frozen_dataset",
+                "keypoints_model_train__metrics_on_subset",
             ],
             item_table="s3_images",
             label_table="image__ground_truth",
@@ -519,12 +520,11 @@ app.add_specs([
             OpsMetricTableSpec(
                 id="model_metrics",
                 title="Model metrics",
-                table="keypoints_model_train__metrics_on_frozen_dataset",
-                metric_source="keypoints_model_train__metrics_on_frozen_dataset",
-                primary_key_columns=["keypoints_model_id", "keypoints_frozen_dataset_id", "subset_id"],
+                table="keypoints_model_train__metrics_on_subset",
+                metric_source="keypoints_model_train__metrics_on_subset",
+                primary_key_columns=["keypoints_model_id", "subset_id"],
                 entity_links={
                     "model": "keypoints_model_id",
-                    "frozen_dataset": "keypoints_frozen_dataset_id",
                     "subset": "subset_id",
                 },
                 primary_columns=[
@@ -534,12 +534,6 @@ app.add_specs([
                         "keypoints_model_id",
                         filterable=True,
                         link_to="model",
-                    ),
-                    OpsColumn(
-                        "keypoints_frozen_dataset_id",
-                        "Frozen dataset",
-                        "keypoints_frozen_dataset_id",
-                        link_to="frozen_dataset",
                     ),
                     OpsColumn("subset_id", "Subset", "subset_id", kind="chip", filterable=True),
                 ],

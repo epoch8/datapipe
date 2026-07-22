@@ -9,7 +9,7 @@ dependencies = [
     "datapipe-app",
     "datapipe-ml",
     "httpx",
-    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.0",
+    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.1",
 ]
 
 [project.entry-points."datapipe.observability"]
@@ -40,7 +40,7 @@ include = ["datapipe_app_ml_ops", "datapipe_app_ml_ops/py.typed"]
 [tool.uv.sources]
 datapipe-app = { workspace = true }
 datapipe-ml = { workspace = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.1" }
 
 [tool.hatch.metadata]
 allow-direct-references = true

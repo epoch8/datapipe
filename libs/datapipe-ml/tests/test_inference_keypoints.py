@@ -36,7 +36,7 @@ class _FakeInferencer:
                         label="cat",
                         keypoints=[[1, 2], [10, 2], [10, 12], [1, 12]],
                         detection_score=0.9,
-                        additional_info={"prediction__keypoint_scores": [0.9, 0.8, 0.7, 0.6]},
+                        keypoints_scores=[0.9, 0.8, 0.7, 0.6],
                     )
                 ],
             )
