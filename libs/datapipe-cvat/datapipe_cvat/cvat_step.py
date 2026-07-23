@@ -444,6 +444,7 @@ def get_or_create_task(
     task_queue_id: Any,
     max_attempts: int,
     attempt_poll_s: int,
+    segment_size: Optional[int] = None,
 ) -> Tuple[Task, pd.DataFrame]:
     """
     Creates a new task in CVAT or returns an existing one, and also associates it with images.
@@ -509,6 +510,7 @@ def get_or_create_task(
                         spec=TaskWriteRequest(
                             name=new_task_name,
                             project_id=project_id,
+                            **({"segment_size": segment_size} if segment_size else {}),
                         ),
                         resources=resources,
                         resource_type=resource_type,
@@ -834,6 +836,7 @@ def upload_batches_to_cvat(
     task_name_format: str,
     max_attempts: int,
     attempt_poll_s: int,
+    segment_size: Optional[int] = None,
     failure_hook: Optional[CVATFailureHook] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -1011,6 +1014,7 @@ def upload_batches_to_cvat(
                     task_queue_id__name=task_queue_id__name,
                     max_attempts=max_attempts,
                     attempt_poll_s=attempt_poll_s,
+                    segment_size=segment_size,
                 )
 
                 task_record = {
@@ -1140,6 +1144,7 @@ class CVATStep(PipelineStep):
     file_type: Literal["image", "video"] = "image"
     files_batch: Union[int, dict[Any, int]] = 100
     minimum_files_in_job: Union[int, dict[Any, int]] = 50
+    segment_size: Optional[int] = None  # CVAT jobs per task: split each task into jobs of N frames
     task_queue_id__name: str = "task_queue_id"
     task_name_format: str = "[{date:%Y-%m-%d}] {task_queue_id} batch={inner_task_id}"
     sampling_order: Literal["default", "random"] = "default"
@@ -1335,6 +1340,7 @@ class CVATStep(PipelineStep):
                         task_queue_id__name=self.task_queue_id__name,
                         max_attempts=self.max_attempts,
                         attempt_poll_s=self.attempt_poll_s,
+                        segment_size=self.segment_size,
                     ),
                     executor_config=ExecutorConfig(parallelism=0),
                 ),

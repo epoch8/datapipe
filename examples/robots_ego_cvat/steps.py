@@ -229,7 +229,8 @@ def prepare_cvat_input(df_local_images: pd.DataFrame, df_sam_cvat_xml: pd.DataFr
         return pd.DataFrame(columns=["image_id", "task_queue_id", "image_path", "annotations"])
 
     df = pd.merge(df_local_images, df_sam_cvat_xml, on="image_id", how="left")
-    df["task_queue_id"] = TASK_QUEUE_ID
+    # One CVAT task per video: scope the CVAT batch by video_id (falls back to a constant if absent).
+    df["task_queue_id"] = df["video_id"] if "video_id" in df.columns else TASK_QUEUE_ID
     df["image_path"] = df["image_path"].apply(lambda path: str(Path(path)))
     df["annotations"] = df["annotations"].fillna("<image></image>")
     return df[["image_id", "task_queue_id", "image_path", "annotations"]]

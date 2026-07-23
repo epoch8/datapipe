@@ -21,7 +21,9 @@ from config import (
     CVAT_USERNAME,
     DBCONN,
     FILES_BATCH,
+    MIN_FILES_IN_JOB,
     PRIMARY_KEYS,
+    SEGMENT_SIZE,
 )
 
 pipeline = Pipeline(
@@ -87,8 +89,9 @@ pipeline = Pipeline(
             output__cvat_annotation="cvat_annotation",
             file_path_column="image_path",
             labels=[("stage", "cvat")],
-            minimum_files_in_job=1,
+            minimum_files_in_job=MIN_FILES_IN_JOB,
             files_batch=FILES_BATCH,
+            segment_size=SEGMENT_SIZE,
             cvat_url=CVAT_URL,
             cvat_credentials=(CVAT_USERNAME, CVAT_PASSWORD),
             cvat_project_id=CVAT_PROJECT_ID,

@@ -63,7 +63,14 @@ SAM_MAX_DETECTIONS = int(os.environ.get("SAM_MAX_DETECTIONS", "20"))
 # --- CVAT -----------------------------------------------------------------------------------------
 
 TASK_QUEUE_ID = os.environ.get("TASK_QUEUE_ID", "queue1")
-FILES_BATCH = int(os.environ.get("FILES_BATCH", "500"))
+# One CVAT task per video: task_queue_id is set to video_id (see steps.prepare_cvat_input), and
+# FILES_BATCH is large so all of a video's frames land in a single task.
+FILES_BATCH = int(os.environ.get("FILES_BATCH", "100000"))
+# Minimum frames to open a task — 1 so short videos still get a task.
+MIN_FILES_IN_JOB = int(os.environ.get("MIN_FILES_IN_JOB", "1"))
+# CVAT jobs per task: each task is split into jobs of this many frames (None = single job).
+_SEGMENT_SIZE_RAW = os.environ.get("SEGMENT_SIZE", "200")
+SEGMENT_SIZE = int(_SEGMENT_SIZE_RAW) if _SEGMENT_SIZE_RAW.strip() else None
 
 CVAT_URL = os.environ.get("CVAT_URL", "http://localhost:8080")
 CVAT_USERNAME = os.environ.get("CVAT_USERNAME", "admin")
