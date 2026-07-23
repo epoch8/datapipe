@@ -4,11 +4,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.compute import Catalog, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
+from datapipe_app import DatapipeAPI
 from datapipe_cvat.cvat_step import CVATStep
 
 import data
@@ -114,4 +115,7 @@ pipeline = Pipeline(
 )
 
 ds = DataStore(DBCONN, create_meta_table=True)
-app = DatapipeApp(ds, Catalog({}), pipeline)
+# DatapipeAPI (not plain DatapipeApp) so the datapipe-app UI front (`datapipe --pipeline app api`)
+# renders the pipeline graph, table browser, and per-stage run triggers. run_logs_backend defaults
+# to None -> no ClickHouse needed.
+app = DatapipeAPI(ds, Catalog({}), pipeline)
