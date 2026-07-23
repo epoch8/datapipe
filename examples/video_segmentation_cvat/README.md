@@ -35,10 +35,15 @@ frames are processed.
 
 ## Prerequisites
 
-- **GPU** with >8 GB VRAM for SAM3 (native 1008px; `DEVICE` auto-selects `cuda:0`).
-- **`ffmpeg`** on `PATH` (frame extraction).
+- **GPU** for SAM3 (`DEVICE` auto-selects `cuda:0`). A FlashAttention-capable card (Ada/Ampere+) with
+  >8 GB is comfortable at native resolution. On a tight 8 GB card, or a Pascal card with no
+  FlashAttention (e.g. GTX 1070 → O(n²) math-attention), lower `SAM_MAX_INFER_SIDE` — see
+  [GPU memory](#gpu-memory-oom).
+- **`ffmpeg`** on `PATH` (frame extraction). Not required: the example falls back to the binary
+  bundled by `imageio-ffmpeg` when no system `ffmpeg` is found.
 - **SAM3 is a gated HuggingFace model** — accept the license on the SAM3 model page, create a token,
-  set `HF_TOKEN` in `.env`.
+  set `HF_TOKEN` in `.env`. If the home dir is read-only, point `HF_HOME` at a writable path so the
+  gated weights + token cache there.
 - **CVAT** deployed at `CVAT_URL` (see [`../datapipe_cvat/simple_project`](../datapipe_cvat/simple_project/README.md)
   for a local Docker setup), a project created (`CVAT_PROJECT_ID`) with labels matching
   `CVAT_BOX_LABEL` / `CVAT_POLYGON_LABEL` (defaults `person_box` / `person_mask`).
@@ -74,6 +79,25 @@ datapipe run
 
 Run a single stage: `datapipe step --labels stage=sample run`, `... stage=sam run`,
 `... stage=cvat run`.
+
+## GPU memory (OOM)
+
+SAM3 returns masks at the input resolution, so full 720p+ frames need a lot of VRAM — an 8 GB card
+OOMs on a raw 1280×720 frame. The example downscales each frame so its longest side is at most
+`SAM_MAX_INFER_SIDE` (default **640**) before inference, then maps detections back to the original
+frame's coordinates (CVAT still gets the full-res frame). A crowded frame can still spike, so on OOM
+inference retries at progressively smaller sizes and only skips the frame as a last resort — one
+frame never kills the run. Raise `SAM_MAX_INFER_SIDE` (or set `0` to disable) on a roomy GPU for
+sharper masks; lower it if you still OOM. `config.py` also sets
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to keep fragmentation from causing spurious OOMs.
+
+## Debug UI (`datapipe api`)
+
+`app.py` exposes a `DatapipeAPI`, so `datapipe api` (default `:8000`) serves the pipeline graph, table
+browser, and per-stage run triggers. **Do not run `datapipe api` and a separate CLI `datapipe run`
+against the same database at the same time** — both write run logs to the shared Postgres and collide
+on `uq_run_log_seq` (the API's orphan-run reconciler adopts the live CLI run), which kills the run.
+Either trigger runs from the UI, or stop the UI while a CLI run is in flight.
 
 ## Live demo
 
