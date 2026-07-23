@@ -64,33 +64,43 @@ A is measured once on the full frozen val and its numbers are stable, and B is c
 same val. `add_request.py --subset train|val` pins a batch; the load step emits `image__subset_hint`
 and the split step honors it (random split only fills images without a hint).
 
-Batches (COCO cat/dog; the pre-staged cache holds **500 images**, so keep the total ≤ 500 or expand
-the cache — see Troubleshooting). Part 1 = **350** images (train 200 / val 150); part 2 adds **150**
-night-train → **500** total (train 350 / val 150, val unchanged):
+Batches (COCO cat/dog; the pre-staged cache holds **1000 images** — fetch it from the public bucket
+or build it, see Troubleshooting; keep the total ≤ the cache size). Part 1 = **700** images (train 400
+/ val 300); part 2 adds **300** night-train → **1000** total (train 700 / val 300, val unchanged):
 
 | batch | n | offset | subset | tag | darken | when |
 |-------|---|--------|--------|-----|--------|------|
-| `base-train`   | 200 | 0   | train | —     | —    | part 1 |
-| `base-val`     | 75  | 200 | val   | —     | —    | part 1 |
-| `night-val`    | 75  | 275 | val   | night | 0.40 | part 1 |
-| `night-train-a`| 50  | 350 | train | night | 0.30 | part 2 |
-| `night-train-b`| 50  | 400 | train | night | 0.40 | part 2 |
-| `night-train-c`| 50  | 450 | train | night | 0.55 | part 2 |
+| `base-train`   | 400 | 0   | train | —     | —    | part 1 |
+| `base-val`     | 150 | 400 | val   | —     | —    | part 1 |
+| `night-val`    | 150 | 550 | val   | night | 0.40 | part 1 |
+| `night-train-a`| 100 | 700 | train | night | 0.30 | part 2 |
+| `night-train-b`| 100 | 800 | train | night | 0.40 | part 2 |
+| `night-train-c`| 100 | 900 | train | night | 0.55 | part 2 |
 
 **Why THREE night-train batches with different gammas (0.30/0.40/0.55 around val's 0.40):** a single
-gamma makes model B memorize that exact darkness (night/train ~0.95, night/val flat); gamma DIVERSITY
+gamma makes model B memorize that exact darkness (night/train high, night/val flat); gamma DIVERSITY
 forces it to generalize "low light", which is what lifts the held-out val. More epochs does NOT fix
-this (30 epochs = deeper memorization, val drops) — the lever is data diversity, keep epochs=10.
+this (deeper memorization, val drops) — the lever is data diversity, keep epochs=5.
+
+**Why 1000 images / batch=32 / epochs=5 / freeze=10 / prediction_threshold=0.10** (validated by a
+130+-run sweep + multi-seed full-pipe cycles; the headline metric is **weighted F1 on val**):
+`batch=32` kills the gradient-noise margin flips of `batch=10`; `epochs=5` keeps the fitness curve
+still rising at the last epoch (best.pt≡last.pt, no epoch-selection jitter); `freeze=10` (frozen
+backbone, only the head trains) is the biggest stability lever — per-seed/per-machine F1 spread drops
+from 12-15pp to ≤5pp; `prediction_threshold=0.10` on the Inference step pins ONE operating point for
+all models/machines instead of each model's own `best_threshold` (a noisy 0.06-0.15 that both jitters
+the reported metrics and flatters the weak baseline, shrinking the B−A gap to noise on unlucky seeds).
 
 **Cross-machine numbers:** training is bit-reproducible on one machine, but weights (and hence
-metrics) legitimately differ across GPU/CPU models — that is float arithmetic on different chips, not
-a bug (verified down to byte-identical augmented batches). Quote reference numbers per hardware.
+metrics) legitimately differ across GPU/CPU models — float arithmetic on different chips, not a bug
+(verified down to byte-identical augmented batches). With this config the weighted-F1 spread across
+seeds (proxy upper bound for machines) is ≤5pp for both models on both val sets.
 
-**Deterministic reference** (gpu5, GTX 1070, seed=42, epochs=10, weighted recall/precision on val):
-model A → overall 0.324/0.440, night 0.282/0.449; model B → overall **0.415/0.546**, night
-**0.409/0.549**. **B beats A on BOTH val sets with fat margins (+0.09..+0.13)** — large enough to
-survive cross-hardware noise, so the story holds on any machine. Exact numbers reproduce bit-for-bit
-on the **same GPU/CUDA/torch stack** (training determinism is per-hardware); data/splits/tags
+**Deterministic reference** (seed=42, batch=32, epochs=5, freeze=10, thr=0.10, 1000 images;
+weighted F1 / recall on val): model A → overall 0.483/0.348, night 0.408/0.285; model B → overall
+**0.610/0.536**, night **0.551/0.469**. **B beats A on BOTH val sets on every seed tested** (F1
+margin across seeds 2/7/42: overall +0.081..+0.127, night +0.082..+0.143; per-model F1 spread
+≤4.6pp). Exact numbers reproduce bit-for-bit on the same GPU/CUDA/torch stack; data/splits/tags
 reproduce byte-identically on any machine (seeded canonical cache).
 
 ## Pre-flight — CHECK what's already there, then ASK (do this before deploying)
@@ -158,15 +168,16 @@ pipe** — then stop. Training is **yours to trigger from the datapipe-app front
 ```bash
 # SKILL DOES — from examples/detection_tags/detection, with .env sourced:
 set -a && source ../.env && set +a
-# Prefer `uv run python` (bare `python` misses venv deps like pathy). Cache: export DATAPIPE_TAGS_CACHE_DIR if not default.
-uv run python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
-uv run python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
-uv run python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
-uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 350 images; val frozen (75 base + 75 night)
+# Prefer `uv run python` (bare `python` misses venv deps like pathy). The cache must already be in
+# $DATAPIPE_TAGS_CACHE_DIR (from .env) — see Troubleshooting "Getting the cache".
+uv run python ../scripts/add_request.py --id base-train --n 400 --offset 0   --subset train
+uv run python ../scripts/add_request.py --id base-val   --n 150 --offset 400 --subset val
+uv run python ../scripts/add_request.py --id night-val  --n 150 --offset 550 --subset val --tag night --darken 0.40
+uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 700 images; val frozen (150 base + 150 night)
 
 # VERIFY the data is in the pipe before handing off:
-#   SELECT subset_id, count(*) FROM image__subset_hint GROUP BY subset_id      -- expect train=200, val=150
-#   SELECT count(*) FROM image__ground_truth                                   -- expect 350 (one row per image)
+#   SELECT subset_id, count(*) FROM image__subset_hint GROUP BY subset_id      -- expect train=400, val=300
+#   SELECT count(*) FROM image__ground_truth                                   -- expect 700 (one row per image)
 ```
 
 **Stop here and hand off.** You now trigger **model-A training from the datapipe-app front** (port
@@ -205,14 +216,14 @@ The skill **tops up** the tagged TRAIN batch and reloads; **you trigger the retr
 ```bash
 # SKILL DOES — add the tagged TRAIN batch and load it (val stays frozen):
 set -a && source ../.env && set +a
-uv run python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
-uv run python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
-uv run python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
-uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 500 images total
+uv run python ../scripts/add_request.py --id night-train-a --n 100 --offset 700 --subset train --tag night --darken 0.30
+uv run python ../scripts/add_request.py --id night-train-b --n 100 --offset 800 --subset train --tag night --darken 0.40
+uv run python ../scripts/add_request.py --id night-train-c --n 100 --offset 900 --subset train --tag night --darken 0.55
+uv run datapipe --executor RayExecutor step --labels=stage=load run                 # 1000 images total
 # VERIFY val stayed frozen (night went to TRAIN only; tag_id IS the tag name):
 #   SELECT h.subset_id, count(*) FROM image__tag it
 #     JOIN image__subset_hint h USING(image_name) WHERE it.tag_id='night' GROUP BY h.subset_id
-#   -- expect train=150, val=75
+#   -- expect train=300, val=150
 ```
 
 **Stop here and hand off — you trigger model-B training from the datapipe-app front** (`stage=train`;
@@ -316,11 +327,22 @@ to a file + `grep`, not inline.
 
 ## Troubleshooting (verify against current files)
 
-- **Building the cache / fresh host** → `python ../scripts/build_cache.py [N]` (default 500) downloads
-  the first N images of the canonical order + writes `gt.json` + `images/`; deterministic — byte-identical
-  on any COCO-reachable machine. Run once, then loads are fast + offline. The cache caps the pool at its
-  size, so keep the batch total ≤ N. NOTE: from RU (e.g. gpu5/Moscow) `images.cocodataset.org` is
-  unreachable — build the cache off-RU and copy `$DATAPIPE_TAGS_CACHE_DIR` (gt.json + images/) to the host.
+- **Getting the cache (fresh host)** → easiest: fetch the pre-built 1000-image cache from the public
+  bucket (no auth, works from RU) into `$DATAPIPE_TAGS_CACHE_DIR` (set in `.env`; defaults to
+  `/tmp/datapipe-tags-cache` — the SAME dir the pipe reads, so fetch and load agree):
+  ```bash
+  set -a && source ../.env && set +a          # exports DATAPIPE_TAGS_CACHE_DIR
+  BASE=https://storage.yandexcloud.net/e8-demo/datasets/coco-cat-dog-1000
+  mkdir -p "$DATAPIPE_TAGS_CACHE_DIR/images" && cd "$DATAPIPE_TAGS_CACHE_DIR"
+  curl -sf "$BASE/gt.json" -o gt.json
+  python -c "import json; print('\n'.join(json.load(open('gt.json'))))" \
+    | xargs -P 16 -I{} curl -sf -o "images/{}" "$BASE/images/{}"
+  ls images | wc -l   # expect 1000
+  ```
+  Also on the bucket: `datasets/coco-cat-dog-500/` and `datasets/coco-annotations/annotations_trainval2017.zip`.
+  Alternative on a COCO-reachable host: `uv run python ../scripts/build_cache.py 1000` — byte-identical
+  result (canonical order; gt.json md5 must match the bucket's). The cache caps the pool at its size, so
+  keep the batch total ≤ N. From RU `images.cocodataset.org` is unreachable — use the bucket.
 - **`SIGILL` / `Illegal instruction` in training** → `polars` built for a newer CPU than the host
   (pre-AVX2). The `polars-lts-cpu` pin isn't enough alone; the regular `polars` comes in transitively.
   After `uv sync`: `uv pip uninstall polars polars-lts-cpu && uv pip install polars-lts-cpu==1.33.1`,
