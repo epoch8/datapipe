@@ -1,0 +1,10 @@
+.env
+.venv/
+.frames/
+videos/
+*.webm
+*.mp4
+*.mkv
+*.mov
+__pycache__/
+*.pyc
