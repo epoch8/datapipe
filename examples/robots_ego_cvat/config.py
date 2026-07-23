@@ -25,6 +25,25 @@ FRAMES_DIR = (
 # walking POV footage (see README). Dedup below removes the near-duplicates either way.
 SAMPLE_FPS = float(os.environ.get("SAMPLE_FPS", "1"))
 
+
+def _resolve_ffmpeg() -> str:
+    # Prefer a system ffmpeg; fall back to the binary bundled by the imageio-ffmpeg package so the
+    # example runs on hosts without ffmpeg on PATH.
+    import shutil
+
+    exe = os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+
+FFMPEG_BIN = _resolve_ffmpeg()
+
 # Perceptual-hash near-duplicate threshold (Hamming distance between consecutive frames). A frame is
 # kept only if it differs from the last kept frame by more than this. Higher = more aggressive dedup.
 PHASH_MAX_DISTANCE = int(os.environ.get("PHASH_MAX_DISTANCE", "10"))

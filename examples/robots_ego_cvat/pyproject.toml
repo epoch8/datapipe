@@ -16,6 +16,7 @@ dependencies = [
     "einops",
     "pycocotools",
     "imagehash",
+    "imageio-ffmpeg",
     "psutil"
 ]
 

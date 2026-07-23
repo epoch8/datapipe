@@ -13,6 +13,7 @@ from PIL import Image
 from config import (
     CVAT_BOX_LABEL,
     CVAT_POLYGON_LABEL,
+    FFMPEG_BIN,
     FRAMES_DIR,
     INPUT_VIDEO_DIR,
     PHASH_MAX_DISTANCE,
@@ -64,7 +65,7 @@ def _extract_one_video(video_id: str, video_path: str) -> list[dict]:
     if not existing:
         # -vf fps=N samples N frames per second; VFR keeps timestamps honest.
         cmd = [
-            "ffmpeg",
+            FFMPEG_BIN,
             "-hide_banner",
             "-loglevel",
             "error",
