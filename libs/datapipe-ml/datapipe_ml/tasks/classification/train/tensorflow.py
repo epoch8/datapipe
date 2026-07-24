@@ -1,7 +1,7 @@
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import pandas as pd
 from datapipe.compute import (
@@ -23,27 +23,20 @@ from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
+from datapipe_ml.frameworks.tensorflow.classification_runner import (
+    TF_ClassificationTrainingConfig,
+    TrainModelResult,
+)
+from datapipe_ml.frameworks.tensorflow.classification_runner import TFModelSpec as TFModelSpec  # noqa: F401
 from datapipe_ml.training.experiment_tables import (
     TrainExperimentTableNames,
     build_auto_experiment_request_transform,
     build_default_train_config_generate,
     register_train_experiment_tables,
 )
-from datapipe_ml.training.request_runner import run_training_request
-from datapipe_ml.training.train_config_id import build_train_config_id, train_configs_to_dataframe
-from datapipe_ml.frameworks.tensorflow.classification_runner import (
-    TF_ClassificationTrainingConfig,
-)
-from datapipe_ml.frameworks.tensorflow.classification_runner import (
-    TFModelSpec as TFModelSpec,
-)
-from datapipe_ml.frameworks.tensorflow.classification_runner import (
-    TrainModelResult,
-)
-
-# Import concrete pieces for v5
 from datapipe_ml.training.orchestrator import orchestrate
 from datapipe_ml.training.paths import default_tmp_folder, remote_input_path, remote_output_models_path
+from datapipe_ml.training.request_runner import run_training_request
 from datapipe_ml.training.specs import (
     Algo,
     PreparedData,
@@ -56,6 +49,13 @@ from datapipe_ml.training.specs import (
     TrainingSyncConfig,
     build_training_launcher,
 )
+from datapipe_ml.training.train_config_id import (
+    TrainingConfigPreset,
+    build_train_config_id,
+    train_configs_to_dataframe,
+)
+
+TFClassificationTrainConfigItem = Union[TF_ClassificationTrainingConfig, TrainingConfigPreset]
 
 
 @dataclass
@@ -342,17 +342,20 @@ def train_tf_classification_model(
         )
         return (out.df__model, out.df__link, out.df__training_status)
 
-    return run_training_request(
-        df_frozen_dataset=df_frozen_dataset,
-        df_training_request=df_training_request,
-        df_class_names=pd.DataFrame(),
-        df_resized_images=pd.DataFrame(),
-        df_yolo_txt=pd.DataFrame(),
-        train_callable=_train_callable,
-        train_config_id_col="classification_train_config_id",
-        train_config_params_col="classification_train_config__params",
-        frozen_dataset_id_col=frozen_dataset_id_col,
-        dt_training_status=kwargs.get("dt__training_status"),
+    return cast(
+        Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+        run_training_request(
+            df_frozen_dataset=df_frozen_dataset,
+            df_training_request=df_training_request,
+            df_class_names=pd.DataFrame(),
+            df_resized_images=pd.DataFrame(),
+            df_yolo_txt=pd.DataFrame(),
+            train_callable=_train_callable,
+            train_config_id_col="classification_train_config_id",
+            train_config_params_col="classification_train_config__params",
+            frozen_dataset_id_col=frozen_dataset_id_col,
+            dt_training_status=kwargs.get("dt__training_status"),
+        ),
     )
 
 
@@ -376,7 +379,9 @@ def get_tf_classification_train_config_id(config: TF_ClassificationTrainingConfi
     return build_train_config_id(params, summary=build_tf_classification_train_config_summary(params))
 
 
-def get_tf_classification_train_configs(tf_classification_train_configs: List[TF_ClassificationTrainingConfig]):
+def get_tf_classification_train_configs(
+    tf_classification_train_configs: List[TFClassificationTrainConfigItem],
+):
     yield train_configs_to_dataframe(
         tf_classification_train_configs,
         id_column="classification_train_config_id",
@@ -400,7 +405,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     output__classification_model_is_trained_on_cls_frozen_dataset: str
     output__training_status: str
     working_dir: str
-    tf_classification_train_configs: List[TF_ClassificationTrainingConfig]
+    tf_classification_train_configs: List[TFClassificationTrainConfigItem]
     primary_keys: List[str]
     # yolov5_classification_train_config_id: str = 'yolov5_classification_train_config_id',
     # classification_model_id: str = 'classification_model_id',
@@ -439,8 +444,9 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
             self.input__classification_frozen_dataset__has__image_gt,
             classification_model_other_primary_keys + ["subset_id", "image__image_path", "label"],
         )
-        dt__input__classification_frozen_dataset__has__image_gt = get_datatable(ds, 
-            self.input__classification_frozen_dataset__has__image_gt
+        dt__input__classification_frozen_dataset__has__image_gt = get_datatable(
+            ds,
+            self.input__classification_frozen_dataset__has__image_gt,
         )
         classification_model_primary_columns = [
             column
@@ -583,8 +589,9 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                         models_dir=str(Pathy.fluid(self.working_dir) / "models"),
                         max_within_time=self.max_within_time,
                         dt__classification_model=get_datatable(ds, self.output__classification_model),
-                        dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(ds, 
-                            self.output__classification_model_is_trained_on_cls_frozen_dataset
+                        dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(
+                            ds,
+                            self.output__classification_model_is_trained_on_cls_frozen_dataset,
                         ),
                         dt__training_status=get_datatable(ds, self.output__training_status),
                         classification_model_other_primary_keys=classification_model_other_primary_keys,

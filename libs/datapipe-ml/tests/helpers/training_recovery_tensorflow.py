@@ -21,7 +21,7 @@ from tests.helpers.training_smoke import Workdir, classification_freeze_step, cl
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
-    from datapipe_ml.tasks.classification.train.tensorflow import Train_Tensorflow_ClassificationModel
+
 
 def _configure_tf_configs(configs: list[TF_ClassificationTrainingConfig], epochs: int) -> None:
     for config in configs:
@@ -94,7 +94,6 @@ def real_recovery_tensorflow_cases() -> list:
                     "classification_frozen_dataset__has__image_gt",
                 ),
             ),
-        )
             id="tensorflow_classification",
             marks=(pytest.mark.tensorflow,),
         ),
