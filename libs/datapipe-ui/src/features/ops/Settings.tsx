@@ -40,6 +40,15 @@ export function Settings() {
                         )}
                     </Paragraph>
                     <Paragraph>Version: {info.version}</Paragraph>
+                    {!info.run_logs_configured && (
+                        <Alert
+                            style={{ marginTop: 12 }}
+                            type="warning"
+                            showIcon
+                            message="Run logs are not being recorded"
+                            description="Pass run_logs_backend to DatapipeAPI (e.g. RunLogsBackend.clickhouse(...))."
+                        />
+                    )}
                 </div>
             )}
             <Alert style={{ marginTop: 16 }} message="Notifications are disabled in v1" type="info" />

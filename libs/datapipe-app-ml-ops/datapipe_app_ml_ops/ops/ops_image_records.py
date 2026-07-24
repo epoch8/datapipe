@@ -195,7 +195,7 @@ class OpsImageRecordsSupport:
             scope="frozen_dataset",
             parent_id=dataset_id,
             primary_key_columns=list(view.primary_key_columns),
-            list_columns=["image_name", "subset_id", "bboxes"],
+            list_columns=self._frozen_list_columns(view),
             rows=list_rows,
             total=total,
             limit=self._clamp_limit(limit),
@@ -305,7 +305,7 @@ class OpsImageRecordsSupport:
             scope="model_prediction",
             parent_id=model_id,
             primary_key_columns=list(view.image_primary_key_columns),
-            list_columns=["image_name", "subset", "bboxes"],
+            list_columns=self._prediction_list_columns(view),
             rows=list_rows,
             total=total,
             limit=self._clamp_limit(limit),
@@ -464,10 +464,13 @@ class OpsImageRecordsSupport:
         gt_record = self._load_ground_truth(view, pk) if view.records_show_ground_truth else None
         subset = self._load_subset(view, pk) if view.records_show_subset else None
         bbox_count = None
-        if view.records_show_ground_truth:
-            bbox_count = self._bbox_count(
-                gt_record.get(view.ground_truth.bboxes_column or "bboxes") if gt_record and view.ground_truth else None
-            )
+        label = None
+        if view.records_show_ground_truth and view.ground_truth is not None:
+            bboxes_column = view.ground_truth.bboxes_column
+            if bboxes_column is not None:
+                bbox_count = self._bbox_count(gt_record.get(bboxes_column) if gt_record else None)
+            else:
+                label = self._label_from_record(gt_record or {}, view.ground_truth)
         base = self._record_urls(pipeline_id, spec_id, "data", record_key)
         return OpsImageRecordListRow(
             record_key=record_key,
@@ -477,6 +480,8 @@ class OpsImageRecordsSupport:
             detail_url=f"/image/{quote(spec_id, safe='')}/records/{quote(record_key, safe='')}",
             subset=subset,
             bbox_count=bbox_count,
+            label=label,
+            gt_label=label,
         )
 
     def _frozen_list_row(
@@ -490,7 +495,10 @@ class OpsImageRecordsSupport:
     ) -> OpsImageRecordListRow:
         pk = {key: record.get(key) for key in view.primary_key_columns}
         record_key = self._encode_record_key(pk)
-        bbox_count = self._bbox_count(record.get(view.bboxes_column or "bboxes"))
+        label_mode = not self._view_uses_bboxes(view)
+        bboxes_column = view.bboxes_column
+        bbox_count = None if bboxes_column is None else self._bbox_count(record.get(bboxes_column))
+        label = self._label_from_view_record(record, view) if label_mode else None
         base = self._record_urls(pipeline_id, spec_id, "frozen_dataset", record_key, parent_id=dataset_id)
         return OpsImageRecordListRow(
             record_key=record_key,
@@ -503,6 +511,8 @@ class OpsImageRecordsSupport:
             ),
             subset=str(record.get("subset_id")) if record.get("subset_id") is not None else None,
             bbox_count=bbox_count,
+            label=label,
+            gt_label=label,
         )
 
     def _prediction_list_row(
@@ -516,7 +526,16 @@ class OpsImageRecordsSupport:
     ) -> OpsImageRecordListRow:
         pk = {key: record.get(key) for key in view.image_primary_key_columns}
         record_key = self._encode_record_key(pk)
-        pred_count = self._bbox_count(record.get(view.prediction.bboxes_column or "bboxes") if view.prediction else None)
+        pred_count = None
+        prediction_label = None
+        prediction_score = None
+        if view.prediction is not None:
+            bboxes_column = view.prediction.bboxes_column
+            if bboxes_column is None:
+                prediction_label = self._label_from_record(record, view.prediction)
+                prediction_score = self._score_from_record(record, view.prediction)
+            else:
+                pred_count = self._bbox_count(record.get(bboxes_column))
         gt_record = (
             self._load_annotation_record(
                 view.ground_truth,
@@ -527,8 +546,26 @@ class OpsImageRecordsSupport:
             if view.ground_truth
             else None
         )
-        gt_count = self._bbox_count(gt_record.get(view.ground_truth.bboxes_column or "bboxes") if gt_record and view.ground_truth else None)
-        metrics = self._prediction_metrics_values(view, model_id=model_id, pk=pk)
+        gt_count = None
+        gt_label = None
+        if view.ground_truth is not None:
+            bboxes_column = view.ground_truth.bboxes_column
+            if bboxes_column is not None:
+                gt_count = self._bbox_count(gt_record.get(bboxes_column) if gt_record else None)
+            else:
+                gt_label = self._label_from_record(gt_record or {}, view.ground_truth)
+        metrics = self._prediction_metrics_values(
+            view,
+            model_id=model_id,
+            pk=pk,
+            gt_label=gt_label,
+            prediction_label=prediction_label,
+        )
+        is_error = None
+        if metrics and "is_error" in metrics:
+            is_error = bool(metrics["is_error"])
+        elif gt_label is not None and prediction_label is not None:
+            is_error = gt_label != prediction_label
         base = self._record_urls(pipeline_id, spec_id, "model_prediction", record_key, parent_id=model_id)
         return OpsImageRecordListRow(
             record_key=record_key,
@@ -542,6 +579,11 @@ class OpsImageRecordsSupport:
             bbox_count=pred_count,
             gt_bbox_count=gt_count,
             prediction_bbox_count=pred_count,
+            label=prediction_label,
+            gt_label=gt_label,
+            prediction_label=prediction_label,
+            prediction_score=prediction_score,
+            is_error=is_error,
             metrics=metrics,
         )
 
@@ -559,6 +601,12 @@ class OpsImageRecordsSupport:
         image_url = record.get(view.image_url_column)
         merged = {**record, **(gt_record or {})}
         bbox_rows = self._bbox_rows_from_record(gt_record or {}, view.ground_truth)
+        label_mode = view.ground_truth is not None and not self._uses_bboxes(view.ground_truth)
+        label = (
+            self._label_from_record(gt_record or {}, view.ground_truth)
+            if label_mode and view.ground_truth
+            else None
+        )
         base = self._record_urls(pipeline_id, spec_id, "data", record_key)
         return OpsImageRecordDetailResponse(
             pipeline_id=pipeline_id,
@@ -573,8 +621,10 @@ class OpsImageRecordsSupport:
             preview_url=base + "/preview",
             visualization_url=base + "/visualization",
             plain_image_url=base + "/visualization?overlay=plain",
-            bbox_count=len(bbox_rows),
-            gt_bbox_count=len(bbox_rows),
+            bbox_count=None if label_mode else len(bbox_rows),
+            gt_bbox_count=None if label_mode else len(bbox_rows),
+            label=label,
+            gt_label=label,
             bbox_rows=bbox_rows,
             gt_bbox_rows=bbox_rows,
         )
@@ -591,6 +641,8 @@ class OpsImageRecordsSupport:
     ) -> OpsImageRecordDetailResponse:
         image_url = record.get(view.image_url_column or "image_url")
         bbox_rows = self._bbox_rows_from_record(record, None, view=view)
+        label_mode = not self._view_uses_bboxes(view)
+        label = self._label_from_view_record(record, view) if label_mode else None
         base = self._record_urls(pipeline_id, spec_id, "frozen_dataset", record_key, parent_id=dataset_id)
         return OpsImageRecordDetailResponse(
             pipeline_id=pipeline_id,
@@ -605,8 +657,10 @@ class OpsImageRecordsSupport:
             preview_url=base + "/preview",
             visualization_url=base + "/visualization",
             plain_image_url=base + "/visualization?overlay=plain",
-            bbox_count=len(bbox_rows),
-            gt_bbox_count=len(bbox_rows),
+            bbox_count=None if label_mode else len(bbox_rows),
+            gt_bbox_count=None if label_mode else len(bbox_rows),
+            label=label,
+            gt_label=label,
             bbox_rows=bbox_rows,
             gt_bbox_rows=bbox_rows,
         )
@@ -639,7 +693,34 @@ class OpsImageRecordsSupport:
         subset = self._load_subset_for_prediction(view, pk)
         pred_rows = self._bbox_rows_from_record(prediction, view.prediction)
         gt_rows = self._bbox_rows_from_record(gt_record or {}, view.ground_truth)
-        metrics = self._prediction_metrics_values(view, model_id=model_id, pk=pk)
+        label_mode = view.prediction is not None and not self._uses_bboxes(view.prediction)
+        prediction_label = (
+            self._label_from_record(prediction, view.prediction)
+            if label_mode and view.prediction
+            else None
+        )
+        prediction_score = (
+            self._score_from_record(prediction, view.prediction)
+            if label_mode and view.prediction
+            else None
+        )
+        gt_label = (
+            self._label_from_record(gt_record or {}, view.ground_truth)
+            if label_mode and view.ground_truth
+            else None
+        )
+        metrics = self._prediction_metrics_values(
+            view,
+            model_id=model_id,
+            pk=pk,
+            gt_label=gt_label,
+            prediction_label=prediction_label,
+        )
+        is_error = None
+        if metrics and "is_error" in metrics:
+            is_error = bool(metrics["is_error"])
+        elif gt_label is not None and prediction_label is not None:
+            is_error = gt_label != prediction_label
         base = self._record_urls(pipeline_id, spec_id, "model_prediction", record_key, parent_id=model_id)
         return OpsImageRecordDetailResponse(
             pipeline_id=pipeline_id,
@@ -658,9 +739,14 @@ class OpsImageRecordsSupport:
             prediction_visualization_url=base + "/visualization?overlay=prediction",
             plain_gt_image_url=base + "/visualization?overlay=plain",
             plain_prediction_image_url=base + "/visualization?overlay=plain",
-            bbox_count=len(pred_rows),
-            gt_bbox_count=len(gt_rows),
-            prediction_bbox_count=len(pred_rows),
+            bbox_count=None if label_mode else len(pred_rows),
+            gt_bbox_count=None if label_mode else len(gt_rows),
+            prediction_bbox_count=None if label_mode else len(pred_rows),
+            label=prediction_label,
+            gt_label=gt_label,
+            prediction_label=prediction_label,
+            prediction_score=prediction_score,
+            is_error=is_error,
             bbox_rows=pred_rows,
             gt_bbox_rows=gt_rows,
             prediction_bbox_rows=pred_rows,
@@ -731,18 +817,31 @@ class OpsImageRecordsSupport:
         *,
         model_id: str,
         pk: dict[str, Any],
+        gt_label: str | None = None,
+        prediction_label: str | None = None,
     ) -> dict[str, Any] | None:
         table_spec = view.metrics_on_image
-        if table_spec is None:
-            return None
-        metrics_row = self._load_prediction_metrics_on_image(view, model_id=model_id, pk=pk)
-        if metrics_row is None:
-            return None
         values: dict[str, Any] = {}
-        for column in self._flatten_metric_columns(table_spec.metric_columns):
-            values[column.source] = metrics_row.get(column.source)
-            values[column.id] = metrics_row.get(column.source)
-        return values
+        if table_spec is not None:
+            metrics_row = self._load_prediction_metrics_on_image(
+                view,
+                model_id=model_id,
+                pk=pk,
+                gt_label=gt_label,
+            )
+            if metrics_row is not None:
+                for column in self._flatten_metric_columns(table_spec.metric_columns):
+                    values[column.source] = metrics_row.get(column.source)
+                    values[column.id] = metrics_row.get(column.source)
+        if gt_label is not None and prediction_label is not None:
+            is_error = gt_label != prediction_label
+            values["calc__is_error"] = is_error
+            values["is_error"] = is_error
+        elif "calc__TP" in values and values["calc__TP"] is not None:
+            is_error = int(values["calc__TP"]) == 0
+            values["calc__is_error"] = is_error
+            values["is_error"] = is_error
+        return values or None
 
     def _load_prediction_metrics_on_image(
         self,
@@ -750,11 +849,18 @@ class OpsImageRecordsSupport:
         *,
         model_id: str,
         pk: dict[str, Any],
+        gt_label: str | None = None,
     ) -> dict[str, Any] | None:
         table_spec = view.metrics_on_image
         if table_spec is None:
             return None
-        lookup = self._metrics_on_image_lookup(view, table_spec, model_id=model_id, pk=pk)
+        lookup = self._metrics_on_image_lookup(
+            view,
+            table_spec,
+            model_id=model_id,
+            pk=pk,
+            gt_label=gt_label,
+        )
         return self.query.row_by_pk(table_spec.table, lookup)
 
     def _metrics_on_image_lookup(
@@ -764,12 +870,18 @@ class OpsImageRecordsSupport:
         *,
         model_id: str,
         pk: dict[str, Any],
+        gt_label: str | None = None,
     ) -> dict[str, Any]:
         subset = self._load_subset_for_prediction(view, pk)
         lookup: dict[str, Any] = {}
         for column in table_spec.primary_key_columns:
             if column == "label":
-                lookup[column] = view.metrics_on_image_label
+                if view.metrics_on_image_label != METRICS_NULL_LABEL:
+                    lookup[column] = view.metrics_on_image_label
+                elif gt_label is not None:
+                    lookup[column] = gt_label
+                else:
+                    lookup[column] = view.metrics_on_image_label
             elif column == view.model_id_column:
                 lookup[column] = model_id
             elif column in pk:
@@ -837,19 +949,34 @@ class OpsImageRecordsSupport:
         *,
         view: OpsImageRecordViewSpec | None = None,
     ) -> list[OpsBBoxRow]:
-        bboxes_column = (annotation.bboxes_column if annotation else None) or (view.bboxes_column if view else None) or "bboxes"
-        labels_column = (annotation.labels_column if annotation else None) or (view.labels_column if view else None) or "labels"
+        bboxes_column = self._resolve_bboxes_column(annotation, view)
+        labels_column = self._resolve_labels_column(annotation, view)
         scores_column = (annotation.scores_column if annotation else None) or (view.scores_column if view else None)
+
+        if bboxes_column is None:
+            label = self._coerce_label(record.get(labels_column) if labels_column else None)
+            score = record.get(scores_column) if scores_column else None
+            if label is None and score is None:
+                return []
+            return [
+                OpsBBoxRow(
+                    label=label,
+                    confidence=float(score) if score is not None else None,
+                )
+            ]
+
         payload = {
             "bboxes": record.get(bboxes_column),
-            "labels": record.get(labels_column),
-            scores_column or "prediction__detection_scores": record.get(scores_column or "prediction__detection_scores"),
+            "labels": record.get(labels_column) if labels_column else None,
+            scores_column or "prediction__detection_scores": record.get(
+                scores_column or "prediction__detection_scores"
+            ),
         }
         rows: list[OpsBBoxRow] = []
         for label, score, xmin, ymin, xmax, ymax in iter_bbox_fields_from_record(payload, scores_column=scores_column):
             rows.append(
                 OpsBBoxRow(
-                    label=label,
+                    label=str(label) if label is not None else None,
                     confidence=float(score) if score is not None else None,
                     x1=float(xmin) if xmin is not None else None,
                     y1=float(ymin) if ymin is not None else None,
@@ -858,6 +985,77 @@ class OpsImageRecordsSupport:
                 )
             )
         return rows
+
+    @staticmethod
+    def _uses_bboxes(annotation: OpsImageAnnotationSpec | None) -> bool:
+        return annotation is not None and annotation.bboxes_column is not None
+
+    @staticmethod
+    def _view_uses_bboxes(view: OpsImageRecordViewSpec) -> bool:
+        return view.bboxes_column is not None
+
+    @staticmethod
+    def _resolve_bboxes_column(
+        annotation: OpsImageAnnotationSpec | None,
+        view: OpsImageRecordViewSpec | None,
+    ) -> str | None:
+        if annotation is not None:
+            return annotation.bboxes_column
+        if view is not None:
+            return view.bboxes_column
+        return "bboxes"
+
+    @staticmethod
+    def _resolve_labels_column(
+        annotation: OpsImageAnnotationSpec | None,
+        view: OpsImageRecordViewSpec | None,
+    ) -> str | None:
+        if annotation is not None:
+            return annotation.labels_column if annotation.labels_column is not None else "labels"
+        if view is not None:
+            return view.labels_column if view.labels_column is not None else "labels"
+        return "labels"
+
+    @classmethod
+    def _label_from_record(
+        cls,
+        record: dict[str, Any],
+        annotation: OpsImageAnnotationSpec | None,
+    ) -> str | None:
+        if annotation is None:
+            return None
+        labels_column = annotation.labels_column or "labels"
+        return cls._coerce_label(record.get(labels_column))
+
+    @classmethod
+    def _label_from_view_record(cls, record: dict[str, Any], view: OpsImageRecordViewSpec) -> str | None:
+        labels_column = view.labels_column or "labels"
+        return cls._coerce_label(record.get(labels_column))
+
+    @staticmethod
+    def _score_from_record(
+        record: dict[str, Any],
+        annotation: OpsImageAnnotationSpec | None,
+    ) -> float | None:
+        if annotation is None or annotation.scores_column is None:
+            return None
+        score = record.get(annotation.scores_column)
+        if score is None:
+            return None
+        try:
+            return float(score)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _coerce_label(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            if not value:
+                return None
+            return str(value[0])
+        return str(value)
 
     def _bbox_count(self, value: Any) -> int:
         if value is None:
@@ -952,6 +1150,24 @@ class OpsImageRecordsSupport:
         if view.records_show_subset:
             columns.append("subset")
         if view.records_show_ground_truth:
+            if view.ground_truth is not None and view.ground_truth.bboxes_column is None:
+                columns.append("label")
+            else:
+                columns.append("bboxes")
+        return columns
+
+    @staticmethod
+    def _frozen_list_columns(view: OpsImageRecordViewSpec) -> list[str]:
+        columns = ["image_name", "subset_id"]
+        columns.append("label" if view.bboxes_column is None else "bboxes")
+        return columns
+
+    @staticmethod
+    def _prediction_list_columns(view: OpsImagePredictionViewSpec) -> list[str]:
+        columns = ["image_name", "subset"]
+        if view.prediction is not None and view.prediction.bboxes_column is None:
+            columns.append("label")
+        else:
             columns.append("bboxes")
         return columns
 

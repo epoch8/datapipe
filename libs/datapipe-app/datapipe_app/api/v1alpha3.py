@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.metadata
+import threading
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
 from datapipe.executor import Executor
+from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -42,12 +44,95 @@ class CapabilitiesResponse(BaseModel):
     ml_metrics: bool
     ml_training: bool
     pipeline_id: Optional[str] = None
+    run_logs_configured: bool = False
 
 
 class SettingsResponse(BaseModel):
     pipeline_id: Optional[str]
     observability_db_connected: bool
     version: str
+    run_logs_configured: bool = False
+
+
+def make_run_steps_callable(
+    *,
+    ds: DataStore,
+    steps: List[ComputeStep],
+    recorder: Optional[RunRecorder],
+    resolve_executor: Callable[[], Executor | None],
+) -> Callable[[str, Sequence[Tuple[str, str]], Dict[str, List[Any]]], Dict[str, Any]]:
+    """Build the ``run_steps`` callback passed to v1alpha3 extensions (spec §18).
+
+    The returned callable selects steps by ``run_labels`` and runs them with a
+    primary-key ``RunConfig`` filter so only the requested row is materialized.
+    Single-element list filter values are unwrapped to scalars because
+    ``RunConfig.filters`` applies equality on primary keys.
+
+    Execution is always started in a background thread so the HTTP request can
+    return the ``run_id`` immediately (UI navigates to the run page).
+    """
+
+    def _run_steps_for_request(
+        request_id: str,
+        run_labels: Sequence[Tuple[str, str]],
+        filters: Dict[str, List[Any]],
+    ) -> Dict[str, Any]:
+        labels = list(run_labels)
+        selected = filter_steps_by_labels(steps, labels=labels) if labels else steps
+        if not selected:
+            return {"started": False, "run_id": None}
+
+        run_config_filters = {
+            key: (value[0] if isinstance(value, (list, tuple)) and len(value) == 1 else value)
+            for key, value in filters.items()
+        }
+        run_config = RunConfig(filters=run_config_filters)
+
+        if recorder is not None:
+            trigger = trigger_from_labels(labels)
+            labels_json = labels_to_json(labels)
+            cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
+
+            def _execute() -> None:
+                try:
+                    run_steps(
+                        ds=ds,
+                        steps=selected,
+                        run_config=run_config,
+                        executor=resolve_executor(),
+                        callbacks=[cb],
+                    )
+                except Exception:
+                    # Failure already recorded via the RunCallback hooks.
+                    return
+
+            thread = threading.Thread(
+                target=_execute,
+                name=f"datapipe-run-{cb.run_id}",
+                daemon=True,
+            )
+            thread.start()
+            return {"started": True, "run_id": cb.run_id}
+
+        def _execute_unrecorded() -> None:
+            try:
+                run_steps(
+                    ds=ds,
+                    steps=selected,
+                    run_config=run_config,
+                    executor=resolve_executor(),
+                )
+            except Exception:
+                return
+
+        threading.Thread(
+            target=_execute_unrecorded,
+            name=f"datapipe-run-{request_id}",
+            daemon=True,
+        ).start()
+        return {"started": True, "run_id": None}
+
+    return _run_steps_for_request
 
 
 def make_app(
@@ -93,6 +178,7 @@ def make_app(
             ml_metrics=has_ml_plugin and _has_catalog_metrics(),
             ml_training=has_ml_plugin,
             pipeline_id=get_ops_settings().pipeline_id,
+            run_logs_configured=store.run_logs_configured,
         )
 
     @app.get("/settings", response_model=SettingsResponse)
@@ -113,6 +199,7 @@ def make_app(
             pipeline_id=get_ops_settings().pipeline_id,
             observability_db_connected=connected,
             version=version,
+            run_logs_configured=store.run_logs_configured,
         )
 
     def _serialize_recent_runs(runs: list[Any]) -> list[dict[str, Any]]:
@@ -136,7 +223,6 @@ def make_app(
 
         last_run = store.get_last_run(pipeline_id)
         recent_runs = store.list_recent_runs(pipeline_id)
-        schedule = store.get_schedule(pipeline_id)
 
         stages: list[dict[str, Any]] = []
         stage_edges: list[dict[str, Any]] = []
@@ -182,7 +268,6 @@ def make_app(
             "stage_edges": stage_edges,
             "label_graph": label_graph,
             "recent_runs": _serialize_recent_runs(recent_runs),
-            "next_run_at": schedule.next_run_at.isoformat() if schedule and schedule.next_run_at else None,
             "last_error": last_run.error if last_run else None,
             "enrichments": enrichments,
         }
@@ -395,6 +480,12 @@ def make_app(
         recorder=recorder,
         steps=steps,
         pipeline=pipeline,
+        run_steps=make_run_steps_callable(
+            ds=ds,
+            steps=steps,
+            recorder=recorder,
+            resolve_executor=_resolve_executor,
+        ),
     )
 
     register_pipeline_ui_routes(

@@ -84,3 +84,4 @@ test_data/
 datapipe-examples/
 examples/**/input/
 examples/**/output/
+uv.lock

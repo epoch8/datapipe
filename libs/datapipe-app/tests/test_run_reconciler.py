@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.runs.run_reconciler import reconcile_orphaned_runs
+from datapipe_app.observability.run_logs import RunLogsBackend
+
+
+def _store(tmp_path) -> ObservabilityStore:
+    return ObservabilityStore.from_url(
+        f"sqlite:///{tmp_path / 'obs.db'}",
+        run_logs_backend=RunLogsBackend.memory(),
+    )
 
 
 def test_reconcile_orphaned_runs_marks_running_run_and_steps(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     store.register_pipeline("demo")
     run_id = store.create_run("demo", trigger="api:stage:train")
     store.upsert_run_step(run_id, "step_a", status="completed")
@@ -30,7 +38,7 @@ def test_reconcile_orphaned_runs_marks_running_run_and_steps(tmp_path):
 
 
 def test_reconcile_orphaned_runs_ignores_other_pipelines(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     store.register_pipeline("demo")
     store.register_pipeline("other")
     run_id = store.create_run("other", trigger="api:pipeline")
@@ -42,7 +50,7 @@ def test_reconcile_orphaned_runs_ignores_other_pipelines(tmp_path):
 
 
 def test_reconcile_orphaned_runs_is_idempotent(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     store.register_pipeline("demo")
     store.create_run("demo")
 

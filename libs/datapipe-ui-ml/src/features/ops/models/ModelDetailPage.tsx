@@ -6,7 +6,7 @@ import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { MetricsModelRow, MetricsModelDetailResponse, MetricsTableSchema } from "../../../types/opsMl";
 import type { OpsSpecDetail } from "../../../types/opsSpecs";
 import { EmptyState, PageHeader } from "../shared";
-import { EntityLink, MetricKpiStrip, SourceRecordCard, splitSizeLabel } from "../shared";
+import { EntityLink, MetricKpiStrip, MetricValue, SourceRecordCard, readMetricNumber } from "../shared";
 import { buildMetricColumns } from "../metrics/metricTableColumns";
 import { buildMetricSchema } from "../metrics/metricsSchema";
 import { buildMetricsUrl } from "../shared/entityUrls";
@@ -68,17 +68,25 @@ export function ModelDetailPage() {
 
     const metricColumns = React.useMemo(() => {
         if (!schema || !data) return [];
-        return buildMetricColumns(schema, metricsView === "all" ? "all" : "detailed", data.metrics_rows);
+        // Support is shown next to Subset; drop the duplicate from the metric layout.
+        return buildMetricColumns(schema, metricsView === "all" ? "all" : "detailed", data.metrics_rows).filter(
+            (col) => col.key !== "support",
+        );
     }, [schema, data, metricsView]);
 
     const columns = React.useMemo(
         () => [
             { title: "Subset", dataIndex: "subset", width: 72 },
             {
-                title: "Split",
-                key: "split",
+                title: "Support",
+                key: "support",
                 width: 88,
-                render: (_: unknown, row: MetricsModelRow) => splitSizeLabel(row),
+                align: "right" as const,
+                render: (_: unknown, row: MetricsModelRow) => {
+                    const value = readMetricNumber(row.metrics, "support");
+                    if (value == null) return null;
+                    return <MetricValue value={value} format="integer" />;
+                },
             },
             ...metricColumns,
         ],

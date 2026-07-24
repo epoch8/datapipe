@@ -67,6 +67,36 @@ def test_capture_run_output_records_logging_and_stdout(tmp_path):
     assert "from stderr" in messages
 
 
+def test_capture_run_output_does_not_duplicate_rich_handler_lines(tmp_path):
+    from rich.console import Console
+    from rich.logging import RichHandler
+
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-rich.db'}")
+    buffer = RunLogBuffer(store)
+    run_id = "run-rich"
+    buffer.start_run(run_id)
+
+    rich_handler = RichHandler(
+        console=Console(stderr=True, force_terminal=True, width=80),
+        show_time=False,
+        show_path=False,
+        markup=False,
+        rich_tracebacks=False,
+    )
+    root = logging.getLogger()
+    previous_handlers = list(root.handlers)
+    root.handlers = [rich_handler]
+    try:
+        with capture_run_output(buffer, run_id):
+            logging.getLogger("datapipe.ml").info("Preparing data")
+    finally:
+        root.handlers = previous_handlers
+
+    messages = [line.message for line in buffer.get_lines(run_id)]
+    preparing = [msg for msg in messages if "Preparing data" in msg]
+    assert preparing == ["Preparing data"]
+
+
 def test_capture_run_output_isolates_concurrent_threads(tmp_path) -> None:
     store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
     buffer = RunLogBuffer(store)

@@ -99,7 +99,6 @@ export interface PipelineDetail {
     stage_edges?: StageEdge[];
     label_graph?: LabelGraphPayload;
     recent_runs: RecentRunSummary[];
-    next_run_at?: string;
     last_error?: string;
     enrichments?: Enrichment[];
 }
@@ -196,6 +195,7 @@ export interface Capabilities {
     ml_metrics: boolean;
     ml_training: boolean;
     pipeline_id?: string;
+    run_logs_configured?: boolean;
 }
 
 export interface ResetTransformMetadataResponse {
@@ -207,4 +207,5 @@ export interface SettingsInfo {
     pipeline_id?: string;
     observability_db_connected: boolean;
     version: string;
+    run_logs_configured?: boolean;
 }

@@ -10,11 +10,13 @@
     "@types/react": "^18.0.15",
     "@types/react-dom": "^18.0.6",
     "antd": "^4.22.1",
-    "recharts": "^2.15.0",
+    "prismjs": "^1.30.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
     "react-scripts": "5.0.1",
+    "react-simple-code-editor": "^0.14.1",
+    "recharts": "^2.15.0",
     "typescript": "^4.7.4"
   },
   "scripts": {
@@ -43,5 +45,11 @@
       "last 1 safari version"
     ]
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^14",
+    "@testing-library/user-event": "^14",
+    "@types/prismjs": "^1.26.6"
+  }
 }

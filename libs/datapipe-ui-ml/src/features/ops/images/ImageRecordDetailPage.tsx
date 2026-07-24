@@ -6,6 +6,14 @@ import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsBBoxRow, OpsImageRecordDetailResponse } from "../../../types/opsMl";
 import { EmptyState, PageHeader } from "../shared";
+import { ImagePanel } from "./ImagePanel";
+
+function isLabelOnlyDetail(detail: OpsImageRecordDetailResponse | null): boolean {
+    if (!detail) return false;
+    if (detail.label != null || detail.gt_label != null) return true;
+    const rows = detail.bbox_rows ?? [];
+    return rows.length > 0 && rows.every((row) => row.x1 == null && row.y1 == null && row.x2 == null && row.y2 == null);
+}
 
 export function ImageRecordDetailPage() {
     const { specId: rawSpecId = "", recordKey: rawRecordKey = "" } = useParams<{
@@ -39,6 +47,8 @@ export function ImageRecordDetailPage() {
 
     const imageName = detail?.pk?.image_name ? String(detail.pk.image_name) : "";
     const imageUrl = annotationsOn ? detail?.visualization_url : detail?.plain_image_url;
+    const labelOnly = isLabelOnlyDetail(detail);
+    const label = detail?.label ?? detail?.gt_label ?? null;
 
     const columns: ColumnsType<OpsBBoxRow> = React.useMemo(
         () => [
@@ -64,38 +74,50 @@ export function ImageRecordDetailPage() {
                 ]}
                 title={imageName ? `Record: ${imageName}` : "Image record"}
                 subtitle={detail?.subset ? `Subset: ${detail.subset}` : undefined}
-                statusChips={detail ? [{ label: `${detail.bbox_count ?? 0} boxes`, variant: "purple" }] : []}
+                statusChips={
+                    detail
+                        ? [
+                              labelOnly
+                                  ? { label: label ? `label: ${label}` : "label", variant: "purple" as const }
+                                  : { label: `${detail.bbox_count ?? 0} boxes`, variant: "purple" as const },
+                          ]
+                        : []
+                }
                 onRefresh={load}
             />
 
             <EmptyState loading={pidLoading || loading} error={error ?? undefined} empty={!detail && !loading}>
                 <div className="ops-record-detail-layout">
                     <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                            <div style={{ fontWeight: 600 }}>Annotations</div>
-                            <Switch checked={annotationsOn} onChange={setAnnotationsOn} />
-                            <span>{annotationsOn ? "On" : "Off"}</span>
-                            {detail?.subset ? <Tag className="ops-soft-chip">{detail.subset}</Tag> : null}
-                        </div>
-
-                        {imageUrl ? (
-                            <div className="ops-image-panel-body" style={{ padding: 0 }}>
-                                <img src={imageUrl} alt={imageName} style={{ width: "100%", maxHeight: 720, objectFit: "contain" }} />
+                        {!labelOnly ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                                <div style={{ fontWeight: 600 }}>Annotations</div>
+                                <Switch checked={annotationsOn} onChange={setAnnotationsOn} />
+                                <span>{annotationsOn ? "On" : "Off"}</span>
+                                {detail?.subset ? <Tag className="ops-soft-chip">{detail.subset}</Tag> : null}
+                            </div>
+                        ) : detail?.subset ? (
+                            <div style={{ marginBottom: 12 }}>
+                                <Tag className="ops-soft-chip">{detail.subset}</Tag>
                             </div>
                         ) : null}
 
-                        <div style={{ marginTop: 18 }}>
-                            <div className="ops-panel-title" style={{ marginBottom: 10 }}>
-                                Ground truth boxes
+                        <ImagePanel title="Image" tone="neutral" imageUrl={imageUrl} label={label} />
+
+                        {!labelOnly ? (
+                            <div style={{ marginTop: 18 }}>
+                                <div className="ops-panel-title" style={{ marginBottom: 10 }}>
+                                    Ground truth boxes
+                                </div>
+                                <Table
+                                    size="small"
+                                    rowKey={(r, i) => String(i)}
+                                    columns={columns}
+                                    dataSource={detail?.bbox_rows ?? []}
+                                    pagination={false}
+                                />
                             </div>
-                            <Table
-                                size="small"
-                                rowKey={(r, i) => String(i)}
-                                columns={columns}
-                                dataSource={detail?.bbox_rows ?? []}
-                                pagination={false}
-                            />
-                        </div>
+                        ) : null}
 
                         <div style={{ marginTop: 18 }}>
                             <div className="ops-panel-title" style={{ marginBottom: 10 }}>
@@ -122,6 +144,12 @@ export function ImageRecordDetailPage() {
                                         {JSON.stringify(detail?.pk ?? {}, null, 2)}
                                     </pre>
                                 </div>
+                                {labelOnly ? (
+                                    <div>
+                                        <div style={{ color: "var(--dp-gray-500)", fontSize: 12 }}>label</div>
+                                        <div>{label || "—"}</div>
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     </div>
@@ -130,4 +158,3 @@ export function ImageRecordDetailPage() {
         </div>
     );
 }
-

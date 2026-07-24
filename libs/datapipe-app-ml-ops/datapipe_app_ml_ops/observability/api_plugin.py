@@ -15,6 +15,7 @@ def register_v1alpha3_extension(
     ds: Any,
     catalog: Any,
     ops_spec_registry: Any,
+    run_steps: Any = None,
     **_: Any,
 ) -> None:
     register_ml_observability_routes(
@@ -24,4 +25,5 @@ def register_v1alpha3_extension(
         ds=ds,
         catalog=catalog,
         ops_spec_registry=ops_spec_registry,
+        run_steps=run_steps,
     )

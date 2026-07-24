@@ -64,16 +64,16 @@ const CLASSIFICATION_DETAILED: GroupSpec[] = [
         title: "Precision",
         key: "grp_precision",
         metrics: [
-            { key: "weighted_without_pseudo_classes_precision", title: "W-Precision" },
-            { key: "macro_without_pseudo_classes_precision", title: "M-Precision" },
+            { key: "weighted_precision", title: "W-Precision" },
+            { key: "macro_precision", title: "M-Precision" },
         ],
     },
     {
         title: "Recall",
         key: "grp_recall",
         metrics: [
-            { key: "weighted_without_pseudo_classes_recall", title: "W-Recall" },
-            { key: "macro_without_pseudo_classes_recall", title: "M-Recall" },
+            { key: "weighted_recall", title: "W-Recall" },
+            { key: "macro_recall", title: "M-Recall" },
         ],
     },
     {

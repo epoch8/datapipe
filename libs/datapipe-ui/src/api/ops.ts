@@ -10,16 +10,75 @@ import type {
     StageRecentRunsResponse,
     Capabilities,
 } from "../types/ops";
-import { ApiError, apiFetch, readApiErrorBody } from "./http";
+import { ApiError, apiFetch } from "./http";
 
 const API_BASE = "/api/v1alpha3";
+
+type ErrorEnvelope = {
+    error?: { code?: unknown; message?: unknown; details?: unknown };
+    detail?: unknown;
+    message?: unknown;
+};
+
+/**
+ * Parse a non-2xx response body into an {@link ApiError}. Prefers the normative
+ * envelope `{error:{code,message,details}}` used by the ops/ML endpoints and
+ * falls back to FastAPI's `{detail}` / `{message}` shapes.
+ *
+ * Callers must branch on `ApiError.code` (never `message.includes(...)`).
+ */
+async function apiErrorFromResponse(res: Response, url: string): Promise<ApiError> {
+    let body: ErrorEnvelope | null = null;
+    let rawText = "";
+    try {
+        rawText = await res.text();
+        body = rawText ? (JSON.parse(rawText) as ErrorEnvelope) : null;
+    } catch {
+        body = null;
+    }
+
+    const envelope = body?.error;
+    if (envelope && typeof envelope === "object") {
+        const code = typeof envelope.code === "string" ? envelope.code : null;
+        const message =
+            typeof envelope.message === "string" && envelope.message
+                ? envelope.message
+                : `API error (${res.status})`;
+        return new ApiError("http", message, {
+            status: res.status,
+            url,
+            code,
+            details: envelope.details,
+        });
+    }
+
+    let detail: string | null = null;
+    if (body) {
+        if (typeof body.detail === "string") detail = body.detail;
+        else if (Array.isArray(body.detail)) {
+            detail = body.detail
+                .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+                .join("; ");
+        } else if (typeof body.message === "string") detail = body.message;
+    }
+    if (detail === null) detail = rawText || res.statusText || `HTTP ${res.status}`;
+
+    return new ApiError("http", `API error (${res.status}): ${detail}`, {
+        status: res.status,
+        url,
+        code: null,
+        details: body ?? undefined,
+    });
+}
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${API_BASE}${path}`;
     const res = await apiFetch(url, init);
     if (!res.ok) {
-        const detail = await readApiErrorBody(res);
-        throw new ApiError("http", `API error (${res.status}): ${detail}`, { status: res.status, url });
+        throw await apiErrorFromResponse(res, url);
+    }
+    if (res.status === 204 || res.headers?.get?.("content-length") === "0") {
+        return undefined as unknown as T;
     }
     return res.json() as Promise<T>;
 }
@@ -106,7 +165,7 @@ export const coreOpsApi = {
         ),
 };
 
-export { fetchJson, toQuery };
+export { fetchJson, toQuery, ApiError };
 
 export function getRefreshIntervalMs(): number {
     const stored = localStorage.getItem("datapipe_ops_refresh_s");

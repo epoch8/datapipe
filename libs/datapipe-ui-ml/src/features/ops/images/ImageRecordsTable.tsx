@@ -52,10 +52,16 @@ function flattenMetricColumns(columns: OpsMetricColumn[] | undefined): OpsColumn
 
 function formatMetricValue(value: unknown): string {
     if (value === null || value === undefined || value === "") return "-";
+    if (typeof value === "boolean") return value ? "true" : "false";
     if (typeof value === "number") {
         return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(3);
     }
     return String(value);
+}
+
+function LabelChip({ value }: { value?: string | null }) {
+    if (!value) return <span>-</span>;
+    return <Tag className="ops-soft-chip">{value}</Tag>;
 }
 
 function imageRecordSortTable(filterColumns: OpsColumn[]): OpsTableSchema {
@@ -169,6 +175,7 @@ export function ImageRecordsTable({
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const [rows, setRows] = React.useState<OpsImageRecordListRow[]>([]);
+    const [listColumns, setListColumns] = React.useState<string[]>([]);
 
     const [page, setPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(10);
@@ -216,7 +223,10 @@ export function ImageRecordsTable({
         const offset = (page - 1) * pageSize;
 
         fetchRecords(pipelineId, specId, scope, parentId, { limit, offset, ...filterQuery })
-            .then((res) => setRows(res.rows))
+            .then((res) => {
+                setRows(res.rows);
+                setListColumns(res.list_columns ?? []);
+            })
             .catch((e) => setError(String(e)))
             .finally(() => setLoading(false));
     }, [pipelineId, specId, scope, parentId, page, pageSize, filterQuery]);
@@ -249,6 +259,7 @@ export function ImageRecordsTable({
     const totalPages = recordCount != null ? Math.max(1, Math.ceil(recordCount / pageSize)) : null;
 
     const columns: ColumnsType<OpsImageRecordListRow> = React.useMemo(() => {
+        const usesLabels = listColumns.includes("label");
         const previewCol = {
             title: "Preview",
             key: "preview",
@@ -276,6 +287,13 @@ export function ImageRecordsTable({
                 <span className="ops-bboxes-chip">{formatBoxCount(row.bbox_count ?? null)}</span>
             ),
         };
+        const labelCol = {
+            title: "label",
+            key: "label",
+            render: (_v: unknown, row: OpsImageRecordListRow) => (
+                <LabelChip value={row.prediction_label ?? row.label ?? row.gt_label} />
+            ),
+        };
 
         if (mode === "image") {
             const showSubset = imageView?.records_show_subset ?? false;
@@ -298,7 +316,7 @@ export function ImageRecordsTable({
                 });
             }
             if (showGroundTruth) {
-                cols.push(bboxesCol);
+                cols.push(usesLabels ? labelCol : bboxesCol);
             }
             cols.push(viewCol);
             return cols;
@@ -324,7 +342,7 @@ export function ImageRecordsTable({
                             "-"
                         ),
                 },
-                bboxesCol,
+                usesLabels ? labelCol : bboxesCol,
                 viewCol,
             ];
         }
@@ -345,11 +363,11 @@ export function ImageRecordsTable({
                 ...sortColumnProps(findFilterColumn(filterColumns, "image_name"), sortState),
                 render: (_v, row) => String(row.pk.image_name ?? ""),
             },
-            bboxesCol,
+            usesLabels ? labelCol : bboxesCol,
             ...metricCols,
             viewCol,
         ];
-    }, [mode, imageView, predictionMetricColumns, filterColumns, sortState]);
+    }, [mode, imageView, predictionMetricColumns, filterColumns, sortState, listColumns]);
 
     return (
         <div className="ops-panel ops-polished-panel ops-spec-table-panel">

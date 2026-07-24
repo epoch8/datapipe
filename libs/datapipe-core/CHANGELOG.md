@@ -21,6 +21,15 @@
 * Schema is created automatically on `TableStoreDB` / `SQLTableMeta` /
   `SQLTransformMeta` when `create_table=True`, and from
   `datapipe db create-all`
+* `datapipe db create-all --force-recreate` drops all known SQL tables before
+  recreating them (destructive; for local development when schema drifted)
+* `datapipe db create-all` also syncs existing tables to current metadata
+  (ADD COLUMN / ALTER) via Alembic `produce_migrations` + `Operations.invoke`,
+  without writing migration revision files, when the optional
+  `datapipe-core[alembic]` extra is installed; otherwise sync is skipped
+* `datapipe db create-all` refuses to mutate the database when Alembic has
+  stamped a revision (`alembic_version.version_num` is set) — use
+  `alembic upgrade` instead of create-all / `--force-recreate` / metadata sync
 
 ## Executor / step progress
 

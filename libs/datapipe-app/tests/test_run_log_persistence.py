@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from datapipe_app.observability.store.db import ObservabilityStore
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer
+from datapipe_app.observability.run_logs import RunLogsBackend
+
+
+def _store(tmp_path, name: str = "obs.db") -> ObservabilityStore:
+    return ObservabilityStore.from_url(
+        f"sqlite:///{tmp_path / name}",
+        run_logs_backend=RunLogsBackend.memory(),
+    )
 
 
 def test_run_logs_persist_without_finish_run(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     buffer = RunLogBuffer(store)
     run_id = "run-persist"
     buffer.start_run(run_id)
@@ -24,7 +32,7 @@ def test_get_lines_pages_beyond_memory_ring(tmp_path):
     """API clients must be able to read seq > MAX_LINES_PER_RUN from DB."""
     from datapipe_app.observability.logging.log_buffer import MAX_LINES_PER_RUN
 
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     buffer = RunLogBuffer(store)
     run_id = "run-page"
     buffer.start_run(run_id)
@@ -47,7 +55,7 @@ def test_get_lines_pages_beyond_memory_ring(tmp_path):
 
 
 def test_get_lines_merges_db_and_memory(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     buffer = RunLogBuffer(store)
     run_id = "run-merge"
     buffer.start_run(run_id)

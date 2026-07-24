@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Sequence
 from typing import Any, Literal
 
 import httpx
@@ -10,23 +11,31 @@ from PIL import Image
 OverlayMode = Literal["record", "gt", "prediction", "both", "plain"]
 
 
+def _as_aligned_list(value: Any, *, length: int, default: Any) -> list[Any]:
+    """Align a per-bbox field to ``length``, accepting scalar classification values."""
+    if value is None:
+        return [default] * length
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        if length <= 0:
+            return []
+        return [value] + [default] * (length - 1)
+    values = list(value)
+    if len(values) != length:
+        values = (values + [default] * length)[:length]
+    return values
+
+
 def iter_bbox_fields_from_record(
     record: dict[str, Any],
     *,
     scores_column: str | None = None,
 ) -> list[tuple[Any, Any | None, Any, Any, Any, Any]]:
     bboxes = record.get("bboxes") or []
-    labels = record.get("labels") or [None] * len(bboxes)
-    if labels is None:
-        labels = [None] * len(bboxes)
+    if not isinstance(bboxes, Sequence) or isinstance(bboxes, (str, bytes)):
+        bboxes = []
     scores_key = scores_column or "prediction__detection_scores"
-    scores = record.get(scores_key) or [None] * len(bboxes)
-    if scores is None:
-        scores = [None] * len(bboxes)
-    if len(labels) != len(bboxes):
-        labels = (list(labels) + [None] * len(bboxes))[: len(bboxes)]
-    if len(scores) != len(bboxes):
-        scores = (list(scores) + [None] * len(bboxes))[: len(bboxes)]
+    labels = _as_aligned_list(record.get("labels"), length=len(bboxes), default=None)
+    scores = _as_aligned_list(record.get(scores_key), length=len(bboxes), default=None)
     return [
         (label, score, xmin, ymin, xmax, ymax)
         for (xmin, ymin, xmax, ymax), label, score in zip(bboxes, labels, scores)
@@ -46,12 +55,7 @@ def _cv_pipeliner():
 
 
 def _aligned_per_bbox_field(record: dict[str, Any], field: str, *, length: int, default: Any) -> list[Any]:
-    values = record.get(field)
-    if values is None:
-        return [default] * length
-    if len(values) != length:
-        values = (list(values) + [default] * length)[:length]
-    return values
+    return _as_aligned_list(record.get(field), length=length, default=default)
 
 
 def bboxes_data_from_record(record: dict[str, Any], *, scores_column: str | None = None) -> list[Any]:

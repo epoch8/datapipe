@@ -118,3 +118,62 @@ def test_db_create_all_ensures_schema_before_metadata_create_all(postgres_dbconn
     assert dbconn.schema in inspect(dbconn.con).get_schema_names()
     assert "catalog_table" in inspect(dbconn.con).get_table_names(schema=dbconn.schema)
     assert "catalog_table_meta" in inspect(dbconn.con).get_table_names(schema=dbconn.schema)
+
+
+def test_db_create_all_force_recreate_drops_existing_data() -> None:
+    dbconn = DBConn("sqlite:///:memory:", schema=None)
+    store = TableStoreDB(
+        dbconn=dbconn,
+        name="items",
+        data_sql_schema=[
+            Column("id", Integer, primary_key=True),
+            Column("name", String),
+        ],
+        create_table=True,
+    )
+
+    with dbconn.con.begin() as con:
+        con.execute(store.data_table.insert().values(id=1, name="keep-me"))
+
+    with dbconn.con.begin() as con:
+        assert con.execute(text("SELECT COUNT(*) FROM items")).scalar() == 1
+
+    dbconn.sqla_metadata.drop_all(dbconn.con)
+    dbconn.sqla_metadata.create_all(dbconn.con)
+
+    assert "items" in inspect(dbconn.con).get_table_names()
+    with dbconn.con.begin() as con:
+        assert con.execute(text("SELECT COUNT(*) FROM items")).scalar() == 0
+
+
+def test_db_create_all_force_recreate_applies_new_columns() -> None:
+    dbconn = DBConn("sqlite:///:memory:", schema=None)
+    TableStoreDB(
+        dbconn=dbconn,
+        name="items",
+        data_sql_schema=[
+            Column("id", Integer, primary_key=True),
+            Column("name", String),
+        ],
+        create_table=True,
+    )
+
+    assert {c["name"] for c in inspect(dbconn.con).get_columns("items")} == {"id", "name"}
+
+    # Simulate a pipeline schema change that only exists in metadata after recreate.
+    from sqlalchemy import MetaData, Table
+
+    new_metadata = MetaData()
+    Table(
+        "items",
+        new_metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+        Column("extra", String),
+    )
+    dbconn.sqla_metadata = new_metadata
+
+    dbconn.sqla_metadata.drop_all(dbconn.con)
+    dbconn.sqla_metadata.create_all(dbconn.con)
+
+    assert {c["name"] for c in inspect(dbconn.con).get_columns("items")} == {"id", "name", "extra"}

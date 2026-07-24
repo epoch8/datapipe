@@ -15,20 +15,16 @@ from datapipe_app.observability.run_logs.clickhouse_schema import (
     clickhouse_select_run_logs_statement,
     compile_clickhouse_query,
 )
-from datapipe_app.observability.config.tables import ObservabilityTableConfig
 
 logger = logging.getLogger(__name__)
 
-SHARED_RUN_LOGS_WARNING = (
-    "Run logs are stored in the same SQL database as pipeline metadata (%s). "
-    "This does not scale: the database will grow quickly as log volume increases. "
-    "Pass a dedicated ClickHouse RunLogsBackend to DatapipeAPI "
+MISSING_RUN_LOGS_BACKEND_WARNING = (
+    "Run logs backend is not configured; run logs will not be persisted. "
+    "Pass a dedicated RunLogsBackend to DatapipeAPI "
     "(for example RunLogsBackend.clickhouse('clickhouse://default:@localhost:8123/default'))."
 )
 
 if TYPE_CHECKING:
-    from datapipe.store.database import DBConn
-
     from datapipe_app.observability.run_logs.backend import RunLogsBackend
 
 
@@ -61,43 +57,108 @@ class RunLogStore(ABC):
         """Return the highest persisted sequence number for a run."""
 
 
+class NullRunLogStore(RunLogStore):
+    """No-op store used when ``run_logs_backend`` is not configured."""
+
+    def append_run_logs(self, rows: list[dict[str, Any]]) -> None:
+        return
+
+    def get_run_logs(
+        self,
+        run_id: str,
+        *,
+        after: int = 0,
+        limit: int = 500,
+    ) -> list[RunLogRecord]:
+        return []
+
+    def get_last_log_seq(self, run_id: str) -> int:
+        return 0
+
+
+class InMemoryRunLogStore(RunLogStore):
+    def __init__(self) -> None:
+        self._rows: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+
+    def append_run_logs(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        with self._lock:
+            self._rows.extend(rows)
+
+    def get_run_logs(
+        self,
+        run_id: str,
+        *,
+        after: int = 0,
+        limit: int = 500,
+    ) -> list[RunLogRecord]:
+        with self._lock:
+            matched = [
+                row
+                for row in self._rows
+                if row["run_id"] == run_id and int(row["seq"]) > after
+            ]
+            matched.sort(key=lambda row: int(row["seq"]))
+            matched = matched[:limit]
+            return [_record_from_dict(row) for row in matched]
+
+    def get_last_log_seq(self, run_id: str) -> int:
+        with self._lock:
+            seqs = [int(row["seq"]) for row in self._rows if row["run_id"] == run_id]
+            return max(seqs) if seqs else 0
+
+
 def is_clickhouse_url(url: str) -> bool:
     scheme = urlparse(url).scheme.lower()
     return scheme in {"clickhouse", "clickhouse+http", "clickhouse+native"}
 
 
-def warn_if_run_logs_share_pipeline_db(
-    *,
-    pipeline_dbconn: Optional[DBConn],
-    observability_dbconn: Optional[DBConn],
+def warn_if_run_logs_backend_missing(
     run_logs_backend: Optional[RunLogsBackend],
 ) -> None:
-    from datapipe_app.observability.connections.dbconn import dbconn_same_target
-
     if run_logs_backend is not None:
         return
-    if pipeline_dbconn is None or observability_dbconn is None:
-        return
-    if not dbconn_same_target(pipeline_dbconn, observability_dbconn):
-        return
-    logger.warning(SHARED_RUN_LOGS_WARNING, observability_dbconn.connstr)
+    logger.warning(MISSING_RUN_LOGS_BACKEND_WARNING)
+
+
+# Backwards-compatible alias
+warn_if_run_logs_share_pipeline_db = warn_if_run_logs_backend_missing
 
 
 def resolve_run_log_store(
     *,
     observability_store: Any,
     run_logs_backend: Optional[RunLogsBackend],
-    table_name: str,
 ) -> tuple[RunLogStore, bool]:
-    """Return (store, use_external_run_logs)."""
+    """Return ``(store, run_logs_configured)``."""
     if run_logs_backend is not None:
         return run_logs_backend.store, True
-    return SqlAlchemyRunLogStore(observability_store), False
+    return NullRunLogStore(), False
 
 
 class SqlAlchemyRunLogStore(RunLogStore):
-    def __init__(self, observability_store: Any):
+    def __init__(
+        self,
+        observability_store: Any,
+        *,
+        table_name: str | None = None,
+    ):
+        from typing import cast
+
+        from sqlalchemy import Table
+
+        from datapipe_app.observability.run_logs.backend import DEFAULT_RUN_LOGS_TABLE_NAME
+        from datapipe_app.observability.store.db import PipelineRunLogRow
+
         self._store = observability_store
+        name = table_name or DEFAULT_RUN_LOGS_TABLE_NAME
+        table = cast(Table, PipelineRunLogRow.__table__)
+        table.name = name
+        if getattr(observability_store, "schema", None) is not None:
+            table.schema = observability_store.schema
+        table.create(observability_store.engine, checkfirst=True)
 
     def append_run_logs(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
@@ -160,7 +221,7 @@ class ClickHouseRunLogStore(RunLogStore):
         cls,
         url: str,
         *,
-        table_name: str = ObservabilityTableConfig().pipeline_run_logs,
+        table_name: str,
     ) -> ClickHouseRunLogStore:
         client = _create_clickhouse_client(url)
         store = cls(client, table_name=table_name)
@@ -236,6 +297,19 @@ def _record_from_sql_row(row: Any) -> RunLogRecord:
         logged_at=logged_at,
         level=row.level,
         message=row.message,
+    )
+
+
+def _record_from_dict(row: dict[str, Any]) -> RunLogRecord:
+    logged_at = row.get("logged_at") or datetime.now(timezone.utc)
+    if not isinstance(logged_at, datetime):
+        logged_at = datetime.fromisoformat(str(logged_at))
+    return RunLogRecord(
+        run_id=str(row["run_id"]),
+        seq=int(row["seq"]),
+        logged_at=logged_at,
+        level=str(row["level"]),
+        message=str(row["message"]),
     )
 
 

@@ -352,6 +352,11 @@ class OpsImageRecordListRow(BaseModel):
     bbox_count: int | None = None
     gt_bbox_count: int | None = None
     prediction_bbox_count: int | None = None
+    label: str | None = None
+    gt_label: str | None = None
+    prediction_label: str | None = None
+    prediction_score: float | None = None
+    is_error: bool | None = None
     metrics: dict[str, Any] | None = None
 
 
@@ -396,6 +401,11 @@ class OpsImageRecordDetailResponse(BaseModel):
     bbox_count: int | None = None
     gt_bbox_count: int | None = None
     prediction_bbox_count: int | None = None
+    label: str | None = None
+    gt_label: str | None = None
+    prediction_label: str | None = None
+    prediction_score: float | None = None
+    is_error: bool | None = None
     bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)
     gt_bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)
     prediction_bbox_rows: list[OpsBBoxRow] = Field(default_factory=list)

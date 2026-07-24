@@ -3,12 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pandas as pd
 import pytest
 from datapipe.types import IndexDF
 
 from tests.helpers.training_recovery import (
-    TENSORFLOW_RECOVERY_CASE_IDS,
     RealRecoveryCase,
     RecoveryTrainStep,
     SmokeRuntime,
@@ -23,7 +21,7 @@ from tests.helpers.training_smoke import Workdir, classification_freeze_step, cl
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
-    from datapipe_ml.tasks.classification.train.tensorflow import Train_Tensorflow_ClassificationModel
+
 
 def _configure_tf_configs(configs: list[TF_ClassificationTrainingConfig], epochs: int) -> None:
     for config in configs:
@@ -92,8 +90,8 @@ def real_recovery_tensorflow_cases() -> list:
                 train_fn=train_tf_classification_model,
                 input_tables=(
                     "classification_frozen_dataset",
+                    "classification_training_request",
                     "classification_frozen_dataset__has__image_gt",
-                    "tf_classification_train_config",
                 ),
             ),
             id="tensorflow_classification",
@@ -128,7 +126,13 @@ def invoke_real_train_callable_for_backfill(
     case: RealRecoveryCase,
     step: RecoveryTrainStep,
 ) -> None:
-    idx = IndexDF(pd.DataFrame([{}]))
+    request_table = runtime.ds.get_table(case.input_tables[1])
+    requests = request_table.get_data()
+    if requests.empty or "training_request_id" not in requests.columns:
+        raise AssertionError(
+            f"Expected training requests in {case.input_tables[1]!r} for backfill"
+        )
+    idx = IndexDF(requests[["training_request_id"]])
     input_dts = [runtime.ds.get_table(name) for name in case.input_tables]
     case.train_fn(
         runtime.ds,

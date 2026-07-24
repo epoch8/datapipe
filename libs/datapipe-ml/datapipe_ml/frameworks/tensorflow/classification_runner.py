@@ -259,7 +259,21 @@ def get_model(
 
 def read_image_filepath(filepath: bytes):
     with fsspec.open(filepath.decode(), "rb") as src:
-        return imageio.imread(src)
+        image = np.asarray(imageio.imread(src))
+    return ensure_rgb_uint8(image)
+
+
+def ensure_rgb_uint8(image: np.ndarray) -> np.ndarray:
+    """Normalize loaded images to HxWx3 so tf.data batching does not mix ranks."""
+    if image.ndim == 2:
+        image = np.stack([image, image, image], axis=-1)
+    elif image.ndim == 3 and image.shape[-1] == 1:
+        image = np.concatenate([image, image, image], axis=-1)
+    elif image.ndim == 3 and image.shape[-1] == 4:
+        image = image[..., :3]
+    elif image.ndim != 3 or image.shape[-1] != 3:
+        raise ValueError(f"Unsupported image shape for classification training: {image.shape}")
+    return image
 
 
 # Augmentations
@@ -639,22 +653,24 @@ class TrainModelResult:
 
 @dataclass
 class TF_ClassificationTrainingConfig:
-    image_size: Tuple[int, int]
-    seed: int
-    batch_size: int
-    arch: Optional[str]
-    init_lr: float
-    reduce_lr_patience: int
-    reduce_lr_factor: float
-    early_stopping_patience: int
-    epochs: int
-    label_smoothing: float
-    augmentations: bool
-    augment_func_file: Optional[str]
-    class_weight: bool  # TODO: support custom Dict[str, float] per-class weight dictionaries
+    image_size: Tuple[int, int] = (224, 224)
+    seed: int = 0
+    batch_size: int = 128
+    arch: Optional[str] = "mobilenet"
+    init_lr: float = 0.001
+    reduce_lr_patience: int = 5
+    reduce_lr_factor: float = 0.5
+    early_stopping_patience: int = 10
+    epochs: int = 100
+    label_smoothing: float = 0.0
+    augmentations: bool = True
+    augment_func_file: Optional[str] = None
+    class_weight: bool = True  # TODO: support custom Dict[str, float] per-class weight dictionaries
     model_spec: Optional[TFModelSpec] = None
 
     def __post_init__(self):
+        if isinstance(self.image_size, list):
+            self.image_size = tuple(self.image_size)  # type: ignore[assignment]
         if self.model_spec is not None and isinstance(self.model_spec, dict):
             self.model_spec = TFModelSpec(**self.model_spec)
         if self.arch is None and self.model_spec is None:

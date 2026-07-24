@@ -80,6 +80,9 @@ class RunLogBuffer:
         pending = self._pending_flush.get(run_id, [])
         if not pending:
             return
+        if not getattr(self.store, "run_logs_configured", False):
+            pending.clear()
+            return
         rows = list(pending)
         try:
             self.store.append_run_logs(rows)
@@ -92,15 +95,17 @@ class RunLogBuffer:
         # Pass after/limit through to the store so clients can page beyond the
         # in-memory ring (MAX_LINES_PER_RUN). Previously this always loaded
         # after=0..MAX_LINES_PER_RUN, so seq > 10_000 was unreachable via API.
-        db_lines = [
-            LogLine(
-                seq=r.seq,
-                logged_at=r.logged_at.isoformat() if r.logged_at else "",
-                level=r.level,
-                message=r.message,
-            )
-            for r in self.store.get_run_logs(run_id, after=after, limit=limit)
-        ]
+        db_lines: list[LogLine] = []
+        if getattr(self.store, "run_logs_configured", False):
+            db_lines = [
+                LogLine(
+                    seq=r.seq,
+                    logged_at=r.logged_at.isoformat() if r.logged_at else "",
+                    level=r.level,
+                    message=r.message,
+                )
+                for r in self.store.get_run_logs(run_id, after=after, limit=limit)
+            ]
         with self._lock:
             buf = self._buffers.get(run_id)
             if buf is None:

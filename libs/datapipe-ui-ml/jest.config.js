@@ -8,6 +8,7 @@ module.exports = {
     rootDir: path.join(__dirname, "src"),
     testMatch: ["**/*.test.ts", "**/*.test.tsx"],
     testEnvironment: "jsdom",
+    setupFiles: ["<rootDir>/testSetup.ts"],
     moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
     moduleNameMapper: {
         "^@datapipe/ui-ml/(.*)$": "<rootDir>/$1",

@@ -16,7 +16,7 @@ def test_observability_table_config_rejects_duplicate_names() -> None:
     with pytest.raises(ValueError, match="Duplicate datapipe-app observability table name 'same'"):
         ObservabilityTableConfig(
             pipeline_runs="same",
-            pipeline_run_logs="same",
+            pipeline_run_steps="same",
         )
 
 
