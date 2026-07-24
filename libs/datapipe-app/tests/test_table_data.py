@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from datapipe.compute import Catalog, DataStore, Pipeline, Table
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.store.filedir import JSONFile, PILFile, TableStoreFiledir
