@@ -9,7 +9,7 @@ from datapipe_ml.training.config_codec import (
     register_train_config_codec,
 )
 
-_EXCLUDED_FIELDS = frozenset()
+_EXCLUDED_FIELDS: frozenset[str] = frozenset()
 
 _FIELD_UI: dict[str, dict[str, Any]] = {
     "arch": {
@@ -162,8 +162,10 @@ class TFClassificationTrainConfigCodec:
         image_size = params.get("image_size")
         if isinstance(image_size, (list, tuple)) and len(image_size) >= 2:
             size_label = f"{image_size[0]}x{image_size[1]}"
+        elif image_size is None:
+            size_label = "?"
         else:
-            size_label = image_size
+            size_label = str(image_size)
         batch_size = params.get("batch_size")
         epochs = params.get("epochs")
         display = f"{arch} · {size_label} · batch {batch_size} · {epochs} epochs"

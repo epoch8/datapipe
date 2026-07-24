@@ -712,7 +712,7 @@ class TrainingExperimentsService:
                             model_id=model_id,
                             frozen_dataset_id=dataset_id,
                             frozen_dataset_display_name=dataset_names.get(dataset_id),
-                            created_at=_record_created_at(r.to_dict()),
+                            created_at=_record_created_at({str(k): v for k, v in r.to_dict().items()}),
                             link_table=relation.table,
                         )
                     )
