@@ -421,6 +421,7 @@ ORPHAN_PREDICTION_CASES = [
         "keypoints_metrics_on_image",
         "keypoints_metrics_on_subset",
         id="keypoints",
+        marks=pytest.mark.torch,
     ),
 ]
 
