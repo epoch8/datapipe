@@ -32,7 +32,7 @@ def test_get_lines_pages_beyond_memory_ring(tmp_path):
     """API clients must be able to read seq > MAX_LINES_PER_RUN from DB."""
     from datapipe_app.observability.logging.log_buffer import MAX_LINES_PER_RUN
 
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = _store(tmp_path)
     buffer = RunLogBuffer(store)
     run_id = "run-page"
     buffer.start_run(run_id)
