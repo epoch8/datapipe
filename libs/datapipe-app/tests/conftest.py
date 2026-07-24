@@ -6,9 +6,81 @@ import pytest
 from datapipe.compute import Catalog, DataStore, Pipeline, Table
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
+from fastapi.testclient import TestClient
 from sqlalchemy import JSON, Boolean, Column, Integer, String
 
 from datapipe_app import DatapipeAPI
+from datapipe_app.observability.store.db import ObservabilityStore
+
+
+@pytest.fixture
+def observability_store():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        url = f"sqlite+pysqlite3:///{tmpdir}/obs.sqlite"
+        store = ObservabilityStore.from_url(url)
+        yield store
+
+
+@pytest.fixture
+def agent_env(monkeypatch):
+    monkeypatch.delenv("DATAPIPE_APP_PIPELINE_ID", raising=False)
+
+
+@pytest.fixture
+def ops_app(agent_env):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dbconn = DBConn(f"sqlite+pysqlite3:///{tmpdir}/store.sqlite")
+
+        def transform(df: pd.DataFrame) -> pd.DataFrame:
+            return df.assign(v=df["v"].astype(str) + "_x")
+
+        catalog = Catalog(
+            {
+                "input": Table(
+                    store=TableStoreDB(
+                        name="input",
+                        dbconn=dbconn,
+                        data_sql_schema=[
+                            Column("id", Integer(), primary_key=True),
+                            Column("v", String()),
+                        ],
+                        create_table=True,
+                    )
+                ),
+                "output": Table(
+                    store=TableStoreDB(
+                        name="output",
+                        dbconn=dbconn,
+                        data_sql_schema=[
+                            Column("id", Integer(), primary_key=True),
+                            Column("v", String()),
+                        ],
+                        create_table=True,
+                    )
+                ),
+            }
+        )
+
+        pipeline = Pipeline(
+            [
+                BatchTransform(
+                    transform,
+                    inputs=["input"],
+                    outputs=["output"],
+                    labels=[("stage", "process")],
+                ),
+            ]
+        )
+        ds = DataStore(dbconn, create_meta_table=True)
+        input_dt = catalog.get_datatable(ds, "input")
+        catalog.get_datatable(ds, "output")
+        input_dt.store_chunk(pd.DataFrame([{"id": 1, "v": "a"}, {"id": 2, "v": "b"}]))
+        yield DatapipeAPI(ds, catalog, pipeline, pipeline_id="test_pipeline")
+
+
+@pytest.fixture
+def ops_client(ops_app):
+    return TestClient(ops_app)
 
 
 @pytest.fixture
@@ -59,9 +131,7 @@ def app():
 
         def agg_profile(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
             res = []
-
             res_lang = []
-
             for user_id, grp in df.groupby("user_id"):
                 res.append(
                     {
@@ -75,14 +145,12 @@ def app():
                         "active": True,
                     }
                 )
-
                 res_lang.append(
                     {
                         "user_id": user_id,
                         "lang": grp.iloc[-1]["event"].get("lang"),
                     }
                 )
-
             return (
                 pd.DataFrame.from_records(res),
                 pd.DataFrame.from_records(res_lang),
@@ -99,9 +167,6 @@ def app():
         )
 
         ds = DataStore(dbconn, create_meta_table=False)
-
-        app = DatapipeAPI(ds, catalog, pipeline)
-
-        app.ds.meta_dbconn.sqla_metadata.create_all(app.ds.meta_dbconn.con)
-
-        yield app
+        api_app = DatapipeAPI(ds, catalog, pipeline)
+        api_app.ds.meta_dbconn.sqla_metadata.create_all(api_app.ds.meta_dbconn.con)
+        yield api_app

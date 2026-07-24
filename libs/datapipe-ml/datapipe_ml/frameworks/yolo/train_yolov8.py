@@ -1,7 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Type
+from dataclasses import dataclass, field, replace
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Sequence,
+    Type,
+    Union,
+    cast,
+)
 
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep
@@ -14,11 +27,13 @@ from sqlalchemy import Column
 from datapipe_ml.frameworks.yolo.checkpoint_label import build_yolo_train_config_summary
 from datapipe_ml.frameworks.yolo.datapipe_compute import YoloModeSpec, build_yolo_compute
 from datapipe_ml.frameworks.yolo.training import YoloBaseAlgo, YoloTrainContext, YoloTrainRuntimeConfig
-from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig, train_process as _v8_train_process
+from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.training.orchestrator import orchestrate
-from datapipe_ml.training.paths import default_tmp_folder
+from datapipe_ml.training.request_runner import run_training_request
 from datapipe_ml.training.specs import TrainingLauncherConfig, TrainingResumeConfig, TrainingSyncConfig
-from datapipe_ml.training.train_config_id import train_configs_to_dataframe
+from datapipe_ml.training.train_config_id import TrainingConfigPreset, train_configs_to_dataframe
+
+YoloV8TrainConfigItem = Union[YoloV8_TrainingConfig, TrainingConfigPreset]
 
 
 @dataclass(frozen=True)
@@ -42,6 +57,7 @@ class YoloV8TaskSpec:
     runtime_model_other_primary_keys_key: str
     runtime_model_id_key: str
     runtime_frozen_dataset_id_key: str
+    train_config_type: str = "yolov8_detection"
     extra_model_metric_map: Dict[str, str] = field(default_factory=dict)
     extra_class_names_columns: List[Column] = field(default_factory=list)
     extra_model_columns: List[Column] = field(default_factory=list)
@@ -61,36 +77,100 @@ def make_yolov8_train_callable(
         kwargs: Optional[Dict[str, Any]] = None,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         kwargs = kwargs or {}
-        dt__frozen_dataset, dt__train_config, dt__class_names, dt__resized_image_file, dt__yolo_txt = input_dts
-        runtime = YoloTrainRuntimeConfig.from_kwargs(
-            kwargs,
-            model_table_key=spec.runtime_model_table_key,
-            link_table_key=spec.runtime_link_table_key,
-            model_other_primary_keys_key=spec.runtime_model_other_primary_keys_key,
-            model_id_key=spec.runtime_model_id_key,
-            frozen_dataset_id_key=spec.runtime_frozen_dataset_id_key,
+        (
+            dt__frozen_dataset,
+            dt__training_request,
+            dt__class_names,
+            dt__resized_image_file,
+            dt__yolo_txt,
+        ) = input_dts
+
+        # Transform keys are training_request_id only. Related tables (frozen
+        # dataset / class names / resized files) share detection_frozen_dataset_id,
+        # so get_data(idx) with no overlapping PKs would return every row.
+        df_training_request = dt__training_request.get_data(idx)
+        frozen_dataset_id_col = kwargs[spec.runtime_frozen_dataset_id_key]
+        if df_training_request.empty:
+            empty = pd.DataFrame()
+            return empty, empty, empty
+        if frozen_dataset_id_col not in df_training_request.columns:
+            raise ValueError(
+                f"Training request is missing required column {frozen_dataset_id_col!r}"
+            )
+        frozen_dataset_id = df_training_request.iloc[0][frozen_dataset_id_col]
+        data_idx = IndexDF(pd.DataFrame([{frozen_dataset_id_col: frozen_dataset_id}]))
+        df_frozen_dataset = dt__frozen_dataset.get_data(data_idx)
+        df_class_names = dt__class_names.get_data(data_idx)
+        df_resized_images = dt__resized_image_file.get_data(data_idx)
+        df_yolo_txt = dt__yolo_txt.get_data(data_idx)
+
+        # Orchestrator / prepare_data also call get_data(idx); keep frozen id on idx.
+        orch_idx = idx.copy()
+        orch_idx[frozen_dataset_id_col] = frozen_dataset_id
+
+        def _train_callable(
+            *,
+            df_train_config: pd.DataFrame,
+            max_within_time: Optional[str],
+            force_training: bool,
+            **_: Any,
+        ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            runtime = YoloTrainRuntimeConfig.from_kwargs(
+                kwargs,
+                model_table_key=spec.runtime_model_table_key,
+                link_table_key=spec.runtime_link_table_key,
+                model_other_primary_keys_key=spec.runtime_model_other_primary_keys_key,
+                model_id_key=spec.runtime_model_id_key,
+                frozen_dataset_id_key=spec.runtime_frozen_dataset_id_key,
+            )
+            ctx = runtime.build_context(
+                YoloTrainContext,
+                dt__frozen_dataset=dt__frozen_dataset,
+                dt__train_config=None,
+                dt__class_names=dt__class_names,
+                dt__resized_image_file=dt__resized_image_file,
+                dt__yolo_txt=dt__yolo_txt,
+            )
+            if max_within_time is not None:
+                ctx = replace(ctx, max_within_time=max_within_time)
+            out = orchestrate(
+                orch_idx,
+                ctx,
+                algo_cls(),
+                df_train_config=df_train_config,
+                force_training=force_training,
+            )
+            return out.df__model, out.df__link, out.df__training_status
+
+        return cast(
+            tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+            run_training_request(
+                df_frozen_dataset=df_frozen_dataset,
+                df_training_request=df_training_request,
+                df_class_names=df_class_names,
+                df_resized_images=df_resized_images,
+                df_yolo_txt=df_yolo_txt,
+                train_callable=_train_callable,
+                train_config_id_col=spec.train_config_id_col,
+                train_config_params_col=spec.train_params_col,
+                frozen_dataset_id_col=frozen_dataset_id_col,
+                dt_training_status=kwargs.get("dt__training_status"),
+            ),
         )
-        ctx = runtime.build_context(
-            YoloTrainContext,
-            dt__frozen_dataset=dt__frozen_dataset,
-            dt__train_config=dt__train_config,
-            dt__class_names=dt__class_names,
-            dt__resized_image_file=dt__resized_image_file,
-            dt__yolo_txt=dt__yolo_txt,
-        )
-        out = orchestrate(idx, ctx, algo_cls())
-        return out.df__model, out.df__link, out.df__training_status
 
     return train_yolov8
 
 
-def make_yolov8_get_train_configs(spec: YoloV8TaskSpec) -> Callable[[List[YoloV8_TrainingConfig]], Any]:
-    def get_configs(yolov8_train_configs: List[YoloV8_TrainingConfig]):
+def make_yolov8_get_train_configs(
+    spec: YoloV8TaskSpec,
+) -> Callable[[Sequence[YoloV8TrainConfigItem]], Iterator[pd.DataFrame]]:
+    def get_configs(yolov8_train_configs: Sequence[YoloV8TrainConfigItem]) -> Iterator[pd.DataFrame]:
         yield train_configs_to_dataframe(
             yolov8_train_configs,
             id_column=spec.train_config_id_col,
             params_column=spec.train_params_col,
             summary_builder=build_yolo_train_config_summary,
+            config_type=spec.train_config_type,
         )
 
     return get_configs
@@ -100,7 +180,10 @@ def make_yolov8_get_train_configs(spec: YoloV8TaskSpec) -> Callable[[List[YoloV8
 class YoloV8TrainStepFields:
     input__frozen_dataset: str
     input__frozen_dataset__has__image_gt: str
-    output__train_config: str
+    output__default_train_config: str
+    output__custom_train_config: str
+    output__training_request: str
+    output__model_size_for_resize: str
     output__size_for_resize: str
     output__frozen_dataset__class_names: str
     output__frozen_dataset__resized_image_file: str
@@ -112,15 +195,59 @@ class YoloV8TrainStepFields:
     model_id__name: str
     frozen_dataset_id__name: str
 
+    def model_primary_keys(self, step: YoloV8TrainStepLike) -> list[str] | None:
+        value = getattr(step, self.model_primary_keys_attr)
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError(
+                f"Expected {self.model_primary_keys_attr!r} to be list[str] | None, got {type(value)!r}"
+            )
+        return value
+
+    def model_id_column(self, step: YoloV8TrainStepLike) -> str:
+        return _step_pipeline_io(step, self.model_id__name)
+
+    def frozen_dataset_id_column(self, step: YoloV8TrainStepLike) -> str:
+        return _step_pipeline_io(step, self.frozen_dataset_id__name)
+
+
+class YoloV8TrainStepLike(Protocol):
+    working_dir: str
+    primary_keys: list[str]
+    image__image_path__name: str
+    bbox_id__name: str | None
+    separator_to_split_attrnames: str
+    create_table: bool
+    labels: Labels | None
+    executor_config: ExecutorConfig | None
+    prepare_data_executor_config: ExecutorConfig | None
+    resize_images: bool
+    max_within_time: str
+    tmp_folder: str
+    model_suffix: str
+    allow_sample_size_mismatch: bool
+    training_launcher_config: TrainingLauncherConfig | None
+    sync_config: TrainingSyncConfig | None
+    resume_config: TrainingResumeConfig | None
+    filedir_fsspec_kwargs: dict[str, Any] | None
+
+
+def _step_pipeline_io(step: YoloV8TrainStepLike, attr_name: str) -> str:
+    value = getattr(step, attr_name)
+    if not isinstance(value, str):
+        raise TypeError(f"Expected pipeline I/O attribute {attr_name!r} to be str, got {type(value)!r}")
+    return value
+
 
 def build_yolov8_train_compute(
     *,
     ds: DataStore,
     catalog: Catalog,
-    step: Any,
+    step: YoloV8TrainStepLike,
     spec: YoloV8TaskSpec,
     fields: YoloV8TrainStepFields,
-    yolov8_train_configs: List[YoloV8_TrainingConfig],
+    yolov8_train_configs: Sequence[YoloV8TrainConfigItem],
     train_callable: Callable[..., tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]],
     required_has_gt_columns: Optional[List[str]] = None,
 ) -> List[ComputeStep]:
@@ -135,6 +262,7 @@ def build_yolov8_train_compute(
         get_class_names_from_gt_func=spec.get_class_names_from_gt_func,
         train_callable=train_callable,
         models_subdir=spec.models_subdir,
+        train_config_type=spec.train_config_type,
     )
     if spec.extra_class_names_columns:
         mode_kwargs["extra_class_names_columns"] = spec.extra_class_names_columns
@@ -150,28 +278,35 @@ def build_yolov8_train_compute(
     return build_yolo_compute(
         ds=ds,
         catalog=catalog,
-        input__frozen_dataset=getattr(step, fields.input__frozen_dataset),
-        input__frozen_dataset__has__image_gt=getattr(step, fields.input__frozen_dataset__has__image_gt),
-        output__train_config=getattr(step, fields.output__train_config),
-        output__size_for_resize=getattr(step, fields.output__size_for_resize),
-        output__frozen_dataset__class_names=getattr(step, fields.output__frozen_dataset__class_names),
-        output__frozen_dataset__resized_image_file=getattr(step, fields.output__frozen_dataset__resized_image_file),
-        output__frozen_dataset__yolo_txt=getattr(step, fields.output__frozen_dataset__yolo_txt),
-        output__model=getattr(step, fields.output__model),
-        output__model_is_trained_on_frozen_dataset=getattr(step, fields.output__model_is_trained_on_frozen_dataset),
+        input__frozen_dataset=_step_pipeline_io(step, fields.input__frozen_dataset),
+        input__frozen_dataset__has__image_gt=_step_pipeline_io(step, fields.input__frozen_dataset__has__image_gt),
+        output__default_train_config=_step_pipeline_io(step, fields.output__default_train_config),
+        output__custom_train_config=_step_pipeline_io(step, fields.output__custom_train_config),
+        output__training_request=_step_pipeline_io(step, fields.output__training_request),
+        output__model_size_for_resize=_step_pipeline_io(step, fields.output__model_size_for_resize),
+        output__size_for_resize=_step_pipeline_io(step, fields.output__size_for_resize),
+        output__frozen_dataset__class_names=_step_pipeline_io(step, fields.output__frozen_dataset__class_names),
+        output__frozen_dataset__resized_image_file=_step_pipeline_io(
+            step, fields.output__frozen_dataset__resized_image_file
+        ),
+        output__frozen_dataset__yolo_txt=_step_pipeline_io(step, fields.output__frozen_dataset__yolo_txt),
+        output__model=_step_pipeline_io(step, fields.output__model),
+        output__model_is_trained_on_frozen_dataset=_step_pipeline_io(
+            step, fields.output__model_is_trained_on_frozen_dataset
+        ),
         working_dir=step.working_dir,
-        filedir_fsspec_kwargs=getattr(step, "filedir_fsspec_kwargs", None),
+        filedir_fsspec_kwargs=step.filedir_fsspec_kwargs,
         primary_keys=step.primary_keys,
-        model_primary_keys=getattr(step, fields.model_primary_keys_attr),
-        model_id__name=getattr(step, fields.model_id__name),
-        frozen_dataset_id__name=getattr(step, fields.frozen_dataset_id__name),
+        model_primary_keys=fields.model_primary_keys(step),
+        model_id__name=fields.model_id_column(step),
+        frozen_dataset_id__name=fields.frozen_dataset_id_column(step),
         image__image_path__name=step.image__image_path__name,
         bbox_id__name=step.bbox_id__name,
         separator_to_split_attrnames=step.separator_to_split_attrnames,
         create_table=step.create_table,
         labels=step.labels,
         executor_config=step.executor_config,
-        prepare_data_executor_config=getattr(step, "prepare_data_executor_config", None),
+        prepare_data_executor_config=step.prepare_data_executor_config,
         resize_images=step.resize_images,
         max_within_time=step.max_within_time,
         tmp_folder=step.tmp_folder,
@@ -179,8 +314,8 @@ def build_yolov8_train_compute(
         allow_sample_size_mismatch=step.allow_sample_size_mismatch,
         mode=YoloModeSpec(**mode_kwargs),
         train_configs_list=dict(yolov8_train_configs=yolov8_train_configs),
-        training_launcher_config=getattr(step, "training_launcher_config", None),
-        sync_config=getattr(step, "sync_config", None),
-        resume_config=getattr(step, "resume_config", None),
-        output__training_status=getattr(step, fields.output__training_status),
+        training_launcher_config=step.training_launcher_config,
+        sync_config=step.sync_config,
+        resume_config=step.resume_config,
+        output__training_status=_step_pipeline_io(step, fields.output__training_status),
     )

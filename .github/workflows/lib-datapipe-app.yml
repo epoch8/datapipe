@@ -9,7 +9,9 @@ on:
       - ".github/workflows/lib-datapipe-app.yml"
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
+      - "libs/datapipe-app-ml-ops/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
       - "pyproject.toml"
   pull_request:
     branches:
@@ -18,7 +20,9 @@ on:
       - ".github/workflows/lib-datapipe-app.yml"
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
+      - "libs/datapipe-app-ml-ops/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
       - "pyproject.toml"
 
 jobs:
@@ -44,8 +48,10 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system -e "libs/datapipe-core[sqlite]"
-          uv pip install --system -e "libs/datapipe-app" --no-deps
-          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "flake8" "mypy" "httpx"
+          uv pip install --system -e "libs/datapipe-ml[sqlite]"
+          uv pip install --system -e "libs/datapipe-app[clickhouse]"
+          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
+          uv pip install --system "flake8" "mypy"
 
       - name: Lint with flake8
         run: |
@@ -79,8 +85,10 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system ${{ matrix.pip-extra }} -e "libs/datapipe-core[sqlite]"
-          uv pip install --system -e "libs/datapipe-app" --no-deps
-          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "httpx" "pytest<8"
+          uv pip install --system -e "libs/datapipe-ml[sqlite]"
+          uv pip install --system -e "libs/datapipe-app[clickhouse]"
+          uv pip install --system -e "libs/datapipe-app-ml-ops" --no-deps
+          uv pip install --system "pytest<8"
 
       - name: Test with pytest
         run: |
@@ -106,13 +114,11 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies with uv
-        run: |
-          uv pip install --system -e "libs/datapipe-core[sqlite]"
-          uv pip install --system -e "libs/datapipe-app" --no-deps
-          uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "alembic"
+        working-directory: examples/datapipe_app
+        run: uv sync
 
       - name: Test example
+        working-directory: examples/datapipe_app
         run: |
-          cd examples/datapipe_app
-          datapipe db create-all
-          datapipe run
+          uv run alembic upgrade head
+          uv run datapipe run --no-callbacks

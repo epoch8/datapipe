@@ -20,11 +20,22 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import required_pipeline_input, PipelineInput, PipelineOutput, Labels
+from datapipe.types import PipelineInput, PipelineOutput, Labels, required_pipeline_input
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable, get_pipeline_table_name
+from datapipe_ml.core.datapipe import (
+    check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
+    make_mungled_batch_transform_step_name,
+    normalize_pipeline_inputs,
+)
+from datapipe_ml.inference.model_inputs import (
+    build_required_pipeline_inputs,
+    primary_model_input,
+    wrap_inference_inputs,
+)
 from datapipe_ml.core.image_data import (
     check_if_images_opens,
     convert_df_with_image_data_to_df_with_bbox,
@@ -64,7 +75,10 @@ def get_pipeline_model_spec(
 
 
 def pipeline_inference(
-    *dfs,
+    df__image: pd.DataFrame,
+    df__detection_model: pd.DataFrame,
+    df__classification_model: pd.DataFrame,
+    df__pipeline_model: pd.DataFrame,
     image__image_path__name: str,
     primary_keys: List[str],
     bbox_id__name: Optional[str],
@@ -73,13 +87,6 @@ def pipeline_inference(
     detection_model_primary_keys: List[str],
     classification_model_primary_keys: List[str],
 ):
-    df__image: pd.DataFrame = dfs[0]
-    if len(dfs) >= 5:
-        for df in dfs[1:-3]:
-            df__image = pd.merge(df, df__image)
-    df__detection_model: pd.DataFrame = dfs[-3]
-    df__classification_model: pd.DataFrame = dfs[-2]
-    df__pipeline_model: pd.DataFrame = dfs[-1]
     if bbox_id__name is not None:
         columns = (
             primary_keys
@@ -174,8 +181,8 @@ def pipeline_inference(
 @dataclass
 class Inference_PipelineModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__detection_model: PipelineInput
-    input__classification_model: PipelineInput
+    input__detection_model: PipelineInput | Sequence[PipelineInput]
+    input__classification_model: PipelineInput | Sequence[PipelineInput]
     input__pipeline_model: PipelineInput
     output__pipeline_prediction: PipelineOutput
     primary_keys: List[str]
@@ -190,14 +197,19 @@ class Inference_PipelineModel(PipelineStep):
     filters: Union[LabelDict, Callable[[], LabelDict], None] = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
-        dt__input__detection_model = get_datatable(ds, self.input__detection_model)
-        dt__input__classification_model = get_datatable(ds, self.input__classification_model)
+        primary_detection_model = primary_model_input(self.input__detection_model)
+        primary_classification_model = primary_model_input(self.input__classification_model)
+        dt__input__detection_model = get_datatable(ds, primary_detection_model)
+        dt__input__classification_model = get_datatable(ds, primary_classification_model)
         assert (
             len(set(dt__input__detection_model.primary_keys).intersection(dt__input__classification_model.primary_keys))
             == 0
         )
         check_columns_are_in_table(ds, self.input__image, self.primary_keys)
         input__images = normalize_pipeline_inputs(self.input__image)
+        image_pipeline_inputs = build_required_pipeline_inputs(self.input__image)
+        detection_model_pipeline_inputs = build_required_pipeline_inputs(self.input__detection_model)
+        classification_model_pipeline_inputs = build_required_pipeline_inputs(self.input__classification_model)
         assert any(
             [
                 check_columns_are_in_table(ds, input__image, [self.image__image_path__name], raise_exc=False)
@@ -207,7 +219,7 @@ class Inference_PipelineModel(PipelineStep):
         dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
         check_columns_are_in_table(
             ds,
-            self.input__detection_model,
+            primary_detection_model,
             [
                 "detection_model__input_size",
                 "detection_model__score_threshold",
@@ -216,9 +228,11 @@ class Inference_PipelineModel(PipelineStep):
                 "detection_model__class_names",
             ],
         )
+        for model_filter in normalize_pipeline_inputs(self.input__detection_model)[1:]:
+            check_columns_are_in_table(ds, model_filter, dt__input__detection_model.primary_keys)
         check_columns_are_in_table(
             ds,
-            self.input__classification_model,
+            primary_classification_model,
             [
                 "classification_model__input_size",
                 "classification_model__model_path",
@@ -226,6 +240,8 @@ class Inference_PipelineModel(PipelineStep):
                 "classification_model__class_names",
             ],
         )
+        for model_filter in normalize_pipeline_inputs(self.input__classification_model)[1:]:
+            check_columns_are_in_table(ds, model_filter, dt__input__classification_model.primary_keys)
         check_columns_are_in_table(
             ds,
             self.input__pipeline_model,
@@ -264,12 +280,33 @@ class Inference_PipelineModel(PipelineStep):
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=pipeline_inference,
+                    func=wrap_inference_inputs(
+                        pipeline_inference,
+                        n_image_inputs=len(image_pipeline_inputs),
+                        primary_keys=self.primary_keys,
+                        model_input_groups=[
+                            (len(detection_model_pipeline_inputs), dt__input__detection_model.primary_keys),
+                            (len(classification_model_pipeline_inputs), dt__input__classification_model.primary_keys),
+                        ],
+                        n_trailing_inputs=1,
+                    ),
+                    name=make_mungled_batch_transform_step_name(
+                        ds,
+                        catalog,
+                        base_name="pipeline_inference",
+                        inputs=[
+                            *image_pipeline_inputs,
+                            *detection_model_pipeline_inputs,
+                            *classification_model_pipeline_inputs,
+                            required_pipeline_input(self.input__pipeline_model),
+                        ],
+                        outputs=[self.output__pipeline_prediction],
+                    ),
                     inputs=[
-                        *[required_pipeline_input(input__image) for input__image in input__images],
-                        self.input__detection_model,
-                        self.input__classification_model,
-                        self.input__pipeline_model,
+                        *image_pipeline_inputs,
+                        *detection_model_pipeline_inputs,
+                        *classification_model_pipeline_inputs,
+                        required_pipeline_input(self.input__pipeline_model),
                     ],
                     outputs=[self.output__pipeline_prediction],
                     transform_keys=self.primary_keys

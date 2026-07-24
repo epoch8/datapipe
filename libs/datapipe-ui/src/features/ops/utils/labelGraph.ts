@@ -1,0 +1,831 @@
+import type {
+    LabelGraphEdge,
+    LabelGraphPayload,
+    LabelInterleaving,
+    LabelSharedRelation,
+    StageEdge,
+    StageItem,
+} from "../../../types/ops";
+
+export type { StageEdge, StageItem };
+
+export type LabelGraphMode = "overview" | "compact";
+
+export type LayoutNodeKind = "node" | "container" | "interleaved-group";
+
+export type LayoutNode = {
+    id: string;
+    kind: LayoutNodeKind;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    nodeId: string;
+    label?: string;
+    status?: string;
+    childIds?: string[];
+    interleavedLabelIds?: string[];
+};
+
+export type LayoutEdgeKind = "order" | "exact-order" | "secondary";
+
+export type LayoutEdge = {
+    id: string;
+    source: string;
+    target: string;
+    kind: LayoutEdgeKind;
+    visibleByDefault: boolean;
+    showWhenSelected?: string[];
+    replacesEdgeId?: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+};
+
+export type EdgeHighlightLevel = "focused" | "context" | "muted";
+
+export type SharedBracket = {
+    id: string;
+    a: string;
+    b: string;
+    x: number;
+    y: number;
+    width: number;
+    count: number;
+    label: string;
+    visibleByDefault: boolean;
+};
+
+export type LabelGraphLayout = {
+    width: number;
+    height: number;
+    nodes: LayoutNode[];
+    orderEdges: LayoutEdge[];
+    exactEdges: LayoutEdge[];
+    sharedBrackets: SharedBracket[];
+    interleavings: LabelInterleaving[];
+};
+
+const LAYOUT = {
+    overview: {
+        nodeWidth: 132,
+        nodeHeight: 72,
+        childHeight: 64,
+        containerPadding: 20,
+        containerInnerTop: 48,
+        containerBottomPad: 18,
+        gapX: 52,
+        canvasPad: 24,
+        interleavedHeight: 120,
+        interleavedLaneGap: 8,
+    },
+    compact: {
+        nodeWidth: 112,
+        nodeHeight: 56,
+        childHeight: 48,
+        containerPadding: 14,
+        containerInnerTop: 40,
+        containerBottomPad: 14,
+        gapX: 36,
+        canvasPad: 16,
+        interleavedHeight: 96,
+        interleavedLaneGap: 6,
+    },
+} as const;
+
+function isStrictSubset(child: Set<string>, parent: Set<string>): boolean {
+    if (child.size >= parent.size) return false;
+    let ok = true;
+    child.forEach((id) => {
+        if (!parent.has(id)) ok = false;
+    });
+    return ok;
+}
+
+/** Mirror of backend `_find_containments`: nest by step-set inclusion, name-agnostic. */
+function findContainments(
+    labelStepIds: Map<string, Set<string>>,
+): Array<{ parent: string; child: string; kind: "semantic" }> {
+    const labels = Array.from(labelStepIds.keys());
+    const rawEdges = new Set<string>();
+    const edgeKey = (parent: string, child: string) => `${parent}\0${child}`;
+    const parseEdge = (key: string): [string, string] => {
+        const i = key.indexOf("\0");
+        return [key.slice(0, i), key.slice(i + 1)];
+    };
+
+    labels.forEach((parent) => {
+        const parentSteps = labelStepIds.get(parent)!;
+        const children = labels.filter(
+            (child) => child !== parent && isStrictSubset(labelStepIds.get(child)!, parentSteps),
+        );
+        // Same rule as backend: need ≥2 children to become a container.
+        if (children.length < 2) return;
+        children.forEach((child) => {
+            rawEdges.add(edgeKey(parent, child));
+        });
+    });
+
+    const reduced = new Set(Array.from(rawEdges));
+    Array.from(rawEdges).forEach((key) => {
+        const [parent, child] = parseEdge(key);
+        Array.from(rawEdges).forEach((midKey) => {
+            const [midParent, mid] = parseEdge(midKey);
+            if (midParent === parent && reduced.has(edgeKey(mid, child))) {
+                reduced.delete(key);
+            }
+        });
+    });
+
+    const parentsByChild = new Map<string, string[]>();
+    Array.from(reduced).forEach((key) => {
+        const [parent, child] = parseEdge(key);
+        const list = parentsByChild.get(child) ?? [];
+        list.push(parent);
+        parentsByChild.set(child, list);
+    });
+
+    const containments: Array<{ parent: string; child: string; kind: "semantic" }> = [];
+    Array.from(parentsByChild.entries()).forEach(([child, parents]) => {
+        const best = parents.reduce((a, b) => {
+            const aSize = labelStepIds.get(a)!.size;
+            const bSize = labelStepIds.get(b)!.size;
+            if (aSize !== bSize) return aSize < bSize ? a : b;
+            return a < b ? a : b;
+        });
+        containments.push({ parent: best, child, kind: "semantic" });
+    });
+    return containments;
+}
+
+function stepNamesFromStage(stage: StageItem): string[] {
+    return (stage.steps as { name?: string }[])
+        .map((s) => s.name)
+        .filter((n): n is string => Boolean(n));
+}
+
+
+function sortByOrderMin(ids: string[], orderMap: Map<string, number>): string[] {
+    return [...ids].sort((a, b) => {
+        const ia = orderMap.get(a) ?? Number.MAX_SAFE_INTEGER;
+        const ib = orderMap.get(b) ?? Number.MAX_SAFE_INTEGER;
+        if (ia !== ib) return ia - ib;
+        return a.localeCompare(b);
+    });
+}
+
+function edgePath(x1: number, y1: number, x2: number, y2: number): string {
+    const midX = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+}
+
+// A soft "]" style bracket: two short legs dropping from each node bottom, joined
+// by a rounded horizontal bar. Communicates overlap between two labels without
+// reading as a third directional arrow.
+export function sharedBracketPath(bracket: SharedBracket): string {
+    const x1 = bracket.x;
+    const x2 = bracket.x + bracket.width;
+    const yTop = bracket.y;
+    const yMid = bracket.y + 12;
+    const yBar = yMid + 8;
+    return [
+        `M ${x1} ${yTop}`,
+        `L ${x1} ${yMid}`,
+        `Q ${x1} ${yBar}, ${x1 + 12} ${yBar}`,
+        `L ${x2 - 12} ${yBar}`,
+        `Q ${x2} ${yBar}, ${x2} ${yMid}`,
+        `L ${x2} ${yTop}`,
+    ].join(" ");
+}
+
+type Bounds = { x: number; y: number; w: number; h: number };
+
+function buildFallbackPayload(stages: StageItem[], stageEdges?: StageEdge[]): LabelGraphPayload {
+    const stageOrder = stages.map((s) => s.stage);
+    const orderMap = new Map(stageOrder.map((s, i) => [s, i]));
+
+    const nodes = stages.map((stage, index) => ({
+        id: stage.stage,
+        label: stage.stage,
+        status: stage.status,
+        kind: "label" as "label" | "container" | "interleaved-group",
+        step_ids: stepNamesFromStage(stage),
+        step_count: stage.steps.length,
+        parent_id: null as string | null,
+        children_ids: [] as string[],
+        order_min: index,
+        order_max: index,
+        segments: [
+            {
+                label_id: stage.stage,
+                start_order: index,
+                end_order: index,
+                step_ids: stepNamesFromStage(stage),
+            },
+        ],
+    }));
+
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+    const labelStepIds = new Map(
+        nodes.map((n) => [n.id, new Set(n.step_ids)] as [string, Set<string>]),
+    );
+    const containments = findContainments(labelStepIds);
+    for (const { parent, child } of containments) {
+        const parentNode = nodeById.get(parent);
+        const childNode = nodeById.get(child);
+        if (!parentNode || !childNode) continue;
+        parentNode.kind = "container";
+        childNode.parent_id = parent;
+    }
+    // Rebuild children_ids from parent_id so nested containments don't leave
+    // grandchildren listed under the outer container.
+    for (const node of nodes) {
+        node.children_ids = [];
+    }
+    for (const node of nodes) {
+        if (!node.parent_id) continue;
+        const parent = nodeById.get(node.parent_id);
+        if (!parent) continue;
+        parent.children_ids = [...(parent.children_ids ?? []), node.id];
+        parent.kind = "container";
+        if ((node.children_ids ?? []).length === 0) {
+            node.kind = "label";
+        }
+    }
+
+    const childrenSet = new Set(
+        nodes.filter((n) => n.parent_id).map((n) => n.id),
+    );
+    const topLevel = sortByOrderMin(
+        nodes.filter((n) => !childrenSet.has(n.id)).map((n) => n.id),
+        orderMap,
+    );
+
+    const edges: LabelGraphEdge[] = [];
+    for (let i = 0; i < topLevel.length - 1; i += 1) {
+        edges.push({
+            id: `${topLevel[i]}->${topLevel[i + 1]}`,
+            source: topLevel[i],
+            target: topLevel[i + 1],
+            kind: "order",
+            visible_by_default: true,
+        });
+    }
+
+    for (const node of nodes) {
+        if (node.kind !== "container" || !node.children_ids?.length) continue;
+        const children = sortByOrderMin(node.children_ids, orderMap);
+        for (let i = 0; i < children.length - 1; i += 1) {
+            edges.push({
+                id: `${children[i]}->${children[i + 1]}`,
+                source: children[i],
+                target: children[i + 1],
+                kind: "order",
+                visible_by_default: true,
+            });
+        }
+        const parentIdx = topLevel.indexOf(node.id);
+        if (parentIdx > 0) {
+            const prev = topLevel[parentIdx - 1];
+            const firstChild = children[0];
+            edges.push({
+                id: `${prev}->${firstChild}`,
+                source: prev,
+                target: firstChild,
+                kind: "exact-order",
+                visible_by_default: false,
+                show_when_selected: [firstChild],
+                replaces_edge_id: `${prev}->${node.id}`,
+                source_scope: "node",
+                target_scope: "child",
+            });
+        }
+        if (parentIdx >= 0 && parentIdx < topLevel.length - 1) {
+            const next = topLevel[parentIdx + 1];
+            const lastChild = children[children.length - 1];
+            edges.push({
+                id: `${lastChild}->${next}`,
+                source: lastChild,
+                target: next,
+                kind: "exact-order",
+                visible_by_default: false,
+                show_when_selected: [lastChild, next],
+                replaces_edge_id: `${node.id}->${next}`,
+                source_scope: "child",
+                target_scope: "node",
+            });
+        }
+    }
+
+    const shared_relations: LabelSharedRelation[] = [];
+    for (let i = 0; i < stages.length; i += 1) {
+        for (let j = i + 1; j < stages.length; j += 1) {
+            const a = stages[i].stage;
+            const b = stages[j].stage;
+            const setA = new Set(stepNamesFromStage(stages[i]));
+            const shared = stepNamesFromStage(stages[j]).filter((n) => setA.has(n));
+            if (shared.length === 0) continue;
+            if (isAncestorOf(a, b, nodeById) || isAncestorOf(b, a, nodeById)) continue;
+            shared_relations.push({
+                id: `shared-${a}-${b}`,
+                a,
+                b,
+                shared_step_ids: shared,
+                shared_count: shared.length,
+                visible_by_default: false,
+            });
+        }
+    }
+
+    if (stageEdges?.length) {
+        for (const e of stageEdges) {
+            if (edges.some((edge) => edge.source === e.from && edge.target === e.to)) continue;
+            edges.push({
+                id: `secondary-${e.from}-${e.to}`,
+                source: e.from,
+                target: e.to,
+                kind: "secondary",
+                visible_by_default: false,
+            });
+        }
+    }
+
+    return {
+        label_key: "stage",
+        nodes,
+        edges,
+        containments,
+        shared_relations,
+        interleavings: [],
+    };
+}
+
+function isAncestorOf(
+    ancestorId: string,
+    nodeId: string,
+    byId: Map<string, { parent_id?: string | null }>,
+): boolean {
+    let cur: string | undefined = nodeId;
+    const seen = new Set<string>();
+    while (cur) {
+        if (seen.has(cur)) return false;
+        seen.add(cur);
+        const parentId: string | null | undefined = byId.get(cur)?.parent_id;
+        if (!parentId) return false;
+        if (parentId === ancestorId) return true;
+        cur = parentId;
+    }
+    return false;
+}
+
+function filterSharedRelationsToNonNested(
+    relations: LabelSharedRelation[],
+    nodes: Array<{ id: string; parent_id?: string | null }>,
+): LabelSharedRelation[] {
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    return relations.filter(
+        (rel) => !isAncestorOf(rel.a, rel.b, byId) && !isAncestorOf(rel.b, rel.a, byId),
+    );
+}
+
+export function normalizeLabelGraphHierarchy(payload: LabelGraphPayload): LabelGraphPayload {
+    // Backend may still list grandchildren under a container's children_ids while
+    // parent_id already points at the direct parent. Rebuild the tree from
+    // parent_id so nested containers render correctly.
+    const nodes = payload.nodes.map((node) => ({
+        ...node,
+        children_ids: [] as string[],
+    }));
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+
+    for (const node of nodes) {
+        if (!node.parent_id) continue;
+        const parent = byId.get(node.parent_id);
+        if (!parent) continue;
+        parent.children_ids = [...(parent.children_ids ?? []), node.id];
+    }
+
+    for (const node of nodes) {
+        if (node.kind === "interleaved-group") continue;
+        if ((node.children_ids ?? []).length > 0) {
+            node.kind = "container";
+        } else if (node.parent_id) {
+            node.kind = "label";
+        }
+    }
+
+    const containments = nodes
+        .filter((node) => Boolean(node.parent_id))
+        .map((node) => ({
+            parent: node.parent_id as string,
+            child: node.id,
+            kind: "semantic" as const,
+        }));
+
+    return {
+        ...payload,
+        nodes,
+        containments,
+        shared_relations: filterSharedRelationsToNonNested(payload.shared_relations ?? [], nodes),
+    };
+}
+
+export function resolveLabelGraph(detail: {
+    stages: StageItem[];
+    stage_edges?: StageEdge[];
+    label_graph?: LabelGraphPayload;
+}): LabelGraphPayload {
+    const raw = detail.label_graph ?? buildFallbackPayload(detail.stages, detail.stage_edges);
+    return normalizeLabelGraphHierarchy(raw);
+}
+
+export function layoutLabelGraph(
+    payload: LabelGraphPayload,
+    mode: LabelGraphMode = "overview",
+): LabelGraphLayout {
+    const cfg = LAYOUT[mode];
+    const nodeById = new Map(payload.nodes.map((n) => [n.id, n]));
+    const orderMap = new Map(payload.nodes.map((n) => [n.id, n.order_min]));
+
+    const childrenSet = new Set(
+        payload.containments.map((c) => c.child),
+    );
+    const interleavedIds = new Set(payload.interleavings.map((i) => i.id));
+
+    const topLevel = sortByOrderMin(
+        payload.nodes.filter((n) => !childrenSet.has(n.id) && !n.parent_id).map((n) => n.id),
+        orderMap,
+    );
+
+    const sequenceUnits: string[] = [];
+    const seenInterleaved = new Set<string>();
+    for (const id of topLevel) {
+        const node = nodeById.get(id);
+        if (!node) continue;
+        if (node.kind === "interleaved-group") {
+            if (!seenInterleaved.has(id)) {
+                sequenceUnits.push(id);
+                seenInterleaved.add(id);
+            }
+            continue;
+        }
+        const inter = payload.interleavings.find((i) => i.labels.includes(id));
+        if (inter && !seenInterleaved.has(inter.id)) {
+            sequenceUnits.push(inter.id);
+            seenInterleaved.add(inter.id);
+        } else if (!inter) {
+            sequenceUnits.push(id);
+        }
+    }
+
+    for (const inter of payload.interleavings) {
+        if (!sequenceUnits.includes(inter.id)) {
+            sequenceUnits.push(inter.id);
+            sequenceUnits.sort((a, b) => (orderMap.get(a) ?? 0) - (orderMap.get(b) ?? 0));
+        }
+    }
+
+    const measureNode = (nodeId: string): { w: number; h: number } => {
+        const node = nodeById.get(nodeId);
+        if (!node) return { w: cfg.nodeWidth, h: cfg.nodeHeight };
+        const children = sortByOrderMin(node.children_ids ?? [], orderMap);
+        if ((node.children_ids ?? []).length > 0 || node.kind === "container") {
+            let innerW = 0;
+            let innerH: number = cfg.childHeight;
+            children.forEach((childId, index) => {
+                const size = measureNode(childId);
+                innerW += size.w + (index > 0 ? cfg.gapX : 0);
+                innerH = Math.max(innerH, size.h);
+            });
+            return {
+                w: innerW + cfg.containerPadding * 2,
+                h: cfg.containerInnerTop + innerH + cfg.containerBottomPad,
+            };
+        }
+        return { w: cfg.nodeWidth, h: cfg.childHeight };
+    };
+
+    const rowHeight = sequenceUnits.reduce<number>((acc, id) => {
+        const node = nodeById.get(id);
+        if (!node) return acc;
+        if (node.kind === "interleaved-group") return Math.max(acc, cfg.interleavedHeight);
+        if (node.kind === "container") {
+            return Math.max(acc, measureNode(id).h);
+        }
+        return Math.max(acc, cfg.nodeHeight);
+    }, cfg.nodeHeight);
+
+    const layoutNodes: LayoutNode[] = [];
+    const bounds = new Map<string, Bounds>();
+    let cursorX = cfg.canvasPad;
+    const rowY = cfg.canvasPad;
+
+    const placeContainer = (nodeId: string, x: number, y: number): Bounds => {
+        const node = nodeById.get(nodeId);
+        const children = sortByOrderMin(node?.children_ids ?? [], orderMap);
+        const size = measureNode(nodeId);
+        layoutNodes.push({
+            id: `container-${nodeId}`,
+            kind: "container",
+            x,
+            y,
+            width: size.w,
+            height: size.h,
+            nodeId,
+            label: node?.label,
+            status: node?.status,
+            childIds: children,
+        });
+        bounds.set(nodeId, { x, y, w: size.w, h: size.h });
+
+        let childX = x + cfg.containerPadding;
+        const contentBottom = y + size.h - cfg.containerBottomPad;
+        for (const childId of children) {
+            const child = nodeById.get(childId);
+            const childSize = measureNode(childId);
+            const childY = contentBottom - childSize.h;
+            if ((child?.children_ids ?? []).length > 0) {
+                placeContainer(childId, childX, childY);
+            } else {
+                layoutNodes.push({
+                    id: childId,
+                    kind: "node",
+                    x: childX,
+                    y: childY,
+                    width: childSize.w,
+                    height: childSize.h,
+                    nodeId: childId,
+                    label: child?.label ?? childId,
+                    status: child?.status,
+                });
+                bounds.set(childId, {
+                    x: childX,
+                    y: childY,
+                    w: childSize.w,
+                    h: childSize.h,
+                });
+            }
+            childX += childSize.w + cfg.gapX;
+        }
+        return { x, y, w: size.w, h: size.h };
+    };
+
+    for (const unitId of sequenceUnits) {
+        const node = nodeById.get(unitId);
+        if (!node) continue;
+
+        if (node.kind === "interleaved-group") {
+            const labels = node.children_ids ?? node.segments.map((s) => s.label_id);
+            const uniqueLabels = Array.from(new Set(labels)).slice(0, 2);
+            const laneW = cfg.nodeWidth;
+            const innerW =
+                uniqueLabels.length * laneW +
+                Math.max(0, uniqueLabels.length - 1) * cfg.interleavedLaneGap;
+            const containerW = innerW + cfg.containerPadding * 2;
+            const containerH = cfg.interleavedHeight;
+            const containerY = rowY + (rowHeight - containerH) / 2;
+
+            layoutNodes.push({
+                id: `interleaved-${unitId}`,
+                kind: "interleaved-group",
+                x: cursorX,
+                y: containerY,
+                width: containerW,
+                height: containerH,
+                nodeId: unitId,
+                label: node.label,
+                status: node.status,
+                interleavedLabelIds: uniqueLabels,
+            });
+            bounds.set(unitId, { x: cursorX, y: containerY, w: containerW, h: containerH });
+
+            let laneX = cursorX + cfg.containerPadding;
+            const laneY = containerY + cfg.containerInnerTop;
+            for (const labelId of uniqueLabels) {
+                const member = nodeById.get(labelId);
+                layoutNodes.push({
+                    id: labelId,
+                    kind: "node",
+                    x: laneX,
+                    y: laneY,
+                    width: laneW,
+                    height: cfg.childHeight,
+                    nodeId: labelId,
+                    label: member?.label ?? labelId,
+                    status: member?.status,
+                });
+                bounds.set(labelId, { x: laneX, y: laneY, w: laneW, h: cfg.childHeight });
+                laneX += laneW + cfg.interleavedLaneGap;
+            }
+            cursorX += containerW + cfg.gapX;
+            continue;
+        }
+
+        if ((node.children_ids?.length ?? 0) > 0) {
+            const size = measureNode(unitId);
+            const containerY = rowY + (rowHeight - size.h) / 2;
+            placeContainer(unitId, cursorX, containerY);
+            cursorX += size.w + cfg.gapX;
+        } else if (!interleavedIds.has(unitId) && !node.parent_id) {
+            const nodeY = rowY + (rowHeight - cfg.nodeHeight) / 2;
+            layoutNodes.push({
+                id: unitId,
+                kind: "node",
+                x: cursorX,
+                y: nodeY,
+                width: cfg.nodeWidth,
+                height: cfg.nodeHeight,
+                nodeId: unitId,
+                label: node.label,
+                status: node.status,
+            });
+            bounds.set(unitId, {
+                x: cursorX,
+                y: nodeY,
+                w: cfg.nodeWidth,
+                h: cfg.nodeHeight,
+            });
+            cursorX += cfg.nodeWidth + cfg.gapX;
+        }
+    }
+
+    const resolveAnchor = (nodeId: string, side: "left" | "right"): { x: number; y: number } | null => {
+        const b = bounds.get(nodeId);
+        if (!b) {
+            const node = nodeById.get(nodeId);
+            if (node?.parent_id) {
+                const parentBounds = bounds.get(node.parent_id);
+                if (parentBounds) {
+                    return {
+                        x: side === "right" ? parentBounds.x + parentBounds.w : parentBounds.x,
+                        y: parentBounds.y + parentBounds.h / 2,
+                    };
+                }
+            }
+            return null;
+        }
+        return {
+            x: side === "right" ? b.x + b.w : b.x,
+            y: b.y + b.h / 2,
+        };
+    };
+
+    const buildLayoutEdge = (edge: LabelGraphEdge): LayoutEdge | null => {
+        const from = resolveAnchor(edge.source, "right");
+        const to = resolveAnchor(edge.target, "left");
+        if (!from || !to) return null;
+        return {
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            kind: edge.kind,
+            visibleByDefault: edge.visible_by_default,
+            showWhenSelected: edge.show_when_selected,
+            replacesEdgeId: edge.replaces_edge_id,
+            x1: from.x,
+            y1: from.y,
+            x2: to.x,
+            y2: to.y,
+        };
+    };
+
+    const orderEdges: LayoutEdge[] = [];
+    const exactEdges: LayoutEdge[] = [];
+
+    for (const edge of payload.edges) {
+        const le = buildLayoutEdge(edge);
+        if (!le) continue;
+        if (edge.kind === "exact-order") {
+            exactEdges.push(le);
+        } else if (edge.kind === "order") {
+            orderEdges.push(le);
+        }
+    }
+
+    const sharedBrackets: SharedBracket[] = [];
+    for (const rel of payload.shared_relations) {
+        const bA = bounds.get(rel.a);
+        const bB = bounds.get(rel.b);
+        if (!bA || !bB) continue;
+        const left = bA.x < bB.x ? bA : bB;
+        const right = bA.x < bB.x ? bB : bA;
+        // Legs start just below the node bottoms so the bracket reads as a
+        // connection between the two nodes rather than a free-floating badge.
+        const y = Math.max(left.y + left.h, right.y + right.h) + 6;
+        sharedBrackets.push({
+            id: rel.id,
+            a: rel.a,
+            b: rel.b,
+            x: left.x + left.w / 2,
+            y,
+            width: right.x + right.w / 2 - (left.x + left.w / 2),
+            count: rel.shared_count,
+            label: rel.shared_count > 0 ? `overlap · ${rel.shared_count}` : "overlap",
+            visibleByDefault: rel.visible_by_default,
+        });
+    }
+
+    const allBounds = Array.from(bounds.values());
+    const maxX = Math.max(...allBounds.map((b) => b.x + b.w), cfg.canvasPad);
+    const maxY = Math.max(
+        ...allBounds.map((b) => b.y + b.h),
+        ...sharedBrackets.map((b) => b.y + 42),
+        cfg.canvasPad,
+    );
+
+    return {
+        width: maxX + cfg.canvasPad,
+        height: maxY + cfg.canvasPad,
+        nodes: layoutNodes,
+        orderEdges,
+        exactEdges,
+        sharedBrackets,
+        interleavings: payload.interleavings,
+    };
+}
+
+export function nodeToTopLevel(payload: LabelGraphPayload): Map<string, string> {
+    const byId = new Map(payload.nodes.map((n) => [n.id, n]));
+    const rootOf = (id: string): string => {
+        let cur = id;
+        const seen = new Set<string>();
+        while (true) {
+            if (seen.has(cur)) return cur;
+            seen.add(cur);
+            const parent = byId.get(cur)?.parent_id;
+            if (!parent) return cur;
+            cur = parent;
+        }
+    };
+    const map = new Map<string, string>();
+    for (const node of payload.nodes) {
+        map.set(node.id, rootOf(node.id));
+    }
+    for (const inter of payload.interleavings) {
+        for (const label of inter.labels) {
+            map.set(label, inter.id);
+        }
+        map.set(inter.id, inter.id);
+    }
+    return map;
+}
+
+export function isEdgeVisible(
+    edge: LayoutEdge,
+    selectedLabel: string | null | undefined,
+    hoveredNodeId: string | null | undefined,
+): boolean {
+    if (edge.visibleByDefault) return true;
+    if (!selectedLabel && !hoveredNodeId) return false;
+    if (edge.showWhenSelected?.length) {
+        const direct = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+        return edge.showWhenSelected.some((id) => direct.includes(id));
+    }
+    const focus = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+    return focus.some((id) => id === edge.source || id === edge.target);
+}
+
+export function isSharedVisible(
+    bracket: SharedBracket,
+    selectedLabel: string | null | undefined,
+    hoveredNodeId: string | null | undefined,
+): boolean {
+    if (bracket.visibleByDefault) return true;
+    if (!selectedLabel && !hoveredNodeId) return false;
+    const focus = [selectedLabel, hoveredNodeId].filter(Boolean) as string[];
+    return focus.some((id) => id === bracket.a || id === bracket.b);
+}
+
+export function getEdgeHighlightLevel(
+    edge: LayoutEdge,
+    selectedLabel: string | null | undefined,
+    activeIds: Set<string>,
+): EdgeHighlightLevel {
+    if (!selectedLabel && activeIds.size === 0) return "context";
+
+    if (edge.source === selectedLabel || edge.target === selectedLabel) {
+        return "focused";
+    }
+
+    if (
+        edge.kind === "exact-order" &&
+        selectedLabel &&
+        edge.showWhenSelected?.includes(selectedLabel)
+    ) {
+        return "focused";
+    }
+
+    if (activeIds.has(edge.source) && activeIds.has(edge.target)) {
+        return "context";
+    }
+
+    if (selectedLabel || activeIds.size > 0) {
+        return "muted";
+    }
+
+    return "context";
+}
+
+export { edgePath, buildFallbackPayload as buildFallbackLabelGraphFromStages };

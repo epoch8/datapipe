@@ -1,4 +1,4 @@
-from typing import Any, Generator
+from typing import Any, Callable, Generator
 
 import ray
 from tqdm_loggable.auto import tqdm
@@ -19,6 +19,7 @@ class RayExecutor(Executor):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
@@ -64,6 +65,8 @@ class RayExecutor(Executor):
         try:
             for result in tqdm(_results(idx_gen), total=idx_count):
                 res_changelist.extend(result)
+                if on_batch_complete is not None:
+                    on_batch_complete()
         finally:
             idx_gen.close()
 

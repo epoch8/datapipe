@@ -52,6 +52,9 @@ from datapipe_ml.training.staging import (
 
 logger = logging.getLogger(__name__)
 
+# Lower bound for F1-calibrated score thresholds (YOLOv5 CSV + YOLOv8 Ultralytics curves).
+YOLO_MIN_SCORE_THRESHOLD = 0.01
+
 
 class YoloTrainingConfigForCloud(Protocol):
     data: Optional[Union[str, "YoloDataYAMLConfig"]]
@@ -101,7 +104,7 @@ def yolo_best_threshold_from_curve(
     x: Sequence[float],
     y: Union[Sequence[Sequence[float]], np.ndarray],
     *,
-    min_threshold: float = 0.3,
+    min_threshold: float = YOLO_MIN_SCORE_THRESHOLD,
 ) -> float:
     """Return the confidence threshold used by YOLO F1-confidence plots."""
     best_threshold = 0.45
@@ -183,7 +186,7 @@ def yolo_load_best_threshold_from_curve_csv(path: Union[str, Path, Pathy]) -> fl
             df = pd.read_csv(src)
         if "best_threshold" not in df.columns or df.empty:
             return best_threshold
-        return max(0.3, float(cast(Any, df.loc[0, "best_threshold"])))
+        return max(YOLO_MIN_SCORE_THRESHOLD, float(cast(Any, df.loc[0, "best_threshold"])))
     except KeyboardInterrupt:
         raise
     except Exception:
@@ -483,6 +486,7 @@ def yolo_collect_results_generic(
     ann = result_cls.__annotations__
     filesystem = fsspec.open(str(exp_pathy / weights_subdir / "best.pt")).fs
     best_epoch_resolved = False
+    skipped_epochs: List[int] = []
     for idx in df.index:
         epoch = int(float(cast(Any, df.loc[idx, "epoch"])))
         model_path = _resolve_yolo_epoch_weight_path(
@@ -494,11 +498,7 @@ def yolo_collect_results_generic(
             filesystem=filesystem,
         )
         if model_path is None:
-            logger.warning(
-                "Skipping epoch %s: no weight file in %s",
-                epoch,
-                exp_pathy / weights_subdir,
-            )
+            skipped_epochs.append(epoch)
             continue
         if epoch == best_epoch:
             best_epoch_resolved = True
@@ -525,6 +525,13 @@ def yolo_collect_results_generic(
             **missing_values,
         }
         results.append(result_cls(**payload))  # type: ignore
+
+    if skipped_epochs:
+        logger.debug(
+            "Skipped %s epochs without per-epoch weight files in %s",
+            len(skipped_epochs),
+            exp_pathy / weights_subdir,
+        )
 
     if not best_epoch_resolved:
         raise FileNotFoundError(

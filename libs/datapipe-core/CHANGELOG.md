@@ -1,3 +1,48 @@
+# Unreleased (WIP)
+
+## Extension hooks for CLI
+
+* New `importlib.metadata` entry-point groups for extensions:
+  * `datapipe.pipeline_init` — runs after `load_pipeline()`
+  * `datapipe.run_callbacks` — composable factories returning `RunCallback`
+    instances attached to core `run_steps` (e.g. Ops run recording)
+  * `datapipe.db_create_all` — hooks into `datapipe db create-all`
+* `run_steps(..., callbacks=)` is the single execution path; callbacks receive
+  lifecycle events (`on_run_start` / `on_step_*` / `on_run_*`) and optional
+  progress via `ComputeStep.run_full(..., progress=)`
+* `datapipe run` gains `--loop`, `--loop-delay`, and `--no-callbacks`
+  (`--no-callbacks` skips attaching all run callbacks from entry points)
+* `datapipe step run` gains `--no-callbacks` (works with existing `--loop`)
+* Callback failures are fail-open (logged) and do not mask step errors
+
+## Schema creation
+
+* Extracted `ensure_db_schema(dbconn)` in `datapipe.store.database`
+* Schema is created automatically on `TableStoreDB` / `SQLTableMeta` /
+  `SQLTransformMeta` when `create_table=True`, and from
+  `datapipe db create-all`
+* `datapipe db create-all --force-recreate` drops all known SQL tables before
+  recreating them (destructive; for local development when schema drifted)
+* `datapipe db create-all` also syncs existing tables to current metadata
+  (ADD COLUMN / ALTER) via Alembic `produce_migrations` + `Operations.invoke`,
+  without writing migration revision files, when the optional
+  `datapipe-core[alembic]` extra is installed; otherwise sync is skipped
+* `datapipe db create-all` refuses to mutate the database when Alembic has
+  stamped a revision (`alembic_version.version_num` is set) — use
+  `alembic upgrade` instead of create-all / `--force-recreate` / metadata sync
+
+## Executor / step progress
+
+* `Executor.run_process_batch` accepts optional `on_batch_complete`
+* `ComputeStep.run_full` / `BaseBatchTransformStep.run_full` accept optional
+  `progress` callback
+* Step logs include input/output table names
+
+## Fixes
+
+* Disable Ray UV runtime env by default (`RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`)
+  before importing Ray, avoiding misconfigured `uv run` worker startups
+
 # WIP 0.15.1
 
 ## Changes

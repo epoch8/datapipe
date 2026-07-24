@@ -162,7 +162,7 @@ class TrainContext:
     dt__training_status: DataTable
     dt__frozen_dataset: DataTable
     dt__frozen_dataset__has__image_gt: Optional[DataTable]
-    dt__train_config: DataTable
+    dt__train_config: Optional[DataTable]
     # column names (polymorphic)
     model_other_primary_keys: List[str]
     model_id__name: str

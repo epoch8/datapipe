@@ -10,6 +10,7 @@ from sqlalchemy import Column
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import Executor, ExecutorConfig
 from datapipe.run_config import RunConfig
+from datapipe.run_callback import ProgressCallback, RunCallback
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
 from datapipe.types import (
@@ -233,6 +234,9 @@ class ComputeStep:
     def get_name(self) -> str:
         return self.name
 
+    def format_io(self) -> str:
+        return f"{[inp.dt.name for inp in self.input_dts]} -> {[out.dt.name for out in self.output_dts]}"
+
     @property
     def labels(self) -> Labels:
         return self._labels if self._labels else []
@@ -290,6 +294,7 @@ class ComputeStep:
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
+        progress: ProgressCallback | None = None,
     ) -> None:
         raise NotImplementedError()
 
@@ -334,7 +339,6 @@ class DatapipeApp:
         self.ds = ds
         self.catalog = catalog
         self.pipeline = pipeline
-
         self.steps = build_compute(ds, catalog, pipeline)
 
 
@@ -366,21 +370,64 @@ def print_compute(steps: list[ComputeStep]) -> None:
     pprint.pp(steps)
 
 
+def _notify(callbacks: Sequence[RunCallback], method: str, *args: object) -> None:
+    """Fail-open: callback errors are logged and must not mask pipeline errors."""
+    for callback in callbacks:
+        try:
+            getattr(callback, method)(*args)
+        except Exception:
+            logger.exception(
+                "Run callback %r failed during %s",
+                callback,
+                method,
+            )
+
+
+def _make_progress_callback(
+    callbacks: Sequence[RunCallback],
+    step: ComputeStep,
+) -> ProgressCallback | None:
+    if not callbacks:
+        return None
+
+    def progress(completed: int, total: int | None) -> None:
+        _notify(callbacks, "on_step_progress", step, completed, total)
+
+    return progress
+
+
 def run_steps(
     ds: DataStore,
     steps: Sequence[ComputeStep],
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
+    callbacks: Sequence[RunCallback] = (),
 ) -> None:
-    for step in steps:
-        with tracer.start_as_current_span(
-            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-        ):
-            logger.info(
-                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-            )
+    _notify(callbacks, "on_run_start", steps)
 
-            step.run_full(ds=ds, run_config=run_config, executor=executor)
+    try:
+        for step in steps:
+            _notify(callbacks, "on_step_start", step)
+
+            try:
+                with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                    logger.info(f"Running {step.name} {step.format_io()}")
+                    step.run_full(
+                        ds=ds,
+                        run_config=run_config,
+                        executor=executor,
+                        progress=_make_progress_callback(callbacks, step),
+                    )
+            except BaseException as exc:
+                _notify(callbacks, "on_step_error", step, exc)
+                raise
+            else:
+                _notify(callbacks, "on_step_success", step)
+    except BaseException as exc:
+        _notify(callbacks, "on_run_error", exc)
+        raise
+    else:
+        _notify(callbacks, "on_run_success")
 
 
 def run_pipeline(
@@ -423,13 +470,8 @@ def run_steps_changelist(
         while not current_changes.empty() and iteration < 100:
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
-                    with tracer.start_as_current_span(
-                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                    ):
-                        logger.info(
-                            f"Running {step.name} "
-                            f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                        )
+                    with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                        logger.info(f"Running {step.name} {step.format_io()}")
 
                         if isinstance(step, BaseBatchTransformStep):
                             step_changes = step.run_changelist(

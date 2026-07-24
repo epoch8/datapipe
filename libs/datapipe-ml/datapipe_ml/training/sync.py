@@ -410,6 +410,7 @@ class PeriodicTrainingSync:
         model_id: Optional[str] = None,
         discover_checkpoints: Optional[DiscoverCheckpointsInRunDir] = None,
         epoch_for_path: Optional[EpochForPath] = None,
+        training_run_key: Optional[str] = None,
     ):
         self.src = src
         self.dst = dst
@@ -417,6 +418,7 @@ class PeriodicTrainingSync:
         self.model_id = model_id
         self.discover_checkpoints = discover_checkpoints
         self.epoch_for_path = epoch_for_path
+        self.training_run_key = training_run_key
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._failure_tracker = _SyncFailureTracker(config.max_consecutive_sync_failures)

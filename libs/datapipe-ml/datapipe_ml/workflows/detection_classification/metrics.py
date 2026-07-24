@@ -20,9 +20,9 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import IndexDF, Labels, PipelineInput, PipelineOutput, Required
+from datapipe.types import IndexDF, Labels, PipelineInput, PipelineOutput, Required, required_pipeline_input
 from natsort import natsorted
-from sqlalchemy import JSON, Column, Float, and_, func, select, tuple_
+from sqlalchemy import JSON, Column, Float, and_, func, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, pipeline_output_as_input, get_datatable, get_pipeline_table_name
@@ -33,11 +33,25 @@ from datapipe_ml.core.image_data import (
 from datapipe_ml.metrics.common import (
     CLASS_METRIC_COLUMNS,
     KNOWN_OVERALL_METRIC_COLUMNS,
+    METRICS_NULL_LABEL,
     OVERALL_BASE_METRIC_COLUMNS,
     float_columns,
+    idx_in_table_clause,
     macro_weighted_metric_selects,
+    metrics_label_to_storage,
     precision_recall_f1,
     stable_unique,
+)
+from datapipe_ml.metrics.inputs import (
+    build_ground_truth_batch_inputs,
+    get_ground_truth_datatables,
+    ground_truth_convert_keys,
+    merged_ground_truth_primary_schema,
+    model_primary_key_columns,
+    model_primary_keys_in_table,
+    prediction_convert_keys,
+    primary_ground_truth_input,
+    wrap_ground_truth_inputs,
 )
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
 from datapipe_ml.tasks.segmentation.inference import Inference_SegmentationModel, SEGMENTATION_INFERENCE_SPEC
@@ -85,12 +99,14 @@ def count_pipeline_metrics_on_image(
         return pd.DataFrame(columns=out_cols)
 
     df__image__ground_truth__merge__subset = pd.merge(df__image__ground_truth, df__subset__has__image)
+    gt_convert_keys = ground_truth_convert_keys(primary_keys, pipeline_model_primary_keys, df__image__ground_truth__merge__subset)
     df__true_images_data = convert_df_with_bbox_to_df_with_image_data(
-        df__image__ground_truth__merge__subset, primary_keys + ["subset_id"], bbox_id__name
+        df__image__ground_truth__merge__subset, gt_convert_keys, bbox_id__name
     )
     df__pipeline_prediction__merge__subset = pd.merge(df__pipeline_prediction, df__subset__has__image)
+    pred_convert_keys = prediction_convert_keys(primary_keys, pipeline_model_primary_keys, df__pipeline_prediction__merge__subset)
     df__pred_images_data = convert_df_with_bbox_to_df_with_image_data(
-        df__pipeline_prediction__merge__subset, key_cols, bbox_id__name
+        df__pipeline_prediction__merge__subset, pred_convert_keys, bbox_id__name
     )
     df__images_data = pd.merge(
         df__true_images_data,
@@ -118,7 +134,7 @@ def count_pipeline_metrics_on_image(
         true_labels = [bbox.label for bbox in true_img.bboxes_data]
         pred_labels = [bbox.label for bbox in pred_img_orig.bboxes_data]
         labels = natsorted(set(true_labels).union(pred_labels))
-        labels = [label for label in labels if label != extra_label]
+        labels = [label for label in labels if label != extra_label and label is not None]
 
         for threshold in thresholds:
             pred_img = copy.deepcopy(pred_img_orig)
@@ -160,6 +176,23 @@ def count_pipeline_metrics_on_image(
                     "calc__FN_extra_bbox": FN_extra,
                 }
                 rows.append(row)
+
+            images_support = int(len(true_img.bboxes_data) > 0 or len(pred_img.bboxes_data) > 0)
+            rows.append(
+                {
+                    **base_row,
+                    "label": metrics_label_to_storage(None),
+                    "threshold": threshold,
+                    "calc__images_support": images_support,
+                    "calc__support": len(true_img.bboxes_data),
+                    "calc__TP": matching.get_pipeline_TP(label=None),
+                    "calc__FP": matching.get_pipeline_FP(label=None),
+                    "calc__FN": matching.get_pipeline_FN(label=None),
+                    "calc__TP_extra_bbox": matching.get_pipeline_TP_extra_bbox(label=None),
+                    "calc__FP_extra_bbox": matching.get_pipeline_FP_extra_bbox(label=None),
+                    "calc__FN_extra_bbox": matching.get_pipeline_FN_extra_bbox(label=None),
+                }
+            )
 
     if not rows:
         return pd.DataFrame(columns=out_cols)
@@ -221,7 +254,7 @@ def count_pipeline_metrics_on_subset(
             *img_pk_cols,
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
     )
     img_rows_distinct = base_img_rows.distinct().cte("img_rows_distinct")
 
@@ -257,7 +290,8 @@ def count_pipeline_metrics_on_subset(
             func.sum(col_FN_ex).label("sum_FN_ex"),
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
+        .where(col_label != METRICS_NULL_LABEL)
         .group_by(*grp_keys_tbl, col_label)
         .cte("class_agg")
     )
@@ -538,7 +572,7 @@ def count_pipeline_metrics_on_subset(
 
 @dataclass
 class CountMetrics_Subset_PipelineModel(PipelineStep):
-    input__image__ground_truth: PipelineInput
+    input__image__ground_truth: PipelineInput | Sequence[PipelineInput]
     input__subset__has__image: PipelineInput
     input__pipeline_prediction: PipelineInput
     output__pipeline_model__metrics_on__image: PipelineOutput
@@ -570,29 +604,40 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
             raise TypeError("filters must be a dict or a zero-argument callable returning a dict")
 
         check_columns_are_in_table(ds, self.input__subset__has__image, ["subset_id"])
+        primary_gt = primary_ground_truth_input(self.input__image__ground_truth)
+        prediction_model_keys = model_primary_keys_in_table(
+            ds, self.input__pipeline_prediction, self.pipeline_model_primary_keys
+        )
+        check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys)
         if self.bbox_id__name is not None:
             check_columns_are_in_table(
                 ds,
-                self.input__image__ground_truth,
+                primary_gt,
                 self.primary_keys + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max", "label"],
             )
             check_columns_are_in_table(
                 ds,
                 self.input__pipeline_prediction,
                 self.primary_keys
-                + self.pipeline_model_primary_keys
+                + prediction_model_keys
                 + [self.bbox_id__name, "x_min", "y_min", "x_max", "y_max", "label"],
             )
         else:
-            check_columns_are_in_table(ds, self.input__image__ground_truth, self.primary_keys + ["bboxes", "labels"])
+            check_columns_are_in_table(ds, primary_gt, self.primary_keys + ["bboxes", "labels"])
             check_columns_are_in_table(
                 ds,
                 self.input__pipeline_prediction,
-                self.primary_keys + self.pipeline_model_primary_keys + ["bboxes", "labels"],
+                self.primary_keys + prediction_model_keys + ["bboxes", "labels"],
             )
 
-        dt__input__image__ground_truth = get_datatable(ds, self.input__image__ground_truth)
+        dt__input__image__ground_truth_tables = get_ground_truth_datatables(ds, self.input__image__ground_truth)
         dt__input__pipeline_prediction = get_datatable(ds, self.input__pipeline_prediction)
+        model_key_columns = model_primary_key_columns(
+            ds,
+            self.pipeline_model_primary_keys,
+            prediction=self.input__pipeline_prediction,
+            ground_truth=self.input__image__ground_truth,
+        )
 
         catalog.add_datatable(
             get_pipeline_table_name(self.output__pipeline_model__metrics_on__image),
@@ -602,11 +647,7 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__pipeline_model__metrics_on__image),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__image__ground_truth.primary_schema
-                            if column.name not in ["subset_id"]
-                        ]
+                        data_sql_schema=merged_ground_truth_primary_schema(dt__input__image__ground_truth_tables)
                         + [
                             column
                             for column in dt__input__pipeline_prediction.primary_schema
@@ -645,11 +686,7 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__pipeline_model__metrics_by_cls_on__subset),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__pipeline_prediction.primary_schema
-                            if column.name in self.pipeline_model_primary_keys
-                        ]
+                        data_sql_schema=model_key_columns
                         + [
                             Column("subset_id", String, primary_key=True),
                             Column("label", String, primary_key=True),
@@ -687,11 +724,7 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                     TableStoreDB(
                         dbconn=ds.meta_dbconn,
                         name=get_pipeline_table_name(self.output__pipeline_model__metrics_on__subset),
-                        data_sql_schema=[
-                            column
-                            for column in dt__input__pipeline_prediction.primary_schema
-                            if column.name in self.pipeline_model_primary_keys
-                        ]
+                        data_sql_schema=model_key_columns
                         + [Column("subset_id", String, primary_key=True)]
                         + (
                             [Column("threshold", Float, primary_key=True)]
@@ -709,14 +742,19 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                 ).table_store
             ),
         )
+        ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=count_pipeline_metrics_on_image,
+                    func=wrap_ground_truth_inputs(
+                        count_pipeline_metrics_on_image,
+                        n_ground_truth_inputs=len(ground_truth_inputs),
+                        primary_keys=self.primary_keys,
+                    ),
                     inputs=[
-                        self.input__image__ground_truth,
-                        self.input__subset__has__image,
-                        self.input__pipeline_prediction,
+                        *ground_truth_inputs,
+                        required_pipeline_input(self.input__subset__has__image),
+                        required_pipeline_input(self.input__pipeline_prediction),
                     ],
                     outputs=[self.output__pipeline_model__metrics_on__image],
                     transform_keys=sorted(set(self.primary_keys + self.pipeline_model_primary_keys + ["subset_id"])),

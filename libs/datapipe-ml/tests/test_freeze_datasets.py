@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from tests.utils import assert_columns_present, assert_no_nulls
@@ -8,6 +10,34 @@ from tests.utils import assert_columns_present, assert_no_nulls
 def _require_datapipe_runtime():
     pytest.importorskip("tqdm")
     pytest.importorskip("datapipe")
+
+
+def test_freeze_created_at_to_ts_treats_naive_as_utc():
+    _require_datapipe_runtime()
+    from datapipe_ml.core.datapipe import freeze_created_at_to_ts
+
+    naive = datetime(2026, 7, 8, 21, 47, 12, 345678)
+    expected = naive.replace(tzinfo=timezone.utc).timestamp()
+    assert freeze_created_at_to_ts(naive) == expected
+    if datetime.now().astimezone().utcoffset().total_seconds() != 0:
+        assert freeze_created_at_to_ts(naive) != naive.timestamp()
+
+
+def test_freeze_created_at_to_ts_keeps_aware_values():
+    _require_datapipe_runtime()
+    from datapipe_ml.core.datapipe import freeze_created_at_to_ts
+
+    aware = datetime(2026, 7, 8, 21, 47, 12, 345678, tzinfo=timezone.utc)
+    assert freeze_created_at_to_ts(aware) == aware.timestamp()
+
+
+def test_freeze_now_utc_has_microsecond_precision():
+    _require_datapipe_runtime()
+    from datapipe_ml.core.datapipe import freeze_now_utc
+
+    ts = freeze_now_utc()
+    assert isinstance(ts, datetime)
+    assert ts.tzinfo is None
 
 
 def _store_base_inputs(ds, catalog, smoke_dataset):
@@ -190,3 +220,33 @@ def test_classification_freeze_dataset(base_datastore, base_catalog_factory, smo
         len(smoke_dataset.image),
     )
     assert_no_nulls(base_datastore.get_table("classification_frozen_dataset__has__image_gt").get_data(), ["label"])
+
+
+def test_freeze_skips_repeat_when_ground_truth_unchanged(base_datastore, base_catalog_factory, smoke_dataset, datapipe_dir):
+    _require_datapipe_runtime()
+    from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
+
+    catalog = base_catalog_factory()
+    _store_base_inputs(base_datastore, catalog, smoke_dataset)
+
+    step = DetectionFreezeDataset(
+        input__image="image",
+        input__image__ground_truth="image__ground_truth",
+        input__subset__has__image="subset__has__image",
+        output__detection_frozen_dataset="detection_frozen_dataset",
+        output__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
+        working_dir=str(datapipe_dir),
+        primary_keys=["image_id"],
+        min_delta=1,
+        min_within_time="0s",
+        create_table=True,
+        bbox_id__name=None,
+    )
+
+    _run_single_step(base_datastore, catalog, step)
+    frozen_after_first = len(base_datastore.get_table("detection_frozen_dataset").get_data())
+    assert frozen_after_first == 1
+
+    _run_single_step(base_datastore, catalog, step)
+
+    assert len(base_datastore.get_table("detection_frozen_dataset").get_data()) == frozen_after_first

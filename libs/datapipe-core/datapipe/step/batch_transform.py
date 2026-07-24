@@ -356,11 +356,12 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
+        progress: Callable[[int, int | None], None] | None = None,
     ) -> None:
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
@@ -370,6 +371,16 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return
 
+        batches_done = 0
+        if progress is not None:
+            progress(0, idx_count)
+
+        def _on_batch_complete() -> None:
+            nonlocal batches_done
+            batches_done += 1
+            if progress is not None:
+                progress(batches_done, idx_count)
+
         executor.run_process_batch(
             name=self.name,
             ds=ds,
@@ -378,6 +389,7 @@ class BaseBatchTransformStep(ComputeStep):
             process_fn=self.process_batch,
             run_config=run_config,
             executor_config=self.executor_config,
+            on_batch_complete=_on_batch_complete if progress is not None else None,
         )
 
         ds.event_logger.log_step_full_complete(self.name)
@@ -401,7 +413,7 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
 
         changes = executor.run_process_batch(
             name=self.name,
@@ -425,7 +437,7 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         return self.process_batch(
@@ -445,6 +457,7 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: list[str] | None = None
     kwargs: dict | None = None
     labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
@@ -465,6 +478,7 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
             )
         ]
 
@@ -481,6 +495,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
         labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -490,6 +505,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
         )
 
         self.func = func

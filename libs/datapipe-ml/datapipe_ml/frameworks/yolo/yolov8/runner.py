@@ -43,7 +43,8 @@ class YoloV8_TrainingConfig:
     persisted_project_dir: Optional[str] = None
 
     # yolov8 arguments
-    model: str = "yolov8l-seg.pt"  # Specifies the model file for training
+    # Task-specific subclasses override ``model`` (Ultralytics nano defaults).
+    model: str = "yolov8n.pt"
     data: Optional[Union[str, YoloDataYAMLConfig]] = "coco128.yaml"  # YoloV8_Data_YAMLConfig or dataset.yaml path
     epochs: int = 300  # Total number of training epochs
     time: Optional[int] = None  # Maximum training time in hours.
@@ -206,6 +207,27 @@ class YoloV8_TrainingConfig:
         if kwargs.get("copy_paste_mode") is None:
             kwargs.pop("copy_paste_mode", None)
         return kwargs
+
+
+@dataclass
+class YoloV8DetectionTrainingConfig(YoloV8_TrainingConfig):
+    """Detection train config; Ultralytics default ``yolov8n.pt``."""
+
+    model: str = "yolov8n.pt"
+
+
+@dataclass
+class YoloV8SegmentationTrainingConfig(YoloV8_TrainingConfig):
+    """Instance segmentation train config; Ultralytics default ``yolov8n-seg.pt``."""
+
+    model: str = "yolov8n-seg.pt"
+
+
+@dataclass
+class YoloV8KeypointsTrainingConfig(YoloV8_TrainingConfig):
+    """Pose / keypoints train config; Ultralytics default ``yolov8n-pose.pt``."""
+
+    model: str = "yolov8n-pose.pt"
 
 
 @dataclass

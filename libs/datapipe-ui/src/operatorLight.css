@@ -1,0 +1,647 @@
+:root {
+    /* Global UI scale. Set to 1 to return to native 100%; 0.8 mirrors an 80%
+       browser zoom. --dp-vh is a full-viewport height that stays correct under
+       the zoom (100vh renders at scale, so divide it back out). */
+    --dp-ui-scale: 0.8;
+    --dp-vh: calc(100vh / var(--dp-ui-scale));
+
+    /* Text-only enlargement factor. The layout keeps the 0.8 zoom above, but
+       text is rendered ~20% larger relative to that layout for readability. */
+    --dp-font-scale: 1.2;
+
+    --dp-bg-app: #f5f8fc;
+    --dp-bg-surface: #ffffff;
+    --dp-border-subtle: #dbe3ef;
+    --dp-border-strong: #c8d3e1;
+
+    --dp-text-primary: #0b1220;
+    --dp-text-secondary: #5b6b82;
+    --dp-text-muted: #8a98aa;
+    --dp-text-inverse: #ffffff;
+
+    --dp-accent: #1677ff;
+    --dp-accent-hover: #0958d9;
+    --dp-accent-soft: #e8f2ff;
+
+    --dp-sidebar-bg: #071a36;
+    --dp-sidebar-bg-2: #031126;
+    --dp-sidebar-border: rgba(255, 255, 255, 0.12);
+    --dp-sidebar-text: #dce8f8;
+    --dp-sidebar-text-muted: #94a8c3;
+    --dp-sidebar-hover-bg: rgba(120, 180, 255, 0.10);
+    --dp-sidebar-active-bg: rgba(58, 149, 255, 0.24);
+    --dp-sidebar-active-border: rgba(82, 182, 255, 0.28);
+    --dp-sidebar-active-glow: rgba(82, 182, 255, 0.12);
+    --dp-sidebar-active-text: #f4f9ff;
+    --dp-sidebar-active-indicator: #52b6ff;
+
+    --dp-graph-bg: #fbfdff;
+    --dp-graph-dot: #dce7f5;
+
+    --dp-edge: #52677f;
+    --dp-edge-muted: #c7d1de;
+    --dp-edge-active: #1677ff;
+    --dp-edge-error: #d92d20;
+
+    --dp-table-bg: #fff3e5;
+    --dp-table-bg-2: #ffe5c7;
+    --dp-table-border: #ff7a1a;
+    --dp-table-icon: #ff6b00;
+    --dp-table-text: #3e2407;
+
+    --dp-transform-bg: #effff3;
+    --dp-transform-bg-2: #dcf8e5;
+    --dp-transform-border: #16a34a;
+    --dp-transform-icon: #0fa83d;
+    --dp-transform-text: #083b18;
+
+    --dp-group-bg: #edf5ff;
+    --dp-group-bg-2: #dbeafe;
+    --dp-group-border: #1677ff;
+    --dp-group-icon: #1677ff;
+    --dp-group-text: #074899;
+
+    --dp-status-completed-bg: #d9fbe7;
+    --dp-status-completed-text: #087a2a;
+    --dp-status-completed-border: #8ee2a8;
+
+    --dp-status-pending-bg: #fff3c4;
+    --dp-status-pending-text: #a15c00;
+    --dp-status-pending-border: #ffc84d;
+
+    --dp-status-running-bg: #dcecff;
+    --dp-status-running-text: #0958d9;
+    --dp-status-running-border: #83bfff;
+
+    --dp-status-failed-bg: #ffe1df;
+    --dp-status-failed-text: #b42318;
+    --dp-status-failed-border: #ff9b94;
+}
+
+/* Scale the app via #root (not body). antd popups (Tooltip/Dropdown/Select)
+   portal to document.body; if body itself were zoomed, their getBoundingClientRect
+   based positions would get the zoom applied twice and land in the wrong spot.
+   Zooming #root keeps body unzoomed so popups position correctly. */
+#root {
+    zoom: var(--dp-ui-scale);
+    font-size: calc(14px * var(--dp-font-scale));
+}
+
+/* Enlarge normal text ~20% without changing the layout zoom. antd hardcodes px
+   font-sizes per component, so scale the common text surfaces from their native
+   bases (14px, and 12px for compact chips). */
+.ant-btn,
+.ant-input,
+.ant-input-number,
+.ant-input-number-input,
+.ant-input-affix-wrapper,
+.ant-select,
+.ant-select-item,
+.ant-picker,
+.ant-picker-input > input,
+.ant-table,
+.ant-form,
+.ant-form-item,
+.ant-form-item-label > label,
+.ant-descriptions-item-label,
+.ant-descriptions-item-content,
+.ant-card-head-title,
+.ant-list,
+.ant-menu,
+.ant-breadcrumb,
+.ant-modal,
+.ant-tabs,
+.ant-alert,
+.ant-pagination,
+.ant-radio-wrapper,
+.ant-checkbox-wrapper,
+.ant-dropdown-menu-item,
+.ant-tooltip-inner,
+.ant-popover-inner-content,
+.ant-typography {
+    font-size: calc(14px * var(--dp-font-scale));
+}
+
+.ant-tag,
+.ant-badge-count,
+.ant-table-filter-dropdown,
+.ant-table-filter-dropdown .ant-checkbox-wrapper {
+    font-size: calc(12px * var(--dp-font-scale));
+}
+
+.datapipe-shell {
+    min-height: var(--dp-vh);
+}
+
+.datapipe-sidebar {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: var(--dp-vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: var(--dp-sidebar-width, 280px) !important;
+    max-width: var(--dp-sidebar-width, 280px) !important;
+    min-width: var(--dp-sidebar-width, 280px) !important;
+    flex: 0 0 var(--dp-sidebar-width, 280px) !important;
+    background:
+        radial-gradient(circle at top left, rgba(22, 119, 255, 0.22), transparent 34%),
+        linear-gradient(180deg, var(--dp-sidebar-bg), var(--dp-sidebar-bg-2)) !important;
+    color: var(--dp-sidebar-text);
+    border-right: 1px solid var(--dp-sidebar-border) !important;
+}
+
+/* Shared drag handle for resizable side panels */
+.dp-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 50;
+    background: transparent;
+}
+
+.dp-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    transition: background 120ms ease;
+}
+
+.dp-resize-handle:hover::after,
+.dp-resize-handle:active::after {
+    background: var(--dp-accent, #1677ff);
+}
+
+.dp-resize-handle-left {
+    left: -4px;
+}
+
+.dp-resize-handle-left::after {
+    left: 4px;
+}
+
+.dp-resize-handle-right {
+    right: -4px;
+}
+
+.dp-resize-handle-right::after {
+    right: 4px;
+}
+
+.datapipe-sidebar-logo {
+    padding: 28px 24px 20px;
+    color: var(--dp-text-inverse);
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+}
+
+.datapipe-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 12px;
+}
+
+.datapipe-sidebar-item {
+    height: 56px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--dp-sidebar-text);
+    border-radius: 0 12px 12px 0;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.datapipe-sidebar-item:hover {
+    background: var(--dp-sidebar-hover-bg);
+    color: var(--dp-sidebar-active-text);
+}
+
+.datapipe-sidebar-item.active {
+    color: var(--dp-sidebar-active-text);
+    background: var(--dp-sidebar-active-bg);
+    box-shadow:
+        inset 0 0 0 1px var(--dp-sidebar-active-border),
+        0 8px 22px var(--dp-sidebar-active-glow);
+    backdrop-filter: blur(4px);
+}
+
+.datapipe-sidebar-item.active::after {
+    content: "";
+    width: 4px;
+    height: 36px;
+    margin-left: auto;
+    background: var(--dp-sidebar-active-indicator);
+    border-radius: 999px;
+}
+
+.datapipe-sidebar-item .sidebar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    color: inherit;
+}
+
+.datapipe-sidebar-refresh {
+    width: 100%;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.ops-sidebar-refresh-popover {
+    width: 220px;
+}
+
+.ops-sidebar-refresh-label {
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--dp-gray-700);
+}
+
+.datapipe-main {
+    background: var(--dp-bg-app);
+    color: var(--dp-text-primary);
+}
+
+.datapipe-header {
+    height: 96px;
+    background: var(--dp-bg-surface);
+    border-bottom: 1px solid var(--dp-border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 44px;
+}
+
+.datapipe-title {
+    margin: 0;
+    font-size: 30px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--dp-text-primary);
+}
+
+.datapipe-content {
+    padding: 0;
+    overflow: auto;
+    background: var(--dp-bg-app);
+    flex: 1;
+}
+
+.datapipe-content-padded {
+    padding: 24px 44px;
+}
+
+/* Primary-key columns in data tables, tinted to match the orange PK chips used
+   in the pipeline graph and node detail pages. */
+.dp-pk-col.ant-table-cell {
+    background: #fff8ef;
+}
+
+.ant-table-thead .dp-pk-col.ant-table-cell {
+    background: #fbe6d0;
+    color: #6b3500;
+}
+
+.dp-col-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dp-col-pk-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 5px;
+    border: 1px solid #f2bf8c;
+    background: #fff8ef;
+    color: #6b3500;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Graph page fills the viewport instead of scrolling. It must be a DEFINITE
+   height (not just min-height) so the inner flex column actually shrinks to fit
+   instead of growing to its preferred size. 96px = .datapipe-header height. */
+.datapipe-content-graph {
+    height: calc(var(--dp-vh) - 96px);
+    flex: 0 0 auto;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.graph-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 44px 16px;
+}
+
+.graph-page .datapipe-breadcrumb {
+    padding: 20px 0 0;
+}
+
+/* Reserve space for the label overview so the graph below does not jump/shift
+   when the (async) overview finishes loading. */
+.graph-page-overview {
+    flex: 0 0 auto;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.graph-page .pipeline-label-overview-compact {
+    margin: 8px 0 12px;
+}
+
+.datapipe-breadcrumb {
+    padding: 24px 44px 0;
+    font-size: 16px;
+    color: var(--dp-text-secondary);
+}
+
+.datapipe-breadcrumb a {
+    color: var(--dp-accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.run-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 20px;
+    border-radius: 12px;
+    border: 1px solid #d7e3ef;
+    background: rgba(255, 255, 255, 0.92);
+    color: #087a2a;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.run-status-pill::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #08b83e;
+    box-shadow: 0 0 0 4px rgba(8, 184, 62, 0.12);
+}
+
+.pipeline-card {
+    margin: 16px 44px 44px;
+    background: var(--dp-bg-surface);
+    border: 1px solid var(--dp-border-subtle);
+    border-radius: 14px;
+    box-shadow:
+        0 1px 2px rgba(16, 24, 40, 0.06),
+        0 12px 32px rgba(16, 24, 40, 0.08);
+    overflow: hidden;
+}
+
+/* Inside the graph page the card stretches to fill remaining height. */
+.graph-page .pipeline-card {
+    margin: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* Without a stage sidebar the card is a column (header + graph body). The
+   with-sidebar variant keeps its existing row layout (sidebar | main). */
+.graph-page .pipeline-card:not(.pipeline-card-with-sidebar) {
+    display: flex;
+    flex-direction: column;
+}
+
+.pipeline-card-header {
+    box-sizing: border-box;
+    height: 76px;
+    min-height: 76px;
+    max-height: 76px;
+    /* Selecting a node fills the inspector with tall content. Without this the
+       flex column crushes the header (~76→~36px) and the graph body grows
+       upward — perceived as a camera jump even though cy.pan() is unchanged. */
+    flex: 0 0 76px;
+    flex-shrink: 0;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--dp-border-subtle);
+    overflow: hidden;
+}
+
+.pipeline-card-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--dp-text-primary);
+    flex: 0 1 auto;
+    min-width: 0;
+    /* Never let flex/scale squash the glyph box. */
+    white-space: nowrap;
+    transform: none;
+}
+
+.pipeline-card-title-icon {
+    color: var(--dp-accent);
+    display: inline-flex;
+}
+
+.pipeline-card-body {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pipeline-card-with-sidebar {
+    display: flex;
+    align-items: stretch;
+    min-height: 0;
+}
+
+.pipeline-card-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.pipeline-stage-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    padding: 20px 16px;
+    border-right: 1px solid var(--dp-border-subtle);
+    background: #fafbfd;
+}
+
+.pipeline-stage-runs-card .ant-card-body {
+    padding: 12px;
+}
+
+.recent-runs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recent-run-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+
+.recent-run-link {
+    padding: 0;
+    height: auto;
+    font-weight: 600;
+}
+
+.recent-run-scope {
+    margin: 0;
+    font-size: 11px;
+    line-height: 18px;
+}
+
+.recent-run-time {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.recent-runs-view-all {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.recent-run-row-compact .recent-run-status-icon {
+    width: 16px;
+    text-align: center;
+    font-weight: 700;
+}
+
+.recent-run-status-completed {
+    color: #389e0d;
+}
+
+.recent-run-status-failed {
+    color: #cf1322;
+}
+
+.recent-run-status-running {
+    color: #1677ff;
+}
+
+.overview-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: start;
+}
+
+.overview-recent-runs-card .ant-card-body {
+    padding-top: 12px;
+}
+
+.ops-runs-status-tabs {
+    margin-bottom: 12px;
+}
+
+.ops-runs-table-wrap {
+    max-width: calc(100% / 1.5);
+    width: 100%;
+}
+
+@media (max-width: 1100px) {
+    .overview-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.graph-toolbar-button,
+.graph-toolbar-segment {
+    height: 40px;
+    border-radius: 9px;
+    border: 1px solid var(--dp-border-subtle);
+    background: #ffffff;
+    color: #18324f;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 650;
+    font-size: 14px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    cursor: pointer;
+}
+
+.graph-toolbar-button {
+    width: 44px;
+    padding: 0;
+}
+
+.graph-toolbar-segment {
+    padding: 0 14px;
+    gap: 10px;
+}
+
+.graph-toolbar-button:hover,
+.graph-toolbar-segment:hover {
+    border-color: #b6c6db;
+    background: #f8fbff;
+}
+
+.graph-toolbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toolbar-icon-svg {
+    display: block;
+}
+
+.graph-toolbar-floating {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 20;
+}

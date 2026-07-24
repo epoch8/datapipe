@@ -316,6 +316,7 @@ class TrainingStatusManager:
         self.row = dict(row)
         self.heartbeat_interval_s = heartbeat_interval_s
         self.lease_ttl_s = lease_ttl_s
+        self.training_run_key = str(row.get("training_status__run_key") or "")
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 

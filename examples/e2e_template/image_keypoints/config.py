@@ -24,9 +24,9 @@ LABEL_CONFIG = """
 <View>
   <Image name="image" value="$image_url"/>
   <RectangleLabels name="bbox" toName="image">
-    <Label value="person" background="#4ECDC4"/>
+    <Label value="Person" background="#4ECDC4"/>
   </RectangleLabels>
-  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="2">
+  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="0.5">
     <Label value="nose" background="#1f77b4"/>
     <Label value="left_eye" background="#ff7f0e"/>
     <Label value="right_eye" background="#2ca02c"/>
@@ -68,14 +68,18 @@ KEYPOINTS_LABELS = [
     "right_ankle",
 ]
 COCO_PERSON_KEYPOINT_FLIP_IDX = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
-CLASSES_TO_KEEP = {"person"}
+KEYPOINTS_CLASSES = ["Person"]
+CLASSES_TO_KEEP = set(KEYPOINTS_CLASSES)
+
+E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_KEYPOINTS_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n-pose.pt"
 
 KEYPOINTS_MODEL_CONFIG = {
     "keypoints_model_id": "person_yolo_pose_smoke",
     "keypoints_model__type": "yolov8_pose",
-    "keypoints_model__model_path": "yolo11n-pose.pt",
+    "keypoints_model__model_path": str(DEFAULT_KEYPOINTS_MODEL_PATH),
     "keypoints_model__input_size": [16, 16],
-    "keypoints_model__class_names": ["person"],
+    "keypoints_model__class_names": ["Person"],
     "keypoints_model__score_threshold": 0.01,
 }
 
@@ -168,5 +172,52 @@ if not DB_URL:
 
 DB_SCHEMA = os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
+
+CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
+if not CLICKHOUSE_RUN_LOGS_URL:
+    raise RuntimeError(
+        "CLICKHOUSE_RUN_LOGS_URL is required. Copy examples/e2e_template/.env.example to .env, "
+        "start docker compose (clickhouse service), and run: set -a && source ../.env && set +a"
+    )
+
+from datapipe.executor import ExecutorConfig
+
+_MAX_CPU = os.cpu_count() or 4
+
+
+def _use_gpu() -> bool:
+    explicit = os.environ.get("DATAPIPE_USE_GPU")
+    if explicit is not None:
+        return explicit.strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        import torch
+
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2) -> ExecutorConfig:
+    """Embarrassingly parallel I/O and image prep (resize, download, upload)."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
+
+
+def gpu_executor(*, parallelism: int | None = None) -> ExecutorConfig:
+    """GPU when CUDA is available; CPU fallback otherwise."""
+    if _use_gpu():
+        if parallelism is None:
+            try:
+                import torch
+
+                parallelism = max(1, torch.cuda.device_count())
+            except Exception:
+                parallelism = 1
+        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism)
+    return ExecutorConfig(cpu=1.0, parallelism=min(_MAX_CPU, 4))
+
+
+def metrics_executor(*, parallelism_cap: int = 8, cpu_per_task: float = 0.5) -> ExecutorConfig:
+    """CPU-bound metrics aggregation over image batches."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
 
 FIFTYONE_DATASET_NAME = "datapipe_keypoints_e2e"

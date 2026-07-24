@@ -1,13 +1,15 @@
-"""Add a load request, then run the load step:  datapipe step --labels=stage=load run
+"""Add a load request, then run the load step:  datapipe --executor RayExecutor step --labels=stage=load run
 
 Fixed-val demo (freeze val up front, add the tagged train batch later):
 
     # loaded BEFORE training model A — val is frozen from the start
-    python ../scripts/add_request.py --id base-train --n 400 --offset 0   --subset train
-    python ../scripts/add_request.py --id base-val   --n 100 --offset 400 --subset val
-    python ../scripts/add_request.py --id night-val  --n 50  --offset 500 --subset val   --tag night --darken 0.25
+    python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
+    python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
+    python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
     # loaded BEFORE retraining model B (the tagged TRAIN batch — the fix)
-    python ../scripts/add_request.py --id night-train --n 50 --offset 550 --subset train --tag night --darken 0.25
+    python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
+    python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
+    python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
 
 --subset train|val pins every image of the batch to that subset so the random split never moves it.
 Run from examples/detection_tags/detection (so `import config` resolves)."""
@@ -51,7 +53,7 @@ def main() -> int:
     }]))
     print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} "
           f"darken={a.darken} subset={a.subset}")
-    print("now run:  datapipe step --labels=stage=load run")
+    print("now run:  uv run datapipe --executor RayExecutor step --labels=stage=load run")
     return 0
 
 

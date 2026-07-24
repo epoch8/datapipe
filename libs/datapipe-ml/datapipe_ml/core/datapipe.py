@@ -1,10 +1,11 @@
 from collections.abc import Sequence
 import logging
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any, List, Protocol, Tuple, TypeAlias
 
 import numpy as np
 import pandas as pd
+from datapipe.compute import Catalog, make_mungled_step_name, pipeline_input_to_compute_input, pipeline_output_to_compute_output
 from datapipe.datatable import DataStore, DataTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
@@ -98,6 +99,31 @@ def pipeline_output_as_table(output: PipelineOutput) -> TableOrName:
     return get_pipeline_output_table(output)
 
 
+def freeze_now_utc() -> datetime:
+    """UTC created_at for frozen datasets: naive, microsecond precision."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def freeze_created_at_to_ts(value: datetime | pd.Timestamp | float | int | None) -> float | None:
+    """Convert frozen-dataset created_at to UTC unix ts (same units as meta update_ts)."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize(timezone.utc)
+    else:
+        ts = ts.tz_convert(timezone.utc)
+    return ts.timestamp()
+
+
+def freeze_created_at_to_pd_timestamp(value: datetime | pd.Timestamp | float | int) -> pd.Timestamp:
+    unix_ts = freeze_created_at_to_ts(value)
+    assert unix_ts is not None
+    return pd.Timestamp(unix_ts, unit="s", tz=timezone.utc)
+
+
 def is_frozen_dataset_old(
     dt__frozen_dataset: DataTable,
     frozen_dataset_id__names: List[str],
@@ -109,10 +135,15 @@ def is_frozen_dataset_old(
     df__frozen_dataset = dt__frozen_dataset.get_data()
     df__frozen_dataset.set_index(frozen_dataset_id__names, inplace=True)
     df__frozen_dataset.sort_values(by=frozen_dataset__created_at__name, inplace=True, ascending=False)
-    last_timestamp = df__frozen_dataset.iloc[0][frozen_dataset__created_at__name]
     last_frozen_dataset_id = df__frozen_dataset.index[0]
-    current_timestamp = df__frozen_dataset.loc[frozen_dataset_ids, frozen_dataset__created_at__name]
-    if last_timestamp - current_timestamp >= pd.Timedelta(max_within_time):
+    last_ts = freeze_created_at_to_pd_timestamp(
+        df__frozen_dataset.iloc[0][frozen_dataset__created_at__name],
+    )
+    current_raw = df__frozen_dataset.loc[frozen_dataset_ids, frozen_dataset__created_at__name]
+    if isinstance(current_raw, pd.Series):
+        current_raw = current_raw.iloc[0]
+    current_ts = freeze_created_at_to_pd_timestamp(current_raw)
+    if last_ts - current_ts >= pd.Timedelta(max_within_time):
         if print_skipping:
             logger.info(
                 "Frozen Dataset %s is older more than last available frozen dataset %s for %s. Skipping",
@@ -136,10 +167,12 @@ def is_last_frozen_dataset_old_enough(
         return True
     df__frozen_dataset.set_index(frozen_dataset_id__name, inplace=True)
     df__frozen_dataset.sort_values(by=frozen_dataset__created_at__name, inplace=True, ascending=False)
-    last_timestamp = df__frozen_dataset.iloc[0][frozen_dataset__created_at__name].replace(tzinfo=timezone.utc)
     last_frozen_dataset_id = df__frozen_dataset.index[0]
-    current_timestamp = pd.Timestamp.now(timezone.utc)
-    if current_timestamp - last_timestamp <= pd.Timedelta(min_within_time):
+    last_ts = freeze_created_at_to_pd_timestamp(
+        df__frozen_dataset.iloc[0][frozen_dataset__created_at__name],
+    )
+    current_ts = pd.Timestamp.now(timezone.utc)
+    if current_ts - last_ts <= pd.Timedelta(min_within_time):
         if print_skipping:
             logger.info(
                 "Last Frozen Dataset %s is not older more than %s. Skipping.",
@@ -148,3 +181,18 @@ def is_last_frozen_dataset_old_enough(
             )
         return False
     return True
+
+
+def make_mungled_batch_transform_step_name(
+    ds: DataStore,
+    catalog: Catalog,
+    *,
+    base_name: str,
+    inputs: Sequence[PipelineInput],
+    outputs: Sequence[PipelineOutput],
+) -> str:
+    from datapipe.step.batch_transform import BatchTransformStep
+
+    input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in inputs]
+    output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in outputs]
+    return make_mungled_step_name(BatchTransformStep, base_name, input_dts, output_dts)

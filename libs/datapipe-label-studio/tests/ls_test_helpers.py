@@ -1,6 +1,8 @@
 from functools import partial, update_wrapper
+from typing import List, Optional
 
 import numpy as np
+import pandas as pd
 import pytest
 
 PROJECT_LABEL_CONFIG_TEST = """<View>
@@ -90,3 +92,20 @@ def add_predictions(data_df, base_columns):
     data_df["prediction"] = [_make_result_item() for _ in range(len(data_df))]
     data_df["model_version"] = "v1"
     return data_df[base_columns + ["model_version", "prediction"]]
+
+
+def make_best_model_from_predictions(
+    data_df,
+    model_keys: Optional[List[str]] = None,
+    group_by: Optional[List[str]] = None,
+):
+    model_keys = model_keys or ["model_version"]
+    columns = (group_by or []) + model_keys
+    if data_df.empty:
+        return pd.DataFrame(columns=columns)
+    if group_by:
+        return data_df.groupby(group_by, as_index=False)[model_keys].first()[columns]
+    versions = data_df[model_keys].drop_duplicates()
+    if len(versions) != 1:
+        raise ValueError(f"Expected one model version, got {len(versions)}")
+    return versions.reset_index(drop=True)

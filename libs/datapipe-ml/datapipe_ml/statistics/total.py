@@ -14,7 +14,7 @@ from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import DatatableBatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
+from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
 from sqlalchemy import Column
 from sqlalchemy.sql import and_, functions, select
 from sqlalchemy.sql.sqltypes import Integer, String
@@ -89,7 +89,10 @@ class CountTotalLabelOnSubset(PipelineStep):
             [
                 DatatableBatchTransform(
                     func=count_labels_total_on_subset,
-                    inputs=[self.input__item__ground_truth, self.input__subset__has__item],
+                    inputs=[
+                        self.input__item__ground_truth,
+                        required_pipeline_input(self.input__subset__has__item),
+                    ],
                     outputs=[self.output__subset__has__label__total],
                     transform_keys=self.primary_keys + ["subset_id"],
                     labels=self.labels,

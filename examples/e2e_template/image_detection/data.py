@@ -20,7 +20,6 @@ catalog = Catalog(
                     Column("image_name", String(), primary_key=True),
                     Column("image_url", String()),
                 ],
-                create_table=True,
             )
         ),
         "detection_model": Table(
@@ -35,7 +34,41 @@ catalog = Catalog(
                     Column("detection_model__class_names", JSON),
                     Column("detection_model__score_threshold", Float),
                 ],
-                create_table=True,
+            )
+        ),
+        "best_detection_model": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="best_detection_model",
+                data_sql_schema=[
+                    Column("detection_model_id", String(), primary_key=True),
+                ],
+            )
+        ),
+        "detection_prediction": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="detection_prediction",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("detection_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                ],
+            )
+        ),
+        "ls_detection_prediction": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="ls_detection_prediction",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("detection_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                ],
             )
         ),
         "images_with_predictions": Table(
@@ -44,10 +77,9 @@ catalog = Catalog(
                 name="images_with_predictions",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
+                    Column("detection_model_id", String(), primary_key=True),
                     Column("prediction", JSON),
-                    Column("detection_model_id", String()),
                 ],
-                create_table=True,
             )
         ),
         "image__ground_truth": Table(
@@ -59,7 +91,6 @@ catalog = Catalog(
                     Column("bboxes", JSON),
                     Column("labels", JSON),
                 ],
-                create_table=True,
             )
         ),
         "image__subset": Table(
@@ -70,25 +101,15 @@ catalog = Catalog(
                     Column("image_name", String, primary_key=True),
                     Column("subset_id", String, primary_key=True),
                 ],
-                create_table=True,
             )
         ),
-        "detection_predictions": Table(
+        "sec__image_without_ground_truth": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="detection_predictions",
+                name="sec__image_without_ground_truth",
                 data_sql_schema=[
-                    Column("image_name", String, primary_key=True),
-                    Column("detection_model_id", String, primary_key=True),
-                    Column("bbox_id", String, primary_key=True),
-                    Column("x_min", Integer),
-                    Column("y_min", Integer),
-                    Column("x_max", Integer),
-                    Column("y_max", Integer),
-                    Column("label", String),
-                    Column("prediction__detection_score", Float),
+                    Column("image_name", String(), primary_key=True),
                 ],
-                create_table=True,
             )
         ),
         "local_images": Table(
@@ -99,16 +120,17 @@ catalog = Catalog(
                     Column("image_name", String(255), primary_key=True),
                     Column("local_path", String(1024)),
                 ],
-                create_table=True,
             )
         ),
-        "fiftyone_predictions": Table(
+        "fiftyone_images": Table(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="predictions",
-                rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                fo_detections_label="images",
+                rm_only_fo_fields=False,
+                primary_schema=[
+                    Column("image_name", String(255), primary_key=True),
+                ],
             )
         ),
         "fiftyone_annotations": Table(
@@ -117,7 +139,22 @@ catalog = Catalog(
                 fo_session=fo_session,
                 fo_detections_label="annotations",
                 rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["subset_id"]
+            )
+        ),
+        "fiftyone_predictions_from_best_model": Table(
+            FiftyOneImagesDataTableStore(
+                dataset=FIFTYONE_DATASET_NAME,
+                fo_session=fo_session,
+                fo_detections_label="predictions_from_best_model",
+                rm_only_fo_fields=True,
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["detection_model_id"]
             )
         ),
     }

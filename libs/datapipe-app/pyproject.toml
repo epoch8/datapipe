@@ -1,12 +1,13 @@
 [project]
 name = "datapipe-app"
-version = "0.5.4"
+version = "0.6.0"
 description = "REST API, debug UI, and CLI extensions for Datapipe pipelines"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "datapipe-core",
+    "httpx",
     "fastapi>=0.69.0",
     "uvicorn[standard]>=0.17.0",
     "click>=7.1.2",
@@ -19,9 +20,21 @@ dependencies = [
 [project.optional-dependencies]
 gcp = ["opentelemetry-exporter-gcp-trace>=1.3.0,<2"]
 jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
+clickhouse = ["clickhouse-connect>=0.7.0", "clickhouse-sqlalchemy>=0.3.0"]
+ui = ["datapipe-ui"]
+ml = ["datapipe-ui", "datapipe-ui-ml", "datapipe-app-ml-ops"]
 
 [project.entry-points."datapipe.cli"]
-datapipe_app = "datapipe_app.cli:register_commands"
+datapipe_app = "datapipe_app.app.cli:register_commands"
+
+[project.entry-points."datapipe.pipeline_init"]
+datapipe_app = "datapipe_app.observability.config.settings:bind_pipeline_ops"
+
+[project.entry-points."datapipe.run_callbacks"]
+datapipe_app = "datapipe_app.observability.cli.cli_runner:create_run_callback"
+
+[project.entry-points."datapipe.db_create_all"]
+datapipe_app = "datapipe_app.app.db_schema:create_observability_tables_hook"
 
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
@@ -35,22 +48,24 @@ dev = [
     "mypy",
     "pytest<8",
     "sqlalchemy",
+    "datapipe-app-ml-ops",
+    "datapipe-ml[sqlite]",
+    "clickhouse-connect>=0.7.0",
+    "clickhouse-sqlalchemy>=0.3.0",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-app-ml-ops = { workspace = true }
+datapipe-ml = { workspace = true }
+datapipe-ui = { workspace = true }
+datapipe-ui-ml = { workspace = true }
 
 [tool.hatch.build.targets.sdist]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [build-system]
 requires = ["hatchling"]

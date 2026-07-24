@@ -1,3 +1,8 @@
+# Neo4j keeps image defaults (cannot run as arbitrary host uid).
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
 services:
   neo4j:
     image: neo4j:latest

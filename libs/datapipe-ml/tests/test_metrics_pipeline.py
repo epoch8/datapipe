@@ -114,3 +114,14 @@ def test_pipeline_metrics_for_perfect_prediction(base_datastore, dbconn):
     assert row["calc__support"] == 1
     assert row["calc__accuracy"] == pytest.approx(1.0)
     assert row["calc__weighted_f1_score"] == pytest.approx(1.0)
+
+    per_image = ds.get_table("pipeline_metrics_on_image").get_data()
+    from datapipe_ml.metrics.common import METRICS_NULL_LABEL, is_metrics_null_label
+
+    null_rows = per_image[per_image["label"].map(is_metrics_null_label)]
+    assert len(null_rows) == 1
+    assert null_rows.iloc[0]["calc__TP"] == 1
+    assert null_rows.iloc[0]["calc__FP"] == 0
+
+    by_cls = ds.get_table("pipeline_metrics_by_cls").get_data()
+    assert METRICS_NULL_LABEL not in set(by_cls["label"].tolist())

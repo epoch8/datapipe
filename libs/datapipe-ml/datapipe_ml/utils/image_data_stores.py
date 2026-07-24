@@ -249,6 +249,47 @@ class ConnectedImageDataTableStore(TableStore):
             yield df_meta
 
 
+def _primary_schema_signature(schema: DataSchema) -> tuple[tuple[str, str, bool], ...]:
+    return tuple((column.name, str(column.type), bool(column.primary_key)) for column in schema)
+
+
+_fiftyone_dataset_stores: dict[str, list["FiftyOneImagesDataTableStore"]] = {}
+
+
+def _reset_fiftyone_dataset_store_registry() -> None:
+    _fiftyone_dataset_stores.clear()
+
+
+def _register_fiftyone_dataset_store(store: "FiftyOneImagesDataTableStore") -> None:
+    """Track FiftyOne stores per dataset and validate multi-table layout at construction."""
+    dataset = store.dataset
+    stores = _fiftyone_dataset_stores.setdefault(dataset, [])
+    if not stores:
+        stores.append(store)
+        return
+
+    first_store = stores[0]
+    if first_store.rm_only_fo_fields:
+        raise ValueError(
+            f'FiftyOne dataset "{dataset}": first FiftyOneImagesDataTableStore must use '
+            "rm_only_fo_fields=False (base samples table)"
+        )
+    if not store.rm_only_fo_fields:
+        raise ValueError(
+            f'FiftyOne dataset "{dataset}": additional FiftyOneImagesDataTableStore must use '
+            "rm_only_fo_fields=True"
+        )
+
+    base_schema = _primary_schema_signature(first_store.primary_schema)
+    schema = _primary_schema_signature(store.primary_schema)
+    if schema != base_schema:
+        raise ValueError(
+            f'FiftyOne dataset "{dataset}": FiftyOneImagesDataTableStore primary_schema '
+            f"{schema!r} does not match the first store {base_schema!r}"
+        )
+    stores.append(store)
+
+
 class FiftyOneImagesDataTableStore(TableStore):
     def __init__(
         self,
@@ -297,6 +338,7 @@ class FiftyOneImagesDataTableStore(TableStore):
         self.attrnames_no_filepath = [attrname for attrname in self.attrnames if attrname != "filepath"]
         self.fo_dataset = None
         self.create_dataset_if_empty = create_dataset_if_empty
+        _register_fiftyone_dataset_store(self)
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema

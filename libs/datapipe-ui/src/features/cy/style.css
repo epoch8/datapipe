@@ -1,0 +1,761 @@
+.cy-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    margin: auto;
+    background-color: var(--dp-graph-bg);
+    background-image: radial-gradient(var(--dp-graph-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.pipeline-graph-embedded {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.pipeline-graph-embedded .cy-container-embedded {
+    height: 100%;
+    /* Parent flex chain must own the height. A min-height here fights the
+       inspector panel and reflows the canvas on every select/deselect. */
+    min-height: 0;
+}
+
+.node-core,
+.node-compound-label {
+    box-sizing: border-box;
+    border-radius: 9px;
+    border: 2px solid transparent;
+    pointer-events: auto;
+    box-shadow:
+        0 1px 2px rgba(16, 24, 40, 0.12),
+        0 8px 18px rgba(16, 24, 40, 0.08);
+    overflow: hidden;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.node-content {
+    height: 100%;
+    padding: 11px 16px;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+}
+
+.node-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.node-icon-svg {
+    width: 22px;
+    height: 22px;
+}
+
+.node-body {
+    min-width: 0;
+}
+
+.node-title {
+    font-size: 13px;
+    line-height: 1.15;
+    font-weight: 800;
+    color: inherit;
+    word-break: break-word;
+}
+
+.node-subtitle {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.1;
+    font-style: italic;
+    font-weight: 550;
+    color: currentColor;
+    opacity: 0.78;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.node-meta {
+    margin-top: 4px;
+    font-size: 10.5px;
+    line-height: 1.1;
+    font-weight: 650;
+    color: currentColor;
+    opacity: 0.82;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.node-core-table {
+    background: linear-gradient(180deg, var(--dp-table-bg), var(--dp-table-bg-2));
+    border-color: var(--dp-table-border);
+    color: var(--dp-table-text);
+}
+
+.node-core-table .node-icon {
+    color: var(--dp-table-icon);
+}
+
+.node-core-table .node-meta {
+    color: #6f3b05;
+}
+
+.node-core-step {
+    background: linear-gradient(180deg, var(--dp-transform-bg), var(--dp-transform-bg-2));
+    border-color: var(--dp-transform-border);
+    color: var(--dp-transform-text);
+}
+
+.node-core-step .node-icon {
+    color: var(--dp-transform-icon);
+}
+
+.node-compound-label {
+    display: block;
+    background: linear-gradient(180deg, var(--dp-group-bg), var(--dp-group-bg-2));
+    border: 2px solid var(--dp-group-border);
+    color: var(--dp-group-text);
+    box-shadow:
+        0 1px 2px rgba(22, 119, 255, 0.14),
+        0 8px 18px rgba(22, 119, 255, 0.12);
+}
+
+.node-compound-label .node-icon {
+    color: var(--dp-group-icon);
+}
+
+.node-group-steps {
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--dp-group-text);
+    font-style: italic;
+    opacity: 0.75;
+}
+
+.node-transform-f-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 32px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 500;
+    color: var(--dp-transform-icon);
+}
+
+.node-key-row {
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: start;
+}
+
+.node-key-label {
+    font-size: 11px;
+    line-height: 22px;
+    font-weight: 850;
+    color: currentColor;
+}
+
+.node-key-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Keep a stable scrollbar gutter so the thumb isn't overlaid on chips
+       (overlay scrollbars otherwise steal chip hit-tests and our custom drag
+       preventDefault then snaps scrollLeft to 0). */
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 24, 40, 0.28) transparent;
+    padding-bottom: 2px;
+}
+
+.node-key-chips::-webkit-scrollbar {
+    height: 8px;
+}
+
+.node-key-chips::-webkit-scrollbar-thumb {
+    background: rgba(16, 24, 40, 0.22);
+    border-radius: 3px;
+}
+
+.node-key-chips::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Only rows that actually overflow are draggable; the JS gesture adds the grab
+   affordance. */
+.node-key-chips {
+    cursor: default;
+}
+
+.node-key-chips.is-grabbing {
+    cursor: grabbing;
+    scroll-behavior: auto;
+}
+
+.node-key-chip {
+    cursor: inherit;
+}
+
+.node-key-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--dp-chip-border, #d7e0ea);
+    background: var(--dp-chip-bg, #ffffff);
+    color: var(--dp-chip-text, #23364f);
+    font-size: 10.5px;
+    line-height: 1;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.node-key-chip.pk {
+    border-color: #f2bf8c;
+    background: #fff8ef;
+    color: #6b3500;
+}
+
+.node-key-chip.tpk {
+    border-color: #9fe6b7;
+    background: #f2fff6;
+    color: #0b6325;
+}
+
+.node-key-chip.label {
+    border-color: #d9d6fe;
+    background: #f4f3ff;
+    color: #5925dc;
+}
+
+.node-key-chip-more {
+    cursor: pointer;
+    border-color: #c8d6e8;
+    background: #f2f6fb;
+    color: #34516f;
+}
+
+.node-key-row-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.node-key-summary {
+    font-size: 12px;
+    font-weight: 800;
+    color: currentColor;
+}
+
+.node-key-popover {
+    position: absolute;
+    z-index: 10000;
+    width: 320px;
+    max-height: 360px;
+    overflow: auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #dbe3ef;
+    box-shadow:
+        0 12px 32px rgba(16, 24, 40, 0.16),
+        0 2px 6px rgba(16, 24, 40, 0.08);
+}
+
+.node-key-popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    color: #0b1220;
+    font-size: calc(13px * var(--dp-font-scale, 1));
+}
+
+.node-key-popover-header button {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-size: 18px;
+    color: #667085;
+}
+
+.node-key-popover-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.inspector-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.inspector-kicker {
+    font-size: calc(11px * var(--dp-font-scale, 1));
+    font-weight: 700;
+    color: #667085;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.inspector-title {
+    font-size: calc(15px * var(--dp-font-scale, 1));
+    font-weight: 800;
+    color: #0b1220;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.inspector-section {
+    margin-bottom: 20px;
+}
+
+.inspector-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: calc(13px * var(--dp-font-scale, 1));
+    font-weight: 800;
+    color: #0b1220;
+}
+
+.inspector-section-count {
+    font-size: calc(11px * var(--dp-font-scale, 1));
+    font-weight: 600;
+    color: #667085;
+}
+
+.inspector-kv {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 6px 12px;
+    font-size: calc(12px * var(--dp-font-scale, 1));
+}
+
+.inspector-kv dt {
+    color: #667085;
+    font-weight: 600;
+}
+
+.inspector-kv dd {
+    margin: 0;
+    color: #0b1220;
+    word-break: break-word;
+}
+
+.inspector-io-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: calc(12px * var(--dp-font-scale, 1));
+}
+
+.inspector-io-table th,
+.inspector-io-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #eef2f6;
+    text-align: left;
+    vertical-align: top;
+}
+
+.inspector-io-table th {
+    color: #667085;
+    font-weight: 700;
+}
+
+.inspector-schema-pk-row td {
+    background: #fff8ef;
+}
+
+.inspector-schema-column-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.inspector-schema-type {
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: #f6f8fb;
+    color: #475467;
+    font-size: calc(11px * var(--dp-font-scale, 1));
+}
+
+.inspector-node-link {
+    display: inline;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--dp-accent, #1677ff);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    word-break: break-word;
+    text-decoration: none;
+}
+
+.inspector-node-link:hover {
+    text-decoration: underline;
+}
+
+.inspector-node-link:focus-visible {
+    outline: 2px solid var(--dp-accent, #1677ff);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.inspector-link-list {
+    word-break: break-word;
+}
+
+.inspector-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Persistent graph inspector panel (right column) + resizable shell */
+.pipeline-graph-shell {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    /* Cap intrinsic size so tall inspector content cannot inflate the flex
+       track and crush siblings (card header) above the graph. */
+    min-width: 0;
+    overflow: hidden;
+}
+
+.pipeline-graph-shell .pipeline-graph-embedded {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    width: auto;
+}
+
+.node-inspector-panel {
+    position: relative;
+    flex-shrink: 0;
+    align-self: stretch;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--dp-bg-surface, #fff);
+    border-left: 1px solid var(--dp-border-subtle, #e6ebf1);
+    overflow: hidden;
+}
+
+.node-inspector-panel.is-resizing {
+    user-select: none;
+}
+
+.node-inspector-panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px 20px 28px;
+}
+
+.node-inspector-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 16px 0;
+    margin-bottom: 18px;
+}
+
+.inspector-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* On the wide detail page keep text/meta within a comfortable reading width.
+   Table data is excluded so wide grids can use the full card + horizontal scroll. */
+.graph-node-detail-page .node-inspector-panel-body {
+    padding: 0;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.graph-node-detail-page .inspector-section:not(:has(.dp-table-data-scroll)) {
+    max-width: 760px;
+}
+
+.graph-node-detail-page.ant-card,
+.graph-node-detail-page .ant-card-body {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.dp-table-data-panel {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.dp-table-data-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.dp-table-data-scroll .ant-table {
+    min-width: max-content;
+}
+
+/* Give the Inputs/Outputs columns (Source · Type · Keys) sensible proportions
+   instead of spreading the three columns evenly across the full width. */
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) th:first-child,
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) td:first-child {
+    width: 40%;
+}
+
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) th:nth-child(2),
+.graph-node-detail-page .inspector-io-table:not(.inspector-schema-table) td:nth-child(2) {
+    width: 18%;
+}
+
+/* Schema table has two columns (Column · Type). */
+.graph-node-detail-page .inspector-schema-table th:first-child,
+.graph-node-detail-page .inspector-schema-table td:first-child {
+    width: 55%;
+}
+
+.inspector-substep-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.inspector-substep-list li {
+    margin-bottom: 8px;
+}
+
+.node-inspector-panel-body {
+    display: block;
+}
+
+.node-inspector-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #667085;
+    font-size: 20px;
+    line-height: 1;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.node-inspector-close:hover {
+    background: rgba(16, 24, 40, 0.06);
+    color: #0b1220;
+}
+
+.node-inspector-empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 8px;
+}
+
+.node-inspector-empty-title {
+    font-size: calc(14px * var(--dp-font-scale, 1));
+    font-weight: 700;
+    color: #344054;
+}
+
+.node-inspector-empty-hint {
+    font-size: calc(12px * var(--dp-font-scale, 1));
+    color: #98a2b3;
+    max-width: 220px;
+    line-height: 1.5;
+}
+
+.node-core.is-focused,
+.node-compound-label.is-focused {
+    border-color: var(--dp-accent);
+    box-shadow:
+        0 0 0 2px rgba(22, 119, 255, 0.14),
+        0 8px 20px rgba(16, 24, 40, 0.14);
+}
+
+.node-core.is-selected,
+.node-compound-label.is-selected {
+    border-color: var(--dp-accent);
+    box-shadow:
+        0 0 0 4px rgba(22, 119, 255, 0.18),
+        0 12px 28px rgba(16, 24, 40, 0.18);
+}
+
+/* Related = same language as selection (ring + soft lift), but quieter + teal. */
+.node-core.is-related,
+.node-compound-label.is-related {
+    border-color: #5ba8a0;
+    box-shadow:
+        0 0 0 3px rgba(91, 168, 160, 0.16),
+        0 8px 18px rgba(16, 24, 40, 0.1);
+}
+
+.node-core.is-dimmed,
+.node-compound-label.is-dimmed {
+    opacity: 0.35;
+}
+
+.node-core-subgraph {
+    border-color: #b6c6db;
+}
+
+.step-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    margin-top: 5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 10px;
+    line-height: 1.1;
+    font-weight: 800;
+    white-space: nowrap;
+    text-transform: lowercase;
+}
+
+.step-status.completed,
+.step-status-completed {
+    background: var(--dp-status-completed-bg);
+    color: var(--dp-status-completed-text);
+    border-color: var(--dp-status-completed-border);
+}
+
+.step-status.pending,
+.step-status-pending {
+    background: var(--dp-status-pending-bg);
+    color: var(--dp-status-pending-text);
+    border-color: var(--dp-status-pending-border);
+}
+
+.step-status.running,
+.step-status-running {
+    background: var(--dp-status-running-bg);
+    color: var(--dp-status-running-text);
+    border-color: var(--dp-status-running-border);
+}
+
+.step-status.failed,
+.step-status-failed {
+    background: var(--dp-status-failed-bg);
+    color: var(--dp-status-failed-text);
+    border-color: var(--dp-status-failed-border);
+}
+
+.step-status.unknown,
+.step-status-unknown {
+    background: #f2f4f7;
+    color: #667085;
+    border-color: #d0d5dd;
+}
+
+.spin {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transform: scale(1.5);
+}
+
+.cy-internal-edges-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    /* Tiny box; paths overflow in model space. Camera pan/zoom is CSS transform
+       (same as .cy-node-html-labels) so edges track nodes without lag.
+       Sit under HTML labels (z=10) so edges tuck under cards like native
+       cytoscape edges outside expanded metas. */
+    width: 1px;
+    height: 1px;
+    z-index: 5;
+    pointer-events: none;
+    overflow: visible;
+    transform-origin: top left;
+}
+
+.cy-internal-edges-svg {
+    overflow: visible;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+}
+
+.custom-menu-item {
+    border: none !important;
+    height: 32px !important;
+    width: 170px !important;
+    padding-left: 24px !important;
+    color: rgb(0, 0, 0, 0.87) !important;
+    background-color: #fafafa !important;
+    font-weight: normal !important;
+    font-size: 13px !important;
+    text-align: left !important;
+    box-shadow: none !important;
+}
+
+.custom-menu-item:hover {
+    background-color: #c8c8c8 !important;
+}
+
+.custom-context-menu {
+    border: none !important;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    background-color: #fafafa !important;
+    box-shadow: 0 0 8px 0 rgb(0, 0, 0, 0.12),
+    0 8px 8px 0 rgb(0, 0, 0, 0.24) !important;
+}

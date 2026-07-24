@@ -84,7 +84,16 @@ def test_keypoints_pipeline_e2e_smoke_cpu(tmp_path):
     assert_metrics_have_values(
         runtime,
         "keypoints_metrics_on_subset",
-        ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
+        [
+            "calc__support",
+            "calc__accuracy",
+            "calc__weighted_f1_score",
+            "calc__pose_P",
+            "calc__pose_R",
+            "calc__pose_mAP50",
+            "calc__pose_mAP50_95",
+            "calc__pose_support",
+        ],
     )
 
 
@@ -159,6 +168,9 @@ def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, sm
                     input__keypoints_frozen_dataset="keypoints_frozen_dataset",
                     input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
                     output__yolov8_train_config="keypoints_train_config",
+                    output__yolov8_custom_train_config="keypoints_custom_train_config",
+                    output__keypoints_training_request="keypoints_training_request",
+                    output__model_keypoints_size_for_resize="model_keypoints_size_for_resize",
                     output__keypoints_size_for_resize="keypoints_size_for_resize",
                     output__keypoints_frozen_dataset__class_names="keypoints_class_names",
                     output__keypoints_frozen_dataset__resized_image_file="keypoints_resized_image_file",

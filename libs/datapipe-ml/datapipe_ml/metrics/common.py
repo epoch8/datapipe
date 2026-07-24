@@ -2,6 +2,11 @@ from typing import Any, Iterable, List, Sequence, Tuple
 
 from sqlalchemy import Column, Float, func
 
+# Storage sentinel for per-image metrics rows computed with label=None (detection-level).
+# Distinct from the string "None", which may appear as a real class name in datasets.
+# Do not use "\\x00": pandas treats it as NA in Series equality filters.
+METRICS_NULL_LABEL = "__metrics_label_none__"
+
 CLASS_METRIC_COLUMNS = [
     "calc__images_support",
     "calc__support",
@@ -51,6 +56,42 @@ def stable_unique(items: Iterable[str]) -> List[str]:
     return list(dict.fromkeys(items))
 
 
+def idx_columns_present_on_table(tbl: Any, idx: Any) -> List[str]:
+    """Idx columns that exist on ``tbl``.
+
+    Datapipe stamps RunConfig filters that are not transform keys onto ``idx``
+    (e.g. ``training_request_id`` when launching a scoped training run). Those
+    keys must not be used when querying metrics input tables.
+    """
+    table_cols = set(tbl.c.keys())
+    return [str(k) for k in idx.columns if k in table_cols]
+
+
+def idx_in_table_clause(tbl: Any, idx: Any) -> Any:
+    """``tuple_(table cols).in_(idx rows)`` using only columns present on ``tbl``."""
+    from sqlalchemy import tuple_
+
+    keys = idx_columns_present_on_table(tbl, idx)
+    if not keys:
+        raise ValueError(
+            f"idx columns {list(idx.columns)!r} have no overlap with table columns "
+            f"{list(tbl.c.keys())!r}"
+        )
+    return tuple_(*([tbl.c[k] for k in keys])).in_(
+        list(idx.loc[:, keys].itertuples(index=False, name=None))
+    )
+
+
+def metrics_label_to_storage(label: Any) -> str:
+    if label is None:
+        return METRICS_NULL_LABEL
+    return str(label)
+
+
+def is_metrics_null_label(stored: str) -> bool:
+    return stored == METRICS_NULL_LABEL
+
+
 def overall_metric_columns(include_known: bool) -> List[str]:
     columns = list(OVERALL_BASE_METRIC_COLUMNS)
     if include_known:
@@ -63,9 +104,13 @@ def float_columns(names: Sequence[str]) -> List[Column]:
 
 
 def precision_recall_f1(tp_num: Any, precision_den: Any, recall_den: Any, sql_cast: Any) -> Tuple[Any, Any, Any]:
-    precision = tp_num / func.nullif(precision_den, sql_cast(0, Float))
-    recall = tp_num / func.nullif(recall_den, sql_cast(0, Float))
-    f1_score = (sql_cast(2.0, Float) * precision * recall) / func.nullif(precision + recall, sql_cast(0, Float))
+    zero = sql_cast(0, Float)
+    precision = func.coalesce(tp_num / func.nullif(precision_den, zero), zero)
+    recall = func.coalesce(tp_num / func.nullif(recall_den, zero), zero)
+    f1_score = func.coalesce(
+        (sql_cast(2.0, Float) * precision * recall) / func.nullif(precision + recall, zero),
+        zero,
+    )
     return precision, recall, f1_score
 
 

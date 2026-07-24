@@ -20,13 +20,12 @@ catalog = Catalog(
                     Column("image_name", String(), primary_key=True),
                     Column("image_url", String()),
                 ],
-                create_table=True,
             )
         ),
-        "keypoints_model": Table(
+        "keypoints_model_train": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="keypoints_model",
+                name="keypoints_model_train",
                 data_sql_schema=[
                     Column("keypoints_model_id", String(), primary_key=True),
                     Column("keypoints_model__type", String()),
@@ -35,7 +34,45 @@ catalog = Catalog(
                     Column("keypoints_model__class_names", JSON),
                     Column("keypoints_model__score_threshold", Float),
                 ],
-                create_table=True,
+            )
+        ),
+        "best_keypoints_model": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="best_keypoints_model",
+                data_sql_schema=[
+                    Column("keypoints_model_id", String(), primary_key=True),
+                ],
+            )
+        ),
+        "keypoints_prediction_train": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="keypoints_prediction_train",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("keypoints", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                    Column("prediction__keypoints_scores", JSON),
+                ],
+            )
+        ),
+        "ls_keypoints_prediction": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="ls_keypoints_prediction",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("bboxes", JSON),
+                    Column("keypoints", JSON),
+                    Column("labels", JSON),
+                    Column("prediction__detection_scores", JSON),
+                    Column("prediction__keypoints_scores", JSON),
+                ],
             )
         ),
         "images_with_predictions": Table(
@@ -44,10 +81,9 @@ catalog = Catalog(
                 name="images_with_predictions",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
+                    Column("keypoints_model_id", String(), primary_key=True),
                     Column("prediction", JSON),
-                    Column("keypoints_model_id", String()),
                 ],
-                create_table=True,
             )
         ),
         "image__ground_truth": Table(
@@ -62,7 +98,6 @@ catalog = Catalog(
                     Column("flip_idx", JSON),
                     Column("labels", JSON),
                 ],
-                create_table=True,
             )
         ),
         "image__subset": Table(
@@ -73,23 +108,15 @@ catalog = Catalog(
                     Column("image_name", String, primary_key=True),
                     Column("subset_id", String, primary_key=True),
                 ],
-                create_table=True,
             )
         ),
-        "keypoints_predictions": Table(
+        "sec__image_without_ground_truth": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="keypoints_predictions",
+                name="sec__image_without_ground_truth",
                 data_sql_schema=[
-                    Column("image_name", String, primary_key=True),
-                    Column("keypoints_model_id", String, primary_key=True),
-                    Column("bboxes", JSON),
-                    Column("keypoints", JSON),
-                    Column("labels", JSON),
-                    Column("prediction__detection_scores", JSON),
-                    Column("prediction__keypoints_scores", JSON),
+                    Column("image_name", String(), primary_key=True),
                 ],
-                create_table=True,
             )
         ),
         "local_images": Table(
@@ -100,27 +127,43 @@ catalog = Catalog(
                     Column("image_name", String(255), primary_key=True),
                     Column("local_path", String(1024)),
                 ],
-                create_table=True,
             )
         ),
-        "fiftyone_predictions": Table(
+        "fiftyone_images": Table(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="predictions_bbox",
-                fo_keypoints_label="predictions_keypoints",
-                rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                fo_detections_label="images",
+                rm_only_fo_fields=False,
+                primary_schema=[
+                    Column("image_name", String(255), primary_key=True),
+                ],
             )
         ),
         "fiftyone_annotations": Table(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="annotations_bbox",
+                fo_detections_label="annotations",
                 fo_keypoints_label="annotations_keypoints",
                 rm_only_fo_fields=True,
-                primary_schema=[Column("image_name", String(255), primary_key=True)],
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["subset_id"],
+            )
+        ),
+        "fiftyone_predictions_from_best_model": Table(
+            FiftyOneImagesDataTableStore(
+                dataset=FIFTYONE_DATASET_NAME,
+                fo_session=fo_session,
+                fo_detections_label="predictions_from_best_model",
+                fo_keypoints_label="predictions_from_best_model_keypoints",
+                rm_only_fo_fields=True,
+                primary_schema=[
+                    Column[str]("image_name", String(255), primary_key=True),
+                ],
+                additional_info_keys_in_sample=["keypoints_model_id"],
             )
         ),
     }
