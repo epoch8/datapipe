@@ -2,6 +2,7 @@ import itertools
 import math
 import time
 from dataclasses import dataclass
+from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,7 +18,7 @@ import sqlalchemy as sa
 from opentelemetry import trace
 
 from datapipe.compute import ComputeInput, ComputeOutput
-from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMeta
+from datapipe.meta.base import MetaPlane, TableDebugInfo, TableMeta, TransformMeta, ChainTransformMeta
 from datapipe.run_config import LabelDict, RunConfig
 from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.database import DBConn, MetaKey
@@ -28,6 +29,7 @@ from datapipe.types import (
     DataSchema,
     HashDF,
     IndexDF,
+    ChainIndexDF,
     MetadataDF,
     MetaSchema,
     TAnyDF,
@@ -808,6 +810,732 @@ class SQLTransformMeta(TransformMeta):
                     out.c.priority.desc().nullslast(),
                 )
         return sql
+    
+
+CHAIN_META_SCHEMA: list[sa.Column] = [
+    sa.Column("rank", sa.Integer),  # Ранг строки, для определения последовательности записи
+]
+
+
+class SQLChainTransformMeta(ChainTransformMeta):
+    def __init__(
+        self,
+        dbconn: DBConn,
+        name: str,
+        inputs: Sequence[ComputeInput],
+        previous: Sequence[ComputeInput],
+        outputs: Sequence[ComputeOutput],
+        transform_keys: list[str] | None,
+        order: Literal["asc", "desc"] = "asc",
+        create_table: bool = False,
+    ) -> None:
+        self.dbconn = dbconn
+        self.name = name
+
+        self.inputs = inputs
+        self.previous = previous
+        self.outputs = outputs
+
+        self.transform_keys, self.transform_keys_schema = self.compute_transform_schema(
+            inputs=self.inputs,
+            previous=self.previous,
+            outputs=self.outputs,
+            transform_keys=transform_keys,
+        )
+
+        self.sql_schema = [i._copy() for i in self.transform_keys_schema + CHAIN_META_SCHEMA + TRANSFORM_META_SCHEMA]
+
+        self.sql_table = sa.Table(
+            name,
+            dbconn.sqla_metadata,
+            *self.sql_schema,
+            # TODO remove in 0.15 release
+            keep_existing=True,
+        )
+
+        self.order = order
+
+        if create_table:
+            self.sql_table.create(self.dbconn.con, checkfirst=True)
+
+    # TODO extract all complex logic into .create classmethod, make constructor simple
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.inputs,
+            self.outputs,
+            self.transform_keys,
+            self.previous,
+            self.order,
+        )
+
+    def get_new_process_idx_count(
+        self,
+        ds: "DataStore",
+    ) -> int:
+        sql = self._build_new_process_ids_sql(ds=ds)
+
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                sa.select(*[sa.func.count()]).select_from(sa.alias(sql.subquery(), name="union_select"))
+            ).scalar()
+
+        return cast(int, idx_count)
+
+    def get_new_process_ids(
+        self,
+        ds: "DataStore",
+        chunk_size: int,
+    ) -> tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            if len(self.inputs) == 0 and len(self.outputs) == 0:
+                return (0, iter([]))
+
+            idx_count = self.get_new_process_idx_count(ds=ds)
+            u1 = self._build_new_process_ids_sql(ds=ds)
+
+            def alter_res_df():
+                with ds.meta_dbconn.con.begin() as con:
+                    for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                        assert isinstance(df, pd.DataFrame)
+                        df = df[self.transform_keys]
+
+                        yield cast(IndexDF, df)
+
+            return math.ceil(idx_count / chunk_size), alter_res_df()
+
+    def get_changed_idx_count(
+        self,
+        ds: "DataStore",
+        start_rank: int,
+        run_config: RunConfig | None = None,
+    ) -> int:
+        sql = self._build_changed_idx_sql(ds=ds, start_rank=start_rank, run_config=run_config)
+
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                sa.select(*[sa.func.count()]).select_from(sa.alias(sql.subquery(), name="union_select"))
+            ).scalar()
+
+        return cast(int, idx_count)
+
+    def get_full_process_ids(
+        self,
+        ds: "DataStore",
+        chunk_size: int,
+        window_size: int,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
+        with tracer.start_as_current_span("compute ids to process"):
+            if len(self.inputs) == 0:
+                return (0, iter([]))
+
+            start_rank_sql = self._build_start_rank_sql(
+                ds=ds,
+                run_config=run_config,
+                order=self.order,  # type: ignore
+            )
+
+            with ds.meta_dbconn.con.begin() as con:
+                start_rank = con.execute(start_rank_sql).scalar()
+
+            return self._make_process_idx(
+                ds=ds,
+                start_rank=start_rank,
+                chunk_size=chunk_size,
+                window_size=window_size,
+                run_config=run_config
+            )
+    
+    def get_change_list_process_ids(
+        self,
+        ds: "DataStore",
+        change_list: ChangeList,
+        chunk_size: int,
+        window_size: int,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process change list"):
+            start_rank_sql = self._build_changelist_start_rank_sql(
+                ds=ds,
+                change_list=change_list,
+                run_config=run_config,
+                order=self.order,  # type: ignore
+            )
+
+            with ds.meta_dbconn.con.begin() as con:
+                start_rank = con.execute(start_rank_sql).scalar()
+
+            return self._make_process_idx(
+                ds=ds,
+                start_rank=start_rank,
+                chunk_size=chunk_size,
+                window_size=window_size,
+                run_config=run_config
+            )
+
+    def get_idx_process_ids(
+        self,
+        ds: "DataStore",
+        idx: IndexDF,
+        chunk_size: int,
+        window_size: int,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[IndexDF]]:
+        with tracer.start_as_current_span("compute ids to process idx"):
+            start_rank_sql = self._build_idx_start_rank_sql(
+                ds=ds,
+                idx=idx,
+                run_config=run_config,
+                order=self.order,  # type: ignore
+            )
+
+            with ds.meta_dbconn.con.begin() as con:
+                start_rank = con.execute(start_rank_sql).scalar()
+
+            return self._make_process_idx(
+                ds=ds,
+                start_rank=start_rank,
+                chunk_size=chunk_size,
+                window_size=window_size,
+                run_config=run_config
+            )
+
+    def get_metadata_size(self) -> int:
+        sql = sa.select(sa.func.count()).select_from(self.sql_table)
+        with self.dbconn.con.begin() as con:
+            res = con.execute(sql).fetchone()
+
+        assert res is not None and len(res) == 1
+        return res[0]
+    
+    def insert_rows(
+        self,
+        idx: ChainIndexDF,
+    ) -> None:
+        keys = self.transform_keys + ["rank"]
+        idx = cast(ChainIndexDF, idx[keys])
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": None,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_nothing(index_elements=self.transform_keys)
+
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_processed_error(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        error: str,
+        run_config: RunConfig | None = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
+        )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
+
+        insert_sql = self.dbconn.insert(self.sql_table).values(
+            [
+                {
+                    "process_ts": process_ts,
+                    "is_success": False,
+                    "priority": 0,
+                    "error": error,
+                    **idx_dict,  # type: ignore
+                }
+                for idx_dict in idx.to_dict(orient="records")
+            ]
+        )
+
+        sql = insert_sql.on_conflict_do_update(
+            index_elements=self.transform_keys,
+            set_={
+                "process_ts": process_ts,
+                "is_success": False,
+                "error": error,
+            },
+        )
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def mark_rows_processed_success(
+        self,
+        idx: IndexDF,
+        process_ts: float,
+        run_config: RunConfig | None = None,
+    ) -> None:
+        idx = cast(
+            IndexDF, idx[self.transform_keys].drop_duplicates().dropna()
+        )  # FIXME: сделать в основном запросе distinct
+        if len(idx) == 0:
+            return
+
+        if idx.empty:
+            # DataFrame считает, что он пустой, если в нем нет колонок
+            # При этом мы хотим создать строки в БД
+
+            # Мы можем обработать только случай с одной строкой
+            assert len(idx) == 1
+
+            with self.dbconn.con.begin() as con:
+                insert_sql = self.dbconn.insert(self.sql_table).values(
+                    [
+                        {
+                            "process_ts": process_ts,
+                            "is_success": True,
+                            "priority": 0,
+                            "error": None,
+                        }
+                    ]
+                )
+
+                # удалить все из таблицы
+                con.execute(self.sql_table.delete())
+                con.execute(insert_sql)
+
+        else:
+            insert_sql = self.dbconn.insert(self.sql_table).values(
+                [
+                    {
+                        "process_ts": process_ts,
+                        "is_success": True,
+                        "priority": 0,
+                        "error": None,
+                        **idx_dict,  # type: ignore
+                    }
+                    for idx_dict in idx.to_dict(orient="records")
+                ]
+            )
+
+            sql = insert_sql.on_conflict_do_update(
+                index_elements=self.transform_keys,
+                set_={
+                    "process_ts": process_ts,
+                    "is_success": True,
+                    "error": None,
+                },
+            )
+
+            # execute
+            with self.dbconn.con.begin() as con:
+                con.execute(sql)
+
+    def mark_all_rows_unprocessed(
+        self,
+        run_config: RunConfig | None = None,
+    ) -> None:
+        update_sql = (
+            sa.update(self.sql_table)
+            .values(
+                {
+                    "process_ts": 0,
+                    "is_success": False,
+                    "error": None,
+                }
+            )
+            .where(self.sql_table.c.is_success == True)  # noqa: E712
+        )
+
+        sql = sql_apply_runconfig_filter(update_sql, self.sql_table, self.transform_keys, run_config)
+
+        # execute
+        with self.dbconn.con.begin() as con:
+            con.execute(sql)
+
+    def _contain_all_transform_keys(self, keys: list[str]) -> bool:
+            return len(set(self.transform_keys) - set(keys)) == 0
+    
+    def _build_new_process_ids_sql(self, ds: "DataStore") -> Any:
+        union_sqls = []
+        join_ctes = []
+
+        for inp in self.inputs:
+            inp_meta = inp.dt.meta
+            assert isinstance(inp_meta, SQLTableMeta)
+
+            keys, cte = inp_meta.get_agg_cte(
+                transform_keys=self.transform_keys,
+                table_store=inp.dt.table_store,
+                keys=inp.keys or {},
+                filters_idx=None,
+                run_config=None,
+            )
+
+            if self._contain_all_transform_keys(keys):
+                union_sqls.append(
+                    sa.select(*[cte.c[key] for key in keys])
+                )
+            else:
+                join_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type=inp.join_type))
+
+        for out in self.outputs:
+            out_meta = out.dt.meta
+            assert isinstance(out_meta, SQLTableMeta)
+
+            keys, cte = out_meta.get_agg_cte(
+                transform_keys=self.transform_keys,
+                table_store=out.dt.table_store,
+                keys=out.keys or {},
+                filters_idx=None,
+                run_config=None,
+            )
+
+            if self._contain_all_transform_keys(keys):
+                union_sqls.append(
+                    sa.select(*[cte.c[key] for key in keys])
+                )
+            else:
+                join_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type="full"))
+        
+        if join_ctes:
+            all_keys = chain(*[cte.keys for cte in join_ctes])
+
+            if self._contain_all_transform_keys(all_keys):
+                join_cte = _make_agg_of_agg(
+                    ds=ds,
+                    transform_keys=self.transform_keys,
+                    ctes=join_ctes,
+                    agg_col="update_ts",
+                )
+
+                if join_cte:
+                    union_sqls.append(
+                        sa.select([join_cte.c[key] for key in self.transform_keys])
+                    )
+
+        union_aggs = sa.union(*union_sqls).cte(name="union__chain")
+
+        tr_tbl = self.sql_table
+        out: Any = (
+            sa.select(
+                *[sa.column(k) for k in self.transform_keys]
+            )
+            .select_from(tr_tbl)
+            .group_by(*[sa.column(k) for k in self.transform_keys])
+        )
+
+        out = out.cte(name="transform")
+
+        if len(self.transform_keys) == 0:
+            join_onclause_sql: Any = sa.literal(True)
+        elif len(self.transform_keys) == 1:
+            join_onclause_sql = union_aggs.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
+        else:  # len(transform_keys) > 1:
+            join_onclause_sql = sa.and_(*[union_aggs.c[key] == out.c[key] for key in self.transform_keys])
+
+        sql = (
+            sa.select(
+                # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
+                # пустом transform_keys
+                sa.literal(1).label("_datapipe_dummy"),
+                *[sa.func.coalesce(union_aggs.c[key], out.c[key]).label(key) for key in self.transform_keys],
+            )
+            .select_from(union_aggs)
+            .outerjoin(
+                out,
+                onclause=join_onclause_sql,
+                full=False,
+            )
+            .where(
+                    sa.and_(
+                    *[out.c[key] == None for key in self.transform_keys]
+                )
+            )
+        )
+        return sql
+
+    def _build_start_rank_sql(
+        self,
+        ds: "DataStore",
+        order: Literal["asc", "desc"] = "asc",
+        run_config: RunConfig | None = None,  # TODO remove
+    ) -> Any:
+        inp_ctes = []
+        for inp in self.inputs:
+            inp_meta = inp.dt.meta
+            assert isinstance(inp_meta, SQLTableMeta)
+
+            keys, cte = inp_meta.get_agg_cte(
+                transform_keys=self.transform_keys,
+                table_store=inp.dt.table_store,
+                keys=inp.keys or {},
+                filters_idx=None,
+                run_config=run_config,
+            )
+            inp_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type=inp.join_type))
+
+        agg_of_aggs = _make_agg_of_agg(
+            ds=ds,
+            transform_keys=self.transform_keys,
+            ctes=inp_ctes,
+            agg_col="update_ts",
+        )
+
+        tr_tbl = self.sql_table
+        out: Any = (
+            sa.select(
+                *[sa.column(k) for k in self.transform_keys]
+                + [tr_tbl.c.rank, tr_tbl.c.process_ts, tr_tbl.c.priority, tr_tbl.c.is_success]
+            )
+            .select_from(tr_tbl)
+            .group_by(*[sa.column(k) for k in self.transform_keys])
+        )
+
+        out = out.cte(name="transform")
+
+        if len(self.transform_keys) == 0:
+            join_onclause_sql: Any = sa.literal(True)
+        elif len(self.transform_keys) == 1:
+            join_onclause_sql = agg_of_aggs.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
+        else:  # len(transform_keys) > 1:
+            join_onclause_sql = sa.and_(*[agg_of_aggs.c[key] == out.c[key] for key in self.transform_keys])
+
+        rank_col = sa.func.min(out.c.rank) if order == "asc" else sa.func.max(out.c.rank)
+
+        sql = (
+            sa.select(
+                rank_col
+            )
+            .select_from(agg_of_aggs)
+            .outerjoin(
+                out,
+                onclause=join_onclause_sql,
+                full=True,
+            )
+            .where(
+                sa.or_(
+                    sa.and_(
+                        out.c.is_success == True,  # noqa
+                        agg_of_aggs.c.update_ts > out.c.process_ts,
+                    ),
+                    out.c.is_success != True,  # noqa
+                    out.c.process_ts == None,  # noqa
+                )
+            )
+        )
+
+        return sql
+
+    def _build_changelist_start_rank_sql(
+        self,
+        ds: "DataStore",
+        change_list: ChangeList,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: RunConfig | None = None,  # TODO remove
+    ) -> Any:
+        tr_tbl = self.sql_table
+        where_clouse = []
+        sql: Any = (
+            sa.select(
+                (
+                    sa.func.min(tr_tbl.c.rank) 
+                    if order == "asc" 
+                    else sa.func.max(tr_tbl.c.rank)
+                )
+            )
+            .select_from(tr_tbl)
+        )
+
+        for inp in self.inputs:
+            if inp.dt.name in change_list.changes:
+                idx = change_list.changes[inp.dt.name]
+
+                if idx is None:
+                    continue
+            
+                applicable_filter_keys = [i for i in idx.columns if i in self.transform_keys]
+                if len(applicable_filter_keys) > 0:
+                    where_clouse.append(
+                        sa.tuple_(*[sa.column(i) for i in applicable_filter_keys]).in_(
+                            [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in idx.to_dict(orient="records")]
+                        )
+                    )
+        if not where_clouse:
+            return None
+
+        return sql.where(
+            sa.or_(
+                *where_clouse
+            )
+        )
+
+    def _build_idx_start_rank_sql(
+        self,
+        ds: "DataStore",
+        idx: IndexDF,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: RunConfig | None = None,  # TODO remove
+    ) -> Any:
+        tr_tbl = self.sql_table
+        applicable_filter_keys = [i for i in idx.columns if i in self.transform_keys]
+        sql: Any = (
+            sa.select(
+                (
+                    sa.func.min(tr_tbl.c.rank) 
+                    if order == "asc" 
+                    else sa.func.max(tr_tbl.c.rank)
+                )
+            )
+            .select_from(tr_tbl)
+            .where(
+                sa.tuple_(*[sa.column(i) for i in applicable_filter_keys]).in_(
+                    [sa.tuple_(*[r[k] for k in applicable_filter_keys]) for r in idx.to_dict(orient="records")]
+                )
+            )
+        )
+
+        return sql
+
+    def _build_changed_idx_sql(
+        self,
+        ds: "DataStore",
+        start_rank: int,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: RunConfig | None = None,  # TODO remove
+    ) -> Any:
+        tr_tbl = self.sql_table
+        sql: Any = (
+            sa.select(
+                *[tr_tbl.c[k] for k in self.transform_keys]
+                + [tr_tbl.c.rank]
+            )
+            .select_from(tr_tbl)
+        )
+
+        if order == 'asc':
+            sql = (
+                sql
+                .where(
+                    tr_tbl.c.rank >= start_rank
+                )
+                .order_by(
+                    tr_tbl.c.rank.asc(),
+                    *[tr_tbl.c[k].asc() for k in self.transform_keys],
+                )
+            )
+        else:
+            sql = (
+                sql
+                .where(
+                    tr_tbl.c.rank <= start_rank
+                )
+                .order_by(
+                    tr_tbl.c.rank.desc(),
+                    *[tr_tbl.c[k].desc() for k in self.transform_keys],
+                )
+            )
+
+        return sql
+
+    def _build_window_idx_sql(
+        self,
+        ds: "DataStore",
+        start_rank: int,
+        window_size: int,
+        order: Literal["asc", "desc"] = "asc",
+        run_config: RunConfig | None = None,  # TODO remove
+    ) -> Any:
+        tr_tbl = self.sql_table
+        sql: Any = (
+            sa.select(
+                *[tr_tbl.c[k] for k in self.transform_keys]
+                + [tr_tbl.c.rank]
+            )
+            .select_from(tr_tbl)
+        )
+
+        if order == 'asc':
+            sql = (
+                sql
+                .where(
+                    tr_tbl.c.rank < start_rank
+                )
+                .order_by(
+                    tr_tbl.c.rank.desc(),
+                    *[tr_tbl.c[k].desc() for k in self.transform_keys],
+                )
+            )
+        else:
+            sql = (
+                sql
+                .where(
+                    tr_tbl.c.rank > start_rank
+                )
+                .order_by(
+                    tr_tbl.c.rank.asc(),
+                    *[tr_tbl.c[k].asc() for k in self.transform_keys],
+                )
+            )
+
+        return sql.limit(window_size)
+
+    def _make_process_idx(   
+        self, 
+        ds: "DataStore",
+        chunk_size: int,
+        window_size: int,
+        start_rank: int | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
+        if not start_rank:
+            return (0, iter([]))
+
+        idx_count = self.get_changed_idx_count(
+            ds=ds,
+            start_rank=start_rank,
+            run_config=run_config,
+        )
+
+        u1 = self._build_changed_idx_sql(
+            ds=ds,
+            start_rank=start_rank,
+            run_config=run_config,
+            order=self.order,  # type: ignore
+        )
+
+        window_sql = self._build_window_idx_sql(
+            ds=ds,
+            start_rank=start_rank,
+            window_size=window_size,
+            run_config=run_config,
+            order=self.order,  # type: ignore
+        )
+
+        def alter_res_df():
+            with ds.meta_dbconn.con.begin() as con:
+                window_df = pd.read_sql_query(window_sql, con=con)
+
+                for df in pd.read_sql_query(u1, con=con, chunksize=chunk_size):
+                    assert isinstance(df, pd.DataFrame)
+                    
+                    yield (
+                        cast(IndexDF, df[self.transform_keys]), 
+                        cast(IndexDF, window_df)
+                    )
+
+                    window_df = (
+                        pd.concat([window_df, df])
+                        .tail(window_size)
+                        .reset_index(drop=True)
+                    )
+
+        return math.ceil(idx_count / chunk_size), alter_res_df()
 
 
 def sql_apply_filters_idx_to_subquery(
@@ -839,8 +1567,8 @@ class ComputeInputCTE:
 def _make_agg_of_agg(
     ds: "DataStore",
     transform_keys: list[str],
-    agg_col: str,
     ctes: list[ComputeInputCTE],
+    agg_col: str= None,
 ) -> Any:
     assert len(ctes) > 0
 
@@ -860,11 +1588,17 @@ def _make_agg_of_agg(
         else:
             coalesce_keys.append(sa.func.coalesce(*[cte.c[key] for cte in ctes_with_key]).label(key))
 
-    agg = sa.func.max(ds.meta_dbconn.func_greatest(*[cte.cte.c[agg_col] for cte in ctes])).label(agg_col)
-
+    cte_name = "all_agg"
+    agg_cols = []
     first_cte = ctes[0].cte
 
-    sql = sa.select(*coalesce_keys + [agg]).select_from(first_cte)
+    if agg_col:
+        cte_name = f"all__{agg_col}"
+        agg_cols.append(
+            sa.func.max(ds.meta_dbconn.func_greatest(*[cte.cte.c[agg_col] for cte in ctes])).label(agg_col)
+        )
+
+    sql = sa.select(*coalesce_keys, *agg_cols).select_from(first_cte)
 
     prev_ctes = [ctes[0]]
 
@@ -896,7 +1630,7 @@ def _make_agg_of_agg(
 
     sql = sql.group_by(*coalesce_keys)
 
-    return sql.cte(name=f"all__{agg_col}")
+    return sql.cte(name=cte_name)
 
 
 class SQLMetaPlane(MetaPlane):
@@ -934,6 +1668,26 @@ class SQLMetaPlane(MetaPlane):
             outputs=output_dts,
             transform_keys=transform_keys,
             order_by=order_by,
+            order=order,
+            create_table=self.create_meta_table,
+        )
+    
+    def create_chain_transform_meta(
+        self,
+        name: str,
+        input_dts: Sequence["ComputeInput"],
+        previous_dts: Sequence["ComputeInput"],
+        output_dts: Sequence["ComputeOutput"],
+        transform_keys: list[str] | None = None,
+        order: Literal["asc", "desc"] = "asc",
+    ) -> ChainTransformMeta:
+        return SQLChainTransformMeta(
+            dbconn=self.dbconn,
+            name=name,
+            inputs=input_dts,
+            previous=previous_dts,
+            outputs=output_dts,
+            transform_keys=transform_keys,
             order=order,
             create_table=self.create_meta_table,
         )

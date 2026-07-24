@@ -35,6 +35,9 @@ MetaSchema = list[Column]
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType("IndexDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
+# Dataframe with columns (<index_cols ...>, rank)
+ChainIndexDF = NewType("ChainIndexDF", pd.DataFrame)  # type: ignore[valid-newtype]
+
 # Dataframe with columns (<index_cols ...>, hash)
 HashDF = NewType("HashDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
