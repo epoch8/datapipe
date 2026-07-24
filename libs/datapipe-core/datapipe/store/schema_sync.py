@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from sqlalchemy import MetaData
+from sqlalchemy import MetaData, inspect, text
 from sqlalchemy.engine import Connection, Engine
 
 _ALEMBIC_INSTALL_HINT = (
@@ -21,9 +21,16 @@ _ALEMBIC_INSTALL_HINT = (
     "(or: uv add --optional alembic / uv sync --extra alembic)."
 )
 
+# Default Alembic revision table (env.py ``version_table``).
+ALEMBIC_VERSION_TABLE = "alembic_version"
+
 
 class AlembicNotInstalledError(ImportError):
     """Raised when schema sync is requested but Alembic is not installed."""
+
+
+class AlembicManagedDatabaseError(RuntimeError):
+    """Raised when ``db create-all`` would mutate a DB owned by Alembic migrations."""
 
 
 def _require_alembic() -> None:
@@ -31,6 +38,80 @@ def _require_alembic() -> None:
         import alembic  # noqa: F401
     except ImportError as exc:
         raise AlembicNotInstalledError(_ALEMBIC_INSTALL_HINT) from exc
+
+
+def _schemas_to_check_for_alembic_version(schema: str | None) -> list[str | None]:
+    """Schemas where Alembic may stamp ``alembic_version``.
+
+    Custom pipeline schemas (e.g. e2e_template) may keep app tables elsewhere while
+    Alembic still stamps into the default/public schema — check both.
+    """
+    schemas: list[str | None] = []
+    if schema is not None:
+        schemas.append(schema)
+    # Default search schema (None → dialect default / public on Postgres).
+    if None not in schemas:
+        schemas.append(None)
+    if schema != "public" and "public" not in schemas:
+        schemas.append("public")
+    return schemas
+
+
+def alembic_version_is_present(
+    bind: Engine | Connection,
+    *,
+    schema: str | None = None,
+    version_table: str = ALEMBIC_VERSION_TABLE,
+) -> bool:
+    """True if Alembic's revision table exists and has a stamped ``version_num``.
+
+    Does not require the optional Alembic package — only inspects the database.
+    """
+
+    def _check(conn: Connection) -> bool:
+        insp = inspect(conn)
+        for candidate_schema in _schemas_to_check_for_alembic_version(schema):
+            try:
+                table_names = insp.get_table_names(schema=candidate_schema)
+            except Exception:
+                continue
+            if version_table not in table_names:
+                continue
+            # Qualified name for non-default schemas.
+            if candidate_schema:
+                qualified = f'"{candidate_schema}"."{version_table}"'
+            else:
+                qualified = version_table
+            row = conn.execute(text(f"SELECT version_num FROM {qualified} LIMIT 1")).first()
+            if row is not None and row[0] is not None and str(row[0]).strip() != "":
+                return True
+        return False
+
+    if isinstance(bind, Engine):
+        with bind.connect() as conn:
+            return _check(conn)
+    return _check(bind)
+
+
+def refuse_if_alembic_managed(
+    bind: Engine | Connection,
+    *,
+    schema: str | None = None,
+    version_table: str = ALEMBIC_VERSION_TABLE,
+) -> None:
+    """Raise if the database is stamped by Alembic migrations.
+
+    ``datapipe db create-all`` must not create/drop/alter tables on a DB whose
+    schema is owned by Alembic revision history.
+    """
+    if not alembic_version_is_present(bind, schema=schema, version_table=version_table):
+        return
+    raise AlembicManagedDatabaseError(
+        "Refusing to run db create-all: this database has an Alembic revision "
+        f"({version_table}.version_num is set). Schema changes must go through "
+        "Alembic migrations (e.g. `alembic upgrade`), not create-all / "
+        "--force-recreate / metadata sync."
+    )
 
 
 def _schemas_compatible(a: str | None, b: str | None, *, default: str | None) -> bool:
@@ -179,7 +260,11 @@ def iter_schema_diffs(
 
 
 __all__ = [
+    "ALEMBIC_VERSION_TABLE",
+    "AlembicManagedDatabaseError",
     "AlembicNotInstalledError",
+    "alembic_version_is_present",
+    "refuse_if_alembic_managed",
     "sync_sqla_metadata",
     "iter_schema_diffs",
     "_schemas_compatible",

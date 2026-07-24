@@ -94,13 +94,70 @@ const LAYOUT = {
     },
 } as const;
 
-const DEFAULT_STAGE_CONTAINMENT_RULES: { parent: string; children: string[] }[] = [
-    { parent: "train", children: ["train-prepare", "train-without-freeze"] },
-    {
-        parent: "train-without-freeze",
-        children: ["train-yolo", "inference", "count-metrics", "tag-metrics"],
-    },
-];
+function isStrictSubset(child: Set<string>, parent: Set<string>): boolean {
+    if (child.size >= parent.size) return false;
+    let ok = true;
+    child.forEach((id) => {
+        if (!parent.has(id)) ok = false;
+    });
+    return ok;
+}
+
+/** Mirror of backend `_find_containments`: nest by step-set inclusion, name-agnostic. */
+function findContainments(
+    labelStepIds: Map<string, Set<string>>,
+): Array<{ parent: string; child: string; kind: "semantic" }> {
+    const labels = Array.from(labelStepIds.keys());
+    const rawEdges = new Set<string>();
+    const edgeKey = (parent: string, child: string) => `${parent}\0${child}`;
+    const parseEdge = (key: string): [string, string] => {
+        const i = key.indexOf("\0");
+        return [key.slice(0, i), key.slice(i + 1)];
+    };
+
+    labels.forEach((parent) => {
+        const parentSteps = labelStepIds.get(parent)!;
+        const children = labels.filter(
+            (child) => child !== parent && isStrictSubset(labelStepIds.get(child)!, parentSteps),
+        );
+        // Same rule as backend: need ≥2 children to become a container.
+        if (children.length < 2) return;
+        children.forEach((child) => {
+            rawEdges.add(edgeKey(parent, child));
+        });
+    });
+
+    const reduced = new Set(Array.from(rawEdges));
+    Array.from(rawEdges).forEach((key) => {
+        const [parent, child] = parseEdge(key);
+        Array.from(rawEdges).forEach((midKey) => {
+            const [midParent, mid] = parseEdge(midKey);
+            if (midParent === parent && reduced.has(edgeKey(mid, child))) {
+                reduced.delete(key);
+            }
+        });
+    });
+
+    const parentsByChild = new Map<string, string[]>();
+    Array.from(reduced).forEach((key) => {
+        const [parent, child] = parseEdge(key);
+        const list = parentsByChild.get(child) ?? [];
+        list.push(parent);
+        parentsByChild.set(child, list);
+    });
+
+    const containments: Array<{ parent: string; child: string; kind: "semantic" }> = [];
+    Array.from(parentsByChild.entries()).forEach(([child, parents]) => {
+        const best = parents.reduce((a, b) => {
+            const aSize = labelStepIds.get(a)!.size;
+            const bSize = labelStepIds.get(b)!.size;
+            if (aSize !== bSize) return aSize < bSize ? a : b;
+            return a < b ? a : b;
+        });
+        containments.push({ parent: best, child, kind: "semantic" });
+    });
+    return containments;
+}
 
 function stepNamesFromStage(stage: StageItem): string[] {
     return (stage.steps as { name?: string }[])
@@ -171,17 +228,18 @@ function buildFallbackPayload(stages: StageItem[], stageEdges?: StageEdge[]): La
 
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-    for (const rule of DEFAULT_STAGE_CONTAINMENT_RULES) {
-        const parent = nodeById.get(rule.parent);
-        if (!parent) continue;
-        for (const childId of rule.children) {
-            const child = nodeById.get(childId);
-            if (!child) continue;
-            parent.kind = "container";
-            child.parent_id = rule.parent;
-        }
+    const labelStepIds = new Map(
+        nodes.map((n) => [n.id, new Set(n.step_ids)] as [string, Set<string>]),
+    );
+    const containments = findContainments(labelStepIds);
+    for (const { parent, child } of containments) {
+        const parentNode = nodeById.get(parent);
+        const childNode = nodeById.get(child);
+        if (!parentNode || !childNode) continue;
+        parentNode.kind = "container";
+        childNode.parent_id = parent;
     }
-    // Rebuild children_ids from parent_id so nested rules don't leave
+    // Rebuild children_ids from parent_id so nested containments don't leave
     // grandchildren listed under the outer container.
     for (const node of nodes) {
         node.children_ids = [];
@@ -293,16 +351,6 @@ function buildFallbackPayload(stages: StageItem[], stageEdges?: StageEdge[]): La
             });
         }
     }
-
-    const containments = DEFAULT_STAGE_CONTAINMENT_RULES.flatMap((rule) =>
-        rule.children
-            .filter((child) => nodeById.has(child) && nodeById.has(rule.parent))
-            .map((child) => ({
-                parent: rule.parent,
-                child,
-                kind: "semantic" as const,
-            })),
-    );
 
     return {
         label_key: "stage",

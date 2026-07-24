@@ -58,6 +58,19 @@ catalog = Catalog(
                 ],
             )
         ),
+        "ls_classification_prediction": Table(
+            TableStoreDB(
+                dbconn=DBCONN,
+                name="ls_classification_prediction",
+                data_sql_schema=[
+                    Column("image_name", String(), primary_key=True),
+                    Column("classification_model_id", String(), primary_key=True),
+                    Column("prediction__top_n", Integer, primary_key=True),
+                    Column("label", String()),
+                    Column("prediction__classification_score", Float),
+                ],
+            )
+        ),
         "images_with_predictions": Table(
             TableStoreDB(
                 dbconn=DBCONN,
@@ -89,13 +102,12 @@ catalog = Catalog(
                 ],
             )
         ),
-        "seed_classification_labels": Table(
+        "sec__image_without_ground_truth": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="seed_classification_labels",
+                name="sec__image_without_ground_truth",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
-                    Column("label", String()),
                 ],
             )
         ),

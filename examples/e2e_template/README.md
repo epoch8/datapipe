@@ -136,12 +136,11 @@ uv run python scripts/seed_sample_data.py
 The first run downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`),
 downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches sample JPEGs
 (cat/dog + person keypoints by default) and uploads them to `s3://datapipe-e2e/images/`.
-Pass `--classification-animal-limit` / `--classification-no-animal-limit` to also seed Has Animal /
-No Animals images and write `sample_data/classification_labels.json` for the classification
-`seed-gt` stage. Re-runs reuse the cache after validating size, zip integrity, and required JSON
-entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`,
-`DB_SCHEMA_KEYPOINTS`, `DB_SCHEMA_CLASSIFICATION`) are created later by `uv run datapipe db create-all`
-(see [Running](#running)).
+Pass `--classification-animal-limit` / `--classification-no-animal-limit` to also seed mixed
+Has Animal / No Animals images for Label Studio annotation. Re-runs reuse the cache after
+validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`.
+Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`, `DB_SCHEMA_CLASSIFICATION`) are
+created later by `uv run datapipe db create-all` (see [Running](#running)).
 
 Options:
 
@@ -182,7 +181,7 @@ Most task-specific settings live in each template's `config.py`:
 - **Label Studio UI** — `LABEL_CONFIG` (XML labeling interface) and `PROJECT_NAME`. Label names in `LABEL_CONFIG` must match `CLASSES_TO_KEEP` (and `KEYPOINTS_LABELS` for keypoints; `CLASSIFICATION_CLASSES` for classification).
 - **Detection** — `CLASSES_TO_KEEP` filters predictions/annotations; `COCO_CLASSES` and `DETECTION_MODEL_CONFIG` set the YOLO class list and pretrained weights (`yolo11n.pt` by default).
 - **Keypoints** — `KEYPOINTS_LABELS` defines keypoint order for LS ↔ datapipe conversion; `CLASSES_TO_KEEP` filters bbox class; `KEYPOINTS_MODEL_CONFIG` and `COCO_PERSON_KEYPOINT_FLIP_IDX` configure the pose model and flip augmentation.
-- **Classification** — `CLASSIFICATION_CLASSES` = `Has Animal` / `No Animals` (Choices in Label Studio). Seed labels come from COCO animal vs non-animal images via `sample_data/classification_labels.json`.
+- **Classification** — `CLASSIFICATION_CLASSES` = `Has Animal` / `No Animals` (Choices in Label Studio). Ground truth comes from completed Label Studio annotations.
 
 Training hyperparameters (`epochs`, `batch`, `imgsz`, base checkpoint) are in `app.py` inside
 `YoloV8_TrainingConfig` / `TF_ClassificationTrainingConfig`. If you rename LS control tags in
@@ -265,16 +264,6 @@ cd image_classification
 set -a && source ../.env && set +a
 uv run datapipe db create-all
 ```
-
-Unattended demo (skip Label Studio; inject COCO seed labels):
-
-```bash
-uv run datapipe --executor RayExecutor step --labels=stage=seed-gt run
-uv run datapipe --executor RayExecutor step --labels=stage=train run
-uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
-```
-
-Or annotate in Label Studio:
 
 ```bash
 uv run datapipe --executor RayExecutor step --labels=stage=annotation run

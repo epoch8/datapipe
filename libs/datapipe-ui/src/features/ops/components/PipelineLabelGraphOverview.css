@@ -4,8 +4,9 @@
     --lg-blue-border: #5ca2ff;
     --lg-text: #0b1220;
     --lg-muted: #667085;
-    --lg-edge: #56677f;
-    --lg-edge-muted: #c4cedb;
+    /* Dark enough to stay readable on white and on soft-blue containers. */
+    --lg-edge: #3b4f6b;
+    --lg-edge-muted: #8a9bb0;
     --lg-edge-focused: #1677ff;
     --lg-success-bg: #e7f8ee;
     --lg-success-text: #087a2a;
@@ -66,17 +67,38 @@
     min-height: 80px;
 }
 
+.pipeline-label-graph-containers,
+.pipeline-label-graph-nodes {
+    position: absolute;
+    inset: 0;
+}
+
+.pipeline-label-graph-containers {
+    z-index: 1;
+    pointer-events: none;
+}
+
+.pipeline-label-graph-containers > * {
+    pointer-events: auto;
+}
+
 .pipeline-label-graph-edges {
     position: absolute;
     inset: 0;
+    z-index: 2;
     overflow: visible;
     pointer-events: none;
+}
+
+.pipeline-label-graph-nodes {
+    z-index: 3;
 }
 
 .label-edge {
     fill: none;
     stroke: var(--lg-edge);
-    stroke-width: 2;
+    stroke-width: 2.25;
+    opacity: 1;
 }
 
 .label-edge.focused {
@@ -86,15 +108,15 @@
 }
 
 .label-edge.context {
-    stroke: #7faeea;
-    stroke-width: 2;
-    opacity: 0.75;
+    stroke: var(--lg-edge);
+    stroke-width: 2.25;
+    opacity: 1;
 }
 
 .label-edge.muted {
     stroke: var(--lg-edge-muted);
     stroke-width: 2;
-    opacity: 0.45;
+    opacity: 0.85;
 }
 
 .label-edge.exact {
@@ -227,14 +249,16 @@
     position: absolute;
     border: 1.8px solid var(--lg-blue);
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(232, 242, 255, 0.74));
+    /* Opaque fill so nested frames don't stack translucency over edges. */
+    background: linear-gradient(180deg, #f8fbff, #e8f2ff);
     box-sizing: border-box;
     cursor: pointer;
-    transition: opacity 140ms ease, box-shadow 140ms ease;
+    transition: box-shadow 140ms ease, border-color 140ms ease, filter 140ms ease;
 }
 
 .label-container.muted {
-    opacity: 0.55;
+    filter: grayscale(0.25) brightness(0.97);
+    border-color: #9bb8e0;
 }
 
 .label-container.is-hovered {

@@ -143,15 +143,7 @@ class TFClassificationAlgo(Algo):
     model_row_prefix = "classification_model"
 
     def check_accelerator(self, train_params: Dict[str, Any]) -> None:
-        from datapipe_ml.training.accelerator import cpu_training_allowed
-
-        if cpu_training_allowed(train_params):
-            return
-
-        import tensorflow as tf
-
-        if not tf.config.list_physical_devices("GPU"):
-            raise ValueError("GPU not found.")
+        return
 
     def prepare_data(self, ctx: TrainContext, idx: IndexDF) -> TensorflowClassificationPreparedData:
         if ctx.dt__frozen_dataset__has__image_gt is None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from typing import Iterator
 
@@ -11,7 +10,6 @@ from cv_pipeliner import ImageData
 from config import (
     INPUT_IMAGES_DIR,
     LOCAL_IMAGES_DIR,
-    SEED_CLASSIFICATION_LABELS_PATH,
     input_image_url,
     input_storage_options,
 )
@@ -30,26 +28,16 @@ def list_s3_images() -> Iterator[pd.DataFrame]:
     yield pd.DataFrame({"image_name": keys, "image_url": urls})
 
 
-def list_seed_classification_labels() -> Iterator[pd.DataFrame]:
-    """COCO-derived labels from ``scripts/seed_sample_data.py`` (optional pre-labels)."""
-    if not SEED_CLASSIFICATION_LABELS_PATH.exists():
-        yield pd.DataFrame(columns=["image_name", "label"])
-        return
-    payload = json.loads(SEED_CLASSIFICATION_LABELS_PATH.read_text(encoding="utf-8"))
-    rows = [{"image_name": name, "label": label} for name, label in payload.items()]
-    yield pd.DataFrame(rows, columns=["image_name", "label"])
-
-
-def resolve_best_classification_model(
-    models_df: pd.DataFrame,
-    best_model_df: pd.DataFrame,
-    model_id_column: str,
+def get_images_without_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    primary_keys: list[str],
 ) -> pd.DataFrame:
-    if not best_model_df.empty:
-        return best_model_df[[model_id_column]]
-    if models_df.empty:
-        return pd.DataFrame(columns=[model_id_column])
-    return models_df.iloc[[0]][[model_id_column]]
+    if ground_truth_df.empty:
+        return images_df[primary_keys]
+    annotated = ground_truth_df[primary_keys].drop_duplicates()
+    merged = images_df.merge(annotated, on=primary_keys, how="left", indicator=True)
+    return merged[merged["_merge"] == "left_only"][primary_keys]
 
 
 def prediction_to_ls_prediction(
@@ -102,21 +90,6 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
             continue
         records.append({"image_name": row["image_name"], "label": label})
     return pd.DataFrame(records, columns=["image_name", "label"])
-
-
-def fill_ground_truth_from_seed(
-    seed_df: pd.DataFrame,
-    gt_df: pd.DataFrame,
-    primary_keys: list[str],
-) -> pd.DataFrame:
-    """Fill missing GT from COCO seed labels; keep Label Studio annotations when present."""
-    if seed_df.empty:
-        return gt_df if not gt_df.empty else pd.DataFrame(columns=primary_keys + ["label"])
-    if gt_df.empty:
-        return seed_df[primary_keys + ["label"]]
-    missing = seed_df.merge(gt_df[primary_keys], on=primary_keys, how="left", indicator=True)
-    missing = missing[missing["_merge"] == "left_only"][primary_keys + ["label"]]
-    return pd.concat([gt_df, missing], ignore_index=True)[primary_keys + ["label"]]
 
 
 def split_df_train_val(

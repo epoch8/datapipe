@@ -34,9 +34,6 @@ CLASS_HAS_ANIMAL = "Has Animal"
 CLASS_NO_ANIMALS = "No Animals"
 CLASSIFICATION_CLASSES = [CLASS_HAS_ANIMAL, CLASS_NO_ANIMALS]
 
-E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
-SEED_CLASSIFICATION_LABELS_PATH = E2E_TEMPLATE_DIR / "sample_data" / "classification_labels.json"
-
 
 def _is_cloud_path(path: str) -> bool:
     protocol, _ = fsspec.core.split_protocol(path)

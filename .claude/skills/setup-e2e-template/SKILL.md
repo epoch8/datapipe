@@ -20,9 +20,9 @@ Templates:
 bring up the bundled `docker compose` services or reuse existing? **which Postgres + which
 database** for `DB_URL` — never point it at an existing DB without confirming; reuse an existing
 venv / `uv` env or create a fresh one? GPU? **annotate for real in Label Studio, or inject
-ready-made ground truth** (reuse existing labels / a labelled dataset / classification `seed-gt`)
-to skip the human `annotation` step? surface stage logs or run quiet? (per-tag scenario metrics
-live in a separate example → **setup-detection-tags**)
+ready-made ground truth** (reuse existing labels / a labelled dataset) to skip the human
+`annotation` step? surface stage logs or run quiet? (per-tag scenario metrics live in a
+separate example → **setup-detection-tags**)
 
 **How to work:** read the setup, then propose a short plan and get a go-ahead before touching
 anything. Prepare `.env` and **pause for the user to verify it** before running. Run each stage
@@ -64,13 +64,13 @@ a file and `grep` it (e.g. `datapipe --debug run > /tmp/dp_debug.log 2>&1; grep 
   `CUDA_VISIBLE_DEVICES=` (empty) so `cpu_training_allowed` passes. **≥10 annotated images** to
   freeze (`min_delta=10`).
 - Read-only/small `/home`: `export UV_CACHE_DIR=/tmp/uvcache HF_HOME=/tmp/hf` before `uv sync`.
-- Stages: `annotation`, `seed-gt` (classification only), `train`, `fiftyone`.
+- Stages: `annotation`, `train`, `fiftyone`.
 
 ## Quick demo to verify setup
 Skip if you have data: `uv run python scripts/seed_sample_data.py` downloads COCO images (cat/dog,
 person keypoints; limit flags to change) and uploads them to MinIO; then run §Run as-is.
 For classification add `--classification-animal-limit 12 --classification-no-animal-limit 12`
-(writes `sample_data/classification_labels.json`).
+to seed mixed Has Animal / No Animals images for Label Studio.
 
 ## Run (from the project subdir)
 ```bash
@@ -85,24 +85,13 @@ uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
 uv run fiftyone app launch datapipe_detection_e2e    # or datapipe_keypoints_e2e / datapipe_classification_e2e
 ```
 
-Classification unattended (COCO seed labels, no Label Studio):
-```bash
-cd image_classification
-set -a && source ../.env && set +a
-uv run datapipe db create-all
-uv run datapipe --executor RayExecutor step --labels=stage=seed-gt run   # GT from classification_labels.json
-uv run datapipe --executor RayExecutor step --labels=stage=train run
-uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run
-```
-
 ## Skip annotation — inject ground truth (unattended / demo)
 No human in Label Studio? Bypass `annotation` by writing `image__ground_truth` + `image__subset`,
 then run `stage=train`. **Rows MUST follow the pipeline's conventions:**
 - **`image_name` must equal what `list_s3_images` emits** — key relative to `INPUT_IMAGES_DIR`
   (`$DATAPIPE_E2E_DIR/images`), plain object name (`000000008458.jpg`).
 - **Detection/keypoints:** `labels` match class casing; `bboxes` = pixel `[x1,y1,x2,y2]`.
-- **Classification:** scalar `label` column (`Has Animal` / `No Animals`) — not a JSON list. Prefer
-  `stage=seed-gt` after `seed_sample_data.py` over hand-written SQL.
+- **Classification:** scalar `label` column (`Has Animal` / `No Animals`) — not a JSON list.
 - Write via datapipe `DataStore`/`UpdateExternalTable` (keeps `*_meta` in sync) — not raw SQL
   `UPDATE` on PK columns.
 

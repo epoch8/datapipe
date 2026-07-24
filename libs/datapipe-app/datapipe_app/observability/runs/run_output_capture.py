@@ -137,6 +137,60 @@ _real_stderr = sys.stderr
 _log_handler_installed = False
 
 
+def _retarget_logging_streams_to_real() -> None:
+    """Pin StreamHandler / RichHandler output to the real stdio streams.
+
+    Rich Console(stderr=True) resolves ``sys.stderr`` on each write when
+    ``_file`` is unset. After we wrap stdio with ``_MultiplexStream``, those
+    writes would be captured again on top of ``_ContextLogHandler``.
+    """
+    loggers: list[logging.Logger] = [logging.getLogger()]
+    for name in _LOGGER_NAMES:
+        loggers.append(logging.getLogger(name))
+    for name, obj in logging.Logger.manager.loggerDict.items():
+        if isinstance(obj, logging.Logger):
+            loggers.append(obj)
+        elif name.startswith("datapipe"):
+            loggers.append(logging.getLogger(name))
+
+    seen: set[int] = set()
+    for logger in loggers:
+        for handler in logger.handlers:
+            handler_id = id(handler)
+            if handler_id in seen:
+                continue
+            seen.add(handler_id)
+            if isinstance(handler, _ContextLogHandler):
+                continue
+
+            console = getattr(handler, "console", None)
+            if console is not None:
+                prefer_stderr = bool(getattr(console, "stderr", True))
+                console.file = _real_stderr if prefer_stderr else _real_stdout
+                continue
+
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                stream = getattr(handler, "stream", None)
+                if stream is None:
+                    continue
+                # lastResort._StderrHandler (and similar) expose stream as a
+                # read-only property that always tracks sys.stderr — skip them.
+                stream_attr = getattr(type(handler), "stream", None)
+                if isinstance(stream_attr, property) and stream_attr.fset is None:
+                    continue
+                try:
+                    if stream in (sys.stderr, _real_stderr) or (
+                        isinstance(stream, _MultiplexStream) and stream._original is _real_stderr
+                    ):
+                        handler.setStream(_real_stderr)
+                    elif stream in (sys.stdout, _real_stdout) or (
+                        isinstance(stream, _MultiplexStream) and stream._original is _real_stdout
+                    ):
+                        handler.setStream(_real_stdout)
+                except (AttributeError, TypeError):
+                    continue
+
+
 def _ensure_global_capture() -> None:
     global _log_handler_installed
     if not isinstance(sys.stdout, _MultiplexStream):
@@ -153,6 +207,7 @@ def _ensure_global_capture() -> None:
                 logger.setLevel(logging.INFO)
             logger.addHandler(handler)
         _log_handler_installed = True
+    _retarget_logging_streams_to_real()
 
 
 @contextmanager

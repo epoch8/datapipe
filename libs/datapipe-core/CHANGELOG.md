@@ -27,6 +27,9 @@
   (ADD COLUMN / ALTER) via Alembic `produce_migrations` + `Operations.invoke`,
   without writing migration revision files, when the optional
   `datapipe-core[alembic]` extra is installed; otherwise sync is skipped
+* `datapipe db create-all` refuses to mutate the database when Alembic has
+  stamped a revision (`alembic_version.version_num` is set) — use
+  `alembic upgrade` instead of create-all / `--force-recreate` / metadata sync
 
 ## Executor / step progress
 

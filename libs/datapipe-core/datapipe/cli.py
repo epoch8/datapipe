@@ -329,7 +329,18 @@ def create_all(ctx: click.Context, force_recreate: bool) -> None:
     dbconn = app.ds.meta_dbconn
 
     from datapipe.store.database import ensure_db_schema
-    from datapipe.store.schema_sync import AlembicNotInstalledError, sync_sqla_metadata
+    from datapipe.store.schema_sync import (
+        AlembicManagedDatabaseError,
+        AlembicNotInstalledError,
+        refuse_if_alembic_managed,
+        sync_sqla_metadata,
+    )
+
+    # Alembic-managed DBs must not be mutated by create-all / force-recreate / sync.
+    try:
+        refuse_if_alembic_managed(dbconn.con, schema=dbconn.schema)
+    except AlembicManagedDatabaseError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     ensure_db_schema(dbconn)
     _run_db_create_all_extensions(app, dbconn)

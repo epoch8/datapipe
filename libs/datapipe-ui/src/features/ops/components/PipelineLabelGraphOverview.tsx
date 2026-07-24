@@ -206,14 +206,25 @@ export function PipelineLabelGraphOverview({
 
     const activeIds = React.useMemo(() => {
         const ids = new Set<string>();
+        const addDescendants = (id: string) => {
+            const node = nodeById.get(id);
+            node?.children_ids?.forEach((childId) => {
+                if (ids.has(childId)) return;
+                ids.add(childId);
+                addDescendants(childId);
+            });
+        };
         const add = (id?: string | null) => {
             if (!id) return;
             ids.add(id);
             const node = nodeById.get(id);
             if (node?.parent_id) ids.add(node.parent_id);
-            node?.children_ids?.forEach((c) => ids.add(c));
+            addDescendants(id);
             const top = topMap.get(id);
-            if (top) ids.add(top);
+            if (top) {
+                ids.add(top);
+                addDescendants(top);
+            }
         };
         add(selectedLabel ?? undefined);
         add(hoveredNodeId);
@@ -319,63 +330,8 @@ export function PipelineLabelGraphOverview({
                     className="pipeline-label-graph-canvas"
                     style={{ width: layout.width, height: layout.height }}
                 >
-                    <svg
-                        className="pipeline-label-graph-edges"
-                        width={layout.width}
-                        height={layout.height}
-                        aria-hidden
-                    >
-                        <defs>
-                            <marker
-                                id="label-arrow"
-                                viewBox="0 0 10 10"
-                                refX="8"
-                                refY="5"
-                                markerWidth="6"
-                                markerHeight="6"
-                                orient="auto-start-reverse"
-                            >
-                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#56677f" />
-                            </marker>
-                            <marker
-                                id="label-arrow-highlight"
-                                viewBox="0 0 10 10"
-                                refX="8"
-                                refY="5"
-                                markerWidth="6"
-                                markerHeight="6"
-                                orient="auto-start-reverse"
-                            >
-                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#1677ff" />
-                            </marker>
-                        </defs>
-
-                        {visibleOrderEdges.map((edge) =>
-                            renderEdge(
-                                edge,
-                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
-                                false,
-                            ),
-                        )}
-
-                        {visibleExactEdges.map((edge) =>
-                            renderEdge(
-                                edge,
-                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
-                                true,
-                            ),
-                        )}
-
-                        {visibleShared.map((bracket) => (
-                            <path
-                                key={bracket.id}
-                                className="label-shared-bracket"
-                                d={sharedBracketPath(bracket)}
-                            />
-                        ))}
-                    </svg>
-
-                    <div className="pipeline-label-graph-nodes">
+                    {/* containers < edges < leaves: nested fills must not wash out arrows */}
+                    <div className="pipeline-label-graph-containers">
                         {containerNodes.map((cn) => {
                             const isScopeSelected = isRunScopeHighlighted(cn.nodeId);
                             const isSelected =
@@ -465,7 +421,65 @@ export function PipelineLabelGraphOverview({
                                 </div>
                             );
                         })}
+                    </div>
 
+                    <svg
+                        className="pipeline-label-graph-edges"
+                        width={layout.width}
+                        height={layout.height}
+                        aria-hidden
+                    >
+                        <defs>
+                            <marker
+                                id="label-arrow"
+                                viewBox="0 0 10 10"
+                                refX="8"
+                                refY="5"
+                                markerWidth="6"
+                                markerHeight="6"
+                                orient="auto-start-reverse"
+                            >
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b4f6b" />
+                            </marker>
+                            <marker
+                                id="label-arrow-highlight"
+                                viewBox="0 0 10 10"
+                                refX="8"
+                                refY="5"
+                                markerWidth="6"
+                                markerHeight="6"
+                                orient="auto-start-reverse"
+                            >
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#1677ff" />
+                            </marker>
+                        </defs>
+
+                        {visibleOrderEdges.map((edge) =>
+                            renderEdge(
+                                edge,
+                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
+                                false,
+                            ),
+                        )}
+
+                        {visibleExactEdges.map((edge) =>
+                            renderEdge(
+                                edge,
+                                getEdgeHighlightLevel(edge, selectedLabel, activeIds),
+                                true,
+                            ),
+                        )}
+
+                        {visibleShared.map((bracket) => (
+                            <path
+                                key={bracket.id}
+                                className="label-shared-bracket"
+                                d={sharedBracketPath(bracket)}
+                            />
+                        ))}
+                    </svg>
+
+                    <div className="pipeline-label-graph-nodes">
                         {leafNodes.map((ln) => {
                             const parentInterleaved = interleavedContainers.find((ic) =>
                                 ic.interleavedLabelIds?.includes(ln.nodeId),

@@ -36,12 +36,9 @@ E2E_YOLO_WEIGHTS = {
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
 
 CAT_DOG_CATEGORY_IDS = {17, 18}  # cat, dog
-# COCO animal supercategory ids used for Has Animal / No Animals classification.
+# COCO animal supercategory ids used for optional classification sample images.
 ANIMAL_CATEGORY_IDS = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25}  # bird…giraffe
-CLASS_HAS_ANIMAL = "Has Animal"
-CLASS_NO_ANIMALS = "No Animals"
 RNG_SEED = 1234
-LABELS_PATH = E2E_DIR / "sample_data" / "classification_labels.json"
 
 
 def get_with_retries(url: str, *, attempts: int = 5) -> requests.Response:
@@ -87,7 +84,7 @@ def pick_image_ids(
     keypoints_limit: int,
     classification_animal_limit: int,
     classification_no_animal_limit: int,
-) -> tuple[list[int], dict[str, str]]:
+) -> list[int]:
     random.seed(RNG_SEED)
     id_to_img = {img["id"]: img for img in instances_data["images"]}
 
@@ -134,31 +131,18 @@ def pick_image_ids(
             f"Need at least {classification_no_animal_limit} no-animal images in COCO, found {len(no_animal_ids)}"
         )
 
-    selected_animal = random.sample(animal_ids, classification_animal_limit)
-    selected_no_animal = random.sample(no_animal_ids, classification_no_animal_limit)
     selected = list(
         dict.fromkeys(
             random.sample(cat_dog_ids, detection_limit)
             + random.sample(person_ids, keypoints_limit)
-            + selected_animal
-            + selected_no_animal
+            + random.sample(animal_ids, classification_animal_limit)
+            + random.sample(no_animal_ids, classification_no_animal_limit)
         )
     )
     missing = [iid for iid in selected if iid not in id_to_img]
     if missing:
         raise RuntimeError(f"Missing COCO image metadata for ids: {missing[:3]}")
-
-    labels: dict[str, str] = {}
-    for image_id in selected_animal + selected_no_animal:
-        file_name = id_to_img[image_id]["file_name"]
-        labels[file_name] = CLASS_HAS_ANIMAL if image_id in animal_by_image else CLASS_NO_ANIMALS
-    return selected, labels
-
-
-def write_classification_labels(labels: dict[str, str]) -> None:
-    LABELS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LABELS_PATH.write_text(json.dumps(labels, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"Wrote {len(labels)} classification labels to {LABELS_PATH}")
+    return selected
 
 
 def download_images(image_ids: list[int], instances_data: dict) -> list[Path]:
@@ -265,7 +249,7 @@ def main() -> int:
         ann_zip = ensure_coco_annotations_zip()
         instances_data = load_coco_json(ann_zip, INSTANCES_JSON)
         keypoints_data = load_coco_json(ann_zip, KEYPOINTS_JSON)
-        image_ids, labels = pick_image_ids(
+        image_ids = pick_image_ids(
             instances_data,
             keypoints_data,
             detection_limit=args.detection_limit,
@@ -274,11 +258,6 @@ def main() -> int:
             classification_no_animal_limit=args.classification_no_animal_limit,
         )
         local_paths = download_images(image_ids, instances_data)
-        if labels:
-            write_classification_labels(labels)
-        elif LABELS_PATH.exists():
-            # Avoid stale labels when classification limits are 0.
-            LABELS_PATH.unlink()
         print(f"Saved {len(local_paths)} images to {SAMPLE_DIR}")
 
     if not args.skip_upload:

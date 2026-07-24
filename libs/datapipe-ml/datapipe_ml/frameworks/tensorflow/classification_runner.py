@@ -259,7 +259,21 @@ def get_model(
 
 def read_image_filepath(filepath: bytes):
     with fsspec.open(filepath.decode(), "rb") as src:
-        return imageio.imread(src)
+        image = np.asarray(imageio.imread(src))
+    return ensure_rgb_uint8(image)
+
+
+def ensure_rgb_uint8(image: np.ndarray) -> np.ndarray:
+    """Normalize loaded images to HxWx3 so tf.data batching does not mix ranks."""
+    if image.ndim == 2:
+        image = np.stack([image, image, image], axis=-1)
+    elif image.ndim == 3 and image.shape[-1] == 1:
+        image = np.concatenate([image, image, image], axis=-1)
+    elif image.ndim == 3 and image.shape[-1] == 4:
+        image = image[..., :3]
+    elif image.ndim != 3 or image.shape[-1] != 3:
+        raise ValueError(f"Unsupported image shape for classification training: {image.shape}")
+    return image
 
 
 # Augmentations
