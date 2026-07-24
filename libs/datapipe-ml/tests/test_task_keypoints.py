@@ -84,7 +84,16 @@ def test_keypoints_pipeline_e2e_smoke_cpu(tmp_path):
     assert_metrics_have_values(
         runtime,
         "keypoints_metrics_on_subset",
-        ["calc__support", "calc__TP", "calc__FP", "calc__FN"],
+        [
+            "calc__support",
+            "calc__accuracy",
+            "calc__weighted_f1_score",
+            "calc__pose_P",
+            "calc__pose_R",
+            "calc__pose_mAP50",
+            "calc__pose_mAP50_95",
+            "calc__pose_support",
+        ],
     )
 
 

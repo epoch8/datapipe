@@ -948,9 +948,10 @@ def keypoints_metrics_step():
     return CountMetrics_Subset_KeypointsModel(
         input__image__ground_truth="image__ground_truth_for_keypoints",
         input__subset__has__image="subset__has__image",
-        input__keypoints_model="keypoints_model",
         input__keypoints_prediction="keypoints_prediction",
-        output__keypoints_model__metrics__on__subset="keypoints_metrics_on_subset",
+        output__keypoints_model__metrics_on__image="keypoints_metrics_on_image",
+        output__keypoints_model__metrics_by_cls_on__subset="keypoints_metrics_by_cls",
+        output__keypoints_model__metrics_on__subset="keypoints_metrics_on_subset",
         primary_keys=PRIMARY_KEYS,
         bbox_id__name=None,
         create_table=True,
