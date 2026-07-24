@@ -15,11 +15,9 @@ from config import (
     CVAT_POLYGON_LABEL,
     FFMPEG_BIN,
     FRAMES_DIR,
-    IMAGES_DIR,
     INPUT_VIDEO_DIR,
     PHASH_MAX_DISTANCE,
     PHASH_SIZE,
-    SAM_MAX_INFER_SIDE,
     SAM_TEXT_PROMPT,
     SAMPLE_FPS,
     TASK_QUEUE_ID,
@@ -30,7 +28,6 @@ from models import infer_image
 SAM_CONFIG_ID = "default"
 
 _LOCAL_IMAGES_COLUMNS = ["video_id", "image_id", "image_path"]
-_DEDUPED_FRAMES_COLUMNS = ["video_id", "image_id", "frame_path"]
 _FRAMES_COLUMNS = ["video_id", "frame_id", "ts_sec", "frame_path"]
 _SAM_PRED_COLUMNS = [
     "image_id",
@@ -115,7 +112,7 @@ def dedup_frames(df_frames: pd.DataFrame) -> pd.DataFrame:
     more than PHASH_MAX_DISTANCE (Hamming). Walking POV frames are highly redundant, so a sequential
     compare-to-last-kept pass removes near-duplicates cheaply while preserving genuine scene change."""
     if df_frames.empty:
-        return pd.DataFrame(columns=_DEDUPED_FRAMES_COLUMNS)
+        return pd.DataFrame(columns=_LOCAL_IMAGES_COLUMNS)
 
     records: list[dict] = []
     for video_id, group in df_frames.groupby("video_id"):
@@ -134,48 +131,12 @@ def dedup_frames(df_frames: pd.DataFrame) -> pd.DataFrame:
                 {
                     "video_id": str(video_id),
                     "image_id": row["frame_id"],
-                    "frame_path": row["frame_path"],
+                    "image_path": row["frame_path"],
                 }
             )
 
     if not records:
-        return pd.DataFrame(columns=_DEDUPED_FRAMES_COLUMNS)
-    return pd.DataFrame(records, columns=_DEDUPED_FRAMES_COLUMNS)
-
-
-def downscale_frames(df_deduped: pd.DataFrame) -> pd.DataFrame:
-    """Resize each deduped frame so its longest side is at most SAM_MAX_INFER_SIDE, writing the result
-    under IMAGES_DIR. SAM3 emits masks at the input resolution, so full 720p+ frames blow past a small
-    GPU; the resized frame is what both SAM and CVAT use, so detection coordinates line up. With
-    SAM_MAX_INFER_SIDE=0 the original frame is passed through unchanged (use only on a roomy GPU)."""
-    if df_deduped.empty:
         return pd.DataFrame(columns=_LOCAL_IMAGES_COLUMNS)
-
-    records: list[dict] = []
-    for _, row in df_deduped.iterrows():
-        frame_path = str(row["frame_path"])
-        if not SAM_MAX_INFER_SIDE:
-            image_path = frame_path
-        else:
-            out_dir = IMAGES_DIR / str(row["video_id"])
-            out_dir.mkdir(parents=True, exist_ok=True)
-            out_path = out_dir / f"{row['image_id']}.jpg"
-            if not out_path.exists():
-                with Image.open(frame_path) as img:
-                    img = img.convert("RGB")
-                    longest = max(img.size)
-                    if longest > SAM_MAX_INFER_SIDE:
-                        scale = SAM_MAX_INFER_SIDE / longest
-                        img = img.resize(
-                            (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
-                            Image.BILINEAR,
-                        )
-                    img.save(out_path, quality=95)
-            image_path = str(out_path)
-        records.append(
-            {"video_id": str(row["video_id"]), "image_id": row["image_id"], "image_path": image_path}
-        )
-
     return pd.DataFrame(records, columns=_LOCAL_IMAGES_COLUMNS)
 
 

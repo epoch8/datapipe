@@ -26,19 +26,18 @@ send it to a file and `grep` (`datapipe --debug run > /tmp/dp.log 2>&1; grep -nE
 
 ## Pipeline
 ```
-stage=video   list_videos      folder INPUT_VIDEO_DIR       -> video
-stage=sample  extract_frames   ffmpeg fps=SAMPLE_FPS        -> frames
-stage=sample  dedup_frames     perceptual-hash dedup        -> deduped_frames
-stage=sample  downscale_frames resize to SAM_MAX_INFER_SIDE -> local_images
-stage=ingest  list_sam_config  SAM_TEXT_PROMPT              -> sam_config
-stage=sam     sam_inference    SAM3 image-mode              -> sam_predictions
-stage=sam     sam_to_cvat_xml                               -> sam_cvat_xml
+stage=video   list_videos      folder INPUT_VIDEO_DIR  -> video
+stage=sample  extract_frames   ffmpeg fps=SAMPLE_FPS   -> frames
+stage=sample  dedup_frames     perceptual-hash dedup   -> local_images
+stage=ingest  list_sam_config  SAM_TEXT_PROMPT         -> sam_config
+stage=sam     sam_inference    SAM3 image-mode         -> sam_predictions
+stage=sam     sam_to_cvat_xml                          -> sam_cvat_xml
 stage=cvat    prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__annotations
 ```
 `local_images (video_id, image_id, image_path)` is what the SAM→CVAT tail consumes; everything from
 `sam_inference` on (incl. `models.py`) is a **verbatim copy of `sam_cvat`** — keep it that way. The
-video front's only job is video → deduped, GPU-sized frames. **One CVAT task per video**
-(`task_queue_id=video_id`, `FILES_BATCH` huge), split into jobs of `SEGMENT_SIZE` frames.
+video front's only job is video → deduped frames (SAM runs at native resolution). **One CVAT task per
+video** (`task_queue_id=video_id`, `FILES_BATCH` huge), split into jobs of `SEGMENT_SIZE` frames.
 
 ## Sampling knobs (the front)
 - **`SAMPLE_FPS`** (default 0.2 = 1 frame/5 s). Walking POV is highly redundant — 1 fps vs 1/3 fps
@@ -49,14 +48,11 @@ video front's only job is video → deduped, GPU-sized frames. **One CVAT task p
 - Align class across all three: `SAM_TEXT_PROMPT` == `CVAT_BOX_LABEL`/`CVAT_POLYGON_LABEL` — mismatch
   runs clean but yields 0 useful annotations. Levers: `SAM_SCORE_THRESHOLD` (0.5), `SAM_MAX_DETECTIONS` (20).
 
-## GPU memory / OOM
-SAM3 emits masks at the **input** resolution, so a raw 720p frame OOMs an 8 GB card. Instead of
-touching the shared `infer_image`, the **`downscale_frames` step** resizes each deduped frame so its
-longest side ≤ **`SAM_MAX_INFER_SIDE`** (default 640) and writes it under `IMAGES_DIR`. That resized
-frame is what BOTH SAM and CVAT use, so coordinates line up with no rescaling. Raise it on a roomy GPU
-for sharper masks; lower it if you still OOM; `0` passes the original frame through unchanged.
-- *Field note:* GTX 1070 (Pascal, 8 GB, no FlashAttention → math kernel) at 640 px → ~3 s/frame,
-  VRAM ~3.8 GB (comfortable). Ada/Ampere+ with FlashAttention is far lighter and faster — prefer it.
+## GPU
+SAM3 runs at the frame's **native resolution** (no in-pipeline resize). *Field note (measured):* a
+FlashAttention GPU (Ada/Ampere+, 16 GB) does full 1280×720 in **~5.3 GB, ~0.27 s/frame**. A
+non-FlashAttention (Pascal-class) 8 GB card OOMs on raw 720p — use a newer/bigger GPU, or shrink
+frames upstream (e.g. add a `scale` filter to `extract_frames`) rather than editing the shared tail.
 
 ## Prerequisites
 - **GPU** (see above). **HF token** — SAM3 is gated: accept the license at huggingface.co/facebook/sam3,
@@ -89,6 +85,30 @@ datapipe db create-all && datapipe run
 Run from `examples/video_segmentation_cvat/` (`app.py` `load_dotenv()`s before importing config).
 **Live demo:** drop a ~10 s clip in `INPUT_VIDEO_DIR` → `datapipe run` → a CVAT task appears in seconds.
 
+## Deploy on a bare GPU pod (no Docker) — field-tested
+The example itself needs **no Docker** — it's a plain `uv` venv. Docker is only for the infra deps
+(Postgres + CVAT), so on a Docker-less pod either point `DB_URL`/`CVAT_URL` at a host that runs them
+(needs network reach to their ports) or, for a SAM-only smoke test, skip them.
+
+Setup that worked, in order:
+1. **Get the code on the branch** without disturbing an existing checkout: from the repo dir,
+   `git fetch origin <branch>` then `git worktree add <path> <branch>` (reuses the host's git creds,
+   isolated working tree).
+2. **`uv sync`** in the example dir. `uv` auto-fetches a Python 3.10–3.12 even if the base interpreter
+   is older. Takes a few min (torch cu124 ~2.5 GB + builds `sam3`/`cv-pipeliner` from git). **`sam3`
+   builds with no `nvcc`/CUDA toolkit** — it's pure PyTorch, no compiled CUDA ext (the usual build
+   worry is a non-issue).
+3. **`.env`** — minimum for a SAM run: `HF_TOKEN` (gated), `HF_HOME=/writable/path` (the default home
+   cache may be small/read-only; weights are ~3.3 GB), `SAM_TEXT_PROMPT`, and **a `DB_URL` even if
+   unused** — `config.py` builds `DBConn(DB_URL)` at import and crashes on `None` (a dummy
+   `postgresql+psycopg2://x:x@localhost:5432/x` is enough when you only call `infer_image`).
+4. **Run scripts from the example dir** (or set `PYTHONPATH` to it) — `import models`/`config` are
+   top-level modules, not a package.
+
+**GPU field note (measured):** on a FlashAttention GPU (Ada/Ampere+, 16 GB), **full 1280×720 SAM3 =
+~5.3 GB peak, ~0.27 s/frame** — comfortable, ~10× faster than a non-FA card. First run pays a one-time
+~250 s model load + weight download.
+
 ## Debug UI (`datapipe api`)
 `datapipe api` (default `:8000`) serves the pipeline graph, table browser, and per-stage run triggers.
 **Do not run `datapipe api` and a separate CLI `datapipe run` on the same DB at once** — both write
@@ -104,9 +124,9 @@ add/remove/path change) — to change `SAM_TEXT_PROMPT`, wipe old tasks + datapi
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **0 detections** → class misaligned; align `SAM_TEXT_PROMPT` with the CVAT labels.
-- **OOM** → lower `SAM_MAX_INFER_SIDE`, then clear `IMAGES_DIR` so frames re-resize.
+- **OOM** → non-FlashAttention / too-small GPU for native-res SAM3; use a bigger/newer card or shrink
+  frames upstream (`scale` filter in `extract_frames`).
 - **Changing `SAMPLE_FPS` did nothing** → clear `FRAMES_DIR` (frames are reused).
-- **Changing `SAM_MAX_INFER_SIDE` did nothing** → clear `IMAGES_DIR` (resized frames are reused).
 - **`uq_run_log_seq` duplicate key** → UI + CLI ran together; run one at a time.
 - **Read-only filesystem on HF cache** → set `HF_HOME` to a writable path.
 - **CVAT rejects label** → project needs labels named `CVAT_BOX_LABEL`/`CVAT_POLYGON_LABEL`.

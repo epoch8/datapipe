@@ -21,15 +21,6 @@ FRAMES_DIR = (
     else Path(__file__).resolve().parent / ".frames"
 )
 
-# Where downscale_frames writes the resized frames the SAM->CVAT tail consumes (one subfolder per
-# video_id). Separate from FRAMES_DIR so the full-res extracts stay intact.
-_IMAGES_DIR_RAW = os.environ.get("IMAGES_DIR")
-IMAGES_DIR = (
-    Path(_IMAGES_DIR_RAW).resolve()
-    if _IMAGES_DIR_RAW
-    else Path(__file__).resolve().parent / ".images"
-)
-
 # ffmpeg extraction rate. 1 fps gives good event coverage; 1/3fps is not meaningfully different for
 # walking POV footage (see README). Dedup below removes the near-duplicates either way.
 SAMPLE_FPS = float(os.environ.get("SAMPLE_FPS", "1"))
@@ -57,12 +48,6 @@ FFMPEG_BIN = _resolve_ffmpeg()
 # kept only if it differs from the last kept frame by more than this. Higher = more aggressive dedup.
 PHASH_MAX_DISTANCE = int(os.environ.get("PHASH_MAX_DISTANCE", "10"))
 PHASH_SIZE = int(os.environ.get("PHASH_SIZE", "8"))  # phash hash_size (bits per side)
-
-# Longest-side cap (px) for the downscale_frames step. SAM3 returns masks at the input resolution, so
-# full 720p+ frames blow past a small GPU (an 8GB card OOMs on 1280x720). Frames are resized down to
-# this before SAM sees them and CVAT gets the same resized frame, so detection coordinates line up.
-# 0 disables downscaling (use only on a roomy GPU). 640 fits an 8GB card with headroom.
-SAM_MAX_INFER_SIDE = int(os.environ.get("SAM_MAX_INFER_SIDE", "640"))
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 

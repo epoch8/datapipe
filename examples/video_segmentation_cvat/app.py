@@ -46,14 +46,6 @@ pipeline = Pipeline(
         BatchTransform(
             func=steps.dedup_frames,
             inputs=[data.frames_tbl],
-            outputs=[data.deduped_frames_tbl],
-            transform_keys=["video_id"],
-            chunk_size=1,
-            labels=[("stage", "sample")],
-        ),
-        BatchTransform(
-            func=steps.downscale_frames,
-            inputs=[data.deduped_frames_tbl],
             outputs=[data.local_images_tbl],
             transform_keys=["video_id"],
             chunk_size=1,
