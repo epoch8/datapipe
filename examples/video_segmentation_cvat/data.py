@@ -37,8 +37,25 @@ frames_tbl = Table(
     ),
 )
 
-# Survivors of perceptual-hash dedup. image_id feeds the SAM->CVAT tail; video_id stays in the PK so
-# dedup (grouped per video) can delete+reinsert a video's survivors, and is reduced away downstream.
+# Survivors of perceptual-hash dedup, still at the source frame resolution. video_id stays in the PK
+# so dedup (grouped per video) can delete+reinsert a video's survivors.
+deduped_frames_tbl = Table(
+    name="deduped_frames",
+    store=TableStoreDB(
+        dbconn=DBCONN,
+        name="deduped_frames",
+        data_sql_schema=[
+            Column("video_id", String, primary_key=True),
+            Column("image_id", String, primary_key=True),
+            Column("frame_path", String),
+        ],
+        create_table=True,
+    ),
+)
+
+# Deduped frames resized down to SAM_MAX_INFER_SIDE by downscale_frames (see steps.py) — this is what
+# the SAM->CVAT tail consumes, so it stays identical to sam_cvat's `local_images`. video_id lingers in
+# the PK for the per-video CVAT task split and is reduced away by sam_inference.
 local_images_tbl = Table(
     name="local_images",
     store=TableStoreDB(

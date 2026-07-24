@@ -3,11 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Ask PyTorch's CUDA allocator for expandable segments before torch is imported, so the setting
-# applies no matter how the pipeline is launched (CLI `datapipe run` or a run triggered from the UI
-# server). This keeps fragmentation from turning a tight 8GB card into spurious OOMs.
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-
 import torch
 from datapipe.store.database import DBConn
 
@@ -24,6 +19,15 @@ FRAMES_DIR = (
     Path(_FRAMES_DIR_RAW).resolve()
     if _FRAMES_DIR_RAW
     else Path(__file__).resolve().parent / ".frames"
+)
+
+# Where downscale_frames writes the resized frames the SAM->CVAT tail consumes (one subfolder per
+# video_id). Separate from FRAMES_DIR so the full-res extracts stay intact.
+_IMAGES_DIR_RAW = os.environ.get("IMAGES_DIR")
+IMAGES_DIR = (
+    Path(_IMAGES_DIR_RAW).resolve()
+    if _IMAGES_DIR_RAW
+    else Path(__file__).resolve().parent / ".images"
 )
 
 # ffmpeg extraction rate. 1 fps gives good event coverage; 1/3fps is not meaningfully different for
@@ -54,6 +58,12 @@ FFMPEG_BIN = _resolve_ffmpeg()
 PHASH_MAX_DISTANCE = int(os.environ.get("PHASH_MAX_DISTANCE", "10"))
 PHASH_SIZE = int(os.environ.get("PHASH_SIZE", "8"))  # phash hash_size (bits per side)
 
+# Longest-side cap (px) for the downscale_frames step. SAM3 returns masks at the input resolution, so
+# full 720p+ frames blow past a small GPU (an 8GB card OOMs on 1280x720). Frames are resized down to
+# this before SAM sees them and CVAT gets the same resized frame, so detection coordinates line up.
+# 0 disables downscaling (use only on a roomy GPU). 640 fits an 8GB card with headroom.
+SAM_MAX_INFER_SIDE = int(os.environ.get("SAM_MAX_INFER_SIDE", "640"))
+
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
 # --- SAM3 -----------------------------------------------------------------------------------------
@@ -64,10 +74,6 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "")
 SAM_TEXT_PROMPT = os.environ.get("SAM_TEXT_PROMPT", "person")
 SAM_SCORE_THRESHOLD = float(os.environ.get("SAM_SCORE_THRESHOLD", "0.5"))
 SAM_MAX_DETECTIONS = int(os.environ.get("SAM_MAX_DETECTIONS", "20"))
-# SAM3 returns masks at the input image's resolution, so full 720p/1080p frames blow past small
-# GPUs (an 8GB card OOMs on 1280x720). Downscale the frame so its longest side is at most this many
-# pixels before inference, then scale detections back to original coordinates. 0 disables downscaling.
-SAM_MAX_INFER_SIDE = int(os.environ.get("SAM_MAX_INFER_SIDE", "640"))
 
 # --- CVAT -----------------------------------------------------------------------------------------
 

@@ -11,17 +11,20 @@ front is turning a long video into a deduplicated set of frames.
 ## Pipeline
 
 ```
-stage=video    list_videos      folder INPUT_VIDEO_DIR   -> video
-stage=sample   extract_frames   ffmpeg fps=SAMPLE_FPS    -> frames
-stage=sample   dedup_frames     perceptual-hash dedup    -> local_images
-stage=ingest   list_sam_config  SAM_TEXT_PROMPT          -> sam_config
-stage=sam      sam_inference    SAM3 image-mode          -> sam_predictions
-stage=sam      sam_to_cvat_xml                           -> sam_cvat_xml
+stage=video    list_videos      folder INPUT_VIDEO_DIR      -> video
+stage=sample   extract_frames   ffmpeg fps=SAMPLE_FPS       -> frames
+stage=sample   dedup_frames     perceptual-hash dedup       -> deduped_frames
+stage=sample   downscale_frames resize to SAM_MAX_INFER_SIDE -> local_images
+stage=ingest   list_sam_config  SAM_TEXT_PROMPT             -> sam_config
+stage=sam      sam_inference    SAM3 image-mode             -> sam_predictions
+stage=sam      sam_to_cvat_xml                              -> sam_cvat_xml
 stage=cvat     prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__annotations
 ```
 
 `local_images (image_id, image_path)` is exactly what the SAM→CVAT tail consumes, so everything from
-`sam_inference` onward is identical to `sam_cvat`.
+`sam_inference` onward is identical to `sam_cvat` — `models.py` is a verbatim copy. The only thing the
+video front adds is turning a long video into deduplicated, GPU-sized frames (the last two `sample`
+steps).
 
 ## Why sample at 1 fps then dedup (not "every frame", not 1/3 fps)
 
@@ -83,13 +86,12 @@ Run a single stage: `datapipe step --labels stage=sample run`, `... stage=sam ru
 ## GPU memory (OOM)
 
 SAM3 returns masks at the input resolution, so full 720p+ frames need a lot of VRAM — an 8 GB card
-OOMs on a raw 1280×720 frame. The example downscales each frame so its longest side is at most
-`SAM_MAX_INFER_SIDE` (default **640**) before inference, then maps detections back to the original
-frame's coordinates (CVAT still gets the full-res frame). A crowded frame can still spike, so on OOM
-inference retries at progressively smaller sizes and only skips the frame as a last resort — one
-frame never kills the run. Raise `SAM_MAX_INFER_SIDE` (or set `0` to disable) on a roomy GPU for
-sharper masks; lower it if you still OOM. `config.py` also sets
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to keep fragmentation from causing spurious OOMs.
+OOMs on a raw 1280×720 frame. Rather than touch the (shared-with-`sam_cvat`) inference code, the
+`downscale_frames` step resizes each deduped frame so its longest side is at most `SAM_MAX_INFER_SIDE`
+(default **640**, fits an 8 GB card with headroom) and writes it under `IMAGES_DIR`. That resized
+frame is what both SAM and CVAT use, so detection coordinates line up with no rescaling. Raise
+`SAM_MAX_INFER_SIDE` on a roomy GPU for sharper masks, or set `0` to pass the original frame straight
+through.
 
 ## Debug UI (`datapipe api`)
 

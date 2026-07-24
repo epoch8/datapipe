@@ -26,17 +26,19 @@ send it to a file and `grep` (`datapipe --debug run > /tmp/dp.log 2>&1; grep -nE
 
 ## Pipeline
 ```
-stage=video   list_videos     folder INPUT_VIDEO_DIR   -> video
-stage=sample  extract_frames  ffmpeg fps=SAMPLE_FPS    -> frames
-stage=sample  dedup_frames    perceptual-hash dedup    -> local_images
-stage=ingest  list_sam_config SAM_TEXT_PROMPT          -> sam_config
-stage=sam     sam_inference   SAM3 image-mode          -> sam_predictions
-stage=sam     sam_to_cvat_xml                          -> sam_cvat_xml
+stage=video   list_videos      folder INPUT_VIDEO_DIR       -> video
+stage=sample  extract_frames   ffmpeg fps=SAMPLE_FPS        -> frames
+stage=sample  dedup_frames     perceptual-hash dedup        -> deduped_frames
+stage=sample  downscale_frames resize to SAM_MAX_INFER_SIDE -> local_images
+stage=ingest  list_sam_config  SAM_TEXT_PROMPT              -> sam_config
+stage=sam     sam_inference    SAM3 image-mode              -> sam_predictions
+stage=sam     sam_to_cvat_xml                               -> sam_cvat_xml
 stage=cvat    prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__annotations
 ```
 `local_images (video_id, image_id, image_path)` is what the SAM→CVAT tail consumes; everything from
-`sam_inference` on is identical to `sam_cvat`. **One CVAT task per video** (`task_queue_id=video_id`,
-`FILES_BATCH` huge), split into jobs of `SEGMENT_SIZE` frames.
+`sam_inference` on (incl. `models.py`) is a **verbatim copy of `sam_cvat`** — keep it that way. The
+video front's only job is video → deduped, GPU-sized frames. **One CVAT task per video**
+(`task_queue_id=video_id`, `FILES_BATCH` huge), split into jobs of `SEGMENT_SIZE` frames.
 
 ## Sampling knobs (the front)
 - **`SAMPLE_FPS`** (default 0.2 = 1 frame/5 s). Walking POV is highly redundant — 1 fps vs 1/3 fps
@@ -48,16 +50,13 @@ stage=cvat    prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__a
   runs clean but yields 0 useful annotations. Levers: `SAM_SCORE_THRESHOLD` (0.5), `SAM_MAX_DETECTIONS` (20).
 
 ## GPU memory / OOM
-SAM3 emits masks at the **input** resolution, so a raw 720p frame OOMs an 8 GB card.
-- **`SAM_MAX_INFER_SIDE`** (default 640): frame is downscaled so its longest side ≤ this before
-  inference, then detections are scaled back to the original frame's coords (CVAT gets the full-res
-  frame). Raise it on a roomy GPU for sharper masks; lower it if you still OOM; `0` disables.
-- On OOM, `infer_image` retries at 512 → 384 and only skips the frame as a last resort — **one frame
-  never kills the run** (datapipe logs the skip and moves on).
-- `config.py` sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` before importing torch, so it
-  applies to both CLI and UI-triggered runs.
-- *Field note:* GTX 1070 (Pascal, 8 GB, no FlashAttention → math kernel) runs at 640 px, ~3 s/frame,
-  VRAM ~8 GB (tight). Ada/Ampere+ with FlashAttention is far lighter and faster — prefer it.
+SAM3 emits masks at the **input** resolution, so a raw 720p frame OOMs an 8 GB card. Instead of
+touching the shared `infer_image`, the **`downscale_frames` step** resizes each deduped frame so its
+longest side ≤ **`SAM_MAX_INFER_SIDE`** (default 640) and writes it under `IMAGES_DIR`. That resized
+frame is what BOTH SAM and CVAT use, so coordinates line up with no rescaling. Raise it on a roomy GPU
+for sharper masks; lower it if you still OOM; `0` passes the original frame through unchanged.
+- *Field note:* GTX 1070 (Pascal, 8 GB, no FlashAttention → math kernel) at 640 px → ~3 s/frame,
+  VRAM ~3.8 GB (comfortable). Ada/Ampere+ with FlashAttention is far lighter and faster — prefer it.
 
 ## Prerequisites
 - **GPU** (see above). **HF token** — SAM3 is gated: accept the license at huggingface.co/facebook/sam3,
@@ -105,8 +104,9 @@ add/remove/path change) — to change `SAM_TEXT_PROMPT`, wipe old tasks + datapi
 
 ## Troubleshooting (may already be fixed — verify against current files)
 - **0 detections** → class misaligned; align `SAM_TEXT_PROMPT` with the CVAT labels.
-- **OOM** → lower `SAM_MAX_INFER_SIDE`; confirm `expandable_segments` took effect.
+- **OOM** → lower `SAM_MAX_INFER_SIDE`, then clear `IMAGES_DIR` so frames re-resize.
 - **Changing `SAMPLE_FPS` did nothing** → clear `FRAMES_DIR` (frames are reused).
+- **Changing `SAM_MAX_INFER_SIDE` did nothing** → clear `IMAGES_DIR` (resized frames are reused).
 - **`uq_run_log_seq` duplicate key** → UI + CLI ran together; run one at a time.
 - **Read-only filesystem on HF cache** → set `HF_HOME` to a writable path.
 - **CVAT rejects label** → project needs labels named `CVAT_BOX_LABEL`/`CVAT_POLYGON_LABEL`.
