@@ -8,6 +8,15 @@ import type { OpsBBoxRow, OpsImageRecordDetailResponse } from "../../../types/op
 import { EmptyState, PageHeader } from "../shared";
 import { ImagePanel } from "../images/ImagePanel";
 
+function isLabelOnlyDetail(detail: OpsImageRecordDetailResponse | null): boolean {
+    if (!detail) return false;
+    if (detail.prediction_label != null || detail.gt_label != null || detail.label != null) return true;
+    const predRows = detail.prediction_bbox_rows ?? [];
+    const gtRows = detail.gt_bbox_rows ?? [];
+    const rows = predRows.length ? predRows : gtRows;
+    return rows.length > 0 && rows.every((row) => row.x1 == null && row.y1 == null && row.x2 == null && row.y2 == null);
+}
+
 export function ModelPredictionRecordDetailPage() {
     const { specId: rawSpecId = "", entityId: rawEntityId = "", recordKey: rawRecordKey = "" } = useParams<{
         specId?: string;
@@ -44,6 +53,7 @@ export function ModelPredictionRecordDetailPage() {
     }, [load]);
 
     const imageName = detail?.pk?.image_name ? String(detail.pk.image_name) : "";
+    const labelOnly = isLabelOnlyDetail(detail);
 
     const predColumns: ColumnsType<OpsBBoxRow> = React.useMemo(
         () => [
@@ -98,41 +108,57 @@ export function ModelPredictionRecordDetailPage() {
                             <Radio.Button value="prediction">Prediction only</Radio.Button>
                         </Radio.Group>
                     </div>
-                    <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>GT</span>
-                            <Switch checked={gtOn} onChange={setGtOn} />
+                    {!labelOnly ? (
+                        <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span>GT</span>
+                                <Switch checked={gtOn} onChange={setGtOn} />
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span>Prediction</span>
+                                <Switch checked={predictionOn} onChange={setPredictionOn} />
+                            </div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>Prediction</span>
-                            <Switch checked={predictionOn} onChange={setPredictionOn} />
-                        </div>
-                    </div>
+                    ) : null}
                 </div>
 
                 <div className="ops-prediction-compare-grid" style={{ marginBottom: 18 }}>
                     {(viewMode === "both" || viewMode === "gt") && (
-                        <ImagePanel title="Ground truth" tone="gt" imageUrl={gtUrl} />
+                        <ImagePanel
+                            title="Ground truth"
+                            tone="gt"
+                            imageUrl={labelOnly ? detail?.plain_gt_image_url ?? gtUrl : gtUrl}
+                            label={detail?.gt_label}
+                        />
                     )}
                     {(viewMode === "both" || viewMode === "prediction") && (
-                        <ImagePanel title="Prediction" tone="prediction" imageUrl={predictionUrl} />
+                        <ImagePanel
+                            title="Prediction"
+                            tone="prediction"
+                            imageUrl={labelOnly ? detail?.plain_prediction_image_url ?? predictionUrl : predictionUrl}
+                            label={detail?.prediction_label ?? detail?.label}
+                        />
                     )}
                 </div>
 
                 <div className="ops-record-detail-layout">
                     <div>
-                        <div className="ops-panel ops-polished-panel" style={{ marginBottom: 16 }}>
-                            <div className="ops-panel-title" style={{ marginBottom: 10 }}>
-                                Prediction boxes
-                            </div>
-                            <Table size="small" rowKey={(_r, i) => `p-${i}`} columns={predColumns} dataSource={detail?.prediction_bbox_rows ?? []} pagination={false} />
-                        </div>
-                        <div className="ops-panel ops-polished-panel">
-                            <div className="ops-panel-title" style={{ marginBottom: 10 }}>
-                                Ground truth boxes
-                            </div>
-                            <Table size="small" rowKey={(_r, i) => `g-${i}`} columns={gtColumns} dataSource={detail?.gt_bbox_rows ?? []} pagination={false} />
-                        </div>
+                        {!labelOnly ? (
+                            <>
+                                <div className="ops-panel ops-polished-panel" style={{ marginBottom: 16 }}>
+                                    <div className="ops-panel-title" style={{ marginBottom: 10 }}>
+                                        Prediction boxes
+                                    </div>
+                                    <Table size="small" rowKey={(_r, i) => `p-${i}`} columns={predColumns} dataSource={detail?.prediction_bbox_rows ?? []} pagination={false} />
+                                </div>
+                                <div className="ops-panel ops-polished-panel">
+                                    <div className="ops-panel-title" style={{ marginBottom: 10 }}>
+                                        Ground truth boxes
+                                    </div>
+                                    <Table size="small" rowKey={(_r, i) => `g-${i}`} columns={gtColumns} dataSource={detail?.gt_bbox_rows ?? []} pagination={false} />
+                                </div>
+                            </>
+                        ) : null}
                     </div>
                     <div>
                         <div className="ops-panel ops-polished-panel" style={{ marginBottom: 16 }}>
@@ -144,10 +170,27 @@ export function ModelPredictionRecordDetailPage() {
                                 <dd>{imageName || "—"}</dd>
                                 <dt>model_id</dt>
                                 <dd>{modelId || "—"}</dd>
-                                <dt>prediction boxes</dt>
-                                <dd>{detail?.prediction_bbox_count ?? 0}</dd>
-                                <dt>gt boxes</dt>
-                                <dd>{detail?.gt_bbox_count ?? 0}</dd>
+                                {labelOnly ? (
+                                    <>
+                                        <dt>true label</dt>
+                                        <dd>{detail?.gt_label ?? "—"}</dd>
+                                        <dt>pred label</dt>
+                                        <dd>{detail?.prediction_label ?? detail?.label ?? "—"}</dd>
+                                        <dt>score</dt>
+                                        <dd>
+                                            {detail?.prediction_score != null ? detail.prediction_score.toFixed(4) : "—"}
+                                        </dd>
+                                        <dt>is_error</dt>
+                                        <dd>{detail?.is_error == null ? "—" : detail.is_error ? "true" : "false"}</dd>
+                                    </>
+                                ) : (
+                                    <>
+                                        <dt>prediction boxes</dt>
+                                        <dd>{detail?.prediction_bbox_count ?? 0}</dd>
+                                        <dt>gt boxes</dt>
+                                        <dd>{detail?.gt_bbox_count ?? 0}</dd>
+                                    </>
+                                )}
                                 <dt>subset</dt>
                                 <dd>{detail?.subset ?? "—"}</dd>
                                 <dt>image_url</dt>

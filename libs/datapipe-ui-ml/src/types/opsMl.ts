@@ -659,6 +659,11 @@ export interface OpsImageRecordListRow {
     bbox_count?: number | null;
     gt_bbox_count?: number | null;
     prediction_bbox_count?: number | null;
+    label?: string | null;
+    gt_label?: string | null;
+    prediction_label?: string | null;
+    prediction_score?: number | null;
+    is_error?: boolean | null;
     metrics?: Record<string, unknown> | null;
 }
 
@@ -708,6 +713,12 @@ export interface OpsImageRecordDetailResponse {
     bbox_count?: number | null;
     gt_bbox_count?: number | null;
     prediction_bbox_count?: number | null;
+
+    label?: string | null;
+    gt_label?: string | null;
+    prediction_label?: string | null;
+    prediction_score?: number | null;
+    is_error?: boolean | null;
 
     bbox_rows?: OpsBBoxRow[];
     gt_bbox_rows?: OpsBBoxRow[];

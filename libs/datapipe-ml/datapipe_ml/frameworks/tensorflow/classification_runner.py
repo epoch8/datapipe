@@ -653,22 +653,24 @@ class TrainModelResult:
 
 @dataclass
 class TF_ClassificationTrainingConfig:
-    image_size: Tuple[int, int]
-    seed: int
-    batch_size: int
-    arch: Optional[str]
-    init_lr: float
-    reduce_lr_patience: int
-    reduce_lr_factor: float
-    early_stopping_patience: int
-    epochs: int
-    label_smoothing: float
-    augmentations: bool
-    augment_func_file: Optional[str]
-    class_weight: bool  # TODO: support custom Dict[str, float] per-class weight dictionaries
+    image_size: Tuple[int, int] = (224, 224)
+    seed: int = 0
+    batch_size: int = 128
+    arch: Optional[str] = "mobilenet"
+    init_lr: float = 0.001
+    reduce_lr_patience: int = 5
+    reduce_lr_factor: float = 0.5
+    early_stopping_patience: int = 10
+    epochs: int = 100
+    label_smoothing: float = 0.0
+    augmentations: bool = True
+    augment_func_file: Optional[str] = None
+    class_weight: bool = True  # TODO: support custom Dict[str, float] per-class weight dictionaries
     model_spec: Optional[TFModelSpec] = None
 
     def __post_init__(self):
+        if isinstance(self.image_size, list):
+            self.image_size = tuple(self.image_size)  # type: ignore[assignment]
         if self.model_spec is not None and isinstance(self.model_spec, dict):
             self.model_spec = TFModelSpec(**self.model_spec)
         if self.arch is None and self.model_spec is None:

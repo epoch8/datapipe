@@ -6,6 +6,14 @@ import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { OpsBBoxRow, OpsImageRecordDetailResponse } from "../../../types/opsMl";
 import { EmptyState, PageHeader } from "../shared";
+import { ImagePanel } from "../images/ImagePanel";
+
+function isLabelOnlyDetail(detail: OpsImageRecordDetailResponse | null): boolean {
+    if (!detail) return false;
+    if (detail.label != null || detail.gt_label != null) return true;
+    const rows = detail.bbox_rows ?? [];
+    return rows.length > 0 && rows.every((row) => row.x1 == null && row.y1 == null && row.x2 == null && row.y2 == null);
+}
 
 export function FrozenDatasetRecordDetailPage() {
     const { specId: rawSpecId = "", entityId: rawEntityId = "", recordKey: rawRecordKey = "" } = useParams<{
@@ -42,6 +50,8 @@ export function FrozenDatasetRecordDetailPage() {
     const imageName = detail?.pk?.image_name ? String(detail.pk.image_name) : "";
     const subset = detail?.subset ?? (detail?.pk?.subset_id ? String(detail.pk.subset_id) : "");
     const imageUrl = annotationsOn ? detail?.visualization_url : detail?.plain_image_url;
+    const labelOnly = isLabelOnlyDetail(detail);
+    const label = detail?.label ?? detail?.gt_label ?? null;
 
     const columns: ColumnsType<OpsBBoxRow> = React.useMemo(
         () => [
@@ -73,24 +83,22 @@ export function FrozenDatasetRecordDetailPage() {
             <EmptyState loading={pidLoading || loading} error={error ?? undefined} empty={!detail && !loading}>
                 <div className="ops-record-detail-layout">
                     <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                            <div style={{ fontWeight: 600 }}>Annotations</div>
-                            <Switch checked={annotationsOn} onChange={setAnnotationsOn} />
-                            <span>{annotationsOn ? "On" : "Off"}</span>
-                        </div>
-                        {imageUrl ? (
-                            <img
-                                src={imageUrl}
-                                alt={imageName}
-                                style={{ width: "100%", maxHeight: 720, objectFit: "contain", borderRadius: 8 }}
-                            />
-                        ) : null}
-                        <div style={{ marginTop: 18 }}>
-                            <div className="ops-panel-title" style={{ marginBottom: 10 }}>
-                                Boxes
+                        {!labelOnly ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                                <div style={{ fontWeight: 600 }}>Annotations</div>
+                                <Switch checked={annotationsOn} onChange={setAnnotationsOn} />
+                                <span>{annotationsOn ? "On" : "Off"}</span>
                             </div>
-                            <Table size="small" rowKey={(_r, i) => String(i)} columns={columns} dataSource={detail?.bbox_rows ?? []} pagination={false} />
-                        </div>
+                        ) : null}
+                        <ImagePanel title="Image" tone="neutral" imageUrl={imageUrl} label={label} />
+                        {!labelOnly ? (
+                            <div style={{ marginTop: 18 }}>
+                                <div className="ops-panel-title" style={{ marginBottom: 10 }}>
+                                    Boxes
+                                </div>
+                                <Table size="small" rowKey={(_r, i) => String(i)} columns={columns} dataSource={detail?.bbox_rows ?? []} pagination={false} />
+                            </div>
+                        ) : null}
                         <div style={{ marginTop: 18 }}>
                             <div className="ops-panel-title" style={{ marginBottom: 10 }}>
                                 Raw record JSON
@@ -107,8 +115,17 @@ export function FrozenDatasetRecordDetailPage() {
                             <dd>{imageName || "—"}</dd>
                             <dt>subset_id</dt>
                             <dd>{subset || "—"}</dd>
-                            <dt>bboxes</dt>
-                            <dd>{detail?.bbox_count ?? 0}</dd>
+                            {labelOnly ? (
+                                <>
+                                    <dt>label</dt>
+                                    <dd>{label || "—"}</dd>
+                                </>
+                            ) : (
+                                <>
+                                    <dt>bboxes</dt>
+                                    <dd>{detail?.bbox_count ?? 0}</dd>
+                                </>
+                            )}
                             <dt>image_url</dt>
                             <dd style={{ wordBreak: "break-all" }}>{detail?.image_url ?? "—"}</dd>
                         </dl>

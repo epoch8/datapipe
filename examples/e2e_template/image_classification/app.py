@@ -428,9 +428,7 @@ app.add_specs([
                     primary_columns=[],
                     metric_columns=[
                         OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
-                        OpsColumn("tp", "TP", "calc__TP", kind="number"),
-                        OpsColumn("fp", "FP", "calc__FP", kind="number"),
-                        OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                        OpsColumn("is_error", "is_error", "calc__is_error", kind="chip"),
                     ],
                 ),
                 preview_size=84,

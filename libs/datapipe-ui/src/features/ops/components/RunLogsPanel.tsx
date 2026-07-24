@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, Dropdown, Menu, Typography } from "antd";
+import { Alert, Button, Card, Dropdown, InputNumber, Menu, Typography } from "antd";
 import { opsApi } from "../../../api/client";
 import type { RunLogLine } from "../../../types/ops";
 import { ansiToHtml, stripAnsi } from "./ansi";
@@ -409,6 +409,22 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         [totalPages, jumpToEnd, replaceWindow],
     );
 
+    const [pageDraft, setPageDraft] = useState<number | null>(null);
+    useEffect(() => {
+        setPageDraft(currentPage);
+    }, [currentPage]);
+
+    const commitPageDraft = useCallback(() => {
+        if (pageDraft == null || Number.isNaN(pageDraft)) {
+            setPageDraft(currentPage);
+            return;
+        }
+        const target = Math.min(totalPages, Math.max(1, Math.floor(pageDraft)));
+        setPageDraft(target);
+        if (currentPage != null && target === currentPage) return;
+        void jumpToPage(target);
+    }, [pageDraft, currentPage, totalPages, jumpToPage]);
+
     const windowLabel = useMemo(() => {
         if (!visibleLines.length) {
             if (maxSeq > 0) {
@@ -418,11 +434,9 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
         }
         const from = visibleLines[0].seq;
         const to = visibleLines[visibleLines.length - 1].seq;
-        const pageHint =
-            currentPage != null ? ` · page ${currentPage}/${totalPages}` : "";
         const totalHint = maxSeq > to ? ` / ${maxSeq.toLocaleString()} total` : "";
-        return `${visibleLines.length.toLocaleString()} lines (seq ${from.toLocaleString()}–${to.toLocaleString()})${totalHint}${pageHint}`;
-    }, [visibleLines, maxSeq, currentPage, totalPages]);
+        return `${visibleLines.length.toLocaleString()} lines (seq ${from.toLocaleString()}–${to.toLocaleString()})${totalHint}`;
+    }, [visibleLines, maxSeq]);
 
     const atStart = !hasOlder && lines.length > 0;
     const atEnd = !hasNewer && lines.length > 0;
@@ -466,6 +480,23 @@ export function RunLogsPanel({ runId, status, stepFilter = null, onClearStepFilt
                     >
                         Prev
                     </Button>
+                    <InputNumber
+                        size="small"
+                        min={1}
+                        max={totalPages}
+                        value={pageDraft ?? undefined}
+                        disabled={loading || maxSeq <= 0}
+                        onChange={(value) =>
+                            setPageDraft(typeof value === "number" ? value : null)
+                        }
+                        onPressEnter={commitPageDraft}
+                        onBlur={commitPageDraft}
+                        style={{ width: 64, marginRight: 4 }}
+                        title="Go to page"
+                    />
+                    <Text type="secondary" style={{ marginRight: 4 }}>
+                        / {totalPages}
+                    </Text>
                     <Button
                         size="small"
                         onClick={() =>

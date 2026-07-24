@@ -9,13 +9,17 @@ from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
 from datapipe.types import IndexDF
 
-# Importing the yolo codec registers yolov8_detection / segmentation / keypoints
-# (spec §15). It is a side-effect import guarded because it pulls the optional
-# ``torch``/``ultralytics`` extra; when that extra is absent the codec simply is
-# not registered and codec-dependent endpoints report an ``unknown_config_type``
-# error instead of failing to import.
+# Importing codecs registers yolov8_* / tf_classification (spec §15). Side-effect
+# imports are guarded because they pull optional extras (torch/ultralytics or
+# tensorflow); when an extra is absent the codec simply is not registered and
+# codec-dependent endpoints report an ``unknown_config_type`` error instead of
+# failing to import.
 try:  # pragma: no cover - depends on optional extra being installed
     import datapipe_ml.frameworks.yolo.train_config_codec  # noqa: F401
+except Exception:  # noqa: BLE001 - optional dependency may be missing
+    pass
+try:  # pragma: no cover - depends on optional extra being installed
+    import datapipe_ml.frameworks.tensorflow.train_config_codec  # noqa: F401
 except Exception:  # noqa: BLE001 - optional dependency may be missing
     pass
 from datapipe_ml.training.config_codec import (

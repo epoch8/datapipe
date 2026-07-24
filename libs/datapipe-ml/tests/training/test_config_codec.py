@@ -138,6 +138,35 @@ def test_yolov8_codec_validate_rejects_unknown_fields():
     assert exc_info.value.errors[0]["field"] == "not_a_field"
 
 
+def _tf_codec():
+    pytest.importorskip("tensorflow")
+    import datapipe_ml.frameworks.tensorflow.train_config_codec  # noqa: F401
+
+    return get_train_config_codec("tf_classification")
+
+
+def test_tf_classification_codec_is_registered():
+    codec = _tf_codec()
+    assert codec.config_type == "tf_classification"
+    schema = codec.json_schema()
+    for field in ("arch", "image_size", "batch_size", "epochs", "init_lr"):
+        assert field in schema["properties"]
+    assert schema["properties"]["arch"]["default"] == "mobilenet"
+    assert schema["properties"]["image_size"]["default"] == (224, 224)
+    assert schema["properties"]["batch_size"]["default"] == 128
+    assert schema["properties"]["epochs"]["default"] == 100
+    assert schema["properties"]["seed"]["default"] == 0
+    assert schema["properties"]["init_lr"]["default"] == 0.001
+    assert codec.default_params()["arch"] == "mobilenet"
+    normalized = codec.validate({})
+    assert normalized["arch"] == "mobilenet"
+    assert list(normalized["image_size"]) == [224, 224]
+    summary = codec.summarize(
+        {"arch": "tiny_cnn", "image_size": [128, 128], "batch_size": 8, "epochs": 20}
+    )
+    assert "tiny_cnn" in summary["display"]
+
+
 def test_yolov8_codec_validate_applies_defaults():
     codec = _yolo_codec()
     normalized = codec.validate({"model": "yolov8s.pt", "imgsz": 640, "batch": 8, "epochs": 5})
