@@ -135,11 +135,13 @@ uv run python scripts/seed_sample_data.py
 
 The first run downloads YOLO smoke weights into `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`),
 downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches sample JPEGs
-(cat/dog, person keypoints, plus Has Animal / No Animals) and uploads them to `s3://datapipe-e2e/images/`.
-It also writes `sample_data/classification_labels.json` for the classification seed-gt stage.
-Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with
-`DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`,
-`DB_SCHEMA_CLASSIFICATION`) are created later by `uv run datapipe db create-all` (see [Running](#running)).
+(cat/dog + person keypoints by default) and uploads them to `s3://datapipe-e2e/images/`.
+Pass `--classification-animal-limit` / `--classification-no-animal-limit` to also seed Has Animal /
+No Animals images and write `sample_data/classification_labels.json` for the classification
+`seed-gt` stage. Re-runs reuse the cache after validating size, zip integrity, and required JSON
+entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`,
+`DB_SCHEMA_KEYPOINTS`, `DB_SCHEMA_CLASSIFICATION`) are created later by `uv run datapipe db create-all`
+(see [Running](#running)).
 
 Options:
 

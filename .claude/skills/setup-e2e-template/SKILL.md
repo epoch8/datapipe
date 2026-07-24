@@ -68,8 +68,9 @@ a file and `grep` it (e.g. `datapipe --debug run > /tmp/dp_debug.log 2>&1; grep 
 
 ## Quick demo to verify setup
 Skip if you have data: `uv run python scripts/seed_sample_data.py` downloads COCO images (cat/dog,
-person keypoints, Has Animal / No Animals; limit flags to change) and uploads them to MinIO; writes
-`sample_data/classification_labels.json`; then run §Run as-is.
+person keypoints; limit flags to change) and uploads them to MinIO; then run §Run as-is.
+For classification add `--classification-animal-limit 12 --classification-no-animal-limit 12`
+(writes `sample_data/classification_labels.json`).
 
 ## Run (from the project subdir)
 ```bash

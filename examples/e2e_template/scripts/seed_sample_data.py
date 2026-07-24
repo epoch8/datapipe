@@ -235,14 +235,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--classification-animal-limit",
         type=int,
-        default=12,
-        help="Number of Has Animal images for classification",
+        default=0,
+        help="Number of Has Animal images for classification (0 skips)",
     )
     parser.add_argument(
         "--classification-no-animal-limit",
         type=int,
-        default=12,
-        help="Number of No Animals images for classification",
+        default=0,
+        help="Number of No Animals images for classification (0 skips)",
     )
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
@@ -274,7 +274,11 @@ def main() -> int:
             classification_no_animal_limit=args.classification_no_animal_limit,
         )
         local_paths = download_images(image_ids, instances_data)
-        write_classification_labels(labels)
+        if labels:
+            write_classification_labels(labels)
+        elif LABELS_PATH.exists():
+            # Avoid stale labels when classification limits are 0.
+            LABELS_PATH.unlink()
         print(f"Saved {len(local_paths)} images to {SAMPLE_DIR}")
 
     if not args.skip_upload:
