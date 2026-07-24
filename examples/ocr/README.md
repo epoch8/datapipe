@@ -37,7 +37,7 @@ Model names and inference kwargs (LLM `temperature`, etc.) live in `ENGINE_REGIS
 Set `DB_URL` in `.env`:
 
 ```text
-postgresql+psycopg2://user:password@host:port/dbname
+postgresql+psycopg://user:password@host:port/dbname
 ```
 
 Create tables (use a fresh DB or drop old tables after schema changes):

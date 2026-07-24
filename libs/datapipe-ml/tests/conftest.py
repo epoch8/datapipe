@@ -55,7 +55,7 @@ def dbconn():
     if os.environ.get("TEST_DB_ENV") == "postgres":
         pg_host = os.getenv("POSTGRES_HOST", "localhost")
         pg_port = os.getenv("POSTGRES_PORT", "5432")
-        DBCONNSTR = f"postgresql://postgres:password@{pg_host}:{pg_port}/postgres"
+        DBCONNSTR = f"postgresql+psycopg://postgres:password@{pg_host}:{pg_port}/postgres"
         DB_TEST_SCHEMA = "test"
     else:
         DBCONNSTR = get_sqlite_dbconnstr()

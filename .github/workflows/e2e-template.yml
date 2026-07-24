@@ -45,7 +45,7 @@ env:
   LABEL_STUDIO_EMAIL: e2e@example.com
   LABEL_STUDIO_PASSWORD: qwerty123
   LABEL_STUDIO_S3_ENDPOINT_URL: http://minio:9000
-  DB_URL: postgresql://postgres:password@localhost:5432/postgres
+  DB_URL: postgresql+psycopg://postgres:password@localhost:5432/postgres
   DB_SCHEMA_DETECTION: datapipe_e2e_detection
   DB_SCHEMA_KEYPOINTS: datapipe_e2e_keypoints
   CLICKHOUSE_RUN_LOGS_URL: clickhouse://default:@localhost:8123/default

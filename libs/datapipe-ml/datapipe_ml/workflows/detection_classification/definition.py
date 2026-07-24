@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from cv_pipeliner.inferencers.pipeline import PipelineInferencer
 from datapipe.compute import (
     Catalog,
     ComputeStep,
@@ -18,7 +17,7 @@ from datapipe.step.batch_transform import (
     DatatableBatchTransformFunc,
 )
 from datapipe.store.database import TableStoreDB
-from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels
+from datapipe.types import IndexDF, Labels, PipelineInput, PipelineOutput, TransformResult
 
 from datapipe_ml.core.datapipe import (
     check_columns_are_in_table,
@@ -34,7 +33,7 @@ def define_pipeline_model(
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
-) -> PipelineInferencer:
+) -> TransformResult:
     kwargs = kwargs or {}
     max_within_time: str = kwargs["max_within_time"]
     detection_model_primary_keys: List[str] = kwargs["detection_model_primary_keys"]

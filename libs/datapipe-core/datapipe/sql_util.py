@@ -1,5 +1,5 @@
 import datetime
-from typing import Any
+from typing import Any, Hashable, Iterator
 
 from sqlalchemy import (
     BigInteger,
@@ -58,6 +58,26 @@ def sql_apply_runconfig_filter(
                 sql = sql.where(table.c[k] == v)
 
     return sql
+
+
+# Postgres caps a single query at 65535 bind parameters. psycopg2 masked this
+# limit by interpolating parameters into the query text client-side; psycopg3
+# binds them server-side by default, so large multi-row INSERT ... VALUES
+# statements now need to be chunked to stay under the limit.
+POSTGRES_MAX_BIND_PARAMS = 65535
+
+
+def chunk_records_for_insert(
+    records: list[dict[Hashable, Any]],
+    max_params: int = POSTGRES_MAX_BIND_PARAMS,
+) -> Iterator[list[dict[Hashable, Any]]]:
+    if not records:
+        return
+
+    chunk_size = max(1, max_params // len(records[0]))
+
+    for i in range(0, len(records), chunk_size):
+        yield records[i : i + chunk_size]
 
 
 SCHEMA_TO_DTYPE_LOOKUP = {

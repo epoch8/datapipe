@@ -71,7 +71,7 @@ dev = [
     "types-redis",
     "types-tqdm",
     "types-pillow",
-    "types-PyYAML",
+    "types-pyyaml",
     "datapipe-app",
     "datapipe-app-ml-ops",
 ]

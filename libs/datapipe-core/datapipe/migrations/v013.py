@@ -72,5 +72,6 @@ def migrate_transform_tables(app, steps):
                 literal(0),
             ),
         )
-        app.ds.meta_dbconn.con.execute(insert_stmt)
+        with app.ds.meta_dbconn.con.begin() as con:
+            con.execute(insert_stmt)
         rprint("  [green] ok[/green]")
