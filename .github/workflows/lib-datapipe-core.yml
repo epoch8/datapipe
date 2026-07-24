@@ -69,7 +69,7 @@ jobs:
             pip-extra: '"sqlalchemy>2"'
           - python-version: "3.11"
             test-db-env: "postgres"
-            pip-extra: '"sqlalchemy>1.4,<2" "pandas<2.2"'
+            pip-extra: '"sqlalchemy>1.4,<2" "pandas<2.2" "numpy<2"'
           - python-version: "3.11"
             test-db-env: "postgres"
             pip-extra: '"sqlalchemy>2"'
