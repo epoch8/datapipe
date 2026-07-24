@@ -25,7 +25,8 @@ from datapipe_app.ops.specs import OpsRelationSpec
 from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
 from datapipe_ml.training import config_codec
 
-REGISTRY_TABLE = "train_config"
+REGISTRY_TABLE = "custom_train_config"
+DEFAULT_REGISTRY_TABLE = "default_train_config"
 REQUESTS_TABLE = "training_request"
 FROZEN_TABLE = "frozen_dataset"
 STATUS_TABLE = "training_status"
@@ -124,21 +125,19 @@ class Env:
         params: Optional[Dict[str, Any]] = None,
         active: bool = True,
     ) -> str:
+        # Built-ins live in default_table (no is_active / source / timestamps).
+        _ = active
         self.write(
-            REGISTRY_TABLE,
+            DEFAULT_REGISTRY_TABLE,
             [
                 {
                     "train_config_id": config_id,
                     "train_config__params": params or {"model": "yolov8n.pt", "epochs": 5},
-                    "train_config__source": "builtin",
                     "train_config__display_name": display_name,
                     "train_config__description": None,
                     "train_config__config_type": "yolov8_detection",
                     "train_config__config_hash": "builtinhash",
-                    "train_config__is_active": active,
                     "train_config__revision": 1,
-                    "train_config__created_at": "2026-01-01T00:00:00+00:00",
-                    "train_config__updated_at": "2026-01-01T00:00:00+00:00",
                 }
             ],
         )
@@ -160,6 +159,22 @@ class Env:
 def _build_catalog(dbconn: DBConn) -> Catalog:
     return Catalog(
         {
+            DEFAULT_REGISTRY_TABLE: Table(
+                TableStoreDB(
+                    name=DEFAULT_REGISTRY_TABLE,
+                    dbconn=dbconn,
+                    data_sql_schema=[
+                        Column("train_config_id", String(), primary_key=True),
+                        Column("train_config__params", JSON()),
+                        Column("train_config__display_name", String()),
+                        Column("train_config__description", String()),
+                        Column("train_config__config_type", String()),
+                        Column("train_config__config_hash", String()),
+                        Column("train_config__revision", Integer()),
+                    ],
+                    create_table=True,
+                )
+            ),
             REGISTRY_TABLE: Table(
                 TableStoreDB(
                     name=REGISTRY_TABLE,
@@ -167,7 +182,6 @@ def _build_catalog(dbconn: DBConn) -> Catalog:
                     data_sql_schema=[
                         Column("train_config_id", String(), primary_key=True),
                         Column("train_config__params", JSON()),
-                        Column("train_config__source", String()),
                         Column("train_config__display_name", String()),
                         Column("train_config__description", String()),
                         Column("train_config__config_type", String()),
@@ -248,7 +262,14 @@ def _build_spec() -> DatapipeOpsSpec:
         title="Detection",
         description="Detection training experiments",
         data=OpsDataSpec(
-            tables=[REGISTRY_TABLE, REQUESTS_TABLE, FROZEN_TABLE, STATUS_TABLE, LINK_TABLE]
+            tables=[
+                DEFAULT_REGISTRY_TABLE,
+                REGISTRY_TABLE,
+                REQUESTS_TABLE,
+                FROZEN_TABLE,
+                STATUS_TABLE,
+                LINK_TABLE,
+            ]
         ),
         frozen_dataset=OpsFrozenDatasetSpec(
             table=FROZEN_TABLE,
@@ -277,6 +298,7 @@ def _build_spec() -> DatapipeOpsSpec:
             columns=[OpsColumn("run_key", "Run", "run_key")],
             experiments=OpsTrainConfigRegistrySpec(
                 table=REGISTRY_TABLE,
+                default_table=DEFAULT_REGISTRY_TABLE,
                 id_column="train_config_id",
                 params_column="train_config__params",
                 config_type="yolov8_detection",
@@ -301,7 +323,14 @@ def env():
         ds = DataStore(dbconn, create_meta_table=True)
         catalog = _build_catalog(dbconn)
         # Materialize datatables / meta.
-        for name in (REGISTRY_TABLE, REQUESTS_TABLE, FROZEN_TABLE, STATUS_TABLE, LINK_TABLE):
+        for name in (
+            DEFAULT_REGISTRY_TABLE,
+            REGISTRY_TABLE,
+            REQUESTS_TABLE,
+            FROZEN_TABLE,
+            STATUS_TABLE,
+            LINK_TABLE,
+        ):
             catalog.get_datatable(ds, name)
         registry = OpsSpecRegistry()
         registry.add_many([_build_spec()])
@@ -336,7 +365,14 @@ def full_api_env(agent_env):
         dbconn = DBConn(f"sqlite+pysqlite3:///{tmpdir}/store.sqlite")
         ds = DataStore(dbconn, create_meta_table=True)
         catalog = _build_catalog(dbconn)
-        for name in (REGISTRY_TABLE, REQUESTS_TABLE, FROZEN_TABLE, STATUS_TABLE, LINK_TABLE):
+        for name in (
+            DEFAULT_REGISTRY_TABLE,
+            REGISTRY_TABLE,
+            REQUESTS_TABLE,
+            FROZEN_TABLE,
+            STATUS_TABLE,
+            LINK_TABLE,
+        ):
             catalog.get_datatable(ds, name)
         api = DatapipeAPI(ds, catalog, Pipeline([]), pipeline_id="test_pipeline")
         api.add_specs([_build_spec()])

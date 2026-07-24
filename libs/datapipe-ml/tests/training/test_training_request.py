@@ -34,22 +34,21 @@ def _summary(params):
     return f"dummy-{params['imgsz']}"
 
 
-def _builtin_config_row(config_id="cfg1", imgsz=640, config_hash="hash40", active=True, source="builtin"):
+def _default_config_row(config_id="cfg1", imgsz=640, config_hash="hash40"):
+    """Row shape for the pipeline-owned ``default_train_config`` table."""
     return pd.DataFrame(
         [
             {
                 TRAIN_CONFIG_ID_COL: config_id,
                 TRAIN_CONFIG_PARAMS_COL: {"imgsz": imgsz, "epochs": 5},
-                "train_config__source": source,
                 "train_config__display_name": "Standard",
-                "train_config__is_active": active,
                 "train_config__config_hash": config_hash,
             }
         ]
     )
 
 
-def test_builtin_config_has_registry_metadata():
+def test_default_config_has_registry_metadata():
     df = train_configs_to_dataframe(
         [_DummyConfig()],
         id_column=TRAIN_CONFIG_ID_COL,
@@ -58,14 +57,14 @@ def test_builtin_config_has_registry_metadata():
         config_type="dummy_detection",
     )
     row = df.iloc[0]
-    assert row["train_config__source"] == "builtin"
+    assert "train_config__source" not in df.columns
+    assert "train_config__is_active" not in df.columns
     assert row["train_config__display_name"] == "dummy-640"
     assert row["train_config__description"] is None
     assert row["train_config__config_type"] == "dummy_detection"
     assert len(row["train_config__config_hash"]) == 40
-    assert bool(row["train_config__is_active"]) is True
     assert row["train_config__revision"] == 1
-    # timestamps are managed by ScopedBatchGenerate, not generated here.
+    # timestamps / is_active live on the custom table only.
     assert "train_config__created_at" not in df.columns
     assert "train_config__updated_at" not in df.columns
 
@@ -114,7 +113,7 @@ def test_auto_request_id_is_deterministic():
 
 def test_build_auto_training_request_is_deterministic_and_snapshots():
     df_fd = pd.DataFrame([{FROZEN_DATASET_ID_COL: "fd1"}])
-    df_tc = _builtin_config_row()
+    df_tc = _default_config_row()
     kwargs = dict(
         frozen_dataset_id_col=FROZEN_DATASET_ID_COL,
         train_config_id_col=TRAIN_CONFIG_ID_COL,
@@ -130,48 +129,26 @@ def test_build_auto_training_request_is_deterministic_and_snapshots():
     assert bool(req1.iloc[0]["training_request__enabled"]) is True
     assert bool(req1.iloc[0]["training_request__force"]) is False
     assert req1.iloc[0]["training_request__max_within_time"] == "1w"
+    assert req1.iloc[0]["training_request__config_source"] == "default"
     assert req1.iloc[0]["training_request__config_params_snapshot"] == {"imgsz": 640, "epochs": 5}
 
 
-def test_creating_config_does_not_prepare_data():
-    # custom config -> no auto request -> nothing to resize
+def test_auto_request_materializes_any_default_row():
+    # Caller feeds only default_train_config rows; there is no source/is_active
+    # filter — custom configs live in a separate table and are never inputs here.
     df_fd = pd.DataFrame([{FROZEN_DATASET_ID_COL: "fd1"}])
-    df_custom = _builtin_config_row(config_id="custom_x", source="custom")
+    df_tc = _default_config_row(config_id="default_x")
     req = build_auto_training_request(
         df_fd,
-        df_custom,
+        df_tc,
         frozen_dataset_id_col=FROZEN_DATASET_ID_COL,
         train_config_id_col=TRAIN_CONFIG_ID_COL,
         train_config_params_col=TRAIN_CONFIG_PARAMS_COL,
         train_config_type="yolov8_detection",
         max_within_time="1w",
     )
-    assert req.empty
-
-    sizes = get_size_for_resize_from_training_request(
-        req,
-        request_id_col="training_request_id",
-        frozen_dataset_id_col=FROZEN_DATASET_ID_COL,
-        params_snapshot_col="training_request__config_params_snapshot",
-        request_enabled_col="training_request__enabled",
-        resize_images=True,
-    )
-    assert sizes.empty
-
-
-def test_inactive_builtin_does_not_produce_request():
-    df_fd = pd.DataFrame([{FROZEN_DATASET_ID_COL: "fd1"}])
-    df_inactive = _builtin_config_row(active=False)
-    req = build_auto_training_request(
-        df_fd,
-        df_inactive,
-        frozen_dataset_id_col=FROZEN_DATASET_ID_COL,
-        train_config_id_col=TRAIN_CONFIG_ID_COL,
-        train_config_params_col=TRAIN_CONFIG_PARAMS_COL,
-        train_config_type="yolov8_detection",
-        max_within_time="1w",
-    )
-    assert req.empty
+    assert len(req) == 1
+    assert req.iloc[0][TRAIN_CONFIG_ID_COL] == "default_x"
 
 
 def _request_df(enabled=True, imgsz=640, request_id="auto_1", frozen_dataset_id="fd1"):

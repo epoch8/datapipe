@@ -165,7 +165,10 @@ export type OpsModelSpecPayload = {
 };
 
 export type OpsTrainConfigRegistrySpecPayload = {
+    /** API-owned custom experiments table (writes go here). */
     table: string;
+    /** Optional pipeline-owned default/builtin presets table (read-only). */
+    default_table?: string | null;
     id_column: string;
     params_column: string;
     config_type: string;

@@ -14,13 +14,11 @@ from datapipe.compute import (
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
 from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransform
-from datapipe.step.scoped_batch_generate import ScopedBatchGenerate, ScopedOutputPolicy
-from datapipe.step.scoped_batch_transform import ScopedDatatableBatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import PILFile, TableStoreFiledir
 from datapipe.types import Labels
 from pathy import Pathy
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float
+from sqlalchemy import JSON, Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable
@@ -28,8 +26,13 @@ from datapipe_ml.frameworks.yolo.dataset import (
     dedupe_size_for_resize,
     get_size_for_resize_from_training_request,
 )
+from datapipe_ml.training.experiment_tables import (
+    TrainExperimentTableNames,
+    build_auto_experiment_request_transform,
+    build_default_train_config_generate,
+    register_train_experiment_tables,
+)
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
-from datapipe_ml.training.training_request import make_build_auto_training_request
 
 
 @dataclass
@@ -143,7 +146,7 @@ def _build_yolo_pipeline_steps(
     ds: DataStore,
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
-    output__train_config: str,
+    output__default_train_config: str,
     output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
@@ -176,42 +179,24 @@ def _build_yolo_pipeline_steps(
     extra_train_kwargs: Optional[Dict[str, Any]],
 ) -> List[PipelineStep]:
     return [
-        # Built-in configs are managed by pipeline code within the "builtin" scope.
-        # Custom rows (source=custom) are owned by the API and never touched here.
-        ScopedBatchGenerate(
+        # Defaults: pipeline owns the whole table (BatchGenerate + delete_stale).
+        build_default_train_config_generate(
             func=mode.get_train_configs_func,
-            outputs=[output__train_config],
+            default_train_config_table=output__default_train_config,
             kwargs=dict(**train_configs_list),
             labels=labels,
-            policy=ScopedOutputPolicy(
-                scope_column="train_config__source",
-                scope_value="builtin",
-                missing_row_policy="deactivate",
-                active_column="train_config__is_active",
-            ),
         ),
-        # Materialize automatic training requests for built-in configs before data prep.
-        # Manual (kind=manual) requests are outside this scope and stay untouched.
-        ScopedDatatableBatchTransform(
-            func=make_build_auto_training_request(
-                frozen_dataset_id_col=frozen_dataset_id__name,
-                train_config_id_col=mode.train_config_id_col,
-                train_config_params_col=mode.train_config_params_col,
-                train_config_type=mode.train_config_type,
-                max_within_time=max_within_time,
-            ),
-            inputs=[
-                input__frozen_dataset,
-                output__train_config,
-            ],
-            outputs=[output__training_request],
-            transform_keys=[frozen_dataset_id__name, mode.train_config_id_col],
-            policy=ScopedOutputPolicy(
-                scope_column=mode.training_request_kind_col,
-                scope_value="auto",
-                missing_row_policy="deactivate",
-                active_column=mode.training_request_enabled_col,
-            ),
+        # Auto experiment requests from frozen_dataset × default configs only.
+        # Custom configs / manual requests live in separate tables and are API-owned.
+        build_auto_experiment_request_transform(
+            frozen_dataset_table=input__frozen_dataset,
+            default_train_config_table=output__default_train_config,
+            train_experiment_request_table=output__training_request,
+            frozen_dataset_id_col=frozen_dataset_id__name,
+            train_config_id_col=mode.train_config_id_col,
+            train_config_params_col=mode.train_config_params_col,
+            train_config_type=mode.train_config_type,
+            max_within_time=max_within_time,
             labels=labels,
         ),
         BatchTransform(
@@ -341,7 +326,8 @@ def _register_yolo_tables(
     *,
     ds: DataStore,
     catalog: Catalog,
-    output__train_config: str,
+    output__default_train_config: str,
+    output__custom_train_config: str,
     output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
@@ -364,62 +350,19 @@ def _register_yolo_tables(
     dt__input_has_gt,
     filedir_fsspec_kwargs: dict[str, Any] | None = None,
 ) -> None:
-    catalog.add_datatable(
-        output__train_config,
-        Table(
-            ds.get_or_create_table(
-                output__train_config,
-                TableStoreDB(
-                    dbconn=ds.meta_dbconn,
-                    name=output__train_config,
-                    data_sql_schema=[
-                        Column(mode.train_config_id_col, String, primary_key=True),
-                        Column(mode.train_config_params_col, mode.sqlalchemy_class_names_type),
-                        Column("train_config__source", String, nullable=False),
-                        Column("train_config__display_name", String, nullable=False),
-                        Column("train_config__description", String, nullable=True),
-                        Column("train_config__config_type", String, nullable=False),
-                        Column("train_config__config_hash", String, nullable=False),
-                        Column("train_config__is_active", Boolean, nullable=False),
-                        Column("train_config__created_at", DateTime, nullable=False),
-                        Column("train_config__updated_at", DateTime, nullable=False),
-                        Column("train_config__revision", Integer, nullable=False),
-                    ],
-                    create_table=create_table,
-                ),
-            ).table_store
+    register_train_experiment_tables(
+        ds=ds,
+        catalog=catalog,
+        tables=TrainExperimentTableNames(
+            default_train_config=output__default_train_config,
+            custom_train_config=output__custom_train_config,
+            train_experiment_request=output__training_request,
         ),
-    )
-    # External mutable training request table (spec §3.2 / §8.2). Auto rows are
-    # managed by ScopedDatatableBatchTransform; manual rows are managed by the API.
-    catalog.add_datatable(
-        output__training_request,
-        Table(
-            ds.get_or_create_table(
-                output__training_request,
-                TableStoreDB(
-                    dbconn=ds.meta_dbconn,
-                    name=output__training_request,
-                    data_sql_schema=[
-                        Column("training_request_id", String, primary_key=True),
-                        Column(frozen_dataset_id__name, String),
-                        Column(train_config_id__name, String),
-                        Column("training_request__kind", String),
-                        Column("training_request__enabled", Boolean),
-                        Column("training_request__force", Boolean),
-                        Column("training_request__max_within_time", String, nullable=True),
-                        Column("training_request__config_source", String),
-                        Column("training_request__config_name_snapshot", String),
-                        Column("training_request__config_params_snapshot", mode.sqlalchemy_class_names_type),
-                        Column("training_request__config_hash", String),
-                        Column("training_request__requested_at", DateTime, nullable=True),
-                        Column("training_request__requested_by", String, nullable=True),
-                        Column("training_request__client_request_id", String, nullable=True),
-                    ],
-                    create_table=create_table,
-                ),
-            ).table_store
-        ),
+        train_config_id_col=train_config_id__name,
+        train_config_params_col=mode.train_config_params_col,
+        frozen_dataset_id_col=frozen_dataset_id__name,
+        create_table=create_table,
+        params_type=mode.sqlalchemy_class_names_type,
     )
     catalog.add_datatable(
         output__model_size_for_resize,
@@ -633,7 +576,8 @@ def build_yolo_compute(
     # io table names
     input__frozen_dataset: str,
     input__frozen_dataset__has__image_gt: str,
-    output__train_config: str,
+    output__default_train_config: str,
+    output__custom_train_config: str,
     output__training_request: str,
     output__model_size_for_resize: str,
     output__size_for_resize: str,
@@ -695,7 +639,8 @@ def build_yolo_compute(
     _register_yolo_tables(
         ds=ds,
         catalog=catalog,
-        output__train_config=output__train_config,
+        output__default_train_config=output__default_train_config,
+        output__custom_train_config=output__custom_train_config,
         output__training_request=output__training_request,
         output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,
@@ -724,7 +669,7 @@ def build_yolo_compute(
         ds=ds,
         input__frozen_dataset=input__frozen_dataset,
         input__frozen_dataset__has__image_gt=input__frozen_dataset__has__image_gt,
-        output__train_config=output__train_config,
+        output__default_train_config=output__default_train_config,
         output__training_request=output__training_request,
         output__model_size_for_resize=output__model_size_for_resize,
         output__size_for_resize=output__size_for_resize,

@@ -328,9 +328,15 @@ class TrainingExperimentsService:
         requests_count: int,
         runs_count: int,
         last_used_at: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> TrainingExperimentRow:
-        source = _clean_str(row.get(registry_spec.source_column)) or "builtin"
-        active = _clean_bool(row.get(registry_spec.active_column), default=True)
+        if source is None:
+            source = _clean_str(row.get(registry_spec.source_column)) or "builtin"
+        # Default/builtin table has no is_active column; treat as always active.
+        if source == "builtin":
+            active = True
+        else:
+            active = _clean_bool(row.get(registry_spec.active_column), default=True)
         params = _clean_dict(row.get(registry_spec.params_column))
         config_type = (
             _clean_str(row.get(registry_spec.config_type_column))
@@ -358,6 +364,27 @@ class TrainingExperimentsService:
                 requests_count=requests_count,
             ),
         )
+
+    def _iter_registry_rows(
+        self, registry_spec: OpsTrainConfigRegistrySpec
+    ) -> list[tuple[pd.Series, str]]:
+        """Return ``(row, source)`` pairs from default + custom registry tables."""
+        rows: list[tuple[pd.Series, str]] = []
+        if registry_spec.default_table:
+            df_default = self._read_df(registry_spec.default_table)
+            if not df_default.empty and registry_spec.id_column in df_default.columns:
+                for _, row in df_default.iterrows():
+                    rows.append((row, "builtin"))
+        df_custom = self._read_df(registry_spec.table)
+        if not df_custom.empty and registry_spec.id_column in df_custom.columns:
+            for _, row in df_custom.iterrows():
+                # Legacy single-table mode: honour stored source when no default_table.
+                if registry_spec.default_table is None:
+                    source = _clean_str(row.get(registry_spec.source_column)) or "custom"
+                else:
+                    source = "custom"
+                rows.append((row, source))
+        return rows
 
     # ----------------------------------------------------------- counts
 
@@ -545,22 +572,21 @@ class TrainingExperimentsService:
         offset: int = 0,
     ) -> TrainingExperimentsListResponse:
         registry_spec = self._experiments_spec(spec_id)
-        df = self._read_df(registry_spec.table)
         requests_count, runs_count, last_used_at = self._counts_by_config(spec_id)
 
         experiments: list[TrainingExperimentRow] = []
-        if not df.empty and registry_spec.id_column in df.columns:
-            for _, row in df.iterrows():
-                config_id = str(row.get(registry_spec.id_column))
-                experiments.append(
-                    self._experiment_from_row(
-                        registry_spec,
-                        row,
-                        requests_count=requests_count.get(config_id, 0),
-                        runs_count=runs_count.get(config_id, 0),
-                        last_used_at=last_used_at.get(config_id),
-                    )
+        for row, row_source in self._iter_registry_rows(registry_spec):
+            config_id = str(row.get(registry_spec.id_column))
+            experiments.append(
+                self._experiment_from_row(
+                    registry_spec,
+                    row,
+                    requests_count=requests_count.get(config_id, 0),
+                    runs_count=runs_count.get(config_id, 0),
+                    last_used_at=last_used_at.get(config_id),
+                    source=row_source,
                 )
+            )
 
         summary = TrainingExperimentsSummary(
             total=len(experiments),
@@ -794,20 +820,22 @@ class TrainingExperimentsService:
 
     def _load_experiment(self, spec_id: str, config_id: str) -> TrainingExperimentRow:
         registry_spec = self._experiments_spec(spec_id)
-        df = self._read_df(registry_spec.table)
-        if df.empty or registry_spec.id_column not in df.columns:
-            raise self._not_found(config_id)
-        match = df[df[registry_spec.id_column].astype(str) == str(config_id)]
-        if match.empty:
-            raise self._not_found(config_id)
         requests_count, runs_count, last_used_at = self._counts_by_config(spec_id)
-        return self._experiment_from_row(
-            registry_spec,
-            match.iloc[0],
-            requests_count=requests_count.get(config_id, 0),
-            runs_count=runs_count.get(config_id, 0),
-            last_used_at=last_used_at.get(config_id),
-        )
+        # Prefer the custom table so API-owned rows win over builtins on id clash.
+        candidates = list(self._iter_registry_rows(registry_spec))
+        candidates.sort(key=lambda item: 0 if item[1] == "custom" else 1)
+        for row, source in candidates:
+            if str(row.get(registry_spec.id_column)) != str(config_id):
+                continue
+            return self._experiment_from_row(
+                registry_spec,
+                row,
+                requests_count=requests_count.get(config_id, 0),
+                runs_count=runs_count.get(config_id, 0),
+                last_used_at=last_used_at.get(config_id),
+                source=source,
+            )
+        raise self._not_found(config_id)
 
     def _not_found(self, config_id: str) -> TrainingExperimentError:
         return TrainingExperimentError(
@@ -995,10 +1023,12 @@ class TrainingExperimentsService:
         created_at: str,
         updated_at: str,
     ) -> dict[str, Any]:
+        # ``source`` is derived from which table the row lives in (custom vs
+        # default); the custom table schema does not store a source column.
+        _ = source
         return {
             registry_spec.id_column: config_id,
             registry_spec.params_column: params,
-            registry_spec.source_column: source,
             registry_spec.display_name_column: display_name,
             registry_spec.description_column: description,
             registry_spec.config_type_column: config_type,

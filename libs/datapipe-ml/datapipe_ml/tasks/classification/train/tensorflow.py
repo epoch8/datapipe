@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,15 +15,21 @@ from datapipe.compute import (
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
 from datapipe.run_config import RunConfig
-from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import DatatableBatchTransform
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, Labels
 from pathy import Pathy
 from sqlalchemy import JSON, Column
-from sqlalchemy.sql.sqltypes import Boolean, Integer, String
+from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, get_datatable, get_pipeline_table_name
+from datapipe_ml.training.experiment_tables import (
+    TrainExperimentTableNames,
+    build_auto_experiment_request_transform,
+    build_default_train_config_generate,
+    register_train_experiment_tables,
+)
+from datapipe_ml.training.request_runner import run_training_request
 from datapipe_ml.training.train_config_id import build_train_config_id, train_configs_to_dataframe
 from datapipe_ml.frameworks.tensorflow.classification_runner import (
     TF_ClassificationTrainingConfig,
@@ -105,7 +111,7 @@ class TensorflowClassificationRuntimeConfig:
         idx: IndexDF,
         dt__frozen_dataset: DataTable,
         dt__frozen_dataset__has__image_gt: DataTable,
-        dt__train_config: DataTable,
+        dt__train_config: Optional[DataTable],
     ) -> TensorflowClassificationTrainContext:
         return TensorflowClassificationTrainContext(
             models_dir=self.models_dir,
@@ -282,24 +288,72 @@ def train_tf_classification_model(
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Request-driven TF classification train (same contract as YOLO).
+
+    Inputs: frozen_dataset, training_request, frozen_dataset__has__image_gt.
+    Transform keys are ``training_request_id`` (+ optional model other PKs).
+    """
     kwargs = kwargs or {}
     (
         dt__classification_frozen_dataset,
+        dt__classification_training_request,
         dt__classification_frozen_dataset__has__image_gt,
-        dt__tf_classification_train_config,
     ) = input_dts
 
-    runtime = TensorflowClassificationRuntimeConfig.from_kwargs(kwargs)
-    ctx = runtime.build_context(
-        idx=idx,
-        dt__frozen_dataset=dt__classification_frozen_dataset,
-        dt__frozen_dataset__has__image_gt=dt__classification_frozen_dataset__has__image_gt,
-        dt__train_config=dt__tf_classification_train_config,
-    )
+    frozen_dataset_id_col = kwargs["classification_frozen_dataset_id__name"]
+    df_training_request = dt__classification_training_request.get_data(idx)
+    if df_training_request.empty:
+        empty = pd.DataFrame()
+        return empty, empty, empty
+    if frozen_dataset_id_col not in df_training_request.columns:
+        raise ValueError(
+            f"Training request is missing required column {frozen_dataset_id_col!r}"
+        )
 
-    algo = TFClassificationAlgo()
-    out = orchestrate(idx, ctx, algo)
-    return (out.df__model, out.df__link, out.df__training_status)
+    frozen_dataset_id = df_training_request.iloc[0][frozen_dataset_id_col]
+    data_idx = IndexDF(pd.DataFrame([{frozen_dataset_id_col: frozen_dataset_id}]))
+    df_frozen_dataset = dt__classification_frozen_dataset.get_data(data_idx)
+
+    orch_idx = idx.copy()
+    orch_idx[frozen_dataset_id_col] = frozen_dataset_id
+
+    def _train_callable(
+        *,
+        df_train_config: pd.DataFrame,
+        max_within_time: Optional[str],
+        force_training: bool,
+        **_: Any,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        runtime = TensorflowClassificationRuntimeConfig.from_kwargs(kwargs)
+        ctx = runtime.build_context(
+            idx=orch_idx,
+            dt__frozen_dataset=dt__classification_frozen_dataset,
+            dt__frozen_dataset__has__image_gt=dt__classification_frozen_dataset__has__image_gt,
+            dt__train_config=None,
+        )
+        if max_within_time is not None:
+            ctx = replace(ctx, max_within_time=max_within_time)
+        out = orchestrate(
+            orch_idx,
+            ctx,
+            TFClassificationAlgo(),
+            df_train_config=df_train_config,
+            force_training=force_training,
+        )
+        return (out.df__model, out.df__link, out.df__training_status)
+
+    return run_training_request(
+        df_frozen_dataset=df_frozen_dataset,
+        df_training_request=df_training_request,
+        df_class_names=pd.DataFrame(),
+        df_resized_images=pd.DataFrame(),
+        df_yolo_txt=pd.DataFrame(),
+        train_callable=_train_callable,
+        train_config_id_col="classification_train_config_id",
+        train_config_params_col="classification_train_config__params",
+        frozen_dataset_id_col=frozen_dataset_id_col,
+        dt_training_status=kwargs.get("dt__training_status"),
+    )
 
 
 def get_tf_classification_model_name(train_params: Dict[str, Any]) -> str:
@@ -328,7 +382,7 @@ def get_tf_classification_train_configs(tf_classification_train_configs: List[TF
         id_column="classification_train_config_id",
         params_column="classification_train_config__params",
         summary_builder=build_tf_classification_train_config_summary,
-        extra_columns=lambda _config, _params, _config_id: {"classification_train_config__train": True},
+        config_type="tf_classification",
     )
 
 
@@ -340,6 +394,8 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
     input__classification_frozen_dataset: str
     input__classification_frozen_dataset__has__image_gt: str
     output__tf_classification_train_config: str
+    output__tf_classification_custom_train_config: str
+    output__classification_training_request: str
     output__classification_model: str
     output__classification_model_is_trained_on_cls_frozen_dataset: str
     output__training_status: str
@@ -391,24 +447,22 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
             for column in dt__input__classification_frozen_dataset__has__image_gt.primary_schema
             if column.name in classification_model_other_primary_keys
         ] + [Column(self.classification_model_id__name, String, primary_key=True)]
-        # ---
-        catalog.add_datatable(
-            get_pipeline_table_name(self.output__tf_classification_train_config),
-            Table(
-                ds.get_or_create_table(
-                    get_pipeline_table_name(self.output__tf_classification_train_config),
-                    TableStoreDB(
-                        dbconn=ds.meta_dbconn,
-                        name=get_pipeline_table_name(self.output__tf_classification_train_config),
-                        data_sql_schema=[
-                            Column("classification_train_config_id", String, primary_key=True),
-                            Column("classification_train_config__params", JSON),
-                            Column("classification_train_config__train", Boolean),
-                        ],
-                        create_table=self.create_table,
-                    ),
-                ).table_store
+
+        default_train_config = get_pipeline_table_name(self.output__tf_classification_train_config)
+        custom_train_config = get_pipeline_table_name(self.output__tf_classification_custom_train_config)
+        training_request = get_pipeline_table_name(self.output__classification_training_request)
+        register_train_experiment_tables(
+            ds=ds,
+            catalog=catalog,
+            tables=TrainExperimentTableNames(
+                default_train_config=default_train_config,
+                custom_train_config=custom_train_config,
+                train_experiment_request=training_request,
             ),
+            train_config_id_col="classification_train_config_id",
+            train_config_params_col="classification_train_config__params",
+            frozen_dataset_id_col=self.classification_frozen_dataset_id__name,
+            create_table=self.create_table,
         )
         # ---
         catalog.add_datatable(
@@ -426,6 +480,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                             Column("classification_model__type", String),
                             Column("classification_model__class_names", JSON),
                             Column("classification_model__preprocess_input_script_path", String),
+                            Column("training_request_id", String, nullable=True),
                         ],
                         create_table=self.create_table,
                     ),
@@ -445,6 +500,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                             Column(self.classification_frozen_dataset_id__name, String, primary_key=True),
                             Column("classification_train_config_id", String, primary_key=True),
                             Column("classification_train_config__params", JSON),
+                            Column("training_request_id", String, nullable=True),
                         ],
                         create_table=self.create_table,
                     ),
@@ -482,6 +538,7 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
                             Column("training_status__owner_id", String),
                             Column("training_status__heartbeat_at", String),
                             Column("training_status__lease_expires_at", String),
+                            Column("training_request_id", String, nullable=True),
                         ],
                         create_table=self.create_table,
                     ),
@@ -491,26 +548,36 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
         # ---
         pipeline = Pipeline(
             [
-                BatchGenerate(
+                build_default_train_config_generate(
                     func=get_tf_classification_train_configs,
-                    outputs=[self.output__tf_classification_train_config],
+                    default_train_config_table=default_train_config,
                     kwargs=dict(tf_classification_train_configs=self.tf_classification_train_configs),
+                    labels=self.labels,
+                ),
+                build_auto_experiment_request_transform(
+                    frozen_dataset_table=get_pipeline_table_name(self.input__classification_frozen_dataset),
+                    default_train_config_table=default_train_config,
+                    train_experiment_request_table=training_request,
+                    frozen_dataset_id_col=self.classification_frozen_dataset_id__name,
+                    train_config_id_col="classification_train_config_id",
+                    train_config_params_col="classification_train_config__params",
+                    train_config_type="tf_classification",
+                    max_within_time=self.max_within_time,
                     labels=self.labels,
                 ),
                 DatatableBatchTransform(
                     func=train_tf_classification_model,
                     inputs=[
                         self.input__classification_frozen_dataset,
+                        self.output__classification_training_request,
                         self.input__classification_frozen_dataset__has__image_gt,
-                        self.output__tf_classification_train_config,
                     ],
                     outputs=[
                         self.output__classification_model,
                         self.output__classification_model_is_trained_on_cls_frozen_dataset,
                         self.output__training_status,
                     ],
-                    transform_keys=classification_model_other_primary_keys
-                    + [self.classification_frozen_dataset_id__name, "classification_train_config_id"],
+                    transform_keys=classification_model_other_primary_keys + ["training_request_id"],
                     chunk_size=1,
                     kwargs=dict(
                         models_dir=str(Pathy.fluid(self.working_dir) / "models"),

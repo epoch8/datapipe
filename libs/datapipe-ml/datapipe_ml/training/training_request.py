@@ -61,11 +61,12 @@ def build_auto_training_request(
     train_config_params_col: str,
     train_config_type: str,
     max_within_time: str,
+    config_source: str = "default",
 ) -> pd.DataFrame:
-    """Materialize the automatic training request for one dataset/config pair.
+    """Materialize the automatic training request for one dataset/default-config pair.
 
-    Returns an empty dataframe when the config is not a built-in config or is
-    inactive. Custom configs never auto-generate a request (spec §9).
+    The caller is expected to feed rows from ``default_train_config`` only.
+    Custom configs live in a separate table and are requested via the Ops API.
     """
     columns = _auto_request_columns(frozen_dataset_id_col, train_config_id_col)
     empty = pd.DataFrame(columns=columns)
@@ -73,11 +74,6 @@ def build_auto_training_request(
         return empty
 
     config_row = df_train_config.iloc[0]
-    source = config_row.get("train_config__source")
-    is_active = config_row.get("train_config__is_active")
-    if source != "builtin" or not bool(is_active):
-        return empty
-
     fd_row = df_frozen_dataset.iloc[0]
     frozen_dataset_id = fd_row[frozen_dataset_id_col]
 
@@ -99,7 +95,7 @@ def build_auto_training_request(
         REQUEST_ENABLED_COL: True,
         REQUEST_FORCE_COL: False,
         REQUEST_MAX_WITHIN_TIME_COL: max_within_time,
-        REQUEST_CONFIG_SOURCE_COL: source,
+        REQUEST_CONFIG_SOURCE_COL: config_source,
         REQUEST_CONFIG_NAME_SNAPSHOT_COL: config_row.get("train_config__display_name"),
         REQUEST_CONFIG_PARAMS_SNAPSHOT_COL: params,
         REQUEST_CONFIG_HASH_COL: config_hash,
@@ -114,12 +110,13 @@ def make_build_auto_training_request(
     train_config_params_col: str,
     train_config_type: str,
     max_within_time: str,
+    config_source: str = "default",
 ) -> Callable[..., pd.DataFrame]:
     """Wrap :func:`build_auto_training_request` as a datatable-transform func.
 
     The returned callable matches ``DatatableBatchTransformFunc``:
     ``func(ds, idx, input_dts, run_config, kwargs)`` where
-    ``input_dts == [frozen_dataset, train_config]``.
+    ``input_dts == [frozen_dataset, default_train_config]``.
     """
 
     def build_auto_training_request_step(
@@ -140,6 +137,7 @@ def make_build_auto_training_request(
             train_config_params_col=train_config_params_col,
             train_config_type=train_config_type,
             max_within_time=max_within_time,
+            config_source=config_source,
         )
 
     return build_auto_training_request_step

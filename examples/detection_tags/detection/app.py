@@ -94,6 +94,7 @@ pipeline = Pipeline(
             input__detection_frozen_dataset="detection_frozen_dataset",
             input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__yolov8_custom_train_config="yolov8_custom_train_config",
             output__detection_training_request="detection_training_request",
             output__model_detection_size_for_resize="model_detection_size_for_resize",
             output__detection_size_for_resize="detection_size_for_resize",
@@ -460,7 +461,8 @@ app.add_specs([
             ],
             default_sort=[("started_at", "desc")],
             experiments=OpsTrainConfigRegistrySpec(
-                table="yolov8_train_config",
+                table="yolov8_custom_train_config",
+                default_table="yolov8_train_config",
                 id_column="detection_train_config_id",
                 params_column="detection_train_config__params",
                 source_column="train_config__source",

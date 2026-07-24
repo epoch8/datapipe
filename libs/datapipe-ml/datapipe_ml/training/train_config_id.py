@@ -81,15 +81,12 @@ def train_configs_to_dataframe(
     config_type: Optional[str] = None,
     extra_columns: Optional[Callable[[Any, dict[str, Any], str], dict[str, Any]]] = None,
 ) -> pd.DataFrame:
-    """Build the built-in train config registry rows.
+    """Build rows for the pipeline-owned ``default_train_config`` table.
 
     Accepts plain config dataclasses (backward compatible) and
     :class:`TrainingConfigPreset` wrappers. When ``config_type`` is provided the
-    train config registry metadata columns (source/display_name/description/
-    config_type/config_hash/is_active/revision) are attached. Timestamps
-    (``created_at`` / ``updated_at``) are intentionally NOT generated here;
-    ``ScopedBatchGenerate`` manages them so re-running the generator does not
-    churn them.
+    default-config metadata columns (display_name/description/config_type/
+    config_hash/revision) are attached.
     """
     rows = []
     for item in configs:
@@ -112,12 +109,10 @@ def train_configs_to_dataframe(
         if config_type is not None:
             row.update(
                 {
-                    "train_config__source": "builtin",
                     "train_config__display_name": display_name,
                     "train_config__description": description,
                     "train_config__config_type": config_type,
                     "train_config__config_hash": hash_train_config_params(params, length=40),
-                    "train_config__is_active": True,
                     "train_config__revision": 1,
                 }
             )

@@ -186,6 +186,7 @@ pipeline = Pipeline(
             input__keypoints_frozen_dataset="keypoints_frozen_dataset",
             input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__yolov8_custom_train_config="yolov8_custom_train_config",
             output__keypoints_training_request="keypoints_training_request",
             output__model_keypoints_size_for_resize="model_keypoints_size_for_resize",
             output__keypoints_size_for_resize="keypoints_size_for_resize",

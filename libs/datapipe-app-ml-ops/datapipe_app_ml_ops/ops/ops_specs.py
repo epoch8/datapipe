@@ -133,18 +133,21 @@ class OpsModelSpec:
 
 @dataclass(frozen=True)
 class OpsTrainConfigRegistrySpec:
-    """Describes the train config registry table (spec §13).
+    """Describes the train config registry tables (spec §13).
 
-    The registry holds both built-in configs (``source == "builtin"``) and
-    custom experiments (``source == "custom"``). Column names default to the
-    ``train_config__*`` convention emitted by
-    :func:`datapipe_ml.training.train_config_id.train_configs_to_dataframe`.
+    * ``table`` — API-owned custom experiments (writes go here).
+    * ``default_table`` — optional pipeline-owned built-in presets (read-only).
+
+    When ``default_table`` is set, list/get merge rows from both tables and force
+    ``source="builtin"`` / ``source="custom"`` based on which table the row came
+    from (the tables themselves do not store ``source``).
     """
 
     table: str
     id_column: str
     params_column: str
     config_type: str
+    default_table: str | None = None
     source_column: str = "train_config__source"
     display_name_column: str = "train_config__display_name"
     description_column: str = "train_config__description"

@@ -38,6 +38,9 @@ from .specs import Algo, TrainContext, TrainOutputs
 
 logger = logging.getLogger("datapipe.ml")
 
+# Train-experiment table layout (default / custom / request) lives in
+# ``datapipe_ml.training.experiment_tables`` — shared by YOLO, TF, etc.
+
 
 def _append_row(df: pd.DataFrame, row: pd.DataFrame) -> pd.DataFrame:
     if df.empty:

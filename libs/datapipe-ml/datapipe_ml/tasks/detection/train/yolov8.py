@@ -54,7 +54,8 @@ DETECTION_YOLOV8_SPEC = YoloV8TaskSpec(
 DETECTION_YOLOV8_STEP_FIELDS = YoloV8TrainStepFields(
     input__frozen_dataset="input__detection_frozen_dataset",
     input__frozen_dataset__has__image_gt="input__detection_frozen_dataset__has__image_gt",
-    output__train_config="output__yolov8_train_config",
+    output__default_train_config="output__yolov8_train_config",
+    output__custom_train_config="output__yolov8_custom_train_config",
     output__training_request="output__detection_training_request",
     output__model_size_for_resize="output__model_detection_size_for_resize",
     output__size_for_resize="output__detection_size_for_resize",
@@ -99,6 +100,7 @@ class Train_YoloV8_DetectionModel(PipelineStep):
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
+    output__yolov8_custom_train_config: str
     output__detection_training_request: str
     output__model_detection_size_for_resize: str
     output__detection_size_for_resize: str

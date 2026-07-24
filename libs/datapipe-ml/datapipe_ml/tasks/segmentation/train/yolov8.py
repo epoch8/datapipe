@@ -55,7 +55,8 @@ SEGMENTATION_YOLOV8_SPEC = YoloV8TaskSpec(
 SEGMENTATION_YOLOV8_STEP_FIELDS = YoloV8TrainStepFields(
     input__frozen_dataset="input__segmentation_frozen_dataset",
     input__frozen_dataset__has__image_gt="input__segmentation_frozen_dataset__has__image_gt",
-    output__train_config="output__yolov8_train_config",
+    output__default_train_config="output__yolov8_train_config",
+    output__custom_train_config="output__yolov8_custom_train_config",
     output__training_request="output__segmentation_training_request",
     output__model_size_for_resize="output__model_segmentation_size_for_resize",
     output__size_for_resize="output__segmentation_size_for_resize",
@@ -99,6 +100,7 @@ class Train_YoloV8_SegmentationModel(PipelineStep):
     input__segmentation_frozen_dataset: str
     input__segmentation_frozen_dataset__has__image_gt: str
     output__yolov8_train_config: str
+    output__yolov8_custom_train_config: str
     output__segmentation_training_request: str
     output__model_segmentation_size_for_resize: str
     output__segmentation_size_for_resize: str
