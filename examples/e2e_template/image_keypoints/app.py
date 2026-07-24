@@ -11,6 +11,7 @@ from datapipe_app.ops.specs import (
 )
 from datapipe_app_ml_ops.ops.ops_specs import (
     DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
     OpsDataSpec,
     OpsFrozenDatasetSpec,
     OpsImageAnnotationSpec,
@@ -30,7 +31,7 @@ from datapipe.types import Required
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
-from datapipe_ml.tasks.keypoints.metrics import CountMetrics_FrozenDataset_KeypointsModel
+from datapipe_ml.tasks.keypoints.metrics import CountMetrics_Subset_KeypointsModel
 from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel, YoloV8_TrainingConfig
 
 import steps
@@ -254,21 +255,24 @@ pipeline = Pipeline(
                 model_id_column="keypoints_model_id",
             ),
         ),
-        CountMetrics_FrozenDataset_KeypointsModel(
-            input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
-            input__keypoints_model="keypoints_model_train",
+        CountMetrics_Subset_KeypointsModel(
+            input__image__ground_truth="image__ground_truth",
+            input__subset__has__image="image__subset",
             input__keypoints_prediction="keypoints_prediction_train",
-            output__keypoints_model__metrics_on__frozen_dataset="keypoints_model_train__metrics_on_frozen_dataset",
+            output__keypoints_model__metrics_on__image="keypoints_model_train__metrics_on_image",
+            output__keypoints_model__metrics_by_cls_on__subset="keypoints_model_train__metrics_by_cls_on_subset",
+            output__keypoints_model__metrics_on__subset="keypoints_model_train__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
+            keypoints_model_primary_keys=["keypoints_model_id"],
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
             executor_config=metrics_executor(),
-            filters={"subset_id": "val"},
+            # filters={"subset_id": "val"},
         ),
         FindBestModel(
             input__model="keypoints_model_train",
-            input__model__metrics_on__subset="keypoints_model_train__metrics_on_frozen_dataset",
+            input__model__metrics_on__subset="keypoints_model_train__metrics_on_subset",
             output__attr__model__is_best="attr__keypoints_model__is_best",
             output__best_model="best_keypoints_model",
             subset_id="val",
@@ -348,7 +352,8 @@ app.add_specs([
                 "image__subset",
                 "keypoints_frozen_dataset",
                 "keypoints_model_train",
-                "keypoints_model_train__metrics_on_frozen_dataset",
+                "keypoints_model_train__metrics_on_subset",
+                "keypoints_model_train__metrics_by_cls_on_subset",
             ],
             item_table="s3_images",
             label_table="image__ground_truth",
@@ -521,12 +526,11 @@ app.add_specs([
             OpsMetricTableSpec(
                 id="model_metrics",
                 title="Model metrics",
-                table="keypoints_model_train__metrics_on_frozen_dataset",
-                metric_source="keypoints_model_train__metrics_on_frozen_dataset",
-                primary_key_columns=["keypoints_model_id", "keypoints_frozen_dataset_id", "subset_id"],
+                table="keypoints_model_train__metrics_on_subset",
+                metric_source="keypoints_model_train__metrics_on_subset",
+                primary_key_columns=["keypoints_model_id", "subset_id"],
                 entity_links={
                     "model": "keypoints_model_id",
-                    "frozen_dataset": "keypoints_frozen_dataset_id",
                     "subset": "subset_id",
                 },
                 primary_columns=[
@@ -536,12 +540,6 @@ app.add_specs([
                         "keypoints_model_id",
                         filterable=True,
                         link_to="model",
-                    ),
-                    OpsColumn(
-                        "keypoints_frozen_dataset_id",
-                        "Frozen dataset",
-                        "keypoints_frozen_dataset_id",
-                        link_to="frozen_dataset",
                     ),
                     OpsColumn("subset_id", "Subset", "subset_id", kind="chip", filterable=True),
                 ],
@@ -553,14 +551,28 @@ app.add_specs([
                             OpsColumn("pose_mAP50", "Pose mAP50", "calc__pose_mAP50", kind="number"),
                             OpsColumn("pose_P", "Pose P", "calc__pose_P", kind="number"),
                             OpsColumn("pose_R", "Pose R", "calc__pose_R", kind="number"),
+                            OpsColumn("pose_support", "Pose support", "calc__pose_support", kind="number"),
                         ],
                     ),
                     OpsColumnGroup(
-                        "Detection",
+                        "Precision",
                         [
-                            OpsColumn("precision", "Precision", "calc__precision", kind="number"),
-                            OpsColumn("recall", "Recall", "calc__recall", kind="number"),
-                            OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
                         ],
                     ),
                     OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
@@ -568,6 +580,39 @@ app.add_specs([
                 ],
                 best_metric_column="calc__pose_mAP50_95",
                 default_sort=[("pose_mAP50_95", "desc")],
+                filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+        ],
+        class_metrics=[
+            OpsClassMetricTableSpec(
+                id="subset_class_metrics",
+                title="Subset class metrics",
+                table="keypoints_model_train__metrics_by_cls_on_subset",
+                metric_source="keypoints_model_train__metrics_by_cls_on_subset",
+                primary_key_columns=["keypoints_model_id", "subset_id", "label"],
+                entity_links={
+                    "model": "keypoints_model_id",
+                    "subset": "subset_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "keypoints_model_id",
+                        "Model",
+                        "keypoints_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("subset_id", "Subset", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True, link_to="class"),
+                ],
+                metric_columns=[
+                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
                 filters=[OpsColumn("subset_filter", "Subset", "subset_id", kind="chip", filterable=True)],
                 default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
             )

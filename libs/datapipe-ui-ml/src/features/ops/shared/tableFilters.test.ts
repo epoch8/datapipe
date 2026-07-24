@@ -3,6 +3,7 @@ import {
     activeRules,
     chipKind,
     collectFilterColumns,
+    createClientId,
     decodeFiltersParam,
     encodeFiltersParam,
     expandChipValueRules,
@@ -11,6 +12,7 @@ import {
     mergeTableFilterState,
     isChipColumn,
     isSubsetEntityColumn,
+    makeDefaultFilterRule,
     resolveColumnEntity,
     serializeFilterRules,
 } from "./tableFilters";
@@ -22,19 +24,54 @@ const entityLinks = {
     frozen_dataset: "detection_frozen_dataset_id",
 };
 
-beforeAll(() => {
-    if (!global.crypto?.randomUUID) {
-        Object.defineProperty(global, "crypto", {
-            value: { randomUUID: () => "test-uuid" },
-            configurable: true,
-        });
-    }
-});
-
 const columns: OpsColumn[] = [
     { id: "model", label: "Model", source: "detection_model_id", filterable: true, link_to: "model" },
     { id: "subset", label: "Subset", source: "subset_id", kind: "chip", filterable: true },
 ];
+
+describe("createClientId", () => {
+    it("works without crypto.randomUUID (non-secure context)", () => {
+        const original = globalThis.crypto;
+        Object.defineProperty(globalThis, "crypto", {
+            configurable: true,
+            value: {
+                getRandomValues: (bytes: Uint8Array) => {
+                    for (let i = 0; i < bytes.length; i += 1) bytes[i] = i;
+                    return bytes;
+                },
+            },
+        });
+        try {
+            const id = createClientId();
+            expect(id).toMatch(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+            );
+        } finally {
+            Object.defineProperty(globalThis, "crypto", {
+                configurable: true,
+                value: original,
+            });
+        }
+    });
+
+    it("makeDefaultFilterRule does not throw without randomUUID", () => {
+        const original = globalThis.crypto;
+        Object.defineProperty(globalThis, "crypto", {
+            configurable: true,
+            value: undefined,
+        });
+        try {
+            const rule = makeDefaultFilterRule(columns[0]);
+            expect(typeof (rule as { id?: string }).id).toBe("string");
+            expect((rule as { id: string }).id.length).toBeGreaterThan(0);
+        } finally {
+            Object.defineProperty(globalThis, "crypto", {
+                configurable: true,
+                value: original,
+            });
+        }
+    });
+});
 
 describe("tableFilters", () => {
     it("keeps only allowed operators", () => {

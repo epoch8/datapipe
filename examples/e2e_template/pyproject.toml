@@ -40,7 +40,6 @@ datapipe-ui = { path = "../../libs/datapipe-ui", editable = true }
 datapipe-ui-ml = { path = "../../libs/datapipe-ui-ml", editable = true }
 datapipe-ml = { path = "../../libs/datapipe-ml", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", rev = "5724f8d54e4df64013fad85d41129799bc143293" }
 
 [dependency-groups]
 dev = [

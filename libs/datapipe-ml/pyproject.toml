@@ -10,7 +10,7 @@ dependencies = [
     "opencv-python>=4.8.0.76",
     "opencv-python-headless>=4.8.0.76",
     "datapipe-core[gcsfs,s3fs,ray]",
-    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.0",
+    "cv-pipeliner",
     "imageio>=2.31.3,<3",
     "joblib>=1.3.2,<2",
     "natsort>=8.4.0",
@@ -80,7 +80,7 @@ dev = [
 datapipe-core = { workspace = true }
 datapipe-app = { workspace = true }
 datapipe-app-ml-ops = { workspace = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.2" }
 YOLOv5 = { git = "https://github.com/epoch8/yolov5", rev = "943ad3c43a981ff81b05c779d2e051641b714f4a" }
 image-classifiers = { git = "https://github.com/qubvel/classification_models", rev = "a0f006e05485a34ccf871c421279864b0ccd220b" }
 

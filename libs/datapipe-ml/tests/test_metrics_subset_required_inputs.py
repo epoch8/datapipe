@@ -312,9 +312,10 @@ def _build_keypoints_metrics_step():
     return CountMetrics_Subset_KeypointsModel(
         input__image__ground_truth="image_gt",
         input__subset__has__image="subset_has_image",
-        input__keypoints_model="keypoints_model",
         input__keypoints_prediction="keypoints_prediction",
-        output__keypoints_model__metrics__on__subset="keypoints_metrics_on_subset",
+        output__keypoints_model__metrics_on__image="keypoints_metrics_on_image",
+        output__keypoints_model__metrics_by_cls_on__subset="keypoints_metrics_by_cls",
+        output__keypoints_model__metrics_on__subset="keypoints_metrics_on_subset",
         primary_keys=["image_id"],
         bbox_id__name=None,
         create_table=True,
@@ -417,7 +418,7 @@ ORPHAN_PREDICTION_CASES = [
         _keypoints_catalog,
         _build_keypoints_metrics_step,
         "keypoints_prediction",
-        None,
+        "keypoints_metrics_on_image",
         "keypoints_metrics_on_subset",
         id="keypoints",
     ),
@@ -499,9 +500,6 @@ def test_orphan_prediction_without_subset_is_skipped(
         )
         catalog.get_datatable(ds, "subset_has_image").store_chunk(
             pd.DataFrame({"image_id": ["i_valid"], "subset_id": ["val"]})
-        )
-        catalog.get_datatable(ds, "keypoints_model").store_chunk(
-            pd.DataFrame({"keypoints_model_id": ["m1"]})
         )
         catalog.get_datatable(ds, prediction_table).store_chunk(
             pd.DataFrame(

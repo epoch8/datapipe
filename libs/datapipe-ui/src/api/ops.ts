@@ -150,7 +150,7 @@ export const coreOpsApi = {
         fetchJson<RunsListResponse>(
             `/runs${toQuery(params as Record<string, string | number | string[] | undefined>)}`,
         ),
-    getRunLogs: (runId: string, after = 0, limit = 500) =>
+    getRunLogs: (runId: string, after = 0, limit = 200) =>
         fetchJson<RunLogsResponse>(`/runs/${runId}/logs?after=${after}&limit=${limit}`),
     startRun: (labels?: [string, string][], background = true) =>
         fetchJson<{ run_id: string; status: string }>("/runs", {
