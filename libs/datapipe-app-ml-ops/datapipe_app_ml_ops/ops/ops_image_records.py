@@ -601,8 +601,12 @@ class OpsImageRecordsSupport:
         image_url = record.get(view.image_url_column)
         merged = {**record, **(gt_record or {})}
         bbox_rows = self._bbox_rows_from_record(gt_record or {}, view.ground_truth)
-        label = self._label_from_record(gt_record or {}, view.ground_truth) if view.ground_truth else None
         label_mode = view.ground_truth is not None and not self._uses_bboxes(view.ground_truth)
+        label = (
+            self._label_from_record(gt_record or {}, view.ground_truth)
+            if label_mode and view.ground_truth
+            else None
+        )
         base = self._record_urls(pipeline_id, spec_id, "data", record_key)
         return OpsImageRecordDetailResponse(
             pipeline_id=pipeline_id,
@@ -689,10 +693,22 @@ class OpsImageRecordsSupport:
         subset = self._load_subset_for_prediction(view, pk)
         pred_rows = self._bbox_rows_from_record(prediction, view.prediction)
         gt_rows = self._bbox_rows_from_record(gt_record or {}, view.ground_truth)
-        prediction_label = self._label_from_record(prediction, view.prediction) if view.prediction else None
-        prediction_score = self._score_from_record(prediction, view.prediction) if view.prediction else None
-        gt_label = self._label_from_record(gt_record or {}, view.ground_truth) if view.ground_truth else None
         label_mode = view.prediction is not None and not self._uses_bboxes(view.prediction)
+        prediction_label = (
+            self._label_from_record(prediction, view.prediction)
+            if label_mode and view.prediction
+            else None
+        )
+        prediction_score = (
+            self._score_from_record(prediction, view.prediction)
+            if label_mode and view.prediction
+            else None
+        )
+        gt_label = (
+            self._label_from_record(gt_record or {}, view.ground_truth)
+            if label_mode and view.ground_truth
+            else None
+        )
         metrics = self._prediction_metrics_values(
             view,
             model_id=model_id,
