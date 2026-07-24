@@ -20,7 +20,7 @@ pytestmark_postgres = pytest.mark.skipif(
 def _postgres_connstr() -> str:
     pg_host = os.getenv("POSTGRES_HOST", "localhost")
     pg_port = os.getenv("POSTGRES_PORT", "5432")
-    return f"postgresql://postgres:password@{pg_host}:{pg_port}/postgres"
+    return f"postgresql+psycopg://postgres:password@{pg_host}:{pg_port}/postgres"
 
 
 def _fresh_schema_name() -> str:
