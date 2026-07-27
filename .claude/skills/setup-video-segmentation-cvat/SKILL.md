@@ -11,12 +11,14 @@ description: >
 This skill = turn a long video into review-ready CVAT pre-annotations. Front stage samples + dedups
 frames; the SAM3→CVAT tail is identical to [`../sam_cvat`](../sam_cvat). Set the knobs below first.
 
-**Ask first — don't assume (only the unresolved):** which videos (built-in city-walk set via
-`scripts/fetch_video.py`, or the user's own) → `INPUT_VIDEO_DIR`? **`SAMPLE_FPS`** (how densely to
-sample — the single biggest lever on frame count / run time) and **`SEGMENT_SIZE`** (frames per CVAT
-job)? **which Postgres + which database** for `DB_URL` — never point at an existing DB or use a
-default without confirming; external CVAT ready or provision it? reuse an existing venv / `uv` env or
-create fresh? which GPU (VRAM + FlashAttention)? surface stage logs or run quiet?
+**Ask first — don't assume (only the unresolved):** **is this a live demo on the built-in test
+videos, or a real run on the user's own data?** (demo → the two-stage choreography below); which videos
+(built-in city-walk set via `scripts/fetch_video.py`, or the user's own) → `INPUT_VIDEO_DIR`?
+**`SAMPLE_FPS`** (how densely to sample — the single biggest lever on frame count / run time) and
+**`SEGMENT_SIZE`** (frames per CVAT job)? **which Postgres + which database** for `DB_URL` — never
+point at an existing DB or use a default without confirming; external CVAT ready or provision it?
+reuse an existing venv / `uv` env or create fresh? which GPU (VRAM + FlashAttention)? surface stage
+logs or run quiet?
 
 **How to work:** read the setup, propose a short plan, get a go-ahead before touching anything.
 Prepare `.env` and **pause for the user to verify it** before running. Run stages with logs shown;
@@ -93,7 +95,22 @@ datapipe db create-all && datapipe run
 # by stage: datapipe step --labels stage=sample run  (then stage=sam, stage=cvat)
 ```
 Run from `examples/video_segmentation_cvat/` (`app.py` `load_dotenv()`s before importing config).
-**Live demo:** drop a ~10 s clip in `INPUT_VIDEO_DIR` → `datapipe run` → a CVAT task appears in seconds.
+
+## Demo choreography — two stages (built-in test set)
+For a live demo, split the built-in videos into a pre-baked bulk and one small live clip, so the
+audience sees a run finish in seconds instead of waiting hours:
+
+- **Stage 1 — bulk, YOU run it fully ahead of time (CLI).** Put every built-in video **except**
+  `smoke_shibuya_3min` in `INPUT_VIDEO_DIR` and `datapipe run` to completion. This is the slow part
+  (the multi-hour city-walk videos) and pre-fills CVAT with the heavy tasks. Do it before the demo,
+  not on stage. Keep the UI **off** during this CLI run (see the `datapipe api` collision below).
+- **Stage 2 — smoke clip, LIVE via the UI.** During the demo, start `datapipe api`, drop
+  `smoke_shibuya_3min` into `INPUT_VIDEO_DIR`, and trigger the run from the **UI's per-stage run
+  buttons**. It's tiny, so frames → SAM3 → a fresh CVAT task appear within seconds, live — and running
+  from the UI (single writer) avoids the run-log collision that a concurrent CLI run would cause.
+
+So: bulk is proof-of-scale (done offline), smoke is the live "watch it work" moment. On the user's own
+data there's no split — just one `datapipe run` (or per-video, incrementally).
 
 ## Deploy on a bare GPU pod (no Docker) — field-tested
 The example itself needs **no Docker** — it's a plain `uv` venv. Docker is only for the infra deps
