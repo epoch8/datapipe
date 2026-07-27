@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from config import DBCONN, EMBEDDINGS_DIR, FIFTYONE_DATASET_NAME
 from cv_pipeliner.utils.fiftyone import FifyOneSession
 from datapipe.compute import Table
 from datapipe.store.database import TableStoreDB
 from datapipe.store.filedir import TableStoreFiledir
 from datapipe_ml.utils.image_data_stores import FiftyOneImagesDataTableStore, NumpyDataFile
 from sqlalchemy import JSON, Column, Integer, String
-
-from config import DBCONN, EMBEDDINGS_DIR, FIFTYONE_DATASET_NAME
 
 fo_session = FifyOneSession()
 

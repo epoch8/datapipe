@@ -1,13 +1,12 @@
 import os
-from typing import Tuple
 
 import pandas as pd
-from datapipe.compute import Catalog, DataStore, Pipeline, Table
+from datapipe.compute import Catalog, Pipeline, Table
+from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
-from sqlalchemy import JSON, Boolean, Column, Integer, String
-
 from datapipe_app import DatapipeAPI
+from sqlalchemy import JSON, Boolean, Column, Integer, String
 
 DB_CONN_URI = os.environ.get("DB_CONN_URI", "sqlite+pysqlite3:///store.sqlite")
 
@@ -58,7 +57,7 @@ catalog = Catalog(
 )
 
 
-def agg_profile(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def agg_profile(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     res = []
 
     res_lang = []

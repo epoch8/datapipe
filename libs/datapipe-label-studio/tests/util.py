@@ -1,13 +1,11 @@
 import time
-from typing import List
 
 import pandas as pd
 from datapipe.datatable import DataTable
 from datapipe.store.table_store import TableStore
 from datapipe.types import DataDF, data_to_index
-from label_studio_sdk import LabelStudio
-
 from datapipe_label_studio.sdk_utils import get_tasks_iter, is_service_up
+from label_studio_sdk import LabelStudio
 
 
 def assert_idx_equal(a, b):
@@ -64,7 +62,7 @@ def get_project_id(project) -> int:
     return getattr(project, "id", None) or project.get("id")
 
 
-def get_project_tasks(ls_client: LabelStudio, project_id: int, page_size: int = 200) -> List[dict]:
+def get_project_tasks(ls_client: LabelStudio, project_id: int, page_size: int = 200) -> list[dict]:
     tasks = []
     for page_items in get_tasks_iter(
         ls_client,

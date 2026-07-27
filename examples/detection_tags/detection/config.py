@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import fsspec
 from datapipe.store.database import DBConn
@@ -37,6 +36,7 @@ def tag_id_for(name: str) -> int:
 def tag_name_for(tag_id) -> str:
     return TAG_NAMES.get(tag_id, str(tag_id))
 
+
 # --- single storage root --------------------------------------------------------
 # Input images live under <root>/images; the pipeline working_dir under <root>/datapipe
 # (siblings) so listing input images never re-ingests training artifacts.
@@ -69,7 +69,7 @@ def input_storage_options() -> dict:
     return {"key": AWS_KEY, "secret": AWS_SECRET, "client_kwargs": client_kwargs}
 
 
-def input_bucket() -> Optional[str]:
+def input_bucket() -> str | None:
     if not _is_cloud_path(DATAPIPE_DIR_ROOT):
         return None
     return Pathy(DATAPIPE_DIR_ROOT).root

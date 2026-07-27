@@ -1,16 +1,10 @@
 import json
 import logging
 import os
+from collections.abc import Iterator, Sequence
 from typing import (
     Any,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Sequence,
     SupportsInt,
-    Tuple,
-    Union,
     cast,
 )
 from urllib.parse import urljoin
@@ -27,10 +21,10 @@ from datapipe_label_studio.types import (
     StorageDict,
 )
 
-ApiKey = Union[str, Tuple[str, str]]
+ApiKey = str | tuple[str, str]
 
 
-def sign_up(ls_url: str, email: str, password: str) -> Optional[str]:
+def sign_up(ls_url: str, email: str, password: str) -> str | None:
     session = requests.Session()
     response_first = session.get(url=urljoin(ls_url, "user/signup/"))
     response_signup = session.post(
@@ -67,14 +61,14 @@ def login_and_get_token(ls_url: str, email: str, password: str) -> str:
         raise ValueError("Login failed.")
 
 
-def _object_to_dict(obj: object) -> Dict[str, object]:
+def _object_to_dict(obj: object) -> dict[str, object]:
     if isinstance(obj, dict):
-        return cast(Dict[str, object], obj)
+        return cast(dict[str, object], obj)
     if hasattr(obj, "model_dump"):
-        return cast(Dict[str, object], obj.model_dump())
+        return cast(dict[str, object], obj.model_dump())
     if hasattr(obj, "dict"):
-        return cast(Dict[str, object], obj.dict())
-    return cast(Dict[str, object], dict(obj.__dict__))
+        return cast(dict[str, object], obj.dict())
+    return cast(dict[str, object], dict(obj.__dict__))
 
 
 def project_to_dict(project: object) -> ProjectDict:
@@ -101,8 +95,8 @@ def import_tasks_response_to_dict(response: object) -> ImportTasksResponseDict:
     return cast(ImportTasksResponseDict, data)
 
 
-def get_project_by_title(ls: LabelStudio, title: str) -> Optional[ProjectDict]:
-    candidates: List[ProjectDict] = []
+def get_project_by_title(ls: LabelStudio, title: str) -> ProjectDict | None:
+    candidates: list[ProjectDict] = []
     for page_items in _iter_paged_items(
         ls.projects.list,
         title=title,
@@ -119,17 +113,11 @@ def get_project_by_title(ls: LabelStudio, title: str) -> Optional[ProjectDict]:
 
 
 def get_ls_client(ls_url: str, api_key: ApiKey) -> LabelStudio:
-    resolved_key = (
-        api_key
-        if isinstance(api_key, str)
-        else login_and_get_token(ls_url, api_key[0], api_key[1])
-    )
+    resolved_key = api_key if isinstance(api_key, str) else login_and_get_token(ls_url, api_key[0], api_key[1])
     return LabelStudio(base_url=ls_url, api_key=resolved_key)
 
 
-def find_project(
-    ls: LabelStudio, project_identifier: Union[str, int]
-) -> Optional[ProjectDict]:
+def find_project(ls: LabelStudio, project_identifier: str | int) -> ProjectDict | None:
     if str(project_identifier).isnumeric():
         return project_to_dict(ls.projects.get(id=int(project_identifier)))
     return get_project_by_title(ls, str(project_identifier))
@@ -137,7 +125,7 @@ def find_project(
 
 def ensure_project(
     ls: LabelStudio,
-    project_identifier: Union[str, int],
+    project_identifier: str | int,
     project_label_config_at_create: str,
     project_description_at_create: str,
 ) -> ProjectDict:
@@ -172,7 +160,7 @@ def ensure_project(
     return project_to_dict(created)
 
 
-def resolve_project_id(ls: LabelStudio, project_identifier: Union[str, int]) -> int:
+def resolve_project_id(ls: LabelStudio, project_identifier: str | int) -> int:
     project = find_project(ls, project_identifier)
     if project is None:
         raise ValueError(f"Project with {project_identifier=} not found")
@@ -182,7 +170,7 @@ def resolve_project_id(ls: LabelStudio, project_identifier: Union[str, int]) -> 
 def ensure_project_storages(
     ls: LabelStudio,
     project_id: int,
-    storages: Optional[Sequence[Union[GCSBucket, S3Bucket]]],
+    storages: Sequence[GCSBucket | S3Bucket] | None,
 ) -> None:
     if not storages:
         return
@@ -220,7 +208,7 @@ def ensure_project_storages(
             )
 
 
-def _resolve_base_url(ls: LabelStudio) -> Optional[str]:
+def _resolve_base_url(ls: LabelStudio) -> str | None:
     for attr in ["base_url", "_base_url"]:
         value = getattr(ls, attr, None)
         if value:
@@ -250,7 +238,7 @@ def is_service_up(ls: LabelStudio, raise_exception: bool = False) -> bool:
             return False
 
 
-def _task_to_dict(task: Any) -> Dict[str, Any]:
+def _task_to_dict(task: Any) -> dict[str, Any]:
     return _object_to_dict(task)
 
 
@@ -259,7 +247,7 @@ def _iter_paged_items(
     *,
     page_size: int,
     **kwargs,
-) -> Iterator[List[Any]]:
+) -> Iterator[list[Any]]:
     page = 1
     while True:
         try:
@@ -285,13 +273,13 @@ def _iter_paged_items(
 def get_tasks_iter(
     client: LabelStudio,
     project_id: int,
-    filters: Optional[Dict[str, Any]] = None,
-    ordering: Optional[Sequence[str]] = None,
-    view_id: Optional[int] = None,
-    selected_ids: Optional[Sequence[int]] = None,
+    filters: dict[str, Any] | None = None,
+    ordering: Sequence[str] | None = None,
+    view_id: int | None = None,
+    selected_ids: Sequence[int] | None = None,
     only_ids: bool = False,
     page_size: int = 100,
-) -> Iterator[List[Dict[str, Any]]]:
+) -> Iterator[list[dict[str, Any]]]:
     """Retrieve a subset of tasks from the Data Manager based on a filter, ordering mechanism, or a
     predefined view ID.
 
@@ -333,7 +321,7 @@ def get_tasks_iter(
 
     """
 
-    query: Dict[str, Any] = {}
+    query: dict[str, Any] = {}
     if filters is not None:
         query["filters"] = filters
     if ordering is not None:

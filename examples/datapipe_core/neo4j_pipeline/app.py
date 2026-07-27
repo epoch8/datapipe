@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator, cast
+from typing import cast
 
 import pandas as pd
-from sqlalchemy import JSON, Column, String
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.store.database import DBConn
 from datapipe.store.neo4j import Neo4JStore
 from datapipe.types import IndexDF
+from sqlalchemy import JSON, Column, String
 
 bolt_kwargs = {
     "uri": "bolt://localhost:7687",  # neo4j:7687 if run in container

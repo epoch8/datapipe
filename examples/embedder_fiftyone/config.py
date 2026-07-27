@@ -53,6 +53,4 @@ FIFTYONE_DATASET_NAME = os.environ.get("FIFTYONE_DATASET_NAME", "datapipe_embedd
 def use_local_images() -> bool:
     if LOCAL_IMAGES_DIR is None or not LOCAL_IMAGES_DIR.exists():
         return False
-    return any(
-        path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES for path in LOCAL_IMAGES_DIR.rglob("*")
-    )
+    return any(path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES for path in LOCAL_IMAGES_DIR.rglob("*"))

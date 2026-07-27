@@ -1,8 +1,5 @@
 import numpy as np
 import pandas as pd
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.sql import functions, select
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -10,6 +7,8 @@ from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import DatatableBatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.types import IndexDF
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql import functions, select
 
 from examples.datapipe_core._sqlite import sqlite_connstr
 

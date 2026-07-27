@@ -6,10 +6,9 @@ from pathlib import Path
 import pytest
 import requests
 from datapipe.store.database import DBConn
+from datapipe_label_studio.sdk_utils import login_and_get_token, sign_up
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-
-from datapipe_label_studio.sdk_utils import login_and_get_token, sign_up
 
 if (Path(__file__).parent / ".env").exists():
     load_dotenv(Path(__file__).parent / ".env")

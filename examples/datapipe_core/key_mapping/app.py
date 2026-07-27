@@ -23,14 +23,13 @@ Result tables
 """
 
 import pandas as pd
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.types import InputSpec, OutputSpec
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from examples.datapipe_core._sqlite import sqlite_connstr
 

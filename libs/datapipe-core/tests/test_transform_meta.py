@@ -1,4 +1,3 @@
-
 import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer

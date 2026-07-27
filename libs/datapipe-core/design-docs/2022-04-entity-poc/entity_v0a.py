@@ -22,7 +22,7 @@ entities = {
             "feed",
             "ozon_edit",
             "aliexpress_edit",
-        ]
+        ],
     )
 }
 ds = DataStore()

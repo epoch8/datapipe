@@ -5,11 +5,11 @@ class Table:
     pass
 
 
-catalog = Catalog({
-    "feed": Table(
-        entity="item",
-    ),
-    "ozon_edit": Table(
-        entity="item"
-    )
-})
+catalog = Catalog(
+    {
+        "feed": Table(
+            entity="item",
+        ),
+        "ozon_edit": Table(entity="item"),
+    }
+)

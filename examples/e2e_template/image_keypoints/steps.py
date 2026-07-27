@@ -1,26 +1,25 @@
 from __future__ import annotations
 
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import fsspec
 import numpy as np
 import pandas as pd
+from config import (
+    CLASSES_TO_KEEP,
+    INPUT_IMAGES_DIR,
+    KEYPOINTS_LABELS,
+    KEYPOINTS_MODEL_CONFIG,
+    LOCAL_IMAGES_DIR,
+    input_image_url,
+    input_storage_options,
+)
 from cv_pipeliner import BboxData, ImageData
 from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
 from datapipe.datatable import DataStore
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
 from datapipe_ml.tasks.keypoints.inference import keypoints_inference
-
-from config import (
-    CLASSES_TO_KEEP,
-    KEYPOINTS_LABELS,
-    KEYPOINTS_MODEL_CONFIG,
-    LOCAL_IMAGES_DIR,
-    INPUT_IMAGES_DIR,
-    input_image_url,
-    input_storage_options,
-)
 
 
 def list_s3_images() -> Iterator[pd.DataFrame]:
@@ -81,7 +80,9 @@ def keypoints_to_ls_prediction(
                 for annotation in annotations:
                     if annotation.get("type") == "rectanglelabels":
                         annotation["hidden"] = True
-            records.append({"image_name": image_name, "prediction": {"result": annotations}, "keypoints_model_id": model_id})
+            records.append(
+                {"image_name": image_name, "prediction": {"result": annotations}, "keypoints_model_id": model_id}
+            )
     return pd.DataFrame(records, columns=["image_name", "prediction", "keypoints_model_id"])
 
 
@@ -107,7 +108,9 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
                 continue
             bboxes.append(list(bbox_data.coords))
             labels.append(label)
-            keypoints.append([] if bbox_data.keypoints is None else np.array(bbox_data.keypoints).reshape(-1, 2).tolist())
+            keypoints.append(
+                [] if bbox_data.keypoints is None else np.array(bbox_data.keypoints).reshape(-1, 2).tolist()
+            )
         records.append({"image_name": row["image_name"], "bboxes": bboxes, "labels": labels, "keypoints": keypoints})
     return pd.DataFrame(records, columns=["image_name", "bboxes", "labels", "keypoints"])
 
@@ -172,4 +175,3 @@ def publish_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame, *
         df__with_bbox=pd.merge(predictions_df, images_df, on=kwargs["primary_keys"][0]),
         **kwargs,
     )
-

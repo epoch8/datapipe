@@ -1,6 +1,7 @@
 import base64
 import hashlib
-from typing import Any, Iterable, Iterator, TypedDict
+from collections.abc import Iterable, Iterator
+from typing import Any, TypedDict
 
 import pandas as pd
 from elastic_transport import ObjectApiResponse

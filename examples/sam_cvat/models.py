@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
 
 import cv2
 import numpy as np
 import torch
+from config import DEVICE, HF_TOKEN, SAM_MAX_DETECTIONS, SAM_SCORE_THRESHOLD
 from cv_pipeliner import BboxData
 from PIL import Image
-
-from config import DEVICE, HF_TOKEN, SAM_MAX_DETECTIONS, SAM_SCORE_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +36,7 @@ def get_processor():
     return _processor
 
 
-def _mask_to_polygon(mask: np.ndarray) -> Optional[np.ndarray]:
+def _mask_to_polygon(mask: np.ndarray) -> np.ndarray | None:
     mask_uint8 = (mask.astype(np.uint8) * 255) if mask.max() <= 1 else mask.astype(np.uint8)
     contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -61,7 +59,7 @@ def _to_scalar(value) -> float:
     return float(array.reshape(-1)[0])
 
 
-def infer_image(image: Image.Image, text_prompt: str) -> List[BboxData]:
+def infer_image(image: Image.Image, text_prompt: str) -> list[BboxData]:
     processor = get_processor()
     device_type = "cuda" if DEVICE.startswith("cuda") else "cpu"
 
@@ -81,7 +79,7 @@ def infer_image(image: Image.Image, text_prompt: str) -> List[BboxData]:
         return []
 
     num_detections = min(len(masks), len(boxes), len(scores))
-    detections: List[BboxData] = []
+    detections: list[BboxData] = []
 
     indexed_scores = [(idx, _to_scalar(scores[idx])) for idx in range(num_detections)]
     indexed_scores.sort(key=lambda item: item[1], reverse=True)

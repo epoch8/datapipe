@@ -2,7 +2,7 @@ import asyncio
 import copy
 import math
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
@@ -114,7 +114,7 @@ def get_transform_data(step: BaseBatchTransformStep, req: models.GetDataRequest)
     )
 
 
-def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_prefix: str = "") -> List[ComputeStep]:
+def filter_steps_by_labels(steps: list[ComputeStep], labels: Labels = [], name_prefix: str = "") -> list[ComputeStep]:
     res = []
     for step in steps:
         for k, v in labels:
@@ -129,7 +129,7 @@ def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_p
 
 class WebSocketManager:
     def __init__(self) -> None:
-        self._connections: Set[WebSocket] = set()
+        self._connections: set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -138,7 +138,7 @@ class WebSocketManager:
     def disconnect(self, websocket: WebSocket) -> None:
         self._connections.remove(websocket)
 
-    async def broadcast_json(self, data: Dict[str, Any]) -> None:
+    async def broadcast_json(self, data: dict[str, Any]) -> None:
         for ws in self._connections:
             try:
                 await ws.send_json(data)
@@ -149,9 +149,9 @@ class WebSocketManager:
         return len(self._connections)
 
 
-class RunningStepsHelper(Dict[str, models.RunStepResponse]):
+class RunningStepsHelper(dict[str, models.RunStepResponse]):
     def __init__(self) -> None:
-        self._transform_web_sockets: Dict[str, WebSocketManager] = {}
+        self._transform_web_sockets: dict[str, WebSocketManager] = {}
 
     async def add_ws(self, websocket: WebSocket, transform: str) -> None:
         if transform not in self._transform_web_sockets:
@@ -190,7 +190,7 @@ def run_step(
     ds: DataStore,
     step: BaseBatchTransformStep,
     transform_state: models.RunStepResponse,
-    filters: Optional[List[Dict]],
+    filters: list[dict] | None,
 ) -> None:
     # Before we progress callback to datapipe-core we need to do this shenanigans 💀
     _step = copy.copy(step)
@@ -203,8 +203,8 @@ def run_step(
 
         def get_full_process_ids(
             ds: DataStore,
-            chunk_size: Optional[int] = None,
-            run_config: Optional[RunConfig] = None,
+            chunk_size: int | None = None,
+            run_config: RunConfig | None = None,
         ):
             idx_total = len(selected_data)
 
@@ -223,8 +223,8 @@ def run_step(
 
         def get_full_process_ids(
             ds: DataStore,
-            chunk_size: Optional[int] = None,
-            run_config: Optional[RunConfig] = None,
+            chunk_size: int | None = None,
+            run_config: RunConfig | None = None,
         ):
             idx_total, idx_gen = _get_full_process_ids(ds, chunk_size, run_config)
             transform_state.total = idx_total
@@ -246,7 +246,7 @@ def make_app(
     ds: DataStore,
     catalog: Catalog,
     pipeline: Pipeline,
-    steps: List[ComputeStep],
+    steps: list[ComputeStep],
 ) -> FastAPI:
     app = FastAPI()
 

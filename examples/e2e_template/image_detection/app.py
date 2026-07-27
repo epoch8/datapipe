@@ -1,30 +1,30 @@
 from __future__ import annotations
 
+import steps
+from config import (
+    DATAPIPE_DIR,
+    DBCONN,
+    LABEL_CONFIG,
+    LABEL_STUDIO_API_KEY,
+    LABEL_STUDIO_URL,
+    PROJECT_NAME,
+    datapipe_tmp_folder,
+    label_studio_storages,
+)
+from data import catalog
 from datapipe.compute import DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
+from datapipe_ml.frameworks.yolo.yolov8.runner import YoloV8_TrainingConfig
 from datapipe_ml.metrics.model_selection import FindBestModel
-from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
 from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
-from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
-
-import steps
-from config import (
-    DATAPIPE_DIR,
-    datapipe_tmp_folder,
-    DBCONN,
-    label_studio_storages,
-    LABEL_CONFIG,
-    LABEL_STUDIO_API_KEY,
-    LABEL_STUDIO_URL,
-    PROJECT_NAME,
-)
-from data import catalog
+from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel
+from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 
 pipeline = Pipeline(
     [

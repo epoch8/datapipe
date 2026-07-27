@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import steps
+from config import DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
+from data import catalog
 from datapipe.compute import DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
@@ -9,10 +12,6 @@ from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
 from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
 from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
-
-import steps
-from config import DATAPIPE_DIR, DBCONN, datapipe_tmp_folder
-from data import catalog
 
 # Data is loaded via the `load` step: add a row to `load_request` (request_id, n, offset, tag,
 # darken) and run `datapipe step --labels=stage=load run`. It downloads COCO cat/dog images,
@@ -72,8 +71,13 @@ pipeline = Pipeline(
             ],
             sync_config=TrainingSyncConfig(enabled=True, interval_s=30, retries=3, retry_sleep_s=30),
             resume_config=TrainingResumeConfig(
-                continue_train_failed_models=True, min_completed_epochs=1, checkpoint="last",
-                max_attempts=10, reset_attempts_after="10m", lease_ttl_s=60, heartbeat_interval_s=10,
+                continue_train_failed_models=True,
+                min_completed_epochs=1,
+                checkpoint="last",
+                max_attempts=10,
+                reset_attempts_after="10m",
+                lease_ttl_s=60,
+                heartbeat_interval_s=10,
             ),
             primary_keys=["image_name"],
             bbox_id__name=None,

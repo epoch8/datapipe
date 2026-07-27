@@ -11,6 +11,11 @@ members = ["libs/*"]
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["*.ipynb"]
+force-exclude = true
+
+[tool.ruff.lint]
+ignore = ["PLR0402", "C408"]
 
 [tool.mypy]
 ignore_missing_imports = true

@@ -1,5 +1,6 @@
 import datetime
-from typing import Any, Hashable, Iterator
+from collections.abc import Hashable, Iterator
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,

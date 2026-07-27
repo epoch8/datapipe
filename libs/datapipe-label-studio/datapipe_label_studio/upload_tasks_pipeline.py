@@ -1,7 +1,8 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -92,9 +93,9 @@ def _cleanup(values):
 def upload_tasks_to_label_studio(
     df: pd.DataFrame,
     idx: IndexDF,
-    get_project_context: Callable[[], Tuple[LabelStudio, int]],
-    primary_keys: List[str],
-    columns: List[str],
+    get_project_context: Callable[[], tuple[LabelStudio, int]],
+    primary_keys: list[str],
+    columns: list[str],
     delete_unannotated_tasks_only_on_update: bool,
     dt__output__label_studio_project_task: DataTable,
     dt__output__label_studio_project_annotation: DataTable,
@@ -200,7 +201,7 @@ def upload_tasks_to_label_studio(
         return pd.DataFrame(columns=primary_keys + ["task_id"])
 
     if len(df_to_be_uploaded) > 0:
-        data_to_be_added: List[LSImportApiRequest] = [
+        data_to_be_added: list[LSImportApiRequest] = [
             cast(
                 LSImportApiRequest,
                 {
@@ -236,19 +237,19 @@ def upload_tasks_to_label_studio(
 
 def get_annotations_from_label_studio(
     ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    run_config: Optional[RunConfig],
-    kwargs: Optional[Dict[str, Any]] = None,
+    input_dts: list[DataTable],
+    output_dts: list[DataTable],
+    run_config: RunConfig | None,
+    kwargs: dict[str, Any] | None = None,
 ):
     """
     Записывает в табличку задачи из сервера LS вместе с разметкой согласно
     дате последней синхронизации
     """
     kwargs = kwargs or {}
-    get_project_context: Callable[[], Tuple[LabelStudio, int]] = kwargs["get_project_context"]
+    get_project_context: Callable[[], tuple[LabelStudio, int]] = kwargs["get_project_context"]
     client, project_id = get_project_context()
-    primary_keys: List[str] = kwargs["primary_keys"]
+    primary_keys: list[str] = kwargs["primary_keys"]
 
     (dt__output__label_studio_sync_table, dt__output__label_studio_project_annotation) = output_dts
     dt__output__label_studio_project_task: DataTable = kwargs["dt__output__label_studio_project_task"]
@@ -303,18 +304,18 @@ class LabelStudioUploadTasks(PipelineStep):
 
     ls_url: str
     api_key: str
-    project_identifier: Union[str, int]  # project_title or id
-    primary_keys: List[str]
-    columns: List[str]
+    project_identifier: str | int  # project_title or id
+    primary_keys: list[str]
+    columns: list[str]
 
     chunk_size: int = 100
     project_label_config_at_create: str = ""
     project_description_at_create: str = ""
-    storages: Optional[List[Union[GCSBucket, S3Bucket]]] = None
+    storages: list[GCSBucket | S3Bucket] | None = None
     create_table: bool = False
     delete_unannotated_tasks_only_on_update: bool = False
-    labels: Optional[Labels] = None
-    executor_config: Optional[ExecutorConfig] = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def __post_init__(self):
         for column in ["task_id", "annotations"]:
@@ -323,8 +324,8 @@ class LabelStudioUploadTasks(PipelineStep):
             assert len(self.project_identifier) <= 50
 
         # lazy initialization
-        self._ls_client: Optional[LabelStudio] = None
-        self._project_id: Optional[int] = None
+        self._ls_client: LabelStudio | None = None
+        self._project_id: int | None = None
 
         self.labels = self.labels or []
         self.storages = self.storages or []
@@ -335,7 +336,7 @@ class LabelStudioUploadTasks(PipelineStep):
             self._ls_client = get_ls_client(self.ls_url, self.api_key)
         return self._ls_client
 
-    def get_project_context(self) -> Tuple[LabelStudio, int]:
+    def get_project_context(self) -> tuple[LabelStudio, int]:
         """
         При первом использовании ищет проект в LS по индентификатору,
         если его нет -- автоматически создаётся проект с нуля.
@@ -356,7 +357,7 @@ class LabelStudioUploadTasks(PipelineStep):
         )
         return (self.ls_client, self._project_id)
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_item_name = get_pipeline_input_name(self.input__item)
         output_label_studio_project_task_name = get_pipeline_output_name(self.output__label_studio_project_task)
         output_label_studio_project_annotation_name = get_pipeline_output_name(
@@ -453,8 +454,8 @@ def upload_tasks_to_label_studio_projects(
     df__label_studio_project: pd.DataFrame,
     idx: IndexDF,
     ls_client: LabelStudio,
-    primary_keys: List[str],
-    columns: List[str],
+    primary_keys: list[str],
+    columns: list[str],
     delete_unannotated_tasks_only_on_update: bool,
     dt__output__label_studio_project_task: DataTable,
     dt__output__label_studio_project_annotation: DataTable,
@@ -478,7 +479,7 @@ def upload_tasks_to_label_studio_projects(
         )
         logger.info(f"Uploading tasks to {project_identifier=} ({project_id=})")
 
-        def _get_project_context(project_id: int = project_id) -> Tuple[LabelStudio, int]:
+        def _get_project_context(project_id: int = project_id) -> tuple[LabelStudio, int]:
             return (ls_client, project_id)
 
         df__res = upload_tasks_to_label_studio(
@@ -501,10 +502,10 @@ def upload_tasks_to_label_studio_projects(
 
 def get_annotations_from_label_studio_projects(
     ds: DataStore,
-    input_dts: List[DataTable],
-    output_dts: List[DataTable],
-    run_config: Optional[RunConfig],
-    kwargs: Optional[Dict[str, Any]] = None,
+    input_dts: list[DataTable],
+    output_dts: list[DataTable],
+    run_config: RunConfig | None,
+    kwargs: dict[str, Any] | None = None,
 ) -> None:
     kwargs = kwargs or {}
     ls_client: LabelStudio = kwargs["ls_client"]
@@ -532,21 +533,21 @@ class LabelStudioUploadTasksToProjects(PipelineStep):
 
     ls_url: str
     api_key: str
-    primary_keys: List[str]
-    columns: List[str]
+    primary_keys: list[str]
+    columns: list[str]
 
     chunk_size: int = 100
     create_table: bool = False
     delete_unannotated_tasks_only_on_update: bool = False
-    labels: Optional[Labels] = None
-    executor_config: Optional[ExecutorConfig] = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def __post_init__(self):
         for column in ["task_id", "annotations"]:
             assert column not in self.primary_keys, f'The column "{column}" is reserved for this PipelineStep.'
 
         # lazy initialization
-        self._ls_client: Optional[LabelStudio] = None
+        self._ls_client: LabelStudio | None = None
 
         self.labels = self.labels or []
 
@@ -556,7 +557,7 @@ class LabelStudioUploadTasksToProjects(PipelineStep):
             self._ls_client = get_ls_client(self.ls_url, self.api_key)
         return self._ls_client
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         assert "project_identifier" in self.primary_keys
         input_item_name = get_pipeline_input_name(self.input__item)
         input_label_studio_project_name = get_pipeline_input_name(self.input__label_studio_project)

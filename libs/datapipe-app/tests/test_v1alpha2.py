@@ -3,9 +3,8 @@ import typing as t
 import pandas as pd
 import pytest
 from datapipe.compute import run_steps
-from fastapi.testclient import TestClient
-
 from datapipe_app.datapipe_api import DatapipeAPI
+from fastapi.testclient import TestClient
 
 
 def test_graph_works(app):
@@ -32,7 +31,7 @@ def test_client(app: DatapipeAPI) -> t.Iterator[TestClient]:
     yield TestClient(app)
 
 
-def get_request_data() -> t.Iterator[t.Dict[str, t.Any]]:
+def get_request_data() -> t.Iterator[dict[str, t.Any]]:
     yield dict(
         url="/api/v1alpha2/get-table-data",
         json={
@@ -79,7 +78,7 @@ def get_request_data() -> t.Iterator[t.Dict[str, t.Any]]:
 
 
 @pytest.mark.parametrize("request_data", get_request_data())
-def test_update_data(test_client: TestClient, request_data: t.Dict[str, t.Any]):
+def test_update_data(test_client: TestClient, request_data: dict[str, t.Any]):
     response = test_client.post(url=request_data["url"], json=request_data["json"])
     assert response.status_code == 200
     print(response.json())

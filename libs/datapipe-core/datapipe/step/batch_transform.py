@@ -2,14 +2,12 @@ import copy
 import inspect
 import logging
 import time
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass
 from typing import (
     Any,
-    Callable,
-    Generator,
     Literal,
     Protocol,
-    Sequence,
 )
 
 import pandas as pd

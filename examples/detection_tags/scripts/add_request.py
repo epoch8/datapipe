@@ -11,6 +11,7 @@ Fixed-val demo (freeze val up front, add the tagged train batch later):
 
 --subset train|val pins every image of the batch to that subset so the random split never moves it.
 Run from examples/detection_tags/detection (so `import config` resolves)."""
+
 from __future__ import annotations
 
 import argparse
@@ -32,25 +33,46 @@ def main() -> int:
     ap.add_argument("--offset", type=int, default=0, help="skip the first OFFSET picked COCO images")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--darken", type=float, default=None, help="gamma < 1 darkens (e.g. 0.1)")
-    ap.add_argument("--subset", default=None, choices=["train", "val"],
-                    help="pin every image of this batch to a subset (freezes val); omit to random-split")
+    ap.add_argument(
+        "--subset",
+        default=None,
+        choices=["train", "val"],
+        help="pin every image of this batch to a subset (freezes val); omit to random-split",
+    )
     a = ap.parse_args()
 
     ds = DataStore(config.DBCONN, create_meta_table=True)
-    dt = ds.get_or_create_table("load_request", TableStoreDB(
-        dbconn=config.DBCONN, name="load_request",
-        data_sql_schema=[
-            Column("request_id", String, primary_key=True),
-            Column("n", Integer), Column("offset", Integer),
-            Column("tag", String), Column("darken", Float),
-            Column("subset", String),
-        ], create_table=True))
-    dt.store_chunk(pd.DataFrame([{
-        "request_id": a.id, "n": a.n, "offset": a.offset, "tag": a.tag,
-        "darken": a.darken, "subset": a.subset,
-    }]))
-    print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} "
-          f"darken={a.darken} subset={a.subset}")
+    dt = ds.get_or_create_table(
+        "load_request",
+        TableStoreDB(
+            dbconn=config.DBCONN,
+            name="load_request",
+            data_sql_schema=[
+                Column("request_id", String, primary_key=True),
+                Column("n", Integer),
+                Column("offset", Integer),
+                Column("tag", String),
+                Column("darken", Float),
+                Column("subset", String),
+            ],
+            create_table=True,
+        ),
+    )
+    dt.store_chunk(
+        pd.DataFrame(
+            [
+                {
+                    "request_id": a.id,
+                    "n": a.n,
+                    "offset": a.offset,
+                    "tag": a.tag,
+                    "darken": a.darken,
+                    "subset": a.subset,
+                }
+            ]
+        )
+    )
+    print(f"added request {a.id}: n={a.n} offset={a.offset} tag={a.tag} darken={a.darken} subset={a.subset}")
     print("now run:  datapipe step --labels=stage=load run")
     return 0
 

@@ -1,14 +1,13 @@
 """initial
 
 Revision ID: e7716e02d74b
-Revises: 
+Revises:
 Create Date: 2022-08-02 16:04:28.330850
 
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "e7716e02d74b"

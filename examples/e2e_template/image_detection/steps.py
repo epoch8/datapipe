@@ -1,17 +1,10 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 
 import fsspec
 import pandas as pd
-from cv_pipeliner import BboxData, ImageData
-from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
-from datapipe.datatable import DataStore
-from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-from datapipe_ml.tasks.detection.inference import detection_inference
-
 from config import (
     CLASSES_TO_KEEP,
     DETECTION_MODEL_CONFIG,
@@ -20,6 +13,11 @@ from config import (
     input_image_url,
     input_storage_options,
 )
+from cv_pipeliner import BboxData, ImageData
+from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
+from datapipe.datatable import DataStore
+from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+from datapipe_ml.tasks.detection.inference import detection_inference
 
 
 def list_s3_images() -> Iterator[pd.DataFrame]:
@@ -161,4 +159,3 @@ def publish_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame, *
         df__with_bbox=pd.merge(predictions_df, images_df, on=kwargs["primary_keys"][0]),
         **kwargs,
     )
-

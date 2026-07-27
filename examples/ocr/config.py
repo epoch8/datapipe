@@ -94,9 +94,7 @@ def fo_text_field(engine_id: str) -> str:
 def _local_dir_has_images(local_dir: Path | None) -> bool:
     if local_dir is None or not local_dir.exists():
         return False
-    return any(
-        path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES for path in local_dir.rglob("*")
-    )
+    return any(path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES for path in local_dir.rglob("*"))
 
 
 def use_local_images() -> bool:

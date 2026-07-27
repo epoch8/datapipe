@@ -27,8 +27,7 @@ def make_df():
         {
             "id": idx,
             "image": [
-                Image.fromarray(np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)).convert("RGB")
-                for i in idx
+                Image.fromarray(np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)).convert("RGB") for i in idx
             ],
         }
     )

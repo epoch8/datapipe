@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
 import pandas as pd
-from cv_pipeliner.core.data import ImageData
-from cv_pipeliner.utils.fiftyone import FifyOneSession
-
 from config import (
     BRAIN_METHODS,
     DEVICE,
@@ -23,6 +20,8 @@ from config import (
     ZOO_NUM_CLASSES,
     use_local_images,
 )
+from cv_pipeliner.core.data import ImageData
+from cv_pipeliner.utils.fiftyone import FifyOneSession
 from models import MODELS_REGISTRY, get_embeddings_batch
 
 logger = logging.getLogger(__name__)

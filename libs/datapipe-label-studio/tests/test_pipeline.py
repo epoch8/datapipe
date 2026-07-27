@@ -1,5 +1,4 @@
 import string
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -10,16 +9,16 @@ from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.datatable_transform import DatatableTransformStep
 from datapipe.store.database import TableStoreDB
 from datapipe.types import data_to_index
-from label_studio_sdk import LabelStudio
-from pytest_cases import parametrize, parametrize_with_cases
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
-
 from datapipe_label_studio.sdk_utils import get_project_by_title
 from datapipe_label_studio.upload_predictions_pipeline import (
     LabelStudioUploadPredictions,
 )
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
+from label_studio_sdk import LabelStudio
+from pytest_cases import parametrize, parametrize_with_cases
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
+
 from tests.ls_test_helpers import (
     DELETE_UNANNOTATED_TASKS_ONLY_ON_UPDATE,
     INCLUDE_PARAMS,
@@ -184,7 +183,7 @@ class CasesLabelStudio:
 def ls_moderation_base(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -281,7 +280,7 @@ def ls_moderation_base(
 def test_ls_moderation(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -310,7 +309,7 @@ def test_ls_moderation(
 def test_ls_when_data_is_changed(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -388,7 +387,7 @@ def test_ls_when_data_is_changed(
 def test_ls_when_task_is_missing_from_ls(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -466,7 +465,7 @@ def test_ls_when_task_is_missing_from_ls(
 def test_ls_when_some_data_is_deleted(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -534,7 +533,7 @@ def test_ls_when_some_data_is_deleted(
 def test_ls_specific_updating_scenary(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,
@@ -658,7 +657,7 @@ def test_ls_specific_updating_scenary(
 def test_ls_moderate_then_delete_task(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     project_title: str,
     include_preannotations: bool,
     include_prepredictions: bool,

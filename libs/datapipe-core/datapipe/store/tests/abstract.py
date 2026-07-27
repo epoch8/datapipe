@@ -1,7 +1,8 @@
 # This is copy of concept of reusable test classes from `fsspec`
 # https://github.com/fsspec/filesystem_spec/tree/master/fsspec/tests/abstract
 
-from typing import Callable, Iterable, cast
+from collections.abc import Callable, Iterable
+from typing import cast
 
 import cloudpickle
 import pandas as pd

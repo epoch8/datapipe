@@ -1,8 +1,9 @@
 import hashlib
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from typing import Literal
 
 from opentelemetry import trace
 from sqlalchemy import Column

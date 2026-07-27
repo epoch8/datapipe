@@ -63,9 +63,10 @@ def default_download_coco_annotations_zip(dst: Path) -> None:
             with requests.get(COCO_ANN_ZIP_URL, timeout=60, stream=True) as response:
                 response.raise_for_status()
                 total = int(response.headers.get("content-length", 0))
-                with open(tmp_dst, "wb") as handle, tqdm(
-                    total=total, unit="B", unit_scale=True, desc="annotations"
-                ) as bar:
+                with (
+                    open(tmp_dst, "wb") as handle,
+                    tqdm(total=total, unit="B", unit_scale=True, desc="annotations") as bar,
+                ):
                     for chunk in response.iter_content(8192):
                         if chunk:
                             handle.write(chunk)

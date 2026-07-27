@@ -1,5 +1,6 @@
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generator, Literal, Sequence
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 from sqlalchemy import Column

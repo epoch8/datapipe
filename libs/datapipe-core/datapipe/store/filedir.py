@@ -4,8 +4,9 @@ import itertools
 import json
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
-from typing import IO, Any, Iterator, Literal, cast
+from typing import IO, Any, Literal, cast
 
 import cityhash
 import fsspec

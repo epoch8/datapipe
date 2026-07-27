@@ -96,7 +96,9 @@ def pick_image_ids(instances_data: dict, keypoints_data: dict, detection_limit: 
     if len(person_ids) < keypoints_limit:
         raise RuntimeError(f"Need at least {keypoints_limit} person keypoint images in COCO, found {len(person_ids)}")
 
-    selected = list(dict.fromkeys(random.sample(cat_dog_ids, detection_limit) + random.sample(person_ids, keypoints_limit)))
+    selected = list(
+        dict.fromkeys(random.sample(cat_dog_ids, detection_limit) + random.sample(person_ids, keypoints_limit))
+    )
     missing = [iid for iid in selected if iid not in id_to_img]
     if missing:
         raise RuntimeError(f"Missing COCO image metadata for ids: {missing[:3]}")

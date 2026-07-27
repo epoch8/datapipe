@@ -1,7 +1,6 @@
 import logging
 import os.path
 import sys
-from typing import Optional
 
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
@@ -17,10 +16,10 @@ from datapipe_app.metrics import setup_prometheus_metrics
 class DatapipeAPI(FastAPI, DatapipeApp):
     def __init__(
         self,
-        ds: Optional[DataStore] = None,
-        catalog: Optional[Catalog] = None,
-        pipeline: Optional[Pipeline] = None,
-        app: Optional[DatapipeApp] = None,
+        ds: DataStore | None = None,
+        catalog: Catalog | None = None,
+        pipeline: Pipeline | None = None,
+        app: DatapipeApp | None = None,
     ):
         if app is not None:
             self.ds = app.ds

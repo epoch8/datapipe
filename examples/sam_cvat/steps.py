@@ -2,14 +2,10 @@ from __future__ import annotations
 
 import shutil
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pandas as pd
-from cv_pipeliner import BboxData
-from PIL import Image
-from tqdm import tqdm
-
 from config import (
     CVAT_BOX_LABEL,
     CVAT_POLYGON_LABEL,
@@ -22,7 +18,9 @@ from config import (
     SAM_TEXT_PROMPT,
     TASK_QUEUE_ID,
 )
+from cv_pipeliner import BboxData
 from models import ensure_hf_login, infer_image
+from PIL import Image
 
 SAM_CONFIG_ID = "default"
 

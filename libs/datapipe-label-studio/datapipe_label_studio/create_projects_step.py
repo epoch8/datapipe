@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Union
 
 import pandas as pd
 from datapipe.compute import (
@@ -15,7 +14,7 @@ from datapipe.compute import (
 from datapipe.executor import ExecutorConfig
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import PipelineInput, PipelineOutput, get_pipeline_input_name, get_pipeline_output_name, Labels
+from datapipe.types import Labels, PipelineInput, PipelineOutput, get_pipeline_input_name, get_pipeline_output_name
 from label_studio_sdk import LabelStudio
 from sqlalchemy import Column, Integer
 
@@ -40,14 +39,14 @@ class CreateLabelStudioProjects(PipelineStep):
     ls_url: str
     api_key: str
 
-    storages: Optional[List[Union[GCSBucket, S3Bucket]]] = None
+    storages: list[GCSBucket | S3Bucket] | None = None
     create_table: bool = False
-    labels: Optional[Labels] = None
-    executor_config: Optional[ExecutorConfig] = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def __post_init__(self):
         # lazy initialization
-        self._ls_client: Optional[LabelStudio] = None
+        self._ls_client: LabelStudio | None = None
         self.labels = self.labels or []
         self.storages = self.storages or []
 
@@ -59,7 +58,7 @@ class CreateLabelStudioProjects(PipelineStep):
 
     def create_project(
         self,
-        project_identifier: Union[str, int],  # project_title or id
+        project_identifier: str | int,  # project_title or id
         project_label_config_at_create: str,
         project_description_at_create: str,
     ) -> ProjectDict:
@@ -82,7 +81,7 @@ class CreateLabelStudioProjects(PipelineStep):
         )
         return project
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_label_studio_project_setting_name = get_pipeline_input_name(self.input__label_studio_project_setting)
         output_label_studio_project_name = get_pipeline_output_name(self.output__label_studio_project)
         dt__input__label_studio_project_setting = ds.get_table(input_label_studio_project_setting_name)

@@ -1,11 +1,9 @@
-from typing import List
-
 from datapipe.datatable import DataStore
 from datapipe.store.database import TableStoreDB
 from datapipe.types import PipelineInput, get_pipeline_input_name
 
 
-def check_columns_are_in_table(ds: DataStore, tbl_name: PipelineInput, columns: List[str]):
+def check_columns_are_in_table(ds: DataStore, tbl_name: PipelineInput, columns: list[str]):
     table_name = get_pipeline_input_name(tbl_name)
     datatable = ds.get_table(table_name)
     assert isinstance(datatable.table_store, TableStoreDB)

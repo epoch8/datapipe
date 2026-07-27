@@ -4,13 +4,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
-from datapipe.datatable import DataStore
-from datapipe.executor import ExecutorConfig
-from datapipe.step.batch_generate import BatchGenerate
-from datapipe.step.batch_transform import BatchTransform
-from datapipe_cvat.cvat_step import CVATStep
-
 import data
 import steps
 from config import (
@@ -23,6 +16,12 @@ from config import (
     FILES_BATCH,
     PRIMARY_KEYS,
 )
+from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.datatable import DataStore
+from datapipe.executor import ExecutorConfig
+from datapipe.step.batch_generate import BatchGenerate
+from datapipe.step.batch_transform import BatchTransform
+from datapipe_cvat.cvat_step import CVATStep
 
 pipeline = Pipeline(
     [

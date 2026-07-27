@@ -4,14 +4,13 @@ import itertools
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
-    Any,
     NewType,
     TypeAlias,
     TypeVar,
     Union,
     cast,
 )
-from typing import Callable
+from collections.abc import Callable
 
 import pandas as pd
 from sqlalchemy import Column

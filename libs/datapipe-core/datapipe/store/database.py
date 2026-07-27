@@ -1,7 +1,8 @@
 import copy
 import logging
 import math
-from typing import Any, Callable, Iterator, cast
+from collections.abc import Callable, Iterator
+from typing import Any, cast
 
 import pandas as pd
 from opentelemetry import trace

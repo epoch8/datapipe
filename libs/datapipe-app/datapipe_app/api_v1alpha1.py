@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Literal, cast
 
 import pandas as pd
 from datapipe.compute import (
@@ -28,32 +28,32 @@ class PipelineStepResponse(BaseModel):
     type_: str = Field(alias="type")
     transform_type: str
 
-    indexes: Optional[List[str]] = None
+    indexes: list[str] | None = None
 
-    inputs: List[str]
-    outputs: List[str]
+    inputs: list[str]
+    outputs: list[str]
 
-    total_idx_count: Optional[int] = None
-    changed_idx_count: Optional[int] = None
+    total_idx_count: int | None = None
+    changed_idx_count: int | None = None
 
 
 class TableResponse(BaseModel):
     name: str
 
-    indexes: List[str]
+    indexes: list[str]
 
     size: int
     store_class: str
 
 
 class GraphResponse(BaseModel):
-    catalog: Dict[str, TableResponse]
-    pipeline: List[PipelineStepResponse]
+    catalog: dict[str, TableResponse]
+    pipeline: list[PipelineStepResponse]
 
 
 class UpdateDataRequest(BaseModel):
     table_name: str
-    upsert: Optional[List[Dict]] = None
+    upsert: list[dict] | None = None
     enable_changelist: bool = True
     background: bool = False
     labels: Labels = []
@@ -66,10 +66,10 @@ class UpdateDataResponse(BaseModel):
 
 class GetDataRequest(BaseModel):
     table: str
-    filters: Dict[str, Any] = {}
+    filters: dict[str, Any] = {}
     page: int = 0
     page_size: int = 20
-    order_by: Optional[str] = None
+    order_by: str | None = None
     order: Literal["asc", "desc"] = "asc"
 
 
@@ -77,10 +77,10 @@ class GetDataResponse(BaseModel):
     page: int
     page_size: int
     total: int
-    data: List[Dict]
+    data: list[dict]
 
 
-def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_prefix: str = "") -> List[ComputeStep]:
+def filter_steps_by_labels(steps: list[ComputeStep], labels: Labels = [], name_prefix: str = "") -> list[ComputeStep]:
     res = []
     for step in steps:
         for k, v in labels:
@@ -96,10 +96,10 @@ def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_p
 def update_data(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[ComputeStep],
+    steps: list[ComputeStep],
     background_tasks: BackgroundTasks,
     table_name: str,
-    upsert: Optional[List[Dict]],
+    upsert: list[dict] | None,
     background: bool,
     enable_changelist: bool = True,
 ) -> UpdateDataResponse:
@@ -133,10 +133,10 @@ def get_data_get_pd(
     table: str,
     page: int,
     page_size: int,
-    filters: Optional[IndexDF],
-    order_by: Optional[List[str]],
+    filters: IndexDF | None,
+    order_by: list[str] | None,
     order: Literal["asc", "desc"],
-) -> Tuple[int, pd.DataFrame, pd.DataFrame]:
+) -> tuple[int, pd.DataFrame, pd.DataFrame]:
     dt = catalog.get_datatable(ds, table)
     table_meta = require_sql_table_meta(dt.meta)
 
@@ -195,9 +195,9 @@ def get_data_get(
     table: str,
     page: int = 0,
     page_size: int = 20,
-    filters: Optional[IndexDF] = None,
-    order_by: Optional[List[str]] = None,
-    order: Optional[Literal["asc", "desc"]] = None,
+    filters: IndexDF | None = None,
+    order_by: list[str] | None = None,
+    order: Literal["asc", "desc"] | None = None,
 ) -> GetDataResponse:
     if order is None:
         order = "asc"
@@ -267,7 +267,7 @@ def get_data_post(ds: DataStore, catalog: Catalog, req: GetDataRequest) -> GetDa
         )
 
 
-def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[ComputeStep]) -> FastAPI:
+def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: list[ComputeStep]) -> FastAPI:
     app = FastAPI()
 
     @app.get("/graph", response_model=GraphResponse)
@@ -287,7 +287,6 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
             outputs = [i.dt.name for i in step.output_dts]
 
             if isinstance(step, BaseBatchTransformStep):
-
                 step_status = step.get_status(ds=ds) if API_SETTINGS.show_step_status else None
 
                 return PipelineStepResponse(
@@ -346,7 +345,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
 
     class FocusFilter(BaseModel):
         table_name: str
-        items_idx: List[Dict]
+        items_idx: list[dict]
 
     class GetDataWithFocusRequest(BaseModel):
         table_name: str
@@ -354,7 +353,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
         page: int = 0
         page_size: int = 20
 
-        focus: Optional[FocusFilter] = None
+        focus: FocusFilter | None = None
 
     @app.post("/get-data-with-focus", response_model=GetDataResponse)
     def get_data_with_focus(req: GetDataWithFocusRequest) -> GetDataResponse:
@@ -384,7 +383,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
 
     class GetDataByIdxRequest(BaseModel):
         table_name: str
-        idx: List[Dict]
+        idx: list[dict]
 
     @app.post("/get-data-by-idx")
     def get_data_by_idx(req: GetDataByIdxRequest):
@@ -402,10 +401,10 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
     # TODO automatic setup of webhook on project creation
     @app.post("/labelstudio-webhook")
     def labelstudio_webhook(
-        request: Dict,
+        request: dict,
         background_tasks: BackgroundTasks,
         table_name: str = Query(..., title="Input table name"),
-        data_field: List = Query(..., title="Fields to get from data"),
+        data_field: list = Query(..., title="Fields to get from data"),
         background: bool = Query(False, title="Run as Background Task (default = False)"),
     ) -> UpdateDataResponse:
         upsert = [

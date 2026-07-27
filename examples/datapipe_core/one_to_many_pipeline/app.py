@@ -1,12 +1,11 @@
 import pandas as pd
-from sqlalchemy import JSON
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
+from sqlalchemy import JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from examples.datapipe_core._sqlite import sqlite_connstr
 
@@ -118,7 +117,7 @@ def pack_attr(df: pd.DataFrame) -> pd.DataFrame:
     data = {}
 
     for _, row in df.iterrows():
-        key = f'{row["pipeline_id"]}_{row["offer_id"]}'
+        key = f"{row['pipeline_id']}_{row['offer_id']}"
 
         if key not in data:
             data[key] = {
@@ -139,7 +138,7 @@ def pack_offers(df: pd.DataFrame) -> pd.DataFrame:
     data = {}
 
     for _, row in df.iterrows():
-        key = f'{row["pipeline_id"]}_{row["value"]}'
+        key = f"{row['pipeline_id']}_{row['value']}"
 
         if key not in data:
             data[key] = {
@@ -158,9 +157,7 @@ def pack_offers(df: pd.DataFrame) -> pd.DataFrame:
 
 def gen_product_all(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     keys = ["pipeline_id", "offer_id"]
-    merged_df = pd.merge(
-        df1, df2, how="outer", left_on=keys, right_on=keys, suffixes=("_base", "_new")
-    )
+    merged_df = pd.merge(df1, df2, how="outer", left_on=keys, right_on=keys, suffixes=("_base", "_new"))
 
     return merged_df[["pipeline_id", "offer_id", "attributes_base", "attributes_new"]]
 
@@ -170,14 +167,10 @@ def gen_product_store(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     merged_df = pd.merge(df1, df2, how="outer", left_on=keys, right_on=keys)
 
     merged_df["attributes"] = merged_df.apply(
-        lambda x: (
-            x["attributes_x"] if pd.notna(x["attributes_x"]) else x["attributes_y"]
-        ),
+        lambda x: x["attributes_x"] if pd.notna(x["attributes_x"]) else x["attributes_y"],
         axis=1,
     )
-    merged_df["is_deleted"] = merged_df.apply(
-        lambda x: pd.isna(x["attributes_x"]), axis=1
-    )
+    merged_df["is_deleted"] = merged_df.apply(lambda x: pd.isna(x["attributes_x"]), axis=1)
 
     return merged_df[["pipeline_id", "offer_id", "attributes", "is_deleted"]]
 

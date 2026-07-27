@@ -1,7 +1,8 @@
 from abc import ABC
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, cast
+from typing import cast
 
 import cityhash
 import pandas as pd

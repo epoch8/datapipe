@@ -1,14 +1,12 @@
 import tempfile
-from typing import Tuple
 
 import pandas as pd
 import pytest
 from datapipe.compute import Catalog, DataStore, Pipeline, Table
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
-from sqlalchemy import JSON, Boolean, Column, Integer, String
-
 from datapipe_app import DatapipeAPI
+from sqlalchemy import JSON, Boolean, Column, Integer, String
 
 
 @pytest.fixture
@@ -57,7 +55,7 @@ def app():
             }
         )
 
-        def agg_profile(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        def agg_profile(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             res = []
 
             res_lang = []
@@ -66,11 +64,7 @@ def app():
                 res.append(
                     {
                         "user_id": user_id,
-                        "offer_clicks": [
-                            x["offer_id"]
-                            for x in grp["event"]
-                            if x["event_type"] == "click"
-                        ],
+                        "offer_clicks": [x["offer_id"] for x in grp["event"] if x["event_type"] == "click"],
                         "events_count": len(grp),
                         "active": True,
                     }

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Generator, Protocol
+from typing import Protocol
 
 from tqdm_loggable.auto import tqdm
 

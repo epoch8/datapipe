@@ -10,9 +10,9 @@ import pytest
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
-from datapipe.store.filedir import JSONFile, PILFile, PandasParquetFile, TableStoreFiledir
+from datapipe.store.filedir import JSONFile, PandasParquetFile, PILFile, TableStoreFiledir
 from datapipe.store.tests.abstract import AbstractBaseStoreTests
-from datapipe.tests.util import assert_df_equal, assert_ts_contains, assert_idx_equal
+from datapipe.tests.util import assert_df_equal, assert_idx_equal, assert_ts_contains
 from datapipe.types import DataSchema, data_to_index
 
 TEST_DF = pd.DataFrame(
@@ -138,9 +138,10 @@ FILEDIR_PANDAS_DATA_PARAMS = [
                 "data": [
                     pd.DataFrame(
                         {
-                            "id": [i+j for j in range(100)],
-                            "value": [i*j for j in range(100)],
-                        }) 
+                            "id": [i + j for j in range(100)],
+                            "value": [i * j for j in range(100)],
+                        }
+                    )
                     for i in range(6)
                 ],
             }
@@ -162,9 +163,10 @@ FILEDIR_PANDAS_DATA_PARAMS = [
                 "data": [
                     pd.DataFrame(
                         {
-                            "id": [i+j for j in range(100)],
-                            "value": [i*j for j in range(100)],
-                        }) 
+                            "id": [i + j for j in range(100)],
+                            "value": [i * j for j in range(100)],
+                        }
+                    )
                     for i in range(100)
                 ],
             }
@@ -446,7 +448,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH["filepath"] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
-        lambda idx: (f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json")
+        lambda idx: f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER0_WITH_FILEPATH)
 
@@ -586,17 +588,12 @@ def test_write_read_rows__filedir_specific(
 
 @pytest.mark.parametrize("data_df,fn_template,primary_schema", FILEDIR_PANDAS_DATA_PARAMS)
 def test_write_read_rows__filedir_pandas_parquet(
-    tmp_dir,
-    data_df: pd.DataFrame,
-    fn_template: str,
-    primary_schema: DataSchema
+    tmp_dir, data_df: pd.DataFrame, fn_template: str, primary_schema: DataSchema
 ) -> None:
     store = TableStoreFiledir(
         tmp_dir / fn_template,
-        primary_schema=primary_schema, 
-        adapter=PandasParquetFile(
-            pandas_column="data"
-        ),
+        primary_schema=primary_schema,
+        adapter=PandasParquetFile(pandas_column="data"),
     )
 
     store.insert_rows(data_df)
@@ -609,5 +606,4 @@ def test_write_read_rows__filedir_pandas_parquet(
     assert_idx_equal(data_df.index, saved_df.index)
 
     for i, row in data_df.iterrows():
-        assert row["data"].equals(saved_df['data'][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"
-    
+        assert row["data"].equals(saved_df["data"][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"

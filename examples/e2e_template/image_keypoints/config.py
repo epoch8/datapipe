@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import fsspec
 from datapipe.store.database import DBConn
@@ -109,7 +108,7 @@ def input_storage_options() -> dict:
     return {"key": AWS_KEY, "secret": AWS_SECRET, "client_kwargs": client_kwargs}
 
 
-def _input_s3_bucket() -> Optional[str]:
+def _input_s3_bucket() -> str | None:
     if not _is_cloud_path(DATAPIPE_E2E_DIR):
         return None
     return Pathy(DATAPIPE_E2E_DIR).root

@@ -1,13 +1,12 @@
 import pandas as pd
-from sqlalchemy import Integer
-from sqlalchemy.sql.schema import Column
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn
 from datapipe.store.pandas import TableStoreJsonLine
+from sqlalchemy import Integer
+from sqlalchemy.sql.schema import Column
 
 from examples.datapipe_core._sqlite import sqlite_connstr
 

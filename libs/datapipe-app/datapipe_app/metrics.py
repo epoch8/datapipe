@@ -1,4 +1,4 @@
-from typing import Iterable
+from collections.abc import Iterable
 
 from datapipe.compute import DatapipeApp
 from fastapi import FastAPI

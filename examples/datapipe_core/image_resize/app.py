@@ -1,5 +1,4 @@
 import pandas as pd
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform

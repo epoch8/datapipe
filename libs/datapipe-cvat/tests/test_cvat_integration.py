@@ -3,19 +3,16 @@ import time
 import xml.etree.ElementTree as ET
 from uuid import uuid4
 
+import datapipe_cvat.cvat_step as cvat_step_module
 import numpy as np
 import pandas as pd
 import pytest
 import requests
-import datapipe_cvat.cvat_step as cvat_step_module
+from cvat_sdk.models import LabeledDataRequest, LabeledShapeRequest, PatchedLabelRequest, ProjectWriteRequest
 from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import do_batch_generate
 from datapipe.store.database import TableStoreDB
-from cvat_sdk.models import LabeledDataRequest, LabeledShapeRequest, PatchedLabelRequest, ProjectWriteRequest
-from PIL import Image
-from sqlalchemy import Column, String
-
 from datapipe_cvat.cvat_step import (
     CVATStep,
     _ensure_cvat_file_path_column,
@@ -25,7 +22,8 @@ from datapipe_cvat.cvat_step import (
     reset_task_jobs_status,
     upload_batches_to_cvat,
 )
-
+from PIL import Image
+from sqlalchemy import Column, String
 
 pytestmark = pytest.mark.cvat
 TASKS_COUNT = 4
@@ -117,9 +115,7 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
                 },
             )
         elif shape_type == "polygon":
-            points = ";".join(
-                f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2)
-            )
+            points = ";".join(f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2))
             ET.SubElement(
                 image_element,
                 "polygon",
@@ -132,9 +128,7 @@ def _annotations_to_cvat_image_xml(annotations, labels_by_id: dict[int, str], im
                 },
             )
         elif shape_type == "points":
-            points = ";".join(
-                f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2)
-            )
+            points = ";".join(f"{shape.points[idx]},{shape.points[idx + 1]}" for idx in range(0, len(shape.points), 2))
             ET.SubElement(
                 image_element,
                 "points",
@@ -240,7 +234,7 @@ def _scenario_data(states):
                 "task_queue_id": "queue1",
                 "inner_task_id": 0,
                 "image_path": image_path,
-                "annotations": '<image />',
+                "annotations": "<image />",
             }
         )
     return (
@@ -352,11 +346,7 @@ class _FakeCVATTask:
         self.id = task_id
         self.frame_names = frame_names
         self.removed_frame_ids: list[int] = []
-        self.annotations = (
-            annotations
-            if annotations is not None
-            else _FakeCVATAnnotations()
-        )
+        self.annotations = annotations if annotations is not None else _FakeCVATAnnotations()
 
     def get_annotations(self):
         return self.annotations
@@ -696,9 +686,7 @@ def test_upload_batches_to_cvat_keeps_annotated_changed_frames_when_delete_unann
     dbconn,
     monkeypatch,
 ):
-    ds, df__input, df__input_batches, df__cvat_task, df__cvat_files = (
-        _make_upload_failure_case(dbconn)
-    )
+    ds, df__input, df__input_batches, df__cvat_task, df__cvat_files = _make_upload_failure_case(dbconn)
     df__input.loc[
         df__input["image_id"] == "image_1",
         "image_path",
@@ -1082,8 +1070,7 @@ def test_real_cvat_pipeline_frame_update_scenarios(cvat_scenario_case):
     expected_new_tasks = sum(
         int(
             any(
-                state.endswith("_changed")
-                and not (delete_unannotated_tasks_only_on_update and state.startswith("A_"))
+                state.endswith("_changed") and not (delete_unannotated_tasks_only_on_update and state.startswith("A_"))
                 for state in states
             )
         )
@@ -1376,7 +1363,12 @@ def test_real_cvat_annotations_roundtrip(tmp_dir, cvat_url, cvat_credentials):
         assert len(boxes) == 1
         assert boxes[0].attrib["label"] == "cat"
         np.testing.assert_allclose(
-            [float(boxes[0].attrib["xtl"]), float(boxes[0].attrib["ytl"]), float(boxes[0].attrib["xbr"]), float(boxes[0].attrib["ybr"])],
+            [
+                float(boxes[0].attrib["xtl"]),
+                float(boxes[0].attrib["ytl"]),
+                float(boxes[0].attrib["xbr"]),
+                float(boxes[0].attrib["ybr"]),
+            ],
             [10, 5, 30, 25],
         )
         assert len(polygons) == 1

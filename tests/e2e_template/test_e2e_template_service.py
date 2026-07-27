@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
-import logging
 from pathlib import Path
 
 import pytest
-from label_studio_sdk import LabelStudio
-
 from datapipe_label_studio.sdk_utils import get_project_by_title, get_tasks_iter
+from label_studio_sdk import LabelStudio
 
 pytestmark = [
     pytest.mark.e2e_examples,

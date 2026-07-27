@@ -1,6 +1,5 @@
 import pandas as pd
 import sqlalchemy as sa
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
@@ -27,9 +26,7 @@ def apply_model(input_df: pd.DataFrame, model_df: pd.DataFrame) -> pd.DataFrame:
             )
         )
 
-    return pd.concat(res, ignore_index=True)[
-        ["pipeline_id", "input_id", "model_id", "text"]
-    ]
+    return pd.concat(res, ignore_index=True)[["pipeline_id", "input_id", "model_id", "text"]]
 
 
 input_tbl = Table(

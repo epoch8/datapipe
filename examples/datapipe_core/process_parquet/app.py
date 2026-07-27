@@ -1,9 +1,8 @@
+from collections.abc import Generator
 from datetime import date
-from typing import Generator
 
 import pandas as pd
 import sqlalchemy as sa
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate

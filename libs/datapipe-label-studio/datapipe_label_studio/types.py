@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import TypedDict
 
 logger = logging.getLogger("dataipipe_label_studio_lite")
 
@@ -15,17 +15,17 @@ class StorageDict(TypedDict, total=False):
 
 
 class ImportApiRequest(TypedDict):
-    data: Dict[str, object]
+    data: dict[str, object]
 
 
 class ImportTasksResponseDict(TypedDict, total=False):
-    task_ids: List[int]
+    task_ids: list[int]
 
 
 @dataclass
 class GCSBucket:
     bucket: str
-    google_application_credentials: Optional[str] = None
+    google_application_credentials: str | None = None
 
     @property
     def type(self):
@@ -37,8 +37,8 @@ class S3Bucket:
     bucket: str
     key: str
     secret: str
-    region_name: Optional[str] = None
-    endpoint_url: Optional[str] = None
+    region_name: str | None = None
+    endpoint_url: str | None = None
 
     @property
     def type(self):
@@ -47,4 +47,4 @@ class S3Bucket:
 
 @dataclass
 class Buckets:
-    buckets: List[Union[GCSBucket, S3Bucket]]
+    buckets: list[GCSBucket | S3Bucket]

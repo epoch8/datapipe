@@ -1,5 +1,4 @@
 import string
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -9,11 +8,6 @@ from datapipe.step.batch_generate import BatchGenerate, do_batch_generate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.datatable_transform import DatatableTransformStep
 from datapipe.store.database import TableStoreDB
-from label_studio_sdk import LabelStudio
-from pytest_cases import parametrize, parametrize_with_cases
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
-
 from datapipe_label_studio.create_projects_step import CreateLabelStudioProjects
 from datapipe_label_studio.sdk_utils import get_project_by_title
 from datapipe_label_studio.upload_predictions_pipeline import (
@@ -22,6 +16,11 @@ from datapipe_label_studio.upload_predictions_pipeline import (
 from datapipe_label_studio.upload_tasks_pipeline import (
     LabelStudioUploadTasksToProjects,
 )
+from label_studio_sdk import LabelStudio
+from pytest_cases import parametrize, parametrize_with_cases
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
+
 from tests.ls_test_helpers import (
     DELETE_UNANNOTATED_TASKS_ONLY_ON_UPDATE,
     INCLUDE_PARAMS,
@@ -227,7 +226,7 @@ class CasesLabelStudio:
 def ls_moderation_base_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -330,7 +329,7 @@ def ls_moderation_base_many_projects(
 def test_ls_moderation_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -357,7 +356,7 @@ def test_ls_moderation_many_projects(
 def test_ls_when_data_is_changed_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -444,7 +443,7 @@ def test_ls_when_data_is_changed_many_projects(
 def test_ls_when_task_is_missing_from_ls_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -531,7 +530,7 @@ def test_ls_when_task_is_missing_from_ls_many_projects(
 def test_ls_when_some_data_is_deleted_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -602,7 +601,7 @@ def test_ls_when_some_data_is_deleted_many_projects(
 def test_ls_moderate_then_delete_task_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    steps: list[DatatableTransformStep],
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,

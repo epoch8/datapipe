@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from config import DBCONN
 from datapipe.compute import Table
 from datapipe.store.database import TableStoreDB
-from sqlalchemy import Column, Float, Integer, JSON, String
-
-from config import DBCONN
+from sqlalchemy import JSON, Column, Float, Integer, String
 
 local_images_tbl = Table(
     name="local_images",

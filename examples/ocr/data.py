@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from config import DBCONN, ENABLED_ENGINES, FIFTYONE_DATASET_NAME, fo_text_field
 from cv_pipeliner.utils.fiftyone import FifyOneSession
 from datapipe.compute import Table
 from datapipe.store.database import TableStoreDB
 from datapipe_ml.utils.image_data_stores import FiftyOneImagesDataTableStore
 from sqlalchemy import Column, String, Text
-
-from config import DBCONN, ENABLED_ENGINES, FIFTYONE_DATASET_NAME, fo_text_field
 
 fo_session = FifyOneSession()
 

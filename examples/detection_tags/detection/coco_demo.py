@@ -5,6 +5,7 @@ ground truth, and darken images to fake a low-light "night" scenario. None of it
 pipeline itself — for REAL data, drop this module and feed the `load` step from your own source of
 (image bytes, boxes, labels). The pipeline (steps.py / app.py) doesn't care where images come from.
 """
+
 from __future__ import annotations
 
 import io
@@ -14,13 +15,11 @@ import random
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import requests
-from PIL import Image
-
 from config import COCO_CAT_IDS
+from PIL import Image
 
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
 COCO_ANN_URL = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
@@ -29,7 +28,7 @@ RNG_SEED = 1234
 
 
 def _get(url: str, attempts: int = 4) -> requests.Response:
-    last: Optional[Exception] = None
+    last: Exception | None = None
     for a in range(attempts):
         try:
             r = requests.get(url, timeout=60, stream=True)
@@ -37,7 +36,7 @@ def _get(url: str, attempts: int = 4) -> requests.Response:
             return r
         except requests.RequestException as e:
             last = e
-            time.sleep(min(2 ** a, 20))
+            time.sleep(min(2**a, 20))
     assert last is not None
     raise last
 
@@ -99,7 +98,9 @@ class CocoDemoSource:
             return data, g["bboxes"], g["labels"]
         raw = _get(COCO_IMG_BASE + fn).content
         anns = self._anns[self._fn_to_id[fn]]
-        boxes = [[int(a["bbox"][0]), int(a["bbox"][1]),
-                  int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])] for a in anns]
+        boxes = [
+            [int(a["bbox"][0]), int(a["bbox"][1]), int(a["bbox"][0] + a["bbox"][2]), int(a["bbox"][1] + a["bbox"][3])]
+            for a in anns
+        ]
         labels = [COCO_CAT_IDS[a["category_id"]] for a in anns]
         return raw, boxes, labels

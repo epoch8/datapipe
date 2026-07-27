@@ -1,6 +1,6 @@
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple, Union
 
 import pandas as pd
 from datapipe.compute import (
@@ -44,8 +44,8 @@ def upload_prediction_to_label_studio(
     df__item__has__prediction: pd.DataFrame,
     df__label_studio_project_task: pd.DataFrame,
     idx: IndexDF,
-    get_project_context: Callable[[], Tuple[LabelStudio, int]],
-    primary_keys: List[str],
+    get_project_context: Callable[[], tuple[LabelStudio, int]],
+    primary_keys: list[str],
     dt__output__label_studio_project_prediction: DataTable,
     model_version__column: str,
 ) -> pd.DataFrame:
@@ -99,9 +99,7 @@ def upload_prediction_to_label_studio(
     df["prediction_id"] = [getattr(prediction, "id", None) for prediction in uploaded_predictions]
     df["prediction"] = pd.Series(
         [
-            _make_jsonable(
-                prediction.model_dump() if hasattr(prediction, "model_dump") else prediction
-            )
+            _make_jsonable(prediction.model_dump() if hasattr(prediction, "model_dump") else prediction)
             for prediction in uploaded_predictions
         ],
         dtype=object,
@@ -119,22 +117,22 @@ class LabelStudioUploadPredictions(PipelineStep):
 
     ls_url: str
     api_key: str
-    project_identifier: Union[str, int]  # project_title or id
-    primary_keys: List[str]
+    project_identifier: str | int  # project_title or id
+    primary_keys: list[str]
 
     chunk_size: int = 100
     create_table: bool = False
-    labels: Optional[Labels] = None
+    labels: Labels | None = None
     model_version__column: str = "model_version"
-    executor_config: Optional[ExecutorConfig] = None
+    executor_config: ExecutorConfig | None = None
 
     def __post_init__(self):
         if isinstance(self.project_identifier, str):
             assert len(self.project_identifier) <= 50
 
         # lazy initialization
-        self._ls_client: Optional[LabelStudio] = None
-        self._project_id: Optional[int] = None
+        self._ls_client: LabelStudio | None = None
+        self._project_id: int | None = None
         self.labels = self.labels or []
 
     @property
@@ -143,7 +141,7 @@ class LabelStudioUploadPredictions(PipelineStep):
             self._ls_client = get_ls_client(self.ls_url, self.api_key)
         return self._ls_client
 
-    def get_project_context(self) -> Tuple[LabelStudio, int]:
+    def get_project_context(self) -> tuple[LabelStudio, int]:
         """
         При первом использовании ищет проект в LS по индентификатору,
         если его нет -- автоматически создаётся проект с нуля.
@@ -153,7 +151,7 @@ class LabelStudioUploadPredictions(PipelineStep):
         self._project_id = resolve_project_id(self.ls_client, self.project_identifier)
         return (self.ls_client, self._project_id)
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_item_has_prediction_name = get_pipeline_input_name(self.input__item__has__prediction)
         output_label_studio_project_prediction_name = get_pipeline_output_name(
             self.output__label_studio_project_prediction
@@ -217,7 +215,7 @@ def upload_prediction_to_label_studio_projects(
     df__label_studio_project_task: pd.DataFrame,
     idx: IndexDF,
     ls_client: LabelStudio,
-    primary_keys: List[str],
+    primary_keys: list[str],
     dt__output__label_studio_project_prediction: DataTable,
     model_version__column: str,
 ) -> pd.DataFrame:
@@ -243,7 +241,7 @@ def upload_prediction_to_label_studio_projects(
         ]
         idx_by_project_identifier = idx[idx["project_identifier"] == project_identifier]
 
-        def _get_project_context(project_id: int = project_id) -> Tuple[LabelStudio, int]:
+        def _get_project_context(project_id: int = project_id) -> tuple[LabelStudio, int]:
             return (ls_client, project_id)
 
         df__res = upload_prediction_to_label_studio(
@@ -273,17 +271,17 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
 
     ls_url: str
     api_key: str
-    primary_keys: List[str]
+    primary_keys: list[str]
 
     chunk_size: int = 100
     create_table: bool = False
-    labels: Optional[Labels] = None
+    labels: Labels | None = None
     model_version__column: str = "model_version"
-    executor_config: Optional[ExecutorConfig] = None
+    executor_config: ExecutorConfig | None = None
 
     def __post_init__(self):
         # lazy initialization
-        self._ls_client: Optional[LabelStudio] = None
+        self._ls_client: LabelStudio | None = None
         self.labels = self.labels or []
 
     @property
@@ -292,7 +290,7 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
             self._ls_client = get_ls_client(self.ls_url, self.api_key)
         return self._ls_client
 
-    def build_compute(self, ds: DataStore, catalog: Catalog) -> List[ComputeStep]:
+    def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         assert "project_identifier" in self.primary_keys
         input_item_has_prediction_name = get_pipeline_input_name(self.input__item__has__prediction)
         output_label_studio_project_prediction_name = get_pipeline_output_name(

@@ -6,13 +6,10 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pandas as pd
-from cv_pipeliner import ImageData
-from PIL import Image
-
 from config import (
     DATA_DIR,
-    ENGINE_REGISTRY,
     ENABLED_ENGINES,
+    ENGINE_REGISTRY,
     HF_DATASET_NAME,
     HF_LIMIT,
     HF_SPLIT,
@@ -21,7 +18,9 @@ from config import (
     fo_text_field,
     use_local_images,
 )
+from cv_pipeliner import ImageData
 from engines import run_engine
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +41,7 @@ def _load_hf_split(dataset_name: str, split: str):
 
 
 def _list_images_from_local_dir(local_dir: Path) -> list[dict[str, str]]:
-    files = sorted(
-        path
-        for path in local_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
-    )
+    files = sorted(path for path in local_dir.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES)
     return [
         {
             "image_id": path.stem,
@@ -107,9 +102,7 @@ def _materialize_images() -> list[dict[str, str]]:
 def list_images() -> Iterator[pd.DataFrame]:
     records = _materialize_images()
     if not records:
-        raise ValueError(
-            "No images found. Set LOCAL_IMAGES_DIR with images or configure HF_DATASET_NAME in .env"
-        )
+        raise ValueError("No images found. Set LOCAL_IMAGES_DIR with images or configure HF_DATASET_NAME in .env")
     yield pd.DataFrame(records, columns=["image_id", "image_path"])
 
 

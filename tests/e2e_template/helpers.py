@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
-from datapipe.compute import DatapipeApp, run_steps
 from datapipe.cli import filter_steps_by_labels_and_name
+from datapipe.compute import DatapipeApp, run_steps
 from sqlalchemy import create_engine, text
+
 _TEMPLATE_DIRS = {
     "detection": "image_detection",
     "keypoints": "image_keypoints",

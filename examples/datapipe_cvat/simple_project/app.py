@@ -2,16 +2,15 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from datapipe_cvat.cvat_step import CVATStep
-from sqlalchemy import Column
-from sqlalchemy.sql.sqltypes import String
-
 from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import DBConn, TableStoreDB
 from datapipe.store.filedir import PILFile, TableStoreFiledir
+from datapipe_cvat.cvat_step import CVATStep
+from sqlalchemy import Column
+from sqlalchemy.sql.sqltypes import String
 
 cvat_url = os.environ.get("CVAT_URL", "http://localhost:8080")
 cvat_credentials = (
@@ -34,24 +33,26 @@ def load_preannotation(image_path: Path) -> str:
     return "<image></image>"
 
 
-catalog = Catalog({
-    "input_images": Table(
-        name="input_images",
-        store=TableStoreFiledir("input/{image_id}.jpg", PILFile("jpg"), add_filepath_column=True),
-    ),
-    "image": Table(
-        store=TableStoreDB(
-            dbconn=dbconn,
-            name="image",
-            data_sql_schema=[
-                Column("image_id", String, primary_key=True),
-                Column("task_queue_id", String, primary_key=True),
-                Column("image_path", String),
-                Column("annotations", String),
-            ],
-        )
-    ),
-})
+catalog = Catalog(
+    {
+        "input_images": Table(
+            name="input_images",
+            store=TableStoreFiledir("input/{image_id}.jpg", PILFile("jpg"), add_filepath_column=True),
+        ),
+        "image": Table(
+            store=TableStoreDB(
+                dbconn=dbconn,
+                name="image",
+                data_sql_schema=[
+                    Column("image_id", String, primary_key=True),
+                    Column("task_queue_id", String, primary_key=True),
+                    Column("image_path", String),
+                    Column("annotations", String),
+                ],
+            )
+        ),
+    }
+)
 
 
 def prepare_images(df: pd.DataFrame) -> pd.DataFrame:
@@ -92,7 +93,7 @@ pipeline = Pipeline(
             delete_unannotated_tasks_only_on_update=False,
             task_queue_id__name="task_queue_id",
             task_name_format="[{date:%Y-%m-%d}] TaskQueue:{task_queue_id} batch:{inner_task_id}",
-        )
+        ),
     ]
 )
 

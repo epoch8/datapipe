@@ -7,15 +7,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
-import pandas as pd
 import pytest
 from cvat_sdk.models import LabeledDataRequest, LabeledShapeRequest
 from datapipe.compute import run_steps
 from datapipe_cvat.cvat_step import create_cvat_client
 from PIL import Image
-
 from test_cvat_integration import _require_cvat
-
 
 pytestmark = pytest.mark.cvat
 

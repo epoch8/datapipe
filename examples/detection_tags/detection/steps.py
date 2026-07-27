@@ -5,9 +5,8 @@ import os
 import fsspec
 import numpy as np
 import pandas as pd
-from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-
-from coco_demo import CocoDemoSource, darken as demo_darken
+from coco_demo import CocoDemoSource
+from coco_demo import darken as demo_darken
 from config import (
     LOCAL_IMAGES_DIR,
     input_bucket,
@@ -16,6 +15,8 @@ from config import (
     tag_id_for,
     tag_name_for,
 )
+from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
+
 
 # --- load step (demo: pulls images/GT from coco_demo; swap that module for real data) -----------
 def load_batch(df_request: pd.DataFrame):
@@ -29,11 +30,15 @@ def load_batch(df_request: pd.DataFrame):
     it_cols = ["image_name", "tag_id"]
     hint_cols = ["image_name", "subset_id"]
     if df_request.empty:
-        return (pd.DataFrame(columns=s3_cols), pd.DataFrame(columns=gt_cols),
-                pd.DataFrame(columns=tag_cols), pd.DataFrame(columns=it_cols),
-                pd.DataFrame(columns=hint_cols))
+        return (
+            pd.DataFrame(columns=s3_cols),
+            pd.DataFrame(columns=gt_cols),
+            pd.DataFrame(columns=tag_cols),
+            pd.DataFrame(columns=it_cols),
+            pd.DataFrame(columns=hint_cols),
+        )
 
-    source = CocoDemoSource()   # demo data (COCO cat/dog); for real data swap coco_demo.py
+    source = CocoDemoSource()  # demo data (COCO cat/dog); for real data swap coco_demo.py
     fs = fsspec.filesystem("s3", **input_storage_options())
     bucket = input_bucket()
 
@@ -50,7 +55,7 @@ def load_batch(df_request: pd.DataFrame):
         subset = None if pd.isna(subset) or str(subset) == "" else str(subset)
         darken = req.get("darken")
         darken = None if pd.isna(darken) or str(darken) == "" else float(darken)
-        for fn in source.pool[offset: offset + n]:
+        for fn in source.pool[offset : offset + n]:
             stem, ext = os.path.splitext(fn)
             raw, boxes, labels = source.fetch(fn)
             if darken is not None:
@@ -73,17 +78,24 @@ def load_batch(df_request: pd.DataFrame):
     return (
         pd.DataFrame(s3_rows, columns=s3_cols),
         pd.DataFrame(gt_rows, columns=gt_cols),
-        pd.DataFrame([{"tag_id": tid, "tag_name": nm, "tag_description": d}
-                      for nm, (tid, d) in tag_defs.items()], columns=tag_cols),
+        pd.DataFrame(
+            [{"tag_id": tid, "tag_name": nm, "tag_description": d} for nm, (tid, d) in tag_defs.items()],
+            columns=tag_cols,
+        ),
         pd.DataFrame(tag_rows, columns=it_cols),
         pd.DataFrame(hint_rows, columns=hint_cols),
     )
 
 
 # --- train/val split ------------------------------------------------------------
-def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, hint_df: pd.DataFrame,
-                       primary_keys: list[str], val_perc: float = 0.25,
-                       random_seed: int = 42) -> pd.DataFrame:
+def split_df_train_val(
+    df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    hint_df: pd.DataFrame,
+    primary_keys: list[str],
+    val_perc: float = 0.25,
+    random_seed: int = 42,
+) -> pd.DataFrame:
     """Assign a subset to every image that doesn't have one yet. An image whose subset the load
     step pinned via ``image__subset_hint`` (batches loaded with ``--subset``) keeps that pinned
     value; the rest are split train/val at random. Honoring the hint is what lets the demo FREEZE
@@ -106,17 +118,27 @@ def split_df_train_val(df: pd.DataFrame, subset_df: pd.DataFrame, hint_df: pd.Da
 
 # --- tag metrics ----------------------------------------------------------------
 def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.DataFrame) -> pd.DataFrame:
-    cols = ["detection_model_id", "tag_id", "subset_id", "calc__images_support",
-            "calc__support", "calc__TP", "calc__FP", "calc__FN",
-            "calc__precision", "calc__recall", "calc__f1_score"]
+    cols = [
+        "detection_model_id",
+        "tag_id",
+        "subset_id",
+        "calc__images_support",
+        "calc__support",
+        "calc__TP",
+        "calc__FP",
+        "calc__FN",
+        "calc__precision",
+        "calc__recall",
+        "calc__f1_score",
+    ]
     if df_metrics_on_image.empty or df_image_tag.empty:
         return pd.DataFrame(columns=cols)
     m = df_metrics_on_image.merge(df_image_tag[["image_name", "tag_id"]], on="image_name")
     if m.empty:
         return pd.DataFrame(columns=cols)
-    g = (m.groupby(["detection_model_id", "tag_id", "subset_id"], as_index=False)
-           .agg(images_support=("image_name", "count"),
-                tp=("calc__TP", "sum"), fp=("calc__FP", "sum"), fn=("calc__FN", "sum")))
+    g = m.groupby(["detection_model_id", "tag_id", "subset_id"], as_index=False).agg(
+        images_support=("image_name", "count"), tp=("calc__TP", "sum"), fp=("calc__FP", "sum"), fn=("calc__FN", "sum")
+    )
     tp, fp, fn = g["tp"], g["fp"], g["fn"]
     g["calc__precision"] = (tp / (tp + fp)).where((tp + fp) > 0, 0.0)
     g["calc__recall"] = (tp / (tp + fn)).where((tp + fn) > 0, 0.0)
@@ -133,8 +155,9 @@ def compute_tag_metrics(df_metrics_on_image: pd.DataFrame, df_image_tag: pd.Data
 # --- FiftyOne (stage=fiftyone) --------------------------------------------------
 # Same pattern as examples/e2e_template/image_detection: download images locally,
 # then publish bbox rows into a FiftyOne dataset via FiftyOneImagesDataTableStore.
-def download_images(s3_images_df: pd.DataFrame, image__image_path__name: str,
-                    image__local_image_path__name: str) -> pd.DataFrame:
+def download_images(
+    s3_images_df: pd.DataFrame, image__image_path__name: str, image__local_image_path__name: str
+) -> pd.DataFrame:
     LOCAL_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     local_paths = []
     for _, row in s3_images_df.iterrows():
@@ -150,9 +173,14 @@ def download_images(s3_images_df: pd.DataFrame, image__image_path__name: str,
     return s3_images_df[["image_name", image__local_image_path__name]]
 
 
-def publish_gt_to_fiftyone(images_df: pd.DataFrame, gt_df: pd.DataFrame, subset_df: pd.DataFrame,
-                           tag_df: pd.DataFrame, primary_keys: list[str],
-                           image__image_path__name: str) -> pd.DataFrame:
+def publish_gt_to_fiftyone(
+    images_df: pd.DataFrame,
+    gt_df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    tag_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
     """Publish ground-truth boxes and attach per-sample subset/tag (so you can filter tag=night)."""
     pk = primary_keys[0]
     df = convert_df_with_bbox_to_df_with_image_data(
@@ -160,10 +188,10 @@ def publish_gt_to_fiftyone(images_df: pd.DataFrame, gt_df: pd.DataFrame, subset_
         primary_keys=primary_keys,
         image__image_path__name=image__image_path__name,
     )
-    subset_by_image = (subset_df.drop_duplicates(subset=[pk]).set_index(pk)["subset_id"].to_dict()
-                       if not subset_df.empty else {})
-    tagid_by_image = (tag_df.drop_duplicates(subset=[pk]).set_index(pk)["tag_id"].to_dict()
-                      if not tag_df.empty else {})
+    subset_by_image = (
+        subset_df.drop_duplicates(subset=[pk]).set_index(pk)["subset_id"].to_dict() if not subset_df.empty else {}
+    )
+    tagid_by_image = tag_df.drop_duplicates(subset=[pk]).set_index(pk)["tag_id"].to_dict() if not tag_df.empty else {}
     for _, row in df.iterrows():
         tid = tagid_by_image.get(row[pk])
         # FiftyOne sample fields must be strings; write the tag NAME (not the numeric id)
@@ -174,9 +202,13 @@ def publish_gt_to_fiftyone(images_df: pd.DataFrame, gt_df: pd.DataFrame, subset_
     return df
 
 
-def publish_predictions_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame,
-                                    slot: str, primary_keys: list[str],
-                                    image__image_path__name: str) -> pd.DataFrame:
+def publish_predictions_to_fiftyone(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    slot: str,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
     """Publish one model's predictions into the slot's FiftyOne field. slot='model_a' is the
     earliest-trained model (baseline), 'model_b' the next (retrained). Model ids are
     timestamp-prefixed, so sorting them yields a stable A/B assignment across all images."""

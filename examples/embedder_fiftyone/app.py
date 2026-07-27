@@ -7,14 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+import data
+import steps
+from config import DBCONN
 from datapipe.compute import Catalog, DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
-
-import data
-import steps
-from config import DBCONN
 
 pipeline = Pipeline(
     [
