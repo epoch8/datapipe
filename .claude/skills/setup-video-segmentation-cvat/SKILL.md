@@ -67,8 +67,10 @@ frames upstream (e.g. add a `scale` filter to `extract_frames`) rather than edit
 - **`uv` + Python ≥3.10,<3.13** → `uv sync`. Pins cu124 torch, editable local libs
   (`../../libs/datapipe-*`, monorepo-only), builds `sam3` from a pinned git rev (+`imagehash`). After
   `uv sync`, on a pre-AVX2 host re-apply `uv pip install polars-lts-cpu==1.33.1`. On a very new GPU
-  whose CUDA arch the pinned torch predates (`CUDA error: no kernel image is available`), reinstall a
-  matching build: `uv pip install --python .venv --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cuXXX`.
+  whose CUDA arch the pinned torch predates (`CUDA error: no kernel image is available` on a tiny cuda
+  matmul), reinstall a matching build — for **Blackwell / RTX 50-series use `cu128`** (torch ≥2.7):
+  `uv pip install --python .venv --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128`.
+  That index can flake (503s) — wrap it in a retry loop.
 
 ## Stand up CVAT + Postgres (if you don't already have them)
 Both run in Docker; the example just points `DB_URL` / `CVAT_URL` at them (no code in it manages them).
@@ -122,7 +124,9 @@ The example itself needs **no Docker** — it's a plain `uv` venv. Docker is onl
 Setup that worked, in order:
 1. **Get the code on the branch** without disturbing an existing checkout: from the repo dir,
    `git fetch origin <branch>` then `git worktree add <path> <branch>` (reuses the host's git creds,
-   isolated working tree).
+   isolated working tree). **Verify it's current** (`git log origin/<branch>..HEAD` empty) — a stale
+   checkout can ship the old YouTube `fetch_video.py` (needs yt-dlp) instead of the current
+   bucket-fetch one, and an out-of-date pipeline; `git pull`/re-checkout the file if behind.
 2. **`uv sync`** in the example dir. `uv` auto-fetches a Python 3.10–3.12 even if the base interpreter
    is older. Takes a few min (torch cu124 ~2.5 GB + builds `sam3`/`cv-pipeliner` from git). **`sam3`
    builds with no `nvcc`/CUDA toolkit** — it's pure PyTorch, no compiled CUDA ext (the usual build
