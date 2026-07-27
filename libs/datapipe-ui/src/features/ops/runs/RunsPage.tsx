@@ -172,6 +172,7 @@ export function RunsPage() {
                             setSortBy(primary?.field ?? "started_at");
                             setSortDir(primary?.direction ?? "desc");
                         }}
+                        onStopped={loadRuns}
                     />
                 </div>
             </EmptyState>

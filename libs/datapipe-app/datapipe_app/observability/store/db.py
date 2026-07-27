@@ -233,12 +233,13 @@ class ObservabilityStore:
                 session.execute(
                     update(PipelineRunRow)
                     .where(PipelineRunRow.run_id == run_id)
+                    .where(PipelineRunRow.status == "running")
                     .values(status=status, finished_at=now, error=error)
                 ),
             )
             if cursor_result.rowcount == 0:
                 logger.warning(
-                    "finish_run: pipeline_runs row not found for run_id=%s (schema=%s)",
+                    "finish_run: no running pipeline_runs row for run_id=%s (schema=%s)",
                     run_id,
                     self.schema,
                 )

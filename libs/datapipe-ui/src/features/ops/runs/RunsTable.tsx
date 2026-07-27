@@ -1,8 +1,10 @@
 import React from "react";
-import { Button, Tag } from "antd";
-import { EyeOutlined } from "@ant-design/icons";
+import { Button, Modal, Space, Tag, notification } from "antd";
+import { EyeOutlined, StopOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useNavigate } from "react-router-dom";
+import { opsApi } from "../../../api/client";
+import { ApiError } from "../../../api/ops";
 import type { RunListRow } from "../../../types/ops";
 import { SortableDataTable, type SortSpec } from "../shared";
 import { formatRunListStage } from "../utils/runScope";
@@ -10,6 +12,7 @@ import { formatRunListStage } from "../utils/runScope";
 const STATUS_COLORS: Record<string, string> = {
     completed: "success",
     failed: "error",
+    interrupted: "error",
     running: "processing",
     pending: "default",
 };
@@ -43,6 +46,7 @@ type Props = {
     activeSorts?: SortSpec[];
     onPageChange: (page: number, pageSize: number) => void;
     onSortChange?: (sorts: SortSpec[]) => void;
+    onStopped?: () => void;
 };
 
 export function RunsTable({
@@ -54,8 +58,36 @@ export function RunsTable({
     activeSorts,
     onPageChange,
     onSortChange,
+    onStopped,
 }: Props) {
     const navigate = useNavigate();
+    const [stoppingId, setStoppingId] = React.useState<string | null>(null);
+
+    const stopRun = (runId: string) => {
+        Modal.confirm({
+            title: "Stop this run?",
+            content:
+                "Training subprocesses will be terminated immediately and the run marked as interrupted.",
+            okText: "Stop run",
+            okButtonProps: { danger: true },
+            onOk: async () => {
+                setStoppingId(runId);
+                try {
+                    await opsApi.stopRun(runId);
+                    notification.success({ message: "Run stop requested" });
+                    onStopped?.();
+                } catch (err) {
+                    notification.error({
+                        message: "Stop failed",
+                        description: err instanceof ApiError ? err.message : String(err),
+                    });
+                    throw err;
+                } finally {
+                    setStoppingId(null);
+                }
+            },
+        });
+    };
 
     const columns: ColumnsType<RunListRow> = [
         {
@@ -101,12 +133,24 @@ export function RunsTable({
             title: "Action",
             key: "action",
             render: (_, row) => (
-                <Button
-                    type="text"
-                    icon={<EyeOutlined />}
-                    aria-label="Open run"
-                    onClick={() => navigate(`/runs/${row.run_id}`)}
-                />
+                <Space size={0}>
+                    {row.status === "running" ? (
+                        <Button
+                            type="text"
+                            danger
+                            icon={<StopOutlined />}
+                            aria-label="Stop run"
+                            loading={stoppingId === row.run_id}
+                            onClick={() => stopRun(row.run_id)}
+                        />
+                    ) : null}
+                    <Button
+                        type="text"
+                        icon={<EyeOutlined />}
+                        aria-label="Open run"
+                        onClick={() => navigate(`/runs/${row.run_id}`)}
+                    />
+                </Space>
             ),
         },
     ];

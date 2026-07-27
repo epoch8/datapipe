@@ -71,10 +71,11 @@ class RecordingRunCallback:
             print(f"Run {self.run_id} completed")
 
     def on_run_error(self, error: BaseException) -> None:
-        self.recorder.finish_run(status="failed", error=str(error), run_id=self.run_id)
+        status = "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"
+        self.recorder.finish_run(status=status, error=str(error), run_id=self.run_id)
         self._finished = True
         if self.cli_announce:
-            print(f"Run {self.run_id} failed (details in Ops UI → Runs → {self.run_id})")
+            print(f"Run {self.run_id} {status} (details in Ops UI → Runs → {self.run_id})")
 
 
 class RunRecorder:

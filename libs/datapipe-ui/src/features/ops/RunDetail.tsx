@@ -6,14 +6,17 @@ import {
     Descriptions,
     Dropdown,
     Menu,
+    Modal,
     Spin,
     Table,
     Tabs,
     Tag,
     Typography,
+    notification,
 } from "antd";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
+import { ApiError } from "../../api/ops";
 import type { PipelineDetail, RunDetail as RunDetailType } from "../../types/ops";
 import { PageHeader } from "./shared";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
@@ -168,6 +171,29 @@ export function RunDetail() {
             .catch((e) => setError(String(e)));
     };
 
+    const stopRun = () => {
+        Modal.confirm({
+            title: "Stop this run?",
+            content:
+                "Training subprocesses will be terminated immediately and the run marked as interrupted.",
+            okText: "Stop run",
+            okButtonProps: { danger: true },
+            onOk: async () => {
+                try {
+                    await opsApi.stopRun(run.run_id);
+                    notification.success({ message: "Run stop requested" });
+                    refresh();
+                } catch (err) {
+                    notification.error({
+                        message: "Stop failed",
+                        description: err instanceof ApiError ? err.message : String(err),
+                    });
+                    throw err;
+                }
+            },
+        });
+    };
+
     const runStepsMenu = (
         <Menu>
             {isStageRun ? (
@@ -218,6 +244,21 @@ export function RunDetail() {
                 </Menu.Item>
             ))}
         </Menu>
+    );
+
+    const headerExtra = (
+        <>
+            {runIsActive ? (
+                <Button danger onClick={stopRun} style={{ marginRight: 8 }}>
+                    Stop run
+                </Button>
+            ) : null}
+            {pipeline ? (
+                <Dropdown overlay={runStepsMenu}>
+                    <Button type="primary">Run steps</Button>
+                </Dropdown>
+            ) : null}
+        </>
     );
 
     const stepPageHref = (stepName: string) =>
@@ -281,13 +322,7 @@ export function RunDetail() {
                 title={`Run ${run.run_id.slice(0, 8)}`}
                 statusChips={[{ label: run.status, variant: run.status === "completed" ? "success" : "default" }]}
                 onRefresh={refresh}
-                extra={
-                    pipeline ? (
-                        <Dropdown overlay={runStepsMenu}>
-                            <Button type="primary">Run steps</Button>
-                        </Dropdown>
-                    ) : undefined
-                }
+                extra={headerExtra}
             />
 
             <Card style={{ marginBottom: 16 }}>

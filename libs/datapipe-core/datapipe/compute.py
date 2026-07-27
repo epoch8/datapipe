@@ -403,10 +403,16 @@ def run_steps(
     executor: Executor | None = None,
     callbacks: Sequence[RunCallback] = (),
 ) -> None:
+    from datapipe.cancel import get_cancel_token
+
     _notify(callbacks, "on_run_start", steps)
 
     try:
         for step in steps:
+            token = get_cancel_token()
+            if token is not None:
+                token.raise_if_cancelled()
+
             _notify(callbacks, "on_step_start", step)
 
             try:
