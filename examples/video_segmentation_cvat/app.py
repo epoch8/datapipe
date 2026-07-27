@@ -55,7 +55,7 @@ pipeline = Pipeline(
         BatchGenerate(
             steps.list_sam_config,
             outputs=[data.sam_config_tbl],
-            labels=[("stage", "ingest")],
+            labels=[("stage", "prompt")],
         ),
         BatchTransform(
             func=steps.sam_inference,

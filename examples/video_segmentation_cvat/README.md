@@ -14,7 +14,7 @@ front is turning a long video into a deduplicated set of frames.
 stage=video    list_videos      folder INPUT_VIDEO_DIR      -> video
 stage=sample   extract_frames   ffmpeg fps=SAMPLE_FPS       -> frames
 stage=sample   dedup_frames     perceptual-hash dedup       -> local_images
-stage=ingest   list_sam_config  SAM_TEXT_PROMPT             -> sam_config
+stage=prompt   list_sam_config  SAM_TEXT_PROMPT             -> sam_config
 stage=sam      sam_inference    SAM3 image-mode             -> sam_predictions
 stage=sam      sam_to_cvat_xml                              -> sam_cvat_xml
 stage=cvat     prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__annotations

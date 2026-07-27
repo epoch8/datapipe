@@ -29,7 +29,7 @@ send it to a file and `grep` (`datapipe --debug run > /tmp/dp.log 2>&1; grep -nE
 stage=video   list_videos      folder INPUT_VIDEO_DIR  -> video
 stage=sample  extract_frames   ffmpeg fps=SAMPLE_FPS   -> frames
 stage=sample  dedup_frames     perceptual-hash dedup   -> local_images
-stage=ingest  list_sam_config  SAM_TEXT_PROMPT         -> sam_config
+stage=prompt  list_sam_config  SAM_TEXT_PROMPT         -> sam_config
 stage=sam     sam_inference    SAM3 image-mode         -> sam_predictions
 stage=sam     sam_to_cvat_xml                          -> sam_cvat_xml
 stage=cvat    prepare_cvat_input / CVATStep / parse_cvat_annotations -> image__annotations
@@ -64,7 +64,17 @@ frames upstream (e.g. add a `scale` filter to `extract_frames`) rather than edit
   match `CVAT_BOX_LABEL` / `CVAT_POLYGON_LABEL` (defaults `person_box` / `person_mask`).
 - **`uv` + Python ≥3.10,<3.13** → `uv sync`. Pins cu124 torch, editable local libs
   (`../../libs/datapipe-*`, monorepo-only), builds `sam3` from a pinned git rev (+`imagehash`). After
-  `uv sync`, on a pre-AVX2 host re-apply `uv pip install polars-lts-cpu==1.33.1`.
+  `uv sync`, on a pre-AVX2 host re-apply `uv pip install polars-lts-cpu==1.33.1`. On a very new GPU
+  whose CUDA arch the pinned torch predates (`CUDA error: no kernel image is available`), reinstall a
+  matching build: `uv pip install --python .venv --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cuXXX`.
+
+## Stand up CVAT + Postgres (if you don't already have them)
+Both run in Docker; the example just points `DB_URL` / `CVAT_URL` at them (no code in it manages them).
+- **Postgres:** `docker run -d --name dp_pg -e POSTGRES_PASSWORD=<pw> -e POSTGRES_DB=postgres -p 5432:5432 postgres:15` → `DB_URL=postgresql+psycopg2://postgres:<pw>@localhost:5432/postgres`.
+- **CVAT v2.65.0** (matches `cvat-sdk==2.65.0`): `git clone --depth 1 --branch v2.65.0 https://github.com/cvat-ai/cvat.git /opt/cvat && cd /opt/cvat && docker compose up -d` (UI on `:8080`; ~15 containers, needs a few GB RAM + a reliable registry uplink — a flaky link fails the image pulls). The repo's `libs/datapipe-cvat/tests/start-cvat.sh` does the same but `docker compose down`s on exit (test helper), so for a persistent instance run `up -d` directly.
+- **Admin** (first run): `docker exec cvat_server bash -lc "DJANGO_SUPERUSER_PASSWORD=admin python3 ~/manage.py createsuperuser --username admin --email a@e.com --noinput"`.
+- **Project + labels:** create a project with labels named `CVAT_BOX_LABEL` / `CVAT_POLYGON_LABEL` (default `person_box` / `person_mask`, type `any` accepts box+polygon) and set `CVAT_PROJECT_ID` to its id. Via API: `POST /api/projects` with `{"name":...,"labels":[{"name":"person_box","type":"any"},{"name":"person_mask","type":"any"}]}`.
+- Docker-less pod → keep CVAT + Postgres on another host and point `DB_URL`/`CVAT_URL` at it (see the bare-pod section).
 
 ## Get a video
 ```bash
