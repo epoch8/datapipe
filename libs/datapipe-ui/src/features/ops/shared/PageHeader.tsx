@@ -15,7 +15,7 @@ type Props = {
     dateRange?: [Moment, Moment] | null;
     onDateRangeChange?: (range: [Moment, Moment] | null) => void;
     onRefresh?: () => void;
-    primaryAction?: { label: string; onClick?: () => void; href?: string };
+    primaryAction?: { label: string; onClick?: () => void; href?: string; disabled?: boolean; title?: string };
     extra?: React.ReactNode;
 };
 
@@ -31,6 +31,9 @@ export function PageHeader({
     primaryAction,
     extra,
 }: Props) {
+    const showDateRange = Boolean(dateRange && onDateRangeChange);
+    const showActions = showDateRange || Boolean(onRefresh) || Boolean(primaryAction) || Boolean(extra);
+
     return (
         <div className="ops-page-header">
             {breadcrumbs.length > 0 && (
@@ -64,36 +67,49 @@ export function PageHeader({
                             ))}
                         </Space>
                     )}
-                </div>
-                <div className="ops-page-header-actions">
-                    {dateRange && onDateRangeChange && (
-                        <DatePicker.RangePicker
-                            value={dateRange}
-                            onChange={(vals) => {
-                                if (vals?.[0] && vals?.[1]) {
-                                    onDateRangeChange([vals[0], vals[1]]);
-                                }
-                            }}
-                            format="MMM D, YYYY"
-                            className="ops-date-range"
-                        />
+                    {showActions && (
+                        <div className="ops-page-header-actions">
+                            {showDateRange && (
+                                <DatePicker.RangePicker
+                                    value={dateRange!}
+                                    onChange={(vals) => {
+                                        if (vals?.[0] && vals?.[1]) {
+                                            onDateRangeChange!([vals[0], vals[1]]);
+                                        }
+                                    }}
+                                    format="MMM D, YYYY"
+                                    className="ops-date-range"
+                                />
+                            )}
+                            {onRefresh && (
+                                <Button icon={<ReloadOutlined />} onClick={onRefresh}>
+                                    Refresh
+                                </Button>
+                            )}
+                            {primaryAction &&
+                                (primaryAction.href ? (
+                                    <Link to={primaryAction.href}>
+                                        <Button
+                                            type="primary"
+                                            disabled={primaryAction.disabled}
+                                            title={primaryAction.title}
+                                        >
+                                            {primaryAction.label}
+                                        </Button>
+                                    </Link>
+                                ) : (
+                                    <Button
+                                        type="primary"
+                                        onClick={primaryAction.onClick}
+                                        disabled={primaryAction.disabled}
+                                        title={primaryAction.title}
+                                    >
+                                        {primaryAction.label}
+                                    </Button>
+                                ))}
+                            {extra}
+                        </div>
                     )}
-                    {onRefresh && (
-                        <Button icon={<ReloadOutlined />} onClick={onRefresh}>
-                            Refresh
-                        </Button>
-                    )}
-                    {primaryAction &&
-                        (primaryAction.href ? (
-                            <Link to={primaryAction.href}>
-                                <Button type="primary">{primaryAction.label}</Button>
-                            </Link>
-                        ) : (
-                            <Button type="primary" onClick={primaryAction.onClick}>
-                                {primaryAction.label}
-                            </Button>
-                        ))}
-                    {extra}
                 </div>
             </div>
         </div>

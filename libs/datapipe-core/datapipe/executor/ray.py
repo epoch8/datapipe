@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Generator
 
 import ray
 from tqdm_loggable.auto import tqdm
@@ -15,7 +15,7 @@ class RayExecutor(Executor):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Iterable[IndexDF],
+        idx_gen: Generator[IndexDF, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -44,9 +44,9 @@ class RayExecutor(Executor):
             return process_fn(ds, idx, run_config)
 
         # Generator to collect results, so tqdm can show progress
-        def _results(idx_gen):
+        def _results(idx_gen: Generator[IndexDF, None, None]) -> Generator[ChangeList, None, None]:
             # Submit tasks to remote functions using Ray
-            futures: list[Any] = []
+            futures: list[ray.ObjectRef[ChangeList]] = []
             for idx in idx_gen:
                 if len(futures) > parallelism:
                     ready, futures = ray.wait(futures, timeout=None)
@@ -62,9 +62,12 @@ class RayExecutor(Executor):
                     yield result
                 ready, futures = ray.wait(futures, timeout=None)
 
-        for result in tqdm(_results(idx_gen), total=idx_count):
-            res_changelist.extend(result)
-            if on_batch_complete is not None:
-                on_batch_complete()
+        try:
+            for result in tqdm(_results(idx_gen), total=idx_count):
+                res_changelist.extend(result)
+                if on_batch_complete is not None:
+                    on_batch_complete()
+        finally:
+            idx_gen.close()
 
         return res_changelist

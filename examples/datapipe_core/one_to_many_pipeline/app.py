@@ -230,7 +230,7 @@ pipeline = Pipeline(
 
 
 dbconn = DBConn(sqlite_connstr(), sqla_metadata=Base.metadata)
-# dbconn = DBConn('postgresql://postgres:password@localhost/postgres', schema='test')
+# dbconn = DBConn('postgresql+psycopg://postgres:password@localhost/postgres', schema='test')
 ds = DataStore(dbconn)
 app = DatapipeApp(ds, Catalog({}), pipeline)
 

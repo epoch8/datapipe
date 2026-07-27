@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Button, Table } from "antd";
+import { Button, Table, notification } from "antd";
 import { opsApi } from "@datapipe/ui-ml/api/client";
 import { usePipelineId } from "@datapipe/ui/hooks/usePipelineId";
 import type { FrozenDatasetDetailResponse } from "../../../types/opsMl";
@@ -12,6 +12,8 @@ import { MetricKpiStrip, SourceRecordCard } from "../shared";
 import { buildMetricsUrl } from "../shared/entityUrls";
 import { formatFrozenAt } from "./frozenDatasetFormat";
 import { frozenDatasetHighlightFields } from "./datasetRecordFields";
+import { NewTrainingRunDrawer } from "../training/NewTrainingRunDrawer";
+import { resolveTrainingSpecId } from "../training/resolveTrainingSpec";
 
 function formatCreatedAt(value?: string | null): string | null {
     if (!value) return null;
@@ -33,6 +35,29 @@ export function FrozenDatasetDetailPage() {
     const [spec, setSpec] = React.useState<OpsSpecDetail | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+
+    const [trainOpen, setTrainOpen] = React.useState(false);
+    const [trainingSpecId, setTrainingSpecId] = React.useState<string | null>(null);
+    const [resolvingTrainSpec, setResolvingTrainSpec] = React.useState(false);
+
+    const openTrainDrawer = React.useCallback(async () => {
+        if (!pipelineId) return;
+        setResolvingTrainSpec(true);
+        try {
+            const resolved = await resolveTrainingSpecId(pipelineId, specId || undefined);
+            if (!resolved) {
+                notification.warning({
+                    message: "No training specification",
+                    description: "This pipeline has no training-capable ops spec to launch a run from.",
+                });
+                return;
+            }
+            setTrainingSpecId(resolved);
+            setTrainOpen(true);
+        } finally {
+            setResolvingTrainSpec(false);
+        }
+    }, [pipelineId, specId]);
 
     const load = React.useCallback(() => {
         if (!pipelineId || !datasetId) return;
@@ -120,6 +145,9 @@ export function FrozenDatasetDetailPage() {
                 ]}
                 extra={
                     <>
+                        <Button type="primary" loading={resolvingTrainSpec} onClick={openTrainDrawer}>
+                            Train on this dataset
+                        </Button>
                         <Button href={data?.source_table_url ?? undefined} disabled={!data?.source_table_url}>
                             Open dataset row
                         </Button>
@@ -130,6 +158,16 @@ export function FrozenDatasetDetailPage() {
                 }
                 onRefresh={load}
             />
+
+            {pipelineId && trainingSpecId && (
+                <NewTrainingRunDrawer
+                    open={trainOpen}
+                    pipelineId={pipelineId}
+                    specId={trainingSpecId}
+                    initialDatasetId={datasetId}
+                    onClose={() => setTrainOpen(false)}
+                />
+            )}
 
             <EmptyState loading={pidLoading || loading} error={error} empty={!data}>
                 {data && (

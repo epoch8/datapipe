@@ -13,5 +13,5 @@ def test_register_observability_tables_in_metadata() -> None:
     config = ObservabilityTableConfig()
     ml_config = MLObservabilityTableConfig()
     assert config.pipeline_runs in table_names
-    assert config.pipeline_run_logs in table_names
+    assert "datapipe_api__run_logs" not in table_names
     assert ml_config.metrics_candidates in table_names

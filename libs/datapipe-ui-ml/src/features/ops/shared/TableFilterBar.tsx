@@ -23,6 +23,7 @@ import {
     formatRuleParts,
     isSubsetEntityColumn,
     makeDefaultFilterRule,
+    createClientId,
     type OpsFilterRuleWithId,
     type OpsFilterState,
 } from "./tableFilters";
@@ -41,7 +42,7 @@ type TableFilterBarProps = {
 };
 
 function withIds(rules: OpsFilterRuleWithId[]): OpsFilterRuleWithId[] {
-    return rules.map((rule) => ({ ...rule, id: rule.id ?? crypto.randomUUID() }));
+    return rules.map((rule) => ({ ...rule, id: rule.id ?? createClientId() }));
 }
 
 function SubsetValueInput({

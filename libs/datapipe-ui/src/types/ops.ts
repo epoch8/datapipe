@@ -99,7 +99,6 @@ export interface PipelineDetail {
     stage_edges?: StageEdge[];
     label_graph?: LabelGraphPayload;
     recent_runs: RecentRunSummary[];
-    next_run_at?: string;
     last_error?: string;
     enrichments?: Enrichment[];
 }
@@ -166,6 +165,8 @@ export interface RunLogsResponse {
     run_id: string;
     lines: RunLogLine[];
     last_seq: number;
+    /** Highest seq known for this run (DB + in-memory). Used to jump to the tail. */
+    max_seq?: number;
 }
 
 export interface RunDetail {
@@ -194,6 +195,7 @@ export interface Capabilities {
     ml_metrics: boolean;
     ml_training: boolean;
     pipeline_id?: string;
+    run_logs_configured?: boolean;
 }
 
 export interface ResetTransformMetadataResponse {
@@ -205,4 +207,5 @@ export interface SettingsInfo {
     pipeline_id?: string;
     observability_db_connected: boolean;
     version: string;
+    run_logs_configured?: boolean;
 }

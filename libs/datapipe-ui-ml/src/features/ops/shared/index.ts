@@ -14,6 +14,7 @@ export {
     Sparkline,
     SelectedModelChips,
     readMetricNumber,
+    normalizeMetricKey,
     formatMetric,
     formatDelta,
     formatDeltaPct,

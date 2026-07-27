@@ -13,6 +13,7 @@ from datapipe_ml.core.image_data import (
 )
 
 from config import (
+    COCO_PERSON_KEYPOINT_FLIP_IDX,
     KEYPOINTS_LABELS,
     KEYPOINTS_MODEL_CONFIG,
     LOCAL_IMAGES_DIR,
@@ -20,6 +21,41 @@ from config import (
     input_image_url,
     input_storage_options,
 )
+
+# COCO: 0 = not labeled, 1 = labeled not visible, 2 = labeled and visible.
+# Label Studio has no visibility flag; present keypoints are treated as visible (2).
+_KP_NOT_LABELED = 0
+_KP_VISIBLE = 2
+
+
+def _align_keypoints_and_visibility(bbox_data) -> tuple[list, list]:
+    """Pad/reorder keypoints to KEYPOINTS_LABELS and produce matching visibility."""
+    raw = [] if bbox_data.keypoints is None else np.asarray(bbox_data.keypoints).reshape(-1, 2).tolist()
+    labels = (bbox_data.additional_info or {}).get("keypoints_labels")
+    raw_vis = bbox_data.keypoints_visibility
+
+    if labels is not None and len(labels) == len(raw):
+        label_to_kp = {lab: kp for lab, kp in zip(labels, raw)}
+        label_to_vis = (
+            {lab: int(v) for lab, v in zip(labels, raw_vis)}
+            if raw_vis is not None and len(raw_vis) == len(raw)
+            else {}
+        )
+        keypoints, visibility = [], []
+        for lab in KEYPOINTS_LABELS:
+            if lab in label_to_kp:
+                keypoints.append(label_to_kp[lab])
+                visibility.append(label_to_vis.get(lab, _KP_VISIBLE))
+            else:
+                keypoints.append([0.0, 0.0])
+                visibility.append(_KP_NOT_LABELED)
+        return keypoints, visibility
+
+    if not raw:
+        return [], []
+    if raw_vis is not None and len(raw_vis) == len(raw):
+        return raw, [int(v) for v in raw_vis]
+    return raw, [_KP_VISIBLE] * len(raw)
 
 
 def list_s3_images() -> Iterator[pd.DataFrame]:
@@ -143,15 +179,29 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
             keypoints_labels=KEYPOINTS_LABELS,
             image_path=row["image_name"],
         )
-        bboxes, labels, keypoints = [], [], []
+        bboxes, labels, keypoints, keypoints_visibility = [], [], [], []
         for bbox_data in image_data.bboxes_data:
             if bbox_data.label is None:
                 continue
+            kps, vis = _align_keypoints_and_visibility(bbox_data)
             bboxes.append(list(bbox_data.coords))
             labels.append(str(bbox_data.label))
-            keypoints.append([] if bbox_data.keypoints is None else np.array(bbox_data.keypoints).reshape(-1, 2).tolist())
-        records.append({"image_name": row["image_name"], "bboxes": bboxes, "labels": labels, "keypoints": keypoints})
-    return pd.DataFrame(records, columns=["image_name", "bboxes", "labels", "keypoints"])
+            keypoints.append(kps)
+            keypoints_visibility.append(vis)
+        records.append(
+            {
+                "image_name": row["image_name"],
+                "bboxes": bboxes,
+                "labels": labels,
+                "keypoints": keypoints,
+                "keypoints_visibility": keypoints_visibility,
+                "flip_idx": list(COCO_PERSON_KEYPOINT_FLIP_IDX),
+            }
+        )
+    return pd.DataFrame(
+        records,
+        columns=["image_name", "bboxes", "labels", "keypoints", "keypoints_visibility", "flip_idx"],
+    )
 
 
 def split_df_train_val(

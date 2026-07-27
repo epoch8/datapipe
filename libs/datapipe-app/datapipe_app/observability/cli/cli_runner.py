@@ -13,7 +13,7 @@ from datapipe_app.observability.logging.log_buffer import RunLogBuffer, get_log_
 from datapipe_app.observability.runs.recorder import RecordingRunCallback, RunRecorder
 from datapipe_app.observability.runs.run_scope import labels_to_json
 from datapipe_app.observability.runs.run_triggers import cli_trigger_from_labels
-from datapipe_app.observability.run_logs import warn_if_run_logs_share_pipeline_db
+from datapipe_app.observability.run_logs import warn_if_run_logs_backend_missing
 from datapipe_app.observability.config.settings import resolve_ops_settings
 from datapipe_app.observability.config.tables import (
     ObservabilityTableConfig,
@@ -56,17 +56,12 @@ def _build_recorder(app: DatapipeApp, *, pipeline_spec: Optional[str] = None) ->
             config=tables,
             catalog=app.catalog,
         )
-        warn_if_run_logs_share_pipeline_db(
-            pipeline_dbconn=app.ds.meta_dbconn,
-            observability_dbconn=observability_dbconn,
-            run_logs_backend=run_logs_backend,
-        )
+        warn_if_run_logs_backend_missing(run_logs_backend)
         from datapipe_app.app.db_schema import register_observability_tables_in_metadata
 
         register_observability_tables_in_metadata(
             app.ds.meta_dbconn,
             tables=tables,
-            include_run_logs=run_logs_backend is None,
         )
         store = ObservabilityStore.from_dbconn(
             observability_dbconn,

@@ -258,12 +258,12 @@ def test_batch_transform_with_fails(dbconn):
         )
     )
 
-    step.run_full(ds)
+    step.run_full(ds, run_config=RunConfig(fail_fast=False))
     assert len(tbl2.get_data()) == 0
 
     context["fail"] = False
 
-    step.run_full(ds)
+    step.run_full(ds, run_config=RunConfig(fail_fast=False))
 
     assert len(tbl2.get_data()) == 10
 

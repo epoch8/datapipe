@@ -29,6 +29,8 @@ export type GraphInteractionCallbacks = {
     onCloseKeyPopover: () => void;
     onToggleGroup: (groupName: string) => void;
     onUserInteracted: () => void;
+    /** Last RMB target — used so menu actions don't rely on cytoscape-context-menus' scratch event. */
+    onContextTarget?: (node: Cytoscape.NodeSingular) => void;
 };
 
 function canSelectNode(node: Cytoscape.NodeSingular): boolean {
@@ -101,7 +103,9 @@ function findContentNodeAt(
 
 /**
  * Resolve the context-menu/dblclick target for a container pointer event.
- * HTML cards win; otherwise empty expanded-frame chrome; otherwise a content BB.
+ * HTML cards win; then a content node BB; empty expanded-frame chrome last.
+ * Preferring the frame over content made RMB on a step/table inside an expanded
+ * meta open the group menu (Open details no-op for group-expanded).
  */
 function resolvePointerTarget(
     cy: Cytoscape.Core,
@@ -120,11 +124,17 @@ function resolvePointerTarget(
     if (fromLabel) return fromLabel;
 
     const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
-    // Empty blue padding / title: open the frame menu even if a content node's
-    // cytoscape bbox also covers the point (HTML card was not hit).
-    const frame = findExpandedFrameAt(cy, pos.x, pos.y);
-    if (frame) return frame;
-    return findContentNodeAt(cy, pos.x, pos.y);
+    const content = findContentNodeAt(cy, pos.x, pos.y);
+    if (content) return content;
+    return findExpandedFrameAt(cy, pos.x, pos.y);
+}
+
+function isContextMenuTarget(target: EventTarget | null): boolean {
+    return Boolean(
+        (target as Element | null)?.closest?.(
+            ".cy-context-menus-cxt-menu, .cy-context-menus-cxt-menuitem",
+        ),
+    );
 }
 
 /**
@@ -428,6 +438,9 @@ export function attachGraphInteractions(
 
     const onContainerMouseDown = (event: MouseEvent) => {
         if (event.button !== 0) return;
+        // Context-menu items live inside the cy container; do not treat their
+        // LMB as background/node press (that clears currentCyEvent / selection).
+        if (isContextMenuTarget(event.target)) return;
         pressStartedOnOverflow = false;
         nodePress = null;
         selectionFreeze = null;
@@ -538,6 +551,7 @@ export function attachGraphInteractions(
 
     const onContainerClick = (event: MouseEvent) => {
         if (event.button !== 0) return;
+        if (isContextMenuTarget(event.target)) return;
         if (consumeSelectSuppress()) {
             nodePress = null;
             restoreFrozenSelection();
@@ -598,6 +612,14 @@ export function attachGraphInteractions(
         // Skip native mouseup→core cxttap that would wipe this menu on empty
         // frame chrome (title band has no events:yes node under the cursor).
         suppressUpcomingNativeCxttap(cy);
+        callbacks.onContextTarget?.(node);
+
+        // Plugin only *shows* matching items; it does not hide the rest unless the
+        // menu position object changes. Clear every item first so Collapse cannot
+        // linger from a previous RMB on the blue frame.
+        container.querySelectorAll(".cy-context-menus-cxt-menuitem").forEach((el) => {
+            (el as HTMLElement).style.display = "none";
+        });
 
         const pos = modelPosFromClient(cy, container, event.clientX, event.clientY);
         // Cytoscape emit accepts a plain event object with position fields.
@@ -611,6 +633,7 @@ export function attachGraphInteractions(
 
         // Plugin corner-flip math often drifts for HTML-label hits (esp. on the
         // right half of the canvas). Pin the menu under the cursor instead.
+        // Also enforce item visibility from the resolved target (not stale selectors).
         queueMicrotask(() => {
             const menu = container.querySelector(
                 ".cy-context-menus-cxt-menu",
@@ -621,6 +644,14 @@ export function attachGraphInteractions(
             menu.style.top = `${event.clientY - rect.top}px`;
             menu.style.right = "auto";
             menu.style.bottom = "auto";
+
+            const type = node.data("type") as string;
+            const openDetails = menu.querySelector("#open-details") as HTMLElement | null;
+            const expand = menu.querySelector("#expand-steps") as HTMLElement | null;
+            const collapse = menu.querySelector("#collapse-steps") as HTMLElement | null;
+            if (openDetails) openDetails.style.display = "";
+            if (expand) expand.style.display = type === "group" ? "" : "none";
+            if (collapse) collapse.style.display = type === "group-expanded" ? "" : "none";
         });
     };
 

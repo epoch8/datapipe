@@ -13,13 +13,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ObservabilityTableConfig:
-    """Physical table names owned by datapipe-app (runs, logs, registry, analytics)."""
+    """Physical table names owned by datapipe-app (runs, registry, analytics)."""
 
     pipeline_registry: str = "datapipe_api__registry"
     pipeline_runs: str = "datapipe_api__runs"
     pipeline_run_steps: str = "datapipe_api__run_steps"
-    pipeline_run_logs: str = "datapipe_api__run_logs"
-    pipeline_schedules: str = "datapipe_api__schedules"
 
     def __post_init__(self) -> None:
         validate_observability_table_names(self)

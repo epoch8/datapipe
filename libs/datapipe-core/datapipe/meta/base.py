@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Generator, Literal, Sequence
 
 import pandas as pd
 from sqlalchemy import Column
@@ -146,7 +146,7 @@ class TableMeta:
         self,
         process_ts: float,
         run_config: RunConfig | None = None,
-    ) -> Iterator[IndexDF]:
+    ) -> Generator[IndexDF, None, None]:
         """
         Iterate over indices whose `process_ts` is below the given threshold
         (stale / requiring processing). May apply `run_config` filters and yield
@@ -251,7 +251,7 @@ class TransformMeta:
         ds: "DataStore",
         chunk_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         """
         Compute indices for a full transform run: returns chunk count and an
         iterator of index dataframes ordered by priority/keys, respecting
@@ -266,7 +266,7 @@ class TransformMeta:
         change_list: ChangeList,
         chunk_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         """
         Like `get_full_process_ids`, but limited to changes from `change_list`
         (e.g., modified input tables). Returns chunk count and a generator of

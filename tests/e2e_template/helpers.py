@@ -35,7 +35,7 @@ def template_dir(pipeline_name: Literal["detection", "keypoints"]) -> Path:
 
 
 def require_postgres() -> None:
-    os.environ.setdefault("DB_URL", "postgresql://postgres:password@localhost:5432/postgres")
+    os.environ.setdefault("DB_URL", "postgresql+psycopg://postgres:password@localhost:5432/postgres")
     try:
         with create_engine(os.environ["DB_URL"]).connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -44,7 +44,7 @@ def require_postgres() -> None:
 
 
 def load_template_module(pipeline_name: Literal["detection", "keypoints"], module: str):
-    os.environ.setdefault("DB_URL", "postgresql://postgres:password@localhost:5432/postgres")
+    os.environ.setdefault("DB_URL", "postgresql+psycopg://postgres:password@localhost:5432/postgres")
     if module in ("app", "data"):
         require_postgres()
         ensure_postgres_schema(pipeline_name)

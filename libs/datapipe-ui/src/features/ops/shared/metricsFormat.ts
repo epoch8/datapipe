@@ -15,6 +15,15 @@ export const METRIC_ALIASES: Record<string, string> = {
     calc__pose_R: "pose_R",
     calc__pose_mAP50: "pose_mAP50",
     calc__pose_mAP50_95: "pose_mAP50_95",
+    calc__weighted_f1_score: "weighted_f1_score",
+    calc__macro_f1_score: "macro_f1_score",
+    calc__weighted_precision: "weighted_precision",
+    calc__macro_precision: "macro_precision",
+    calc__weighted_recall: "weighted_recall",
+    calc__macro_recall: "macro_recall",
+    // Ops column ids often shorten ``*_f1_score`` → ``*_f1``.
+    weighted_f1: "weighted_f1_score",
+    macro_f1: "macro_f1_score",
     metrics_mAP_0_5: "mAP50",
     metrics_mAP_0_5_to_0_95: "mAP50_95",
 };
@@ -23,12 +32,7 @@ export function normalizeMetricKey(key: string): string {
     return METRIC_ALIASES[key] ?? key.replace(/^calc__/, "");
 }
 
-export function readMetricNumber(
-    metrics: Record<string, number | string | null | undefined> | undefined,
-    key: string,
-): number | null {
-    if (!metrics || !(key in metrics)) return null;
-    const raw = metrics[key];
+function coerceMetricNumber(raw: number | string | null | undefined): number | null {
     if (raw == null) return null;
     if (typeof raw === "string") {
         const stripped = raw.trim();
@@ -37,6 +41,24 @@ export function readMetricNumber(
     if (typeof raw === "number") return Number.isNaN(raw) ? null : raw;
     const coerced = Number(raw);
     return Number.isNaN(coerced) ? null : coerced;
+}
+
+export function readMetricNumber(
+    metrics: Record<string, number | string | null | undefined> | undefined,
+    key: string,
+): number | null {
+    if (!metrics) return null;
+    const want = normalizeMetricKey(key);
+    const direct = coerceMetricNumber(metrics[key] ?? metrics[want]);
+    if (direct != null) return direct;
+    // Ops specs may expose short ids (weighted_f1) while UI layout uses canonical names.
+    for (const [candidate, raw] of Object.entries(metrics)) {
+        if (normalizeMetricKey(candidate) === want) {
+            const value = coerceMetricNumber(raw);
+            if (value != null) return value;
+        }
+    }
+    return null;
 }
 
 export function formatMetric(

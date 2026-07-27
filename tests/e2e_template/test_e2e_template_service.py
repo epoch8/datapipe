@@ -51,6 +51,7 @@ def _ensure_sample_images_seeded() -> None:
     e2e_dir = Path(__file__).resolve().parents[2] / "examples/e2e_template"
     seed_script = e2e_dir / "scripts/seed_sample_data.py"
     sample_dir = e2e_dir / "sample_data" / "images"
+    # Keep the pool small: freeze min_delta tests require annotations_count < 10.
     cmd = [
         sys.executable,
         str(seed_script),
@@ -58,8 +59,14 @@ def _ensure_sample_images_seeded() -> None:
         "2",
         "--keypoints-limit",
         "2",
+        "--classification-animal-limit",
+        "0",
+        "--classification-no-animal-limit",
+        "0",
     ]
-    if sample_dir.exists() and any(sample_dir.glob("*.jpg")):
+    existing = list(sample_dir.glob("*.jpg")) if sample_dir.exists() else []
+    # Skip download only when the cached set matches the tiny detection/keypoints pool.
+    if 0 < len(existing) <= 4:
         cmd.append("--skip-download")
     subprocess.run(cmd, check=True, cwd=e2e_dir, env=os.environ.copy())
 

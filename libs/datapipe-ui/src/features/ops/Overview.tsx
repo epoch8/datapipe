@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, Card, Spin, Tag } from "antd";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import type { PipelineDetail } from "../../types/ops";
@@ -106,26 +106,6 @@ export function Overview() {
                     type="error"
                     message="Last error"
                     description={detail.last_error}
-                    style={{ marginTop: 16 }}
-                    showIcon
-                />
-            )}
-
-            {detail.next_run_at && (
-                <Alert
-                    type="info"
-                    message="Next scheduled run"
-                    description={
-                        <>
-                            {detail.next_run_at}
-                            {detail.next_run_at && (
-                                <>
-                                    {" "}
-                                    · <Link to="/runs">View runs</Link>
-                                </>
-                            )}
-                        </>
-                    }
                     style={{ marginTop: 16 }}
                     showIcon
                 />

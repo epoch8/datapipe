@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Sequence
 from typing import Any, Literal
 
 import httpx
@@ -10,23 +11,31 @@ from PIL import Image
 OverlayMode = Literal["record", "gt", "prediction", "both", "plain"]
 
 
+def _as_aligned_list(value: Any, *, length: int, default: Any) -> list[Any]:
+    """Align a per-bbox field to ``length``, accepting scalar classification values."""
+    if value is None:
+        return [default] * length
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        if length <= 0:
+            return []
+        return [value] + [default] * (length - 1)
+    values = list(value)
+    if len(values) != length:
+        values = (values + [default] * length)[:length]
+    return values
+
+
 def iter_bbox_fields_from_record(
     record: dict[str, Any],
     *,
     scores_column: str | None = None,
 ) -> list[tuple[Any, Any | None, Any, Any, Any, Any]]:
     bboxes = record.get("bboxes") or []
-    labels = record.get("labels") or [None] * len(bboxes)
-    if labels is None:
-        labels = [None] * len(bboxes)
+    if not isinstance(bboxes, Sequence) or isinstance(bboxes, (str, bytes)):
+        bboxes = []
     scores_key = scores_column or "prediction__detection_scores"
-    scores = record.get(scores_key) or [None] * len(bboxes)
-    if scores is None:
-        scores = [None] * len(bboxes)
-    if len(labels) != len(bboxes):
-        labels = (list(labels) + [None] * len(bboxes))[: len(bboxes)]
-    if len(scores) != len(bboxes):
-        scores = (list(scores) + [None] * len(bboxes))[: len(bboxes)]
+    labels = _as_aligned_list(record.get("labels"), length=len(bboxes), default=None)
+    scores = _as_aligned_list(record.get(scores_key), length=len(bboxes), default=None)
     return [
         (label, score, xmin, ymin, xmax, ymax)
         for (xmin, ymin, xmax, ymax), label, score in zip(bboxes, labels, scores)
@@ -46,12 +55,7 @@ def _cv_pipeliner():
 
 
 def _aligned_per_bbox_field(record: dict[str, Any], field: str, *, length: int, default: Any) -> list[Any]:
-    values = record.get(field)
-    if values is None:
-        return [default] * length
-    if len(values) != length:
-        values = (list(values) + [default] * length)[:length]
-    return values
+    return _as_aligned_list(record.get(field), length=length, default=default)
 
 
 def bboxes_data_from_record(record: dict[str, Any], *, scores_column: str | None = None) -> list[Any]:
@@ -71,19 +75,31 @@ def bboxes_data_from_record(record: dict[str, Any], *, scores_column: str | None
         length=len(bboxes),
         default=None,
     )
+    keypoints_visibility = _aligned_per_bbox_field(
+        record,
+        "keypoints_visibility",
+        length=len(bboxes),
+        default=None,
+    )
 
     result: list[Any] = []
-    for (xmin, ymin, xmax, ymax), label, score, bbox_keypoints, mask, bbox_keypoints_scores in zip(
+    for (
+        (xmin, ymin, xmax, ymax),
+        label,
+        score,
+        bbox_keypoints,
+        mask,
+        bbox_keypoints_scores,
+        bbox_keypoints_visibility,
+    ) in zip(
         bboxes,
         labels,
         scores,
         keypoints,
         masks,
         keypoints_scores,
+        keypoints_visibility,
     ):
-        additional_info: dict[str, Any] = {}
-        if bbox_keypoints_scores is not None:
-            additional_info["prediction__keypoints_scores"] = bbox_keypoints_scores
         result.append(
             BboxData(
                 xmin=xmin,
@@ -92,9 +108,10 @@ def bboxes_data_from_record(record: dict[str, Any], *, scores_column: str | None
                 ymax=ymax,
                 label=label,
                 keypoints=bbox_keypoints,
+                keypoints_visibility=bbox_keypoints_visibility,
+                keypoints_scores=bbox_keypoints_scores,
                 mask=mask,
                 detection_score=score,
-                additional_info=additional_info,
             )
         )
     return result
@@ -181,22 +198,19 @@ def render_visualization_bytes(
         rendered = visualize_image_data_matching_side_by_side(
             image_data_matching=matching,
             error_type="detection",
-            pred_include_additional_bboxes_data=True,
-            pred_include_labels=True,
-            pred_include_keypoints=True,
-            pred_include_mask=True,
-            pred_mask_alpha=0.5,
-            pred_fontsize=24,
-            pred_thickness=2,
-            keypoints_radius=2,
-            true_include_additional_bboxes_data=True,
+            include_additional_bboxes_data=True,
             true_include_labels=True,
+            pred_include_labels=True,
             true_include_keypoints=True,
+            pred_include_keypoints=True,
+            true_include_keypoint_scores=False,
+            pred_include_keypoint_scores=True,
             true_include_mask=True,
-            true_mask_alpha=0.5,
-            true_fontsize=24,
-            true_thickness=2,
-            true_keypoints_radius=2,
+            pred_include_mask=True,
+            mask_alpha=0.5,
+            fontsize=24,
+            thickness=2,
+            keypoints_radius=2,
         )
         return _numpy_to_png_bytes(_resize_numpy_image(rendered, max_side))
 
@@ -216,6 +230,7 @@ def render_visualization_bytes(
         include_additional_bboxes_data=True,
         include_labels=True,
         include_keypoints=True,
+        include_keypoint_scores=True,
         include_mask=True,
         keypoints_radius=2,
         mask_alpha=0.5,

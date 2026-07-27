@@ -89,15 +89,6 @@ class PipelineRunLogRow(Base):
     __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_run_log_seq"),)
 
 
-class PipelineScheduleRow(Base):
-    __tablename__ = "datapipe_api__schedules"
-
-    pipeline_id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    cron_expression: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-
-
 class ObservabilityStore:
     def __init__(
         self,
@@ -106,13 +97,15 @@ class ObservabilityStore:
         schema: Optional[str] = None,
         tables: Optional[ObservabilityTableConfig] = None,
         run_log_store: Optional[RunLogStore] = None,
-        use_external_run_logs: bool = False,
+        run_logs_configured: bool = False,
     ):
         self.engine = engine
         self.schema = schema
         self.tables = tables or ObservabilityTableConfig()
         self._Session = sessionmaker(bind=engine, expire_on_commit=False)
-        self.use_external_run_logs = use_external_run_logs
+        self.run_logs_configured = run_logs_configured
+        # Backwards-compatible alias: external/dedicated backend is configured.
+        self.use_external_run_logs = run_logs_configured
         self._run_log_store = run_log_store
         apply_observability_table_config(self.tables, self.schema)
 
@@ -128,13 +121,13 @@ class ObservabilityStore:
             ensure_db_schema(dbconn)
         observability_tables = tables or ObservabilityTableConfig()
         store = cls(dbconn.con, schema=dbconn.schema, tables=observability_tables)
-        run_log_store, use_external = resolve_run_log_store(
+        run_log_store, configured = resolve_run_log_store(
             observability_store=store,
             run_logs_backend=run_logs_backend,
-            table_name=observability_tables.pipeline_run_logs,
         )
         store._run_log_store = run_log_store
-        store.use_external_run_logs = use_external
+        store.run_logs_configured = configured
+        store.use_external_run_logs = configured
         store.create_all()
         return store
 
@@ -154,16 +147,14 @@ class ObservabilityStore:
         )
 
     def create_all(self) -> None:
-        if self.use_external_run_logs:
-            for model in (
-                PipelineRegistryRow,
-                PipelineRunRow,
-                PipelineRunStepRow,
-                PipelineScheduleRow,
-            ):
-                cast(Any, model.__table__).create(self.engine, checkfirst=True)
-        else:
-            Base.metadata.create_all(self.engine)
+        # Create all ObservabilityBase tables (core + plugin extensions such as
+        # metrics_candidates). Run-log SQL tables are owned by RunLogsBackend and
+        # must not be auto-created here.
+        skip = {cast(Any, PipelineRunLogRow.__table__)}
+        for table in Base.metadata.sorted_tables:
+            if table in skip:
+                continue
+            table.create(self.engine, checkfirst=True)
 
     def session(self) -> Session:
         return self._Session()
@@ -383,9 +374,9 @@ class ObservabilityStore:
 
     def _require_run_log_store(self) -> RunLogStore:
         if self._run_log_store is None:
-            from datapipe_app.observability.run_logs import SqlAlchemyRunLogStore
+            from datapipe_app.observability.run_logs import NullRunLogStore
 
-            self._run_log_store = SqlAlchemyRunLogStore(self)
+            self._run_log_store = NullRunLogStore()
         return self._run_log_store
 
     def get_last_run(self, pipeline_id: str) -> Optional[PipelineRunRow]:
@@ -538,7 +529,3 @@ class ObservabilityStore:
 
             runs.sort(key=lambda row: row.started_at, reverse=True)
             return runs[:limit]
-
-    def get_schedule(self, pipeline_id: str) -> Optional[PipelineScheduleRow]:
-        with self.session() as session:
-            return session.get(PipelineScheduleRow, pipeline_id)

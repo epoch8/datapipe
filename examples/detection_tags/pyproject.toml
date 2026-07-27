@@ -3,6 +3,7 @@ name = "datapipe-detection-tags-example"
 version = "0"
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "datapipe-core[alembic]",
     "datapipe-app[clickhouse,ml]",
     "datapipe-ui-ml",
     "datapipe-ml[torch,fiftyone]",   # FiftyOneImagesDataTableStore + cv_pipeliner.fiftyone (+ fiftyone lib for stage=fiftyone)

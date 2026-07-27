@@ -141,15 +141,16 @@ def predict_bbox_like_by_crops(
                 kwargs["keypoints"] = np.array(
                     [[x * scale_x + block_left, y * scale_y + block_top] for (x, y) in bbox_data.keypoints]
                 ).reshape(-1, 2)
-                keypoint_scores: Optional[Any] = None
-                if isinstance(bbox_data.additional_info, dict):
-                    keypoint_scores = bbox_data.additional_info.get("prediction__keypoint_scores")
-                    if keypoint_scores is None:
-                        keypoint_scores = bbox_data.additional_info.get("prediction__keypoints_scores")
-                if isinstance(keypoint_scores, np.ndarray):
-                    keypoint_scores = keypoint_scores.tolist()
-                if keypoint_scores is not None:
-                    kwargs["additional_info"] = {"prediction__keypoints_scores": keypoint_scores}
+                if bbox_data.keypoints_scores is not None:
+                    keypoint_scores = bbox_data.keypoints_scores
+                    if isinstance(keypoint_scores, np.ndarray):
+                        keypoint_scores = keypoint_scores.tolist()
+                    kwargs["keypoints_scores"] = keypoint_scores
+                if bbox_data.keypoints_visibility is not None:
+                    visibility = bbox_data.keypoints_visibility
+                    if isinstance(visibility, np.ndarray):
+                        visibility = visibility.tolist()
+                    kwargs["keypoints_visibility"] = visibility
             bboxes_data.append(
                 BboxData(
                     image_path=bbox_data.image_path,

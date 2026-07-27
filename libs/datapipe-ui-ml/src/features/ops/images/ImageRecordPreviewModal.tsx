@@ -127,14 +127,29 @@ export function ImageRecordPreviewModal({
                             <ImagePanel
                                 tone="gt"
                                 title="Ground truth"
-                                imageUrl={gtOn ? detail.gt_visualization_url : detail.plain_gt_image_url}
+                                imageUrl={
+                                    detail.gt_label != null
+                                        ? detail.plain_gt_image_url ?? (gtOn ? detail.gt_visualization_url : detail.plain_gt_image_url)
+                                        : gtOn
+                                          ? detail.gt_visualization_url
+                                          : detail.plain_gt_image_url
+                                }
+                                label={detail.gt_label}
                             />
                         )}
                         {(viewMode === "both" || viewMode === "prediction") && (
                             <ImagePanel
                                 tone="prediction"
                                 title="Prediction"
-                                imageUrl={predictionOn ? detail.prediction_visualization_url : detail.plain_prediction_image_url}
+                                imageUrl={
+                                    detail.prediction_label != null || detail.label != null
+                                        ? detail.plain_prediction_image_url ??
+                                          (predictionOn ? detail.prediction_visualization_url : detail.plain_prediction_image_url)
+                                        : predictionOn
+                                          ? detail.prediction_visualization_url
+                                          : detail.plain_prediction_image_url
+                                }
+                                label={detail.prediction_label ?? detail.label}
                             />
                         )}
                     </div>
@@ -150,6 +165,7 @@ export function ImageRecordPreviewModal({
                         title="Image"
                         tone="neutral"
                         imageUrl={annotationsOn ? detail.visualization_url : detail.plain_image_url}
+                        label={detail.label ?? detail.gt_label}
                     />
                 </div>
             )}

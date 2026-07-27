@@ -50,26 +50,62 @@ def _label_status(
 
 
 def _find_containments(label_step_ids: dict[str, set[str]]) -> list[dict[str, Any]]:
-    containments: list[dict[str, Any]] = []
-    children_by_parent: dict[str, list[str]] = defaultdict(list)
+    """Return direct (non-transitive) containments among stage labels.
 
+    Label B is contained in A when B's steps are a strict subset of A's. A label
+    only becomes a container when it has at least two such children (avoids
+    useless single-child frames). Transitive edges are dropped so nesting is
+    hierarchical — e.g. ``train`` → ``train-without-freeze`` → ``inference``,
+    not ``train`` → ``inference`` as a sibling of ``train-without-freeze``.
+    """
+    raw_edges: set[tuple[str, str]] = set()
     labels = list(label_step_ids.keys())
     for parent in labels:
         parent_steps = label_step_ids[parent]
-        for child in labels:
-            if parent == child:
-                continue
-            child_steps = label_step_ids[child]
-            if child_steps < parent_steps:
-                children_by_parent[parent].append(child)
+        children = [
+            child
+            for child in labels
+            if child != parent and label_step_ids[child] < parent_steps
+        ]
+        if len(children) < 2:
+            continue
+        for child in children:
+            raw_edges.add((parent, child))
 
-    for parent, children in children_by_parent.items():
-        if len(children) >= 2:
-            for child in children:
-                containments.append(
-                    {"parent": parent, "child": child, "kind": "semantic"},
-                )
+    reduced = set(raw_edges)
+    for parent, child in raw_edges:
+        for mid_parent, mid in raw_edges:
+            if mid_parent == parent and (mid, child) in raw_edges:
+                reduced.discard((parent, child))
+
+    # Prefer the most specific parent if any child still has several.
+    parents_by_child: dict[str, list[str]] = defaultdict(list)
+    for parent, child in reduced:
+        parents_by_child[child].append(parent)
+
+    containments: list[dict[str, Any]] = []
+    for child, parents in parents_by_child.items():
+        best = min(parents, key=lambda p: (len(label_step_ids[p]), p))
+        containments.append({"parent": best, "child": child, "kind": "semantic"})
     return containments
+
+
+def _ancestor_descendant_pairs(containments: list[dict[str, Any]]) -> set[tuple[str, str]]:
+    """All (ancestor, descendant) pairs from the containment tree, including transitive."""
+    children_by_parent: dict[str, list[str]] = defaultdict(list)
+    for edge in containments:
+        children_by_parent[edge["parent"]].append(edge["child"])
+
+    pairs: set[tuple[str, str]] = set()
+
+    def walk(ancestor: str, node: str) -> None:
+        for child in children_by_parent.get(node, []):
+            pairs.add((ancestor, child))
+            walk(ancestor, child)
+
+    for parent in children_by_parent:
+        walk(parent, parent)
+    return pairs
 
 
 def _is_interleaved(segments_a: list[dict[str, Any]], segments_b: list[dict[str, Any]]) -> tuple[bool, int]:
@@ -142,16 +178,18 @@ def build_label_graph(
         for node in nodes:
             if node["id"] == c["child"]:
                 node["parent_id"] = c["parent"]
-                node["kind"] = "label"
+                # Nested containers keep kind=container; only leaves become labels.
+                if not node["children_ids"]:
+                    node["kind"] = "label"
 
     node_by_id = {n["id"]: n for n in nodes}
 
     shared_relations: list[dict[str, Any]] = []
-    containment_pairs = {(c["parent"], c["child"]) for c in containments}
+    nested_pairs = _ancestor_descendant_pairs(containments)
     label_ids = list(label_steps.keys())
     for i, a in enumerate(label_ids):
         for b in label_ids[i + 1 :]:
-            if (a, b) in containment_pairs or (b, a) in containment_pairs:
+            if (a, b) in nested_pairs or (b, a) in nested_pairs:
                 continue
             shared = label_step_ids[a] & label_step_ids[b]
             if not shared:
@@ -252,8 +290,6 @@ def build_label_graph(
         )
 
     for parent, children in parent_children.items():
-        if parent not in top_level_set:
-            continue
         sorted_children = sorted(children, key=lambda c: node_by_id[c]["order_min"])
         for i in range(len(sorted_children) - 1):
             src, tgt = sorted_children[i], sorted_children[i + 1]

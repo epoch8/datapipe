@@ -36,6 +36,8 @@ E2E_YOLO_WEIGHTS = {
 COCO_IMG_BASE = "http://images.cocodataset.org/train2017/"
 
 CAT_DOG_CATEGORY_IDS = {17, 18}  # cat, dog
+# COCO animal supercategory ids used for optional classification sample images.
+ANIMAL_CATEGORY_IDS = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25}  # bird…giraffe
 RNG_SEED = 1234
 
 
@@ -75,17 +77,30 @@ def load_coco_json(ann_zip: Path, path_in_zip: str) -> dict:
             return json.load(handle)
 
 
-def pick_image_ids(instances_data: dict, keypoints_data: dict, detection_limit: int, keypoints_limit: int) -> list[int]:
+def pick_image_ids(
+    instances_data: dict,
+    keypoints_data: dict,
+    detection_limit: int,
+    keypoints_limit: int,
+    classification_animal_limit: int,
+    classification_no_animal_limit: int,
+) -> list[int]:
     random.seed(RNG_SEED)
     id_to_img = {img["id"]: img for img in instances_data["images"]}
 
     cat_dog_by_image: dict[int, list] = {}
+    animal_by_image: dict[int, list] = {}
+    images_with_any_ann: set[int] = set()
     for ann in instances_data["annotations"]:
-        if ann.get("category_id") not in CAT_DOG_CATEGORY_IDS:
-            continue
+        image_id = ann["image_id"]
+        images_with_any_ann.add(image_id)
         if ann.get("iscrowd", 0) == 1 or not ann.get("bbox"):
             continue
-        cat_dog_by_image.setdefault(ann["image_id"], []).append(ann)
+        category_id = ann.get("category_id")
+        if category_id in CAT_DOG_CATEGORY_IDS:
+            cat_dog_by_image.setdefault(image_id, []).append(ann)
+        if category_id in ANIMAL_CATEGORY_IDS:
+            animal_by_image.setdefault(image_id, []).append(ann)
 
     person_by_image: dict[int, list] = {}
     for ann in keypoints_data["annotations"]:
@@ -97,12 +112,33 @@ def pick_image_ids(instances_data: dict, keypoints_data: dict, detection_limit: 
 
     cat_dog_ids = [iid for iid, anns in cat_dog_by_image.items() if anns]
     person_ids = [iid for iid, anns in person_by_image.items() if anns]
+    animal_ids = [iid for iid, anns in animal_by_image.items() if anns]
+    no_animal_ids = [
+        iid
+        for iid in id_to_img
+        if iid in images_with_any_ann and iid not in animal_by_image
+    ]
     if len(cat_dog_ids) < detection_limit:
         raise RuntimeError(f"Need at least {detection_limit} cat/dog images in COCO, found {len(cat_dog_ids)}")
     if len(person_ids) < keypoints_limit:
         raise RuntimeError(f"Need at least {keypoints_limit} person keypoint images in COCO, found {len(person_ids)}")
+    if len(animal_ids) < classification_animal_limit:
+        raise RuntimeError(
+            f"Need at least {classification_animal_limit} animal images in COCO, found {len(animal_ids)}"
+        )
+    if len(no_animal_ids) < classification_no_animal_limit:
+        raise RuntimeError(
+            f"Need at least {classification_no_animal_limit} no-animal images in COCO, found {len(no_animal_ids)}"
+        )
 
-    selected = list(dict.fromkeys(random.sample(cat_dog_ids, detection_limit) + random.sample(person_ids, keypoints_limit)))
+    selected = list(
+        dict.fromkeys(
+            random.sample(cat_dog_ids, detection_limit)
+            + random.sample(person_ids, keypoints_limit)
+            + random.sample(animal_ids, classification_animal_limit)
+            + random.sample(no_animal_ids, classification_no_animal_limit)
+        )
+    )
     missing = [iid for iid in selected if iid not in id_to_img]
     if missing:
         raise RuntimeError(f"Missing COCO image metadata for ids: {missing[:3]}")
@@ -180,6 +216,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download sample COCO images and upload them to local MinIO.")
     parser.add_argument("--detection-limit", type=int, default=120, help="Number of cat/dog images")
     parser.add_argument("--keypoints-limit", type=int, default=10, help="Number of person keypoint images")
+    parser.add_argument(
+        "--classification-animal-limit",
+        type=int,
+        default=0,
+        help="Number of Has Animal images for classification (0 skips)",
+    )
+    parser.add_argument(
+        "--classification-no-animal-limit",
+        type=int,
+        default=0,
+        help="Number of No Animals images for classification (0 skips)",
+    )
     parser.add_argument("--skip-download", action="store_true", help="Only upload files already in sample_data/")
     parser.add_argument("--skip-upload", action="store_true", help="Only download images locally")
     parser.add_argument("--skip-models", action="store_true", help="Do not download YOLO smoke weights")
@@ -206,6 +254,8 @@ def main() -> int:
             keypoints_data,
             detection_limit=args.detection_limit,
             keypoints_limit=args.keypoints_limit,
+            classification_animal_limit=args.classification_animal_limit,
+            classification_no_animal_limit=args.classification_no_animal_limit,
         )
         local_paths = download_images(image_ids, instances_data)
         print(f"Saved {len(local_paths)} images to {SAMPLE_DIR}")

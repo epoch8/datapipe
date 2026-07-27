@@ -4,17 +4,29 @@ export class ApiError extends Error {
     readonly kind: ApiErrorKind;
     readonly status?: number;
     readonly url?: string;
+    /** Machine-readable error code from the API envelope `{error:{code}}`. */
+    readonly code: string | null;
+    /** Structured error details from the API envelope `{error:{details}}`. */
+    readonly details: unknown;
 
     constructor(
         kind: ApiErrorKind,
         message: string,
-        options?: { status?: number; url?: string; cause?: unknown },
+        options?: {
+            status?: number;
+            url?: string;
+            cause?: unknown;
+            code?: string | null;
+            details?: unknown;
+        },
     ) {
         super(message);
         this.name = "ApiError";
         this.kind = kind;
         this.status = options?.status;
         this.url = options?.url;
+        this.code = options?.code ?? null;
+        this.details = options?.details;
     }
 
     toString(): string {

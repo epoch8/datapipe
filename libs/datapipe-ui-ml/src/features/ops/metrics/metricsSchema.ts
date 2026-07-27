@@ -1,5 +1,5 @@
 import type { MetricColumnGroup, MetricDefinition, MetricsModelRow, MetricsTableSchema } from "../../../types/opsMl";
-import { readMetricNumber } from "../shared";
+import { normalizeMetricKey, readMetricNumber } from "../shared";
 
 const COUNT_KEYS = new Set([
     "images_support",
@@ -142,14 +142,20 @@ function detectionGroups(): MetricColumnGroup[] {
 }
 
 export function inferTaskTypeFromMetrics(keys: string[]): string | undefined {
-    const set = new Set(keys);
-    if (set.has("mAP50") || set.has("mAP50_95")) return "detection";
+    const set = new Set(keys.map((k) => (k.startsWith("calc__") ? k.slice(6) : k)));
+    // Ops column ids may shorten ``weighted_f1_score`` → ``weighted_f1``.
+    const has = (...names: string[]) => names.some((n) => set.has(n));
+    if (has("mAP50", "mAP50_95")) return "detection";
     if (Array.from(set).some((k) => k.startsWith("pose_"))) return "keypoints";
     if (
-        set.has("weighted_f1_score")
-        || set.has("macro_f1_score")
-        || set.has("weighted_precision")
-        || set.has("accuracy")
+        has(
+            "weighted_f1_score",
+            "weighted_f1",
+            "macro_f1_score",
+            "macro_f1",
+            "weighted_precision",
+            "accuracy",
+        )
     ) {
         return "classification";
     }
@@ -168,14 +174,18 @@ function filterSchemaToAvailable(
     available: string[],
     opts?: { includeCounts?: boolean },
 ): MetricsTableSchema {
-    const present = new Set(available.filter((k) => opts?.includeCounts || !COUNT_KEYS.has(k)));
+    const present = new Set(
+        available
+            .map((k) => normalizeMetricKey(k))
+            .filter((k) => opts?.includeCounts || !COUNT_KEYS.has(k)),
+    );
     const seen = new Set<string>();
     const groups: MetricColumnGroup[] = [];
 
     for (const group of schema.groups) {
         const metrics = group.metrics.filter((m) => {
             if (seen.has(m.key)) return false;
-            if (!present.has(m.key)) return false;
+            if (!present.has(m.key) && !present.has(normalizeMetricKey(m.key))) return false;
             seen.add(m.key);
             return true;
         });

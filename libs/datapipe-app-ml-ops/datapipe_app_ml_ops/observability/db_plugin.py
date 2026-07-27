@@ -18,8 +18,8 @@ def extend_observability_db(
     tables: ObservabilityTableConfig | None = None,
     schema: str | None = None,
     dbconn: Any = None,
-    include_run_logs: bool = True,
     metadata: MetaData | None = None,
+    **_kwargs: Any,
 ) -> None:
     ml_tables = MLObservabilityTableConfig()
     if phase == "apply_config":

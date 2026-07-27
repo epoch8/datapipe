@@ -264,7 +264,9 @@ function PipelineGraphView({
             if (!saved || sessionRestoredRef.current || cyInstance.destroyed()) return;
             sessionRestoredRef.current = true;
 
-            if (saved.userInteracted) {
+            // Skip stale camera when expanded metas were open — remount must fit
+            // the rebuilt layout instead of an old pan from a different viewport.
+            if (saved.userInteracted && saved.expandedGroups.length === 0) {
                 cyInstance.zoom(saved.zoom);
                 cyInstance.pan(saved.pan);
             }
@@ -356,7 +358,7 @@ function PipelineGraphView({
         const nodeType = node.data("type") as string;
         const name = node.data("name") as string;
         const base = `/pipelines/${encodeURIComponent(pid)}`;
-        if (nodeType === "group") {
+        if (nodeType === "group" || nodeType === "group-expanded") {
             navigate(`${base}/meta-steps/${encodeURIComponent(name)}`);
         } else if (nodeType === "table") {
             navigate(`${base}/tables/${encodeURIComponent(name)}`);
@@ -367,6 +369,7 @@ function PipelineGraphView({
 
     const openNodeDetailsRef = useRef(openNodeDetails);
     const toggleGroupExpandRef = useRef(toggleGroupExpand);
+    const contextTargetRef = useRef<Cytoscape.NodeSingular | null>(null);
     openNodeDetailsRef.current = openNodeDetails;
     toggleGroupExpandRef.current = toggleGroupExpand;
 
@@ -381,8 +384,12 @@ function PipelineGraphView({
         savedSessionRef.current = saved;
         sessionRestoredRef.current = false;
         stageInitKeyRef.current = null;
-        needFitRef.current = saved ? !saved.userInteracted : true;
-        userInteractedRef.current = saved?.userInteracted ?? false;
+        // Expanded metas must be re-laid out from scratch on remount; restoring a
+        // stale pan/zoom (often from a narrower inspector viewport) hides the graph
+        // and can leave the blue frame visually detached after Fit.
+        const hasExpanded = Boolean(saved?.expandedGroups?.length);
+        needFitRef.current = saved ? hasExpanded || !saved.userInteracted : true;
+        userInteractedRef.current = saved && !hasExpanded ? saved.userInteracted : false;
         if (saved) {
             setExpandedGroups(new Set(saved.expandedGroups));
         } else {
@@ -400,8 +407,15 @@ function PipelineGraphView({
         if (stageInitKeyRef.current === initKey) return;
         stageInitKeyRef.current = initKey;
 
-        if (savedSessionRef.current && !sessionRestoredRef.current) {
-            needFitRef.current = !savedSessionRef.current.userInteracted;
+        if (savedSessionRef.current) {
+            // Never clear expandedGroups while a session is being restored — a
+            // sync that finishes first used to flip sessionRestored and then this
+            // effect wiped the expand set, leaving a broken layout.
+            const saved = savedSessionRef.current;
+            if (!sessionRestoredRef.current) {
+                const hasExpanded = saved.expandedGroups.length > 0;
+                needFitRef.current = hasExpanded || !saved.userInteracted;
+            }
             return;
         }
 
@@ -538,6 +552,9 @@ function PipelineGraphView({
             onUserInteracted: () => {
                 userInteractedRef.current = true;
             },
+            onContextTarget: (node) => {
+                contextTargetRef.current = node;
+            },
         });
     }, [cy]);
 
@@ -551,17 +568,19 @@ function PipelineGraphView({
                     id: "open-details",
                     content: "Open details page…",
                     selector: "node",
-                    onClickFunction: (event: { target?: Cytoscape.NodeSingular; cyTarget?: Cytoscape.NodeSingular }) => {
-                        const node = event.target || event.cyTarget;
-                        if (node) openNodeDetailsRef.current(node);
+                    onClickFunction: () => {
+                        const node = contextTargetRef.current;
+                        if (node && typeof node.data === "function") {
+                            openNodeDetailsRef.current(node);
+                        }
                     },
                 },
                 {
                     id: "expand-steps",
                     content: "Expand into sub-steps",
                     selector: 'node[type = "group"]',
-                    onClickFunction: (event: { target?: Cytoscape.NodeSingular; cyTarget?: Cytoscape.NodeSingular }) => {
-                        const node = event.target || event.cyTarget;
+                    onClickFunction: () => {
+                        const node = contextTargetRef.current;
                         if (node?.data("type") === "group") {
                             toggleGroupExpandRef.current(node.data("name") as string);
                         }
@@ -570,14 +589,13 @@ function PipelineGraphView({
                 {
                     id: "collapse-steps",
                     content: "Collapse into single step",
-                    selector: 'node[type = "group-expanded"], node[?metaGroup]',
-                    onClickFunction: (event: { target?: Cytoscape.NodeSingular; cyTarget?: Cytoscape.NodeSingular }) => {
-                        const node = event.target || event.cyTarget;
-                        const groupName =
-                            (node?.data("type") === "group-expanded"
-                                ? (node?.data("name") as string)
-                                : (node?.data("metaGroup") as string)) || undefined;
-                        if (groupName) toggleGroupExpandRef.current(groupName);
+                    // Only the expanded blue frame — not child steps/tables (they have metaGroup).
+                    selector: 'node[type = "group-expanded"]',
+                    onClickFunction: () => {
+                        const node = contextTargetRef.current;
+                        if (node?.data("type") === "group-expanded") {
+                            toggleGroupExpandRef.current(node.data("name") as string);
+                        }
                     },
                 },
             ],

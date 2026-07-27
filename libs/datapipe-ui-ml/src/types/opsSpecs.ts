@@ -149,6 +149,8 @@ export type OpsFrozenDatasetSpecPayload = {
     record_view?: OpsImageRecordViewSpecPayload | OpsTextRecordViewSpecPayload | null;
     columns?: OpsColumn[];
     default_sort?: [string, "asc" | "desc"][];
+    /** Pipeline labels for Freeze new dataset; empty means the action is disabled. */
+    run_labels?: [string, string][];
 };
 
 export type OpsModelSpecPayload = {
@@ -162,11 +164,40 @@ export type OpsModelSpecPayload = {
     prediction_view?: OpsImagePredictionViewSpecPayload | null;
 };
 
+export type OpsTrainConfigRegistrySpecPayload = {
+    /** API-owned custom experiments table (writes go here). */
+    table: string;
+    /** Optional pipeline-owned default/builtin presets table (read-only). */
+    default_table?: string | null;
+    id_column: string;
+    params_column: string;
+    config_type: string;
+    [key: string]: unknown;
+};
+
+export type OpsTrainingRequestSpecPayload = {
+    table: string;
+    id_column: string;
+    train_config_id_column: string;
+    frozen_dataset_id_column: string;
+    /** Pipeline labels used for immediate launch; empty means launch is disabled. */
+    run_labels?: [string, string][];
+    /**
+     * Freshness window (e.g. ``"1w"``). Datasets older than this relative to the
+     * latest snapshot are hidden unless the user bypasses with ``force``.
+     */
+    max_within_time?: string | null;
+    [key: string]: unknown;
+};
+
 export type OpsTrainingSpecPayload = {
     status_table: string;
     artifact_columns?: Record<string, string>;
     columns?: OpsColumn[];
     default_sort?: [string, "asc" | "desc"][];
+    /** Present when custom training experiments are configured (spec §13). */
+    experiments?: OpsTrainConfigRegistrySpecPayload | null;
+    requests?: OpsTrainingRequestSpecPayload | null;
 };
 
 export type OpsRelationSpecPayload = {

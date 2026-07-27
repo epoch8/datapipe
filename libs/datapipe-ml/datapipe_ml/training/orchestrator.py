@@ -38,6 +38,9 @@ from .specs import Algo, TrainContext, TrainOutputs
 
 logger = logging.getLogger("datapipe.ml")
 
+# Train-experiment table layout (default / custom / request) lives in
+# ``datapipe_ml.training.experiment_tables`` — shared by YOLO, TF, etc.
+
 
 def _append_row(df: pd.DataFrame, row: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -186,20 +189,43 @@ def _abort_training_run(
         status_manager.mark_failed(error=format_exc(), manifest_path=manifest_path)
 
 
-def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
+def orchestrate(
+    idx: IndexDF,
+    ctx: TrainContext,
+    algo: Algo,
+    *,
+    df_train_config: Optional[pd.DataFrame] = None,
+    force_training: bool = False,
+) -> TrainOutputs:
     """
     Universal orchestrator that delegates model-specific logic to Algo.
+
+    ``df_train_config`` may be supplied to bypass reading ``ctx.dt__train_config``
+    (used by the request runner, which builds a compat config from the request
+    snapshot). ``force_training=True`` skips the ``max_within_time`` short-circuit
+    for manual training requests (spec §11.2).
     """
     _ensure_chunk_one(idx)
 
     # Fetch ids and configs
     df_fd = ctx.dt__frozen_dataset.get_data(idx)
-    df_tc = ctx.dt__train_config.get_data(idx)
+    if df_train_config is not None:
+        df_tc = df_train_config
+    elif ctx.dt__train_config is not None:
+        df_tc = ctx.dt__train_config.get_data(idx)
+    else:
+        raise ValueError("orchestrate requires df_train_config or ctx.dt__train_config")
     if len(df_fd) == 0 or len(df_tc) == 0:
         return TrainOutputs(
             ctx.dt__model.get_data(idx),
             ctx.dt__link.get_data(idx),
             pd.DataFrame(),
+        )
+    if len(df_fd) != 1:
+        raise ValueError(
+            "orchestrate expects exactly one frozen dataset row; "
+            f"got {len(df_fd)} (idx columns={list(idx.columns)!r}). "
+            "When training by request id, include frozen_dataset_id on idx."
         )
 
     train_config_id = df_tc.iloc[0][algo.train_config_id_col]
@@ -248,8 +274,8 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
             get_status_rows(ctx.dt__training_status, run_key),
         )
 
-    # Dataset age check
-    if _dataset_is_old(ctx, algo, idx):
+    # Dataset age check (skipped when a manual request forces training)
+    if not force_training and _dataset_is_old(ctx, algo, idx):
         logger.info(
             f"This dataset {df_fd.iloc[0][ctx.frozen_dataset_id__name]} is older than {ctx.max_within_time}. Skipping."
         )
@@ -259,9 +285,19 @@ def orchestrate(idx: IndexDF, ctx: TrainContext, algo: Algo) -> TrainOutputs:
             get_status_rows(ctx.dt__training_status, run_key),
         )
 
-    # Prepare data + build model_id + train + select best
+    # Prepare data + build model_id + train + select best.
+    # Filter resized images / YOLO labels by imgsz when present so a frozen
+    # dataset that was prepared at multiple sizes does not yield multiple
+    # labels directories for one training request.
     logger.info("Preparing data")
-    prep = algo.prepare_data(ctx=ctx, idx=idx)
+    data_idx = idx
+    imgsz = train_params.get("imgsz") if isinstance(train_params, dict) else None
+    if imgsz is not None:
+        data_idx = idx.copy()
+        size = int(imgsz)
+        data_idx["width"] = size
+        data_idx["height"] = size
+    prep = algo.prepare_data(ctx=ctx, idx=data_idx)
     logger.info("Building model_id")
     existing_status = get_status_row(ctx.dt__training_status, run_key)
     active_status = get_active_status_row(ctx.dt__training_status, run_key)

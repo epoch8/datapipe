@@ -60,7 +60,16 @@ This set of flags turns on different exporters for OpenTelemetry
 ### `create-all`
 
 `datapipe db create-all` is a handy shortcut for local development. It makes
-datapipe to create all known SQL tables in a configured database.
+datapipe create all known SQL tables in a configured database. When the optional
+``datapipe-core[alembic]`` extra is installed, it also syncs existing tables to
+the current metadata (ADD COLUMN / ALTER) via Alembic's autogenerate API —
+without writing migration files. Tables present in the DB but absent from
+pipeline metadata are not dropped. Without Alembic, only missing tables are
+created (``create_all``); a skip message is printed for the sync step.
+
+* `--force-recreate` — drop all known SQL tables first, then create them again.
+  **Destructive:** existing data in those tables is deleted. Use when you want
+  a clean local schema instead of in-place alters.
 
 ## `lint`
 

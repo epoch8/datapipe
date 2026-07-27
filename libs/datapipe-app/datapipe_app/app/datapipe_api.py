@@ -26,7 +26,7 @@ from datapipe_app.observability.connections.dbconn import dbconn_same_target
 from datapipe_app.observability.logging.log_buffer import get_log_buffer
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry, load_observability_plugins
-from datapipe_app.observability.run_logs import RunLogsBackend, warn_if_run_logs_share_pipeline_db
+from datapipe_app.observability.run_logs import RunLogsBackend, warn_if_run_logs_backend_missing
 from datapipe_app.observability.config.settings import OpsSettings, configure_active_ops, resolve_ops_settings
 from datapipe_app.observability.config.tables import (
     ObservabilityTableConfig,
@@ -141,14 +141,9 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
             register_observability_tables_in_metadata(
                 self.ds.meta_dbconn,
                 tables=observability_tables,
-                include_run_logs=self.run_logs_backend is None,
             )
 
-        warn_if_run_logs_share_pipeline_db(
-            pipeline_dbconn=self.ds.meta_dbconn,
-            observability_dbconn=self.observability_dbconn,
-            run_logs_backend=self.run_logs_backend,
-        )
+        warn_if_run_logs_backend_missing(self.run_logs_backend)
 
         FastAPI.__init__(self, lifespan=_make_lifespan(self))
 

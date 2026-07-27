@@ -26,18 +26,14 @@ def apply_observability_table_config(
 ) -> None:
     from datapipe_app.observability.store.db import (
         PipelineRegistryRow,
-        PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     )
 
     mapping: dict[type[ObservabilityBase], str] = {
         PipelineRegistryRow: tables.pipeline_registry,
         PipelineRunRow: tables.pipeline_runs,
         PipelineRunStepRow: tables.pipeline_run_steps,
-        PipelineRunLogRow: tables.pipeline_run_logs,
-        PipelineScheduleRow: tables.pipeline_schedules,
     }
     for model_cls, table_name in mapping.items():
         table = cast(Table, model_cls.__table__)
@@ -51,7 +47,6 @@ def register_observability_tables_in_metadata(
     dbconn: DBConn,
     *,
     tables: ObservabilityTableConfig | None = None,
-    include_run_logs: bool = True,
 ) -> None:
     """Attach datapipe-app observability tables to the pipeline ``sqla_metadata``."""
     tables = tables or ObservabilityTableConfig()
@@ -59,10 +54,8 @@ def register_observability_tables_in_metadata(
 
     from datapipe_app.observability.store.db import (
         PipelineRegistryRow,
-        PipelineRunLogRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     )
 
     target = dbconn.sqla_metadata
@@ -70,10 +63,7 @@ def register_observability_tables_in_metadata(
         PipelineRegistryRow,
         PipelineRunRow,
         PipelineRunStepRow,
-        PipelineScheduleRow,
     ]
-    if include_run_logs:
-        model_classes.insert(3, PipelineRunLogRow)
     for model_cls in model_classes:
         src = cast(Table, model_cls.__table__)
         if not _metadata_has_table(target, src.name, dbconn.schema):
@@ -86,7 +76,6 @@ def register_observability_tables_in_metadata(
         phase="register_metadata",
         dbconn=dbconn,
         tables=tables,
-        include_run_logs=include_run_logs,
         metadata=target,
     )
 
@@ -109,10 +98,6 @@ def create_observability_tables_hook(app: DatapipeApp, dbconn: DBConn) -> None:
     from datapipe_app.app.datapipe_api import DatapipeAPI
 
     tables = app.observability_table_config if isinstance(app, DatapipeAPI) and app.observability_table_config else ObservabilityTableConfig()
-
-    include_run_logs = True
-    if isinstance(app, DatapipeAPI):
-        include_run_logs = app.run_logs_backend is None
 
     if not _observability_tables_registered(dbconn, tables):
         if app.catalog is not None and app.catalog.catalog:
@@ -139,5 +124,4 @@ def create_observability_tables_hook(app: DatapipeApp, dbconn: DBConn) -> None:
         register_observability_tables_in_metadata(
             dbconn,
             tables=tables,
-            include_run_logs=include_run_logs,
         )

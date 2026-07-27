@@ -21,6 +21,15 @@
 * Schema is created automatically on `TableStoreDB` / `SQLTableMeta` /
   `SQLTransformMeta` when `create_table=True`, and from
   `datapipe db create-all`
+* `datapipe db create-all --force-recreate` drops all known SQL tables before
+  recreating them (destructive; for local development when schema drifted)
+* `datapipe db create-all` also syncs existing tables to current metadata
+  (ADD COLUMN / ALTER) via Alembic `produce_migrations` + `Operations.invoke`,
+  without writing migration revision files, when the optional
+  `datapipe-core[alembic]` extra is installed; otherwise sync is skipped
+* `datapipe db create-all` refuses to mutate the database when Alembic has
+  stamped a revision (`alembic_version.version_num` is set) — use
+  `alembic upgrade` instead of create-all / `--force-recreate` / metadata sync
 
 ## Executor / step progress
 
@@ -33,6 +42,24 @@
 
 * Disable Ray UV runtime env by default (`RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`)
   before importing Ray, avoiding misconfigured `uv run` worker startups
+
+# WIP 0.15.1
+
+## Changes
+
+* Added `fail_fast` flag to `RunConfig` (defaults from new `DATAPIPE_FAIL_FAST`
+  setting); when set, `BatchTransformStep` re-raises processing errors instead
+  of recording them as batch errors and continuing
+* Chunked bulk `INSERT ... VALUES` statements in `TableStoreDB.update_rows`
+  and `SQLTableMeta`'s insert/update paths so they stay under Postgres's
+  65535 bind-parameter limit; needed once the driver binds parameters
+  server-side (see following change)
+* Upgraded Postgres driver from `psycopg2-binary` to `psycopg` (v3) and raised
+  the SQLAlchemy dependency floor from `1.4.0` to `2.0.0`
+* Fixed `migrations/v013.py` to use `Engine.begin()` instead of the removed
+  SQLAlchemy 1.x implicit `Engine.execute()`
+* Dropped the SQLAlchemy 1.x fallback for `DeclarativeBase` in `types.py` now
+  that SQLAlchemy 2.0 is the minimum supported version
 
 # 0.15.0
 

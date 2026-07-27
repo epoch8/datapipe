@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
-    Iterable,
+    Generator,
     Literal,
     Protocol,
     Sequence,
@@ -35,10 +35,8 @@ from datapipe.types import (
     DataDF,
     IndexDF,
     Labels,
-    OutputSpec,
     PipelineInput,
     PipelineOutput,
-    TableOrName,
     TransformResult,
 )
 
@@ -172,7 +170,7 @@ class BaseBatchTransformStep(ComputeStep):
         ds: DataStore,
         chunk_size: int | None = None,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         """
         Метод для получения перечня индексов для обработки.
 
@@ -186,12 +184,13 @@ class BaseBatchTransformStep(ComputeStep):
 
         return self.meta.get_full_process_ids(ds=ds, chunk_size=chunk_size, run_config=run_config)
 
+    # TODO remove, run meta methods directly
     def get_change_list_process_ids(
         self,
         ds: DataStore,
         change_list: ChangeList,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         run_config = self._apply_filters_to_run_config(run_config)
         return self.meta.get_change_list_process_ids(
             ds=ds,
@@ -345,9 +344,12 @@ class BaseBatchTransformStep(ComputeStep):
                 return self.store_batch_result(ds, idx, output_dfs, process_ts, run_config)
 
             except Exception as e:
-                self.store_batch_err(ds, idx, e, process_ts, run_config)
+                if run_config is not None and run_config.fail_fast:
+                    raise e
+                else:
+                    self.store_batch_err(ds, idx, e, process_ts, run_config)
 
-                return ChangeList()
+                    return ChangeList()
 
     def run_full(
         self,

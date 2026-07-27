@@ -14,6 +14,8 @@ import { FrozenDatasetRecordDetailPage } from "./features/ops/frozen-datasets/Fr
 import { ModelPredictionRecordDetailPage } from "./features/ops/models/ModelPredictionRecordDetailPage";
 import { ClassMetricsPage } from "./features/ops/metrics/ClassMetricsPage";
 import { TrainingRunsPage } from "./features/ops/training/TrainingRunsPage";
+import { TrainingSpecPage } from "./features/ops/training/TrainingSpecPage";
+import { TrainingExperimentDetailPage } from "./features/ops/training/TrainingExperimentDetailPage";
 import { OpsEntityDetailPage, OpsOverviewSpecPage, OpsSpecificSpecPage } from "./features/ops/specs/OpsSpecPages";
 
 export function mlOpsRouteElements(): React.ReactNode {
@@ -31,7 +33,11 @@ export function mlOpsRouteElements(): React.ReactNode {
             <Route path="/frozen-datasets/:specId" element={<OpsSpecificSpecPage kind="frozen-datasets" />} />
             <Route path="/training" element={<OpsOverviewSpecPage kind="training" />} />
             <Route path="/training/:specId/runs/:entityId" element={<OpsEntityDetailPage kind="training-run" />} />
-            <Route path="/training/:specId" element={<OpsSpecificSpecPage kind="training" />} />
+            <Route
+                path="/training/:specId/experiments/:experimentId"
+                element={<TrainingExperimentDetailPage />}
+            />
+            <Route path="/training/:specId" element={<TrainingSpecPage />} />
             <Route path="/metrics" element={<OpsOverviewSpecPage kind="metrics" />} />
             <Route
                 path="/metrics/:specId/models/:entityId/predictions/:recordKey"

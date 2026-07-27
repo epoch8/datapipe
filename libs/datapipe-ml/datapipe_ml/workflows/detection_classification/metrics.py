@@ -22,7 +22,7 @@ from datapipe.step.batch_transform import BatchTransform, DatatableBatchTransfor
 from datapipe.store.database import TableStoreDB
 from datapipe.types import IndexDF, Labels, PipelineInput, PipelineOutput, Required, required_pipeline_input
 from natsort import natsorted
-from sqlalchemy import JSON, Column, Float, and_, func, select, tuple_
+from sqlalchemy import JSON, Column, Float, and_, func, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, pipeline_output_as_input, get_datatable, get_pipeline_table_name
@@ -36,6 +36,7 @@ from datapipe_ml.metrics.common import (
     METRICS_NULL_LABEL,
     OVERALL_BASE_METRIC_COLUMNS,
     float_columns,
+    idx_in_table_clause,
     macro_weighted_metric_selects,
     metrics_label_to_storage,
     precision_recall_f1,
@@ -253,7 +254,7 @@ def count_pipeline_metrics_on_subset(
             *img_pk_cols,
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
     )
     img_rows_distinct = base_img_rows.distinct().cte("img_rows_distinct")
 
@@ -289,7 +290,7 @@ def count_pipeline_metrics_on_subset(
             func.sum(col_FN_ex).label("sum_FN_ex"),
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
         .where(col_label != METRICS_NULL_LABEL)
         .group_by(*grp_keys_tbl, col_label)
         .cte("class_agg")

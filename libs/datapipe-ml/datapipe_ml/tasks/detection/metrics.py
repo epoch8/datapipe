@@ -20,7 +20,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
 from sqlalchemy import Column, Float
 from sqlalchemy import cast as sql_cast
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import (
@@ -30,7 +30,7 @@ from datapipe_ml.core.datapipe import (
     pipeline_output_as_input,
 )
 from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-from datapipe_ml.metrics.common import stable_unique
+from datapipe_ml.metrics.common import idx_in_table_clause, stable_unique
 from datapipe_ml.metrics.inputs import (
     build_ground_truth_batch_inputs,
     get_ground_truth_datatables,
@@ -199,7 +199,7 @@ def count_detection_metrics_on_subset(
             f1.label("calc__f1_score"),
         )
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
         .group_by(*group_cols)
     )
 

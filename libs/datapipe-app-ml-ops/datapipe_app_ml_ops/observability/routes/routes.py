@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from datapipe.compute import Catalog
 from datapipe.datatable import DataStore
@@ -25,6 +25,12 @@ from datapipe_app_ml_ops.observability.schemas.models import (
 from datapipe_app_ml_ops.observability.training.training_service import TrainingService
 from datapipe_app_ml_ops.ops.ops_specs_service import OpsSpecsService
 from datapipe_app_ml_ops.ops.spec_registry import OpsSpecRegistry
+from datapipe_app_ml_ops.ops.frozen_datasets_launch_routes import (
+    register_frozen_datasets_launch_routes,
+)
+from datapipe_app_ml_ops.ops.training_experiments_routes import (
+    register_training_experiments_routes,
+)
 
 
 def register_ml_observability_routes(
@@ -35,10 +41,24 @@ def register_ml_observability_routes(
     ds: DataStore,
     catalog: Catalog,
     ops_spec_registry: OpsSpecRegistry,
+    run_steps: Optional[Callable[..., Any]] = None,
 ) -> None:
     register_ops_spec_routes(
         app,
         OpsSpecsService(ops_spec_registry, ds=ds, catalog=catalog),
+    )
+
+    register_training_experiments_routes(
+        app,
+        registry=ops_spec_registry,
+        ds=ds,
+        catalog=catalog,
+        run_steps=run_steps,
+    )
+    register_frozen_datasets_launch_routes(
+        app,
+        registry=ops_spec_registry,
+        run_steps=run_steps,
     )
 
     def _metrics_svc() -> MetricsService:
