@@ -80,12 +80,14 @@ Both run in Docker; the example just points `DB_URL` / `CVAT_URL` at them (no co
 
 ## Get a video
 ```bash
-python scripts/fetch_video.py --height 720                       # built-in ~24h city-walk set
-python scripts/fetch_video.py --dir videos "https://youtu.be/ID" # your own (needs yt-dlp + deno)
-python scripts/fetch_video.py --section 00:10:00-00:20:00 "https://youtu.be/ID"  # just a clip
+python scripts/fetch_video.py                     # whole built-in test set (city walks + smoke clip)
+python scripts/fetch_video.py smoke_shibuya_3min  # only the smoke clip (stage-2 live demo)
+python scripts/fetch_video.py 27Pv4Cg4EV4 ...     # specific bucket keys
 ```
-Needs `yt-dlp` + a JS runtime (`deno`/`node`) for YouTube's n-challenge; sign-in-gated videos need
-`--cookies-from-browser chrome`. Internal-demo only (YouTube ToS) — don't redistribute.
+Pulls pre-encoded 720p `.webm` via `curl` (resumable) from the demo bucket (`$VIDEO_BUCKET_URL`,
+default the `e8-demo` bucket). Internal-demo only (source under YouTube ToS) — don't redistribute.
+For the two-stage demo: stage 1 fetches the city walks, stage 2 fetches only `smoke_shibuya_3min`.
+Own footage → just drop any video file into `INPUT_VIDEO_DIR`.
 
 ## Run
 ```bash

@@ -52,22 +52,20 @@ frames are processed.
 ## Get a video
 
 ```bash
-# built-in ~24h set of busy IN/JP/US city walks (720p), into $INPUT_VIDEO_DIR:
-python scripts/fetch_video.py --height 720
-# or your own:
-python scripts/fetch_video.py --dir videos "https://youtu.be/VIDEO_ID"
-# or just a clip (needs ffmpeg):
-python scripts/fetch_video.py --section 00:10:00-00:20:00 "https://youtu.be/VIDEO_ID"
+# whole built-in ~24h test set (busy IN/JP/US city walks + a 3-min smoke clip), into $INPUT_VIDEO_DIR:
+python scripts/fetch_video.py
+# just the smoke clip (for the live demo):
+python scripts/fetch_video.py smoke_shibuya_3min
+# specific videos (bucket keys):
+python scripts/fetch_video.py 27Pv4Cg4EV4 BsiHD4m6_BU
 ```
 
-`fetch_video.py` needs `yt-dlp` and, for many YouTube videos, a JS runtime to solve YouTube's
-n-challenge — install **`deno`** (or `node`); the EJS solver script is auto-fetched via
-`--remote-components ejs:github`. Videos that demand sign-in ("confirm you're not a bot") also need
-browser cookies — the script passes `--cookies-from-browser chrome` by default (be logged into
-YouTube in that browser; use `--cookies-from-browser ""` to disable).
+`fetch_video.py` pulls the pre-encoded 720p `.webm` files with `curl` (resumable) from the demo
+object-storage bucket — override the base URL with `$VIDEO_BUCKET_URL`. For your own footage, drop any
+video file into `INPUT_VIDEO_DIR` directly (`.mp4/.mkv/.mov/.webm/.m4v`).
 
-Internal-demo only — downloading violates YouTube ToS; do not redistribute the videos or the frames.
-For license-clean footage use stock (Pexels/Mixkit) or a dataset clip (EPIC-KITCHENS / Ego4D).
+Internal-demo only — the source footage is under YouTube ToS; do not redistribute the videos or the
+frames. For license-clean footage use stock (Pexels/Mixkit) or a dataset clip (EPIC-KITCHENS / Ego4D).
 
 ## Run
 
