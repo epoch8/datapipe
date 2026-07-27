@@ -22,7 +22,7 @@ from datapipe.store.database import TableStoreDB
 from datapipe.types import PipelineInput, PipelineOutput, IndexDF, Labels, required_pipeline_input
 from sqlalchemy import Column, Float
 from sqlalchemy import cast as sql_cast
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.sql.sqltypes import Integer, String
 
 from datapipe_ml.core.datapipe import (
@@ -37,6 +37,7 @@ from datapipe_ml.metrics.common import (
     METRICS_NULL_LABEL,
     OVERALL_BASE_METRIC_COLUMNS,
     float_columns,
+    idx_in_table_clause,
     is_metrics_null_label,
     stable_unique,
 )
@@ -228,7 +229,7 @@ def _aggregate_pose_on_subset(
     stmt = (
         select(*select_cols)
         .select_from(tbl)
-        .where(tuple_(*([tbl.c[k] for k in idx.columns])).in_(list(idx.itertuples(index=False, name=None))))
+        .where(idx_in_table_clause(tbl, idx))
         .where(col_label == METRICS_NULL_LABEL)
         .group_by(*group_cols)
     )
