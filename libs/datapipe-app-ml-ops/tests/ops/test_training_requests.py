@@ -29,6 +29,26 @@ def _make_experiment(env) -> str:
     return exp.id
 
 
+def test_list_training_requests_can_launch_when_idle_and_run_labels_set(env):
+    svc = _svc(env)
+    env.write_frozen_dataset("fd-1")
+    config_id = _make_experiment(env)
+    req = svc.create_training_request(
+        env.spec_id,
+        CreateTrainingRequestRequest(
+            frozen_dataset_id="fd-1",
+            train_config_id=config_id,
+            client_request_id="cli-list-launch",
+            launch=False,
+        ),
+    ).request
+
+    listed = svc.list_training_requests(env.spec_id)
+    match = next(row for row in listed.rows if row.id == req.id)
+    assert match.can_launch is True
+    assert match.can_delete is True
+
+
 def test_create_training_request_success(env):
     svc = _svc(env)
     env.write_frozen_dataset("fd-1")
@@ -282,3 +302,8 @@ def test_launch_rejected_when_run_labels_empty(env):
     with pytest.raises(TrainingExperimentError) as excinfo:
         svc.launch_training_request(env.spec_id, resp.request.id)
     assert excinfo.value.code == "training_launch_not_configured"
+
+    listed = svc.list_training_requests(env.spec_id)
+    match = next(row for row in listed.rows if row.id == resp.request.id)
+    assert match.can_launch is False
+    assert match.can_delete is True

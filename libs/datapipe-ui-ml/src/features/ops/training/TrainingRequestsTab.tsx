@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Button, Modal, Table, Tag, notification } from "antd";
+import { Button, Modal, Space, Table, Tag, notification } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { opsApi } from "@datapipe/ui-ml/api/client";
 import { ApiError } from "@datapipe/ui/api/ops";
@@ -43,8 +43,9 @@ function hasActiveRequest(rows: TrainingRequestListRow[]): boolean {
 
 function buildColumns(
     specId: string,
+    onRun: (row: TrainingRequestListRow) => void,
     onDelete: (row: TrainingRequestListRow) => void,
-    deletingId: string | null,
+    busyId: string | null,
 ): ColumnsType<TrainingRequestListRow> {
     return [
         {
@@ -134,19 +135,36 @@ function buildColumns(
         {
             title: "",
             key: "actions",
-            width: 90,
-            render: (_: unknown, row) =>
-                row.can_delete ? (
-                    <Button
-                        danger
-                        type="link"
-                        size="small"
-                        loading={deletingId === row.id}
-                        onClick={() => onDelete(row)}
-                    >
-                        Delete
-                    </Button>
-                ) : null,
+            width: 200,
+            render: (_: unknown, row) => {
+                const busy = busyId === row.id;
+                if (!row.can_launch && !row.can_delete) return null;
+                return (
+                    <Space size={0}>
+                        {row.can_launch ? (
+                            <Button
+                                type="link"
+                                size="small"
+                                loading={busy}
+                                onClick={() => onRun(row)}
+                            >
+                                Run request
+                            </Button>
+                        ) : null}
+                        {row.can_delete ? (
+                            <Button
+                                danger
+                                type="link"
+                                size="small"
+                                loading={busy}
+                                onClick={() => onDelete(row)}
+                            >
+                                Delete
+                            </Button>
+                        ) : null}
+                    </Space>
+                );
+            },
         },
     ];
 }
@@ -157,7 +175,7 @@ export function TrainingRequestsTab({ pipelineId, specId, refreshToken }: Props)
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<unknown>(null);
     const [page, setPage] = React.useState(1);
-    const [deletingId, setDeletingId] = React.useState<string | null>(null);
+    const [busyId, setBusyId] = React.useState<string | null>(null);
     const pageSize = 10;
 
     const load = React.useCallback(() => {
@@ -187,6 +205,40 @@ export function TrainingRequestsTab({ pipelineId, specId, refreshToken }: Props)
         return () => window.clearInterval(timer);
     }, [rows, load]);
 
+    const handleRun = React.useCallback(
+        (row: TrainingRequestListRow) => {
+            Modal.confirm({
+                title: "Run training request?",
+                content: `Launch pipeline steps for "${row.id}".`,
+                okText: "Run request",
+                onOk: async () => {
+                    setBusyId(row.id);
+                    try {
+                        const result = await opsApi.launchTrainingRequest(
+                            pipelineId,
+                            specId,
+                            row.id,
+                        );
+                        notification.success({
+                            message: "Request launched",
+                            description: result.run_id ? `Run ${result.run_id}` : undefined,
+                        });
+                        await load();
+                    } catch (err) {
+                        notification.error({
+                            message: "Launch failed",
+                            description: err instanceof ApiError ? err.message : String(err),
+                        });
+                        throw err;
+                    } finally {
+                        setBusyId(null);
+                    }
+                },
+            });
+        },
+        [load, pipelineId, specId],
+    );
+
     const handleDelete = React.useCallback(
         (row: TrainingRequestListRow) => {
             Modal.confirm({
@@ -195,7 +247,7 @@ export function TrainingRequestsTab({ pipelineId, specId, refreshToken }: Props)
                 okText: "Delete",
                 okButtonProps: { danger: true },
                 onOk: async () => {
-                    setDeletingId(row.id);
+                    setBusyId(row.id);
                     try {
                         await opsApi.deleteTrainingRequest(pipelineId, specId, row.id);
                         notification.success({ message: "Request deleted" });
@@ -207,7 +259,7 @@ export function TrainingRequestsTab({ pipelineId, specId, refreshToken }: Props)
                         });
                         throw err;
                     } finally {
-                        setDeletingId(null);
+                        setBusyId(null);
                     }
                 },
             });
@@ -216,8 +268,8 @@ export function TrainingRequestsTab({ pipelineId, specId, refreshToken }: Props)
     );
 
     const tableColumns = React.useMemo(
-        () => buildColumns(specId, handleDelete, deletingId),
-        [specId, handleDelete, deletingId],
+        () => buildColumns(specId, handleRun, handleDelete, busyId),
+        [specId, handleRun, handleDelete, busyId],
     );
 
     return (

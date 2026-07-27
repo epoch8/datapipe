@@ -170,6 +170,8 @@ class TrainingRequestListRow(BaseModel):
     started_at: Optional[str] = None
     # True for manual requests that have not been launched / trained yet.
     can_delete: bool = False
+    # True when run_labels are configured and the request has not been launched yet.
+    can_launch: bool = False
 
 
 class TrainingRequestsListResponse(BaseModel):

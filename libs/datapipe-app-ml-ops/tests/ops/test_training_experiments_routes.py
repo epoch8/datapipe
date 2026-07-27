@@ -149,6 +149,7 @@ def test_create_request_route_with_train_config_id_in_body(env, client):
     assert match["train_config_id"] == config_id
     assert match["frozen_dataset_id"] == "fd-1"
     assert match["can_delete"] is True
+    assert match["can_launch"] is True
 
     deleted = client.delete(f"{BASE}/requests/{body['request']['id']}")
     assert deleted.status_code == 200, deleted.text

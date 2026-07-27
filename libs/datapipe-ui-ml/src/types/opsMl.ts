@@ -601,6 +601,7 @@ export interface TrainingRequestListRow {
     status?: string | null;
     started_at?: string | null;
     can_delete?: boolean;
+    can_launch?: boolean;
 }
 
 export interface TrainingRequestsListResponse {

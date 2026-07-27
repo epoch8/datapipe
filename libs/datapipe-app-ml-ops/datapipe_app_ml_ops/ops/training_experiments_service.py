@@ -200,6 +200,21 @@ def _record_created_at(record: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _request_not_started(
+    *,
+    run_key: Optional[str],
+    model_id: Optional[str],
+    status: Optional[str],
+    started_at: Optional[str],
+) -> bool:
+    """True when no launch / training evidence exists for the request yet."""
+    if run_key or model_id or started_at:
+        return False
+    if status is None:
+        return True
+    return status.strip().lower() in {"", "queued", "pending"}
+
+
 def _request_can_delete(
     *,
     kind: str,
@@ -211,11 +226,31 @@ def _request_can_delete(
     """Manual requests may be deleted only before launch / training starts."""
     if kind != "manual":
         return False
-    if run_key or model_id or started_at:
+    return _request_not_started(
+        run_key=run_key,
+        model_id=model_id,
+        status=status,
+        started_at=started_at,
+    )
+
+
+def _request_can_launch(
+    *,
+    run_labels_configured: bool,
+    run_key: Optional[str],
+    model_id: Optional[str],
+    status: Optional[str],
+    started_at: Optional[str],
+) -> bool:
+    """Launch is offered when run_labels are set and the request is still idle."""
+    if not run_labels_configured:
         return False
-    if status is None:
-        return True
-    return status.strip().lower() in {"", "queued", "pending"}
+    return _request_not_started(
+        run_key=run_key,
+        model_id=model_id,
+        status=status,
+        started_at=started_at,
+    )
 
 
 class TrainingExperimentsService:
@@ -476,6 +511,12 @@ class TrainingExperimentsService:
             model_id = status.get("model_id") if status else None
             started_at = status.get("started_at") if status else None
             kind = _clean_str(row.get(requests_spec.kind_column)) or "manual"
+            not_started_kwargs = dict(
+                run_key=run_key,
+                model_id=model_id,
+                status=status_value,
+                started_at=started_at,
+            )
             rows.append(
                 TrainingRequestListRow(
                     id=request_id,
@@ -491,12 +532,10 @@ class TrainingExperimentsService:
                     model_id=model_id,
                     status=status_value,
                     started_at=started_at,
-                    can_delete=_request_can_delete(
-                        kind=kind,
-                        run_key=run_key,
-                        model_id=model_id,
-                        status=status_value,
-                        started_at=started_at,
+                    can_delete=_request_can_delete(kind=kind, **not_started_kwargs),
+                    can_launch=_request_can_launch(
+                        run_labels_configured=bool(requests_spec.run_labels),
+                        **not_started_kwargs,
                     ),
                 )
             )
