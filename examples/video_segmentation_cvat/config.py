@@ -58,7 +58,7 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 SAM_TEXT_PROMPT = os.environ.get("SAM_TEXT_PROMPT", "person")
 SAM_SCORE_THRESHOLD = float(os.environ.get("SAM_SCORE_THRESHOLD", "0.5"))
-SAM_MAX_DETECTIONS = int(os.environ.get("SAM_MAX_DETECTIONS", "20"))
+SAM_MAX_DETECTIONS = int(os.environ.get("SAM_MAX_DETECTIONS", "50"))
 
 # --- CVAT -----------------------------------------------------------------------------------------
 
