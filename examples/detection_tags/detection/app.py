@@ -116,12 +116,12 @@ pipeline = Pipeline(
                     config=YoloV8_TrainingConfig(
                         model="yolov8n.pt",
                         imgsz=320,
-                        batch=10,
-                        epochs=10,
+                        batch=32,
+                        epochs=5,
+                        freeze=10,
                         exist_ok=True,
                         seed=42,
-                        workers=0,
-                        deterministic=True,
+                        workers=0
                     ),
                 )
             ],
@@ -144,7 +144,9 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
-            batch_size_default=1,
+            batch_size_default=64,
+            chunk_size=1024,
+            prediction_threshold=0.10,
             executor_config=gpu_executor(),
             labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "inference")],
         ),
@@ -222,7 +224,7 @@ pipeline = Pipeline(
             inputs=[
                 "local_images",
                 Required("image__ground_truth"),
-                Required("image__subset"),
+                "image__subset",
                 "image__tag",
             ],
             outputs=["fiftyone_annotations"],

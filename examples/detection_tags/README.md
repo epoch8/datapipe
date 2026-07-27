@@ -68,15 +68,15 @@ A `val` metric is an aggregate over whatever images are in val; if you add the t
 retrain time, model A's numbers move and the A-vs-B comparison is invalid. So **freeze val up front**:
 load `base-val` + `night-val` (pinned `--subset val`) before training A, and add `night-train`
 (`--subset train`) only for part 2. `add_request.py --subset` pins a batch (`image__subset_hint`),
-the split step honors it. The pre-staged cache holds **500 images**, so keep the total ≤ 500.
+the split step honors it. The pre-staged cache holds **1000 images**, so keep the total ≤ 1000.
 
 ## Part 1 — baseline to checkpoint
 ```bash
 # from examples/detection_tags/detection
 set -a && source ../.env && set +a
-python ../scripts/add_request.py --id base-train --n 200 --offset 0   --subset train
-python ../scripts/add_request.py --id base-val   --n 75  --offset 200 --subset val
-python ../scripts/add_request.py --id night-val  --n 75  --offset 275 --subset val --tag night --darken 0.40
+python ../scripts/add_request.py --id base-train --n 400 --offset 0   --subset train
+python ../scripts/add_request.py --id base-val   --n 150 --offset 400 --subset val
+python ../scripts/add_request.py --id night-val  --n 150 --offset 550 --subset val --tag night --darken 0.40
 uv run datapipe --executor RayExecutor step --labels=stage=load run
 uv run datapipe --executor RayExecutor step --labels=stage=train run            # model A
 uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run    # re-run once if it prints "Batches to process 0"
@@ -87,9 +87,9 @@ uv run datapipe --executor RayExecutor step --labels=stage=fiftyone run         
 
 ## Part 2 — retrain and watch the tag metric rise
 ```bash
-python ../scripts/add_request.py --id night-train-a --n 50 --offset 350 --subset train --tag night --darken 0.30
-python ../scripts/add_request.py --id night-train-b --n 50 --offset 400 --subset train --tag night --darken 0.40
-python ../scripts/add_request.py --id night-train-c --n 50 --offset 450 --subset train --tag night --darken 0.55
+python ../scripts/add_request.py --id night-train-a --n 100 --offset 700 --subset train --tag night --darken 0.30
+python ../scripts/add_request.py --id night-train-b --n 100 --offset 800 --subset train --tag night --darken 0.40
+python ../scripts/add_request.py --id night-train-c --n 100 --offset 900 --subset train --tag night --darken 0.55
 uv run datapipe --executor RayExecutor step --labels=stage=load run
 uv run datapipe --executor RayExecutor step --labels=stage=train run            # model B (night now in training)
 uv run datapipe --executor RayExecutor step --labels=stage=count-metrics run    # re-run once if "0 batches"
@@ -116,8 +116,19 @@ docker exec <mongo> mongosh --quiet --eval "db.getSiblingDB('fiftyone').dropData
 
 ### Pre-staged cache (fast loads)
 If `DATAPIPE_TAGS_CACHE_DIR/gt.json` + `DATAPIPE_TAGS_CACHE_DIR/images/<file>.jpg` exist, the load
-step reads from them instead of fetching COCO. Default dir `/tmp/datapipe-tags-cache`. It caps the
-image pool at its size (500 here) — expand it or point at a fresh dir to download more from COCO.
+step reads from them instead of fetching COCO (required from RU, where COCO is blocked). `.env` sets
+`DATAPIPE_TAGS_CACHE_DIR` (default `/tmp/datapipe-tags-cache`). Fetch the pre-built 1000-image cache
+from the public bucket into that dir:
+```bash
+set -a && source ../.env && set +a
+BASE=https://storage.yandexcloud.net/e8-demo/datasets/coco-cat-dog-1000
+mkdir -p "$DATAPIPE_TAGS_CACHE_DIR/images" && cd "$DATAPIPE_TAGS_CACHE_DIR"
+curl -sf "$BASE/gt.json" -o gt.json
+python -c "import json; print('\n'.join(json.load(open('gt.json'))))" \
+  | xargs -P 16 -I{} curl -sf -o "images/{}" "$BASE/images/{}"   # 1000 images
+```
+Alternative on a COCO-reachable host: `python ../scripts/build_cache.py 1000` (byte-identical). The
+cache caps the image pool at its size, so keep the batch total ≤ it.
 
 ## Notes
 - Classes are lowercase (`cat`/`dog`) to match COCO so injected GT and predictions align.
