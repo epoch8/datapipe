@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from config import DBCONN, FIFTYONE_DATASET_NAME, KEYPOINTS_LABELS
 from cv_pipeliner.utils.fiftyone import FifyOneSession
 from datapipe.compute import Catalog, Table
 from datapipe.store.database import TableStoreDB
 from datapipe_ml.utils.image_data_stores import FiftyOneImagesDataTableStore
-from sqlalchemy import JSON, Column, Float, String
+from sqlalchemy import Column, Float, Integer, JSON, String
+
+from config import DBCONN, FIFTYONE_DATASET_NAME
 
 fo_session = FifyOneSession()
 
@@ -21,56 +22,52 @@ catalog = Catalog(
                 ],
             )
         ),
-        "keypoints_model_train": Table(
+        "classification_model": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="keypoints_model_train",
+                name="classification_model",
                 data_sql_schema=[
-                    Column("keypoints_model_id", String(), primary_key=True),
-                    Column("keypoints_model__type", String()),
-                    Column("keypoints_model__model_path", String()),
-                    Column("keypoints_model__input_size", JSON),
-                    Column("keypoints_model__class_names", JSON),
-                    Column("keypoints_model__score_threshold", Float),
+                    Column("classification_model_id", String(), primary_key=True),
+                    Column("classification_model__type", String()),
+                    Column("classification_model__model_path", String()),
+                    Column("classification_model__input_size", JSON),
+                    Column("classification_model__class_names", JSON),
+                    Column("classification_model__preprocess_input_script_path", String()),
                 ],
             )
         ),
-        "best_keypoints_model": Table(
+        "best_classification_model": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="best_keypoints_model",
+                name="best_classification_model",
                 data_sql_schema=[
-                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("classification_model_id", String(), primary_key=True),
                 ],
             )
         ),
-        "keypoints_prediction_train": Table(
+        "classification_prediction": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="keypoints_prediction_train",
+                name="classification_prediction",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
-                    Column("keypoints_model_id", String(), primary_key=True),
-                    Column("bboxes", JSON),
-                    Column("keypoints", JSON),
-                    Column("labels", JSON),
-                    Column("prediction__detection_scores", JSON),
-                    Column("prediction__keypoints_scores", JSON),
+                    Column("classification_model_id", String(), primary_key=True),
+                    Column("prediction__top_n", Integer, primary_key=True),
+                    Column("label", String()),
+                    Column("prediction__classification_score", Float),
                 ],
             )
         ),
-        "ls_keypoints_prediction": Table(
+        "ls_classification_prediction": Table(
             TableStoreDB(
                 dbconn=DBCONN,
-                name="ls_keypoints_prediction",
+                name="ls_classification_prediction",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
-                    Column("keypoints_model_id", String(), primary_key=True),
-                    Column("bboxes", JSON),
-                    Column("keypoints", JSON),
-                    Column("labels", JSON),
-                    Column("prediction__detection_scores", JSON),
-                    Column("prediction__keypoints_scores", JSON),
+                    Column("classification_model_id", String(), primary_key=True),
+                    Column("prediction__top_n", Integer, primary_key=True),
+                    Column("label", String()),
+                    Column("prediction__classification_score", Float),
                 ],
             )
         ),
@@ -80,7 +77,7 @@ catalog = Catalog(
                 name="images_with_predictions",
                 data_sql_schema=[
                     Column("image_name", String(), primary_key=True),
-                    Column("keypoints_model_id", String(), primary_key=True),
+                    Column("classification_model_id", String(), primary_key=True),
                     Column("prediction", JSON),
                 ],
             )
@@ -91,11 +88,7 @@ catalog = Catalog(
                 name="image__ground_truth",
                 data_sql_schema=[
                     Column("image_name", String, primary_key=True),
-                    Column("bboxes", JSON),
-                    Column("keypoints", JSON),
-                    Column("keypoints_visibility", JSON),
-                    Column("flip_idx", JSON),
-                    Column("labels", JSON),
+                    Column("label", String),
                 ],
             )
         ),
@@ -143,12 +136,10 @@ catalog = Catalog(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="annotations",
-                fo_keypoints_label="annotations_keypoints",
-                keypoints_labels=KEYPOINTS_LABELS,
+                fo_classification_label="annotations",
                 rm_only_fo_fields=True,
                 primary_schema=[
-                    Column[str]("image_name", String(255), primary_key=True),
+                    Column("image_name", String(255), primary_key=True),
                 ],
                 additional_info_keys_in_sample=["subset_id"],
             )
@@ -157,13 +148,12 @@ catalog = Catalog(
             FiftyOneImagesDataTableStore(
                 dataset=FIFTYONE_DATASET_NAME,
                 fo_session=fo_session,
-                fo_detections_label="predictions_from_best_model",
-                fo_keypoints_label="predictions_from_best_model_keypoints",
+                fo_classification_label="predictions_from_best_model",
                 rm_only_fo_fields=True,
                 primary_schema=[
-                    Column[str]("image_name", String(255), primary_key=True),
+                    Column("image_name", String(255), primary_key=True),
                 ],
-                additional_info_keys_in_sample=["keypoints_model_id"],
+                additional_info_keys_in_sample=["classification_model_id"],
             )
         ),
     }
