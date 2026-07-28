@@ -1493,7 +1493,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         start_rank: int | None = None,
         run_config: RunConfig | None = None,
     ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
-        if not start_rank:
+        if start_rank is None:
             return (0, iter([]))
 
         idx_count = self.get_changed_idx_count(
