@@ -116,7 +116,7 @@ class YoloTrainRuntimeConfig:
         context_cls: Type[YoloContextT],
         *,
         dt__frozen_dataset: DataTable,
-        dt__train_config: DataTable,
+        dt__train_config: Optional[DataTable],
         dt__class_names: DataTable,
         dt__resized_image_file: DataTable,
         dt__yolo_txt: DataTable,
@@ -202,10 +202,18 @@ class YoloBaseAlgo(Algo):
         paths_val = df_txt[df_txt["subset_id"] == "val"]["filepath"].tolist()
         paths_test = df_txt[df_txt["subset_id"] == "test"]["filepath"].tolist()
 
-        # Assert correct YOLO images locations
+        # Assert correct YOLO images locations (one labels dir per split /
+        # frozen dataset + imgsz). Multiple dirs usually mean idx lacked
+        # frozen_dataset_id and/or width/height (imgsz) and get_data returned
+        # every prepared size.
         filepaths_train = set([str(Pathy.fluid(p).parent) for p in paths_train])
         filepaths_val = set([str(Pathy.fluid(p).parent) for p in paths_val])
-        assert len(filepaths_train) == 1 and len(filepaths_val) == 1
+        if len(filepaths_train) != 1 or len(filepaths_val) != 1:
+            raise ValueError(
+                "Expected exactly one train and one val labels directory for a "
+                "single frozen dataset and imgsz; got "
+                f"train={sorted(filepaths_train)!r}, val={sorted(filepaths_val)!r}"
+            )
         p_train = Pathy.fluid(list(filepaths_train)[0])
         p_val = Pathy.fluid(list(filepaths_val)[0])
         assert p_train.name == "labels" and p_val.name == "labels"
@@ -309,7 +317,6 @@ class YoloBaseAlgo(Algo):
         params["initial_weights_path"] = resolved_path
         params["resume"] = True
         params["exist_ok"] = True
-        params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
     def select_resume_checkpoint(

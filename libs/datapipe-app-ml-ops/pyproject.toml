@@ -1,0 +1,53 @@
+[project]
+name = "datapipe-app-ml-ops"
+version = "0.1.0"
+description = "ML ops specs, image records, and observability routes for datapipe-app"
+authors = [{ name = "Aleksandr Kozlov", email = "bobokvsky@epoch8.co" }]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "datapipe-app",
+    "datapipe-ml",
+    "httpx",
+    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.2",
+]
+
+[project.entry-points."datapipe.observability"]
+datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.plugin:register"
+
+[project.entry-points."datapipe.observability_db"]
+datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.db_plugin:extend_observability_db"
+
+[project.entry-points."datapipe.v1alpha3_extensions"]
+datapipe_app_ml_ops = "datapipe_app_ml_ops.observability.api_plugin:register_v1alpha3_extension"
+
+[project.urls]
+Repository = "https://github.com/epoch8/datapipe"
+
+[dependency-groups]
+dev = [
+    "pytest<8",
+    "mypy",
+    "datapipe-ml[sqlite]",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["datapipe_app_ml_ops", "datapipe_app_ml_ops/py.typed"]
+
+[tool.hatch.build.targets.wheel]
+include = ["datapipe_app_ml_ops", "datapipe_app_ml_ops/py.typed"]
+
+[tool.uv.sources]
+datapipe-app = { workspace = true }
+datapipe-ml = { workspace = true }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.2" }
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -145,7 +145,7 @@ def real_recovery_torch_cases() -> list:
             train_fn=train_yolov8,
             input_tables=(
                 "detection_frozen_dataset",
-                "yolov8_train_config",
+                "detection_training_request",
                 "yolov8_detection_class_names",
                 "yolov8_detection_resized_image_file",
                 "yolov8_detection_yolo_txt",
@@ -168,7 +168,7 @@ def real_recovery_torch_cases() -> list:
             train_fn=train_yolov5,
             input_tables=(
                 "detection_frozen_dataset",
-                "yolov5_train_config",
+                "detection_training_request",
                 "yolov5_detection_class_names",
                 "yolov5_detection_resized_image_file",
                 "yolov5_detection_yolo_txt",
@@ -191,7 +191,7 @@ def real_recovery_torch_cases() -> list:
             train_fn=train_yolov8_segmentation,
             input_tables=(
                 "segmentation_frozen_dataset",
-                "segmentation_yolov8_train_config",
+                "segmentation_training_request",
                 "segmentation_class_names",
                 "segmentation_resized_image_file",
                 "segmentation_yolo_txt",
@@ -214,7 +214,7 @@ def real_recovery_torch_cases() -> list:
             train_fn=train_yolov8_keypoints,
             input_tables=(
                 "keypoints_frozen_dataset",
-                "keypoints_yolov8_train_config",
+                "keypoints_training_request",
                 "keypoints_class_names",
                 "keypoints_resized_image_file",
                 "keypoints_yolo_txt",
@@ -505,7 +505,13 @@ def invoke_real_train_callable_for_backfill(
 
         invoke_tf_backfill(runtime, case, step)
         return
-    idx = IndexDF(pd.DataFrame([{}]))
+    request_table = runtime.ds.get_table(case.input_tables[1])
+    requests = request_table.get_data()
+    if requests.empty or "training_request_id" not in requests.columns:
+        raise AssertionError(
+            f"Expected training requests in {case.input_tables[1]!r} for backfill"
+        )
+    idx = IndexDF(requests[["training_request_id"]])
     input_dts = [runtime.ds.get_table(name) for name in case.input_tables]
     case.train_fn(runtime.ds, idx, input_dts, kwargs=direct_train_kwargs(runtime, case, step))
 
@@ -564,7 +570,7 @@ def _yolo_train_kwargs(
             segmentation_frozen_dataset_id__name="segmentation_frozen_dataset_id",
             keypoints_frozen_dataset_id__name="keypoints_frozen_dataset_id",
             extra_class_names_to_yaml_fields=dict(),
-            allow_sample_size_mismatch=getattr(step, "allow_sample_size_mismatch", False),
+            allow_sample_size_mismatch=step.allow_sample_size_mismatch,
         )
     )
     return kwargs

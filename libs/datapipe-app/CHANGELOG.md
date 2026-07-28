@@ -1,3 +1,41 @@
+# Unreleased (WIP)
+
+## Package layout
+
+* Restructured into `app/`, `api/`, `observability/`, `ops/`, `pipeline/`
+* Ops UI moved out of this package — install `[ui]` / `[ml]` extras
+  (`datapipe-ui`, `datapipe-ui-ml`, `datapipe-app-ml-ops`)
+* Frontend static assets resolved via `datapipe.ui_static` entry points
+* Requires Python `>=3.10,<3.14`
+
+## Ops API (`/api/v1alpha3`)
+
+* New Ops API: pipeline overview, capabilities/settings, runs lifecycle
+  (`list` / `get` / `start` / logs), stage recent-runs, transform metadata
+  reset, catalog metrics, and plugin extension registration
+* Spec-driven Ops surface via `OpsSpecRegistry` / `add_specs()`:
+  `OpsMetricTableSpec`, `OpsRelationSpec`, `OpsDataSpec`, filters/columns
+* Pipeline debug graph UI routes (`/graph`, table/transform data,
+  websocket run status) live under the Ops app
+
+## Observability
+
+* Persist pipeline runs (`ObservabilityStore`, `RunRecorder` /
+  `RecordingRunCallback`) with optional CLI recording
+  (`DATAPIPE_APP_RECORD_CLI_RUNS`, `--no-callbacks`)
+* Buffered run log capture; optional ClickHouse backend
+  (`RunLogsBackend.clickhouse`, extra `[clickhouse]`)
+* Entry points wired into core CLI:
+  `datapipe.pipeline_init`, `datapipe.run_callbacks`, `datapipe.db_create_all`
+* Settings: `DATAPIPE_APP_PIPELINE_ID`, `DATAPIPE_APP_SHOW_STEP_STATUS`,
+  `DATAPIPE_APP_RECORD_CLI_RUNS`
+
+## Compatibility
+
+* Existing `/api/v1alpha1` and `/api/v1alpha2` kept (moved under `api/`)
+* Public exports lazy-loaded from `datapipe_app` (`DatapipeAPI`, ops specs,
+  observability helpers)
+
 # 0.5.4
 
 * Improve granularity of prometheus metrics latency buckets
