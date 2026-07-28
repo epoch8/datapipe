@@ -9,6 +9,7 @@ from typing import Literal
 import pytest
 from datapipe.compute import DatapipeApp, run_steps
 from datapipe.cli import filter_steps_by_labels_and_name
+from datapipe_ml.utils.image_data_stores import _reset_fiftyone_dataset_store_registry
 from sqlalchemy import create_engine, text
 _TEMPLATE_DIRS = {
     "detection": "image_detection",
@@ -51,6 +52,8 @@ def load_template_module(pipeline_name: Literal["detection", "keypoints"], modul
     path_str = str(template_dir(pipeline_name))
     for stale in ("app", "steps", "config", "data"):
         sys.modules.pop(stale, None)
+    if module in ("app", "data"):
+        _reset_fiftyone_dataset_store_registry()
     sys.path.insert(0, path_str)
     try:
         return importlib.import_module(module)

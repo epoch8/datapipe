@@ -179,6 +179,22 @@ def resolve_project_id(ls: LabelStudio, project_identifier: Union[str, int]) -> 
     return project["id"]
 
 
+def enable_prelabeling_with_model_version(
+    ls: LabelStudio,
+    project_id: int,
+    model_version: str,
+) -> None:
+    """
+    Enable Annotation > Use predictions to prelabel tasks and select the given
+    prediction set (model_version) in project settings.
+    """
+    ls.projects.update(
+        id=project_id,
+        show_collab_predictions=True,
+        model_version=model_version,
+    )
+
+
 def ensure_project_storages(
     ls: LabelStudio,
     project_id: int,
