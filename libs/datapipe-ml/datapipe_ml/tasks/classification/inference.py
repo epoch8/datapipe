@@ -19,12 +19,23 @@ from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
-from datapipe.types import required_pipeline_input, PipelineInput, PipelineOutput, Labels
+from datapipe.types import PipelineInput, PipelineOutput, Labels
 from sqlalchemy import Column, Float
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe_ml.core.datapipe import check_columns_are_in_table, normalize_pipeline_inputs, get_datatable, get_pipeline_table_name
+from datapipe_ml.core.datapipe import (
+    check_columns_are_in_table,
+    get_datatable,
+    get_pipeline_table_name,
+    make_mungled_batch_transform_step_name,
+    normalize_pipeline_inputs,
+)
 from datapipe_ml.core.image_data import check_if_images_opens
+from datapipe_ml.inference.model_inputs import (
+    build_required_pipeline_inputs,
+    primary_model_input,
+    wrap_inference_inputs,
+)
 
 
 def get_classification_model_spec(
@@ -48,7 +59,8 @@ def get_classification_model_spec(
 
 
 def classification_inference(
-    *dfs,
+    df__image: pd.DataFrame,
+    df__classification_model: pd.DataFrame,
     image__image_path__name: str,
     primary_keys: List[str],
     top_n: int,
@@ -57,11 +69,6 @@ def classification_inference(
     batch_size_default: int,
     classification_model_primary_keys: List[str],
 ):
-    df__image = dfs[0]
-    if len(dfs) >= 3:
-        for df in dfs[1:-1]:
-            df__image = pd.merge(df, df__image, on=primary_keys)
-    df__classification_model: pd.DataFrame = dfs[-1]
     classification_model_other_primary_keys = [
         primary_key for primary_key in classification_model_primary_keys if primary_key not in primary_keys
     ]
@@ -150,7 +157,7 @@ def classification_inference(
 @dataclass
 class Inference_ClassificationModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__classification_model: PipelineInput
+    input__classification_model: PipelineInput | Sequence[PipelineInput]
     output__classification_prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int = 1000
@@ -177,10 +184,11 @@ class Inference_ClassificationModel(PipelineStep):
             ]
         )
         dt__input__images = [get_datatable(ds, input__image) for input__image in input__images]
-        dt__input__classification_model = get_datatable(ds, self.input__classification_model)
+        primary_classification_model = primary_model_input(self.input__classification_model)
+        dt__input__classification_model = get_datatable(ds, primary_classification_model)
         check_columns_are_in_table(
             ds,
-            self.input__classification_model,
+            primary_classification_model,
             self.classification_model_primary_keys
             + [
                 "classification_model__input_size",
@@ -190,6 +198,10 @@ class Inference_ClassificationModel(PipelineStep):
                 "classification_model__preprocess_input_script_path",
             ],
         )
+        for model_filter in normalize_pipeline_inputs(self.input__classification_model)[1:]:
+            check_columns_are_in_table(ds, model_filter, self.classification_model_primary_keys)
+        image_pipeline_inputs = build_required_pipeline_inputs(self.input__image)
+        model_pipeline_inputs = build_required_pipeline_inputs(self.input__classification_model)
         # ---
         catalog.add_datatable(
             get_pipeline_table_name(self.output__classification_prediction),
@@ -221,10 +233,22 @@ class Inference_ClassificationModel(PipelineStep):
         pipeline = Pipeline(
             [
                 BatchTransform(
-                    func=classification_inference,
+                    func=wrap_inference_inputs(
+                        classification_inference,
+                        n_image_inputs=len(image_pipeline_inputs),
+                        primary_keys=self.primary_keys,
+                        model_input_groups=[(len(model_pipeline_inputs), self.classification_model_primary_keys)],
+                    ),
+                    name=make_mungled_batch_transform_step_name(
+                        ds,
+                        catalog,
+                        base_name="classification_inference",
+                        inputs=[*image_pipeline_inputs, *model_pipeline_inputs],
+                        outputs=[self.output__classification_prediction],
+                    ),
                     inputs=[
-                        *[required_pipeline_input(input__image) for input__image in input__images],
-                        self.input__classification_model,
+                        *image_pipeline_inputs,
+                        *model_pipeline_inputs,
                     ],
                     outputs=[self.output__classification_prediction],
                     transform_keys=list(set(self.primary_keys + self.classification_model_primary_keys)),
