@@ -1,3 +1,8 @@
+# Host-owned bind mounts: mkdir -p .docker-data/minio && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+# Postgres/Mongo/Label Studio keep image defaults (they cannot run as arbitrary host uid).
+x-host-user: &host-user
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
 services:
   postgres:
     image: postgres:14
@@ -26,22 +31,42 @@ services:
       start_period: 10s
 
   minio:
+    <<: *host-user
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
     ports:
       - "9000:9000"
       - "9001:9001"
+    depends_on:
+      minio-data-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # Bind-mount data dir is often created as root by Docker; MinIO runs as HOST_UID.
+  minio-data-init:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_DOCKER_DATA_DIR:-./.docker-data}/minio
+        target: /data
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data && chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /data"]
+
   minio-init:
     image: minio/mc:latest
+    environment:
+      HOME: /tmp
     depends_on:
       minio:
         condition: service_healthy
@@ -52,22 +77,88 @@ services:
       mc anonymous set download local/datapipe-e2e
       "
 
+  postgres-label-studio:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: label_studio
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   label-studio:
     image: heartexlabs/label-studio:1.22.0
     ports:
       - "8080:8080"
     environment:
       DJANGO_DB: default
-      POSTGRE_NAME: postgres
+      POSTGRE_NAME: label_studio
       POSTGRE_USER: postgres
       POSTGRE_PASSWORD: password
       POSTGRE_PORT: 5432
-      POSTGRE_HOST: postgres
+      POSTGRE_HOST: postgres-label-studio
       LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
     depends_on:
-      postgres:
+      postgres-label-studio:
         condition: service_healthy
       minio:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+
+  # Bind-mount tmp dir is often created as root by Docker; host pipeline writes as HOST_UID.
+  e2e-tmp-init:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - type: bind
+        source: ${DATAPIPE_E2E_TMP_DIR:-/tmp/datapipe-e2e}
+        target: /data
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data && chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /data"]
+
+  fiftyone:
+    <<: *host-user
+    image: voxel51/fiftyone:1.17.0
+    command: ["python", "-m", "fiftyone.server.main", "--port", "5151"]
+    environment:
+      FIFTYONE_DATABASE_URI: mongodb://mongo:27017
+      FIFTYONE_DEFAULT_APP_ADDRESS: 0.0.0.0
+      HOME: /tmp
+      MPLCONFIGDIR: /tmp/matplotlib
+    ports:
+      - "5151:5151"
+    volumes:
+      # Host paths written by the pipeline (e.g. /tmp/datapipe-e2e/local_images) must match inside the container.
+      - type: bind
+        source: ${DATAPIPE_E2E_TMP_DIR:-/tmp/datapipe-e2e}
+        target: /tmp/datapipe-e2e
+        read_only: true
+    depends_on:
+      e2e-tmp-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - ./clickhouse/users.d/default-user.xml:/etc/clickhouse-server/users.d/default-user.xml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Ops UI: run agents on the host (one process per pipeline), e.g.:
+  #   cd image_detection && source ../.env && uv run datapipe --executor RayExecutor --pipeline app:app api --port 8001
+  #   cd image_keypoints && DATAPIPE_APP_PIPELINE_ID=image_keypoints_e2e source ../.env && uv run datapipe --executor RayExecutor --pipeline app:app api --port 8002
