@@ -1,0 +1,76 @@
+name: datapipe-app-ml-ops
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-app-ml-ops.yml"
+      - "libs/datapipe-app-ml-ops/**"
+      - "libs/datapipe-app/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-app-ml-ops.yml"
+      - "libs/datapipe-app-ml-ops/**"
+      - "libs/datapipe-app/**"
+      - "libs/datapipe-core/**"
+      - "libs/datapipe-ml/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: uv sync --package datapipe-app-ml-ops --group dev
+
+      - name: Lint with mypy
+        run: |
+          uv run --package datapipe-app-ml-ops mypy -p datapipe_app_ml_ops --ignore-missing-imports --follow-imports=silent --namespace-packages --check-untyped-defs
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies with uv
+        run: uv sync --package datapipe-app-ml-ops --group dev
+
+      - name: Test with pytest
+        run: uv run --package datapipe-app-ml-ops pytest libs/datapipe-app-ml-ops/tests -q
