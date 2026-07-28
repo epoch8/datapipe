@@ -11,7 +11,10 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 
+from datapipe.settings import settings
 from datapipe.store.database import DBConn
+
+settings.fail_fast = True
 
 
 @pytest.fixture
@@ -57,7 +60,7 @@ def dbconn():
     else:
         pg_host = os.getenv("POSTGRES_HOST", "localhost")
         pg_port = os.getenv("POSTGRES_PORT", "5432")
-        DBCONNSTR = f"postgresql://postgres:password@{pg_host}:{pg_port}/postgres"
+        DBCONNSTR = f"postgresql+psycopg://postgres:password@{pg_host}:{pg_port}/postgres"
         DB_TEST_SCHEMA = "test"
 
     if DB_TEST_SCHEMA:

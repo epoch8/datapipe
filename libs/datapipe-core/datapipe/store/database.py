@@ -3,7 +3,6 @@ import logging
 import math
 from typing import Any, Callable, Iterator, cast
 
-import numpy as np
 import pandas as pd
 from opentelemetry import trace
 from sqlalchemy import Column, MetaData, Table, create_engine, func, text
@@ -13,7 +12,7 @@ from sqlalchemy.sql.base import SchemaEventTarget
 from sqlalchemy.sql.expression import delete, select
 
 from datapipe.run_config import RunConfig
-from datapipe.sql_util import sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
+from datapipe.sql_util import chunk_records_for_insert, sql_apply_idx_filter_to_table, sql_apply_runconfig_filter
 from datapipe.store.table_store import TableStore, TableStoreCaps
 from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, OrmTable, TAnyDF
 
@@ -239,21 +238,29 @@ class TableStoreDB(TableStore):
         if df.empty:
             return
 
-        # TODO разобраться, нужен ли этот блок кода, написать тесты на заполнение None/NULL
-        insert_sql = self.dbconn.insert(self.data_table).values(
-            df.fillna(np.nan).replace({np.nan: None}).to_dict(orient="records")
-        )
-
-        if len(self.data_keys) > 0:
-            sql = insert_sql.on_conflict_do_update(
-                index_elements=self.primary_keys,
-                set_={col.name: insert_sql.excluded[col.name] for col in self.data_sql_schema if not col.primary_key},
-            )
-        else:
-            sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+        # SQLAlchemy expects Python None for SQL NULL; keep object dtype to avoid
+        # pandas downcasting warnings while preserving scalar values.
+        df_records = df.astype(object)
+        df_records[pd.isna(df_records)] = None
+        records = df_records.to_dict(orient="records")
 
         with self.dbconn.con.begin() as con:
-            con.execute(sql)
+            for chunk in chunk_records_for_insert(records):
+                insert_sql = self.dbconn.insert(self.data_table).values(chunk)
+
+                if len(self.data_keys) > 0:
+                    sql = insert_sql.on_conflict_do_update(
+                        index_elements=self.primary_keys,
+                        set_={
+                            col.name: insert_sql.excluded[col.name]
+                            for col in self.data_sql_schema
+                            if not col.primary_key
+                        },
+                    )
+                else:
+                    sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+
+                con.execute(sql)
 
     # Fix numpy types in IndexDF
     def _get_sql_param(self, param):

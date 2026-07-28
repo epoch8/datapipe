@@ -34,7 +34,7 @@ dev = [
     "httpx",
     "mypy",
     "pytest<8",
-    "sqlalchemy[mypy]",
+    "sqlalchemy",
 ]
 
 [tool.uv.sources]

@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v5
 
@@ -41,18 +41,19 @@ jobs:
 
       - name: Install dependencies with uv
         run: |
-          uv pip install --system -e "libs/datapipe-ml[sqlite]" "flake8" "mypy"
-          uv pip install --system pandas-stubs types-setuptools types-tqdm types-pillow types-PyYAML
+          uv sync --directory libs/datapipe-ml --all-extras
 
       - name: Lint with flake8
         run: |
-          flake8 libs/datapipe-ml/datapipe_ml --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 libs/datapipe-ml/datapipe_ml --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          uv run flake8 --version
+          uv run flake8 libs/datapipe-ml/datapipe_ml --count --select=E9,F63,F7,F82 --show-source --statistics
+          uv run flake8 libs/datapipe-ml/datapipe_ml --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Lint with mypy
         working-directory: libs/datapipe-ml
         run: |
-          mypy --config-file mypy-config.toml -p datapipe_ml --ignore-missing-imports --follow-imports=silent --check-untyped-defs
+          uv run mypy --version
+          uv run mypy --config-file mypy-config.toml -p datapipe_ml --ignore-missing-imports --follow-imports=silent --check-untyped-defs
 
   test:
     runs-on: ubuntu-latest

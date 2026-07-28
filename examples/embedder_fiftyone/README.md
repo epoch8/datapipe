@@ -43,13 +43,13 @@ Env vars: `ZOO_DATASET`, `ZOO_LABEL_FIELD`, `ZOO_NUM_CLASSES`.
 Obtain a connection to a PostgreSQL database and set `DB_URL` in `.env` using SQLAlchemy format:
 
 ```text
-postgresql+psycopg2://user:password@host:port/dbname
+postgresql+psycopg://user:password@host:port/dbname
 ```
 
 Example:
 
 ```text
-DB_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+DB_URL=postgresql+psycopg://postgres:postgres@localhost:5432/postgres
 ```
 
 The database can be empty on first run — datapipe creates all required tables automatically (`datapipe db create-all`).

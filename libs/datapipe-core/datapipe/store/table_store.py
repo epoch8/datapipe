@@ -45,7 +45,7 @@ class TableStore(ABC):
         return self.primary_keys + self.meta_keys
 
     def hash_rows(self, df: DataDF) -> HashDF:
-        hash_df = df[self.hash_keys]
+        hash_df = df[self.hash_keys].copy()
         hash_df["hash"] = df.apply(lambda x: str(list(x)), axis=1).apply(
             lambda x: int.from_bytes(cityhash.CityHash32(x).to_bytes(4, "little"), "little", signed=True)
         )
