@@ -158,6 +158,11 @@ export const coreOpsApi = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ labels: labels || [], background }),
         }),
+    stopRun: (runId: string) =>
+        fetchJson<{ run_id: string; status: string; stopped: boolean }>(
+            `/runs/${encodeURIComponent(runId)}/stop`,
+            { method: "POST" },
+        ),
     resetTransformMetadata: (pipelineId: string, transformName: string) =>
         fetchJson<ResetTransformMetadataResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/transforms/${encodeURIComponent(transformName)}/reset-metadata`,
