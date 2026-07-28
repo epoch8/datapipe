@@ -10,7 +10,7 @@ dependencies = [
     "opencv-python>=4.8.0.76",
     "opencv-python-headless>=4.8.0.76",
     "datapipe-core[gcsfs,s3fs,ray]",
-    "cv-pipeliner @ git+https://github.com/epoch8/cv-pipeliner@0.22.0",
+    "cv-pipeliner",
     "imageio>=2.31.3,<3",
     "joblib>=1.3.2,<2",
     "natsort>=8.4.0",
@@ -23,6 +23,7 @@ dependencies = [
     "thop>=0.1.1",
     "tqdm>=4.64.0",
     "dill>=0.3.7",
+    "httpx",
 ]
 
 [project.optional-dependencies]
@@ -30,10 +31,7 @@ sqlite = [
     "pysqlite3-binary>=0.5.0,<0.6 ; sys_platform != 'darwin'",
     "sqlalchemy-pysqlite3-binary>=0.0.4,<0.0.5 ; sys_platform != 'darwin'",
 ]
-tensorflow = [
-    "tensorflow>=2.13.0, <2.22.0",
-    "image-classifiers",
-]
+tensorflow = ["tensorflow>=2.13.0, <2.22.0", "image-classifiers"]
 torch = [
     "torch>=1.12.0",
     "torchvision>=0.12.0",
@@ -42,9 +40,7 @@ torch = [
     "requests-toolbelt>=1.0.0",
     "ultralytics>=8.4.66, <9.0.0",
 ]
-fiftyone = [
-    "fiftyone",
-]
+fiftyone = ["fiftyone"]
 sky-vast = [
     "skypilot[vast]==0.12.3.post1",
     "vastai-sdk>=0.1.20,<0.2",
@@ -52,7 +48,6 @@ sky-vast = [
     "asyncssh",
     "s3fs",
 ]
-
 [project.urls]
 Repository = "https://github.com/epoch8/datapipe"
 
@@ -76,7 +71,9 @@ dev = [
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
-cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.0" }
+datapipe-app = { workspace = true }
+datapipe-app-ml-ops = { workspace = true }
+cv-pipeliner = { git = "https://github.com/epoch8/cv-pipeliner", tag = "0.22.3" }
 YOLOv5 = { git = "https://github.com/epoch8/yolov5", rev = "943ad3c43a981ff81b05c779d2e051641b714f4a" }
 image-classifiers = { git = "https://github.com/qubvel/classification_models", rev = "a0f006e05485a34ccf871c421279864b0ccd220b" }
 

@@ -21,6 +21,7 @@ from datapipe_ml.utils.image_data_stores import (
     ImageDataTableStoreDB,
     NumpyDataFile,
     YOLOLabelsFile,
+    _reset_fiftyone_dataset_store_registry,
 )
 
 
@@ -68,6 +69,13 @@ def _assert_image_data_labels(df: pd.DataFrame, expected: dict[str, str]) -> Non
     assert actual == expected
 
 
+@pytest.fixture(autouse=True)
+def _reset_fiftyone_store_registry():
+    _reset_fiftyone_dataset_store_registry()
+    yield
+    _reset_fiftyone_dataset_store_registry()
+
+
 class _FakeSample:
     def __init__(self, filepath: str):
         self.filepath = filepath
@@ -90,12 +98,23 @@ class _FakeSample:
         self._fields = other._fields.copy()
 
 
+class _FakeKeypointSkeleton:
+    def __init__(self, labels: list[str] | None = None, edges: list[list[int]] | None = None):
+        self.labels = labels
+        self.edges = edges
+
+
 class _FakeDataset:
     persistent = False
 
     def __init__(self, name: str):
         self.name = name
         self.samples: list[_FakeSample] = []
+        self.default_skeleton: _FakeKeypointSkeleton | None = None
+        self.save_calls = 0
+
+    def save(self) -> None:
+        self.save_calls += 1
 
     def add_samples(self, samples: list[_FakeSample], progress: bool = False) -> None:
         self.samples.extend(samples)
@@ -123,6 +142,8 @@ class _FakeDatasetView:
 
 
 class _FakeFiftyOne:
+    KeypointSkeleton = _FakeKeypointSkeleton
+
     def __init__(self):
         self.datasets: dict[str, _FakeDataset] = {}
 
@@ -470,6 +491,38 @@ def test_fiftyone_images_data_table_store_raises_when_dataset_missing_and_create
         store.read_rows(pd.DataFrame([{"filepath": "/tmp/image.jpg"}]))
 
 
+def test_fiftyone_images_data_table_store_sets_default_skeleton_on_create():
+    fo_session = _FakeFiftyOneSession()
+    labels = ["nose", "left_eye", "right_eye"]
+    edges = [[0, 1], [0, 2]]
+    store = FiftyOneImagesDataTableStore(
+        dataset="skeleton_dataset",
+        fo_session=fo_session,
+        fo_keypoints_label="keypoints",
+        keypoints_labels=labels,
+        keypoints_skeleton_edges=edges,
+        rm_only_fo_fields=False,
+    )
+
+    dataset = store._get_or_create_dataset()
+
+    assert dataset.default_skeleton is not None
+    assert dataset.default_skeleton.labels == labels
+    assert dataset.default_skeleton.edges == edges
+    assert dataset.save_calls == 1
+    assert dataset.persistent is True
+
+
+def test_fiftyone_images_data_table_store_skeleton_edges_require_labels():
+    with pytest.raises(ValueError, match="keypoints_skeleton_edges requires keypoints_labels"):
+        FiftyOneImagesDataTableStore(
+            dataset="skeleton_dataset",
+            fo_session=_FakeFiftyOneSession(),
+            keypoints_skeleton_edges=[[0, 1]],
+            rm_only_fo_fields=False,
+        )
+
+
 @pytest.mark.fiftyone
 def test_fiftyone_images_data_table_store_real_fiftyone_table_store_ops(tmp_dir):
     if importlib.util.find_spec("fiftyone") is None:
@@ -547,3 +600,40 @@ def test_fiftyone_images_data_table_store_real_fiftyone_table_store_ops(tmp_dir)
         finally:
             if dataset_name in fo_session.fiftyone.list_datasets():
                 fo_session.fiftyone.delete_dataset(dataset_name)
+
+
+def _fo_store(*, rm_only_fo_fields: bool, fo_label: str = "field"):
+    return FiftyOneImagesDataTableStore(
+        dataset="demo_dataset",
+        fo_session=_FakeFiftyOneSession(),
+        fo_detections_label=fo_label,
+        rm_only_fo_fields=rm_only_fo_fields,
+        primary_schema=[Column("image_name", String(255), primary_key=True)],
+    )
+
+
+def test_fiftyone_dataset_store_registry_accepts_base_plus_overlays():
+    _fo_store(rm_only_fo_fields=False, fo_label="images")
+    _fo_store(rm_only_fo_fields=True, fo_label="predictions")
+
+
+def test_fiftyone_dataset_store_registry_allows_single_store():
+    _fo_store(rm_only_fo_fields=True)
+
+
+def test_fiftyone_dataset_store_registry_rejects_overlay_as_first():
+    _fo_store(rm_only_fo_fields=True, fo_label="predictions")
+    with pytest.raises(ValueError, match="first FiftyOneImagesDataTableStore must use rm_only_fo_fields=False"):
+        _fo_store(rm_only_fo_fields=False, fo_label="images")
+
+
+def test_fiftyone_dataset_store_registry_rejects_mismatched_primary_schema():
+    _fo_store(rm_only_fo_fields=False, fo_label="images")
+    with pytest.raises(ValueError, match="primary_schema"):
+        FiftyOneImagesDataTableStore(
+            dataset="demo_dataset",
+            fo_session=_FakeFiftyOneSession(),
+            fo_detections_label="predictions",
+            rm_only_fo_fields=True,
+            primary_schema=[Column("image_id", String(255), primary_key=True)],
+        )

@@ -112,12 +112,17 @@ class YOLOPoseDataConverter(YOLODataConverter):
                 str(round(h / height, 6)),
             ]
             keypoints = bbox_data.keypoints if bbox_data.keypoints is not None else []
-            visibility = None
-            if isinstance(bbox_data.additional_info, dict):
-                visibility = bbox_data.additional_info.get("keypoints_visibility")
-            if visibility is None:
-                visibility = [2] * len(keypoints)
-            for (x, y), visible in zip(keypoints, visibility):
+            visibility = bbox_data.keypoints_visibility
+            if len(keypoints) > 0 and visibility is None:
+                raise ValueError(
+                    "keypoints_visibility is required on BboxData when keypoints are present; "
+                    "got None (refusing silent default of all-visible)"
+                )
+            if visibility is not None and len(visibility) != len(keypoints):
+                raise ValueError(
+                    f"Len keypoints_visibility={len(visibility)} not equal to len keypoints={len(keypoints)}"
+                )
+            for (x, y), visible in zip(keypoints, visibility or []):
                 parts.extend([str(round(x / width, 6)), str(round(y / height, 6)), str(int(visible))])
             txt_results.append(" ".join(parts))
         return txt_results
@@ -264,7 +269,16 @@ def resize_and_prepare_yolo_images(
     )
     if len(df__image_data) == 0 or len(df__detection_size_for_resize) == 0:
         return pd.DataFrame(columns=columns + ["image"]), pd.DataFrame(columns=columns + ["image_data"])
-    df__image_data = pd.merge(df__image_data, df__detection_size_for_resize, how="cross")
+    if detection_frozen_dataset_id__name in df__detection_size_for_resize.columns:
+        # Sizes are scoped per frozen dataset; join on the dataset id so a dataset's
+        # size does not leak into unrelated datasets.
+        df__image_data = pd.merge(
+            df__image_data,
+            df__detection_size_for_resize,
+            on=detection_frozen_dataset_id__name,
+        )
+    else:
+        df__image_data = pd.merge(df__image_data, df__detection_size_for_resize, how="cross")
     df__image_data["image_data"] = df__image_data.apply(
         lambda row: (
             thumbnail_image_data(row["image_data"], (row["width"], row["height"]))
@@ -292,3 +306,51 @@ def get_size_for_resize(
         df__detection_train_config_id["height"] = -1
     df__detection_train_config_id["width"] = df__detection_train_config_id["height"]
     return df__detection_train_config_id[[train_config_id_col, "width", "height"]]
+
+
+def get_size_for_resize_from_training_request(
+    df_training_request: pd.DataFrame,
+    *,
+    request_id_col: str,
+    frozen_dataset_id_col: str,
+    params_snapshot_col: str,
+    request_enabled_col: str,
+    resize_images: bool,
+) -> pd.DataFrame:
+    """Derive resize sizes from a training request snapshot (spec §10.2).
+
+    Data preparation only starts once a training request exists; disabled
+    requests never produce sizes, so no images are prepared for them.
+    """
+    columns = [request_id_col, frozen_dataset_id_col, "width", "height"]
+    if df_training_request is None or len(df_training_request) == 0:
+        return pd.DataFrame(columns=columns)
+
+    df = df_training_request.copy()
+    if request_enabled_col in df.columns:
+        df = df[df[request_enabled_col].apply(lambda v: bool(v) and not pd.isna(v))]
+    if len(df) == 0:
+        return pd.DataFrame(columns=columns)
+
+    if resize_images:
+        df["height"] = df[params_snapshot_col].apply(lambda params: params["imgsz"])
+    else:
+        df["height"] = -1
+    df["width"] = df["height"]
+    return df[columns]
+
+
+def dedupe_size_for_resize(
+    df__model_size_for_resize: pd.DataFrame,
+    *,
+    frozen_dataset_id_col: str,
+) -> pd.DataFrame:
+    """Collapse per-request sizes to unique (frozen_dataset_id, width, height).
+
+    Keeping the frozen dataset id in the key prevents one dataset's size from
+    becoming shared across all frozen datasets (spec §10.3).
+    """
+    columns = [frozen_dataset_id_col, "width", "height"]
+    if len(df__model_size_for_resize) == 0:
+        return pd.DataFrame(columns=columns)
+    return df__model_size_for_resize[columns].drop_duplicates()
