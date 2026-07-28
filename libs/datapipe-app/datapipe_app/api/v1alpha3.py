@@ -5,6 +5,10 @@ import threading
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
+from datapipe.cancel import (
+    CancelToken,
+    cancel_token_scope,
+)
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
@@ -20,6 +24,7 @@ from datapipe_app.observability.graph.discovery import build_stage_edges, build_
 from datapipe_app.observability.graph.label_graph import build_label_graph
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry
 from datapipe_app.observability.plugins.schemas import StartRunRequest, StartRunResponse
+from datapipe_app.observability.runs.active_runs import get_active_run_registry
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.observability.runs.run_scope import (
     derive_run_scope,
@@ -35,9 +40,18 @@ if TYPE_CHECKING:
     from datapipe_app.app.datapipe_api import DatapipeAPI
 
 
+_STOP_REASON = "Stopped by user"
+
+
 class ResetTransformMetadataResponse(BaseModel):
     transform_name: str
     status: str = "ok"
+
+
+class StopRunResponse(BaseModel):
+    run_id: str
+    status: str
+    stopped: bool
 
 
 class CapabilitiesResponse(BaseModel):
@@ -98,6 +112,7 @@ def make_run_steps_callable(
     Execution is always started in a background thread so the HTTP request can
     return the ``run_id`` immediately (UI navigates to the run page).
     """
+    registry = get_active_run_registry()
 
     def _run_steps_for_request(
         request_id: str,
@@ -123,18 +138,23 @@ def make_run_steps_callable(
             labels_json = labels_to_json(labels)
             cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
             run_config = RunConfig.with_callback(run_config, cb)
+            token = CancelToken()
+            registry.register(cb.run_id, token)
 
             def _execute() -> None:
                 try:
-                    run_steps(
-                        ds=ds,
-                        steps=selected,
-                        run_config=RunConfig.with_callback(run_config, cb),
-                        executor=resolve_executor(),
-                    )
+                    with cancel_token_scope(token):
+                        run_steps(
+                            ds=ds,
+                            steps=selected,
+                            run_config=RunConfig.with_callback(run_config, cb),
+                            executor=resolve_executor(),
+                        )
                 except BaseException:
                     # Failure / interrupt already recorded via the RunCallback hooks.
                     return
+                finally:
+                    registry.unregister(cb.run_id)
 
             thread = threading.Thread(
                 target=_execute,
@@ -448,36 +468,69 @@ def make_app(
         selected = filter_steps_by_labels(steps, labels=req.labels) if req.labels else steps
         trigger = trigger_from_labels(req.labels)
         labels_json = labels_to_json(req.labels)
+        registry = get_active_run_registry()
 
         if req.background:
             cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
+            token = CancelToken()
+            registry.register(cb.run_id, token)
 
             def _execute() -> None:
                 try:
-                    run_steps(
-                        ds=ds,
-                        steps=selected,
-                        run_config=RunConfig(callback=cb),
-                        executor=_resolve_executor(),
-                    )
+                    with cancel_token_scope(token):
+                        run_steps(
+                            ds=ds,
+                            steps=selected,
+                            run_config=RunConfig(callback=cb),
+                            executor=_resolve_executor(),
+                        )
                 except BaseException:
                     # Failure / interrupt already recorded via RunCallback hooks.
                     return
+                finally:
+                    registry.unregister(cb.run_id)
 
             background_tasks.add_task(_execute)
             return StartRunResponse(run_id=cb.run_id, status="running")
 
         cb = recorder.create_callback(trigger=trigger, labels_json=labels_json)
+        token = CancelToken()
+        registry.register(cb.run_id, token)
         try:
-            run_steps(
-                ds=ds,
-                steps=selected,
-                run_config=RunConfig(callback=cb),
-                executor=_resolve_executor(),
-            )
+            with cancel_token_scope(token):
+                run_steps(
+                    ds=ds,
+                    steps=selected,
+                    run_config=RunConfig(callback=cb),
+                    executor=_resolve_executor(),
+                )
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc
+        finally:
+            registry.unregister(cb.run_id)
         return StartRunResponse(run_id=cb.run_id, status="completed")
+
+    @app.post("/runs/{run_id}/stop", response_model=StopRunResponse)
+    def stop_run(run_id: str) -> StopRunResponse:
+        """Urgent stop: kill training subprocesses and mark the run interrupted."""
+        row = store.get_run(run_id)
+        if row is None:
+            raise HTTPException(404, f"Run {run_id} not found")
+        if row.status != "running":
+            raise HTTPException(
+                409,
+                f"Run {run_id} is not running (status={row.status})",
+            )
+
+        registry = get_active_run_registry()
+        stopped = registry.request_stop(run_id)
+        store.finish_running_steps(run_id, status="interrupted", error=_STOP_REASON)
+        store.finish_run(run_id, status="interrupted", error=_STOP_REASON)
+        if not stopped:
+            # Run is recorded as running but this process has no live token
+            # (e.g. after API restart). Status is still flipped to interrupted.
+            return StopRunResponse(run_id=run_id, status="interrupted", stopped=False)
+        return StopRunResponse(run_id=run_id, status="interrupted", stopped=True)
 
     @app.post(
         "/pipelines/{pipeline_id}/transforms/{transform_name}/reset-metadata",

@@ -77,6 +77,8 @@ def _emit_forwarded_output(pending: str, stream: TextIO) -> str:
 
 def _spawn(target, *args):
     # https://github.com/pytorch/pytorch/issues/3492#issuecomment-522393847
+    from datapipe.cancel import RunCancelledError, get_cancel_token
+
     ctx = mp.get_context("spawn")
     q: mp.Queue = ctx.Queue()
     log_dir = tempfile.mkdtemp(prefix="datapipe-train-stdio-")
@@ -99,13 +101,27 @@ def _spawn(target, *args):
     stdout_thread.start()
     stderr_thread.start()
 
+    cancel_token = get_cancel_token()
+    if cancel_token is not None:
+        cancel_token.raise_if_cancelled()
+
     p = ctx.Process(
         target=_spawn_wrapper,
         args=(target, q, stdout_path, stderr_path, *args),
     )
     p.start()
+    if cancel_token is not None:
+        cancel_token.register_process(p)
     try:
         while True:
+            if cancel_token is not None and cancel_token.is_cancelled():
+                if p.is_alive():
+                    p.terminate()
+                    p.join(timeout=5)
+                    if p.is_alive():
+                        p.kill()
+                        p.join()
+                raise RunCancelledError("Training subprocess stopped by user")
             try:
                 res = q.get(timeout=1)
                 break
@@ -127,6 +143,8 @@ def _spawn(target, *args):
                 p.join()
         raise
     finally:
+        if cancel_token is not None:
+            cancel_token.unregister_process(p)
         if p.is_alive():
             p.join()
         stop.set()

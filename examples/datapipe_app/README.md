@@ -4,7 +4,15 @@ Minimal pipeline with `datapipe-app[ui]`: three SQL tables, one batch transform,
 No `datapipe-app-ml-ops`.
 
 Pipeline tables and datapipe metadata are managed with **Alembic**, not `datapipe db create-all`.
-Ops observability tables are created automatically on the first `datapipe api` / `datapipe run`.
+Ops observability tables are **not** auto-created on API start (default).
+Create them with Alembic (recommended) or explicitly:
+
+```bash
+uv run alembic upgrade head
+# or for throwaway local DBs:
+DATAPIPE_APP_CREATE_OBSERVABILITY_TABLES=true uv run datapipe api
+# or: uv run datapipe db create-all
+```
 
 ## Setup
 
