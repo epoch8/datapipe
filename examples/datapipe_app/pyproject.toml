@@ -1,0 +1,15 @@
+[project]
+name = "datapipe-app-example"
+version = "0"
+description = "Minimal Datapipe App example (SQLite, Alembic migrations, no ML ops)"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "alembic",
+    "datapipe-app[ui]",
+    "datapipe-core[sqlite]",
+]
+
+[tool.uv.sources]
+datapipe-app = { path = "../../libs/datapipe-app", editable = true }
+datapipe-core = { path = "../../libs/datapipe-core", editable = true }
+datapipe-ui = { path = "../../libs/datapipe-ui", editable = true }
