@@ -51,6 +51,8 @@ OrmTable = type[DeclarativeBase]
 TableOrName = Union[str, OrmTable, "Table"]
 
 
+ProcessItem = IndexDF | tuple[IndexDF, IndexDF]
+
 @dataclass
 class InputSpec:
     table: TableOrName

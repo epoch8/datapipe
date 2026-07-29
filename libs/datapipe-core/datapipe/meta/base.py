@@ -440,7 +440,6 @@ class ChainTransformMeta:
     def get_changed_idx_count(
         self,
         ds: "DataStore",
-        start_rank: int,
         run_config: RunConfig | None = None,
     ) -> int:
         """

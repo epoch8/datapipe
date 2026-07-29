@@ -480,7 +480,6 @@ class SQLTransformMeta(TransformMeta):
     ) -> tuple[int, Generator[IndexDF, None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0:
-
                 def empty():
                     yield from ()
 
@@ -891,7 +890,10 @@ class SQLChainTransformMeta(ChainTransformMeta):
     ) -> tuple[int, Generator[IndexDF, None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0 and len(self.outputs) == 0:
-                return (0, iter([]))
+                def empty():
+                    yield from ()
+                
+                return (0, empty())
 
             idx_count = self.get_new_process_idx_count(ds=ds)
             u1 = self._build_new_process_ids_sql(ds=ds)
@@ -909,15 +911,28 @@ class SQLChainTransformMeta(ChainTransformMeta):
     def get_changed_idx_count(
         self,
         ds: "DataStore",
-        start_rank: int,
         run_config: RunConfig | None = None,
     ) -> int:
-        sql = self._build_changed_idx_sql(ds=ds, start_rank=start_rank, run_config=run_config)
+        if len(self.inputs) == 0:
+            return 0
+
+        start_rank_sql = self._build_start_rank_sql(
+            ds=ds,
+            run_config=run_config,
+            order=self.order,  # type: ignore
+        )
 
         with ds.meta_dbconn.con.begin() as con:
-            idx_count = con.execute(
-                sa.select(*[sa.func.count()]).select_from(sa.alias(sql.subquery(), name="union_select"))
-            ).scalar()
+            start_rank = con.execute(start_rank_sql).scalar()
+
+        if start_rank is None:
+            return 0
+
+        idx_count = self._get_changed_idx_count(
+            ds=ds, 
+            start_rank=cast(int, start_rank), 
+            run_config=run_config,
+        )
 
         return cast(int, idx_count)
 
@@ -930,7 +945,10 @@ class SQLChainTransformMeta(ChainTransformMeta):
     ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0:
-                return (0, iter([]))
+                def empty():
+                    yield from ()
+                
+                return (0, empty())
 
             start_rank_sql = self._build_start_rank_sql(
                 ds=ds,
@@ -1205,7 +1223,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
                 join_ctes.append(ComputeInputCTE(cte=cte, keys=keys, join_type="full"))
         
         if join_ctes:
-            all_keys = chain(*[cte.keys for cte in join_ctes])
+            all_keys = list(chain(*[cte.keys for cte in join_ctes]))
 
             if self._contain_all_transform_keys(all_keys):
                 join_cte = _make_agg_of_agg(
@@ -1217,13 +1235,13 @@ class SQLChainTransformMeta(ChainTransformMeta):
 
                 if join_cte:
                     union_sqls.append(
-                        sa.select([join_cte.c[key] for key in self.transform_keys])
+                        sa.select(*[join_cte.c[key] for key in self.transform_keys])
                     )
 
         union_aggs = sa.union(*union_sqls).cte(name="union__chain")
 
         tr_tbl = self.sql_table
-        out: Any = (
+        out_sql: Any = (
             sa.select(
                 *[sa.column(k) for k in self.transform_keys]
             )
@@ -1231,31 +1249,31 @@ class SQLChainTransformMeta(ChainTransformMeta):
             .group_by(*[sa.column(k) for k in self.transform_keys])
         )
 
-        out = out.cte(name="transform")
+        out_cte = out_sql.cte(name="transform")
 
         if len(self.transform_keys) == 0:
             join_onclause_sql: Any = sa.literal(True)
         elif len(self.transform_keys) == 1:
-            join_onclause_sql = union_aggs.c[self.transform_keys[0]] == out.c[self.transform_keys[0]]
+            join_onclause_sql = union_aggs.c[self.transform_keys[0]] == out_cte.c[self.transform_keys[0]]
         else:  # len(transform_keys) > 1:
-            join_onclause_sql = sa.and_(*[union_aggs.c[key] == out.c[key] for key in self.transform_keys])
+            join_onclause_sql = sa.and_(*[union_aggs.c[key] == out_cte.c[key] for key in self.transform_keys])
 
         sql = (
             sa.select(
                 # Нам нужно выбирать хотя бы что-то, чтобы не было ошибки при
                 # пустом transform_keys
                 sa.literal(1).label("_datapipe_dummy"),
-                *[sa.func.coalesce(union_aggs.c[key], out.c[key]).label(key) for key in self.transform_keys],
+                *[sa.func.coalesce(union_aggs.c[key], out_cte.c[key]).label(key) for key in self.transform_keys],
             )
             .select_from(union_aggs)
             .outerjoin(
-                out,
+                out_cte,
                 onclause=join_onclause_sql,
                 full=False,
             )
             .where(
                     sa.and_(
-                    *[out.c[key] == None for key in self.transform_keys]
+                    *[out_cte.c[key] == None for key in self.transform_keys]
                 )
             )
         )
@@ -1486,6 +1504,22 @@ class SQLChainTransformMeta(ChainTransformMeta):
 
         return sql.limit(window_size)
 
+    def _get_changed_idx_count(
+        self,
+        ds: "DataStore",
+        start_rank: int,
+        run_config: RunConfig | None = None,
+    ) -> int:
+        sql = self._build_changed_idx_sql(ds=ds, start_rank=start_rank, run_config=run_config)
+
+        with ds.meta_dbconn.con.begin() as con:
+            idx_count = con.execute(
+                sa.select(*[sa.func.count()]).select_from(sa.alias(sql.subquery(), name="union_select"))
+            ).scalar()
+
+        return cast(int, idx_count)
+
+
     def _make_process_idx(   
         self, 
         ds: "DataStore",
@@ -1495,9 +1529,12 @@ class SQLChainTransformMeta(ChainTransformMeta):
         run_config: RunConfig | None = None,
     ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         if start_rank is None:
-            return (0, iter([]))
+            def empty():
+                yield from ()
 
-        idx_count = self.get_changed_idx_count(
+            return (0, empty())
+
+        idx_count = self._get_changed_idx_count(
             ds=ds,
             start_rank=start_rank,
             run_config=run_config,
@@ -1569,7 +1606,7 @@ def _make_agg_of_agg(
     ds: "DataStore",
     transform_keys: list[str],
     ctes: list[ComputeInputCTE],
-    agg_col: str= None,
+    agg_col: str | None= None,
 ) -> Any:
     assert len(ctes) > 0
 

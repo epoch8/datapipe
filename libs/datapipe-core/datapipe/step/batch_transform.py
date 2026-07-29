@@ -10,6 +10,7 @@ from typing import (
     Literal,
     Protocol,
     Sequence,
+    cast,
 )
 
 import pandas as pd
@@ -34,6 +35,7 @@ from datapipe.types import (
     ChangeList,
     DataDF,
     IndexDF,
+    ProcessItem,
     Labels,
     PipelineInput,
     PipelineOutput,
@@ -330,9 +332,11 @@ class BaseBatchTransformStep(ComputeStep):
     def process_batch(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
     ) -> ChangeList:
+        idx = cast(IndexDF, idx)
+        
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {idx.to_records()}")
 

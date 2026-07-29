@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from typing import Iterable, Literal, Sequence, Any
 
 from opentelemetry import trace
 from sqlalchemy import Column
@@ -15,6 +15,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     IndexDF,
+    ProcessItem,
     InputSpec,
     Labels,
     MetaSchema,
@@ -274,7 +275,7 @@ class ComputeStep:
         ds: DataStore,
         chunk_size: int | None = None,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Iterable[ProcessItem]]:
         raise NotImplementedError()
 
     def get_change_list_process_ids(
@@ -282,7 +283,7 @@ class ComputeStep:
         ds: DataStore,
         change_list: ChangeList,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Iterable[ProcessItem]]:
         raise NotImplementedError()
 
     def run_full(
@@ -394,6 +395,7 @@ class ChaimComputeStep(ComputeStep):
                     f"previous type - {key_to_column_type_prv[key]}, "
                     f"output type -  {key_to_column_type_out[key]}"
                 )
+
 
 
 class PipelineStep(ABC):

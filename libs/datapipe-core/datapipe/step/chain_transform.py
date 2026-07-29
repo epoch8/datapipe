@@ -7,6 +7,7 @@ from typing import (
     Any,
     Callable,
     Iterable,
+    Generator,
     Literal,
     Sequence,
     Tuple,
@@ -36,6 +37,7 @@ from datapipe.types import (
     ChangeList,
     DataDF,
     IndexDF,
+    ProcessItem,
     ChainIndexDF,
     Labels,
     PipelineInput,
@@ -138,9 +140,8 @@ class BaseChainTransformStep(ChaimComputeStep):
         self,
         ds: DataStore,
         chunk_size: int | None = None,
-        window_size: int | None = None,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         """
         Метод для получения перечня индексов для обработки.
 
@@ -151,12 +152,11 @@ class BaseChainTransformStep(ChaimComputeStep):
         """
         run_config = self._apply_filters_to_run_config(run_config)
         chunk_size = chunk_size or self.chunk_size
-        window_size = window_size or self.window_size
 
         return self.meta.get_full_process_ids(
             ds=ds, 
             chunk_size=chunk_size,
-            window_size=window_size,
+            window_size=self.window_size,
             run_config=run_config
         )
     
@@ -165,7 +165,7 @@ class BaseChainTransformStep(ChaimComputeStep):
         ds: DataStore,
         change_list: ChangeList,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         run_config = self._apply_filters_to_run_config(run_config)
         return self.meta.get_change_list_process_ids(
             ds=ds,
@@ -180,7 +180,7 @@ class BaseChainTransformStep(ChaimComputeStep):
         ds: DataStore,
         idx: IndexDF,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         run_config = self._apply_filters_to_run_config(run_config)
         return self.meta.get_idx_process_ids(
             ds=ds,
@@ -246,10 +246,10 @@ class BaseChainTransformStep(ChaimComputeStep):
     def process_batch(
         self,
         ds: DataStore,
-        idx: Tuple[IndexDF, IndexDF],
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
     ) -> ChangeList:
-        new_idx, prev_idx = idx
+        new_idx, prev_idx = cast(tuple[IndexDF, IndexDF], idx)
 
         with tracer.start_as_current_span("process batch"):
             logger.debug(f"Idx to process: {new_idx.to_records()}, previous idx: {prev_idx.to_records()}")
@@ -366,7 +366,7 @@ class BaseChainTransformStep(ChaimComputeStep):
 
         if idx_count is not None and idx_count == 0:
             return
-        
+
         executor.run_process_batch(
             name=self.name,
             ds=ds,

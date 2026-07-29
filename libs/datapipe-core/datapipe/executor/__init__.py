@@ -6,14 +6,14 @@ from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, IndexDF
+from datapipe.types import ChangeList, IndexDF, ProcessItem
 
 
 class ProcessFn(Protocol):
     def __call__(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
     ) -> ChangeList: ...
 
@@ -34,7 +34,7 @@ class Executor(ABC):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -47,7 +47,7 @@ class SingleThreadExecutor(Executor):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,

@@ -6,7 +6,7 @@ from tqdm_loggable.auto import tqdm
 from datapipe.datatable import DataStore
 from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, IndexDF
+from datapipe.types import ChangeList, ProcessItem
 
 
 class RayExecutor(Executor):
@@ -15,7 +15,7 @@ class RayExecutor(Executor):
         name: str,
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -43,7 +43,7 @@ class RayExecutor(Executor):
             return process_fn(ds, idx, run_config)
 
         # Generator to collect results, so tqdm can show progress
-        def _results(idx_gen: Generator[IndexDF, None, None]) -> Generator[ChangeList, None, None]:
+        def _results(idx_gen: Generator[ProcessItem, None, None]) -> Generator[ChangeList, None, None]:
             # Submit tasks to remote functions using Ray
             futures: list[ray.ObjectRef[ChangeList]] = []
             for idx in idx_gen:
