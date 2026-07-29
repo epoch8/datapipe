@@ -1,7 +1,10 @@
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 from datapipe.settings import settings
+
+if TYPE_CHECKING:
+    from datapipe.run_callback import RunCallback
 
 LabelDict = dict[str, Any]
 
@@ -20,13 +23,20 @@ class RunConfig:
     # всего процесса будет остановлено
     fail_fast: bool = field(default_factory=lambda: settings.fail_fast)
 
+    # Callback for run/step lifecycle events, including step progress.
+    # Use CompositeRunCallback to attach more than one.
+    callback: "RunCallback | None" = None
+
     @classmethod
-    def add_labels(cls, rc: Optional["RunConfig"], labels: LabelDict) -> "RunConfig":
+    def add_labels(cls, rc: "RunConfig | None", labels: LabelDict) -> "RunConfig":
         if rc is not None:
-            return RunConfig(
-                filters=rc.filters,
-                labels={**rc.labels, **labels},
-                fail_fast=rc.fail_fast,
-            )
+            return replace(rc, labels={**rc.labels, **labels})
         else:
             return RunConfig(labels=labels)
+
+    @classmethod
+    def with_callback(cls, rc: "RunConfig | None", callback: "RunCallback") -> "RunConfig":
+        if rc is not None:
+            return replace(rc, callback=callback)
+        else:
+            return RunConfig(callback=callback)

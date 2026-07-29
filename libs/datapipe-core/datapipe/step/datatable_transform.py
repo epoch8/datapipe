@@ -59,7 +59,7 @@ class DatatableTransformStep(ComputeStep):
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> None:
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
 
         # TODO implement "watermark" system for tracking computation status in DatatableTransform
         #

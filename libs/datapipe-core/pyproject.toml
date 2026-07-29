@@ -22,7 +22,6 @@ dependencies = [
     "PyYAML>=5.3.1",
     "rich>=13.3.2",
     "SQLAlchemy>=2.0.0, <3.0.0",
-    "tqdm-loggable>=0.4.1,<0.5",
     "traceback-with-variables>=2.0.4,<3",
 ]
 
@@ -59,10 +58,8 @@ dev = [
     "pandas-stubs",
     "types-setuptools",
     "types-redis",
-    "types-tqdm",
     "types-pillow",
     "types-PyYAML",
-    "types-tqdm>=4.67.0.20241221",
     "ruff>=0.12.5",
 ]
 
