@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generator, Protocol
-
-from tqdm_loggable.auto import tqdm
+from typing import TYPE_CHECKING, Generator, Protocol
 
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, IndexDF
+
+if TYPE_CHECKING:
+    from datapipe.compute import ComputeStep
 
 
 class ProcessFn(Protocol):
@@ -31,7 +32,7 @@ class Executor(ABC):
     @abstractmethod
     def run_process_batch(
         self,
-        name: str,
+        step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
         idx_gen: Generator[IndexDF, None, None],
@@ -44,7 +45,7 @@ class Executor(ABC):
 class SingleThreadExecutor(Executor):
     def run_process_batch(
         self,
-        name: str,
+        step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
         idx_gen: Generator[IndexDF, None, None],
@@ -53,9 +54,14 @@ class SingleThreadExecutor(Executor):
         executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
+        callback = run_config.callback if run_config is not None else None
 
+        if callback is not None:
+            callback.on_step_progress(step, 0, idx_count)
+
+        completed = 0
         try:
-            for idx in tqdm(idx_gen, total=idx_count):
+            for idx in idx_gen:
                 changes = process_fn(
                     ds=ds,
                     idx=idx,
@@ -63,6 +69,9 @@ class SingleThreadExecutor(Executor):
                 )
 
                 res_changelist.extend(changes)
+                completed += 1
+                if callback is not None:
+                    callback.on_step_progress(step, completed, idx_count)
         finally:
             idx_gen.close()
 

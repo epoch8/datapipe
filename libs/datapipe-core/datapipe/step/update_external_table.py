@@ -2,7 +2,6 @@ import logging
 import time
 
 import pandas as pd
-from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     Catalog,
@@ -23,10 +22,20 @@ from datapipe.types import Labels, MetadataDF, TableOrName, cast
 logger = logging.getLogger("datapipe.step.update_external_table")
 
 
-def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig | None = None) -> None:
+def update_external_table(
+    ds: DataStore,
+    table: DataTable,
+    run_config: RunConfig | None = None,
+    step: ComputeStep | None = None,
+) -> None:
     now = time.time()
+    callback = run_config.callback if run_config is not None else None
 
-    for ps_df in tqdm(table.table_store.read_rows_meta_pseudo_df(run_config=run_config)):
+    rows_processed = 0
+    if callback is not None and step is not None:
+        callback.on_step_progress(step, rows_processed, None)
+
+    for ps_df in table.table_store.read_rows_meta_pseudo_df(run_config=run_config):
         (
             new_index_df,
             changed_index_df,
@@ -42,6 +51,10 @@ def update_external_table(ds: DataStore, table: DataTable, run_config: RunConfig
                 pd.concat(df for df in [new_meta_df, changed_meta_df] if not df.empty),
             ),
         )
+
+        rows_processed += 1
+        if callback is not None and step is not None:
+            callback.on_step_progress(step, rows_processed, None)
 
     for stale_idx in table.meta.get_stale_idx(now, run_config=run_config):
         logger.debug(f"Deleting {len(stale_idx.index)} rows from {table.name} data")
@@ -72,9 +85,10 @@ class UpdateExternalTable(PipelineStep):
             input_dts: list[DataTable],
             output_dts: list[DataTable],
             run_config: RunConfig | None,
+            step: ComputeStep | None = None,
             **kwargs,
         ):
-            return update_external_table(ds, output_dts[0], run_config)
+            return update_external_table(ds, output_dts[0], run_config, step=step)
 
         input_dts: list[ComputeInput] = []
         output_dts = [pipeline_output_to_compute_output(ds, catalog, self.output_table_name)]

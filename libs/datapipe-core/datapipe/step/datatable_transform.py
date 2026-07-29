@@ -1,3 +1,4 @@
+import inspect
 import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -33,6 +34,7 @@ class DatatableTransformFunc(Protocol):
         output_dts: list[DataTable],
         run_config: RunConfig | None,
         kwargs: dict[str, Any] | None = None,
+        step: "ComputeStep | None" = None,
     ) -> None: ...
 
 
@@ -52,6 +54,7 @@ class DatatableTransformStep(ComputeStep):
         self.func = func
         self.kwargs = kwargs or {}
         self.check_for_changes = check_for_changes
+        self.parameters = inspect.signature(self.func).parameters
 
     def run_full(
         self,
@@ -59,7 +62,7 @@ class DatatableTransformStep(ComputeStep):
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> None:
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
 
         # TODO implement "watermark" system for tracking computation status in DatatableTransform
         #
@@ -82,13 +85,17 @@ class DatatableTransformStep(ComputeStep):
 
         with tracer.start_as_current_span(f"Run {self.func}"):
             try:
-                self.func(
-                    ds=ds,
-                    input_dts=[inp.dt for inp in self.input_dts],
-                    output_dts=[out.dt for out in self.output_dts],
-                    run_config=run_config,
-                    kwargs=self.kwargs,
-                )
+                func_kwargs: dict[str, Any] = {
+                    "ds": ds,
+                    "input_dts": [inp.dt for inp in self.input_dts],
+                    "output_dts": [out.dt for out in self.output_dts],
+                    "run_config": run_config,
+                    "kwargs": self.kwargs,
+                }
+                if "step" in self.parameters:
+                    func_kwargs["step"] = self
+
+                self.func(**func_kwargs)
 
                 ds.event_logger.log_step_full_complete(self.name)
             except Exception as e:

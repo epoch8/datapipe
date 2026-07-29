@@ -2,7 +2,7 @@ import copy
 import inspect
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import (
     Any,
     Callable,
@@ -15,7 +15,6 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     Catalog,
@@ -153,11 +152,9 @@ class BaseBatchTransformStep(ComputeStep):
             if run_config is None:
                 return RunConfig(filters=filters)
             else:
-                run_config = copy.deepcopy(run_config)
                 filters = copy.deepcopy(filters)
                 filters.update(run_config.filters)
-                run_config.filters = filters
-                return run_config
+                return replace(run_config, filters=filters)
 
     def get_status(self, ds: DataStore) -> StepStatus:
         return StepStatus(
@@ -280,11 +277,19 @@ class BaseBatchTransformStep(ComputeStep):
             run_config=run_config,
         )
 
-    def fill_metadata(self, ds: DataStore) -> None:
+    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
         idx_len, idx_gen = self.get_full_process_ids(ds=ds, chunk_size=1000)
+        callback = run_config.callback if run_config is not None else None
 
-        for idx in tqdm(idx_gen, total=idx_len):
+        completed = 0
+        if callback is not None:
+            callback.on_step_progress(self, completed, idx_len)
+
+        for idx in idx_gen:
             self.meta.insert_rows(idx)
+            completed += 1
+            if callback is not None:
+                callback.on_step_progress(self, completed, idx_len)
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta.mark_all_rows_unprocessed()
@@ -362,7 +367,7 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         (idx_count, idx_gen) = self.get_full_process_ids(ds=ds, run_config=run_config)
@@ -373,7 +378,7 @@ class BaseBatchTransformStep(ComputeStep):
             return
 
         executor.run_process_batch(
-            name=self.name,
+            step=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -403,10 +408,10 @@ class BaseBatchTransformStep(ComputeStep):
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
 
         changes = executor.run_process_batch(
-            name=self.name,
+            step=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -427,7 +432,7 @@ class BaseBatchTransformStep(ComputeStep):
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         return self.process_batch(
@@ -447,6 +452,7 @@ class DatatableBatchTransform(PipelineStep):
     transform_keys: list[str] | None = None
     kwargs: dict | None = None
     labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
 
     def build_compute(self, ds: DataStore, catalog: Catalog) -> list[ComputeStep]:
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
@@ -467,6 +473,7 @@ class DatatableBatchTransform(PipelineStep):
                 transform_keys=self.transform_keys,
                 chunk_size=self.chunk_size,
                 labels=self.labels,
+                executor_config=self.executor_config,
             )
         ]
 
@@ -483,6 +490,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
         transform_keys: list[str] | None = None,
         chunk_size: int = 1000,
         labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
     ) -> None:
         super().__init__(
             ds=ds,
@@ -492,6 +500,7 @@ class DatatableBatchTransformStep(BaseBatchTransformStep):
             transform_keys=transform_keys,
             chunk_size=chunk_size,
             labels=labels,
+            executor_config=executor_config,
         )
 
         self.func = func
