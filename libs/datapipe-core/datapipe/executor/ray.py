@@ -53,22 +53,40 @@ class RayExecutor(Executor):
 
         # Generator to collect results as Ray futures resolve
         def _results(idx_gen: Generator[IndexDF, None, None]) -> Generator[ChangeList, None, None]:
+            from datapipe.cancel import get_cancel_token
+
             # Submit tasks to remote functions using Ray
             futures: list[ray.ObjectRef[ChangeList]] = []
-            for idx in idx_gen:
-                if len(futures) > parallelism:
-                    ready, futures = ray.wait(futures, timeout=None)
+            try:
+                for idx in idx_gen:
+                    token = get_cancel_token()
+                    if token is not None and token.is_cancelled():
+                        for future in futures:
+                            ray.cancel(future, force=True)
+                        token.raise_if_cancelled()
+
+                    if len(futures) > parallelism:
+                        ready, futures = ray.wait(futures, timeout=None)
+                        for result in ray.get(ready):
+                            yield result
+
+                    future = process_fn_remote.remote(ds, idx, remote_run_config)
+                    futures.append(future)
+
+                ready, futures = ray.wait(futures, timeout=None)
+                while len(ready) > 0:
+                    token = get_cancel_token()
+                    if token is not None and token.is_cancelled():
+                        for future in futures:
+                            ray.cancel(future, force=True)
+                        token.raise_if_cancelled()
                     for result in ray.get(ready):
                         yield result
-
-                future = process_fn_remote.remote(ds, idx, remote_run_config)
-                futures.append(future)
-
-            ready, futures = ray.wait(futures, timeout=None)
-            while len(ready) > 0:
-                for result in ray.get(ready):
-                    yield result
-                ready, futures = ray.wait(futures, timeout=None)
+                    ready, futures = ray.wait(futures, timeout=None)
+            except BaseException:
+                for future in futures:
+                    ray.cancel(future, force=True)
+                raise
 
         if callback is not None:
             callback.on_step_progress(step, 0, idx_count)
