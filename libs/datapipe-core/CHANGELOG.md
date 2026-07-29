@@ -18,6 +18,22 @@
   multiple `RunCallback`s; `RunConfig.callback` itself is always a single
   callback
 
+## Schema creation
+
+* Extracted `ensure_db_schema(dbconn)` in `datapipe.store.database`
+* Schema is created automatically on `TableStoreDB` / `SQLTableMeta` /
+  `SQLTransformMeta` when `create_table=True`, and from
+  `datapipe db create-all`
+* `datapipe db create-all --force-recreate` drops all known SQL tables before
+  recreating them (destructive; for local development when schema drifted)
+* `datapipe db create-all` also syncs existing tables to current metadata
+  (ADD COLUMN / ALTER) via Alembic `produce_migrations` + `Operations.invoke`,
+  without writing migration revision files, when the optional
+  `datapipe-core[alembic]` extra is installed; otherwise sync is skipped
+* `datapipe db create-all` refuses to mutate the database when Alembic has
+  stamped a revision (`alembic_version.version_num` is set) — use
+  `alembic upgrade` instead of create-all / `--force-recreate` / metadata sync
+
 ## Executor / step progress
 
 * `Executor.run_process_batch` takes the `ComputeStep` (`step=`, replacing
@@ -35,6 +51,11 @@
   default, which prints throttled `step: completed/total` lines instead of
   an animated bar. The `tqdm-loggable` runtime dependency is dropped
 * Step logs include input/output table names
+
+## Fixes
+
+* Disable Ray UV runtime env by default (`RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`)
+  before importing Ray, avoiding misconfigured `uv run` worker startups
 
 # WIP 0.15.1
 
