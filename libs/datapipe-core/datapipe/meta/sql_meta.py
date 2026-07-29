@@ -888,7 +888,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         self,
         ds: "DataStore",
         chunk_size: int,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0 and len(self.outputs) == 0:
                 return (0, iter([]))
@@ -927,7 +927,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         chunk_size: int,
         window_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         with tracer.start_as_current_span("compute ids to process"):
             if len(self.inputs) == 0:
                 return (0, iter([]))
@@ -956,7 +956,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         chunk_size: int,
         window_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         with tracer.start_as_current_span("compute ids to process change list"):
             start_rank_sql = self._build_changelist_start_rank_sql(
                 ds=ds,
@@ -983,7 +983,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         chunk_size: int,
         window_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         with tracer.start_as_current_span("compute ids to process idx"):
             start_rank_sql = self._build_idx_start_rank_sql(
                 ds=ds,
@@ -1493,7 +1493,7 @@ class SQLChainTransformMeta(ChainTransformMeta):
         window_size: int,
         start_rank: int | None = None,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         if start_rank is None:
             return (0, iter([]))
 

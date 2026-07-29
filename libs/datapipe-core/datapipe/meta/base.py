@@ -428,7 +428,7 @@ class ChainTransformMeta:
         self,
         ds: "DataStore",
         chunk_size: int,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[IndexDF, None, None]]:
         """
         Compute new indices for a chain transform run wich must add to transform index: 
         returns chunk count and an iterator of index dataframes ordered by priority/keys,
@@ -456,7 +456,7 @@ class ChainTransformMeta:
         chunk_size: int,
         window_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[tuple[IndexDF, IndexDF]]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         """
         Compute indices for a full transform run: returns chunk count and an
         iterator of index dataframes ordered by rank/keys, respecting
@@ -472,7 +472,7 @@ class ChainTransformMeta:
         chunk_size: int,
         window_size: int,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
+    ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         """
         Like `get_full_process_ids`, but limited to changes from `change_list`
         (e.g., modified input tables). Returns chunk count and a generator of
@@ -488,7 +488,7 @@ class ChainTransformMeta:
             chunk_size: int,
             window_size: int,
             run_config: RunConfig | None = None,
-        ) -> tuple[int, Iterable[IndexDF]]:
+        ) -> tuple[int, Generator[tuple[IndexDF, IndexDF], None, None]]:
         """
         Like `get_full_process_ids`, but limited to changes from `change_list`
         (e.g., modified input tables). Returns chunk count and a generator of
