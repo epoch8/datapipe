@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from tests.helpers.cloud_storage import (
+from .cloud_storage import (
     assert_model_path_under_working_dir,
     assert_url_exists,
     is_cloud_url,
@@ -18,8 +18,8 @@ from tests.helpers.cloud_storage import (
 
 Workdir = str | Path
 
-import pandas as pd
 import fsspec
+import pandas as pd
 from datapipe.compute import (
     Catalog,
     Pipeline,
@@ -33,6 +33,7 @@ from datapipe.store.database import DBConn, TableStoreDB
 from sklearn.model_selection import train_test_split
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, String
+
 from .dbconn import get_sqlite_dbconnstr
 
 TESTS_DIR = Path(__file__).parents[1]
@@ -232,7 +233,7 @@ def make_runtime(
 
 
 def make_cloud_runtime(tmp_path: Path, suffix: str, **kwargs) -> tuple[SmokeRuntime, str]:
-    from tests.helpers.cloud_storage import cloud_working_dir
+    from .cloud_storage import cloud_working_dir
 
     workdir = str(cloud_working_dir(suffix))
     runtime = make_runtime(tmp_path, working_dir=workdir, **kwargs)
@@ -455,7 +456,9 @@ def detection_freeze_step(workdir: Workdir):
     )
 
 
-def detection_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def detection_train_step(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -548,7 +551,9 @@ def detection_train_step_with_local_checkpoint(
     )
 
 
-def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def detection_train_step_with_augmentations(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.detection.train.yolov8 import (
         Train_YoloV8_DetectionModel,
         YoloV8_TrainingConfig,
@@ -600,7 +605,9 @@ def detection_train_step_with_augmentations(workdir: Workdir, *, local_scratch: 
     )
 
 
-def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def detection_yolov5_train_step(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -642,7 +649,9 @@ def detection_yolov5_train_step(workdir: Workdir, *, local_scratch: Path | None 
     )
 
 
-def detection_yolov5_train_step_with_augmentations(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def detection_yolov5_train_step_with_augmentations(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.detection.train.yolov5 import (
         Train_YoloV5_DetectionModel,
         YoloV5_TrainingConfig,
@@ -738,7 +747,9 @@ def segmentation_freeze_step(workdir: Workdir):
     )
 
 
-def segmentation_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def segmentation_train_step(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.segmentation.train.yolov8 import (
         Train_YoloV8_SegmentationModel,
         YoloV8_TrainingConfig,
@@ -847,7 +858,9 @@ def keypoints_freeze_step(workdir: Workdir):
     )
 
 
-def keypoints_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def keypoints_train_step(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
         YoloV8_TrainingConfig,
@@ -974,7 +987,9 @@ def classification_freeze_step(workdir: Workdir):
     )
 
 
-def classification_train_step(workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None):
+def classification_train_step(
+    workdir: Workdir, *, local_scratch: Path | None = None, filedir_fsspec_kwargs: dict | None = None
+):
     from datapipe_ml.tasks.classification.train.tensorflow import (
         TF_ClassificationTrainingConfig,
         Train_Tensorflow_ClassificationModel,

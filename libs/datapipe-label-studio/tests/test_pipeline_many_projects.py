@@ -9,11 +9,6 @@ from datapipe.step.batch_generate import BatchGenerate, do_batch_generate
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.datatable_transform import DatatableTransformStep
 from datapipe.store.database import TableStoreDB
-from label_studio_sdk import LabelStudio
-from pytest_cases import parametrize, parametrize_with_cases
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
-
 from datapipe_label_studio.create_projects_step import CreateLabelStudioProjects
 from datapipe_label_studio.sdk_utils import get_project_by_title
 from datapipe_label_studio.upload_predictions_pipeline import (
@@ -22,7 +17,12 @@ from datapipe_label_studio.upload_predictions_pipeline import (
 from datapipe_label_studio.upload_tasks_pipeline import (
     LabelStudioUploadTasksToProjects,
 )
-from tests.ls_test_helpers import (
+from label_studio_sdk import LabelStudio
+from pytest_cases import parametrize, parametrize_with_cases
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
+
+from .ls_test_helpers import (
     DELETE_UNANNOTATED_TASKS_ONLY_ON_UPDATE,
     INCLUDE_PARAMS,
     INCLUDE_PREDICTIONS,
@@ -32,7 +32,7 @@ from tests.ls_test_helpers import (
     convert_to_ls_input_data,
     wrapped_partial,
 )
-from tests.util import get_project_id, get_project_tasks, wait_until_label_studio_is_up
+from .util import get_project_id, get_project_tasks, wait_until_label_studio_is_up
 
 
 def gen_ls_project_setting():

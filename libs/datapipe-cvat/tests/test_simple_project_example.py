@@ -14,8 +14,7 @@ from datapipe.compute import run_steps
 from datapipe_cvat.cvat_step import create_cvat_client
 from PIL import Image
 
-from test_cvat_integration import _require_cvat
-
+from .test_cvat_integration import _require_cvat
 
 pytestmark = pytest.mark.cvat
 
