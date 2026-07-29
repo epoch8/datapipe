@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, String
 
-from tests.fixtures.smoke_data import (
+from .fixtures.smoke_data import (
     SmokeDataset,
     define_ground_truth_for_classification,
     generate_smoke_data,
