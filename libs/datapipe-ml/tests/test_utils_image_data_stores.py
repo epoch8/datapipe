@@ -98,12 +98,23 @@ class _FakeSample:
         self._fields = other._fields.copy()
 
 
+class _FakeKeypointSkeleton:
+    def __init__(self, labels: list[str] | None = None, edges: list[list[int]] | None = None):
+        self.labels = labels
+        self.edges = edges
+
+
 class _FakeDataset:
     persistent = False
 
     def __init__(self, name: str):
         self.name = name
         self.samples: list[_FakeSample] = []
+        self.default_skeleton: _FakeKeypointSkeleton | None = None
+        self.save_calls = 0
+
+    def save(self) -> None:
+        self.save_calls += 1
 
     def add_samples(self, samples: list[_FakeSample], progress: bool = False) -> None:
         self.samples.extend(samples)
@@ -131,6 +142,8 @@ class _FakeDatasetView:
 
 
 class _FakeFiftyOne:
+    KeypointSkeleton = _FakeKeypointSkeleton
+
     def __init__(self):
         self.datasets: dict[str, _FakeDataset] = {}
 
@@ -476,6 +489,38 @@ def test_fiftyone_images_data_table_store_raises_when_dataset_missing_and_create
 
     with pytest.raises(ValueError, match="Dataset missing_dataset not found"):
         store.read_rows(pd.DataFrame([{"filepath": "/tmp/image.jpg"}]))
+
+
+def test_fiftyone_images_data_table_store_sets_default_skeleton_on_create():
+    fo_session = _FakeFiftyOneSession()
+    labels = ["nose", "left_eye", "right_eye"]
+    edges = [[0, 1], [0, 2]]
+    store = FiftyOneImagesDataTableStore(
+        dataset="skeleton_dataset",
+        fo_session=fo_session,
+        fo_keypoints_label="keypoints",
+        keypoints_skeleton_labels=labels,
+        keypoints_skeleton_edges=edges,
+        rm_only_fo_fields=False,
+    )
+
+    dataset = store._get_or_create_dataset()
+
+    assert dataset.default_skeleton is not None
+    assert dataset.default_skeleton.labels == labels
+    assert dataset.default_skeleton.edges == edges
+    assert dataset.save_calls == 1
+    assert dataset.persistent is True
+
+
+def test_fiftyone_images_data_table_store_skeleton_edges_require_labels():
+    with pytest.raises(ValueError, match="keypoints_skeleton_edges requires keypoints_skeleton_labels"):
+        FiftyOneImagesDataTableStore(
+            dataset="skeleton_dataset",
+            fo_session=_FakeFiftyOneSession(),
+            keypoints_skeleton_edges=[[0, 1]],
+            rm_only_fo_fields=False,
+        )
 
 
 @pytest.mark.fiftyone
