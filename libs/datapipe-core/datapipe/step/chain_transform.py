@@ -23,6 +23,9 @@ from datapipe.compute import (
     ComputeInput,
     ComputeOutput,
     ComputeStep,
+    BaseIndexStep,
+    BaseFlowStep,
+    BaseMetaDataStep,
     ChaimComputeStep,
     PipelineStep,
     StepStatus,
@@ -68,7 +71,7 @@ ChainTransformFunc = Callable[..., TransformResult]
 ChainTransformRankFunc =  Callable[..., int]
 
 
-class BaseChainTransformStep(ChaimComputeStep):
+class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, ChaimComputeStep):
     """
     Abstract class for chain transform steps
     """
@@ -476,7 +479,7 @@ class BaseChainTransformStep(ChaimComputeStep):
     def _update_transform_ids(self, ds: DataStore) -> None:
         logger.info(f"Update chain transform index")
 
-        idx_len, idx_gen = self.meta.get_new_process_ids(ds=ds, chunk_size=2)
+        idx_len, idx_gen = self.meta.get_new_process_ids(ds=ds, chunk_size=1000)
 
         if not idx_len:
             return

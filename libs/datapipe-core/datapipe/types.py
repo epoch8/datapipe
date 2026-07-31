@@ -4,7 +4,6 @@ import itertools
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
-    Any,
     NewType,
     TypeAlias,
     TypeVar,
@@ -50,8 +49,8 @@ OrmTable = type[DeclarativeBase]
 
 TableOrName = Union[str, OrmTable, "Table"]
 
-
 ProcessItem = IndexDF | tuple[IndexDF, IndexDF]
+
 
 @dataclass
 class InputSpec:

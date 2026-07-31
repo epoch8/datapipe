@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence, Any
+from typing import Iterable, Literal, Sequence, Protocol
 
 from opentelemetry import trace
 from sqlalchemy import Column
@@ -200,6 +200,55 @@ def pipeline_output_to_compute_output(ds: DataStore, catalog: Catalog, output: P
     return ComputeOutput(dt=catalog.get_datatable(ds, table), keys=keys)
 
 
+class BaseIndexStep:
+    def get_full_process_ids(
+        self,
+        ds: DataStore,
+        chunk_size: int | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[ProcessItem]]:
+        raise NotImplementedError()
+
+    def get_status(self, ds: DataStore) -> StepStatus:
+        raise NotImplementedError
+
+
+class BaseFlowStep:
+    def get_change_list_process_ids(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[ProcessItem]]:
+        raise NotImplementedError()
+
+    def run_changelist(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> ChangeList: 
+        raise NotImplementedError()
+
+    def run_idx(
+        self,
+        ds: DataStore,
+        idx: IndexDF,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> ChangeList: 
+        raise NotImplementedError()
+
+
+class BaseMetaDataStep:
+    def reset_metadata(self, ds: DataStore) -> None: 
+        raise NotImplementedError()
+    
+    def fill_metadata(self, ds: DataStore) -> None: 
+        raise NotImplementedError()
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -238,9 +287,6 @@ class ComputeStep:
     def labels(self) -> Labels:
         return self._labels if self._labels else []
 
-    def get_status(self, ds: DataStore) -> StepStatus:
-        raise NotImplementedError
-
     # TODO: move to lints
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
@@ -270,45 +316,12 @@ class ComputeStep:
                     f"{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}"
                 )
 
-    def get_full_process_ids(
-        self,
-        ds: DataStore,
-        chunk_size: int | None = None,
-        run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[ProcessItem]]:
-        raise NotImplementedError()
-
-    def get_change_list_process_ids(
-        self,
-        ds: DataStore,
-        change_list: ChangeList,
-        run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[ProcessItem]]:
-        raise NotImplementedError()
-
     def run_full(
         self,
         ds: DataStore,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> None:
-        raise NotImplementedError()
-
-    def run_changelist(
-        self,
-        ds: DataStore,
-        change_list: ChangeList,
-        run_config: RunConfig | None = None,
-        executor: Executor | None = None,
-    ) -> ChangeList:
-        raise NotImplementedError()
-
-    def run_idx(
-        self,
-        ds: DataStore,
-        idx: IndexDF,
-        run_config: RunConfig | None = None,
-    ) -> ChangeList:
         raise NotImplementedError()
 
 
@@ -499,9 +512,6 @@ def run_steps_changelist(
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
 ) -> None:
-    # FIXME extract Batch* steps to separate module
-    from datapipe.step.batch_transform import BaseBatchTransformStep
-
     current_changes = changelist
     next_changes = ChangeList()
     iteration = 0
@@ -518,7 +528,7 @@ def run_steps_changelist(
                             f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
                         )
 
-                        if isinstance(step, BaseBatchTransformStep):
+                        if isinstance(step, BaseFlowStep):
                             step_changes = step.run_changelist(
                                 ds,
                                 current_changes,
