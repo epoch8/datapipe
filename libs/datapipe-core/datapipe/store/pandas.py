@@ -53,7 +53,7 @@ class TableStoreJsonLine(TableDataSingleFileStore):
                 of.open(),
                 orient="records",
                 lines=True,
-                dtype=plain_dtypes,
+                dtype=plain_dtypes, # type: ignore
                 convert_dates=datetime_cols if datetime_cols else False,
             )
 
