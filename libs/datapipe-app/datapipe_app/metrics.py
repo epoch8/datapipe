@@ -37,7 +37,7 @@ class PipelineStatusCollector(Collector):
 
         for step in self.datapipe_app.steps:
             try:
-                if isinstance(step_status, BaseIndexStep):
+                if isinstance(step, BaseIndexStep):
                     step_status = step.get_status(self.datapipe_app.ds)
 
                     total_counts.add_metric([step.name], step_status.total_idx_count)
