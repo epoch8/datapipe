@@ -1,6 +1,6 @@
 from typing import Iterable
 
-from datapipe.compute import DatapipeApp
+from datapipe.compute import DatapipeApp, BaseIndexStep
 from fastapi import FastAPI
 from prometheus_client import Metric
 from prometheus_client.core import REGISTRY, GaugeMetricFamily
@@ -37,10 +37,11 @@ class PipelineStatusCollector(Collector):
 
         for step in self.datapipe_app.steps:
             try:
-                step_status = step.get_status(self.datapipe_app.ds)
+                if isinstance(step_status, BaseIndexStep):
+                    step_status = step.get_status(self.datapipe_app.ds)
 
-                total_counts.add_metric([step.name], step_status.total_idx_count)
-                changed_counts.add_metric([step.name], step_status.changed_idx_count)
+                    total_counts.add_metric([step.name], step_status.total_idx_count)
+                    changed_counts.add_metric([step.name], step_status.changed_idx_count)
             except NotImplementedError:
                 pass
 
