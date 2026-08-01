@@ -58,6 +58,18 @@ def test_table_store_json_line_reading(tmp_dir):
     assert_df_equal(df, test_df)
 
 
+def test_table_store_json_line_reads_through_fsspec_handle(tmp_dir):
+    test_df = pd.DataFrame({"id": ["0"], "record": ["rec1"]})
+    test_fname = tmp_dir / "table-pandas-fsspec.json"
+    test_df.to_json(test_fname, orient="records", lines=True)
+
+    store = TableStoreJsonLine(filename=test_fname.resolve().as_uri())
+    df = store.load_file()
+
+    assert df is not None
+    assert_df_equal(df, test_df)
+
+
 def make_file1(file):
     with open(file, "w") as out:
         out.write('{"id": "0", "text": "text0"}\n')

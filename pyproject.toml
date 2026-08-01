@@ -16,3 +16,8 @@ line-length = 120
 ignore_missing_imports = true
 follow_imports = "silent"
 namespace_packages = true
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.65",
+]

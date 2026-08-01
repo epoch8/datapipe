@@ -1,5 +1,6 @@
 import datetime
 from abc import ABC
+from typing import TextIO, cast
 
 import fsspec
 import pandas as pd
@@ -42,28 +43,30 @@ class TableStoreExcel(TableDataSingleFileStore, ABC):
 
 class TableStoreJsonLine(TableDataSingleFileStore):
     def load_file(self) -> pd.DataFrame | None:
-        of = fsspec.open(self.filename)
+        of = fsspec.open(self.filename, mode="r")
 
         if of.fs.exists(of.path):
             dtypes = sql_schema_to_dtype(self.primary_schema)
             datetime_cols = [k for k, v in dtypes.items() if v in _DATETIME_PYTHON_TYPES]
-            plain_dtypes = {k: v for k, v in dtypes.items() if v not in _DATETIME_PYTHON_TYPES}
-
-            df = pd.read_json(
-                of.open(),
-                orient="records",
-                lines=True,
-                dtype=plain_dtypes, # type: ignore
-                convert_dates=datetime_cols if datetime_cols else False,
-            )
+            with of.open() as json_file:
+                df = pd.read_json(
+                    cast(TextIO, json_file),
+                    orient="records",
+                    lines=True,
+                    convert_dates=datetime_cols if datetime_cols else False,
+                )
 
             for col, py_type in dtypes.items():
                 if col not in df.columns:
                     continue
-                if py_type == datetime.date:
+                if py_type == datetime.datetime:
+                    df[col] = pd.to_datetime(df[col])
+                elif py_type == datetime.date:
                     df[col] = pd.to_datetime(df[col]).dt.date
                 elif py_type == datetime.time:
                     df[col] = pd.to_datetime(df[col]).dt.time
+                else:
+                    df[col] = df[col].astype(py_type)
 
             return df
         else:
