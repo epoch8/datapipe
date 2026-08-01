@@ -1,4 +1,5 @@
 import datetime
+import io
 import shutil
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
+from datapipe.store import pandas as pandas_store
 from datapipe.store.pandas import TableStoreExcel, TableStoreJsonLine
 from datapipe.store.tests.abstract import AbstractBaseStoreTests
 from datapipe.tests.util import assert_df_equal
@@ -55,6 +57,53 @@ def test_table_store_json_line_reading(tmp_dir):
     df = store.load_file()
 
     assert df is not None
+    assert_df_equal(df, test_df)
+
+
+def test_table_store_json_line_reads_through_fsspec_handle(monkeypatch):
+    observed = {}
+    test_df = pd.DataFrame({"id": ["0"], "record": ["rec1"]})
+
+    class _FakeFS:
+        storage_options = {"token": "kept-on-fs-object"}
+
+        @staticmethod
+        def exists(path):
+            observed["exists_path"] = path
+            return True
+
+    class _FakeOpenFile:
+        fs = _FakeFS()
+        path = "bucket/data.json"
+
+        def open(self):
+            observed["open_called"] = True
+            return io.StringIO('{"id":"0","record":"rec1"}\n')
+
+    def fake_open(filename, mode="r"):
+        observed["filename"] = filename
+        observed["mode"] = mode
+        return _FakeOpenFile()
+
+    def fake_read_json(path_or_buf, **kwargs):
+        observed["path_or_buf"] = path_or_buf
+        observed["kwargs"] = kwargs
+        assert hasattr(path_or_buf, "read")
+        assert not isinstance(path_or_buf, str)
+        return test_df.copy()
+
+    monkeypatch.setattr(pandas_store.fsspec, "open", fake_open)
+    monkeypatch.setattr(pandas_store.pd, "read_json", fake_read_json)
+
+    store = TableStoreJsonLine(filename="s3://bucket/data.json")
+    df = store.load_file()
+
+    assert observed["filename"] == "s3://bucket/data.json"
+    assert observed["mode"] == "r"
+    assert observed["exists_path"] == "bucket/data.json"
+    assert observed["open_called"] is True
+    assert observed["kwargs"]["orient"] == "records"
+    assert observed["kwargs"]["lines"] is True
     assert_df_equal(df, test_df)
 
 
