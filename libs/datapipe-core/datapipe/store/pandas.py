@@ -1,6 +1,6 @@
 import datetime
 from abc import ABC
-from typing import Any, cast
+from typing import TextIO, cast
 
 import fsspec
 import pandas as pd
@@ -48,15 +48,13 @@ class TableStoreJsonLine(TableDataSingleFileStore):
         if of.fs.exists(of.path):
             dtypes = sql_schema_to_dtype(self.primary_schema)
             datetime_cols = [k for k, v in dtypes.items() if v in _DATETIME_PYTHON_TYPES]
-            json_path = cast(str, of.full_name)
-            storage_options = cast(dict[str, Any] | None, of.fs.storage_options or None)
-            df = pd.read_json(
-                json_path,
-                orient="records",
-                lines=True,
-                convert_dates=datetime_cols if datetime_cols else False,
-                storage_options=storage_options,
-            )
+            with of.open() as json_file:
+                df = pd.read_json(
+                    cast(TextIO, json_file),
+                    orient="records",
+                    lines=True,
+                    convert_dates=datetime_cols if datetime_cols else False,
+                )
 
             for col, py_type in dtypes.items():
                 if col not in df.columns:
