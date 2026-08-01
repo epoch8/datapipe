@@ -10,6 +10,7 @@ from typing import (
     Literal,
     Protocol,
     Sequence,
+    cast,
 )
 
 import pandas as pd
@@ -143,8 +144,8 @@ class BaseBatchTransformStep(ComputeStep):
             return run_config
         else:
             if isinstance(self.filters, dict):
-                filters = self.filters
-            elif isinstance(self.filters, Callable):  # type: ignore
+                filters = cast(LabelDict, self.filters)
+            elif isinstance(self.filters, Callable):
                 filters = self.filters()
             else:
                 filters = {}
@@ -215,16 +216,17 @@ class BaseBatchTransformStep(ComputeStep):
             with tracer.start_as_current_span("store output batch"):
                 if isinstance(output_dfs, (list, tuple)):
                     assert len(output_dfs) == len(self.output_dts)
+                    output_dfs_norm = cast(list[pd.DataFrame], output_dfs)
                 else:
                     assert len(self.output_dts) == 1
-                    output_dfs = [output_dfs]
+                    output_dfs_norm = [output_dfs]
 
                 for k, output_spec in enumerate(self.output_specs):
                     res_dt = output_spec.dt
                     # Берем k-ое значение функции для k-ой таблички
                     # Добавляем результат в результирующие чанки
                     change_idx = res_dt.store_chunk(
-                        data_df=output_dfs[k],
+                        data_df=output_dfs_norm[k],
                         processed_idx=self._transform_idx_to_output_idx(idx, output_spec),
                         now=process_ts,
                         run_config=run_config,
@@ -529,7 +531,12 @@ class BatchTransform(PipelineStep):
         input_dts = [pipeline_input_to_compute_input(ds, catalog, input) for input in self.inputs]
         output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
 
-        step_name = self.name or make_mungled_step_name(BatchTransformStep, self.func.__name__, input_dts, output_dts)
+        step_name = self.name or make_mungled_step_name(
+            BatchTransformStep,
+            self.func.__name__,  # type: ignore
+            input_dts,
+            output_dts,
+        )
 
         return [
             BatchTransformStep(
