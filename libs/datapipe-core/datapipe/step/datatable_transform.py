@@ -34,7 +34,6 @@ class DatatableTransformFunc(Protocol):
         output_dts: list[DataTable],
         run_config: RunConfig | None,
         kwargs: dict[str, Any] | None = None,
-        step: "ComputeStep | None" = None,
     ) -> None: ...
 
 

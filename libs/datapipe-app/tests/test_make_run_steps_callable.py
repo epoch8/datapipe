@@ -15,19 +15,19 @@ class _FakeStep(ComputeStep):
     def __init__(self, name: str, labels=None) -> None:
         super().__init__(name=name, input_dts=[], output_dts=[], labels=labels or [])
 
-    def run_full(self, ds, run_config=None, executor=None, progress=None):
+    def run_full(self, ds, run_config=None, executor=None):
         return None
 
 
 def test_make_run_steps_callable_records_stage_labels_and_returns_immediately(monkeypatch):
     selected_holder: List[Any] = []
 
-    def _fake_run_steps(*, ds, steps, run_config=None, executor=None, callbacks=None):
+    def _fake_run_steps(*, ds, steps, run_config=None, executor=None):
         time.sleep(0.15)
         selected_holder.extend(steps)
-        if callbacks:
-            for cb in callbacks:
-                cb.on_run_success()
+        callback = run_config.callback if run_config is not None else None
+        if callback is not None:
+            callback.on_run_success()
 
     monkeypatch.setattr("datapipe_app.api.v1alpha3.run_steps", _fake_run_steps)
 

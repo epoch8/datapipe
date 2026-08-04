@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, List
 from unittest.mock import MagicMock
 
-import pytest
 from datapipe.cancel import (
     CancelToken,
     RunCancelledError,
@@ -25,7 +23,7 @@ class _FakeStep(ComputeStep):
         super().__init__(name=name, input_dts=[], output_dts=[], labels=labels or [])
         self.hold = hold
 
-    def run_full(self, ds, run_config=None, executor=None, progress=None):
+    def run_full(self, ds, run_config=None, executor=None):
         if self.hold is not None:
             # Simulate long training that polls cancel.
             deadline = time.monotonic() + 5.0
@@ -53,15 +51,15 @@ def test_make_run_steps_callable_registers_and_unregisters_cancel_token(monkeypa
     done = threading.Event()
     seen_registered = threading.Event()
 
-    def _fake_run_steps(*, ds, steps, run_config=None, executor=None, callbacks=None):
+    def _fake_run_steps(*, ds, steps, run_config=None, executor=None):
         token = get_cancel_token()
         assert token is not None
         assert not token.is_cancelled()
         assert get_active_run_registry().get("run-cancel-1") is token
         seen_registered.set()
-        if callbacks:
-            for cb in callbacks:
-                cb.on_run_success()
+        callback = run_config.callback if run_config is not None else None
+        if callback is not None:
+            callback.on_run_success()
         done.set()
 
     monkeypatch.setattr("datapipe_app.api.v1alpha3.run_steps", _fake_run_steps)
@@ -95,15 +93,15 @@ def test_request_stop_cancels_active_run(monkeypatch):
     hold = threading.Event()
     saw_cancel = threading.Event()
 
-    def _fake_run_steps(*, ds, steps, run_config=None, executor=None, callbacks=None):
+    def _fake_run_steps(*, ds, steps, run_config=None, executor=None):
         token = get_cancel_token()
         assert token is not None
         while not token.is_cancelled():
             time.sleep(0.02)
         saw_cancel.set()
-        if callbacks:
-            for cb in callbacks:
-                cb.on_run_error(RunCancelledError("stopped"))
+        callback = run_config.callback if run_config is not None else None
+        if callback is not None:
+            callback.on_run_error(RunCancelledError("stopped"))
 
     monkeypatch.setattr("datapipe_app.api.v1alpha3.run_steps", _fake_run_steps)
 
@@ -153,7 +151,7 @@ def test_run_steps_stops_between_steps_when_cancelled(monkeypatch):
         def __init__(self, name: str) -> None:
             super().__init__(name=name, input_dts=[], output_dts=[])
 
-        def run_full(self, ds, run_config=None, executor=None, progress=None):
+        def run_full(self, ds, run_config=None, executor=None):
             ran.append(self.name)
             if self.name == "a":
                 token.request_cancel()
@@ -170,12 +168,17 @@ def test_run_steps_stops_between_steps_when_cancelled(monkeypatch):
 
 def test_single_thread_executor_stops_between_batches():
     from datapipe.cancel import CancelToken, RunCancelledError, cancel_token_scope
+    from datapipe.compute import ComputeStep
     from datapipe.executor import SingleThreadExecutor
     from datapipe.types import ChangeList, IndexDF
     import pandas as pd
 
     token = CancelToken()
     processed: list[int] = []
+
+    class _Step(ComputeStep):
+        def __init__(self) -> None:
+            super().__init__(name="t", input_dts=[], output_dts=[])
 
     def _gen():
         for i in range(5):
@@ -190,7 +193,7 @@ def test_single_thread_executor_stops_between_batches():
     with cancel_token_scope(token):
         try:
             SingleThreadExecutor().run_process_batch(
-                name="t",
+                step=_Step(),
                 ds=MagicMock(),
                 idx_count=5,
                 idx_gen=_gen(),

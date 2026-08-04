@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 import pandas as pd
 from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep
 from datapipe.executor import Executor
+from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BaseBatchTransformStep, BatchTransform, DatatableBatchTransform
 from datapipe.step.datatable_transform import DatatableTransform
@@ -183,10 +184,29 @@ def run_step(
     recorder: Optional[RunRecorder] = None,
     executor: ExecutorSource = None,
 ) -> None:
-    def on_batch_progress(batches_done: int, total_batches: int | None) -> None:
-        transform_state.total = total_batches if total_batches is not None else 0
-        transform_state.status = "running"
-        transform_state.processed = batches_done * step.chunk_size
+    class _UiProgressCallback:
+        def on_run_start(self, steps: Any) -> None:
+            return None
+
+        def on_step_start(self, step_: Any) -> None:
+            return None
+
+        def on_step_progress(self, step_: Any, completed: int, total: int | None) -> None:
+            transform_state.total = total if total is not None else 0
+            transform_state.status = "running"
+            transform_state.processed = completed * step.chunk_size
+
+        def on_step_success(self, step_: Any) -> None:
+            return None
+
+        def on_step_error(self, step_: Any, error: BaseException) -> None:
+            return None
+
+        def on_run_success(self) -> None:
+            return None
+
+        def on_run_error(self, error: BaseException) -> None:
+            return None
 
     def _run() -> None:
         if filters is not None:
@@ -207,7 +227,7 @@ def run_step(
 
         step.run_full(
             ds=ds,
-            progress=on_batch_progress,
+            run_config=RunConfig(callback=_UiProgressCallback()),
             executor=_resolve_executor(executor),
         )
 

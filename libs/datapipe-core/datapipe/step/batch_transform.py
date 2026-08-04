@@ -144,8 +144,8 @@ class BaseBatchTransformStep(ComputeStep):
         else:
             if isinstance(self.filters, dict):
                 filters = cast(LabelDict, self.filters)
-            elif isinstance(self.filters, Callable):
-                filters = self.filters()
+            elif callable(self.filters):
+                filters = cast(Callable[[], LabelDict], self.filters)()
             else:
                 filters = {}
 

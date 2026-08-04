@@ -116,9 +116,8 @@ def make_run_steps_callable(
                         run_steps(
                             ds=ds,
                             steps=selected,
-                            run_config=run_config,
+                            run_config=RunConfig.with_callback(run_config, cb),
                             executor=resolve_executor(),
-                            callbacks=[cb],
                         )
                 except BaseException:
                     # Failure / interrupt already recorded via the RunCallback hooks.
@@ -456,8 +455,8 @@ def make_app(
                         run_steps(
                             ds=ds,
                             steps=selected,
+                            run_config=RunConfig.with_callback(None, cb),
                             executor=_resolve_executor(),
-                            callbacks=[cb],
                         )
                 except BaseException:
                     # Failure / interrupt already recorded via RunCallback hooks.
@@ -476,8 +475,8 @@ def make_app(
                 run_steps(
                     ds=ds,
                     steps=selected,
+                    run_config=RunConfig.with_callback(None, cb),
                     executor=_resolve_executor(),
-                    callbacks=[cb],
                 )
         except Exception as exc:
             raise HTTPException(500, str(exc)) from exc

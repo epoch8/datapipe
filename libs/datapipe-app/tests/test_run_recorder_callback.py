@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from datapipe.compute import ComputeStep, run_steps
+from datapipe.run_config import RunConfig
 from datapipe_app.observability.cli.cli_runner import create_run_callback
 from datapipe_app.observability.logging.log_buffer import RunLogBuffer
 from datapipe_app.observability.runs.recorder import RunRecorder
@@ -18,13 +19,14 @@ class FakeStep(ComputeStep):
         self.fail = fail
         self.unknown_total = unknown_total
 
-    def run_full(self, ds, run_config=None, executor=None, progress=None):
-        if progress is not None:
+    def run_full(self, ds, run_config=None, executor=None):
+        callback = run_config.callback if run_config is not None else None
+        if callback is not None:
             if self.unknown_total:
-                progress(3, None)
+                callback.on_step_progress(self, 3, None)
             else:
-                progress(0, 1)
-                progress(1, 1)
+                callback.on_step_progress(self, 0, 1)
+                callback.on_step_progress(self, 1, 1)
         if self.fail:
             raise RuntimeError(f"{self.name} failed")
 
@@ -36,7 +38,7 @@ def test_recorder_callback_completes_run(tmp_path):
     recorder = RunRecorder(store, pipeline_id="pipe", log_buffer=buffer)
 
     cb = recorder.create_callback(trigger="test")
-    run_steps(MagicMock(), [FakeStep("a"), FakeStep("b")], callbacks=[cb])
+    run_steps(MagicMock(), [FakeStep("a"), FakeStep("b")], run_config=RunConfig(callback=cb))
 
     run = store.get_run(cb.run_id)
     assert run is not None
@@ -58,7 +60,7 @@ def test_recorder_callback_fails_run(tmp_path):
         run_steps(
             MagicMock(),
             [FakeStep("ok"), FakeStep("bad", fail=True)],
-            callbacks=[cb],
+            run_config=RunConfig(callback=cb),
         )
 
     run = store.get_run(cb.run_id)
@@ -76,7 +78,7 @@ def test_two_concurrent_runs_do_not_share_run_id(tmp_path):
 
     def run_one(name: str) -> str:
         cb = recorder.create_callback(trigger=name)
-        run_steps(MagicMock(), [FakeStep(name)], callbacks=[cb])
+        run_steps(MagicMock(), [FakeStep(name)], run_config=RunConfig(callback=cb))
         return cb.run_id
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -130,7 +132,7 @@ def test_unknown_total_is_not_coerced_to_zero(tmp_path):
     recorder = RunRecorder(store, pipeline_id="pipe")
 
     cb = recorder.create_callback(trigger="test")
-    run_steps(MagicMock(), [FakeStep("u", unknown_total=True)], callbacks=[cb])
+    run_steps(MagicMock(), [FakeStep("u", unknown_total=True)], run_config=RunConfig(callback=cb))
 
     step = store.get_run_steps(cb.run_id)[0]
     assert step.processed == 3

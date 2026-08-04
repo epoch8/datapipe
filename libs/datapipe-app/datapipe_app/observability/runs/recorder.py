@@ -85,7 +85,7 @@ class RunRecorder:
     or background runs::
 
         cb = recorder.create_callback(trigger="api")
-        run_steps(ds, steps, executor=executor, callbacks=[cb])
+        run_steps(ds, steps, executor=executor, run_config=RunConfig.with_callback(None, cb))
 
     ``current_run_id`` and methods called without an explicit ``run_id`` are
     single-run convenience only — not safe if multiple runs share one recorder.
@@ -298,7 +298,7 @@ class RunRecorder:
         Typical use::
 
             with recorder.run_scope(trigger="api") as cb:
-                run_steps(ds, steps, callbacks=[cb])
+                run_steps(ds, steps, run_config=RunConfig.with_callback(None, cb))
         """
         cb = self.create_callback(
             trigger=trigger,
