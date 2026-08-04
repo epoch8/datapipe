@@ -54,6 +54,10 @@ def _get_prediction_keypoint_scores(bbox_data: BboxData):
     return _as_list(bbox_data.keypoints_scores)
 
 
+def _get_keypoints_labels(bbox_data: BboxData):
+    return _as_list(bbox_data.keypoints_labels)
+
+
 def _get_keypoints_visibility(bbox_data: BboxData):
     value = bbox_data.keypoints_visibility
     if value is None:
@@ -104,6 +108,7 @@ def _convert_df_with_bbox_rows_to_df_with_image_data(
                                 if row.get("prediction__keypoints_scores") is not None
                                 else row.get("prediction__keypoint_scores")
                             ),
+                            keypoints_labels=row.get("keypoints_labels"),
                             mask=row.get("mask"),
                             label=row.get("label"),
                             detection_score=row.get("prediction__detection_score"),
@@ -136,6 +141,7 @@ def get_bboxes_data_from_json(row: pd.Series):
         row, "prediction__keypoints_scores", length=len(bboxes), default=None
     )
     keypoints_visibility = _aligned_per_bbox_field(row, "keypoints_visibility", length=len(bboxes), default=None)
+    keypoints_labels = _aligned_per_bbox_field(row, "keypoints_labels", length=len(bboxes), default=None)
     bboxes_additional_infos = _aligned_per_bbox_field(
         row, "bboxes_additional_infos", length=len(bboxes), default={}
     )
@@ -150,6 +156,7 @@ def get_bboxes_data_from_json(row: pd.Series):
             keypoints=keypoints,
             keypoints_visibility=keypoints_visibility_item,
             keypoints_scores=prediction__keypoints_score,
+            keypoints_labels=keypoints_labels_item,
             mask=mask,
             detection_score=prediction__detection_score,
             classification_score=prediction__classification_score,
@@ -164,6 +171,7 @@ def get_bboxes_data_from_json(row: pd.Series):
             prediction__classification_score,
             prediction__keypoints_score,
             keypoints_visibility_item,
+            keypoints_labels_item,
             additional_info_item,
         ) in zip(
             bboxes,
@@ -174,6 +182,7 @@ def get_bboxes_data_from_json(row: pd.Series):
             prediction__classification_scores,
             prediction__keypoints_scores,
             keypoints_visibility,
+            keypoints_labels,
             bboxes_additional_infos,
         )
     ]
@@ -256,6 +265,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     prediction__classification_score=bbox_data.classification_score,
                     prediction__keypoints_scores=_get_prediction_keypoint_scores(bbox_data),
                     keypoints_visibility=_get_keypoints_visibility(bbox_data),
+                    keypoints_labels=_get_keypoints_labels(bbox_data),
                 )
                 additional_info = _get_additional_info(bbox_data)
                 if additional_info:
@@ -282,6 +292,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
                     prediction__classification_score=None,
                     prediction__keypoints_scores=None,
                     keypoints_visibility=None,
+                    keypoints_labels=None,
                 )
             )
 
@@ -301,6 +312,7 @@ def _convert_df_with_image_data_to_df_with_bbox_rows(
             "prediction__classification_score",
             "prediction__keypoints_scores",
             "keypoints_visibility",
+            "keypoints_labels",
         ]
     )
     if any(record.get("additional_info") for record in n_records):
@@ -336,6 +348,7 @@ def _convert_df_with_image_data_to_df_with_bbox_json(
             keypoints_visibility=[
                 _get_keypoints_visibility(bbox_data) for bbox_data in row["image_data"].bboxes_data
             ],
+            keypoints_labels=[_get_keypoints_labels(bbox_data) for bbox_data in row["image_data"].bboxes_data],
         )
         bboxes_additional_infos = [_get_additional_info(bbox_data) for bbox_data in row["image_data"].bboxes_data]
         additional_info = _get_additional_info(row["image_data"])
@@ -354,6 +367,7 @@ def _convert_df_with_image_data_to_df_with_bbox_json(
         "prediction__classification_scores",
         "prediction__keypoints_scores",
         "keypoints_visibility",
+        "keypoints_labels",
     ]
     if any("additional_info" in record for record in records):
         columns.append("additional_info")

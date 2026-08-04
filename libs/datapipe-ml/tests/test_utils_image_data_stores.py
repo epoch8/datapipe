@@ -499,7 +499,7 @@ def test_fiftyone_images_data_table_store_sets_default_skeleton_on_create():
         dataset="skeleton_dataset",
         fo_session=fo_session,
         fo_keypoints_label="keypoints",
-        keypoints_skeleton_labels=labels,
+        keypoints_labels=labels,
         keypoints_skeleton_edges=edges,
         rm_only_fo_fields=False,
     )
@@ -514,7 +514,7 @@ def test_fiftyone_images_data_table_store_sets_default_skeleton_on_create():
 
 
 def test_fiftyone_images_data_table_store_skeleton_edges_require_labels():
-    with pytest.raises(ValueError, match="keypoints_skeleton_edges requires keypoints_skeleton_labels"):
+    with pytest.raises(ValueError, match="keypoints_skeleton_edges requires keypoints_labels"):
         FiftyOneImagesDataTableStore(
             dataset="skeleton_dataset",
             fo_session=_FakeFiftyOneSession(),

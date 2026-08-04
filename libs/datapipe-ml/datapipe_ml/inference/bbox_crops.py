@@ -151,6 +151,11 @@ def predict_bbox_like_by_crops(
                     if isinstance(visibility, np.ndarray):
                         visibility = visibility.tolist()
                     kwargs["keypoints_visibility"] = visibility
+                if bbox_data.keypoints_labels is not None:
+                    keypoints_labels = bbox_data.keypoints_labels
+                    if isinstance(keypoints_labels, np.ndarray):
+                        keypoints_labels = keypoints_labels.tolist()
+                    kwargs["keypoints_labels"] = keypoints_labels
             bboxes_data.append(
                 BboxData(
                     image_path=bbox_data.image_path,

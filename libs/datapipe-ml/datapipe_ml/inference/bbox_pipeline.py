@@ -119,16 +119,22 @@ def run_bbox_task_inference(
     model_path_col = _model_col(spec, "model_path")
     class_names_col = _model_col(spec, "class_names")
     type_col = _model_col(spec, "type")
+    keypoints_class_names_col = _model_col(spec, "keypoints_class_names")
 
     df__predictions = []
     for _, df_grouped in df__cross.groupby(model_primary_keys):
         row = df_grouped.iloc[0]
-        model_spec = spec.get_model_spec(
+        get_model_spec_kwargs = dict(
             input_size=(int(row[input_size_col][0]), int(row[input_size_col][1])),
             model_path=row[model_path_col],
             class_names=tuple(str(class_name) for class_name in row[class_names_col]),
             model_type=row[type_col],
         )
+        if keypoints_class_names_col in row.index and row[keypoints_class_names_col] is not None:
+            get_model_spec_kwargs["keypoints_class_names"] = tuple(
+                str(name) for name in row[keypoints_class_names_col]
+            )
+        model_spec = spec.get_model_spec(**get_model_spec_kwargs)
         inferencer = PipelineModelSpec(
             detection_model_spec=model_spec,
             classification_model_spec=None,
