@@ -129,7 +129,7 @@ def test_request_stop_cancels_active_run(monkeypatch):
 
 
 def test_finish_run_does_not_overwrite_interrupted(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     run_id = store.create_run("demo", trigger="test")
     store.finish_run(run_id, status="interrupted", error="Stopped by user")
     store.finish_run(run_id, status="failed", error="later")

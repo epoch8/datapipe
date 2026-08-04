@@ -22,6 +22,9 @@ class OpsSettings(BaseSettings):
     pipeline_id: Optional[str] = None
     show_step_status: bool = False
     record_cli_runs: bool = True
+    # When True, DatapipeAPI / ObservabilityStore.create DDL on construct.
+    # Default False: schema must come from Alembic or `datapipe db create-all`.
+    create_observability_tables: bool = False
 
 
 _active_ops: Optional[OpsSettings] = None

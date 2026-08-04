@@ -116,8 +116,16 @@ class ObservabilityStore:
         *,
         tables: Optional[ObservabilityTableConfig] = None,
         run_logs_backend: Optional[RunLogsBackend] = None,
+        create_tables: bool = False,
     ) -> "ObservabilityStore":
-        if not dbconn.connstr.startswith("sqlite"):
+        """Build a store bound to ``dbconn``.
+
+        ``create_tables`` defaults to False so importing / constructing
+        ``DatapipeAPI`` (e.g. Alembic ``env.py``) does not mutate the schema.
+        Pass ``True`` for ephemeral tests, or create tables via Alembic /
+        ``datapipe db create-all`` / ``store.create_all()``.
+        """
+        if create_tables and not dbconn.connstr.startswith("sqlite"):
             ensure_db_schema(dbconn)
         observability_tables = tables or ObservabilityTableConfig()
         store = cls(dbconn.con, schema=dbconn.schema, tables=observability_tables)
@@ -128,7 +136,8 @@ class ObservabilityStore:
         store._run_log_store = run_log_store
         store.run_logs_configured = configured
         store.use_external_run_logs = configured
-        store.create_all()
+        if create_tables:
+            store.create_all()
         return store
 
     @classmethod
@@ -139,11 +148,13 @@ class ObservabilityStore:
         schema: Optional[str] = None,
         tables: Optional[ObservabilityTableConfig] = None,
         run_logs_backend: Optional[RunLogsBackend] = None,
+        create_tables: bool = False,
     ) -> "ObservabilityStore":
         return cls.from_dbconn(
             DBConn(url, schema),
             tables=tables,
             run_logs_backend=run_logs_backend,
+            create_tables=create_tables,
         )
 
     def create_all(self) -> None:

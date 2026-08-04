@@ -67,6 +67,7 @@ def _build_recorder(app: DatapipeApp, *, pipeline_spec: Optional[str] = None) ->
             observability_dbconn,
             tables=tables,
             run_logs_backend=run_logs_backend,
+            create_tables=settings.create_observability_tables,
         )
         store.register_pipeline(
             settings.pipeline_id,

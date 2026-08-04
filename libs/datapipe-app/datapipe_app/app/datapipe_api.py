@@ -85,6 +85,7 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
         run_logs_backend: Optional[RunLogsBackend] = None,
         pipeline_spec: Optional[str] = None,
         executor: Executor | None = None,
+        create_observability_tables: bool | None = None,
     ):
         self.observability_registry = ObservabilityRegistry()
         load_observability_plugins(self.observability_registry)
@@ -119,6 +120,8 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
             pipeline_spec=pipeline_spec,
             pipeline_module=pipeline_module,
         )
+        if create_observability_tables is not None:
+            self.ops_settings.create_observability_tables = create_observability_tables
         configure_active_ops(self.ops_settings)
         ops = self.ops_settings
         self.executor = executor
@@ -151,34 +154,44 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
             self.observability_dbconn,
             tables=observability_tables,
             run_logs_backend=self.run_logs_backend,
+            create_tables=ops.create_observability_tables,
         )
         self.run_recorder: Optional[RunRecorder] = None
         if ops.pipeline_id:
-            self.observability_store.register_pipeline(
-                ops.pipeline_id,
-                display_name=ops.pipeline_id.replace("_", " ").title(),
-            )
-            self.run_recorder = RunRecorder(
-                self.observability_store,
-                ops.pipeline_id,
-                registry=self.observability_registry,
-                ds=self.ds,
-                catalog=self.catalog,
-                ops_specs=self.ops_specs,
-                log_buffer=get_log_buffer(self.observability_store),
-            )
-            from datapipe_app.observability.runs.run_reconciler import reconcile_orphaned_runs_on_startup
-
-            reconciled = reconcile_orphaned_runs_on_startup(
-                self.observability_store,
-                ops.pipeline_id,
-            )
-            if reconciled:
-                logger.info(
-                    "Marked %s orphaned run(s) as interrupted on startup: %s",
-                    len(reconciled),
-                    ", ".join(reconciled),
+            try:
+                self.observability_store.register_pipeline(
+                    ops.pipeline_id,
+                    display_name=ops.pipeline_id.replace("_", " ").title(),
                 )
+            except Exception:
+                logger.warning(
+                    "Observability tables missing; skip pipeline registry update. "
+                    "Create schema via Alembic / `datapipe db create-all`, or set "
+                    "DATAPIPE_APP_CREATE_OBSERVABILITY_TABLES=true.",
+                    exc_info=True,
+                )
+            else:
+                self.run_recorder = RunRecorder(
+                    self.observability_store,
+                    ops.pipeline_id,
+                    registry=self.observability_registry,
+                    ds=self.ds,
+                    catalog=self.catalog,
+                    ops_specs=self.ops_specs,
+                    log_buffer=get_log_buffer(self.observability_store),
+                )
+                from datapipe_app.observability.runs.run_reconciler import reconcile_orphaned_runs_on_startup
+
+                reconciled = reconcile_orphaned_runs_on_startup(
+                    self.observability_store,
+                    ops.pipeline_id,
+                )
+                if reconciled:
+                    logger.info(
+                        "Marked %s orphaned run(s) as interrupted on startup: %s",
+                        len(reconciled),
+                        ", ".join(reconciled),
+                    )
 
         self.add_middleware(
             CORSMiddleware,

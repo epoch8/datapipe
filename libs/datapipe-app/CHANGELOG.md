@@ -28,7 +28,11 @@
 * Entry points wired into core CLI:
   `datapipe.pipeline_init`, `datapipe.run_callbacks`, `datapipe.db_create_all`
 * Settings: `DATAPIPE_APP_PIPELINE_ID`, `DATAPIPE_APP_SHOW_STEP_STATUS`,
-  `DATAPIPE_APP_RECORD_CLI_RUNS`
+  `DATAPIPE_APP_RECORD_CLI_RUNS`,
+  `DATAPIPE_APP_CREATE_OBSERVABILITY_TABLES` (default `false` — no DDL on
+  `DatapipeAPI` / `ObservabilityStore` construct; use Alembic or
+  `datapipe db create-all`, or pass `create_observability_tables=True` /
+  `create_tables=True`)
 
 ## Compatibility
 

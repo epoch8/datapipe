@@ -17,7 +17,7 @@ from datapipe_app.observability.store.db import ObservabilityStore
 def observability_store():
     with tempfile.TemporaryDirectory() as tmpdir:
         url = f"sqlite+pysqlite3:///{tmpdir}/obs.sqlite"
-        store = ObservabilityStore.from_url(url)
+        store = ObservabilityStore.from_url(url, create_tables=True)
         yield store
 
 
@@ -75,7 +75,9 @@ def ops_app(agent_env):
         input_dt = catalog.get_datatable(ds, "input")
         catalog.get_datatable(ds, "output")
         input_dt.store_chunk(pd.DataFrame([{"id": 1, "v": "a"}, {"id": 2, "v": "b"}]))
-        yield DatapipeAPI(ds, catalog, pipeline, pipeline_id="test_pipeline")
+        yield DatapipeAPI(
+            ds, catalog, pipeline, pipeline_id="test_pipeline", create_observability_tables=True
+        )
 
 
 @pytest.fixture
@@ -167,6 +169,6 @@ def app():
         )
 
         ds = DataStore(dbconn, create_meta_table=False)
-        api_app = DatapipeAPI(ds, catalog, pipeline)
+        api_app = DatapipeAPI(ds, catalog, pipeline, create_observability_tables=True)
         api_app.ds.meta_dbconn.sqla_metadata.create_all(api_app.ds.meta_dbconn.con)
         yield api_app

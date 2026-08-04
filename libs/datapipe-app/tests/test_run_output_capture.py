@@ -11,7 +11,7 @@ from datapipe_app.observability.runs.run_output_capture import _TeeStream, captu
 
 
 def test_tee_stream_appends_complete_lines(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_id = "run-1"
     buffer.start_run(run_id)
@@ -28,7 +28,7 @@ def test_tee_stream_appends_complete_lines(tmp_path):
 
 
 def test_tee_stream_appends_carriage_return_updates(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs2.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs2.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_id = "run-1b"
     buffer.start_run(run_id)
@@ -46,7 +46,7 @@ def test_tee_stream_appends_carriage_return_updates(tmp_path):
 
 
 def test_capture_run_output_records_logging_and_stdout(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_id = "run-2"
     buffer.start_run(run_id)
@@ -71,7 +71,7 @@ def test_capture_run_output_does_not_duplicate_rich_handler_lines(tmp_path):
     from rich.console import Console
     from rich.logging import RichHandler
 
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-rich.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-rich.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_id = "run-rich"
     buffer.start_run(run_id)
@@ -98,7 +98,7 @@ def test_capture_run_output_does_not_duplicate_rich_handler_lines(tmp_path):
 
 
 def test_capture_run_output_isolates_concurrent_threads(tmp_path) -> None:
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_a = "run-a"
     run_b = "run-b"
@@ -135,7 +135,7 @@ def test_capture_run_output_isolates_concurrent_threads(tmp_path) -> None:
 
 def test_capture_run_output_teardown_from_different_thread(tmp_path) -> None:
     """Simulates background pipeline runs: enter in request thread, exit in worker thread."""
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-cross.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs-cross.db'}", create_tables=True)
     buffer = RunLogBuffer(store)
     run_id = "run-cross"
     buffer.start_run(run_id)

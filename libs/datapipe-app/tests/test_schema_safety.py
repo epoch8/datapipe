@@ -48,7 +48,7 @@ def test_observability_tables_do_not_touch_public_ls_tables() -> None:
         con.execute(text("INSERT INTO public.fake_ls_task (id, data) VALUES (1, 'keep') ON CONFLICT DO NOTHING"))
 
     runs_table = ObservabilityTableConfig().pipeline_runs
-    store = ObservabilityStore.from_url(connstr, schema=schema)
+    store = ObservabilityStore.from_url(connstr, schema=schema, create_tables=True)
     store.register_pipeline("demo", display_name="Demo")
     store.create_run("demo", trigger="api:pipeline")
 

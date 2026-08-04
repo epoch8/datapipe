@@ -32,7 +32,7 @@ class FakeStep(ComputeStep):
 
 
 def test_recorder_callback_completes_run(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     buffer = RunLogBuffer(store)
     recorder = RunRecorder(store, pipeline_id="pipe", log_buffer=buffer)
@@ -51,7 +51,7 @@ def test_recorder_callback_completes_run(tmp_path):
 
 
 def test_recorder_callback_fails_run(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     recorder = RunRecorder(store, pipeline_id="pipe")
 
@@ -72,7 +72,7 @@ def test_recorder_callback_fails_run(tmp_path):
 
 
 def test_two_concurrent_runs_do_not_share_run_id(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     recorder = RunRecorder(store, pipeline_id="pipe")
 
@@ -100,7 +100,7 @@ def test_record_false_disables_recording_callback():
 
 
 def test_run_scope_completes_on_success(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     recorder = RunRecorder(store, pipeline_id="pipe")
 
@@ -113,7 +113,7 @@ def test_run_scope_completes_on_success(tmp_path):
 
 
 def test_run_scope_fails_on_exception(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     recorder = RunRecorder(store, pipeline_id="pipe")
 
@@ -127,7 +127,7 @@ def test_run_scope_fails_on_exception(tmp_path):
 
 
 def test_unknown_total_is_not_coerced_to_zero(tmp_path):
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("pipe")
     recorder = RunRecorder(store, pipeline_id="pipe")
 

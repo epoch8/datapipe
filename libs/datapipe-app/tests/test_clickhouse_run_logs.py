@@ -222,6 +222,7 @@ def test_observability_store_uses_clickhouse_for_logs(tmp_path, fake_clickhouse_
     store = ObservabilityStore.from_url(
         f"sqlite:///{tmp_path / 'obs.db'}",
         run_logs_backend=RunLogsBackend.clickhouse("clickhouse://default:@localhost:8123/default"),
+        create_tables=True,
     )
 
     assert store.run_logs_configured is True
@@ -245,7 +246,7 @@ def test_observability_store_uses_clickhouse_for_logs(tmp_path, fake_clickhouse_
 def test_observability_store_without_backend_does_not_persist_logs(tmp_path):
     from datapipe_app.observability.store.db import ObservabilityStore
 
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     assert store.run_logs_configured is False
     store.append_run_logs(
         [
@@ -264,7 +265,7 @@ def test_observability_store_without_backend_does_not_persist_logs(tmp_path):
 def test_sqlalchemy_run_log_store_delegates_to_observability_store(tmp_path):
     from datapipe_app.observability.store.db import ObservabilityStore
 
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     backend = SqlAlchemyRunLogStore(store)
     backend.append_run_logs(
         [

@@ -9,6 +9,7 @@ def _store(tmp_path) -> ObservabilityStore:
     return ObservabilityStore.from_url(
         f"sqlite:///{tmp_path / 'obs.db'}",
         run_logs_backend=RunLogsBackend.memory(),
+        create_tables=True,
     )
 
 

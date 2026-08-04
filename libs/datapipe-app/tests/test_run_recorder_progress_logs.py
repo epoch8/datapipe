@@ -10,6 +10,7 @@ def test_update_step_progress_writes_throttled_log_lines(tmp_path):
     store = ObservabilityStore.from_url(
         f"sqlite:///{tmp_path / 'obs.db'}",
         run_logs_backend=RunLogsBackend.memory(),
+        create_tables=True,
     )
     buffer = RunLogBuffer(store)
     recorder = RunRecorder(store, pipeline_id="pipe", log_buffer=buffer)

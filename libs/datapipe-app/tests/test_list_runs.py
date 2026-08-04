@@ -4,7 +4,7 @@ from datapipe_app.observability.store.db import ObservabilityStore
 
 
 def test_list_runs_filters_and_paginates(tmp_path) -> None:
-    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}")
+    store = ObservabilityStore.from_url(f"sqlite:///{tmp_path / 'obs.db'}", create_tables=True)
     store.register_pipeline("demo")
 
     store.create_run("demo", trigger="api:pipeline")
