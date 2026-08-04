@@ -68,6 +68,30 @@ class SettingsResponse(BaseModel):
     run_logs_configured: bool = False
 
 
+def _step_compatible_with_pk_filters(step: ComputeStep, filter_keys: set[str]) -> bool:
+    """Skip steps where a PK RunConfig filter would delete scoped rows.
+
+    ``OpsTrainingRequestSpec`` launches with ``filters={id_column: [request_id]}``.
+    Datapipe stamps filters that are not transform keys onto the batch idx;
+    ``store_chunk`` then treats matching output primary keys as
+    ``processed_idx`` and deletes missing rows. Auto-request materialization
+    (transform keys = dataset × config, output PK = request id) would wipe the
+    manual request being launched. Skip those steps for filtered runs; they
+    still run on unfiltered ``labels=…`` CLI trains.
+    """
+    if not filter_keys:
+        return True
+    if not isinstance(step, BaseBatchTransformStep):
+        return True
+    stamped_extras = filter_keys - set(step.transform_keys)
+    if not stamped_extras:
+        return True
+    for out in step.output_dts:
+        if stamped_extras & set(out.dt.primary_keys):
+            return False
+    return True
+
+
 def make_run_steps_callable(
     *,
     ds: DataStore,
@@ -82,6 +106,9 @@ def make_run_steps_callable(
     Single-element list filter values are unwrapped to scalars because
     ``RunConfig.filters`` applies equality on primary keys.
 
+    Steps incompatible with those PK filters (see
+    ``_step_compatible_with_pk_filters``) are omitted from the filtered run.
+
     Execution is always started in a background thread so the HTTP request can
     return the ``run_id`` immediately (UI navigates to the run page).
     """
@@ -93,7 +120,10 @@ def make_run_steps_callable(
         filters: Dict[str, List[Any]],
     ) -> Dict[str, Any]:
         labels = list(run_labels)
-        selected = filter_steps_by_labels(steps, labels=labels) if labels else steps
+        selected = filter_steps_by_labels(steps, labels=labels) if labels else list(steps)
+        filter_keys = set(filters.keys())
+        if filter_keys:
+            selected = [s for s in selected if _step_compatible_with_pk_filters(s, filter_keys)]
         if not selected:
             return {"started": False, "run_id": None}
 
