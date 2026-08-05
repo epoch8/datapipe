@@ -1,0 +1,5 @@
+datapipe-core:
+
+☐ Make RunConfig non-optional
+☐ Move executor into RunConfig
+☐ Rename RunConfig to RunContext

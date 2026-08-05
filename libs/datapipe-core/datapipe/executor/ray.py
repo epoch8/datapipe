@@ -1,18 +1,22 @@
-from typing import Any, Generator
+from collections.abc import Generator
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any
 
 import ray
-from tqdm_loggable.auto import tqdm
 
 from datapipe.datatable import DataStore
 from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
 from datapipe.types import ChangeList, ProcessItem
 
+if TYPE_CHECKING:
+    from datapipe.compute import ComputeStep
+
 
 class RayExecutor(Executor):
     def run_process_batch(
         self,
-        name: str,
+        step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
         idx_gen: Generator[ProcessItem, None, None],
@@ -21,9 +25,10 @@ class RayExecutor(Executor):
         executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
+        callback = run_config.callback if run_config is not None else None
 
         remote_kwargs: dict[str, Any] = {
-            "name": name,
+            "name": step.name,
         }
 
         if executor_config is not None:
@@ -42,7 +47,11 @@ class RayExecutor(Executor):
         def process_fn_remote(ds, idx, run_config):
             return process_fn(ds, idx, run_config)
 
-        # Generator to collect results, so tqdm can show progress
+        # Progress reporting happens driver-side per completed future; the remote
+        # worker never invokes callbacks, so avoid shipping them over the wire.
+        remote_run_config = replace(run_config, callback=None) if run_config is not None else None
+
+        # Generator to collect results as Ray futures resolve
         def _results(idx_gen: Generator[ProcessItem, None, None]) -> Generator[ChangeList, None, None]:
             # Submit tasks to remote functions using Ray
             futures: list[ray.ObjectRef[ChangeList]] = []
@@ -52,7 +61,7 @@ class RayExecutor(Executor):
                     for result in ray.get(ready):
                         yield result
 
-                future = process_fn_remote.remote(ds, idx, run_config)
+                future = process_fn_remote.remote(ds, idx, remote_run_config)
                 futures.append(future)
 
             ready, futures = ray.wait(futures, timeout=None)
@@ -61,9 +70,16 @@ class RayExecutor(Executor):
                     yield result
                 ready, futures = ray.wait(futures, timeout=None)
 
+        if callback is not None:
+            callback.on_step_progress(step, 0, idx_count)
+
+        completed = 0
         try:
-            for result in tqdm(_results(idx_gen), total=idx_count):
+            for result in _results(idx_gen):
                 res_changelist.extend(result)
+                completed += 1
+                if callback is not None:
+                    callback.on_step_progress(step, completed, idx_count)
         finally:
             idx_gen.close()
 

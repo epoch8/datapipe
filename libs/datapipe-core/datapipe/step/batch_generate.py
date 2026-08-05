@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Iterator
+from typing import Callable, Iterator, cast
 
 import pandas as pd
 from opentelemetry import trace
@@ -21,7 +21,7 @@ from datapipe.step.datatable_transform import (
     DatatableTransformFunc,
     DatatableTransformStep,
 )
-from datapipe.types import Labels, TableOrName, TransformResult, cast
+from datapipe.types import Labels, TableOrName, TransformResult
 
 logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")

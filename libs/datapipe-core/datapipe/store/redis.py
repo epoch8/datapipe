@@ -99,13 +99,13 @@ class RedisStore(TableStore):
         self.delete_rows(data_to_index(df, self.prim_keys))
         self.insert_rows(df)
 
-    def read_rows(self, df_keys: IndexDF | None = None) -> DataDF:
-        assert df_keys is not None
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
+        assert idx is not None
 
-        if df_keys.empty:
+        if idx.empty:
             return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
 
-        keys = _to_itertuples(df_keys, self.prim_keys)
+        keys = _to_itertuples(idx, self.prim_keys)
         keys_json = [_serialize(key) for key in keys]
         values = self.redis_connection.hmget(self.name, keys_json)
         data = [list(key) + _deserialize(val) for key, val in zip(keys, values) if val]
@@ -113,10 +113,10 @@ class RedisStore(TableStore):
         result_df = pd.DataFrame.from_records(data, columns=self.prim_keys + self.value_cols)
         return result_df
 
-    def delete_rows(self, df_keys: IndexDF) -> None:
-        if df_keys.empty:
+    def delete_rows(self, idx: IndexDF) -> None:
+        if idx.empty:
             return
-        keys = _to_itertuples(df_keys, self.prim_keys)
+        keys = _to_itertuples(idx, self.prim_keys)
         keys = [_serialize(key) for key in keys]
         self.redis_connection.hdel(self.name, *keys)
 

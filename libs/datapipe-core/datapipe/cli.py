@@ -13,7 +13,6 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
-from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     ComputeStep,
@@ -26,12 +25,22 @@ from datapipe.compute import (
 )
 from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.migrations import v013 as migrations_v013
+from datapipe.run_callback import CompositeRunCallback
+from datapipe.run_callback_stdout import StdoutRunCallback
+from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.types import IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
 
 rich.reconfigure(highlight=False)
+
+
+def _entry_points(group: str):
+    try:
+        return metadata.entry_points(group=group)  # type: ignore
+    except TypeError:
+        return metadata.entry_points().get(group, [])  # type: ignore
 
 
 def load_pipeline(pipeline_name: str) -> DatapipeApp:
@@ -53,6 +62,10 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     app = getattr(pipeline_mod, app_name)
 
     assert isinstance(app, DatapipeApp)
+
+    for entry_point in _entry_points("datapipe.pipeline_init"):
+        init_fn = entry_point.load()
+        init_fn(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
 
     return app
 
@@ -90,6 +103,50 @@ def filter_steps_by_labels_and_name(
                 res.append(step)
 
     return res
+
+
+def _load_run_callbacks(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    labels: Labels,
+    pipeline_spec: str | None,
+):
+    callbacks = []
+    for entry_point in _entry_points("datapipe.run_callbacks"):
+        factory = entry_point.load()
+        callback = factory(
+            app,
+            steps,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+        )
+        if callback is not None:
+            callbacks.append(callback)
+    return callbacks
+
+
+def _run_steps_cli(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    executor: Executor,
+    labels: Labels,
+    pipeline_spec: str,
+    attach_callbacks: bool,
+) -> None:
+    loaded_callbacks = (
+        _load_run_callbacks(
+            app,
+            steps,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+        )
+        if attach_callbacks
+        else []
+    )
+    run_config = RunConfig(callback=CompositeRunCallback([StdoutRunCallback(), *loaded_callbacks]))
+    run_steps(app.ds, steps, executor=executor, run_config=run_config)
 
 
 @click.group()
@@ -130,7 +187,7 @@ def cli(
             logging.getLogger("datapipe.core_steps").setLevel(logging.DEBUG)
         else:
             log_level = logging.INFO
-            for logger_name in [None, "datapipe", "tqdm_loggable"]:
+            for logger_name in [None, "datapipe"]:
                 logging.getLogger(logger_name).setLevel(logging.INFO)
 
         if supports_ansi(sys.stderr):
@@ -229,14 +286,36 @@ def table_list(ctx: click.Context) -> None:
 
 
 @cli.command(name="run")
+@click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
+@click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def main_run(ctx: click.Context) -> None:
+def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
+    executor: Executor = ctx.obj["executor"]
+    pipeline_spec = ctx.params.get("pipeline", "app")
 
     with tracer.start_as_current_span("run"):
-        from datapipe.compute import run_steps
+        while True:
+            _run_steps_cli(
+                app,
+                app.steps,
+                executor=executor,
+                labels=[],
+                pipeline_spec=pipeline_spec,
+                attach_callbacks=not no_callbacks,
+            )
 
-        run_steps(app.ds, app.steps)
+            if not loop:
+                break
+            print(f"Loop ended, sleeping {loop_delay}s...")
+            time.sleep(loop_delay)
+            print("\n\n")
 
 
 @cli.group()
@@ -343,6 +422,7 @@ def step(
     steps = filter_steps_by_labels_and_name(app, labels=labels_list, name_prefix=name)
 
     ctx.obj["steps"] = steps
+    ctx.obj["step_labels"] = labels_list
 
 
 def to_human_repr(step: ComputeStep, extra_args: dict | None = None) -> str:
@@ -399,19 +479,35 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 @step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: list[ComputeStep] = ctx.obj["steps"]
 
     executor: Executor = ctx.obj["executor"]
+    labels: Labels = ctx.obj.get("step_labels", [])
+    parent = ctx.parent
+    pipeline_spec = parent.params.get("pipeline", "app") if parent is not None else "app"
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run, executor=executor)
+            _run_steps_cli(
+                app,
+                steps_to_run,
+                executor=executor,
+                labels=labels,
+                pipeline_spec=pipeline_spec,
+                attach_callbacks=not no_callbacks,
+            )
 
         if not loop:
             break
@@ -477,9 +573,11 @@ def run_changelist(
         chunk_size=chunk_size,
     )
     cnt = 0
+    progress_callback = StdoutRunCallback()
+    progress_callback.on_step_progress(start_step_obj, cnt, idx_count)
 
     while True:
-        for idx in tqdm(idx_gen, total=idx_count):
+        for idx in idx_gen:
             changes = start_step_obj.run_idx(
                 ds=app.ds,
                 idx=idx,
@@ -490,6 +588,7 @@ def run_changelist(
 
             rprint(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1
+            progress_callback.on_step_progress(start_step_obj, cnt, idx_count)
 
         #FIXME: loop not work? because idx_gen not updated
         if not loop:
@@ -505,12 +604,13 @@ def run_changelist(
 def fill_metadata(ctx: click.Context) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: list[ComputeStep] = ctx.obj["steps"]
-    steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
+
+    run_config = RunConfig(callback=StdoutRunCallback())
 
     for step in steps_to_run:
         if isinstance(step, BaseMetaDataStep):
             rprint(f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]")
-            step.fill_metadata(app.ds)
+            step.fill_metadata(app.ds, run_config=run_config)
 
 
 @step.command()
@@ -538,13 +638,7 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
-try:
-    entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
-except TypeError:
-    # Compatibility with older versions of importlib.metadata (Python 3.8-3.9)
-    entry_points = metadata.entry_points().get("datapipe.cli", [])  # type: ignore
-
-for entry_point in entry_points:
+for entry_point in _entry_points("datapipe.cli"):
     register_commands = entry_point.load()  # type: ignore
     register_commands(cli)
 
