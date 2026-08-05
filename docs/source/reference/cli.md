@@ -68,6 +68,10 @@ Runs checks on current state of database. Can detect and fix commong issues.
 
 ## `run`
 
+* `--no-callbacks` skips attaching any `datapipe.run_callbacks` entry-point
+  callbacks for this invocation. The built-in progress printer
+  (`StdoutRunCallback`) is unaffected — see [Run Callbacks](./run-callbacks.md).
+
 ## `step`
 
 * `--name` is to provide a filter of steps with prefix matching of step name. Accepts a comma-separated list of prefixes. Example: `datapipe step --name=my_step_name run` or `datapipe step --name=my_step_name,my_other_step_name run`.
@@ -76,6 +80,7 @@ Runs checks on current state of database. Can detect and fix commong issues.
 ### `run`
 
 Run steps. Could be used with `--name` and `--labels` options to filter steps.
+Also accepts `--no-callbacks` — see [`datapipe run`](#run) above.
 
 ### `list`
 
