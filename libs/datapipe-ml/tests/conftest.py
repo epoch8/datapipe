@@ -179,3 +179,4 @@ def base_catalog_factory(dbconn):
         )
 
     return build
+

@@ -24,34 +24,39 @@ LABEL_CONFIG = """
 <View>
   <Image name="image" value="$image_url"/>
   <RectangleLabels name="label" toName="image">
-    <Label value="cat" background="#FF6B6B"/>
-    <Label value="dog" background="#4ECDC4"/>
+    <Label value="Cat" background="#FF6B6B"/>
+    <Label value="Dog" background="#4ECDC4"/>
   </RectangleLabels>
 </View>
 """
 
+DETECTION_CLASSES = ["Cat", "Dog"]
+CLASSES_TO_KEEP = set(DETECTION_CLASSES)
+
 COCO_CLASSES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep",
-    "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
-    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush",
+    "Person", "Bicycle", "Car", "Motorcycle", "Airplane", "Bus", "Train",
+    "Truck", "Boat", "Traffic Light", "Fire Hydrant", "Stop Sign",
+    "Parking Meter", "Bench", "Bird", "Cat", "Dog", "Horse", "Sheep",
+    "Cow", "Elephant", "Bear", "Zebra", "Giraffe", "Backpack", "Umbrella",
+    "Handbag", "Tie", "Suitcase", "Frisbee", "Skis", "Snowboard",
+    "Sports Ball", "Kite", "Baseball Bat", "Baseball Glove", "Skateboard",
+    "Surfboard", "Tennis Racket", "Bottle", "Wine Glass", "Cup", "Fork",
+    "Knife", "Spoon", "Bowl", "Banana", "Apple", "Sandwich", "Orange",
+    "Broccoli", "Carrot", "Hot Dog", "Pizza", "Donut", "Cake", "Chair",
+    "Couch", "Potted Plant", "Bed", "Dining Table", "Toilet", "TV",
+    "Laptop", "Mouse", "Remote", "Keyboard", "Cell Phone", "Microwave",
+    "Oven", "Toaster", "Sink", "Refrigerator", "Book", "Clock", "Vase",
+    "Scissors", "Teddy Bear", "Hair Drier", "Toothbrush",
 ]
-CLASSES_TO_KEEP = {"cat", "dog"}
+
+E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DETECTION_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n.pt"
 
 DETECTION_MODEL_CONFIG = {
     "detection_model_id": "cat_dog_yolo_smoke",
     "detection_model__type": "yolov8",
-    "detection_model__model_path": "yolo11n.pt",
-    "detection_model__input_size": [16, 16],
+    "detection_model__model_path": str(DEFAULT_DETECTION_MODEL_PATH),
+    "detection_model__input_size": [640, 640],
     "detection_model__class_names": COCO_CLASSES,
     "detection_model__score_threshold": 0.01,
 }
@@ -149,5 +154,52 @@ if not DB_URL:
 
 DB_SCHEMA = os.environ.get("DB_SCHEMA_DETECTION", "datapipe_e2e_detection")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
+
+CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
+if not CLICKHOUSE_RUN_LOGS_URL:
+    raise RuntimeError(
+        "CLICKHOUSE_RUN_LOGS_URL is required. Copy examples/e2e_template/.env.example to .env, "
+        "start docker compose (clickhouse service), and run: set -a && source ../.env && set +a"
+    )
+
+from datapipe.executor import ExecutorConfig
+
+_MAX_CPU = os.cpu_count() or 4
+
+
+def _use_gpu() -> bool:
+    explicit = os.environ.get("DATAPIPE_USE_GPU")
+    if explicit is not None:
+        return explicit.strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        import torch
+
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2) -> ExecutorConfig:
+    """Embarrassingly parallel I/O and image prep (resize, download, upload)."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
+
+
+def gpu_executor(*, parallelism: int | None = None) -> ExecutorConfig:
+    """GPU when CUDA is available; CPU fallback otherwise."""
+    if _use_gpu():
+        if parallelism is None:
+            try:
+                import torch
+
+                parallelism = max(1, torch.cuda.device_count())
+            except Exception:
+                parallelism = 1
+        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism)
+    return ExecutorConfig(cpu=1.0, parallelism=min(_MAX_CPU, 4))
+
+
+def metrics_executor(*, parallelism_cap: int = 8, cpu_per_task: float = 0.5) -> ExecutorConfig:
+    """CPU-bound metrics aggregation over image batches."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
 
 FIFTYONE_DATASET_NAME = "datapipe_detection_e2e"

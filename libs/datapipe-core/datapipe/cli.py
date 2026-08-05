@@ -26,6 +26,13 @@ tracer = trace.get_tracer("datapipe_app")
 rich.reconfigure(highlight=False)
 
 
+def _entry_points(group: str):
+    try:
+        return metadata.entry_points(group=group)  # type: ignore
+    except TypeError:
+        return metadata.entry_points().get(group, [])  # type: ignore
+
+
 def load_pipeline(pipeline_name: str) -> DatapipeApp:
     pipeline_split = pipeline_name.split(":")
 
@@ -45,6 +52,10 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
     app = getattr(pipeline_mod, app_name)
 
     assert isinstance(app, DatapipeApp)
+
+    for entry_point in _entry_points("datapipe.pipeline_init"):
+        init_fn = entry_point.load()
+        init_fn(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
 
     return app
 
@@ -82,6 +93,49 @@ def filter_steps_by_labels_and_name(
                 res.append(step)
 
     return res
+
+
+def _load_run_callbacks(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    labels: Labels,
+    pipeline_spec: str | None,
+):
+    callbacks = []
+    for entry_point in _entry_points("datapipe.run_callbacks"):
+        factory = entry_point.load()
+        callback = factory(
+            app,
+            steps,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+        )
+        if callback is not None:
+            callbacks.append(callback)
+    return callbacks
+
+
+def _run_steps_cli(
+    app: DatapipeApp,
+    steps: list[ComputeStep],
+    *,
+    executor: Executor,
+    labels: Labels,
+    pipeline_spec: str,
+    attach_callbacks: bool,
+) -> None:
+    callbacks = (
+        _load_run_callbacks(
+            app,
+            steps,
+            labels=labels,
+            pipeline_spec=pipeline_spec,
+        )
+        if attach_callbacks
+        else []
+    )
+    run_steps(app.ds, steps, executor=executor, callbacks=callbacks)
 
 
 @click.group()
@@ -192,6 +246,9 @@ def cli(
     if executor == "SingleThreadExecutor":
         ctx.obj["executor"] = SingleThreadExecutor()
     elif executor == "RayExecutor":
+        # Set before `import ray`: ray_constants reads this at import time.
+        os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
+
         import ray
 
         from datapipe.executor.ray import RayExecutor
@@ -221,14 +278,36 @@ def table_list(ctx: click.Context) -> None:
 
 
 @cli.command(name="run")
+@click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
+@click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def main_run(ctx: click.Context) -> None:
+def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
+    executor: Executor = ctx.obj["executor"]
+    pipeline_spec = ctx.params.get("pipeline", "app")
 
     with tracer.start_as_current_span("run"):
-        from datapipe.compute import run_steps
+        while True:
+            _run_steps_cli(
+                app,
+                app.steps,
+                executor=executor,
+                labels=[],
+                pipeline_spec=pipeline_spec,
+                attach_callbacks=not no_callbacks,
+            )
 
-        run_steps(app.ds, app.steps)
+            if not loop:
+                break
+            print(f"Loop ended, sleeping {loop_delay}s...")
+            time.sleep(loop_delay)
+            print("\n\n")
 
 
 @cli.group()
@@ -237,21 +316,53 @@ def db():
 
 
 @db.command()
+@click.option(
+    "--force-recreate",
+    is_flag=True,
+    default=False,
+    help="Drop all known SQL tables before creating them again. DESTRUCTIVE — deletes data.",
+)
 @click.pass_context
-def create_all(ctx: click.Context) -> None:
+def create_all(ctx: click.Context, force_recreate: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
 
     dbconn = app.ds.meta_dbconn
 
-    if dbconn.schema is not None:
-        from sqlalchemy import inspect
-        from sqlalchemy.schema import CreateSchema
+    from datapipe.store.database import ensure_db_schema
+    from datapipe.store.schema_sync import (
+        AlembicManagedDatabaseError,
+        AlembicNotInstalledError,
+        refuse_if_alembic_managed,
+        sync_sqla_metadata,
+    )
 
-        if dbconn.schema not in inspect(dbconn.con).get_schema_names():
-            with dbconn.con.begin() as con:
-                con.execute(CreateSchema(dbconn.schema))
+    # Alembic-managed DBs must not be mutated by create-all / force-recreate / sync.
+    try:
+        refuse_if_alembic_managed(dbconn.con, schema=dbconn.schema)
+    except AlembicManagedDatabaseError as exc:
+        raise click.ClickException(str(exc)) from exc
 
+    ensure_db_schema(dbconn)
+    _run_db_create_all_extensions(app, dbconn)
+    if force_recreate:
+        click.echo("Dropping all known tables (--force-recreate)...")
+        dbconn.sqla_metadata.drop_all(dbconn.con)
     dbconn.sqla_metadata.create_all(dbconn.con)
+    # create_all only creates missing tables; sync applies ADD COLUMN / ALTER
+    # when metadata drifted from an existing DB (optional Alembic extra).
+    try:
+        applied = sync_sqla_metadata(dbconn.con, dbconn.sqla_metadata, schema=dbconn.schema)
+    except AlembicNotInstalledError as exc:
+        click.echo(f"Skipping schema sync: {exc}")
+        return
+    if applied:
+        click.echo(f"Synced schema: applied {applied} change(s) to existing tables.")
+
+
+def _run_db_create_all_extensions(app: DatapipeApp, dbconn) -> None:
+    for entry_point in _entry_points("datapipe.db_create_all"):
+        create_all_extension = entry_point.load()
+        create_all_extension(app, dbconn)
 
 
 @cli.command()
@@ -335,6 +446,7 @@ def step(
     steps = filter_steps_by_labels_and_name(app, labels=labels_list, name_prefix=name)
 
     ctx.obj["steps"] = steps
+    ctx.obj["step_labels"] = labels_list
 
 
 def to_human_repr(step: ComputeStep, extra_args: dict | None = None) -> str:
@@ -388,19 +500,35 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
 @step.command(name="run")
 @click.option("--loop", is_flag=True, default=False, help="Run continuosly in a loop")
 @click.option("--loop-delay", type=click.INT, default=30, help="Delay between loops in seconds")
+@click.option(
+    "--no-callbacks",
+    is_flag=True,
+    default=False,
+    help="Do not attach run callbacks from entry points",
+)
 @click.pass_context
-def step_run(ctx: click.Context, loop: bool, loop_delay: int) -> None:
+def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     steps_to_run: list[ComputeStep] = ctx.obj["steps"]
 
     executor: Executor = ctx.obj["executor"]
+    labels: Labels = ctx.obj.get("step_labels", [])
+    parent = ctx.parent
+    pipeline_spec = parent.params.get("pipeline", "app") if parent is not None else "app"
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
 
     while True:
         if len(steps_to_run) > 0:
-            run_steps(app.ds, steps_to_run, executor=executor)
+            _run_steps_cli(
+                app,
+                steps_to_run,
+                executor=executor,
+                labels=labels,
+                pipeline_spec=pipeline_spec,
+                attach_callbacks=not no_callbacks,
+            )
 
         if not loop:
             break
@@ -525,13 +653,7 @@ def migrate_transform_tables(ctx: click.Context, labels: str, name: str) -> None
     return migrations_v013.migrate_transform_tables(app, batch_transforms_steps)
 
 
-try:
-    entry_points = metadata.entry_points(group="datapipe.cli")  # type: ignore
-except TypeError:
-    # Compatibility with older versions of importlib.metadata (Python 3.8-3.9)
-    entry_points = metadata.entry_points().get("datapipe.cli", [])  # type: ignore
-
-for entry_point in entry_points:
+for entry_point in _entry_points("datapipe.cli"):
     register_commands = entry_point.load()  # type: ignore
     register_commands(cli)
 

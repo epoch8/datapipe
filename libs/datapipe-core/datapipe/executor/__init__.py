@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generator, Protocol
 
@@ -38,6 +39,7 @@ class Executor(ABC):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList: ...
 
 
@@ -51,18 +53,25 @@ class SingleThreadExecutor(Executor):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList:
+        from datapipe.cancel import get_cancel_token
+
         res_changelist = ChangeList()
 
         try:
             for idx in tqdm(idx_gen, total=idx_count):
+                token = get_cancel_token()
+                if token is not None:
+                    token.raise_if_cancelled()
                 changes = process_fn(
                     ds=ds,
                     idx=idx,
                     run_config=run_config,
                 )
-
                 res_changelist.extend(changes)
+                if on_batch_complete is not None:
+                    on_batch_complete()
         finally:
             idx_gen.close()
 

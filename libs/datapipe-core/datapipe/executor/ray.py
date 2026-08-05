@@ -1,4 +1,4 @@
-from typing import Any, Generator
+from typing import Any, Callable, Generator
 
 import ray
 from tqdm_loggable.auto import tqdm
@@ -19,6 +19,7 @@ class RayExecutor(Executor):
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
+        on_batch_complete: Callable[[], None] | None = None,
     ) -> ChangeList:
         res_changelist = ChangeList()
 
@@ -44,26 +45,46 @@ class RayExecutor(Executor):
 
         # Generator to collect results, so tqdm can show progress
         def _results(idx_gen: Generator[IndexDF, None, None]) -> Generator[ChangeList, None, None]:
+            from datapipe.cancel import get_cancel_token
+
             # Submit tasks to remote functions using Ray
             futures: list[ray.ObjectRef[ChangeList]] = []
-            for idx in idx_gen:
-                if len(futures) > parallelism:
-                    ready, futures = ray.wait(futures, timeout=None)
+            try:
+                for idx in idx_gen:
+                    token = get_cancel_token()
+                    if token is not None and token.is_cancelled():
+                        for future in futures:
+                            ray.cancel(future, force=True)
+                        token.raise_if_cancelled()
+
+                    if len(futures) > parallelism:
+                        ready, futures = ray.wait(futures, timeout=None)
+                        for result in ray.get(ready):
+                            yield result
+
+                    future = process_fn_remote.remote(ds, idx, run_config)
+                    futures.append(future)
+
+                ready, futures = ray.wait(futures, timeout=None)
+                while len(ready) > 0:
+                    token = get_cancel_token()
+                    if token is not None and token.is_cancelled():
+                        for future in futures:
+                            ray.cancel(future, force=True)
+                        token.raise_if_cancelled()
                     for result in ray.get(ready):
                         yield result
-
-                future = process_fn_remote.remote(ds, idx, run_config)
-                futures.append(future)
-
-            ready, futures = ray.wait(futures, timeout=None)
-            while len(ready) > 0:
-                for result in ray.get(ready):
-                    yield result
-                ready, futures = ray.wait(futures, timeout=None)
+                    ready, futures = ray.wait(futures, timeout=None)
+            except BaseException:
+                for future in futures:
+                    ray.cancel(future, force=True)
+                raise
 
         try:
             for result in tqdm(_results(idx_gen), total=idx_count):
                 res_changelist.extend(result)
+                if on_batch_complete is not None:
+                    on_batch_complete()
         finally:
             idx_gen.close()
 

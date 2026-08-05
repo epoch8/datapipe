@@ -1,23 +1,30 @@
 # datapipe-app
 
-`datapipe-app` implements two aspects to make every [datapipe](https://github.com/epoch8/datapipe) pipeline to work as
-an application.
+FastAPI REST API, `datapipe` CLI, and observability hooks for Datapipe pipelines. The Ops UI is **not** embedded here — it ships in [`datapipe-ui`](../datapipe-ui/) (core) and [`datapipe-ui-ml`](../datapipe-ui-ml/) (ML plugin SPA). ML API extensions live in [`datapipe-app-ml-ops`](../datapipe-app-ml-ops/).
 
-From the monorepo root:
+## Install
 
 ```bash
-uv sync --package datapipe-app --package datapipe-core --extra sqlite
-uv run pytest libs/datapipe-app/tests
+# API only
+uv pip install -e "libs/datapipe-app"
+
+# API + Ops UI
+uv pip install -e "libs/datapipe-app[ui]"
+
+# API + UI + ML ops backend + ML UI plugin
+uv pip install -e "libs/datapipe-app[ml]"
 ```
 
-1. REST API + debug UI based of FastAPI
-1. `datapipe` CLI tool
+Build static assets before running the API locally:
 
-## Common usage
-
-Common pattern to use `datapipe-app` is to create `app.py` with the following code:
-
+```bash
+make -C libs/datapipe-ui build-package      # core-only UI
+make -C libs/datapipe-ui-ml build-package   # ML UI (preferred when [ml] extra is installed)
 ```
+
+## Usage
+
+```python
 from datapipe_app import DatapipeApp
 
 from pipeline import ds, catalog, pipeline
@@ -25,22 +32,32 @@ from pipeline import ds, catalog, pipeline
 app = DatapipeApp(ds, catalog, pipeline)
 ```
 
-Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
-`pipeline`.
+`DatapipeAPI` adds the Ops dashboard (`/`) and debug graph UI (`/graph`). Start with:
 
-## REST API + UI
-
-`DatapipeApp` inherits from `FastApi` app and can be started with datapipe CLI
-or directly with server like `uvicorn`.
-
-```
+```bash
 datapipe --pipeline app:app api
 ```
 
-### UI
+Ops API: `/api/v1alpha3/runs`, `/pipelines/{id}`, spec-driven `/ops-specs/*`, catalog metrics under `/pipelines/{id}/metrics/*`.
 
-![Datapipe App UI](docs/datapipe-example-app.png)
+Optional env: `DATAPIPE_APP_PIPELINE_ID` (default pipeline id for single-pipeline apps).
 
-### REST API
+## Makefile
 
-API documentation can be found at `/api/v1alpha1/docs` sub URL.
+From `libs/datapipe-app`:
+
+| Target | Description |
+|--------|-------------|
+| `make build-ui` | Build frontend + `datapipe-ui` Python wheel |
+| `make build-frontend` | Same via Docker (Node 18) |
+| `make lint` | black, flake8, mypy |
+| `make build-example` | Docker image for `examples/datapipe_app` |
+
+## Tests
+
+```bash
+uv sync --package datapipe-app --package datapipe-core --extra sqlite
+uv run pytest libs/datapipe-app/tests
+```
+
+CI: `.github/workflows/lib-datapipe-app.yml`
