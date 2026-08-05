@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from datapipe.types import IndexDF
 
-from tests.helpers.training_recovery import (
+from .training_recovery import (
     TENSORFLOW_RECOVERY_CASE_IDS,
     RealRecoveryCase,
     RecoveryTrainStep,
@@ -19,11 +19,12 @@ from tests.helpers.training_recovery import (
     direct_train_kwargs,
     make_runtime,
 )
-from tests.helpers.training_smoke import Workdir, classification_freeze_step, classification_train_step
+from .training_smoke import Workdir, classification_freeze_step, classification_train_step
 
 if TYPE_CHECKING:
     from datapipe_ml.frameworks.tensorflow.classification_runner import TF_ClassificationTrainingConfig
     from datapipe_ml.tasks.classification.train.tensorflow import Train_Tensorflow_ClassificationModel
+
 
 def _configure_tf_configs(configs: list[TF_ClassificationTrainingConfig], epochs: int) -> None:
     for config in configs:

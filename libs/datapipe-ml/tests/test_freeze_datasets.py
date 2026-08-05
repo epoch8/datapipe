@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.utils import assert_columns_present, assert_no_nulls
+from .utils import assert_columns_present, assert_no_nulls
 
 
 def _require_datapipe_runtime():

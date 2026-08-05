@@ -5,19 +5,19 @@ from dataclasses import replace
 
 import pytest
 
-from tests.helpers.failure_injection import (
+from .helpers.failure_injection import (
     FAIL_AFTER_EPOCH_ENV,
     FAIL_MODE_ENV,
     patch_sky_vast_worker_entrypoint_for_failure_hooks,
 )
-from tests.helpers.training_recovery import (
+from .helpers.training_recovery import (
     assert_status_manifest,
     configure_recovery_steps,
     make_recovery_runtime,
     recovery_case_by_id,
 )
-from tests.helpers.training_smoke import run_pipeline
-from tests.test_training_sky_vast import _run_with_accelerator_candidates, _sky_vast_config, sky_vast_environment
+from .helpers.training_smoke import run_pipeline
+from .test_training_sky_vast import _run_with_accelerator_candidates, _sky_vast_config, sky_vast_environment
 
 pytestmark = [pytest.mark.slow, pytest.mark.training, pytest.mark.torch, pytest.mark.sky_vast]
 
