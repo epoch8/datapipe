@@ -234,7 +234,7 @@ class BaseFlowStep:
     def run_idx(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> ChangeList: 

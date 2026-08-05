@@ -431,10 +431,12 @@ class BaseBatchTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Comp
     def run_idx(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> ChangeList:
+        idx = cast(IndexDF, idx)
+        
         if executor is None:
             executor = SingleThreadExecutor()
 

@@ -14,7 +14,6 @@ from typing import (
 
 import pandas as pd
 from opentelemetry import trace
-from tqdm_loggable.auto import tqdm
 
 from datapipe.compute import (
     Catalog,
@@ -367,7 +366,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             return
 
         executor.run_process_batch(
-            name=self,
+            step=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -407,7 +406,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             return ChangeList()
 
         changes = executor.run_process_batch(
-            name=self,
+            step=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -421,10 +420,18 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
     def run_idx(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
     ) -> ChangeList:
+        if type(idx) == IndexDF:
+            idx = cast(IndexDF, idx)
+        elif type(idx) == tuple[IndexDF, IndexDF]:
+            idx = idx[0]
+        else:
+            raise ValueError(f"Incorrect type for idx: {type(idx)}")
+
+        
         if executor is None:
             executor = SingleThreadExecutor()
 
@@ -448,7 +455,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             return ChangeList()
 
         changes = executor.run_process_batch(
-            name=self,
+            step=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
