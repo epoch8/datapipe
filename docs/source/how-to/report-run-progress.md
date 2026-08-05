@@ -24,22 +24,16 @@ run_steps(
 
 ## Write a custom callback
 
-`RunCallback` is a `typing.Protocol` — any object with the matching methods
-works, no base class required. Implement only the events you care about; for
-example, forwarding progress to your own metrics system:
+Subclass `RunCallback` and override only the events you care about — the
+rest stay no-ops. For example, forwarding progress to your own metrics
+system:
 
 ```python
-class MetricsRunCallback:
-    def on_run_start(self, steps): pass
-    def on_step_start(self, step): pass
+from datapipe.run_callback import RunCallback
 
+class MetricsRunCallback(RunCallback):
     def on_step_progress(self, step, completed, total):
         my_metrics.gauge("datapipe.step.progress", completed, tags={"step": step.name})
-
-    def on_step_success(self, step): pass
-    def on_step_error(self, step, error): pass
-    def on_run_success(self): pass
-    def on_run_error(self, error): pass
 
 
 run_steps(ds, steps, run_config=RunConfig(callback=MetricsRunCallback()))

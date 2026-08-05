@@ -12,7 +12,7 @@ from datapipe.run_config import RunConfig
 
 
 @dataclass
-class RecordingCallback:
+class RecordingCallback(RunCallback):
     events: list[tuple] = field(default_factory=list)
 
     def on_run_start(self, steps: Sequence[ComputeStep]) -> None:
@@ -43,7 +43,7 @@ class RecordingCallback:
 
 
 @dataclass
-class ExplodingCallback:
+class ExplodingCallback(RunCallback):
     explode_on: str
     events: list[str] = field(default_factory=list)
 
@@ -194,6 +194,5 @@ def test_empty_steps_complete_run():
     ]
 
 
-def test_recording_callback_satisfies_protocol():
-    cb: RunCallback = RecordingCallback()
-    assert cb is not None
+def test_recording_callback_is_a_base_run_callback():
+    assert isinstance(RecordingCallback(), RunCallback)

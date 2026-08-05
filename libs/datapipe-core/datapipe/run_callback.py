@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeStep
@@ -16,30 +16,34 @@ if TYPE_CHECKING:
 logger = logging.getLogger("datapipe.run_callback")
 
 
-class RunCallback(Protocol):
-    def on_run_start(self, steps: Sequence[ComputeStep]) -> None: ...
+class RunCallback:
+    """Base class for run callbacks; every method is a no-op. Subclass and override only what you need."""
 
-    def on_step_start(self, step: ComputeStep) -> None: ...
+    def on_run_start(self, steps: Sequence[ComputeStep]) -> None:
+        pass
 
-    def on_step_progress(
-        self,
-        step: ComputeStep,
-        completed: int,
-        total: int | None,
-    ) -> None: ...
+    def on_step_start(self, step: ComputeStep) -> None:
+        pass
 
-    def on_step_success(self, step: ComputeStep) -> None: ...
+    def on_step_progress(self, step: ComputeStep, completed: int, total: int | None) -> None:
+        pass
 
-    def on_step_error(self, step: ComputeStep, error: BaseException) -> None: ...
+    def on_step_success(self, step: ComputeStep) -> None:
+        pass
 
-    def on_run_success(self) -> None: ...
+    def on_step_error(self, step: ComputeStep, error: BaseException) -> None:
+        pass
 
-    def on_run_error(self, error: BaseException) -> None: ...
+    def on_run_success(self) -> None:
+        pass
+
+    def on_run_error(self, error: BaseException) -> None:
+        pass
 
 
 @dataclass
-class CompositeRunCallback:
-    """Fans out to multiple RunCallback instances, e.g. for attaching to RunConfig.callback.
+class CompositeRunCallback(RunCallback):
+    """Fans out to multiple run callbacks, e.g. for attaching to RunConfig.callback.
 
     Fail-open: a broken callback is logged and must not mask pipeline errors
     or block the other callbacks.
