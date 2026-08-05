@@ -174,7 +174,7 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(
     changelist.append("tbl_left", df_idx_left)
     run_steps_changelist(ds, [cross_step], changelist)
     changelist = ChangeList()
-    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
     # Добавляем 2ую табличку
@@ -184,17 +184,17 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(
     run_steps_changelist(ds, [cross_step], changelist)
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
     changelist = ChangeList()
-    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
     changelist = ChangeList()
-    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # притворяемся, что "данные есть"
-    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # притворяемся, что "данные есть"
+    changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
+    changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
     run_steps_changelist(ds, [cross_step], changelist)
 
     changelist = ChangeList()
-    changelist.append("tbl_left", TEST_DF_LEFT_FINAL)  # смесь реальных и пустых индексов
-    changelist.append("tbl_right", TEST_DF_RIGHT_FINAL)  # смесь реальных и пустых индексов
+    changelist.append("tbl_left", TEST_DF_LEFT_FINAL)  # type: ignore  # смесь реальных и пустых индексов
+    changelist.append("tbl_right", TEST_DF_RIGHT_FINAL)  # type: ignore  # смесь реальных и пустых индексов
     run_steps_changelist(ds, [cross_step], changelist)
 
 

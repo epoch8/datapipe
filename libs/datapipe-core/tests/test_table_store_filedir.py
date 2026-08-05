@@ -10,9 +10,9 @@ import pytest
 from PIL import Image
 from sqlalchemy import Column, Integer, String
 
-from datapipe.store.filedir import JSONFile, PILFile, PandasParquetFile, TableStoreFiledir
+from datapipe.store.filedir import JSONFile, PandasParquetFile, PILFile, TableStoreFiledir
 from datapipe.store.tests.abstract import AbstractBaseStoreTests
-from datapipe.tests.util import assert_df_equal, assert_ts_contains, assert_idx_equal
+from datapipe.tests.util import assert_df_equal, assert_idx_equal, assert_ts_contains
 from datapipe.types import DataSchema, data_to_index
 
 TEST_DF = pd.DataFrame(
@@ -138,9 +138,10 @@ FILEDIR_PANDAS_DATA_PARAMS = [
                 "data": [
                     pd.DataFrame(
                         {
-                            "id": [i+j for j in range(100)],
-                            "value": [i*j for j in range(100)],
-                        }) 
+                            "id": [i + j for j in range(100)],
+                            "value": [i * j for j in range(100)],
+                        }
+                    )
                     for i in range(6)
                 ],
             }
@@ -162,9 +163,10 @@ FILEDIR_PANDAS_DATA_PARAMS = [
                 "data": [
                     pd.DataFrame(
                         {
-                            "id": [i+j for j in range(100)],
-                            "value": [i*j for j in range(100)],
-                        }) 
+                            "id": [i + j for j in range(100)],
+                            "value": [i * j for j in range(100)],
+                        }
+                    )
                     for i in range(100)
                 ],
             }
@@ -186,7 +188,7 @@ FILEDIR_PANDAS_DATA_PARAMS = [
 def tmp_dir_with_json_data(tmp_dir):
     for fn, data in TEST_JSONS.items():
         with fsspec.open(f"{tmp_dir}/{fn}.json", "w+") as f:
-            json.dump(data, f)
+            json.dump(data, f)  # type: ignore
     yield canonical_local_path(tmp_dir)
 
 
@@ -261,7 +263,7 @@ def tmp_dir_with_img_data(tmp_dir):
     for i in range(10):
         with fsspec.open(f"{tmp_dir}/{i}.png", "wb+") as f:
             im = make_rgb_image()
-            im.save(f, format="png")
+            im.save(f, format="png")  # type: ignore
 
     yield tmp_dir
 
@@ -271,15 +273,15 @@ def tmp_dir_with_img_data_several_suffixes(tmp_dir):
     for i in range(10):
         with fsspec.open(f"{tmp_dir}/{i}.png", "wb+") as f:
             im = make_rgb_image()
-            im.save(f, format="png")
+            im.save(f, format="png")  # type: ignore
         if i in [0, 2, 3, 6]:
             with fsspec.open(f"{tmp_dir}/{i}.jpg", "wb+") as f:
                 im = make_rgb_image()
-                im.save(f, format="JPEG")
+                im.save(f, format="JPEG")  # type: ignore
         if i in [1, 6, 9]:
             with fsspec.open(f"{tmp_dir}/{i}.jpeg", "wb+") as f:
                 im = make_rgb_image()
-                im.save(f, format="JPEG")
+                im.save(f, format="JPEG")  # type: ignore
 
     yield tmp_dir
 
@@ -287,7 +289,7 @@ def tmp_dir_with_img_data_several_suffixes(tmp_dir):
 def test_read_png_rows(tmp_dir_with_img_data):
     ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"))
 
-    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
+    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))  # type: ignore
 
     assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
@@ -300,7 +302,7 @@ def test_read_png_rows_with_multiply_suffixes(tmp_dir_with_img_data_several_suff
         adapter=PILFile("png"),
     )
 
-    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
+    rows = ts.read_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))  # type: ignore
 
     assert_df_equal(rows[["id"]], pd.DataFrame({"id": [str(i) for i in range(10)]}))
 
@@ -314,7 +316,7 @@ def test_delete_rows_several_suffixes(tmp_dir_with_img_data_several_suffixes):
         enable_rm=True,
     )
 
-    ts.delete_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))
+    ts.delete_rows(pd.DataFrame({"id": [str(i) for i in range(10)]}))  # type: ignore
     protocol, _ = fsspec.core.split_protocol(tmp_dir_with_img_data_several_suffixes)
     fs = fsspec.filesystem(protocol)
     for i in range(10):
@@ -340,7 +342,7 @@ def test_read_rows_without_data(tmp_dir_with_img_data):
     ts = TableStoreFiledir(f"{tmp_dir_with_img_data}/{{id}}.png", adapter=PILFile("png"), read_data=False)
 
     df = pd.DataFrame({"id": [str(i) for i in range(10)]})
-    rows = ts.read_rows(df)
+    rows = ts.read_rows(df)  # type: ignore
 
     assert_df_equal(rows, df)
 
@@ -446,7 +448,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH["filepath"] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
-        lambda idx: (f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json")
+        lambda idx: f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER0_WITH_FILEPATH)
 
@@ -586,17 +588,12 @@ def test_write_read_rows__filedir_specific(
 
 @pytest.mark.parametrize("data_df,fn_template,primary_schema", FILEDIR_PANDAS_DATA_PARAMS)
 def test_write_read_rows__filedir_pandas_parquet(
-    tmp_dir,
-    data_df: pd.DataFrame,
-    fn_template: str,
-    primary_schema: DataSchema
+    tmp_dir, data_df: pd.DataFrame, fn_template: str, primary_schema: DataSchema
 ) -> None:
     store = TableStoreFiledir(
         tmp_dir / fn_template,
-        primary_schema=primary_schema, 
-        adapter=PandasParquetFile(
-            pandas_column="data"
-        ),
+        primary_schema=primary_schema,
+        adapter=PandasParquetFile(pandas_column="data"),
     )
 
     store.insert_rows(data_df)
@@ -609,5 +606,4 @@ def test_write_read_rows__filedir_pandas_parquet(
     assert_idx_equal(data_df.index, saved_df.index)
 
     for i, row in data_df.iterrows():
-        assert row["data"].equals(saved_df['data'][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"
-    
+        assert row["data"].equals(saved_df["data"][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"

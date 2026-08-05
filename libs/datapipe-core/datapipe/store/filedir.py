@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import IO, Any, Iterator, Literal, cast
 
-import cityhash
+import cityhash  # type: ignore
 import fsspec
 import numpy as np
 import pandas as pd
@@ -353,7 +353,14 @@ class TableStoreFiledir(TableStore):
         self.add_filepath_column = add_filepath_column
         self.read_data = read_data
 
-        type_to_cls = {String: str, Integer: int}
+        def type_to_cls(typ):
+            match typ:
+                case String():
+                    return str
+                case Integer():
+                    return int
+                case _:
+                    raise ValueError(f"Unsupported type: {typ}")
 
         if primary_schema is not None:
             assert sorted(self.attrnames) == sorted(i.name for i in primary_schema)
@@ -361,10 +368,7 @@ class TableStoreFiledir(TableStore):
             self.primary_schema = primary_schema
         else:
             self.primary_schema = [Column(attrname, String, primary_key=True) for attrname in self.attrnames]
-        self.attrname_to_cls = {
-            column.name: type_to_cls[type(column.type)]
-            for column in self.primary_schema  # type: ignore
-        }
+        self.attrname_to_cls = {column.name: type_to_cls(column.type) for column in self.primary_schema}
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema

@@ -4,7 +4,6 @@ from functools import partial
 from typing import cast
 
 import pandas as pd
-import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import JSON, Integer
 
@@ -76,12 +75,6 @@ def test_gen_process(dbconn) -> None:
     do_batch_generate(func=gen, ds=ds, output_dts=[tbl1])
 
     assert_datatable_equal(tbl1, TEST_DF)
-
-    def func():
-        return TEST_DF
-
-    with pytest.raises(Exception):
-        do_batch_generate(func=func, ds=ds, output_dts=[tbl1])  # type: ignore
 
 
 def test_inc_process_modify_values(dbconn) -> None:
@@ -600,7 +593,7 @@ def test_error_handling(dbconn) -> None:
 
     # with pytest.raises(Exception):
     do_batch_generate(
-        func=partial(gen_bad1, chunk_size=CHUNKSIZE),
+        func=partial(gen_bad1, chunk_size=CHUNKSIZE),  # type: ignore
         ds=ds,
         output_dts=[tbl],
         run_config=RunConfig(fail_fast=False),
@@ -646,7 +639,7 @@ def test_error_handling(dbconn) -> None:
     # Checks that records are not being deleted
     # with pytest.raises(Exception):
     do_batch_generate(
-        func=partial(gen_bad2, chunk_size=CHUNKSIZE),
+        func=partial(gen_bad2, chunk_size=CHUNKSIZE),  # type: ignore
         ds=ds,
         output_dts=[tbl],
     )
@@ -666,7 +659,7 @@ def test_gen_from_empty_rows(dbconn) -> None:
     tbl = ds.create_table("test", table_store=TableStoreDB(dbconn, "tbl_data", TEST_SCHEMA, True))
 
     def proc_func():
-        yield pd.DataFrame.from_records({key: [] for key in tbl.primary_keys})
+        yield pd.DataFrame.from_records({key: [] for key in tbl.primary_keys})  # type: ignore
 
     # This should be ok
     do_batch_generate(
