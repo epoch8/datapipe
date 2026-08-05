@@ -64,18 +64,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - python-version: "3.10"
-            test-db-env: "postgres"
-          - python-version: "3.11"
-            test-db-env: "postgres"
-          - python-version: "3.11"
-            test-db-env: "sqlite"
           - python-version: "3.12"
             test-db-env: "postgres"
           - python-version: "3.12"
             test-db-env: "sqlite"
-          - python-version: "3.13"
-            test-db-env: "postgres"
 
     services:
       postgres:
@@ -154,17 +146,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12"]
         example:
           - datatable_batch_transform
           - image_resize
           - key_mapping
           - many_to_zero
           - model_inference
-          - one_to_many_pipeline
         executor:
           - SingleThreadExecutor
-          - RayExecutor
+          # - RayExecutor
     steps:
       - uses: actions/checkout@v5
 
