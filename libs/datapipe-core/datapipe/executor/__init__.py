@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Generator, Protocol
 
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, IndexDF, ProcessItem
+from datapipe.types import ChangeList, ProcessItem
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeStep

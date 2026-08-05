@@ -245,7 +245,7 @@ class BaseMetaDataStep:
     def reset_metadata(self, ds: DataStore) -> None: 
         raise NotImplementedError()
     
-    def fill_metadata(self, ds: DataStore) -> None: 
+    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
         raise NotImplementedError()
 
 

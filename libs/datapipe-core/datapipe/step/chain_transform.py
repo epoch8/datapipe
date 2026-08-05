@@ -6,11 +6,9 @@ from dataclasses import dataclass, replace
 from typing import (
     Any,
     Callable,
-    Iterable,
     Generator,
     Literal,
     Sequence,
-    Tuple,
     cast
 )
 
@@ -135,9 +133,6 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         self.chunk_size = chunk_size
         self.window_size = window_size
         self.order = order
-
-    def fill_metadata(self, ds: DataStore) -> None:
-        self._update_transform_ids(ds=ds)
 
     def get_full_process_ids(
         self,
@@ -285,16 +280,17 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             with tracer.start_as_current_span("store output batch"):
                 if isinstance(output_dfs, (list, tuple)):
                     assert len(output_dfs) == len(self.output_dts)
+                    output_dfs_norm = cast(list[pd.DataFrame], output_dfs)
                 else:
                     assert len(self.output_dts) == 1
-                    output_dfs = [output_dfs]
+                    output_dfs_norm = [output_dfs]
 
                 for k, output_spec in enumerate(self.output_specs):
                     res_dt = output_spec.dt
                     # Берем k-ое значение функции для k-ой таблички
                     # Добавляем результат в результирующие чанки
                     change_idx = res_dt.store_chunk(
-                        data_df=output_dfs[k],
+                        data_df=output_dfs_norm[k],
                         processed_idx=self._transform_idx_to_output_idx(idx, output_spec),
                         now=process_ts,
                         run_config=run_config,
@@ -358,7 +354,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
         
         self._update_transform_ids(ds=ds)
@@ -371,7 +367,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             return
 
         executor.run_process_batch(
-            name=self.name,
+            name=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -398,6 +394,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         if executor is None:
             executor = SingleThreadExecutor()
 
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         self._update_transform_ids(ds=ds)
@@ -409,10 +406,8 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        logger.info(f"Running: {self.name}")
-
         changes = executor.run_process_batch(
-            name=self.name,
+            name=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -442,7 +437,7 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         if executor is None:
             executor = SingleThreadExecutor()
 
-        logger.info(f"Running: {self.name}")
+        logger.info(f"Running: {self.name} {self.format_io()}")
         run_config = RunConfig.add_labels(run_config, {"step_name": self.name})
 
         (idx_count, idx_gen) = self.get_idx_process_ids(ds, idx, run_config)
@@ -452,10 +447,8 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         if idx_count is not None and idx_count == 0:
             return ChangeList()
 
-        logger.info(f"Running: {self.name}")
-
         changes = executor.run_process_batch(
-            name=self.name,
+            name=self,
             ds=ds,
             idx_count=idx_count,
             idx_gen=idx_gen,
@@ -465,6 +458,9 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
         )
 
         return changes
+
+    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
+        self._update_transform_ids(ds=ds, run_config=run_config)
 
     def reset_metadata(self, ds: DataStore) -> None:
         self.meta.mark_all_rows_unprocessed()
@@ -476,18 +472,27 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             changed_idx_count=self.meta.get_changed_idx_count(ds),
         )
 
-    def _update_transform_ids(self, ds: DataStore) -> None:
+    def _update_transform_ids(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
         logger.info(f"Update chain transform index")
 
         idx_len, idx_gen = self.meta.get_new_process_ids(ds=ds, chunk_size=1000)
+        callback = run_config.callback if run_config is not None else None
+
+        completed = 0
+        if callback is not None:
+            callback.on_step_progress(self, completed, idx_len)
 
         if not idx_len:
             return
 
-        for idx in tqdm(idx_gen, total=idx_len):
+        for idx in idx_gen:
             idx['rank'] = idx.apply(lambda x: self.rank_func(**x.to_dict()), axis=1)
 
             self.meta.insert_rows(cast(ChainIndexDF, idx))
+
+            completed += 1
+            if callback is not None:
+                callback.on_step_progress(self, completed, idx_len)
 
     # TODO consider making this method a property of ComputeOutput
     # Also see TableMeta.transform_idx_to_table_idx for the same functionality
@@ -521,8 +526,8 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             return run_config
         else:
             if isinstance(self.filters, dict):
-                filters = self.filters
-            elif isinstance(self.filters, Callable):  # type: ignore
+                filters = cast(LabelDict, self.filters)
+            elif callable(self.filters):
                 filters = self.filters()
             else:
                 filters = {}
@@ -530,11 +535,10 @@ class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, Chai
             if run_config is None:
                 return RunConfig(filters=filters)
             else:
-                run_config = copy.deepcopy(run_config)
                 filters = copy.deepcopy(filters)
                 filters.update(run_config.filters)
-                run_config.filters = filters
-                return run_config
+
+                return replace(run_config, filters=filters)
 
 
 @dataclass
@@ -560,8 +564,12 @@ class ChainTransform(PipelineStep):
         previous_dts = [pipeline_input_to_compute_input(ds, catalog, prev) for prev in self.previous]
         output_dts = [pipeline_output_to_compute_output(ds, catalog, output) for output in self.outputs]
 
-        step_name = self.name or make_mungled_step_name(ChainTransformStep, self.func.__name__, input_dts, output_dts)
-
+        step_name = self.name or make_mungled_step_name(
+            ChainTransformStep,
+            self.func.__name__,  # type: ignore
+            input_dts,
+            output_dts,
+        )
         return [
             ChainTransformStep(
                 ds=ds,
