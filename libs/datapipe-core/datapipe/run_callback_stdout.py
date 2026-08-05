@@ -1,9 +1,9 @@
 import time
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from datapipe.run_callback import RunCallback
 
+if TYPE_CHECKING:
     from datapipe.compute import ComputeStep
 
 
@@ -19,16 +19,13 @@ def _format_duration(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-class StdoutRunCallback:
+class StdoutRunCallback(RunCallback):
     """Prints throttled step-progress lines to stdout, no third-party dependency."""
 
     def __init__(self, min_interval: float = 5.0) -> None:
         self.min_interval = min_interval
         self._last_printed: dict[str, float] = {}
         self._step_start: dict[str, float] = {}
-
-    def on_run_start(self, steps: "Sequence[ComputeStep]") -> None:
-        pass
 
     def on_step_start(self, step: "ComputeStep") -> None:
         self._last_printed.pop(step.name, None)
@@ -62,9 +59,3 @@ class StdoutRunCallback:
     def on_step_error(self, step: "ComputeStep", error: BaseException) -> None:
         self._last_printed.pop(step.name, None)
         self._step_start.pop(step.name, None)
-
-    def on_run_success(self) -> None:
-        pass
-
-    def on_run_error(self, error: BaseException) -> None:
-        pass

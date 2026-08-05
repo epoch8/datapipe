@@ -15,8 +15,12 @@
 * `datapipe step run` gains `--no-callbacks` (works with existing `--loop`)
 * Callback failures are fail-open (logged) and do not mask step errors —
   this guarantee lives in `CompositeRunCallback`, which fans out to
-  multiple `RunCallback`s; `RunConfig.callback` itself is always a single
+  multiple callbacks; `RunConfig.callback` itself is always a single
   callback
+* Callbacks are `RunCallback` subclasses (every method a no-op by
+  default, so authors override only what they need) instead of satisfying a
+  separate `RunCallback` protocol; `StdoutRunCallback`/`CompositeRunCallback`
+  are implemented this way
 
 ## Executor / step progress
 
@@ -24,7 +28,7 @@
   `name=`) and calls `RunConfig.callback.on_step_progress` itself after each
   batch — no more `on_batch_complete` bridging parameter. This also means
   `run_changelist` now reports progress too, not just `run_full`
-* Progress reporting moved onto `RunConfig.callback` (a single `RunCallback`,
+* Progress reporting moved onto `RunConfig.callback` (a single callback,
   possibly a `CompositeRunCallback` fanning out to several) instead of a
   separate `progress` parameter threaded through `run_full`
 * tqdm is no longer hardcoded anywhere in `datapipe-core` — the executors,

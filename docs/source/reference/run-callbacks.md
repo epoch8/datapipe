@@ -1,14 +1,25 @@
 # Run Callbacks
 
-`RunCallback` is the mechanism for observing a `run_steps` execution: run/step
-lifecycle events and step progress. It replaces ad-hoc parameters (like a
-one-off `progress` callback) with a single, composable interface threaded
-through `RunConfig`.
+`RunCallback` is the mechanism for observing a `run_steps` execution:
+run/step lifecycle events and step progress. It replaces ad-hoc parameters
+(like a one-off `progress` callback) with a single, composable interface
+threaded through `RunConfig`.
 
-## `RunCallback` protocol
+## `RunCallback`
 
-`datapipe.run_callback.RunCallback` — a `typing.Protocol`, so any object with
-these methods satisfies it (no inheritance required):
+```python
+from datapipe.run_callback import RunCallback
+
+class MyCallback(RunCallback):
+    def on_step_progress(self, step, completed, total):
+        ...
+```
+
+`datapipe.run_callback.RunCallback` — every method is a no-op by
+default; subclass it and override only what you need. All run callbacks
+(including `CompositeRunCallback` and `StdoutRunCallback` below) are
+`RunCallback` subclasses — `RunConfig.callback` is typed against it, so a
+custom callback must inherit from it too.
 
 | Method | Fires when |
 |---|---|
@@ -31,9 +42,12 @@ class RunConfig:
     def with_callback(cls, rc: "RunConfig | None", callback: "RunCallback") -> "RunConfig": ...
 ```
 
-`RunConfig` carries at most one `RunCallback`. `run_steps` reads
+`RunConfig` carries at most one callback. `run_steps` reads
 `run_config.callback` directly and calls its methods around each step; use
-`CompositeRunCallback` to attach more than one.
+`CompositeRunCallback` to attach more than one. Since `RunConfig.callback` is
+called directly — not through `CompositeRunCallback`'s fail-open wrapping — a
+callback that raises will propagate and abort the run; wrap it in
+`CompositeRunCallback` if you want failures isolated instead.
 
 ## `CompositeRunCallback`
 
@@ -43,12 +57,11 @@ from datapipe.run_callback import CompositeRunCallback
 callback = CompositeRunCallback([callback_a, callback_b])
 ```
 
-Fans a single `RunCallback` call out to a list of them. Each sub-callback's
-method is called inside its own `try`/`except`: a callback that raises is
-logged (`logger.exception`) and does not stop the other callbacks or mask the
+Fans a single call out to a list of callbacks. Each sub-callback's method is
+called inside its own `try`/`except`: a callback that raises is logged
+(`logger.exception`) and does not stop the other callbacks or mask the
 pipeline's own error. This is the only place fail-open behavior is
-implemented — a lone `RunCallback` assigned directly to `RunConfig.callback`
-is not wrapped and will propagate its own exceptions.
+implemented.
 
 ## `StdoutRunCallback`
 
@@ -58,8 +71,8 @@ from datapipe.run_callback_stdout import StdoutRunCallback
 callback = StdoutRunCallback(min_interval=5.0)
 ```
 
-Built-in, dependency-free `RunCallback` that prints throttled progress lines
-to stdout, e.g.:
+Built-in, dependency-free callback that prints throttled progress lines to
+stdout, e.g.:
 
 ```
 my_step: 120/500 (avg 0.08s/it, ETA 30.40s)
