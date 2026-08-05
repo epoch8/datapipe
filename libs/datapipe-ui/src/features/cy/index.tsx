@@ -42,11 +42,15 @@ import type { PipelineGraphProps } from "../../types/pipelineGraph";
 Cytoscape.use(dagre);
 Cytoscape.use(contextMenus);
 
-function buildGraphUrl(stageFilter?: string | null): string {
+function buildGraphUrl(stageFilter?: string | null, labelKey?: string | null): string {
     const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
-    if (!stageFilter) return base;
+    const params = new URLSearchParams();
+    if (stageFilter) params.set("stage", stageFilter);
+    if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
+    const query = params.toString();
+    if (!query) return base;
     const joiner = base.includes("?") ? "&" : "?";
-    return `${base}${joiner}stage=${encodeURIComponent(stageFilter)}`;
+    return `${base}${joiner}${query}`;
 }
 
 const labelsInitStore = new WeakMap<Cytoscape.Core, true>();
@@ -169,6 +173,7 @@ function refreshNodeLabelPositions(cy: Cytoscape.Core) {
 
 function PipelineGraphView({
     stageFilter = null,
+    labelKey = null,
     runSteps = null,
     height = "100%",
     rankDir = "TB",
@@ -183,7 +188,7 @@ function PipelineGraphView({
     const [cy, setCy] = useState<Cytoscape.Core>();
     const [alertMsg, setAlertMsg] = useState<AlertProps | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-        const saved = loadGraphSessionState(buildGraphUrl(stageFilter));
+        const saved = loadGraphSessionState(buildGraphUrl(stageFilter, labelKey));
         return saved ? new Set(saved.expandedGroups) : new Set();
     });
     const [rawGraph, setRawGraph] = useState<GraphData | null>(null);
@@ -217,7 +222,7 @@ function PipelineGraphView({
     });
 
     const savedSessionRef = useRef<GraphSessionState | null>(
-        loadGraphSessionState(buildGraphUrl(stageFilter)),
+        loadGraphSessionState(buildGraphUrl(stageFilter, labelKey)),
     );
     const sessionRestoredRef = useRef(false);
     // Persisted zoom/pan is only restored on the very first mount (page reload /
@@ -248,7 +253,10 @@ function PipelineGraphView({
         return map.size ? map : undefined;
     }, [runSteps]);
 
-    const graphUrl = useMemo(() => buildGraphUrl(stageFilter), [stageFilter]);
+    const graphUrl = useMemo(
+        () => buildGraphUrl(stageFilter, labelKey),
+        [stageFilter, labelKey],
+    );
     const runStatusRef = useRef(runStatusByStep);
     runStatusRef.current = runStatusByStep;
 
@@ -403,7 +411,7 @@ function PipelineGraphView({
     useEffect(() => {
         if (!rawGraph) return;
 
-        const initKey = `${graphUrl}::${stageFilter ?? ""}`;
+        const initKey = `${graphUrl}::${stageFilter ?? ""}::${labelKey ?? ""}`;
         if (stageInitKeyRef.current === initKey) return;
         stageInitKeyRef.current = initKey;
 
@@ -421,7 +429,7 @@ function PipelineGraphView({
 
         setExpandedGroups(new Set());
         needFitRef.current = true;
-    }, [rawGraph, graphUrl, stageFilter]);
+    }, [rawGraph, graphUrl, stageFilter, labelKey]);
 
     useEffect(() => {
         let cancelled = false;

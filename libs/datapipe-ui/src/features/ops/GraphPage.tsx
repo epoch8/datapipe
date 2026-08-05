@@ -11,11 +11,17 @@ import { PageHeader } from "./shared";
 import { workflowIconSvg } from "../cy/nodeIcons";
 import { prependRecentRun } from "./utils/recentRuns";
 import { RunStepsDropdown } from "./components/RunStepsDropdown";
+import {
+    DEFAULT_LABEL_KEY,
+    graphHref,
+    normalizeLabelKey,
+} from "./utils/labelKey";
 
 export function GraphPage() {
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const stage = searchParams.get("stage");
+    const labelKeyParam = searchParams.get("label_key") || DEFAULT_LABEL_KEY;
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
@@ -23,6 +29,11 @@ export function GraphPage() {
     const [graphRefreshToken, setGraphRefreshToken] = React.useState(0);
 
     const pipelineId = capabilities?.pipeline_id;
+    const availableKeys = detail?.available_label_keys ?? [];
+    const labelKey = normalizeLabelKey(
+        labelKeyParam ?? detail?.label_graph?.label_key,
+        availableKeys,
+    );
 
     const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
@@ -31,10 +42,10 @@ export function GraphPage() {
     const loadDetail = React.useCallback(() => {
         if (!pipelineId) return;
         opsApi
-            .getPipeline(pipelineId)
+            .getPipeline(pipelineId, { label_key: labelKeyParam })
             .then(setDetail)
             .catch((e) => setError(e));
-    }, [pipelineId]);
+    }, [pipelineId, labelKeyParam]);
 
     React.useEffect(() => {
         loadCapabilities();
@@ -45,25 +56,31 @@ export function GraphPage() {
     }, [loadDetail]);
 
     const loadStageRuns = React.useCallback(() => {
-        if (!stage || !pipelineId) return;
+        if (!stage || !pipelineId || labelKeyParam !== DEFAULT_LABEL_KEY) {
+            setStageRuns([]);
+            return;
+        }
         opsApi
             .resolveStageRecentRuns(pipelineId, stage)
             .then((response) => setStageRuns(response.recent_runs))
             .catch((e) => setError(e));
-    }, [stage, pipelineId]);
+    }, [stage, pipelineId, labelKeyParam]);
 
     React.useEffect(() => {
         if (!pipelineId) return undefined;
         const tick = () => {
-            if (stage) loadStageRuns();
+            if (stage && labelKeyParam === DEFAULT_LABEL_KEY) loadStageRuns();
             else loadDetail();
         };
         tick();
         const timer = setInterval(tick, getRefreshIntervalMs());
         return () => clearInterval(timer);
-    }, [pipelineId, stage, loadStageRuns, loadDetail]);
+    }, [pipelineId, stage, labelKeyParam, loadStageRuns, loadDetail]);
 
-    const recentRuns = stage ? stageRuns : (detail?.recent_runs ?? []);
+    const recentRuns =
+        stage && labelKeyParam === DEFAULT_LABEL_KEY
+            ? stageRuns
+            : (detail?.recent_runs ?? []);
 
     const refresh = React.useCallback(() => {
         loadCapabilities();
@@ -72,6 +89,19 @@ export function GraphPage() {
         setGraphRefreshToken((token) => token + 1);
     }, [loadCapabilities, loadDetail, loadStageRuns]);
 
+    const setLabelKey = (nextKey: string) => {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                if (nextKey === DEFAULT_LABEL_KEY) next.delete("label_key");
+                else next.set("label_key", nextKey);
+                next.delete("stage");
+                return next;
+            },
+            { replace: true },
+        );
+    };
+
     const startRun = (labels: [string, string][]) => {
         opsApi
             .startRun(labels)
@@ -79,7 +109,7 @@ export function GraphPage() {
                 const stageName = labels.find(([key]) => key === "stage")?.[1];
                 const trigger = stageName ? `api:stage:${stageName}` : "api:pipeline";
                 const entry = { ...started, trigger };
-                if (stageName === stage) {
+                if (stageName === stage && labelKeyParam === DEFAULT_LABEL_KEY) {
                     setStageRuns((current) => prependRecentRun(current, entry));
                 }
                 if (!stage) {
@@ -127,13 +157,20 @@ export function GraphPage() {
                         stages={detail.stages}
                         stageEdges={detail.stage_edges}
                         labelGraph={detail.label_graph}
+                        availableLabelKeys={availableKeys}
+                        labelKey={labelKey}
                         selectedLabel={stage}
                         mode="compact"
-                        onLabelSelect={(label) =>
-                            navigate(`/graph?stage=${encodeURIComponent(label)}`)
+                        onLabelKeyChange={setLabelKey}
+                        onLabelSelect={(label) => navigate(graphHref(label, labelKey))}
+                        onLabelClear={() =>
+                            navigate(
+                                labelKey === DEFAULT_LABEL_KEY
+                                    ? "/graph"
+                                    : `/graph?label_key=${encodeURIComponent(labelKey)}`,
+                            )
                         }
-                        onLabelClear={() => navigate("/graph")}
-                        onStageRun={(label) => startRun([["stage", label]])}
+                        onStageRun={(label) => startRun([[labelKey, label]])}
                     />
                 ) : (
                     <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -147,7 +184,7 @@ export function GraphPage() {
                         <RecentRunsList
                             runs={recentRuns}
                             emptyText={
-                                stage ? "No runs for this stage yet" : "No pipeline runs yet"
+                                stage ? "No runs for this label yet" : "No pipeline runs yet"
                             }
                         />
                     </Card>
@@ -165,6 +202,7 @@ export function GraphPage() {
                     <div className="pipeline-card-body">
                         <PipelineGraphAgentOnly
                             stageFilter={stage}
+                            labelKey={labelKey}
                             height="100%"
                             rankDir="TB"
                             refreshIntervalMs={0}

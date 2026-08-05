@@ -16,8 +16,15 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
     return response.json();
 }
 
-export async function fetchGraph(stage?: string | null): Promise<unknown> {
-    const url = stage ? `${GRAPH_BASE}?stage=${encodeURIComponent(stage)}` : GRAPH_BASE;
+export async function fetchGraph(
+    stage?: string | null,
+    labelKey?: string | null,
+): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (stage) params.set("stage", stage);
+    if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
+    const query = params.toString();
+    const url = query ? `${GRAPH_BASE}?${query}` : GRAPH_BASE;
     return fetchJsonOrThrow(url);
 }
 

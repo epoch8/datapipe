@@ -8,6 +8,40 @@ from datapipe.datatable import DataStore
 
 from datapipe_app.observability.graph.discovery import stage_status_for_step
 
+DEFAULT_LABEL_KEY = "stage"
+
+
+def available_label_keys(steps: list[ComputeStep]) -> list[str]:
+    """Label keys present on pipeline steps.
+
+    ``stage`` is listed first when present; remaining keys are ordered by how
+    often they appear on steps (desc), then alphabetically for stable ties.
+    """
+    counts: dict[str, int] = defaultdict(int)
+    for step in steps:
+        for key, _value in step.labels or []:
+            counts[key] += 1
+    if not counts:
+        return []
+
+    rest = sorted(
+        (key for key in counts if key != DEFAULT_LABEL_KEY),
+        key=lambda key: (-counts[key], key),
+    )
+    if DEFAULT_LABEL_KEY in counts:
+        return [DEFAULT_LABEL_KEY, *rest]
+    return rest
+
+
+def default_label_key(steps: list[ComputeStep], requested: str | None = None) -> str:
+    """Resolve the active label key: requested if valid, else preferred default."""
+    keys = available_label_keys(steps)
+    if requested and requested in keys:
+        return requested
+    if keys:
+        return keys[0]
+    return requested or DEFAULT_LABEL_KEY
+
 
 def _label_values(step: ComputeStep, label_key: str) -> list[str]:
     return [v for k, v in step.labels if k == label_key]
@@ -215,6 +249,12 @@ def build_label_graph(
     for i, a in enumerate(top_level):
         for b in top_level[i + 1 :]:
             if a in interleaved_labels or b in interleaved_labels:
+                continue
+            # Labels sharing steps overlap; represent that relationship through
+            # shared_relations instead of treating the same steps as alternating
+            # segments. Otherwise a broad label can greedily pair with a secondary
+            # label before the genuinely interleaved label is considered.
+            if label_step_ids[a] & label_step_ids[b]:
                 continue
             interleaved, switch_count = _is_interleaved(segments_by_label[a], segments_by_label[b])
             if not interleaved:

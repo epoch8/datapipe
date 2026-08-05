@@ -42,7 +42,16 @@
 }
 
 .pipeline-label-overview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 16px;
     margin-bottom: 14px;
+}
+
+.pipeline-label-overview-header-text {
+    min-width: 0;
+    flex: 1;
 }
 
 .pipeline-label-overview-title {
@@ -55,6 +64,19 @@
     margin-top: 2px;
     font-size: 12px;
     color: var(--lg-muted);
+}
+
+.pipeline-label-key-select {
+    flex-shrink: 0;
+}
+
+.pipeline-label-overview-compact .pipeline-label-overview-header {
+    margin-bottom: 10px;
+}
+
+.pipeline-label-overview-compact .pipeline-label-overview-title {
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .pipeline-label-graph-scroll {

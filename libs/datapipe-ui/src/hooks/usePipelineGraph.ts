@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { GraphData } from "../types";
 import { fetchGraph } from "../api/graph";
 
-export function usePipelineGraph(stage?: string | null) {
+export function usePipelineGraph(stage?: string | null, labelKey?: string | null) {
     const [graph, setGraph] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<unknown>(null);
@@ -15,7 +15,7 @@ export function usePipelineGraph(stage?: string | null) {
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        fetchGraph(stage)
+        fetchGraph(stage, labelKey)
             .then((data) => {
                 if (!cancelled) {
                     setGraph(data as GraphData);
@@ -31,7 +31,7 @@ export function usePipelineGraph(stage?: string | null) {
         return () => {
             cancelled = true;
         };
-    }, [stage, refreshToken]);
+    }, [stage, labelKey, refreshToken]);
 
     return { graph, loading, error, refresh };
 }

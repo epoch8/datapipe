@@ -25,6 +25,12 @@ import { RunLogsPanel } from "./components/RunLogsPanel";
 import { resolveRunScopeDisplay } from "./utils/runScope";
 import { formatRunTriggerLabel } from "./utils/recentRuns";
 import { workflowIconSvg } from "../cy/nodeIcons";
+import {
+    DEFAULT_LABEL_KEY,
+    graphHref,
+    labelKeyFromRunLabels,
+    normalizeLabelKey,
+} from "./utils/labelKey";
 
 const { Text } = Typography;
 
@@ -69,6 +75,9 @@ export function RunDetail() {
     const tabParam = searchParams.get("tab");
     const activeTab = tabParam && RUN_TABS.has(tabParam) ? tabParam : "logs";
     const logStepFilter = searchParams.get("step");
+    const labelKeyOverride = searchParams.get("label_key");
+    const runLabelKey = labelKeyFromRunLabels(run?.target_labels);
+    const labelKeyParam = labelKeyOverride || runLabelKey;
 
     const setActiveTab = React.useCallback(
         (tab: string) => {
@@ -148,21 +157,41 @@ export function RunDetail() {
     React.useEffect(() => {
         if (!run?.pipeline_id) return;
         opsApi
-            .getPipeline(run.pipeline_id)
+            .getPipeline(run.pipeline_id, { label_key: labelKeyParam })
             .then(setPipeline)
             .catch(() => setPipeline(null));
-    }, [run?.pipeline_id]);
+    }, [run?.pipeline_id, labelKeyParam]);
 
     if (error) return <Alert type="error" message={error} />;
     if (!run) return <Spin />;
 
     const { scopeLabel, targetLabel, highlightLabel } = resolveRunScopeDisplay(run);
     const isStageRun = scopeLabel === "stage run";
+    const availableKeys = pipeline?.available_label_keys ?? [];
+    const labelKey = normalizeLabelKey(
+        labelKeyParam ?? pipeline?.label_graph?.label_key,
+        availableKeys,
+    );
     const duration = formatDuration(run.started_at, run.finished_at);
     const runIsActive = run.status === "running";
     const pipelineGraphTitle = highlightLabel
         ? `Pipeline graph · ${highlightLabel}`
         : "Pipeline graph";
+
+    const setLabelKey = (nextKey: string) => {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                if (nextKey === DEFAULT_LABEL_KEY && runLabelKey === DEFAULT_LABEL_KEY) {
+                    next.delete("label_key");
+                } else {
+                    next.set("label_key", nextKey);
+                }
+                return next;
+            },
+            { replace: true },
+        );
+    };
 
     const startRun = (labels: [string, string][]) => {
         opsApi
@@ -351,15 +380,18 @@ export function RunDetail() {
                         stages={pipeline.stages}
                         stageEdges={pipeline.stage_edges}
                         labelGraph={pipeline.label_graph}
+                        availableLabelKeys={availableKeys}
+                        labelKey={labelKey}
                         mode="compact"
-                        scopeHighlightAll={!isStageRun}
-                        scopeHighlightLabel={highlightLabel}
-                        scopeMuteOutside={isStageRun}
-                        allowClickSelect={false}
-                        onLabelSelect={(label) =>
-                            navigate(`/graph?stage=${encodeURIComponent(label)}`)
+                        scopeHighlightAll={!isStageRun && labelKey === runLabelKey}
+                        scopeHighlightLabel={
+                            labelKey === runLabelKey ? highlightLabel : null
                         }
-                        onStageRun={(label) => startRun([["stage", label]])}
+                        scopeMuteOutside={isStageRun && labelKey === runLabelKey}
+                        allowClickSelect={false}
+                        onLabelKeyChange={setLabelKey}
+                        onLabelSelect={(label) => navigate(graphHref(label, labelKey))}
+                        onStageRun={(label) => startRun([[labelKey, label]])}
                     />
                 </div>
             )}
@@ -388,7 +420,10 @@ export function RunDetail() {
                         </div>
                         <div className="pipeline-card-body">
                             <PipelineGraphAgentOnly
-                                stageFilter={highlightLabel}
+                                stageFilter={
+                                    labelKey === runLabelKey ? highlightLabel : null
+                                }
+                                labelKey={labelKey}
                                 runSteps={run.steps}
                                 height={480}
                                 rankDir="TB"

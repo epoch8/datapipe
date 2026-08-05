@@ -396,7 +396,10 @@ export function normalizeLabelGraphHierarchy(payload: LabelGraphPayload): LabelG
     // parent_id so nested containers render correctly.
     const nodes = payload.nodes.map((node) => ({
         ...node,
-        children_ids: [] as string[],
+        // Interleaved groups are not containment parents: their children are the
+        // two lane labels and must survive hierarchy normalization.
+        children_ids:
+            node.kind === "interleaved-group" ? [...(node.children_ids ?? [])] : ([] as string[]),
     }));
     const byId = new Map(nodes.map((node) => [node.id, node]));
 
@@ -454,10 +457,24 @@ export function layoutLabelGraph(
     );
     const interleavedIds = new Set(payload.interleavings.map((i) => i.id));
 
-    const topLevel = sortByOrderMin(
-        payload.nodes.filter((n) => !childrenSet.has(n.id) && !n.parent_id).map((n) => n.id),
-        orderMap,
-    );
+    const interleavedMemberIds = new Set(payload.interleavings.flatMap((i) => i.labels));
+    const topLevel = payload.nodes
+        .filter(
+            (n) =>
+                !childrenSet.has(n.id) &&
+                !n.parent_id &&
+                !interleavedMemberIds.has(n.id),
+        )
+        .map((n) => n.id)
+        .sort((a, b) => {
+            const orderDiff =
+                (orderMap.get(a) ?? Number.MAX_SAFE_INTEGER) -
+                (orderMap.get(b) ?? Number.MAX_SAFE_INTEGER);
+            if (orderDiff !== 0) return orderDiff;
+            const kindA = nodeById.get(a)?.kind === "interleaved-group" ? 0 : 1;
+            const kindB = nodeById.get(b)?.kind === "interleaved-group" ? 0 : 1;
+            return kindA - kindB || a.localeCompare(b);
+        });
 
     const sequenceUnits: string[] = [];
     const seenInterleaved = new Set<string>();
@@ -577,7 +594,12 @@ export function layoutLabelGraph(
         if (!node) continue;
 
         if (node.kind === "interleaved-group") {
-            const labels = node.children_ids ?? node.segments.map((s) => s.label_id);
+            const interleaving = payload.interleavings.find((i) => i.id === unitId);
+            const labels =
+                interleaving?.labels ??
+                (node.children_ids?.length
+                    ? node.children_ids
+                    : node.segments.map((s) => s.label_id));
             const uniqueLabels = Array.from(new Set(labels)).slice(0, 2);
             const laneW = cfg.nodeWidth;
             const innerW =

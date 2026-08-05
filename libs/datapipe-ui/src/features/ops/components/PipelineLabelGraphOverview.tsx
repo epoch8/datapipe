@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Dropdown, Menu, Tooltip } from "antd";
+import { Card, Dropdown, Menu, Segmented, Tooltip } from "antd";
 import type { LabelGraphPayload, StageEdge, StageItem } from "../../../types/ops";
 import type { EdgeHighlightLevel, LayoutEdge, LayoutNode } from "../utils/labelGraph";
 import {
@@ -13,6 +13,7 @@ import {
     resolveLabelGraph,
     sharedBracketPath,
 } from "../utils/labelGraph";
+import { DEFAULT_LABEL_KEY, normalizeLabelKey } from "../utils/labelKey";
 import "./PipelineLabelGraphOverview.css";
 
 export type PipelineLabelGraphOverviewProps = {
@@ -20,12 +21,15 @@ export type PipelineLabelGraphOverviewProps = {
     stages: StageItem[];
     stageEdges?: StageEdge[];
     labelGraph?: LabelGraphPayload;
+    availableLabelKeys?: string[];
+    labelKey?: string;
     selectedLabel?: string | null;
     scopeHighlightLabel?: string | null;
     scopeHighlightAll?: boolean;
     allowClickSelect?: boolean;
     scopeMuteOutside?: boolean;
     mode?: "overview" | "compact";
+    onLabelKeyChange?: (labelKey: string) => void;
     onLabelSelect?: (label: string) => void;
     onLabelClear?: () => void;
     onStageRun?: (label: string) => void;
@@ -174,12 +178,15 @@ export function PipelineLabelGraphOverview({
     stages,
     stageEdges,
     labelGraph: labelGraphProp,
+    availableLabelKeys,
+    labelKey: labelKeyProp,
     selectedLabel,
     scopeHighlightLabel = null,
     scopeHighlightAll = false,
     allowClickSelect = true,
     scopeMuteOutside = false,
     mode = "overview",
+    onLabelKeyChange,
     onLabelSelect,
     onLabelClear,
     onStageRun,
@@ -187,6 +194,18 @@ export function PipelineLabelGraphOverview({
     void pipelineId;
 
     const [hoveredNodeId, setHoveredNodeId] = React.useState<string | null>(null);
+
+    const keys = React.useMemo(() => {
+        const fromProp = availableLabelKeys?.filter(Boolean) ?? [];
+        if (fromProp.length) return fromProp;
+        if (labelGraphProp?.label_key) return [labelGraphProp.label_key];
+        return [DEFAULT_LABEL_KEY];
+    }, [availableLabelKeys, labelGraphProp?.label_key]);
+
+    const activeLabelKey = normalizeLabelKey(
+        labelKeyProp ?? labelGraphProp?.label_key,
+        keys,
+    );
 
     const payload = React.useMemo(
         () =>
@@ -313,11 +332,32 @@ export function PipelineLabelGraphOverview({
             bordered={mode === "overview"}
             className={`label-graph-card pipeline-label-overview pipeline-label-overview-${mode}`}
         >
-            {mode === "overview" && (
+            {(mode === "overview" || keys.length > 1) && (
                 <div className="pipeline-label-overview-header">
-                    <div className="pipeline-label-overview-title">Pipeline overview</div>
-                    <div className="pipeline-label-overview-subtitle">
-                        End-to-end pipeline at a glance
+                    {keys.length > 1 && onLabelKeyChange ? (
+                        <Segmented
+                            className="pipeline-label-key-select"
+                            size="small"
+                            value={activeLabelKey}
+                            options={keys.map((key) => ({ label: key, value: key }))}
+                            onChange={(value) => onLabelKeyChange(String(value))}
+                        />
+                    ) : null}
+                    <div className="pipeline-label-overview-header-text">
+                        {mode === "overview" ? (
+                            <>
+                                <div className="pipeline-label-overview-title">
+                                    Pipeline overview
+                                </div>
+                                <div className="pipeline-label-overview-subtitle">
+                                    End-to-end pipeline at a glance
+                                </div>
+                            </>
+                        ) : (
+                            <div className="pipeline-label-overview-title">
+                                Label graph · {activeLabelKey}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

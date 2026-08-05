@@ -27,7 +27,11 @@ from datapipe_app.observability.runs.run_scope import (
 )
 from datapipe_app.observability.store.db import ObservabilityStore, PipelineRunRow
 from datapipe_app.observability.graph.discovery import build_stage_summary, build_stage_edges
-from datapipe_app.observability.graph.label_graph import build_label_graph
+from datapipe_app.observability.graph.label_graph import (
+    available_label_keys,
+    build_label_graph,
+    default_label_key,
+)
 from datapipe_app.observability.runs.recorder import RunRecorder
 from datapipe_app.observability.plugins.registry import ObservabilityRegistry
 from datapipe_app.observability.plugins.schemas import StartRunRequest, StartRunResponse
@@ -265,7 +269,10 @@ def make_app(
 
 
     @app.get("/pipelines/{pipeline_id}")
-    def get_pipeline_detail(pipeline_id: str) -> dict[str, Any]:
+    def get_pipeline_detail(
+        pipeline_id: str,
+        label_key: str = Query("stage"),
+    ) -> dict[str, Any]:
         reg = store.get_pipeline(pipeline_id)
         if reg is None:
             raise HTTPException(404, f"Pipeline {pipeline_id} not found")
@@ -276,11 +283,19 @@ def make_app(
         stages: list[dict[str, Any]] = []
         stage_edges: list[dict[str, Any]] = []
         label_graph: dict[str, Any] | None = None
+        label_keys: list[str] = []
         if get_ops_settings().pipeline_id == pipeline_id:
             status_cache: dict[str, dict[str, Any]] = {}
             stages = build_stage_summary(steps, ds, status_cache)
             stage_edges = build_stage_edges(steps)
-            label_graph = build_label_graph(steps, ds, status_cache=status_cache)
+            label_keys = available_label_keys(steps)
+            active_label_key = default_label_key(steps, label_key)
+            label_graph = build_label_graph(
+                steps,
+                ds,
+                label_key=active_label_key,
+                status_cache=status_cache,
+            )
 
         enrichments: list[dict[str, Any]] = []
         for enricher in registry.enrichers:
@@ -316,6 +331,7 @@ def make_app(
             "stages": stages,
             "stage_edges": stage_edges,
             "label_graph": label_graph,
+            "available_label_keys": label_keys,
             "recent_runs": _serialize_recent_runs(recent_runs),
             "last_error": last_run.error if last_run else None,
             "enrichments": enrichments,

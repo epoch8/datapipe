@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, Card, Spin, Tag } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
 import type { PipelineDetail } from "../../types/ops";
@@ -15,16 +15,18 @@ const RECENT_RUNS_LIMIT = 7;
 
 export function Overview() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [pipelineId, setPipelineId] = React.useState<string | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [runTotal, setRunTotal] = React.useState(0);
     const [countsByStatus, setCountsByStatus] = React.useState<Record<string, number>>({});
     const [error, setError] = React.useState<unknown>(null);
+    const labelKey = searchParams.get("label_key") || "stage";
 
     const load = React.useCallback(() => {
         if (!pipelineId) return;
         opsApi
-            .getPipeline(pipelineId)
+            .getPipeline(pipelineId, { label_key: labelKey })
             .then(setDetail)
             .catch((e) => setError(e));
         opsApi
@@ -34,7 +36,7 @@ export function Overview() {
                 setCountsByStatus(res.counts_by_status ?? {});
             })
             .catch(() => undefined);
-    }, [pipelineId]);
+    }, [pipelineId, labelKey]);
 
     React.useEffect(() => {
         opsApi

@@ -5,6 +5,7 @@ export type GraphRunStep = {
 
 export type PipelineGraphProps = {
     stageFilter?: string | null;
+    labelKey?: string | null;
     runSteps?: GraphRunStep[] | null;
     height?: number | string;
     rankDir?: "TB" | "LR";

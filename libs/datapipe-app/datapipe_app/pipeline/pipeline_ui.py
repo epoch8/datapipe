@@ -257,9 +257,12 @@ def register_pipeline_ui_routes(
     executor: ExecutorSource = None,
 ) -> None:
     @app.get("/graph", response_model=models.GraphResponse)
-    def get_graph(stage: Optional[str] = Query(None)) -> models.GraphResponse:
+    def get_graph(
+        stage: Optional[str] = Query(None),
+        label_key: str = Query("stage"),
+    ) -> models.GraphResponse:
         selected_steps = (
-            filter_steps_by_labels(steps, labels=[("stage", stage)]) if stage else steps
+            filter_steps_by_labels(steps, labels=[(label_key, stage)]) if stage else steps
         )
 
         def table_response(table_name: str) -> models.TableResponse:

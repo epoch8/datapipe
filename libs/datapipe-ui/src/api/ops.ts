@@ -129,7 +129,12 @@ async function fallbackStageRecentRuns(
 export const coreOpsApi = {
     getCapabilities: () => fetchJson<Capabilities>("/capabilities"),
     getSettings: () => fetchJson<SettingsInfo>("/settings"),
-    getPipeline: (id: string) => fetchJson<PipelineDetail>(`/pipelines/${id}`),
+    getPipeline: (id: string, opts?: { label_key?: string }) =>
+        fetchJson<PipelineDetail>(
+            `/pipelines/${encodeURIComponent(id)}${toQuery({
+                label_key: opts?.label_key,
+            })}`,
+        ),
     getStageRecentRuns: (pipelineId: string, stage: string, limit = 10) =>
         fetchJson<StageRecentRunsResponse>(
             `/pipelines/${encodeURIComponent(pipelineId)}/stages/${encodeURIComponent(stage)}/recent-runs?limit=${limit}`,
