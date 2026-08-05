@@ -45,7 +45,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_get_schema:
-            raise pytest.skip("Store does not support get_schema")
+            raise pytest.skip("Store does not support get_schema")  # type: ignore
 
         assert store.get_schema() == schema
 
@@ -68,7 +68,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_all_rows:
-            raise pytest.skip("Store does not support read_all_rows")
+            raise pytest.skip("Store does not support read_all_rows")  # type: ignore
 
         store.insert_rows(data_df)
 
@@ -102,7 +102,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_nonexistent_rows:
-            raise pytest.skip("Store does not support read_nonexistent_rows")
+            raise pytest.skip("Store does not support read_nonexistent_rows")  # type: ignore
 
         test_df_to_store = data_df.drop(range(1, 5))
 
@@ -140,7 +140,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_all_rows:
-            raise pytest.skip("Store does not support read_all_rows")
+            raise pytest.skip("Store does not support read_all_rows")  # type: ignore
 
         df_empty = pd.DataFrame()
         store.insert_rows(df_empty)
@@ -159,7 +159,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_all_rows:
-            raise pytest.skip("Store does not support read_all_rows")
+            raise pytest.skip("Store does not support read_all_rows")  # type: ignore
 
         df_empty = pd.DataFrame()
         store.update_rows(df_empty)
@@ -217,9 +217,9 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_delete:
-            raise pytest.skip("Store does not support delete")
+            raise pytest.skip("Store does not support delete")  # type: ignore
         if not store.caps.supports_read_all_rows:
-            raise pytest.skip("Store does not support read_all_rows")
+            raise pytest.skip("Store does not support read_all_rows")  # type: ignore
 
         store.insert_rows(data_df)
 
@@ -247,7 +247,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_meta_pseudo_df:
-            raise pytest.skip("Store does not support read_meta_pseudo_df")
+            raise pytest.skip("Store does not support read_meta_pseudo_df")  # type: ignore
 
         store.insert_rows(data_df)
 
@@ -274,7 +274,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_meta_pseudo_df:
-            raise pytest.skip("Store does not support read_meta_pseudo_df")
+            raise pytest.skip("Store does not support read_meta_pseudo_df")  # type: ignore
 
         pseudo_df_iter = store.read_rows_meta_pseudo_df()
         assert isinstance(pseudo_df_iter, Iterable)
@@ -292,7 +292,7 @@ class AbstractBaseStoreTests:
         store = store_maker(schema)
 
         if not store.caps.supports_read_meta_pseudo_df:
-            raise pytest.skip("Store does not support read_meta_pseudo_df")
+            raise pytest.skip("Store does not support read_meta_pseudo_df")  # type: ignore
 
         store.insert_rows(data_df)
 

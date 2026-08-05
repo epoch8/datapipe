@@ -97,7 +97,7 @@ class Neo4JStore(TableStore):
 
     def _run_query(self, cypher: str, params: dict[str, Any]):
         with self._driver.session() as session:
-            result = session.run(cypher, **params)
+            result = session.run(cypher, **params)  # type: ignore
             return [tuple(rec.values()) for rec in result]
 
     # CRUD operations
@@ -177,7 +177,7 @@ class Neo4JStore(TableStore):
                     f"MATCH (n:`{node_type}` {{id: id}}) "
                     f"RETURN n.id AS node_id, '{node_type}' AS node_type, properties(n) AS attributes"
                 )
-                recs = session.run(cypher, ids=[node_id])
+                recs = session.run(cypher, ids=[node_id])  # type: ignore
                 for rec in recs:
                     records.append(
                         {
@@ -199,7 +199,7 @@ class Neo4JStore(TableStore):
                     f"'{row['to_node_type']}' AS to_node_type, '{row['edge_label']}' AS edge_label, properties(r) AS attributes"
                 )
                 recs = session.run(
-                    cypher,
+                    cypher,  # type: ignore
                     rows=[{"from_id": row["from_node_id"], "to_id": row["to_node_id"]}],
                 )
                 for rec in recs:

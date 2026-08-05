@@ -1,9 +1,8 @@
-
 import pytest
 from pytest_cases import parametrize
 from sqlalchemy import Column, Integer
 
-from datapipe.compute import ComputeInput
+from datapipe.compute import ComputeInput, ComputeOutput
 from datapipe.datatable import DataTable
 from datapipe.event_logger import EventLogger
 from datapipe.meta.base import TransformMeta
@@ -84,9 +83,9 @@ def test_compute_transform_schema_success(
         ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
-    out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
+    out_cos = [ComputeOutput(dt=make_dt(f"out_{i}", dbconn, keys)) for (i, keys) in enumerate(output_keys_list)]
 
-    _, sch = TransformMeta.compute_transform_schema(inp_cis, out_dts, transform_keys=transform_keys)
+    _, sch = TransformMeta.compute_transform_schema(inp_cis, out_cos, transform_keys=transform_keys)
 
     assert_schema_equals(sch, expected_keys)
 
@@ -102,6 +101,6 @@ def test_compute_transform_schema_fail(
         ComputeInput(make_dt(f"inp_{i}", dbconn, keys), join_type="full", keys=None)
         for (i, keys) in enumerate(input_keys_list)
     ]
-    out_dts = [make_dt(f"out_{i}", dbconn, keys) for (i, keys) in enumerate(output_keys_list)]
+    out_cos = [ComputeOutput(dt=make_dt(f"out_{i}", dbconn, keys)) for (i, keys) in enumerate(output_keys_list)]
     with pytest.raises(AssertionError):
-        TransformMeta.compute_transform_schema(inp_cis, out_dts, transform_keys=transform_keys)
+        TransformMeta.compute_transform_schema(inp_cis, out_cos, transform_keys=transform_keys)

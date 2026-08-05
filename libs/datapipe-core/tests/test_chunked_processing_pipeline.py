@@ -89,7 +89,7 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
 
     df_transformed = catalog.get_datatable(ds, "output_data").get_data()
     assert len(df_transformed) == 2 * CHUNK_SIZE
-    assert all(df_transformed["y"].values == (df_transformed["x"].values ** 2))
+    assert all(df_transformed["y"].values == (df_transformed["x"].values ** 2))  # type: ignore
     assert len(set(df_transformed["x"].values).symmetric_difference(set(x))) == 0
 
 
@@ -380,6 +380,7 @@ def test_run_changelist_with_datatable_transform(dbconn):
         input_dts: list[DataTable],
         output_dts: list[DataTable],
         run_config: RunConfig | None = None,
+        kwargs: dict | None = None,
     ):
         input_dt = input_dts[0]
         output_dt = output_dts[0]
@@ -458,7 +459,7 @@ def test_magic_injection_variables(dbconn):
     dt_out = catalog.get_datatable(ds, "out")
     assert_datatable_equal(dt_out, TEST_DF)
 
-    dt_input.delete_by_idx(dt_input.get_metadata())
+    dt_input.delete_by_idx(data_to_index(dt_input.get_metadata(), dt_input.primary_keys))
 
     run_steps(ds, steps[1:], RunConfig())
     assert transform_count["value"] == 3
@@ -516,8 +517,8 @@ def test_magic_injection_variables_changelist(dbconn):
     dt_out = catalog.get_datatable(ds, "out")
     assert_datatable_equal(dt_out, TEST_DF)
 
-    change_idx = dt_input.get_metadata()
-    dt_input.delete_by_idx(dt_input.get_metadata())
+    change_idx = data_to_index(dt_input.get_metadata(), dt_input.primary_keys)
+    dt_input.delete_by_idx(change_idx)
     changelist = ChangeList.create("inp", change_idx)
     run_steps_changelist(ds, steps, changelist, RunConfig())
     assert transform_count["value"] == 2

@@ -2,7 +2,7 @@ import inspect
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Iterator, cast
+from typing import Callable, Iterator, Protocol, cast
 
 import pandas as pd
 from opentelemetry import trace
@@ -27,7 +27,10 @@ logger = logging.getLogger("datapipe.step.batch_generate")
 tracer = trace.get_tracer("datapipe.step.batch_generate")
 
 
-BatchGenerateFunc = Callable[..., Iterator[TransformResult]]
+class BatchGenerateFunc(Protocol):
+    __name__: str
+
+    def __call__(self, *args, **kwargs) -> Iterator[TransformResult]: ...
 
 
 def do_batch_generate(
@@ -44,14 +47,11 @@ def do_batch_generate(
     """
 
     now = time.time()
-    empty_generator = True
     parameters = inspect.signature(func).parameters
     kwargs = {
         **({"ds": ds} if "ds" in parameters else {}),
         **(kwargs or {}),
     }
-
-    assert inspect.isgeneratorfunction(func), "Starting v0.8.0 proc_func should be a generator"
 
     with tracer.start_as_current_span("init generator"):
         try:
@@ -77,8 +77,6 @@ def do_batch_generate(
 
                 # raise e
                 return
-
-        empty_generator = False
 
         with tracer.start_as_current_span("store results"):
             for k, dt_k in enumerate(output_dts):
