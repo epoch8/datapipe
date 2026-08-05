@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from config import DBCONN, FIFTYONE_DATASET_NAME, KEYPOINTS_LABELS
 from cv_pipeliner.utils.fiftyone import FifyOneSession
-from datapipe_ml.utils.image_data_stores import FiftyOneImagesDataTableStore
 from datapipe.compute import Catalog, Table
 from datapipe.store.database import TableStoreDB
-from sqlalchemy import Column, Float, JSON, String
-
-from config import DBCONN, FIFTYONE_DATASET_NAME
+from datapipe_ml.utils.image_data_stores import FiftyOneImagesDataTableStore
+from sqlalchemy import JSON, Column, Float, String
 
 fo_session = FifyOneSession()
 
@@ -119,6 +118,7 @@ catalog = Catalog(
                 fo_session=fo_session,
                 fo_detections_label="annotations_bbox",
                 fo_keypoints_label="annotations_keypoints",
+                keypoints_labels=KEYPOINTS_LABELS,
                 rm_only_fo_fields=True,
                 primary_schema=[Column("image_name", String(255), primary_key=True)],
             )

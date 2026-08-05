@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from label_studio_sdk import LabelStudio
 
-from datapipe_label_studio.sdk_utils import get_project_by_title, get_tasks_iter
+from datapipe_label_studio.sdk_utils import get_project_by_title, get_tasks_iter, project_to_dict
 
 pytestmark = [
     pytest.mark.e2e_examples,
@@ -51,6 +51,7 @@ def _ensure_sample_images_seeded() -> None:
     e2e_dir = Path(__file__).resolve().parents[2] / "examples/e2e_template"
     seed_script = e2e_dir / "scripts/seed_sample_data.py"
     sample_dir = e2e_dir / "sample_data" / "images"
+    # Keep the pool small: freeze min_delta tests require annotations_count < 10.
     cmd = [
         sys.executable,
         str(seed_script),
@@ -58,8 +59,14 @@ def _ensure_sample_images_seeded() -> None:
         "2",
         "--keypoints-limit",
         "2",
+        "--classification-animal-limit",
+        "0",
+        "--classification-no-animal-limit",
+        "0",
     ]
-    if sample_dir.exists() and any(sample_dir.glob("*.jpg")):
+    existing = list(sample_dir.glob("*.jpg")) if sample_dir.exists() else []
+    # Skip download only when the cached set matches the tiny detection/keypoints pool.
+    if 0 < len(existing) <= 4:
         cmd.append("--skip-download")
     subprocess.run(cmd, check=True, cwd=e2e_dir, env=os.environ.copy())
 
@@ -104,7 +111,7 @@ def _annotation_result(pipeline_name: str, idx: int) -> list[dict]:
                 "width": 20,
                 "height": 24,
                 "rotation": 0,
-                "rectanglelabels": ["person"],
+                "rectanglelabels": ["Person"],
             },
         },
         {
@@ -182,18 +189,67 @@ def _assert_roundtripped_annotations(pipeline_name: str, app) -> None:
     assert set(ground_truth["image_name"]) == set(ls_task["image_name"])
 
 
-def _frozen_dataset_table_name(pipeline_name: str) -> str:
-    return f"{pipeline_name}_frozen_dataset"
+def _expected_model_version(pipeline_name: str) -> str:
+    from helpers import load_template_module
+
+    config = load_template_module(pipeline_name, "config")
+    if pipeline_name == "detection":
+        return config.DETECTION_MODEL_CONFIG["detection_model_id"]
+    return config.KEYPOINTS_MODEL_CONFIG["keypoints_model_id"]
 
 
-def _trained_model_table_name(pipeline_name: str) -> str:
-    return f"{pipeline_name}_model_train"
+def _assert_prelabeling_enabled(pipeline_name: str, app) -> None:
+    from helpers import load_template_module
+
+    expected_model_version = _expected_model_version(pipeline_name)
+
+    current_model_version = app.ds.get_table("ls_current_model_version").get_data()
+    assert not current_model_version.empty
+    assert set(current_model_version["model_version"]) == {expected_model_version}
+
+    config = load_template_module(pipeline_name, "config")
+    client = _ls_client()
+    project = get_project_by_title(client, config.PROJECT_NAME)
+    assert project is not None
+    assert set(current_model_version["project_id"]) == {int(project["id"])}
+
+    project_settings = project_to_dict(client.projects.get(id=int(project["id"])))
+    assert project_settings.get("show_collab_predictions") is True
+    assert project_settings.get("model_version") == expected_model_version
+
+
+def _training_blocked_tables(pipeline_name: str) -> tuple[str, str, str]:
+    if pipeline_name == "detection":
+        return (
+            "detection_frozen_dataset",
+            "detection_model_is_trained_on_detection_frozen_dataset",
+            "detection_training_status",
+        )
+    return (
+        "keypoints_frozen_dataset",
+        "keypoints_model_is_trained_on_keypoints_frozen_dataset",
+        "keypoints_training_status",
+    )
+
+
+def _assert_training_still_blocked(pipeline_name: str, app) -> None:
+    frozen_dataset_table, trained_on_table, training_status_table = _training_blocked_tables(pipeline_name)
+    assert app.ds.get_table(frozen_dataset_table).get_data().empty
+    assert app.ds.get_table(trained_on_table).get_data().empty
+    assert app.ds.get_table(training_status_table).get_data().empty
 
 
 def _freeze_min_delta(pipeline_name: str, app) -> int:
-    frozen_dataset_table = _frozen_dataset_table_name(pipeline_name)
+    from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
+    from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
+
+    freeze_step_types = {
+        "detection": DetectionFreezeDataset,
+        "keypoints": KeypointsFreezeDataset,
+    }
+    step_type = freeze_step_types[pipeline_name]
     for step in app.pipeline.steps:
-        if getattr(step, f"output__{frozen_dataset_table}", None) == frozen_dataset_table:
+        if isinstance(step, step_type):
             return int(step.min_delta)
     raise AssertionError(f"Cannot find freeze step for {pipeline_name}")
 
@@ -209,9 +265,10 @@ def test_detection_template_annotation_stage():
 
     assert not app.ds.get_table("s3_images").get_data().empty
     assert not app.ds.get_table("detection_model").get_data().empty
-    assert not app.ds.get_table("detection_predictions").get_data().empty
+    assert not app.ds.get_table("ls_detection_prediction").get_data().empty
     assert not app.ds.get_table("images_with_predictions").get_data().empty
     assert not app.ds.get_table("ls_task").get_data().empty
+    _assert_prelabeling_enabled("detection", app)
 
 
 @pytest.mark.parametrize("pipeline_name", ["detection", "keypoints"])
@@ -232,25 +289,19 @@ def test_template_annotation_roundtrip_from_label_studio(pipeline_name: str):
 
 
 @pytest.mark.parametrize("pipeline_name", ["detection", "keypoints"])
-def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str, caplog):
+def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name: str):
     from helpers import run_template_stage
 
-    caplog.set_level(logging.ERROR)
     _require_service_env()
     _ensure_label_studio_token()
     _ensure_sample_images_seeded()
 
     app = run_template_stage(pipeline_name, "annotation")
-    frozen_dataset_table = _frozen_dataset_table_name(pipeline_name)
-    trained_model_table = _trained_model_table_name(pipeline_name)
     freeze_min_delta = _freeze_min_delta(pipeline_name, app)
-    initial_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
 
-    caplog.clear()
-    run_template_stage(pipeline_name, "train-prepare")
-    assert f"Not enough changed idx for freezing ({initial_annotations_count} < {freeze_min_delta})" in caplog.text
-    assert app.ds.get_table(frozen_dataset_table).get_data().empty
-    assert app.ds.get_table(trained_model_table).get_data().empty
+    # Freeze step logs and swallows ValueError when min_delta is not met.
+    app = run_template_stage(pipeline_name, "train-prepare")
+    _assert_training_still_blocked(pipeline_name, app)
 
     _annotate_uploaded_tasks(pipeline_name, app)
     app = run_template_stage(pipeline_name, "annotation")
@@ -258,12 +309,8 @@ def test_template_training_waits_for_freeze_min_delta_annotations(pipeline_name:
     synced_annotations_count = len(app.ds.get_table("image__ground_truth").get_data())
     assert synced_annotations_count < freeze_min_delta
 
-    # CI seeds fewer annotated images than the freeze step requires, so training must stay blocked.
-    caplog.clear()
-    run_template_stage(pipeline_name, "train-prepare")
-    assert f"Not enough changed idx for freezing ({synced_annotations_count} < {freeze_min_delta})" in caplog.text
-    assert app.ds.get_table(frozen_dataset_table).get_data().empty
-    assert app.ds.get_table(trained_model_table).get_data().empty
+    app = run_template_stage(pipeline_name, "train-prepare")
+    _assert_training_still_blocked(pipeline_name, app)
 
 
 def test_keypoints_template_annotation_stage():
@@ -276,7 +323,8 @@ def test_keypoints_template_annotation_stage():
     app = run_template_stage("keypoints", "annotation")
 
     assert not app.ds.get_table("s3_images").get_data().empty
-    assert not app.ds.get_table("keypoints_model").get_data().empty
-    assert not app.ds.get_table("keypoints_predictions").get_data().empty
+    assert not app.ds.get_table("keypoints_model_train").get_data().empty
+    assert not app.ds.get_table("ls_keypoints_prediction").get_data().empty
     assert not app.ds.get_table("images_with_predictions").get_data().empty
     assert not app.ds.get_table("ls_task").get_data().empty
+    _assert_prelabeling_enabled("keypoints", app)
