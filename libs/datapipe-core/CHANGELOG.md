@@ -1,3 +1,41 @@
+# Unreleased (WIP)
+
+## Extension hooks for CLI
+
+* New `importlib.metadata` entry-point groups for extensions:
+  * `datapipe.pipeline_init` — runs after `load_pipeline()`
+  * `datapipe.run_callbacks` — composable factories returning `RunCallback`
+    instances attached to core `run_steps` (e.g. Ops run recording)
+  * `datapipe.db_create_all` — hooks into `datapipe db create-all`
+* `run_steps` is the single execution path; a callback attached to
+  `RunConfig.callback` receives lifecycle events (`on_run_start` /
+  `on_step_*` / `on_run_*`) plus step progress
+* `datapipe run` gains `--loop`, `--loop-delay`, and `--no-callbacks`
+  (`--no-callbacks` skips attaching all run callbacks from entry points)
+* `datapipe step run` gains `--no-callbacks` (works with existing `--loop`)
+* Callback failures are fail-open (logged) and do not mask step errors —
+  this guarantee lives in `CompositeRunCallback`, which fans out to
+  multiple `RunCallback`s; `RunConfig.callback` itself is always a single
+  callback
+
+## Executor / step progress
+
+* `Executor.run_process_batch` takes the `ComputeStep` (`step=`, replacing
+  `name=`) and calls `RunConfig.callback.on_step_progress` itself after each
+  batch — no more `on_batch_complete` bridging parameter. This also means
+  `run_changelist` now reports progress too, not just `run_full`
+* Progress reporting moved onto `RunConfig.callback` (a single `RunCallback`,
+  possibly a `CompositeRunCallback` fanning out to several) instead of a
+  separate `progress` parameter threaded through `run_full`
+* tqdm is no longer hardcoded anywhere in `datapipe-core` — the executors,
+  `BaseBatchTransformStep.fill_metadata`, and `update_external_table` all
+  report progress through `RunConfig.callback.on_step_progress` instead.
+  `datapipe`'s CLI commands (`run`, `step run`, `step run-changelist`,
+  `step fill-metadata`) attach a new dependency-free `StdoutRunCallback` by
+  default, which prints throttled `step: completed/total` lines instead of
+  an animated bar. The `tqdm-loggable` runtime dependency is dropped
+* Step logs include input/output table names
+
 # WIP 0.15.1
 
 ## Changes

@@ -233,6 +233,9 @@ class ComputeStep:
     def get_name(self) -> str:
         return self.name
 
+    def format_io(self) -> str:
+        return f"{[inp.dt.name for inp in self.input_dts]} -> {[out.dt.name for out in self.output_dts]}"
+
     @property
     def labels(self) -> Labels:
         return self._labels if self._labels else []
@@ -334,7 +337,6 @@ class DatapipeApp:
         self.ds = ds
         self.catalog = catalog
         self.pipeline = pipeline
-
         self.steps = build_compute(ds, catalog, pipeline)
 
 
@@ -372,15 +374,38 @@ def run_steps(
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
 ) -> None:
-    for step in steps:
-        with tracer.start_as_current_span(
-            f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-        ):
-            logger.info(
-                f"Running {step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-            )
+    callback = run_config.callback if run_config is not None else None
 
-            step.run_full(ds=ds, run_config=run_config, executor=executor)
+    if callback is not None:
+        callback.on_run_start(steps)
+
+    try:
+        for step in steps:
+            if callback is not None:
+                callback.on_step_start(step)
+
+            try:
+                with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                    logger.info(f"Running {step.name} {step.format_io()}")
+                    step.run_full(
+                        ds=ds,
+                        run_config=run_config,
+                        executor=executor,
+                    )
+            except BaseException as exc:
+                if callback is not None:
+                    callback.on_step_error(step, exc)
+                raise
+            else:
+                if callback is not None:
+                    callback.on_step_success(step)
+    except BaseException as exc:
+        if callback is not None:
+            callback.on_run_error(exc)
+        raise
+    else:
+        if callback is not None:
+            callback.on_run_success()
 
 
 def run_pipeline(
@@ -423,13 +448,8 @@ def run_steps_changelist(
         while not current_changes.empty() and iteration < 100:
             with tracer.start_as_current_span("run_steps"):
                 for step in steps:
-                    with tracer.start_as_current_span(
-                        f"{step.name} {[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                    ):
-                        logger.info(
-                            f"Running {step.name} "
-                            f"{[i.dt.name for i in step.input_dts]} -> {[i.dt.name for i in step.output_dts]}"
-                        )
+                    with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                        logger.info(f"Running {step.name} {step.format_io()}")
 
                         if isinstance(step, BaseBatchTransformStep):
                             step_changes = step.run_changelist(

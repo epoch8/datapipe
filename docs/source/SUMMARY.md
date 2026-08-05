@@ -25,6 +25,7 @@
 - [Use SQLite as Metadata Store](./how-to/using-sqlite.md)
 - [Manage Schema Changes with Alembic](./how-to/alembic-migrations.md)
 - [Extend the CLI](./how-to/extend-cli.md)
+- [Report Run Progress](./how-to/report-run-progress.md)
 - [Write a Custom TableStore](./how-to/custom-table-store.md)
 
 # Reference
@@ -46,6 +47,7 @@
   - [Milvus](./reference/stores/milvus.md)
 - [Types](./reference/types.md)
 - [Executors](./reference/executors.md)
+- [Run Callbacks](./reference/run-callbacks.md)
 
 # Explanation
 

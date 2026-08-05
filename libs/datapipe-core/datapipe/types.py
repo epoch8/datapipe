@@ -273,7 +273,12 @@ def get_all_equivalence_tables(schemas: list[DataSchema], table_names: list[str]
 
 
 def safe_func_name(func: Callable) -> str:
-    raw_name = func.__name__
+    if hasattr(func, "__name__"):
+        raw_name: str = func.__name__  # type: ignore
+    else:
+        raw_name = "unknown"
+
     if raw_name == "<lambda>":
         return "lambda"
+
     return raw_name
