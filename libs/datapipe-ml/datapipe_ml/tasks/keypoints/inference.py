@@ -36,11 +36,17 @@ def get_keypoints_model_spec(
     keypoints_model__model_path: str,
     keypoints_model__class_names: Tuple[str, ...],
     keypoints_model__type: str,
+    keypoints_model__keypoints_class_names: Optional[Tuple[str, ...]] = None,
 ) -> DetectionModelSpec:
     if keypoints_model__type in ["yolov8", "yolov8_pose"]:
         return YOLOv8_ModelSpec(
             model_path=keypoints_model__model_path,
-            class_names=keypoints_model__class_names,
+            class_names=list(keypoints_model__class_names),
+            keypoints_class_names=(
+                list(keypoints_model__keypoints_class_names)
+                if keypoints_model__keypoints_class_names is not None
+                else None
+            ),
             input_size=keypoints_model__input_size,
         )
     raise ValueError(f"Unknown {keypoints_model__type=}")
@@ -52,12 +58,15 @@ def _get_keypoints_model_spec(
     model_path: str,
     class_names: Tuple[str, ...],
     model_type: str,
+    keypoints_class_names: Optional[Tuple[str, ...]] = None,
+    **kwargs,
 ) -> DetectionModelSpec:
     return get_keypoints_model_spec(
         keypoints_model__input_size=input_size,
         keypoints_model__model_path=model_path,
         keypoints_model__class_names=class_names,
         keypoints_model__type=model_type,
+        keypoints_model__keypoints_class_names=keypoints_class_names,
     )
 
 
@@ -70,9 +79,9 @@ KEYPOINTS_INFERENCE_SPEC = BboxTaskInferenceSpec(
     crop_include_keypoints=True,
     crop_model_input_size_from_row=True,
     extra_bbox_id_after_coords=(Column("keypoints", JSON),),
-    extra_bbox_id_after_score=(Column("prediction__keypoints_scores", JSON),),
+    extra_bbox_id_after_score=(Column("prediction__keypoints_scores", JSON), Column("keypoints_labels", JSON)),
     extra_json_after_bboxes=(Column("keypoints", JSON),),
-    extra_json_after_scores=(Column("prediction__keypoints_scores", JSON),),
+    extra_json_after_scores=(Column("prediction__keypoints_scores", JSON), Column("keypoints_labels", JSON)),
 )
 
 
@@ -88,7 +97,7 @@ keypoints_inference_by_crops = make_bbox_inference_func(KEYPOINTS_INFERENCE_SPEC
 @dataclass
 class Inference_KeypointsModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__keypoints_model: PipelineInput
+    input__keypoints_model: PipelineInput | Sequence[PipelineInput]
     output__keypoints_prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int = 64
@@ -130,7 +139,7 @@ class Inference_KeypointsModel(PipelineStep):
 @dataclass
 class InferenceBySplitOnCrops_KeypointsModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__keypoints_model: PipelineInput
+    input__keypoints_model: PipelineInput | Sequence[PipelineInput]
     output__keypoints_prediction: PipelineOutput
     primary_keys: List[str]
     hCrossing: int = 400

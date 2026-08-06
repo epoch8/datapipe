@@ -90,7 +90,7 @@ segmentation_inference_using_thresholds = make_bbox_inference_using_thresholds_f
 @dataclass
 class Inference_SegmentationModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__segmentation_model: PipelineInput
+    input__segmentation_model: PipelineInput | Sequence[PipelineInput]
     output__segmentation_prediction: PipelineOutput
     primary_keys: List[str]
     chunk_size: int = 64
@@ -132,7 +132,7 @@ class Inference_SegmentationModel(PipelineStep):
 @dataclass
 class InferenceBySplitOnCrops_SegmentationModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__segmentation_model: PipelineInput
+    input__segmentation_model: PipelineInput | Sequence[PipelineInput]
     output__segmentation_prediction: PipelineOutput
     primary_keys: List[str]
     hCrossing: int
@@ -184,7 +184,7 @@ class InferenceBySplitOnCrops_SegmentationModel(PipelineStep):
 @dataclass
 class Inference_UsingThresholdsPerClasss_SegmentationModel(PipelineStep):
     input__image: PipelineInput | Sequence[PipelineInput]
-    input__segmentation_model: PipelineInput
+    input__segmentation_model: PipelineInput | Sequence[PipelineInput]
     input__segmentation_model_thresholds: PipelineInput
     output__segmentation_prediction: PipelineOutput
     primary_keys: List[str]

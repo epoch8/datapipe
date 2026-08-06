@@ -1,5 +1,5 @@
 # algos/yolov5.py
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,6 +11,7 @@ from datapipe.run_config import RunConfig
 from datapipe.types import IndexDF, Labels
 
 from datapipe_ml.frameworks.yolo.checkpoint_label import build_yolo_train_config_summary
+from datapipe_ml.training.request_runner import run_training_request
 from datapipe_ml.training.train_config_id import train_configs_to_dataframe
 from datapipe_ml.frameworks.yolo.datapipe_compute import (
     YoloModeSpec,
@@ -75,7 +76,6 @@ class YoloV5DetectionAlgo(YoloBaseAlgo):
         params["resume"] = resolved_path
         params.pop("initial_weights_path", None)
         params["exist_ok"] = True
-        params["save_period"] = max(1, int(params.get("save_period", -1)))
         return params
 
     def launch_training(
@@ -123,38 +123,71 @@ def train_yolov5(
     input_dts: List[DataTable],
     run_config: Optional[RunConfig] = None,
     kwargs: Optional[Dict[str, Any]] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, ...]:
     kwargs = kwargs or {}
     (
         dt__detection_frozen_dataset,
-        dt__yolov5_train_config,
+        dt__detection_training_request,
         dt__detection_frozen_dataset__class_names,
         dt__detection_frozen_dataset__resized_image_file,
         dt__detection_frozen_dataset__yolo_txt,
     ) = input_dts
 
-    runtime = YoloTrainRuntimeConfig.from_kwargs(
-        kwargs,
-        model_table_key="dt__detection_model",
-        link_table_key="dt__detection_model_is_trained_on_detection_frozen_dataset",
-        model_other_primary_keys_key="detection_model_other_primary_keys",
-        model_id_key="detection_model_id__name",
-        frozen_dataset_id_key="detection_frozen_dataset_id__name",
+    df_frozen_dataset = dt__detection_frozen_dataset.get_data(idx)
+    df_training_request = dt__detection_training_request.get_data(idx)
+    df_class_names = dt__detection_frozen_dataset__class_names.get_data(idx)
+    df_resized_images = dt__detection_frozen_dataset__resized_image_file.get_data(idx)
+    df_yolo_txt = dt__detection_frozen_dataset__yolo_txt.get_data(idx)
+
+    def _train_callable(
+        *,
+        df_train_config: pd.DataFrame,
+        max_within_time: Optional[str],
+        force_training: bool,
+        **_: Any,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        runtime = YoloTrainRuntimeConfig.from_kwargs(
+            kwargs,
+            model_table_key="dt__detection_model",
+            link_table_key="dt__detection_model_is_trained_on_detection_frozen_dataset",
+            model_other_primary_keys_key="detection_model_other_primary_keys",
+            model_id_key="detection_model_id__name",
+            frozen_dataset_id_key="detection_frozen_dataset_id__name",
+        )
+        ctx = runtime.build_context(
+            YoloTrainContext,
+            dt__frozen_dataset=dt__detection_frozen_dataset,
+            dt__train_config=None,
+            dt__class_names=dt__detection_frozen_dataset__class_names,
+            dt__resized_image_file=dt__detection_frozen_dataset__resized_image_file,
+            dt__yolo_txt=dt__detection_frozen_dataset__yolo_txt,
+        )
+        if max_within_time is not None:
+            ctx = replace(ctx, max_within_time=max_within_time)
+        algo = YoloV5DetectionAlgo()
+        out = orchestrate(
+            idx,
+            ctx,
+            algo,
+            df_train_config=df_train_config,
+            force_training=force_training,
+        )
+        return (out.df__model, out.df__link, out.df__training_status)
+
+    return run_training_request(
+        df_frozen_dataset=df_frozen_dataset,
+        df_training_request=df_training_request,
+        df_class_names=df_class_names,
+        df_resized_images=df_resized_images,
+        df_yolo_txt=df_yolo_txt,
+        train_callable=_train_callable,
+        train_config_id_col="detection_train_config_id",
+        train_config_params_col="detection_train_config__params",
+        dt_training_status=kwargs.get("dt__training_status"),
     )
-    ctx = runtime.build_context(
-        YoloTrainContext,
-        dt__frozen_dataset=dt__detection_frozen_dataset,
-        dt__train_config=dt__yolov5_train_config,
-        dt__class_names=dt__detection_frozen_dataset__class_names,
-        dt__resized_image_file=dt__detection_frozen_dataset__resized_image_file,
-        dt__yolo_txt=dt__detection_frozen_dataset__yolo_txt,
-    )
-    algo = YoloV5DetectionAlgo()
-    out = orchestrate(idx, ctx, algo)
-    return (out.df__model, out.df__link, out.df__training_status)
 
 
-def get_yolov5_detection_train_configs(yolov5_train_configs: List[YoloV5_TrainingConfig]):
+def get_yolov5_detection_train_configs(yolov5_train_configs: List[Any]):
     yield train_configs_to_dataframe(
         yolov5_train_configs,
         id_column="detection_train_config_id",
@@ -164,6 +197,7 @@ def get_yolov5_detection_train_configs(yolov5_train_configs: List[YoloV5_Trainin
             model_key="weights",
             batch_key="batch_size",
         ),
+        config_type="yolov5_detection",
     )
 
 
@@ -173,6 +207,9 @@ class Train_YoloV5_DetectionModel(PipelineStep):
     input__detection_frozen_dataset: str
     input__detection_frozen_dataset__has__image_gt: str
     output__yolov5_train_config: str
+    output__yolov5_custom_train_config: str
+    output__detection_training_request: str
+    output__model_detection_size_for_resize: str
     output__detection_size_for_resize: str
     output__detection_frozen_dataset__class_names: str
     output__detection_frozen_dataset__resized_image_file: str
@@ -209,7 +246,10 @@ class Train_YoloV5_DetectionModel(PipelineStep):
             catalog=catalog,
             input__frozen_dataset=self.input__detection_frozen_dataset,
             input__frozen_dataset__has__image_gt=self.input__detection_frozen_dataset__has__image_gt,
-            output__train_config=self.output__yolov5_train_config,
+            output__default_train_config=self.output__yolov5_train_config,
+            output__custom_train_config=self.output__yolov5_custom_train_config,
+            output__training_request=self.output__detection_training_request,
+            output__model_size_for_resize=self.output__model_detection_size_for_resize,
             output__size_for_resize=self.output__detection_size_for_resize,
             output__frozen_dataset__class_names=self.output__detection_frozen_dataset__class_names,
             output__frozen_dataset__resized_image_file=self.output__detection_frozen_dataset__resized_image_file,
@@ -245,6 +285,7 @@ class Train_YoloV5_DetectionModel(PipelineStep):
                 get_class_names_from_gt_func=get_class_names_from_det_frozen_dataset_gt,
                 train_callable=train_yolov5,
                 models_subdir="models",
+                train_config_type="yolov5_detection",
             ),
             train_configs_list=dict(yolov5_train_configs=self.yolov5_train_configs),
             training_launcher_config=self.training_launcher_config,
