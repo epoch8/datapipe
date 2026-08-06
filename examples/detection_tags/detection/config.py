@@ -22,20 +22,8 @@ DETECTION_CLASSES = ["cat", "dog"]
 COCO_CAT_IDS = {17: "cat", 18: "dog"}  # COCO category_id -> class name
 
 # --- tags -----------------------------------------------------------------------
-# Numeric tag ids must be DETERMINISTIC (datapipe re-runs), so map known tag names to
-# fixed ids; unknown names fall back to a stable crc32-derived number.
-import zlib  # noqa: E402
-
-TAG_IDS = {"night": 1}
-TAG_NAMES = {v: k for k, v in TAG_IDS.items()}
-
-
-def tag_id_for(name: str) -> int:
-    return TAG_IDS.get(name) or (zlib.crc32(name.encode()) % 100000)
-
-
-def tag_name_for(tag_id) -> str:
-    return TAG_NAMES.get(tag_id, str(tag_id))
+# tag_id is the human-readable tag NAME itself (text). Two columns only: (tag_id, tag_description).
+# No numeric surrogate / separate tag_name — the UI shows the tag by name directly.
 
 # --- single storage root --------------------------------------------------------
 # Input images live under <root>/images; the pipeline working_dir under <root>/datapipe
@@ -100,9 +88,65 @@ if not DB_URL:
 DB_SCHEMA = os.environ.get("DB_SCHEMA", "public")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
 
+CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
+if not CLICKHOUSE_RUN_LOGS_URL:
+    raise RuntimeError(
+        "CLICKHOUSE_RUN_LOGS_URL is required. Copy examples/detection_tags/.env.example to .env, "
+        "start docker compose (clickhouse service), and run: set -a && source .env && set +a"
+    )
+
 # --- FiftyOne -------------------------------------------------------------------
 # FiftyOne stores dataset metadata in MongoDB (FIFTYONE_DATABASE_URI, brought up by
 # docker compose) and renders samples from LOCAL image files, so the fiftyone stage
 # downloads S3 images to LOCAL_IMAGES_DIR first.
+def _local_images_dir() -> Path:
+    explicit = os.environ.get("LOCAL_IMAGES_DIR")
+    if explicit:
+        return Path(explicit).resolve()
+    if _is_cloud_path(DATAPIPE_DIR_ROOT):
+        return Path(os.environ.get("DATAPIPE_TAGS_TMP_DIR", "/tmp/datapipe-tags")).resolve() / "local_images"
+    return Path(DATAPIPE_DIR).resolve().parent / "local_images"
+
+
 FIFTYONE_DATASET_NAME = os.environ.get("FIFTYONE_DATASET_NAME", "datapipe_detection_tags")
-LOCAL_IMAGES_DIR = Path(os.environ.get("LOCAL_IMAGES_DIR", "/tmp/datapipe-tags-fiftyone-images"))
+LOCAL_IMAGES_DIR = _local_images_dir()
+
+from datapipe.executor import ExecutorConfig
+
+_MAX_CPU = os.cpu_count() or 4
+
+
+def _use_gpu() -> bool:
+    explicit = os.environ.get("DATAPIPE_USE_GPU")
+    if explicit is not None:
+        return explicit.strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        import torch
+
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2) -> ExecutorConfig:
+    """Embarrassingly parallel I/O and image prep (resize, download, upload)."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
+
+
+def gpu_executor(*, parallelism: int | None = None) -> ExecutorConfig:
+    """GPU when CUDA is available; CPU fallback otherwise."""
+    if _use_gpu():
+        if parallelism is None:
+            try:
+                import torch
+
+                parallelism = max(1, torch.cuda.device_count())
+            except Exception:
+                parallelism = 1
+        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism)
+    return ExecutorConfig(cpu=1.0, parallelism=min(_MAX_CPU, 4))
+
+
+def metrics_executor(*, parallelism_cap: int = 8, cpu_per_task: float = 0.5) -> ExecutorConfig:
+    """CPU-bound metrics aggregation over image batches."""
+    return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))

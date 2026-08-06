@@ -53,6 +53,8 @@ class SingleThreadExecutor(Executor):
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
     ) -> ChangeList:
+        from datapipe.cancel import get_cancel_token
+
         res_changelist = ChangeList()
         callback = run_config.callback if run_config is not None else None
 
@@ -62,12 +64,14 @@ class SingleThreadExecutor(Executor):
         completed = 0
         try:
             for idx in idx_gen:
+                token = get_cancel_token()
+                if token is not None:
+                    token.raise_if_cancelled()
                 changes = process_fn(
                     ds=ds,
                     idx=idx,
                     run_config=run_config,
                 )
-
                 res_changelist.extend(changes)
                 completed += 1
                 if callback is not None:

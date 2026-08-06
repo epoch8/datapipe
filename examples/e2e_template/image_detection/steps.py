@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Iterator
 
 import fsspec
 import pandas as pd
-from cv_pipeliner import BboxData, ImageData
 from cv_pipeliner.utils.label_studio import convert_annotation_to_image_data, convert_image_data_to_annotation
-from datapipe.datatable import DataStore
-from datapipe_ml.core.image_data import convert_df_with_bbox_to_df_with_image_data
-from datapipe_ml.tasks.detection.inference import detection_inference
+from datapipe_ml.core.image_data import (
+    convert_df_with_bbox_to_df_with_image_data,
+    convert_df_with_image_data_to_df_with_bbox,
+)
 
 from config import (
-    CLASSES_TO_KEEP,
     DETECTION_MODEL_CONFIG,
     INPUT_IMAGES_DIR,
     LOCAL_IMAGES_DIR,
@@ -39,43 +37,88 @@ def list_detection_models() -> Iterator[pd.DataFrame]:
     yield pd.DataFrame([DETECTION_MODEL_CONFIG])
 
 
+def resolve_best_detection_model(
+    models_df: pd.DataFrame,
+    best_model_df: pd.DataFrame,
+    model_id_column: str,
+    fallback_model_id: str,
+) -> pd.DataFrame:
+    if not best_model_df.empty:
+        return best_model_df[[model_id_column]]
+    return models_df[models_df[model_id_column] == fallback_model_id][[model_id_column]]
+
+
+def get_images_without_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    primary_keys: list[str],
+) -> pd.DataFrame:
+    if ground_truth_df.empty:
+        return images_df[primary_keys]
+    annotated = ground_truth_df[primary_keys].drop_duplicates()
+    merged = images_df.merge(annotated, on=primary_keys, how="left", indicator=True)
+    return merged[merged["_merge"] == "left_only"][primary_keys]
+
+
+def filter_bboxes_by_classes(
+    df: pd.DataFrame,
+    classes_to_keep: set[str],
+    primary_keys: list[str],
+    model_id_column: str,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    row_keys = list(dict.fromkeys(primary_keys + [model_id_column]))
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )
+    for image_data in df__image_data["image_data"]:
+        image_data.bboxes_data = [
+            bbox_data for bbox_data in image_data.bboxes_data if bbox_data.label in classes_to_keep
+        ]
+    return convert_df_with_image_data_to_df_with_bbox(
+        df__with_image_data=df__image_data,
+        primary_keys=row_keys,
+        bbox_id__name=None,
+    )[df.columns]
+
+
 def bboxes_to_ls_prediction(
     df_bboxes: pd.DataFrame,
     df_image: pd.DataFrame,
     image__image_path__name: str,
+    primary_keys: list[str],
+    model_keys: list[str],
 ) -> pd.DataFrame:
-    image_name_to_path = dict(zip(df_image["image_name"], df_image[image__image_path__name]))
-    records = []
-    for model_id, model_df in df_bboxes.groupby("detection_model_id"):
-        for image_name, group in model_df.groupby("image_name"):
-            image_data = ImageData(
-                image_path=image_name_to_path[image_name],
-                bboxes_data=[
-                    BboxData(
-                        xmin=row["x_min"],
-                        ymin=row["y_min"],
-                        xmax=row["x_max"],
-                        ymax=row["y_max"],
-                        label=str(row["label"]).capitalize(),
-                    )
-                    for _, row in group.iterrows()
-                    if row["bbox_id"] != "None" and row["label"] in CLASSES_TO_KEEP
-                ],
+    task_join_keys = [key for key in primary_keys if key not in set(model_keys)]
+    output_keys = list(dict.fromkeys(primary_keys + model_keys))
+
+    df_bboxes = df_bboxes.merge(
+        df_image[task_join_keys + [image__image_path__name]],
+        on=task_join_keys,
+    )
+    if df_bboxes.empty:
+        return pd.DataFrame(columns=output_keys + ["prediction"])
+
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df_bboxes,
+        primary_keys=output_keys,
+        bbox_id__name=None,
+        image__image_path__name=image__image_path__name,
+    )
+    df__image_data["prediction"] = df__image_data["image_data"].apply(
+        lambda image_data: {
+            "result": convert_image_data_to_annotation(
+                image_data=image_data,
+                to_name="image",
+                bboxes_from_name="label",
             )
-            records.append(
-                {
-                    "image_name": image_name,
-                    "prediction": {
-                        "result": convert_image_data_to_annotation(
-                            image_data=image_data,
-                            to_name="image",
-                            bboxes_from_name="label",
-                        )
-                    },
-                    "detection_model_id": model_id,
-                }
-            )
-    return pd.DataFrame(records, columns=["image_name", "prediction", "detection_model_id"])
+        }
+    )
+    return df__image_data[output_keys + ["prediction"]]
 
 
 def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
@@ -93,7 +136,7 @@ def parse_annotations_from_label_studio(df: pd.DataFrame) -> pd.DataFrame:
             {
                 "image_name": row["image_name"],
                 "bboxes": [bbox_data.coords for bbox_data in image_data.bboxes_data],
-                "labels": [str(bbox_data.label).lower() for bbox_data in image_data.bboxes_data],
+                "labels": [str(bbox_data.label) for bbox_data in image_data.bboxes_data],
             }
         )
     return pd.DataFrame(records, columns=["image_name", "bboxes", "labels"])
@@ -112,29 +155,6 @@ def split_df_train_val(
     df__missing["subset_id"] = "train"
     df__missing.loc[df__val.index, "subset_id"] = "val"
     return pd.concat([subset_df, df__missing], ignore_index=True)[primary_keys + ["subset_id"]]
-
-
-def untracked_inference(
-    *dfs: pd.DataFrame,
-    ds: DataStore,
-    best_model_table: str,
-    trained_models_table: str,
-    fallback_model_table: str,
-    model_id_column: str,
-    **kwargs,
-) -> pd.DataFrame:
-    s3_images_df = dfs[0]
-    if s3_images_df.empty:
-        return pd.DataFrame()
-
-    best_model_id_df = ds.get_table(best_model_table).get_data()
-    best_model_df = pd.DataFrame()
-    if not best_model_id_df.empty:
-        best_model_df = best_model_id_df.merge(ds.get_table(trained_models_table).get_data(), on=model_id_column)
-    if best_model_df.empty:
-        best_model_df = ds.get_table(fallback_model_table).get_data()
-
-    return detection_inference(s3_images_df, best_model_df, **kwargs)
 
 
 def download_images(
@@ -156,9 +176,48 @@ def download_images(
     return s3_images_df[["image_name", image__local_image_path__name]]
 
 
-def publish_to_fiftyone(images_df: pd.DataFrame, predictions_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+def publish_to_fiftyone(images_df: pd.DataFrame, primary_keys: list[str], image__image_path__name: str) -> pd.DataFrame:
     return convert_df_with_bbox_to_df_with_image_data(
-        df__with_bbox=pd.merge(predictions_df, images_df, on=kwargs["primary_keys"][0]),
-        **kwargs,
+        df__with_bbox=images_df,
+        image__image_path__name=image__image_path__name,
+        primary_keys=primary_keys,
     )
 
+
+def publish_to_fiftyone_ground_truth(
+    images_df: pd.DataFrame,
+    ground_truth_df: pd.DataFrame,
+    subset_df: pd.DataFrame,
+    primary_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    images_df = pd.merge(images_df, ground_truth_df, on=primary_keys)
+    images_df = pd.merge(images_df, subset_df, on=primary_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=images_df,
+        primary_keys=primary_keys + ["subset_id"],
+        image__image_path__name=image__image_path__name
+    )
+    for image_data, subset_id in zip(df__image_data["image_data"], df__image_data["subset_id"]):
+        image_data.additional_info["subset_id"] = subset_id
+    return df__image_data[primary_keys + ["image_data"]]
+
+
+def publish_to_fiftyone_predictions_from_best_model(
+    images_df: pd.DataFrame,
+    predictions_df: pd.DataFrame,
+    best_detection_model_df: pd.DataFrame,
+    primary_keys: list[str],
+    model_keys: list[str],
+    image__image_path__name: str,
+) -> pd.DataFrame:
+    df = pd.merge(predictions_df, images_df, on=primary_keys)
+    df = pd.merge(df, best_detection_model_df, on=model_keys)
+    df__image_data = convert_df_with_bbox_to_df_with_image_data(
+        df__with_bbox=df,
+        primary_keys=primary_keys + ["detection_model_id"],
+        image__image_path__name=image__image_path__name,
+    )
+    for image_data, detection_model_id in zip(df__image_data["image_data"], df__image_data["detection_model_id"]):
+        image_data.additional_info["detection_model_id"] = detection_model_id
+    return df__image_data[primary_keys + ["image_data"]]
