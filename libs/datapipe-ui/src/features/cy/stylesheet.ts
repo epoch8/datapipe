@@ -139,7 +139,7 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         selector: "edge",
         style: {
             "curve-style": "taxi",
-            "taxi-direction": "vertical",
+            "taxi-direction": "auto",
             "taxi-turn": "50%",
             "taxi-turn-min-distance": 22,
             width: 2.15,
@@ -151,6 +151,20 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
                 isSequentialEdge(edge) ? "dashed" : "solid",
             opacity: 0.78,
             "z-index": 1,
+        },
+    },
+    {
+        // The static column view mirrors the prototype: flowing connectors with
+        // clearly visible arrowheads. Keep taxi routing for the classic DAG.
+        selector: 'edge[layoutMode = "columns"]',
+        style: {
+            "curve-style": "bezier",
+            width: 1.8,
+            opacity: 0.72,
+            "target-arrow-shape": "triangle",
+            "arrow-scale": 1.35,
+            "source-distance-from-node": 2,
+            "target-distance-from-node": 4,
         },
     },
     {
@@ -187,6 +201,22 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "line-color": edgeColors.error,
             "target-arrow-color": edgeColors.error,
             "z-index": 25,
+        },
+    },
+    {
+        selector: "node.label-hidden",
+        style: {
+            opacity: 0,
+            display: "none",
+            events: "no",
+        },
+    },
+    {
+        selector: "edge.label-hidden",
+        style: {
+            opacity: 0,
+            display: "none",
+            events: "no",
         },
     },
 ];

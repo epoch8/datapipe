@@ -10,6 +10,10 @@ export type FocusPaint = {
 
 const selectedIdsByCy = new WeakMap<Cytoscape.Core, Set<string>>();
 const focusPaintStore = new WeakMap<Cytoscape.Core, FocusPaint | null>();
+const labelFocusStore = new WeakMap<
+    Cytoscape.Core,
+    { labelKey: string; labelValue: string } | null
+>();
 const labelObserverStore = new WeakMap<Cytoscape.Core, MutationObserver>();
 
 function selectionStore(cy: Cytoscape.Core): Set<string> {
@@ -54,6 +58,83 @@ function paintHtmlLabels(cy: Cytoscape.Core, paint: FocusPaint | null): void {
         const dimmed = !paint.highlightedIds.has(id);
         setHtmlFocusClasses(labelEl, selected, related, dimmed);
     });
+}
+
+function nodeHasLabel(
+    node: Cytoscape.NodeSingular,
+    labelKey: string,
+    labelValue: string,
+): boolean {
+    const labels = (node.data("labels") as string[][] | undefined) ?? [];
+    return labels.some(
+        (label) => label.length >= 2 && label[0] === labelKey && label[1] === labelValue,
+    );
+}
+
+function setHtmlLabelHidden(cy: Cytoscape.Core, nodeId: string, hidden: boolean): void {
+    const labelEl = getNodeHtmlLabelEl(cy, nodeId);
+    if (!labelEl) return;
+    labelEl.classList.toggle("is-label-hidden", hidden);
+    // Templates and opacity sync write inline opacity; keep that in sync too so
+    // focus hide/show stays correct even if CSS specificity changes later.
+    if (hidden) {
+        labelEl.style.opacity = "0";
+    } else if (!labelEl.style.opacity || labelEl.style.opacity === "0") {
+        const node = cy.getElementById(nodeId);
+        const stored = node.nonempty()
+            ? (node.data("htmlLabelOpacity") as number | undefined)
+            : undefined;
+        labelEl.style.opacity = String(typeof stored === "number" ? stored : 1);
+    }
+}
+
+function paintLabelFocus(
+    cy: Cytoscape.Core,
+    focus: { labelKey: string; labelValue: string } | null,
+): void {
+    if (!focus) {
+        cy.elements().removeClass("label-hidden");
+        cy.nodes().forEach((node) => {
+            setHtmlLabelHidden(cy, node.id(), false);
+        });
+        return;
+    }
+
+    let visibleNodes = cy.collection() as Cytoscape.NodeCollection;
+    cy.nodes().forEach((node) => {
+        if (nodeHasLabel(node as Cytoscape.NodeSingular, focus.labelKey, focus.labelValue)) {
+            visibleNodes = visibleNodes.union(node) as Cytoscape.NodeCollection;
+        }
+    });
+
+    // Keep the selected transforms/groups and their boundary tables. This mirrors
+    // the prototype: the focused subgraph stays readable without changing layout.
+    let expandedVisible = visibleNodes;
+    visibleNodes.forEach((node) => {
+        expandedVisible = expandedVisible.union(node.connectedEdges().connectedNodes());
+        if (node.isParent()) {
+            expandedVisible = expandedVisible.union(node.descendants());
+        }
+        if (node.isChild()) {
+            expandedVisible = expandedVisible.union(node.parent());
+        }
+    });
+
+    const visibleIds = new Set(expandedVisible.map((node) => node.id()));
+    cy.batch(() => {
+        cy.nodes().forEach((node) => {
+            const hidden = !visibleIds.has(node.id());
+            node.toggleClass("label-hidden", hidden);
+            setHtmlLabelHidden(cy, node.id(), hidden);
+        });
+        cy.edges().forEach((edge) => {
+            edge.toggleClass(
+                "label-hidden",
+                !visibleIds.has(edge.source().id()) || !visibleIds.has(edge.target().id()),
+            );
+        });
+    });
+    refreshInternalEdgeOverlay(cy);
 }
 
 function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null): void {
@@ -187,6 +268,16 @@ export function clearGraphFocus(cy: Cytoscape.Core): void {
     commitFocusPaint(cy, null);
 }
 
+export function setGraphLabelFocus(
+    cy: Cytoscape.Core,
+    labelKey: string,
+    labelValue: string | null | undefined,
+): void {
+    const focus = labelValue ? { labelKey, labelValue } : null;
+    labelFocusStore.set(cy, focus);
+    paintLabelFocus(cy, focus);
+}
+
 export function syncHtmlLabelInteractionState(cy: Cytoscape.Core): void {
     paintHtmlLabels(cy, focusPaintStore.get(cy) ?? null);
 }
@@ -199,6 +290,7 @@ export function initHtmlLabelInteractionStateSync(cy: Cytoscape.Core): void {
     const observer = new MutationObserver((mutations) => {
         if (!mutations.some((mutation) => mutation.addedNodes.length > 0)) return;
         paintHtmlLabels(cy, focusPaintStore.get(cy) ?? null);
+        paintLabelFocus(cy, labelFocusStore.get(cy) ?? null);
     });
     observer.observe(container, { childList: true, subtree: true });
     labelObserverStore.set(cy, observer);

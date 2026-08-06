@@ -34,6 +34,24 @@ export function GraphPage() {
         labelKeyParam ?? detail?.label_graph?.label_key,
         availableKeys,
     );
+    const labelOrder = React.useMemo(
+        () =>
+            [...(detail?.label_graph?.nodes ?? [])]
+                .filter((node) => node.kind === "label")
+                .sort(
+                    (a, b) =>
+                        a.order_min - b.order_min ||
+                        a.order_max - b.order_max ||
+                        a.id.localeCompare(b.id),
+                )
+                .map((node) => node.id),
+        [detail?.label_graph?.nodes],
+    );
+
+    const clearLabelFocusHref =
+        labelKey === DEFAULT_LABEL_KEY
+            ? "/graph"
+            : `/graph?label_key=${encodeURIComponent(labelKey)}`;
 
     const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
@@ -102,6 +120,22 @@ export function GraphPage() {
         );
     };
 
+    const clearLabelFocus = React.useCallback(() => {
+        navigate(clearLabelFocusHref);
+    }, [navigate, clearLabelFocusHref]);
+
+    const selectGraphLabel = React.useCallback(
+        (label: string) => {
+            // Second click on the active label clears focus (prototype behavior).
+            if (stage === label) {
+                clearLabelFocus();
+                return;
+            }
+            navigate(graphHref(label, labelKey));
+        },
+        [navigate, labelKey, stage, clearLabelFocus],
+    );
+
     const startRun = (labels: [string, string][]) => {
         opsApi
             .startRun(labels)
@@ -127,7 +161,7 @@ export function GraphPage() {
             .catch((e) => setError(e));
     };
 
-    const title = stage ? `Pipeline graph · ${stage}` : "Pipeline graph";
+    const title = "Pipeline graph";
 
     return (
         <div className="graph-page">
@@ -137,7 +171,7 @@ export function GraphPage() {
                     { label: "Graph" },
                     ...(stage ? [{ label: stage }] : []),
                 ]}
-                title={title}
+                title={stage ? `Pipeline graph · ${stage}` : title}
                 onRefresh={refresh}
                 extra={
                     detail ? (
@@ -162,14 +196,8 @@ export function GraphPage() {
                         selectedLabel={stage}
                         mode="compact"
                         onLabelKeyChange={setLabelKey}
-                        onLabelSelect={(label) => navigate(graphHref(label, labelKey))}
-                        onLabelClear={() =>
-                            navigate(
-                                labelKey === DEFAULT_LABEL_KEY
-                                    ? "/graph"
-                                    : `/graph?label_key=${encodeURIComponent(labelKey)}`,
-                            )
-                        }
+                        onLabelSelect={selectGraphLabel}
+                        onLabelClear={clearLabelFocus}
                         onStageRun={(label) => startRun([[labelKey, label]])}
                     />
                 ) : (
@@ -197,14 +225,30 @@ export function GraphPage() {
                                 dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
                             />
                             {title}
+                            {stage ? (
+                                <span className="pipeline-card-label-badge" title={`${labelKey}=${stage}`}>
+                                    <span className="pipeline-card-label-badge-key">{labelKey}</span>
+                                    <span className="pipeline-card-label-badge-value">{stage}</span>
+                                    <button
+                                        type="button"
+                                        className="pipeline-card-label-badge-clear"
+                                        onClick={clearLabelFocus}
+                                        aria-label="Clear label focus"
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ) : null}
                         </div>
                     </div>
                     <div className="pipeline-card-body">
                         <PipelineGraphAgentOnly
-                            stageFilter={stage}
+                            labelFilter={stage}
                             labelKey={labelKey}
+                            labelOrder={labelOrder}
+                            layoutMode="columns"
                             height="100%"
-                            rankDir="TB"
+                            rankDir="LR"
                             refreshIntervalMs={0}
                             graphRefreshToken={graphRefreshToken}
                         />

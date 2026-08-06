@@ -21,6 +21,7 @@ import {
     stopLayoutAnimations,
 } from "./incrementalLayout";
 import { setNodeVisualOpacity, ensureGroupExpandedVisible } from "./htmlLabelOpacity";
+import { buildLabelColumnLayout } from "./columnLayout";
 import {
     addEdgesFromTarget,
     computeEdgeDiff,
@@ -35,6 +36,9 @@ export type SyncMode = "fit" | "preserve";
 export type SyncOptions = {
     mode: SyncMode;
     rankDir?: "TB" | "LR";
+    layoutMode?: "dag" | "columns";
+    labelKey?: string;
+    labelOrder?: string[];
     anchorGroup?: string | null;
     expanding?: boolean;
     onLayoutComplete?: () => void;
@@ -44,8 +48,13 @@ const layoutStore = new WeakMap<Cytoscape.Core, GraphLayout>();
 const layoutTimerStore = new WeakMap<Cytoscape.Core, number>();
 const preExpandStore = new WeakMap<Cytoscape.Core, Map<string, GraphLayout>>();
 const structureKeyStore = new WeakMap<Cytoscape.Core, string>();
+const layoutConfigKeyStore = new WeakMap<Cytoscape.Core, string>();
 
-function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
+function buildElements(
+    data: GraphData,
+    expanded: Set<string>,
+    layoutMode: "dag" | "columns",
+): CyElement[] {
     const { nodes, edges } = reprocessData(data, expanded);
     const elements: CyElement[] = Array.from(nodes.entries())
         .sort(([, a], [, b]) => {
@@ -68,7 +77,10 @@ function buildElements(data: GraphData, expanded: Set<string>): CyElement[] {
     edges.forEach((edge) => {
         elements.push({
             grabbable: false,
-            data: edge,
+            data: {
+                ...edge,
+                layoutMode,
+            },
         });
     });
     return elements;
@@ -140,6 +152,10 @@ function applyEdgeDiff(cy: Cytoscape.Core, target: CyElement[]) {
             );
             if (found.empty()) {
                 cy.add(el);
+            } else {
+                found.forEach((edge) => {
+                    edge.data(el.data);
+                });
             }
         });
     });
@@ -263,15 +279,34 @@ export function syncCyGraph(
     options: SyncOptions,
 ) {
     const rankDir = options.rankDir ?? "TB";
-    const target = buildElements(data, expanded);
+    const target = buildElements(data, expanded, options.layoutMode ?? "dag");
     const { nodes, edges } = reprocessData(data, expanded);
     const anchorGroup = options.anchorGroup ?? null;
     const previousLayout = layoutStore.get(cy);
     const fromCenters = captureCenters(cy);
     const currentStructureKey = graphStructureKey(nodes, edges, expanded);
     const previousStructureKey = structureKeyStore.get(cy);
+    const currentLayoutConfigKey = JSON.stringify({
+        layoutMode: options.layoutMode ?? "dag",
+        rankDir,
+        labelKey: options.labelKey ?? "stage",
+        labelOrder: options.labelOrder ?? [],
+    });
+    const previousLayoutConfigKey = layoutConfigKeyStore.get(cy);
 
     const pipelineOrders = pipelineOrdersFor(data, expanded);
+    const buildLayout = (): GraphLayout =>
+        options.layoutMode === "columns"
+            ? buildLabelColumnLayout(
+                  nodes,
+                  edges,
+                  expanded,
+                  rankDir,
+                  options.labelKey ?? "stage",
+                  options.labelOrder ?? [],
+                  pipelineOrders,
+              )
+            : buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
 
     const isInitial = cy.nodes().empty() || !previousLayout;
 
@@ -280,10 +315,11 @@ export function syncCyGraph(
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
         applyElementDiff(cy, target);
-        const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+        const nextLayout = buildLayout();
         applyLayoutToCy(cy, nextLayout);
         layoutStore.set(cy, nextLayout);
         structureKeyStore.set(cy, currentStructureKey);
+        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
         // Sync cached viewport dimensions before fitting: on first paint the flex
         // container may not have reached its final width yet, and a stale
         // cy.width() makes the centering pan land off to one side.
@@ -301,9 +337,10 @@ export function syncCyGraph(
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
         applyElementDiff(cy, target);
-        const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+        const nextLayout = buildLayout();
         layoutStore.set(cy, nextLayout);
         structureKeyStore.set(cy, currentStructureKey);
+        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
 
         // Nodes that only exist in the new graph fade in at their target spot.
         const fadeIn = new Set<string>();
@@ -328,11 +365,26 @@ export function syncCyGraph(
     if (
         !anchorGroup &&
         previousStructureKey === currentStructureKey &&
+        previousLayoutConfigKey === currentLayoutConfigKey &&
         options.mode === "preserve"
     ) {
         stopLayoutAnimations(cy);
         applyElementDiff(cy, target);
         options.onLayoutComplete?.();
+        return;
+    }
+
+    if (options.layoutMode === "columns") {
+        stopLayoutAnimations(cy);
+        clearLayoutTimer(cy);
+        applyElementDiff(cy, target);
+        const nextLayout = buildLayout();
+        layoutStore.set(cy, nextLayout);
+        structureKeyStore.set(cy, currentStructureKey);
+        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
+        animateLayoutTransition(cy, fromCenters, nextLayout, {
+            onComplete: () => scheduleLayoutComplete(cy, options),
+        });
         return;
     }
 
@@ -362,6 +414,7 @@ export function syncCyGraph(
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
             layoutStore.set(cy, nextLayout);
             structureKeyStore.set(cy, currentStructureKey);
+            layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
             const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
             const fromEntry = workingLayout.get(anchorGroup);
             const toEntry = nextLayout.get(anchorGroup);
@@ -403,6 +456,7 @@ export function syncCyGraph(
 
         layoutStore.set(cy, collapsedLayout);
         structureKeyStore.set(cy, currentStructureKey);
+        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
         const edgeDiff = computeEdgeDiff(cy, target);
         addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
 
@@ -448,9 +502,10 @@ export function syncCyGraph(
     stopLayoutAnimations(cy);
     clearLayoutTimer(cy);
     applyElementDiff(cy, target);
-    const nextLayout = buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+    const nextLayout = buildLayout();
     layoutStore.set(cy, nextLayout);
     structureKeyStore.set(cy, currentStructureKey);
+    layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
     animateLayoutTransition(cy, fromCenters, nextLayout, {
         onComplete: () => scheduleLayoutComplete(cy, options),
     });

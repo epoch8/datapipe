@@ -473,6 +473,55 @@
     display: inline-flex;
 }
 
+.pipeline-card-label-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 2px;
+    max-width: min(360px, 42vw);
+    padding: 5px 8px 5px 10px;
+    border: 1px solid rgba(22, 119, 255, 0.28);
+    border-radius: 10px;
+    background: #f0f7ff;
+    color: #0b4ea2;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.pipeline-card-label-badge-key {
+    color: #667085;
+    font-weight: 650;
+}
+
+.pipeline-card-label-badge-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pipeline-card-label-badge-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-left: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #667085;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.pipeline-card-label-badge-clear:hover {
+    background: rgba(22, 119, 255, 0.12);
+    color: #0b4ea2;
+}
+
 .pipeline-card-body {
     position: relative;
     flex: 1 1 0;

@@ -23,6 +23,7 @@ import {
     applyFailedEdgeStyles,
     clearSelectedNodeIds,
     initHtmlLabelInteractionStateSync,
+    setGraphLabelFocus,
     setSelectedNodeIds,
 } from "./graphVisualState";
 import { attachGraphInteractions, MAX_ZOOM, MIN_ZOOM } from "./graphInteractions";
@@ -46,7 +47,7 @@ function buildGraphUrl(stageFilter?: string | null, labelKey?: string | null): s
     const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
     const params = new URLSearchParams();
     if (stageFilter) params.set("stage", stageFilter);
-    if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
+    if (stageFilter && labelKey && labelKey !== "stage") params.set("label_key", labelKey);
     const query = params.toString();
     if (!query) return base;
     const joiner = base.includes("?") ? "&" : "?";
@@ -174,6 +175,9 @@ function refreshNodeLabelPositions(cy: Cytoscape.Core) {
 function PipelineGraphView({
     stageFilter = null,
     labelKey = null,
+    labelFilter = null,
+    labelOrder = [],
+    layoutMode = "dag",
     runSteps = null,
     height = "100%",
     rankDir = "TB",
@@ -483,18 +487,39 @@ function PipelineGraphView({
         syncCyGraph(cy, rawGraph, expandedGroups, {
             mode: needFitRef.current ? "fit" : "preserve",
             rankDir,
+            layoutMode,
+            labelKey: labelKey ?? "stage",
+            labelOrder,
             anchorGroup: anchorGroupRef.current,
             expanding: expandingRef.current,
             onLayoutComplete: () => {
                 refreshNodeLabelPositions(cy);
                 applyFailedEdgeStyles(cy, runStatusRef.current);
+                setGraphLabelFocus(cy, labelKey ?? "stage", labelFilter);
                 refreshInternalEdgeOverlay(cy);
                 applySessionRestore(cy);
             },
         });
         needFitRef.current = false;
         anchorGroupRef.current = null;
-    }, [cy, rawGraph, expandedGroups, loading, rankDir, graphUrl, applySessionRestore]);
+    }, [
+        cy,
+        rawGraph,
+        expandedGroups,
+        loading,
+        rankDir,
+        layoutMode,
+        labelKey,
+        labelOrder,
+        labelFilter,
+        graphUrl,
+        applySessionRestore,
+    ]);
+
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        setGraphLabelFocus(cy, labelKey ?? "stage", labelFilter);
+    }, [cy, labelKey, labelFilter]);
 
     useEffect(() => {
         return () => {

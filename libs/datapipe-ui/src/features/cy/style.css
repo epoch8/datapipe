@@ -643,6 +643,13 @@
     opacity: 0.35;
 }
 
+.node-core.is-label-hidden,
+.node-compound-label.is-label-hidden {
+    /* Beat inline opacity from htmlLabelOpacity / label templates. */
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 .node-core-subgraph {
     border-color: #b6c6db;
 }

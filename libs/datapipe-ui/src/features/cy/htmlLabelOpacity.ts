@@ -43,7 +43,8 @@ export function initHtmlLabelOpacitySync(cy: Cytoscape.Core): void {
                 (node.data("htmlLabelOpacity") as number | undefined);
             if (typeof opacity !== "number") return;
             const labelEl = getNodeHtmlLabelEl(cy, nodeId);
-            if (labelEl) {
+            // Label-focus hide owns opacity while active; don't fight it on pan/zoom.
+            if (labelEl && !labelEl.classList.contains("is-label-hidden")) {
                 labelEl.style.opacity = String(opacity);
             }
         });
