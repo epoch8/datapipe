@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from typing import Iterable, Literal, Sequence, Protocol
 
 from opentelemetry import trace
 from sqlalchemy import Column
@@ -15,6 +15,7 @@ from datapipe.store.table_store import TableStore
 from datapipe.types import (
     ChangeList,
     IndexDF,
+    ProcessItem,
     InputSpec,
     Labels,
     MetaSchema,
@@ -199,6 +200,55 @@ def pipeline_output_to_compute_output(ds: DataStore, catalog: Catalog, output: P
     return ComputeOutput(dt=catalog.get_datatable(ds, table), keys=keys)
 
 
+class BaseIndexStep:
+    def get_full_process_ids(
+        self,
+        ds: DataStore,
+        chunk_size: int | None = None,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[ProcessItem]]:
+        raise NotImplementedError()
+
+    def get_status(self, ds: DataStore) -> StepStatus:
+        raise NotImplementedError
+
+
+class BaseFlowStep:
+    def get_change_list_process_ids(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: RunConfig | None = None,
+    ) -> tuple[int, Iterable[ProcessItem]]:
+        raise NotImplementedError()
+
+    def run_changelist(
+        self,
+        ds: DataStore,
+        change_list: ChangeList,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> ChangeList: 
+        raise NotImplementedError()
+
+    def run_idx(
+        self,
+        ds: DataStore,
+        idx: ProcessItem,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> ChangeList: 
+        raise NotImplementedError()
+
+
+class BaseMetaDataStep:
+    def reset_metadata(self, ds: DataStore) -> None: 
+        raise NotImplementedError()
+    
+    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
+        raise NotImplementedError()
+
+
 class ComputeStep:
     """
     Шаг вычислений в графе вычислений.
@@ -240,9 +290,6 @@ class ComputeStep:
     def labels(self) -> Labels:
         return self._labels if self._labels else []
 
-    def get_status(self, ds: DataStore) -> StepStatus:
-        raise NotImplementedError
-
     # TODO: move to lints
     def validate(self) -> None:
         inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
@@ -272,22 +319,6 @@ class ComputeStep:
                     f"{key_to_column_type_inp[key]} != {key_to_column_type_out[key]}"
                 )
 
-    def get_full_process_ids(
-        self,
-        ds: DataStore,
-        chunk_size: int | None = None,
-        run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
-        raise NotImplementedError()
-
-    def get_change_list_process_ids(
-        self,
-        ds: DataStore,
-        change_list: ChangeList,
-        run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[IndexDF]]:
-        raise NotImplementedError()
-
     def run_full(
         self,
         ds: DataStore,
@@ -296,22 +327,91 @@ class ComputeStep:
     ) -> None:
         raise NotImplementedError()
 
-    def run_changelist(
-        self,
-        ds: DataStore,
-        change_list: ChangeList,
-        run_config: RunConfig | None = None,
-        executor: Executor | None = None,
-    ) -> ChangeList:
-        raise NotImplementedError()
 
-    def run_idx(
+class ChaimComputeStep(ComputeStep):
+    """
+    Шаг вычислений в графе вычислений.
+
+    Каждый шаг должен уметь отвечать на вопросы:
+    - какие таблицы приходят на вход
+    - какие таблицы исользуются для выборки ретроспективных данных
+    - какие таблицы изменяются в результате трансформации
+
+    Шаг может запускаться в режиме полной обработки, то есть без указания какие
+    объекты изменились. Или в changelist-режиме, когда на вход поступают
+    измененные индексы для каждой из входных таблиц.
+
+    В changelist-режиме шаг обрабатывает только минимально необходимое
+    количество батчей, которые покрывают все измененные индексы.
+    """
+
+    def __init__(
         self,
-        ds: DataStore,
-        idx: IndexDF,
-        run_config: RunConfig | None = None,
-    ) -> ChangeList:
-        raise NotImplementedError()
+        name: str,
+        input_dts: Sequence[ComputeInput],
+        previous_dts: Sequence[ComputeInput],
+        output_dts: Sequence[ComputeOutput],
+        labels: Labels | None = None,
+        executor_config: ExecutorConfig | None = None,
+    ) -> None:
+        ComputeStep.__init__(
+            self,
+            name=name,
+            input_dts=input_dts,
+            output_dts=output_dts,
+            labels=labels,
+            executor_config=executor_config,
+        )
+
+        self.previous_dts = list(previous_dts)
+
+    def all_equal(self, iterator):
+        iterator = iter(iterator)
+        try:
+            first = next(iterator)
+        except StopIteration:
+            return True
+        return all(first == x for x in iterator) 
+
+    # TODO: move to lints
+    def validate(self) -> None:
+        inp_p_keys_arr = [set(inp.dt.primary_keys) for inp in self.input_dts if inp]
+        prv_p_keys_arr = [set(prv.dt.primary_keys) for prv in self.previous_dts if prv]
+        out_p_keys_arr = [set(out.dt.primary_keys) for out in self.output_dts if out]
+
+        inp_p_keys = set.intersection(*inp_p_keys_arr) if len(inp_p_keys_arr) else set()
+        prv_p_keys = set.intersection(*prv_p_keys_arr) if len(prv_p_keys_arr) else set()
+        out_p_keys = set.intersection(*out_p_keys_arr) if len(out_p_keys_arr) else set()
+        join_keys = set.intersection(inp_p_keys, prv_p_keys, out_p_keys)
+
+        key_to_column_type_inp = {
+            column.name: type(column.type)
+            for inp in self.input_dts
+            for column in inp.dt.primary_schema
+            if column.name in join_keys
+        }
+        key_to_column_type_prv = {
+            column.name: type(column.type)
+            for prv in self.previous_dts
+            for column in prv.dt.primary_schema
+            if column.name in join_keys
+        }
+        key_to_column_type_out = {
+            column.name: type(column.type)
+            for inp in self.output_dts
+            for column in inp.dt.primary_schema
+            if column.name in join_keys
+        }
+
+        for key in join_keys:
+            if not self.all_equal([key_to_column_type_inp[key], key_to_column_type_prv[key], key_to_column_type_out[key]]):
+                raise ValueError(
+                    f'Primary key "{key}" in inputs, previous and outputs must have same column\'s type: '
+                    f"input type - {key_to_column_type_inp[key]}, "
+                    f"previous type - {key_to_column_type_prv[key]}, "
+                    f"output type -  {key_to_column_type_out[key]}"
+                )
+
 
 
 class PipelineStep(ABC):
@@ -437,9 +537,6 @@ def run_steps_changelist(
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
 ) -> None:
-    # FIXME extract Batch* steps to separate module
-    from datapipe.step.batch_transform import BaseBatchTransformStep
-
     current_changes = changelist
     next_changes = ChangeList()
     iteration = 0
@@ -451,7 +548,7 @@ def run_steps_changelist(
                     with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
                         logger.info(f"Running {step.name} {step.format_io()}")
 
-                        if isinstance(step, BaseBatchTransformStep):
+                        if isinstance(step, BaseFlowStep):
                             step_changes = step.run_changelist(
                                 ds,
                                 current_changes,
