@@ -67,6 +67,8 @@ dev = [
     "types-tqdm",
     "types-pillow",
     "types-pyyaml",
+    "datapipe-app",
+    "datapipe-app-ml-ops",
 ]
 
 [tool.uv.sources]
