@@ -39,6 +39,8 @@ export type SyncOptions = {
     layoutMode?: "dag" | "columns";
     labelKey?: string;
     labelOrder?: string[];
+    /** Maps nested label values to top-level column keys. */
+    labelColumnMap?: Map<string, string>;
     anchorGroup?: string | null;
     expanding?: boolean;
     onLayoutComplete?: () => void;
@@ -175,11 +177,40 @@ function captureCenters(cy: Cytoscape.Core): Map<string, { x: number; y: number 
 }
 
 function getMetaPipelineOrder(data: GraphData, groupId: string): string[] {
-    const meta = data.pipeline.find(
-        (pipe): pipe is MetaNode => pipe.type === "meta" && pipe.name === groupId,
-    );
+    const meta = findMetaNodeInData(data, groupId);
     if (!meta) return [];
     return meta.graph.pipeline.filter((step) => step.type !== "meta").map((step) => step.name);
+}
+
+function findMetaNodeInData(data: GraphData, groupId: string): MetaNode | undefined {
+    const sep = groupId.lastIndexOf("__");
+    const orderKey =
+        sep > 0 && /^\d{4}(?:\.\d{4})*$/.test(groupId.slice(sep + 2))
+            ? groupId.slice(sep + 2)
+            : null;
+    const name = orderKey ? groupId.slice(0, sep) : groupId;
+
+    const walk = (
+        pipeline: GraphData["pipeline"],
+        parentKey = "",
+    ): MetaNode | undefined => {
+        for (let index = 0; index < pipeline.length; index += 1) {
+            const pipe = pipeline[index];
+            if (pipe.type !== "meta") continue;
+            const key = parentKey
+                ? `${parentKey}.${String(index).padStart(4, "0")}`
+                : String(index).padStart(4, "0");
+            if (orderKey) {
+                if (pipe.name === name && key === orderKey) return pipe;
+            } else if (pipe.name === name) {
+                return pipe;
+            }
+            const nested = walk(pipe.graph.pipeline, key);
+            if (nested) return nested;
+        }
+        return undefined;
+    };
+    return walk(data.pipeline);
 }
 
 function pipelineOrdersFor(data: GraphData, expanded: Set<string>): Map<string, string[]> {
@@ -269,8 +300,9 @@ function scheduleLayoutComplete(cy: Cytoscape.Core, options: SyncOptions): void 
 }
 
 /**
- * Sync graph elements and apply deterministic incremental layout.
- * Initial view uses layered DAG; expand/collapse only shifts the affected region.
+ * Sync graph elements and apply layout.
+ * Columns mode always rebuilds the full layered DAG (stable across any
+ * expand/collapse order). Dag mode uses incremental expand/collapse morphs.
  */
 export function syncCyGraph(
     cy: Cytoscape.Core,
@@ -291,6 +323,7 @@ export function syncCyGraph(
         rankDir,
         labelKey: options.labelKey ?? "stage",
         labelOrder: options.labelOrder ?? [],
+        labelColumnMap: Array.from((options.labelColumnMap ?? new Map()).entries()).sort(),
     });
     const previousLayoutConfigKey = layoutConfigKeyStore.get(cy);
 
@@ -305,6 +338,7 @@ export function syncCyGraph(
                   options.labelKey ?? "stage",
                   options.labelOrder ?? [],
                   pipelineOrders,
+                  options.labelColumnMap ?? new Map(),
               )
             : buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
 
@@ -374,19 +408,58 @@ export function syncCyGraph(
         return;
     }
 
+    // Columns mode: always full layered-DAG rebuild. Incremental push/collapse
+    // cascades badly across multi-expand (especially LR) and pre-expand snapshots
+    // go stale when collapse order ≠ expand order — leaving a chaotic Fit view.
     if (options.layoutMode === "columns") {
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
-        applyElementDiff(cy, target);
+
         const nextLayout = buildLayout();
         layoutStore.set(cy, nextLayout);
         structureKeyStore.set(cy, currentStructureKey);
         layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
+
+        if (anchorGroup && options.expanding) {
+            const edgeDiff = computeEdgeDiff(cy, target);
+            applyNodeDiff(cy, target, false);
+            const expandedGroup = cy.getElementById(anchorGroup);
+            if (!expandedGroup.empty()) {
+                ensureGroupExpandedVisible(expandedGroup as Cytoscape.NodeSingular);
+            }
+            addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
+            const innerIds = getInnerNodeIds(nodes, anchorGroup);
+            animateLayoutTransition(cy, fromCenters, nextLayout, {
+                fadeIn: innerIds,
+                edgeFadeIn: new Set(edgeDiff.toAdd),
+                edgeFadeOut: new Set(edgeDiff.toRemove),
+                onComplete: () => {
+                    applyLayoutToCy(cy, nextLayout);
+                    applyElementDiff(cy, target);
+                    scheduleLayoutComplete(cy, options);
+                },
+            });
+            return;
+        }
+
+        if (anchorGroup && !options.expanding) {
+            // Snap-collapse onto the deterministic full layout so any close order
+            // lands on the same neat DAG (no stale push residuals).
+            applyElementDiff(cy, target);
+            applyLayoutToCy(cy, nextLayout);
+            scheduleLayoutComplete(cy, options);
+            return;
+        }
+
+        applyElementDiff(cy, target);
         animateLayoutTransition(cy, fromCenters, nextLayout, {
             onComplete: () => scheduleLayoutComplete(cy, options),
         });
         return;
     }
+
+    // Expand/collapse (dag mode): incremental morph along rankDir.
+    const expandRankDir = rankDir;
 
     if (anchorGroup && previousLayout.has(anchorGroup)) {
         stopLayoutAnimations(cy);
@@ -408,7 +481,7 @@ export function syncCyGraph(
                 anchorGroup,
                 nodes,
                 edges,
-                rankDir,
+                expandRankDir,
                 pipelineOrders.get(anchorGroup) ?? [],
             );
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
@@ -426,7 +499,10 @@ export function syncCyGraph(
                 morphBoxes,
                 edgeFadeIn: new Set(edgeDiff.toAdd),
                 edgeFadeOut: new Set(edgeDiff.toRemove),
-                onComplete: () => scheduleLayoutComplete(cy, options),
+                onComplete: () => {
+                    applyLayoutToCy(cy, nextLayout);
+                    scheduleLayoutComplete(cy, options);
+                },
             });
             return;
         }
@@ -450,7 +526,7 @@ export function syncCyGraph(
                 anchorGroup,
                 nodes,
                 edges,
-                rankDir,
+                expandRankDir,
                 innerIds,
             );
 
@@ -493,6 +569,7 @@ export function syncCyGraph(
             edgeFadeOut: new Set(edgeDiff.toRemove),
             onComplete: () => {
                 applyElementDiff(cy, target);
+                applyLayoutToCy(cy, collapsedLayout);
                 scheduleLayoutComplete(cy, options);
             },
         });

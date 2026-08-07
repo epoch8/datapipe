@@ -62,6 +62,42 @@ function isStepCardType(type: unknown): boolean {
     return type === "transform" || type === "group";
 }
 
+function padOrderIndex(index: number): string {
+    return String(index).padStart(4, "0");
+}
+
+function metaNameCounts(pipeline: PipelineNode[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    pipeline.forEach((pipe) => {
+        if (pipe.type !== "meta") return;
+        counts.set(pipe.name, (counts.get(pipe.name) ?? 0) + 1);
+    });
+    return counts;
+}
+
+/**
+ * Graph node id for a meta step. Duplicate display names (e.g. two
+ * Inference_DetectionModel) get a stable `__orderKey` suffix so they do not
+ * overwrite each other in the node map / layout.
+ */
+function metaGraphId(
+    name: string,
+    orderKey: string,
+    counts: Map<string, number>,
+): string {
+    return (counts.get(name) ?? 0) > 1 ? `${name}__${orderKey}` : name;
+}
+
+function parseMetaGraphId(groupId: string): { name: string; orderKey: string | null } {
+    const sep = groupId.lastIndexOf("__");
+    if (sep <= 0) return { name: groupId, orderKey: null };
+    const maybeKey = groupId.slice(sep + 2);
+    if (/^\d{4}(?:\.\d{4})*$/.test(maybeKey)) {
+        return { name: groupId.slice(0, sep), orderKey: maybeKey };
+    }
+    return { name: groupId, orderKey: null };
+}
+
 /**
  * Dashed next-step hops between consecutive transform/group cards in a pipeline list.
  * Skips expanded metas (their children get their own sequential chain).
@@ -71,14 +107,21 @@ function addSequentialStepEdges(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     pipeline: PipelineNode[],
     expandedGroups: Set<string>,
+    parentOrderKey: string | undefined,
     extra: Partial<Cytoscape.EdgeDataDefinition> = {},
 ): void {
+    const counts = metaNameCounts(pipeline);
     const steps: string[] = [];
-    pipeline.forEach((pipe) => {
-        if (pipe.type === "meta" && expandedGroups.has(pipe.name)) return;
-        const type = nodes.get(pipe.name)?.type;
+    pipeline.forEach((pipe, index) => {
+        const orderKey = parentOrderKey
+            ? `${parentOrderKey}.${padOrderIndex(index)}`
+            : padOrderIndex(index);
+        const stepId =
+            pipe.type === "meta" ? metaGraphId(pipe.name, orderKey, counts) : pipe.name;
+        if (pipe.type === "meta" && expandedGroups.has(stepId)) return;
+        const type = nodes.get(stepId)?.type;
         if (!isStepCardType(type)) return;
-        steps.push(pipe.name);
+        steps.push(stepId);
     });
 
     for (let index = 0; index < steps.length - 1; index += 1) {
@@ -174,11 +217,13 @@ function addCollapsedMeta(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     data: GraphData,
     pipe: MetaNode,
+    metaId: string,
     pipelineIndex?: number,
     pipelineOrderKey?: string,
 ) {
     const childCount = pipe.graph?.pipeline?.length ?? 0;
-    nodes.set(pipe.name, {
+    nodes.set(metaId, {
+        id: metaId,
         type: "group",
         name: pipe.name,
         transform_type: pipe.transform_type || pipe.name,
@@ -205,7 +250,7 @@ function addCollapsedMeta(
             tableOrderKey(pipelineOrderKey, "in", inputIndex),
             "consumer",
         );
-        edges.add({ source: input, target: pipe.name });
+        edges.add({ source: input, target: metaId });
     });
     (pipe.outputs || []).forEach((output: string, outputIndex: number) => {
         ensureTable(
@@ -217,7 +262,7 @@ function addCollapsedMeta(
             tableOrderKey(pipelineOrderKey, "out", outputIndex),
             "producer",
         );
-        edges.add({ source: pipe.name, target: output });
+        edges.add({ source: metaId, target: output });
     });
 }
 
@@ -229,19 +274,29 @@ function processMetaGraph(
     metaGroup: string,
     parentOrderKey: string,
 ) {
+    const counts = metaNameCounts(graph.pipeline);
     graph.pipeline.forEach((child, index) => {
-        const orderKey = `${parentOrderKey}.${String(index).padStart(4, "0")}`;
+        const orderKey = `${parentOrderKey}.${padOrderIndex(index)}`;
         if (child.type === "meta") {
-            if (expandedGroups.has(child.name)) {
-                processMetaGraph(nodes, edges, child.graph, expandedGroups, child.name, orderKey);
+            const childId = metaGraphId(child.name, orderKey, counts);
+            if (expandedGroups.has(childId)) {
+                processMetaGraph(nodes, edges, child.graph, expandedGroups, childId, orderKey);
                 child.graph.pipeline.forEach((nested, nestedIndex) => {
                     if (nested.type !== "meta") {
-                        const nestedKey = `${orderKey}.${String(nestedIndex).padStart(4, "0")}`;
-                        addTransformNode(nodes, edges, child.graph, nested, child.name, nestedIndex, nestedKey);
+                        const nestedKey = `${orderKey}.${padOrderIndex(nestedIndex)}`;
+                        addTransformNode(
+                            nodes,
+                            edges,
+                            child.graph,
+                            nested,
+                            childId,
+                            nestedIndex,
+                            nestedKey,
+                        );
                     }
                 });
             } else {
-                addCollapsedMeta(nodes, edges, child.graph, child, index, orderKey);
+                addCollapsedMeta(nodes, edges, child.graph, child, childId, index, orderKey);
             }
             return;
         }
@@ -255,17 +310,19 @@ function processData(
     data: GraphData,
     expandedGroups: Set<string>,
 ) {
+    const counts = metaNameCounts(data.pipeline);
     data.pipeline.forEach((pipe, index) => {
-        const orderKey = String(index).padStart(4, "0");
+        const orderKey = padOrderIndex(index);
         if (pipe.type !== "meta") {
             addTransformNode(nodes, edges, data, pipe, undefined, index, orderKey);
             return;
         }
 
-        if (expandedGroups.has(pipe.name)) {
-            processMetaGraph(nodes, edges, pipe.graph, expandedGroups, pipe.name, orderKey);
+        const metaId = metaGraphId(pipe.name, orderKey, counts);
+        if (expandedGroups.has(metaId)) {
+            processMetaGraph(nodes, edges, pipe.graph, expandedGroups, metaId, orderKey);
         } else {
-            addCollapsedMeta(nodes, edges, data, pipe, index, orderKey);
+            addCollapsedMeta(nodes, edges, data, pipe, metaId, index, orderKey);
         }
     });
 }
@@ -291,13 +348,25 @@ function pruneDisconnectedTables(
  * Mark expanded meta subgraph members via metaGroup; the blue frame is a flat background node.
  * Declared meta inputs/outputs stay outside the frame (boundary tables).
  */
-function findMetaNode(pipeline: PipelineNode[], name: string): MetaNode | undefined {
-    for (const pipe of pipeline) {
-        if (pipe.type === "meta" && pipe.name === name) return pipe;
-        if (pipe.type === "meta") {
-            const nested = findMetaNode(pipe.graph.pipeline, name);
-            if (nested) return nested;
+function findMetaNode(
+    pipeline: PipelineNode[],
+    groupId: string,
+    parentOrderKey = "",
+): MetaNode | undefined {
+    const { name, orderKey } = parseMetaGraphId(groupId);
+    for (let index = 0; index < pipeline.length; index += 1) {
+        const pipe = pipeline[index];
+        if (pipe.type !== "meta") continue;
+        const key = parentOrderKey
+            ? `${parentOrderKey}.${padOrderIndex(index)}`
+            : padOrderIndex(index);
+        if (orderKey) {
+            if (pipe.name === name && key === orderKey) return pipe;
+        } else if (pipe.name === name) {
+            return pipe;
         }
+        const nested = findMetaNode(pipe.graph.pipeline, groupId, key);
+        if (nested) return nested;
     }
     return undefined;
 }
@@ -365,12 +434,28 @@ function assignCompoundParents(
         });
 
         if (nested > 0) {
+            const prev = nodes.get(group);
+            const metaPipe = findMetaNode(data.pipeline, group);
+            const displayName = metaPipe?.name ?? parseMetaGraphId(group).name;
             nodes.set(group, {
+                ...prev,
                 id: group,
                 type: "group-expanded",
-                name: group,
+                name: displayName,
                 child_count: nested,
-                frameLabel: `${group} · ${nested} step${nested === 1 ? "" : "s"}`,
+                frameLabel: `${displayName} · ${nested} step${nested === 1 ? "" : "s"}`,
+                // Expanded metas skip addCollapsedMeta, so labels/TPK must be
+                // copied from the pipeline meta or column packing loses them.
+                labels: prev?.labels ?? metaPipe?.labels,
+                transform_type:
+                    prev?.transform_type ?? metaPipe?.transform_type ?? metaPipe?.name ?? displayName,
+                transform_primary_keys:
+                    prev?.transform_primary_keys ??
+                    metaPipe?.transform_primary_keys ??
+                    metaPipe?.tpk ??
+                    [],
+                inputs: prev?.inputs ?? metaPipe?.inputs ?? [],
+                outputs: prev?.outputs ?? metaPipe?.outputs ?? [],
             });
         }
     });
@@ -383,12 +468,15 @@ function addSequentialMetaEdges(
     expandedGroups: Set<string>,
 ) {
     // Top-level collapsed graph: consecutive transform/group cards.
-    addSequentialStepEdges(nodes, edges, data.pipeline, expandedGroups);
+    addSequentialStepEdges(nodes, edges, data.pipeline, expandedGroups, undefined);
 
     expandedGroups.forEach((groupId) => {
         const meta = findMetaNode(data.pipeline, groupId);
         if (!meta) return;
-        addSequentialStepEdges(nodes, edges, meta.graph.pipeline, expandedGroups, {
+        const parentKey =
+            parseMetaGraphId(groupId).orderKey ??
+            (nodes.get(groupId)?.pipelineOrderKey as string | undefined);
+        addSequentialStepEdges(nodes, edges, meta.graph.pipeline, expandedGroups, parentKey, {
             internalMeta: groupId,
         });
     });

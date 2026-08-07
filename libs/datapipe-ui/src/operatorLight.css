@@ -454,6 +454,14 @@
     overflow: hidden;
 }
 
+.pipeline-card-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
 .pipeline-card-title {
     display: flex;
     align-items: center;

@@ -86,26 +86,67 @@ describe("expandGroupInLayout multi-expand", () => {
         assertInnersInsideFrame(layout, "group_b");
     });
 
-    it("buildCollapsedLayout with both expanded keeps inners inside frames", () => {
+    it("buildCollapsedLayout LR multi-expand keeps dependency order without push cascade", () => {
         const { nodes, edges } = makeGroupGraph();
-        const layout = buildCollapsedLayout(
+        const collapsed = buildCollapsedLayout(nodes, edges, new Set(), "LR");
+        const both = buildCollapsedLayout(
             nodes,
             edges,
             new Set(["group_a", "group_b"]),
-            "TB",
+            "LR",
             new Map([
                 ["group_a", ["a1", "a2"]],
                 ["group_b", ["b1", "b2"]],
             ]),
         );
-        assertInnersInsideFrame(layout, "group_a");
-        assertInnersInsideFrame(layout, "group_b");
+        assertInnersInsideFrame(both, "group_a");
+        assertInnersInsideFrame(both, "group_b");
 
-        const aFrame = layout.get("group_a")!;
-        const a1 = layout.get("a1")!;
-        expect(aFrame.bbox.h).toBeGreaterThanOrEqual(
-            a1.bbox.h * 2 + GROUP_PADDING.top + GROUP_PADDING.bottom,
+        const a0 = collapsed.get("group_a")!;
+        const b0 = collapsed.get("group_b")!;
+        const mid0 = collapsed.get("mid")!;
+        expect(a0.bbox.x).toBeLessThan(mid0.bbox.x);
+        expect(mid0.bbox.x).toBeLessThan(b0.bbox.x);
+
+        const a1 = both.get("group_a")!;
+        const b1 = both.get("group_b")!;
+        const mid1 = both.get("mid")!;
+        expect(a1.bbox.x).toBeLessThan(mid1.bbox.x);
+        expect(mid1.bbox.x).toBeLessThan(b1.bbox.x);
+        // Expanded frames are wider than collapsed, but mid stays between them.
+        expect(a1.bbox.w).toBeGreaterThan(a0.bbox.w);
+        expect(b1.bbox.w).toBeGreaterThan(b0.bbox.w);
+    });
+
+    it("projects inner endpoints onto meta so expanded groups keep outer ranks", () => {
+        // Real expanded graphs wire edges to inners, not the blue frame id.
+        const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
+            ["group_a", { id: "group_a", name: "group_a", type: "group-expanded", child_count: 2 }],
+            ["group_b", { id: "group_b", name: "group_b", type: "group-expanded", child_count: 2 }],
+            ["mid", { id: "mid", name: "mid", type: "transform", pipelineIndex: 1 }],
+            ["a1", { id: "a1", name: "a1", type: "transform", metaGroup: "group_a", pipelineIndex: 0 }],
+            ["a2", { id: "a2", name: "a2", type: "transform", metaGroup: "group_a", pipelineIndex: 1 }],
+            ["b1", { id: "b1", name: "b1", type: "transform", metaGroup: "group_b", pipelineIndex: 0 }],
+            ["b2", { id: "b2", name: "b2", type: "transform", metaGroup: "group_b", pipelineIndex: 1 }],
+        ]);
+        const edges: Cytoscape.EdgeDataDefinition[] = [
+            { source: "a2", target: "mid" },
+            { source: "mid", target: "b1" },
+            { source: "a1", target: "a2" },
+            { source: "b1", target: "b2" },
+        ];
+        const layout = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a", "group_b"]),
+            "LR",
+            new Map([
+                ["group_a", ["a1", "a2"]],
+                ["group_b", ["b1", "b2"]],
+            ]),
         );
+        expect(layout.get("group_a")!.bbox.x).toBeLessThan(layout.get("mid")!.bbox.x);
+        expect(layout.get("mid")!.bbox.x).toBeLessThan(layout.get("group_b")!.bbox.x);
     });
 
     it("seeds group-expanded nodes so restored expand gets a full frame", () => {
@@ -174,6 +215,100 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         const upper = ordered.get(0)!;
         const lower = ordered.get(1)!;
         expect(countBipartiteCrossings(upper, lower, edges)).toBe(0);
+    });
+
+    it("layoutLayeredDag prefers pipeline chronology over reverse dependencies", () => {
+        // Early annotation step depends on a late "best model" table — classic
+        // longest-path would put fiftyone-like nodes left of annotation. Chronology
+        // must keep pipeline order left→right.
+        const nodes = new Map<string, MeasuredNode>([
+            [
+                "early",
+                {
+                    ...stubNode("early"),
+                    pipelineIndex: 1,
+                    pipelineOrderKey: "0001",
+                },
+            ],
+            [
+                "fiftyone",
+                {
+                    ...stubNode("fiftyone"),
+                    pipelineIndex: 18,
+                    pipelineOrderKey: "0018",
+                },
+            ],
+            [
+                "best",
+                {
+                    ...stubNode("best"),
+                    pipelineIndex: 15,
+                    pipelineOrderKey: "0015",
+                },
+            ],
+            [
+                "late_consumer",
+                {
+                    ...stubNode("late_consumer"),
+                    pipelineIndex: 8,
+                    pipelineOrderKey: "0008",
+                },
+            ],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "best", target: "late_consumer" },
+            { source: "early", target: "fiftyone" },
+        ];
+        const positions = layoutLayeredDag(nodes, edges, "LR");
+        expect(positions.get("early")!.x).toBeLessThan(positions.get("late_consumer")!.x);
+        expect(positions.get("late_consumer")!.x).toBeLessThan(positions.get("best")!.x);
+        expect(positions.get("best")!.x).toBeLessThan(positions.get("fiftyone")!.x);
+    });
+
+    it("layoutLayeredDag stacks same pipeline-step nodes in one LR column", () => {
+        const nodes = new Map<string, MeasuredNode>([
+            [
+                "step",
+                {
+                    ...stubNode("step"),
+                    pipelineIndex: 3,
+                    pipelineOrderKey: "0003",
+                },
+            ],
+            [
+                "out_a",
+                {
+                    ...stubNode("out_a"),
+                    type: "table",
+                    pipelineIndex: 3,
+                    pipelineOrderKey: "0003.out.0000",
+                },
+            ],
+            [
+                "out_b",
+                {
+                    ...stubNode("out_b"),
+                    type: "table",
+                    pipelineIndex: 3,
+                    pipelineOrderKey: "0003.out.0001",
+                },
+            ],
+            [
+                "next",
+                {
+                    ...stubNode("next"),
+                    pipelineIndex: 4,
+                    pipelineOrderKey: "0004",
+                },
+            ],
+        ]);
+        const positions = layoutLayeredDag(nodes, [], "LR");
+        expect(positions.get("step")!.x).toBe(positions.get("out_a")!.x);
+        expect(positions.get("out_a")!.x).toBe(positions.get("out_b")!.x);
+        expect(positions.get("step")!.x).toBeLessThan(positions.get("next")!.x);
+        // Vertical stack, not a horizontal ribbon.
+        const ys = ["step", "out_a", "out_b"].map((id) => positions.get(id)!.y);
+        expect(new Set(ys).size).toBe(3);
     });
 
     it("layoutLayeredDag places uncrossed endpoints left-to-right consistently", () => {

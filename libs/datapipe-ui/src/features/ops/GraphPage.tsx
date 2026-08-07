@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Spin } from "antd";
+import { Card, Segmented, Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
@@ -16,12 +16,17 @@ import {
     graphHref,
     normalizeLabelKey,
 } from "./utils/labelKey";
+import {
+    buildLabelColumnMap,
+    topLevelLabelOrder,
+} from "../cy/columnLayout";
 
 export function GraphPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const stage = searchParams.get("stage");
     const labelKeyParam = searchParams.get("label_key") || DEFAULT_LABEL_KEY;
+    const direction = searchParams.get("direction") === "TB" ? "TB" : "LR";
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
@@ -35,23 +40,21 @@ export function GraphPage() {
         availableKeys,
     );
     const labelOrder = React.useMemo(
-        () =>
-            [...(detail?.label_graph?.nodes ?? [])]
-                .filter((node) => node.kind === "label")
-                .sort(
-                    (a, b) =>
-                        a.order_min - b.order_min ||
-                        a.order_max - b.order_max ||
-                        a.id.localeCompare(b.id),
-                )
-                .map((node) => node.id),
+        () => topLevelLabelOrder(detail?.label_graph?.nodes ?? []),
         [detail?.label_graph?.nodes],
     );
+    const labelColumnMap = React.useMemo(() => {
+        const map = buildLabelColumnMap(detail?.label_graph?.nodes ?? []);
+        return Object.fromEntries(map.entries());
+    }, [detail?.label_graph?.nodes]);
 
-    const clearLabelFocusHref =
-        labelKey === DEFAULT_LABEL_KEY
-            ? "/graph"
-            : `/graph?label_key=${encodeURIComponent(labelKey)}`;
+    const clearLabelFocusHref = React.useMemo(() => {
+        const params = new URLSearchParams();
+        if (labelKey !== DEFAULT_LABEL_KEY) params.set("label_key", labelKey);
+        if (direction === "TB") params.set("direction", "TB");
+        const qs = params.toString();
+        return qs ? `/graph?${qs}` : "/graph";
+    }, [labelKey, direction]);
 
     const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
@@ -120,6 +123,18 @@ export function GraphPage() {
         );
     };
 
+    const setDirection = (nextDirection: string) => {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                if (nextDirection === "LR") next.delete("direction");
+                else next.set("direction", "TB");
+                return next;
+            },
+            { replace: true },
+        );
+    };
+
     const clearLabelFocus = React.useCallback(() => {
         navigate(clearLabelFocusHref);
     }, [navigate, clearLabelFocusHref]);
@@ -131,9 +146,14 @@ export function GraphPage() {
                 clearLabelFocus();
                 return;
             }
-            navigate(graphHref(label, labelKey));
+            const href = graphHref(label, labelKey);
+            if (direction === "TB") {
+                navigate(`${href}&direction=TB`);
+                return;
+            }
+            navigate(href);
         },
-        [navigate, labelKey, stage, clearLabelFocus],
+        [navigate, labelKey, stage, clearLabelFocus, direction],
     );
 
     const startRun = (labels: [string, string][]) => {
@@ -219,26 +239,40 @@ export function GraphPage() {
                 </aside>
                 <div className="pipeline-card-main">
                     <div className="pipeline-card-header">
-                        <div className="pipeline-card-title">
-                            <span
-                                className="pipeline-card-title-icon"
-                                dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                        <div className="pipeline-card-header-left">
+                            <Segmented
+                                size="small"
+                                value={direction}
+                                options={[
+                                    { label: "Horizontal", value: "LR" },
+                                    { label: "Vertical", value: "TB" },
+                                ]}
+                                onChange={(value) => setDirection(String(value))}
                             />
-                            {title}
-                            {stage ? (
-                                <span className="pipeline-card-label-badge" title={`${labelKey}=${stage}`}>
-                                    <span className="pipeline-card-label-badge-key">{labelKey}</span>
-                                    <span className="pipeline-card-label-badge-value">{stage}</span>
-                                    <button
-                                        type="button"
-                                        className="pipeline-card-label-badge-clear"
-                                        onClick={clearLabelFocus}
-                                        aria-label="Clear label focus"
+                            <div className="pipeline-card-title">
+                                <span
+                                    className="pipeline-card-title-icon"
+                                    dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                                />
+                                {title}
+                                {stage ? (
+                                    <span
+                                        className="pipeline-card-label-badge"
+                                        title={`${labelKey}=${stage}`}
                                     >
-                                        ×
-                                    </button>
-                                </span>
-                            ) : null}
+                                        <span className="pipeline-card-label-badge-key">{labelKey}</span>
+                                        <span className="pipeline-card-label-badge-value">{stage}</span>
+                                        <button
+                                            type="button"
+                                            className="pipeline-card-label-badge-clear"
+                                            onClick={clearLabelFocus}
+                                            aria-label="Clear label focus"
+                                        >
+                                            ×
+                                        </button>
+                                    </span>
+                                ) : null}
+                            </div>
                         </div>
                     </div>
                     <div className="pipeline-card-body">
@@ -246,9 +280,10 @@ export function GraphPage() {
                             labelFilter={stage}
                             labelKey={labelKey}
                             labelOrder={labelOrder}
+                            labelColumnMap={labelColumnMap}
                             layoutMode="columns"
                             height="100%"
-                            rankDir="LR"
+                            rankDir={direction}
                             refreshIntervalMs={0}
                             graphRefreshToken={graphRefreshToken}
                         />

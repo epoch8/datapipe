@@ -8,6 +8,8 @@ export type PipelineGraphProps = {
     labelKey?: string | null;
     labelFilter?: string | null;
     labelOrder?: string[];
+    /** Nested label value → top-level column key (for columns layout). */
+    labelColumnMap?: Record<string, string>;
     layoutMode?: "dag" | "columns";
     runSteps?: GraphRunStep[] | null;
     height?: number | string;

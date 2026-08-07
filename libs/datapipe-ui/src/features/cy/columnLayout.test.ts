@@ -1,16 +1,16 @@
 import Cytoscape from "cytoscape";
-import { buildLabelColumnLayout } from "./columnLayout";
+import {
+    buildLabelColumnLayout,
+    buildLabelColumnMap,
+    topLevelLabelOrder,
+} from "./columnLayout";
 
 function center(layout: ReturnType<typeof buildLabelColumnLayout>, id: string) {
     const bbox = layout.get(id)!.bbox;
     return { x: bbox.x + bbox.w / 2, y: bbox.y + bbox.h / 2 };
 }
 
-function bbox(layout: ReturnType<typeof buildLabelColumnLayout>, id: string) {
-    return layout.get(id)!.bbox;
-}
-
-test("packs primary label groups left-to-right and transposes centers", () => {
+test("horizontal layout follows dependency order left-to-right", () => {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
         [
             "extract-step",
@@ -47,9 +47,9 @@ test("packs primary label groups left-to-right and transposes centers", () => {
         "stage",
         ["extract", "transform"],
     );
-    expect(center(horizontal, "extract-step").x).toBeLessThan(
-        center(horizontal, "transform-step").x,
-    );
+    expect(center(horizontal, "extract-step").x).toBeLessThan(center(horizontal, "raw").x);
+    expect(center(horizontal, "raw").x).toBeLessThan(center(horizontal, "transform-step").x);
+    expect(center(horizontal, "transform-step").x).toBeLessThan(center(horizontal, "clean").x);
 
     const vertical = buildLabelColumnLayout(
         nodes,
@@ -59,106 +59,80 @@ test("packs primary label groups left-to-right and transposes centers", () => {
         "stage",
         ["extract", "transform"],
     );
-    expect(center(vertical, "extract-step").y).toBeCloseTo(
-        center(horizontal, "extract-step").x,
-    );
-    expect(center(vertical, "transform-step").y).toBeCloseTo(
-        center(horizontal, "transform-step").x,
-    );
+    expect(center(vertical, "extract-step").y).toBeLessThan(center(vertical, "raw").y);
+    expect(center(vertical, "raw").y).toBeLessThan(center(vertical, "transform-step").y);
 });
 
-test("compresses empty ranks between occupied ranks without reordering inside a label", () => {
-    // Single chain so transform-early and transform-late sit on different DAG
-    // ranks with an extract-only bridge between them (the empty ranks to remove).
+test("maps nested labels into top-level columns", () => {
+    const nodes = [
+        { id: "annotation", kind: "label", parent_id: null, order_min: 0 },
+        { id: "train", kind: "container", parent_id: null, order_min: 1 },
+        { id: "train-yolo", kind: "label", parent_id: "train", order_min: 2 },
+        { id: "fiftyone", kind: "label", parent_id: null, order_min: 3 },
+    ];
+    expect(topLevelLabelOrder(nodes)).toEqual(["annotation", "train", "fiftyone"]);
+    const map = buildLabelColumnMap(nodes);
+    expect(map.get("train-yolo")).toBe("train");
+    expect(map.get("annotation")).toBe("annotation");
+});
+
+test("expanded meta keeps children near the group frame", () => {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
         [
-            "extract-early",
+            "G",
             {
-                type: "transform",
-                name: "extract-early",
+                type: "group-expanded",
+                name: "G",
                 labels: [["stage", "extract"]],
+                child_count: 2,
                 pipelineOrderKey: "0000",
             },
         ],
-        ["a", { type: "table", name: "a", pipelineOrderKey: "0000.out.0000" }],
         [
-            "transform-early",
+            "t1",
             {
                 type: "transform",
-                name: "transform-early",
-                labels: [["stage", "transform"]],
-                pipelineOrderKey: "0001",
-            },
-        ],
-        ["b", { type: "table", name: "b", pipelineOrderKey: "0001.out.0000" }],
-        [
-            "extract-bridge",
-            {
-                type: "transform",
-                name: "extract-bridge",
+                name: "t1",
+                metaGroup: "G",
                 labels: [["stage", "extract"]],
-                pipelineOrderKey: "0002",
+                pipelineOrderKey: "0000.0000",
             },
         ],
-        ["c", { type: "table", name: "c", pipelineOrderKey: "0002.out.0000" }],
         [
-            "transform-late",
+            "t2",
             {
                 type: "transform",
-                name: "transform-late",
-                labels: [["stage", "transform"]],
-                pipelineOrderKey: "0003",
+                name: "t2",
+                metaGroup: "G",
+                labels: [["stage", "extract"]],
+                pipelineOrderKey: "0000.0001",
             },
         ],
-        ["d", { type: "table", name: "d", pipelineOrderKey: "0003.out.0000" }],
-        [
-            "load-step",
-            {
-                type: "transform",
-                name: "load-step",
-                labels: [["stage", "load"]],
-                pipelineOrderKey: "0004",
-            },
-        ],
-        ["out", { type: "table", name: "out", pipelineOrderKey: "0004.out.0000" }],
+        ["out", { type: "table", name: "out", pipelineOrderKey: "0000.out.0000" }],
     ]);
     const edges: Cytoscape.EdgeDataDefinition[] = [
-        { source: "extract-early", target: "a" },
-        { source: "a", target: "transform-early" },
-        { source: "transform-early", target: "b" },
-        { source: "b", target: "extract-bridge" },
-        { source: "extract-bridge", target: "c" },
-        { source: "c", target: "transform-late" },
-        { source: "transform-late", target: "d" },
-        { source: "d", target: "load-step" },
-        { source: "load-step", target: "out" },
+        { source: "t1", target: "t2" },
+        { source: "t2", target: "out" },
+        { source: "G", target: "out" },
     ];
 
     const layout = buildLabelColumnLayout(
         nodes,
         edges,
-        new Set(),
+        new Set(["G"]),
         "LR",
         "stage",
-        ["extract", "transform", "load"],
+        ["extract"],
     );
-
-    // Order inside transform is preserved (early still left of late).
-    expect(center(layout, "transform-early").x).toBeLessThan(
-        center(layout, "transform-late").x,
-    );
-
-    // Empty ranks between transform-early/b and transform-late are compressed:
-    // gap should be roughly RANK_GAP, not the extract-bridge hole from the DAG.
-    const transformGap =
-        bbox(layout, "transform-late").x -
-        (bbox(layout, "b").x + bbox(layout, "b").w);
-    expect(transformGap).toBeLessThan(120);
-
-    expect(center(layout, "extract-early").x).toBeLessThan(
-        center(layout, "transform-early").x,
-    );
-    expect(center(layout, "transform-late").x).toBeLessThan(
-        center(layout, "load-step").x,
-    );
+    const group = layout.get("G")!;
+    expect(group).toBeTruthy();
+    ["t1", "t2"].forEach((id) => {
+        const entry = layout.get(id)!;
+        const cx = entry.bbox.x + entry.bbox.w / 2;
+        const cy = entry.bbox.y + entry.bbox.h / 2;
+        expect(cx).toBeGreaterThan(group.bbox.x);
+        expect(cx).toBeLessThan(group.bbox.x + group.bbox.w);
+        expect(cy).toBeGreaterThan(group.bbox.y);
+        expect(cy).toBeLessThan(group.bbox.y + group.bbox.h);
+    });
 });

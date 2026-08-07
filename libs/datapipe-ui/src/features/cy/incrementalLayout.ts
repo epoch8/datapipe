@@ -529,6 +529,64 @@ export function makeAcyclicRankEdges(
     return result;
 }
 
+/**
+ * Collapse `0018.out.0000` / `0013.0000` → `0018` / `0013` so a pipeline step
+ * and its nearby tables share one layer (vertical stack) instead of a flat
+ * one-node-per-column ribbon.
+ */
+function primaryPipelineOrderKey(key: string): string {
+    const match = /^(\d{4})/.exec(key);
+    return match ? match[1] : key;
+}
+
+/**
+ * Prefer pipeline chronology (`pipelineOrderKey`) for layer assignment so late
+ * steps like fiftyone stay on the right even when a back-edge dependency would
+ * push them left under classic longest-path ranking.
+ *
+ * Layers are keyed by the *primary* pipeline index (first `XXXX` segment), not
+ * every unique order-key suffix — otherwise the graph flattens into a single
+ * ultra-wide row.
+ */
+function chronologicalRanks(
+    nodes: Map<string, MeasuredNode>,
+): Map<string, number> | null {
+    const keyed: Array<{ id: string; primary: string; key: string }> = [];
+    nodes.forEach((node, id) => {
+        if (!node.pipelineOrderKey) return;
+        keyed.push({
+            id,
+            primary: primaryPipelineOrderKey(node.pipelineOrderKey),
+            key: node.pipelineOrderKey,
+        });
+    });
+    if (!keyed.length || keyed.length < nodes.size * 0.5) return null;
+
+    keyed.sort(
+        (a, b) =>
+            a.primary.localeCompare(b.primary) ||
+            a.key.localeCompare(b.key) ||
+            a.id.localeCompare(b.id),
+    );
+
+    const rank = new Map<string, number>();
+    let layer = 0;
+    let prevPrimary = keyed[0].primary;
+    keyed.forEach(({ id, primary }) => {
+        if (primary !== prevPrimary) {
+            layer += 1;
+            prevPrimary = primary;
+        }
+        rank.set(id, layer);
+    });
+
+    // Unkeyed leftovers sit after the last chronological layer.
+    nodes.forEach((_node, id) => {
+        if (!rank.has(id)) rank.set(id, layer + 1);
+    });
+    return densifyRanks(rank);
+}
+
 function longestPathRanks(
     nodes: Map<string, MeasuredNode>,
     edges: LayoutEdge[],
@@ -557,9 +615,8 @@ export function buildRankEdges(
     nodes: Map<string, MeasuredNode>,
     renderEdges: LayoutEdge[],
 ): LayoutEdge[] {
-    // Sequential/synthetic next-step hops stay out of rank assignment (they are
-    // visual “pipeline order” overlays). Crossing minimization still sees them
-    // — including as long spans across intermediate layers.
+    // Sequential/synthetic next-step hops stay out of dependency ranking when
+    // chronology is unavailable; chronologicalRanks uses pipelineOrderKey instead.
     const rankCandidates = renderEdges.filter((edge) => !edge.sequential && !edge.synthetic);
     return makeAcyclicRankEdges(rankCandidates, nodes);
 }
@@ -569,14 +626,16 @@ function computeRanks(
     renderEdges: LayoutEdge[],
     rankEdges?: LayoutEdge[],
 ): Map<string, number> {
+    const chrono = chronologicalRanks(nodes);
+    if (chrono) return chrono;
     const edgesForRank = rankEdges ?? buildRankEdges(nodes, renderEdges);
     return densifyRanks(longestPathRanks(nodes, edgesForRank));
 }
 
 /**
  * Deterministic layered layout (top-to-bottom or left-to-right).
- * Vertical rank from dependency depth; within-layer order uses Sugiyama-style
- * barycenter crossing minimization (seeded by pipeline order).
+ * Layers follow pipeline chronology when order keys exist; within-layer order
+ * uses Sugiyama-style barycenter crossing minimization.
  */
 export function layoutLayeredDag(
     nodes: Map<string, MeasuredNode>,
@@ -665,7 +724,20 @@ function layoutVerticalStack(
     orderedIds: string[],
 ): Map<string, BBox> {
     const positions = new Map<string, BBox>();
-    const order = orderedIds.filter((id) => children.has(id));
+    const seen = new Set<string>();
+    const order: string[] = [];
+    orderedIds.forEach((id) => {
+        if (!children.has(id) || seen.has(id)) return;
+        seen.add(id);
+        order.push(id);
+    });
+    // Place any members missing from pipelineOrder (e.g. second meta with the same
+    // display name whose children were not in the first meta's order list).
+    sortIds(Array.from(children.keys())).forEach((id) => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        order.push(id);
+    });
     if (!order.length) return positions;
 
     let yCursor = 0;
@@ -689,14 +761,19 @@ export function layoutInnerGraph(
     children: Map<string, MeasuredNode>,
     edges: LayoutEdge[],
     pipelineOrder: string[] = [],
+    rankDir: "TB" | "LR" = "TB",
 ): { positions: Map<string, BBox>; contentBBox: BBox } {
     const hasInternalEdges = edges.some(
         ({ source, target }) => children.has(source) && children.has(target),
     );
     const rankEdges = hasInternalEdges ? buildRankEdges(children, edges) : edges;
+    // Match the outer graph orientation so expanded metas don't flip axis mid-pipeline.
     const positions = hasInternalEdges
-        ? layoutLayeredDag(children, edges, "TB", rankEdges)
-        : layoutVerticalStack(children, pipelineOrder.length ? pipelineOrder : sortIds(Array.from(children.keys())));
+        ? layoutLayeredDag(children, edges, rankDir, rankEdges)
+        : layoutVerticalStack(
+              children,
+              pipelineOrder.length ? pipelineOrder : sortIds(Array.from(children.keys())),
+          );
     return { positions, contentBBox: innerGraphBBox(positions) };
 }
 
@@ -1017,6 +1094,7 @@ export function expandGroupInLayout(
         innerNodes,
         innerEdges,
         pipelineOrder.length ? pipelineOrder : innerIds,
+        rankDir,
     );
     const expandedSize = {
         w: contentBBox.w + GROUP_PADDING.left + GROUP_PADDING.right,
@@ -1108,6 +1186,96 @@ export function collapseGroupInLayout(
     return next;
 }
 
+type ExpandedGroupPlan = {
+    size: { w: number; h: number };
+    contentBBox: BBox;
+    innerIds: string[];
+    innerNodes: Map<string, MeasuredNode>;
+    innerPositions: Map<string, BBox>;
+};
+
+/** Measure an expanded meta's inner DAG and the blue-frame size that contains it. */
+function planExpandedGroup(
+    groupId: string,
+    nodes: Map<string, Cytoscape.NodeDataDefinition>,
+    edgeList: LayoutEdge[],
+    rankDir: "TB" | "LR",
+    pipelineOrder: string[],
+): ExpandedGroupPlan | null {
+    const members = getGroupMembers(nodes, groupId);
+    if (!members.size) return null;
+    const boundary = getBoundaryNodes(members, edgeList);
+    const innerIds = sortIds(
+        Array.from(members).filter((id) => {
+            const data = nodes.get(id);
+            return data && !(data.type === "table" && boundary.has(id));
+        }),
+    );
+    if (!innerIds.length) return null;
+
+    const innerNodes = new Map<string, MeasuredNode>();
+    innerIds.forEach((id) => {
+        const data = nodes.get(id);
+        if (!data) return;
+        innerNodes.set(id, measureNode({ ...data, id }));
+    });
+    const innerEdges: LayoutEdge[] = edgeList.filter(
+        ({ source, target }) => innerNodes.has(source) && innerNodes.has(target),
+    );
+    const { positions: innerPositions, contentBBox } = layoutInnerGraph(
+        innerNodes,
+        innerEdges,
+        pipelineOrder.length ? pipelineOrder : innerIds,
+        rankDir,
+    );
+    return {
+        size: {
+            w: contentBBox.w + GROUP_PADDING.left + GROUP_PADDING.right,
+            h: contentBBox.h + GROUP_PADDING.top + GROUP_PADDING.bottom,
+        },
+        contentBBox,
+        innerIds,
+        innerNodes,
+        innerPositions,
+    };
+}
+
+function placeExpandedInners(
+    layout: GraphLayout,
+    groupId: string,
+    plan: ExpandedGroupPlan,
+): void {
+    const groupEntry = layout.get(groupId);
+    if (!groupEntry) return;
+    const groupBBox = groupEntry.bbox;
+    groupEntry.node = {
+        ...groupEntry.node,
+        type: "group-expanded",
+        w: groupBBox.w,
+        h: groupBBox.h,
+    };
+    groupEntry.visible = true;
+    const innerOrigin = {
+        x: groupBBox.x + GROUP_PADDING.left - plan.contentBBox.x,
+        y: groupBBox.y + GROUP_PADDING.top - plan.contentBBox.y,
+    };
+    plan.innerIds.forEach((id) => {
+        const innerBBox = plan.innerPositions.get(id);
+        const measured = plan.innerNodes.get(id);
+        if (!innerBBox || !measured) return;
+        layout.set(id, {
+            bbox: {
+                x: innerOrigin.x + innerBBox.x,
+                y: innerOrigin.y + innerBBox.y,
+                w: innerBBox.w,
+                h: innerBBox.h,
+            },
+            node: { ...measured, metaGroup: groupId },
+            visible: true,
+        });
+    });
+}
+
 export function buildCollapsedLayout(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
     edges: Iterable<Cytoscape.EdgeDataDefinition>,
@@ -1117,12 +1285,42 @@ export function buildCollapsedLayout(
 ): GraphLayout {
     const layout: GraphLayout = new Map();
     const edgeList = edgesToList(edges);
+
+    // Pre-measure every expanded meta so the outer layered DAG reserves the real
+    // footprint up front. Sequential expandGroupInLayout pushes (especially LR)
+    // cascade across multi-expand and leave a sparse/chaotic Fit view.
+    const plans = new Map<string, ExpandedGroupPlan>();
+    sortIds(Array.from(expanded)).forEach((groupId) => {
+        const plan = planExpandedGroup(
+            groupId,
+            nodes,
+            edgeList,
+            rankDir,
+            pipelineOrders.get(groupId) ?? [],
+        );
+        if (plan) plans.set(groupId, plan);
+    });
+
     const layoutNodes = new Map<string, MeasuredNode>();
     nodes.forEach((data, id) => {
         if (data.parent || data.metaGroup) return;
-        // reprocessData marks expanded metas as group-expanded. Seed them here as a
-        // collapsed group footprint so expandGroupInLayout can find and grow them —
-        // skipping left the blue frame stuck at default 450×168 with no boxW/boxH.
+        const plan = plans.get(id);
+        if (plan) {
+            const base = measureNode({
+                ...data,
+                id,
+                type: "group",
+            });
+            layoutNodes.set(id, {
+                ...base,
+                type: "group-expanded",
+                w: plan.size.w,
+                h: plan.size.h,
+            });
+            return;
+        }
+        // reprocessData marks expanded metas as group-expanded. Seed a collapsed
+        // footprint when we have no inner plan so incremental expand can still grow.
         if (data.type === "group-expanded") {
             layoutNodes.set(
                 id,
@@ -1137,34 +1335,42 @@ export function buildCollapsedLayout(
         layoutNodes.set(id, measureNode({ ...data, id }));
     });
 
-    const positions = layoutLayeredDag(layoutNodes, edgeList, rankDir, buildRankEdges(layoutNodes, edgeList));
+    // Expanded metas are visual frames: dependency edges attach to inners / boundary
+    // tables. Project member endpoints onto their meta so the outer DAG still
+    // ranks FindBestModel (etc.) on the correct side instead of rank 0.
+    const memberToGroup = new Map<string, string>();
+    nodes.forEach((data, id) => {
+        if (typeof data.metaGroup === "string") {
+            memberToGroup.set(id, data.metaGroup);
+        }
+    });
+    const outerEdges: LayoutEdge[] = [];
+    const seenOuter = new Set<string>();
+    edgeList.forEach((edge) => {
+        const source = memberToGroup.get(edge.source) ?? edge.source;
+        const target = memberToGroup.get(edge.target) ?? edge.target;
+        if (!layoutNodes.has(source) || !layoutNodes.has(target) || source === target) return;
+        const key = `${source}\0${target}\0${edge.sequential ? 1 : 0}\0${edge.synthetic ? 1 : 0}`;
+        if (seenOuter.has(key)) return;
+        seenOuter.add(key);
+        outerEdges.push({ ...edge, source, target });
+    });
+
+    const positions = layoutLayeredDag(
+        layoutNodes,
+        outerEdges,
+        rankDir,
+        buildRankEdges(layoutNodes, outerEdges),
+    );
     layoutNodes.forEach((node, id) => {
         const bbox = positions.get(id);
         if (!bbox) return;
         layout.set(id, { bbox, node, visible: true });
     });
 
-    sortIds(Array.from(expanded))
-        .filter((groupId) => layout.has(groupId))
-        // Top-to-bottom (then left-to-right) so an upper expand never row-repacks
-        // a group that was already expanded below it.
-        .sort((a, b) => {
-            const ea = layout.get(a);
-            const eb = layout.get(b);
-            if (!ea || !eb) return a.localeCompare(b);
-            return ea.bbox.y - eb.bbox.y || ea.bbox.x - eb.bbox.x || a.localeCompare(b);
-        })
-        .forEach((groupId) => {
-            const expandedLayout = expandGroupInLayout(
-                layout,
-                groupId,
-                nodes,
-                edges,
-                rankDir,
-                pipelineOrders.get(groupId) ?? [],
-            );
-            expandedLayout.forEach((entry, id) => layout.set(id, entry));
-        });
+    plans.forEach((plan, groupId) => {
+        placeExpandedInners(layout, groupId, plan);
+    });
 
     normalizeLayout(layout);
     return layout;
@@ -1629,24 +1835,36 @@ export function animateLayoutTransition(
     });
 }
 
-export function fitGraphViewport(cy: Cytoscape.Core): void {
-    cy.fit(cy.elements(), 60);
+export type FitViewportOptions = {
+    /** @deprecated Ignored — Fit always shows the full target without a zoom floor. */
+    readable?: boolean;
+};
+
+/**
+ * Fit the camera to show all (or focused expanded) content. No readable-zoom
+ * floor: Fit must be allowed to zoom out as far as the graph needs.
+ */
+export function fitGraphViewport(cy: Cytoscape.Core, _options?: FitViewportOptions): void {
+    const expanded = cy.nodes('node[type = "group-expanded"]');
+    let target = cy.elements();
+    if (expanded.nonempty()) {
+        let focus = cy.collection();
+        expanded.forEach((group) => {
+            focus = focus.union(group);
+            const groupId = group.id();
+            focus = focus.union(
+                cy.nodes().filter((node) => node.data("metaGroup") === groupId),
+            );
+        });
+        target = focus;
+    }
+
+    cy.fit(target, FIT_PADDING);
     const fitZoom = cy.zoom();
     cy.minZoom(Math.min(0.05, fitZoom * 0.3));
     cy.maxZoom(Math.max(2.5, fitZoom * 6));
-
-    const READABLE_ZOOM = 0.4;
-    if (fitZoom < READABLE_ZOOM) {
-        const bb = cy.elements().boundingBox();
-        cy.zoom(READABLE_ZOOM);
-        cy.pan({
-            x: cy.width() / 2 - READABLE_ZOOM * (bb.x1 + bb.w / 2),
-            y: 90 - READABLE_ZOOM * bb.y1,
-        });
-    }
 }
 
-const READABLE_ZOOM = 0.4;
 const FIT_PADDING = 60;
 
 /** Bounding box (model coords) of all visible entries in a layout. */
@@ -1669,11 +1887,14 @@ export function layoutContentBBox(layout: GraphLayout): BBox | null {
 export type Viewport = { zoom: number; pan: { x: number; y: number }; minZoom: number; maxZoom: number };
 
 /**
- * Target pan/zoom to fit `bb` (model coords) into the viewport, mirroring the
- * clamping and readable-zoom rules of `fitGraphViewport` but *without* mutating
- * the camera — so callers can animate toward it instead of snapping.
+ * Target pan/zoom to fit `bb` (model coords) into the viewport, mirroring
+ * `fitGraphViewport` but *without* mutating the camera — so callers can animate.
  */
-export function fitViewportForBBox(cy: Cytoscape.Core, bb: BBox): Viewport | null {
+export function fitViewportForBBox(
+    cy: Cytoscape.Core,
+    bb: BBox,
+    _options?: FitViewportOptions,
+): Viewport | null {
     const W = cy.width();
     const H = cy.height();
     if (!bb.w || !bb.h || !W || !H) return null;
@@ -1681,21 +1902,11 @@ export function fitViewportForBBox(cy: Cytoscape.Core, bb: BBox): Viewport | nul
     const rawZoom = Math.min((W - 2 * FIT_PADDING) / bb.w, (H - 2 * FIT_PADDING) / bb.h);
     const minZoom = Math.min(0.05, rawZoom * 0.3);
     const maxZoom = Math.max(2.5, rawZoom * 6);
-    let zoom = Math.max(minZoom, Math.min(maxZoom, rawZoom));
-
-    let pan: { x: number; y: number };
-    if (zoom < READABLE_ZOOM) {
-        zoom = READABLE_ZOOM;
-        pan = {
-            x: W / 2 - READABLE_ZOOM * (bb.x + bb.w / 2),
-            y: 90 - READABLE_ZOOM * bb.y,
-        };
-    } else {
-        pan = {
-            x: W / 2 - zoom * (bb.x + bb.w / 2),
-            y: H / 2 - zoom * (bb.y + bb.h / 2),
-        };
-    }
+    const zoom = Math.max(minZoom, Math.min(maxZoom, rawZoom));
+    const pan = {
+        x: W / 2 - zoom * (bb.x + bb.w / 2),
+        y: H / 2 - zoom * (bb.y + bb.h / 2),
+    };
     return { zoom, pan, minZoom, maxZoom };
 }
 
@@ -1708,10 +1919,11 @@ export function animateFitViewport(
     cy: Cytoscape.Core,
     layout: GraphLayout,
     duration: number = ANIMATION_MS,
+    options?: FitViewportOptions,
 ): void {
     const bb = layoutContentBBox(layout);
     if (!bb) return;
-    const target = fitViewportForBBox(cy, bb);
+    const target = fitViewportForBBox(cy, bb, options);
     if (!target) return;
 
     // Widen bounds first so the target zoom is always reachable by the tween.

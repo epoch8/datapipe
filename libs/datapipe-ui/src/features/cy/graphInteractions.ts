@@ -65,7 +65,8 @@ function findExpandedFrameAt(
     cy.nodes('node[type = "group-expanded"]').forEach((ele) => {
         if (!ele.visible()) return;
         const node = ele as Cytoscape.NodeSingular;
-        const bb = node.boundingBox({ includeLabels: false, includeOverlays: false });
+        // includeLabels: title sits above the body (text-margin-y); users RMB/dblclick it.
+        const bb = node.boundingBox({ includeLabels: true, includeOverlays: false });
         if (x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2) return;
         // Prefer the tightest (nested) frame if several overlap.
         const area = bb.w * bb.h;
@@ -153,6 +154,32 @@ function suppressUpcomingNativeCxttap(cy: Cytoscape.Core): void {
     if (renderer?.hoverData) {
         renderer.hoverData.cxtDragged = true;
     }
+}
+
+/**
+ * Expanded frames use `events: no`, so cytoscape often never arms cxtDragged on
+ * RMB — the mouseup→core `cxttap` then resets cytoscape-context-menus and the
+ * menu vanishes (feels like RMB "works every other try"). Keep the flag set
+ * through the mouseup that follows contextmenu.
+ */
+function armNativeCxttapSuppression(cy: Cytoscape.Core): () => void {
+    suppressUpcomingNativeCxttap(cy);
+    const pulse = () => suppressUpcomingNativeCxttap(cy);
+    const onMouseUp = () => {
+        pulse();
+        window.setTimeout(pulse, 0);
+    };
+    document.addEventListener("mouseup", onMouseUp, true);
+    const interval = window.setInterval(pulse, 16);
+    const timeout = window.setTimeout(() => {
+        window.clearInterval(interval);
+        document.removeEventListener("mouseup", onMouseUp, true);
+    }, 250);
+    return () => {
+        window.clearInterval(interval);
+        window.clearTimeout(timeout);
+        document.removeEventListener("mouseup", onMouseUp, true);
+    };
 }
 
 /**
@@ -597,7 +624,7 @@ export function attachGraphInteractions(
         const node = event.target as Cytoscape.NodeSingular;
         const type = node.data("type") as string;
         if (type === "group" || type === "group-expanded") {
-            callbacks.onToggleGroup(node.data("name") as string);
+            callbacks.onToggleGroup(node.id());
         }
     };
 
@@ -611,7 +638,8 @@ export function attachGraphInteractions(
         event.stopPropagation();
         // Skip native mouseup→core cxttap that would wipe this menu on empty
         // frame chrome (title band has no events:yes node under the cursor).
-        suppressUpcomingNativeCxttap(cy);
+        const disarm = armNativeCxttapSuppression(cy);
+        void disarm; // runs until timeout; keep armed through mouseup
         callbacks.onContextTarget?.(node);
 
         // Plugin only *shows* matching items; it does not hide the rest unless the
@@ -664,7 +692,7 @@ export function attachGraphInteractions(
         if (type === "group" || type === "group-expanded") {
             event.preventDefault();
             event.stopPropagation();
-            callbacks.onToggleGroup(node.data("name") as string);
+            callbacks.onToggleGroup(node.id());
         }
     };
 

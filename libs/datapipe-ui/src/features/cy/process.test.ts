@@ -60,6 +60,90 @@ describe("reprocessData expanded boundary tables", () => {
         // Declared meta outputs stay outside too.
         expect(nodes.get("out_x")?.metaGroup).toBeUndefined();
     });
+
+    it("preserves stage labels on the expanded blue frame", () => {
+        const data = makeMetaGraph();
+        (data.pipeline[0] as { labels?: string[][] }).labels = [["stage", "annotation"]];
+        const { nodes } = reprocessData(data, new Set(["G"]));
+        expect(nodes.get("G")?.type).toBe("group-expanded");
+        expect(nodes.get("G")?.labels).toEqual([["stage", "annotation"]]);
+    });
+});
+
+describe("reprocessData duplicate meta names", () => {
+    it("keeps two metas with the same display name as distinct graph nodes", () => {
+        const catalog = {
+            a: table("a"),
+            b: table("b"),
+            c: table("c"),
+            d: table("d"),
+        };
+        const data: GraphData = {
+            catalog,
+            pipeline: [
+                {
+                    id: "inf1",
+                    name: "Inference_DetectionModel",
+                    type: "meta",
+                    inputs: ["a"],
+                    outputs: ["b"],
+                    graph: {
+                        catalog,
+                        pipeline: [
+                            {
+                                id: "t_early",
+                                name: "detection_model_inference_early",
+                                type: "transform",
+                                inputs: ["a"],
+                                outputs: ["b"],
+                            },
+                        ],
+                    },
+                },
+                {
+                    id: "mid",
+                    name: "mid_step",
+                    type: "transform",
+                    inputs: ["b"],
+                    outputs: ["c"],
+                },
+                {
+                    id: "inf2",
+                    name: "Inference_DetectionModel",
+                    type: "meta",
+                    inputs: ["c"],
+                    outputs: ["d"],
+                    graph: {
+                        catalog,
+                        pipeline: [
+                            {
+                                id: "t_late",
+                                name: "detection_model_inference_late",
+                                type: "transform",
+                                inputs: ["c"],
+                                outputs: ["d"],
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+
+        const collapsed = reprocessData(data, new Set());
+        expect(collapsed.nodes.get("Inference_DetectionModel__0000")?.type).toBe("group");
+        expect(collapsed.nodes.get("Inference_DetectionModel__0002")?.type).toBe("group");
+        expect(collapsed.nodes.get("Inference_DetectionModel")).toBeUndefined();
+
+        const expandedLate = reprocessData(data, new Set(["Inference_DetectionModel__0002"]));
+        expect(expandedLate.nodes.get("Inference_DetectionModel__0002")?.type).toBe(
+            "group-expanded",
+        );
+        expect(expandedLate.nodes.get("detection_model_inference_late")?.metaGroup).toBe(
+            "Inference_DetectionModel__0002",
+        );
+        expect(expandedLate.nodes.get("detection_model_inference_early")).toBeUndefined();
+        expect(expandedLate.nodes.get("Inference_DetectionModel__0000")?.type).toBe("group");
+    });
 });
 
 describe("reprocessData sequential next-step edges", () => {

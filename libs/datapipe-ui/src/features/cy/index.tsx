@@ -27,6 +27,7 @@ import {
     setSelectedNodeIds,
 } from "./graphVisualState";
 import { attachGraphInteractions, MAX_ZOOM, MIN_ZOOM } from "./graphInteractions";
+import { fitGraphViewport } from "./incrementalLayout";
 import { initHtmlNodeLabels } from "./htmlNodeLabels";
 import { Alert, AlertProps, Spin } from "antd";
 import { apiFetch, getApiErrorMessage } from "../../api/http";
@@ -177,6 +178,7 @@ function PipelineGraphView({
     labelKey = null,
     labelFilter = null,
     labelOrder = [],
+    labelColumnMap = {},
     layoutMode = "dag",
     runSteps = null,
     height = "100%",
@@ -490,6 +492,7 @@ function PipelineGraphView({
             layoutMode,
             labelKey: labelKey ?? "stage",
             labelOrder,
+            labelColumnMap: new Map(Object.entries(labelColumnMap)),
             anchorGroup: anchorGroupRef.current,
             expanding: expandingRef.current,
             onLayoutComplete: () => {
@@ -511,6 +514,7 @@ function PipelineGraphView({
         layoutMode,
         labelKey,
         labelOrder,
+        labelColumnMap,
         labelFilter,
         graphUrl,
         applySessionRestore,
@@ -555,8 +559,10 @@ function PipelineGraphView({
                 cy.resize();
                 refreshInternalEdgeOverlay(cy);
                 // Autofit only while camera is still in auto mode (first load).
+                // Overview fit (no readable clamp) — matches the Fit button so a
+                // resize does not jump back to a clipped middle slice.
                 if (!userInteractedRef.current && cy.nodes().nonempty()) {
-                    cy.fit(undefined, 60);
+                    fitGraphViewport(cy);
                 }
             });
         });
@@ -615,7 +621,7 @@ function PipelineGraphView({
                     onClickFunction: () => {
                         const node = contextTargetRef.current;
                         if (node?.data("type") === "group") {
-                            toggleGroupExpandRef.current(node.data("name") as string);
+                            toggleGroupExpandRef.current(node.id());
                         }
                     },
                 },
@@ -627,7 +633,7 @@ function PipelineGraphView({
                     onClickFunction: () => {
                         const node = contextTargetRef.current;
                         if (node?.data("type") === "group-expanded") {
-                            toggleGroupExpandRef.current(node.data("name") as string);
+                            toggleGroupExpandRef.current(node.id());
                         }
                     },
                 },
@@ -702,7 +708,7 @@ function PipelineGraphView({
         if (!cy || cy.destroyed()) return;
         userInteractedRef.current = false;
         cy.resize();
-        cy.fit(undefined, 48);
+        fitGraphViewport(cy);
     }, [cy]);
 
     const navigateToInspectorNode = useCallback(
