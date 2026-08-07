@@ -49,6 +49,10 @@ export type GraphLayout = Map<string, LayoutEntry>;
 const GROUP_PADDING = { top: 56, bottom: 44, left: 44, right: 44 };
 const RANK_SEP = 48;
 const NODE_SEP = 48;
+/** Vertical gap between wrapped LR rows of pipeline steps. */
+const ROW_SEP = 96;
+/** Extra horizontal gap between adjacent pipeline-step blocks on one row. */
+const BLOCK_SEP = 72;
 function bboxFromCenter(cx: number, cy: number, w: number, h: number): BBox {
     return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
@@ -530,9 +534,7 @@ export function makeAcyclicRankEdges(
 }
 
 /**
- * Collapse `0018.out.0000` / `0013.0000` → `0018` / `0013` so a pipeline step
- * and its nearby tables share one layer (vertical stack) instead of a flat
- * one-node-per-column ribbon.
+ * Collapse `0018.out.0000` / `0013.0000` → `0018` / `0013` for step grouping.
  */
 function primaryPipelineOrderKey(key: string): string {
     const match = /^(\d{4})/.exec(key);
@@ -540,23 +542,34 @@ function primaryPipelineOrderKey(key: string): string {
 }
 
 /**
+ * Within one pipeline step: inputs → transform(s) → outputs as separate layers
+ * so LR reads `<table> → <step> → <table>` instead of stacking roles in one column.
+ * 0 = `.in.`, 1 = step/meta, 2 = `.out.`.
+ */
+function pipelineOrderPhase(key: string): number {
+    if (/\.in\./.test(key)) return 0;
+    if (/\.out\./.test(key)) return 2;
+    return 1;
+}
+
+/**
  * Prefer pipeline chronology (`pipelineOrderKey`) for layer assignment so late
  * steps like fiftyone stay on the right even when a back-edge dependency would
  * push them left under classic longest-path ranking.
  *
- * Layers are keyed by the *primary* pipeline index (first `XXXX` segment), not
- * every unique order-key suffix — otherwise the graph flattens into a single
- * ultra-wide row.
+ * Layers advance on (primary step, role phase) so each step expands to up to
+ * three columns — not one mega-column and not one column per unique key.
  */
 function chronologicalRanks(
     nodes: Map<string, MeasuredNode>,
 ): Map<string, number> | null {
-    const keyed: Array<{ id: string; primary: string; key: string }> = [];
+    const keyed: Array<{ id: string; primary: string; phase: number; key: string }> = [];
     nodes.forEach((node, id) => {
         if (!node.pipelineOrderKey) return;
         keyed.push({
             id,
             primary: primaryPipelineOrderKey(node.pipelineOrderKey),
+            phase: pipelineOrderPhase(node.pipelineOrderKey),
             key: node.pipelineOrderKey,
         });
     });
@@ -565,6 +578,7 @@ function chronologicalRanks(
     keyed.sort(
         (a, b) =>
             a.primary.localeCompare(b.primary) ||
+            a.phase - b.phase ||
             a.key.localeCompare(b.key) ||
             a.id.localeCompare(b.id),
     );
@@ -572,10 +586,12 @@ function chronologicalRanks(
     const rank = new Map<string, number>();
     let layer = 0;
     let prevPrimary = keyed[0].primary;
-    keyed.forEach(({ id, primary }) => {
-        if (primary !== prevPrimary) {
+    let prevPhase = keyed[0].phase;
+    keyed.forEach(({ id, primary, phase }) => {
+        if (primary !== prevPrimary || phase !== prevPhase) {
             layer += 1;
             prevPrimary = primary;
+            prevPhase = phase;
         }
         rank.set(id, layer);
     });
@@ -633,15 +649,195 @@ function computeRanks(
 }
 
 /**
+ * Aim for a roughly square step grid so long pipelines don't become one
+ * ultra-wide ribbon. Short graphs stay on a single row.
+ */
+function targetBlocksPerRow(blockCount: number): number {
+    if (blockCount <= 5) return blockCount;
+    return Math.max(3, Math.ceil(Math.sqrt(blockCount)));
+}
+
+function rankColumnHeight(rankIds: string[], nodes: Map<string, MeasuredNode>): number {
+    const heights = rankIds.map((id) => nodes.get(id)?.h ?? 0);
+    return heights.reduce((sum, h) => sum + h, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
+}
+
+function rankColumnWidth(rankIds: string[], nodes: Map<string, MeasuredNode>): number {
+    return Math.max(...rankIds.map((id) => nodes.get(id)?.w ?? 0), 0);
+}
+
+/**
+ * Group consecutive LR layers that share a pipeline primary (`0003`, …) into
+ * one step block so wrapping never splits `<in> → <step> → <out>`.
+ */
+function groupRanksIntoStepBlocks(
+    sortedRankKeys: number[],
+    orderedRanks: Map<number, string[]>,
+    nodes: Map<string, MeasuredNode>,
+): number[][] {
+    const blocks: number[][] = [];
+    let current: number[] | null = null;
+    let prevPrimary: string | null = null;
+
+    sortedRankKeys.forEach((r) => {
+        const rankIds = orderedRanks.get(r) ?? [];
+        let primary: string | null = null;
+        for (const id of rankIds) {
+            const key = nodes.get(id)?.pipelineOrderKey;
+            if (key) {
+                primary = primaryPipelineOrderKey(key);
+                break;
+            }
+        }
+        const sameStep =
+            current !== null &&
+            primary !== null &&
+            prevPrimary !== null &&
+            primary === prevPrimary;
+        if (!sameStep || current === null) {
+            current = [r];
+            blocks.push(current);
+            prevPrimary = primary;
+            return;
+        }
+        current.push(r);
+    });
+    return blocks;
+}
+
+/**
+ * Place LR layers left-to-right, wrapping whole pipeline-step blocks onto new
+ * rows so chronology stays readable without an endless horizontal strip.
+ *
+ * Rows alternate direction (snake / boustrophedon): even L→R, odd R→L, so the
+ * eye continues from the end of one row into the start of the next on the same
+ * side. Inside each step block, `in → step → out` stays left-to-right.
+ */
+function placeLayeredLrWrapped(
+    nodes: Map<string, MeasuredNode>,
+    orderedRanks: Map<number, string[]>,
+): Map<string, BBox> {
+    const sortedRankKeys = Array.from(orderedRanks.keys()).sort((a, b) => a - b);
+    const blocks = groupRanksIntoStepBlocks(sortedRankKeys, orderedRanks, nodes);
+    const perRow = targetBlocksPerRow(blocks.length);
+
+    const blockSize = blocks.map((rankKeys) => {
+        let width = 0;
+        let height = 0;
+        rankKeys.forEach((r, index) => {
+            const rankIds = orderedRanks.get(r) ?? [];
+            width += rankColumnWidth(rankIds, nodes);
+            if (index < rankKeys.length - 1) width += RANK_SEP;
+            height = Math.max(height, rankColumnHeight(rankIds, nodes));
+        });
+        return { width, height };
+    });
+
+    const rowContentWidth = (rowStart: number, rowEnd: number): number => {
+        let width = 0;
+        for (let bi = rowStart; bi < rowEnd; bi += 1) {
+            width += blockSize[bi].width;
+            if (bi < rowEnd - 1) width += BLOCK_SEP;
+        }
+        return width;
+    };
+
+    let maxContentWidth = 0;
+    for (let rowStart = 0; rowStart < blocks.length; rowStart += perRow) {
+        maxContentWidth = Math.max(
+            maxContentWidth,
+            rowContentWidth(rowStart, Math.min(rowStart + perRow, blocks.length)),
+        );
+    }
+
+    const positions = new Map<string, BBox>();
+    let yRow = 0;
+    for (let rowStart = 0; rowStart < blocks.length; rowStart += perRow) {
+        const rowEnd = Math.min(rowStart + perRow, blocks.length);
+        const rowIndex = Math.floor(rowStart / perRow);
+        const rtl = rowIndex % 2 === 1;
+        const rowHeight = Math.max(
+            ...blockSize.slice(rowStart, rowEnd).map((size) => size.height),
+            0,
+        );
+        const contentWidth = rowContentWidth(rowStart, rowEnd);
+        // Right-align RTL (and short trailing RTL) rows so the continuation sits
+        // under the previous row's exit instead of jumping back to x=0.
+        let xCursor = rtl ? maxContentWidth - contentWidth : 0;
+
+        const placeOrder: number[] = [];
+        for (let bi = rowStart; bi < rowEnd; bi += 1) placeOrder.push(bi);
+        if (rtl) placeOrder.reverse();
+
+        placeOrder.forEach((bi, orderIndex) => {
+            const rankKeys = blocks[bi];
+            let x = xCursor;
+            rankKeys.forEach((r, ri) => {
+                const rankIds = orderedRanks.get(r) ?? [];
+                const colW = rankColumnWidth(rankIds, nodes);
+                const colH = rankColumnHeight(rankIds, nodes);
+                let yCursor = yRow + (rowHeight - colH) / 2;
+                rankIds.forEach((id, index) => {
+                    const node = nodes.get(id);
+                    if (!node) return;
+                    const cx = x + colW / 2;
+                    const cy = yCursor + node.h / 2;
+                    positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
+                    yCursor += node.h + (index < rankIds.length - 1 ? NODE_SEP : 0);
+                });
+                x += colW + (ri < rankKeys.length - 1 ? RANK_SEP : 0);
+            });
+            xCursor += blockSize[bi].width + (orderIndex < placeOrder.length - 1 ? BLOCK_SEP : 0);
+        });
+        yRow += rowHeight + ROW_SEP;
+    }
+    return positions;
+}
+
+/**
+ * Single-row LR placement (no snake wrap) — used for the flat horizontal ribbon.
+ */
+function placeLayeredLrFlat(
+    nodes: Map<string, MeasuredNode>,
+    orderedRanks: Map<number, string[]>,
+): Map<string, BBox> {
+    const positions = new Map<string, BBox>();
+    const sortedRankKeys = Array.from(orderedRanks.keys()).sort((a, b) => a - b);
+    let xCursor = 0;
+    sortedRankKeys.forEach((r) => {
+        const rankIds = orderedRanks.get(r) ?? [];
+        const colW = rankColumnWidth(rankIds, nodes);
+        const colH = rankColumnHeight(rankIds, nodes);
+        let yCursor = -colH / 2;
+        rankIds.forEach((id, index) => {
+            const node = nodes.get(id);
+            if (!node) return;
+            const cx = xCursor + colW / 2;
+            const cy = yCursor + node.h / 2;
+            positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
+            yCursor += node.h + (index < rankIds.length - 1 ? NODE_SEP : 0);
+        });
+        xCursor += colW + RANK_SEP;
+    });
+    return positions;
+}
+
+/**
  * Deterministic layered layout (top-to-bottom or left-to-right).
- * Layers follow pipeline chronology when order keys exist; within-layer order
- * uses Sugiyama-style barycenter crossing minimization.
+ * Layers follow pipeline chronology when order keys exist (inputs → step →
+ * outputs per step); within-layer order uses Sugiyama-style barycenter
+ * crossing minimization so parallel chains stack vertically.
+ *
+ * LR + wrapRows: snake grid (even L→R, odd R→L).
+ * LR without wrap: one long horizontal ribbon.
+ * TB: top-to-bottom layers (no row wrap).
  */
 export function layoutLayeredDag(
     nodes: Map<string, MeasuredNode>,
     edges: LayoutEdge[],
     rankDir: "TB" | "LR" = "TB",
     rankEdges?: LayoutEdge[],
+    wrapRows = true,
 ): Map<string, BBox> {
     const ids = sortIds(Array.from(nodes.keys()));
     if (!ids.length) return new Map();
@@ -658,48 +854,33 @@ export function layoutLayeredDag(
     // adjacent layers after densify); rankEdges only drive layer assignment.
     const orderedRanks = minimizeLayerCrossings(ranks, edges, nodes);
 
+    if (rankDir === "LR") {
+        return wrapRows
+            ? placeLayeredLrWrapped(nodes, orderedRanks)
+            : placeLayeredLrFlat(nodes, orderedRanks);
+    }
+
     const positions = new Map<string, BBox>();
     const sortedRankKeys = Array.from(orderedRanks.keys()).sort((a, b) => a - b);
 
-    if (rankDir === "TB") {
-        let yCursor = 0;
-        sortedRankKeys.forEach((r) => {
-            const rankIds = orderedRanks.get(r) ?? [];
-            const widths = rankIds.map((id) => nodes.get(id)?.w ?? 0);
-            const totalWidth =
-                widths.reduce((sum, w) => sum + w, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
-            let xCursor = -totalWidth / 2;
-            rankIds.forEach((id, index) => {
-                const node = nodes.get(id);
-                if (!node) return;
-                const cx = xCursor + node.w / 2;
-                const cy = yCursor + node.h / 2;
-                positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
-                xCursor += node.w + (index < rankIds.length - 1 ? NODE_SEP : 0);
-            });
-            const rankHeight = Math.max(...rankIds.map((id) => nodes.get(id)?.h ?? 0), 0);
-            yCursor += rankHeight + RANK_SEP;
+    let yCursor = 0;
+    sortedRankKeys.forEach((r) => {
+        const rankIds = orderedRanks.get(r) ?? [];
+        const widths = rankIds.map((id) => nodes.get(id)?.w ?? 0);
+        const totalWidth =
+            widths.reduce((sum, w) => sum + w, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
+        let xCursor = -totalWidth / 2;
+        rankIds.forEach((id, index) => {
+            const node = nodes.get(id);
+            if (!node) return;
+            const cx = xCursor + node.w / 2;
+            const cy = yCursor + node.h / 2;
+            positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
+            xCursor += node.w + (index < rankIds.length - 1 ? NODE_SEP : 0);
         });
-    } else {
-        let xCursor = 0;
-        sortedRankKeys.forEach((r) => {
-            const rankIds = orderedRanks.get(r) ?? [];
-            const heights = rankIds.map((id) => nodes.get(id)?.h ?? 0);
-            const totalHeight =
-                heights.reduce((sum, h) => sum + h, 0) + NODE_SEP * Math.max(0, rankIds.length - 1);
-            let yCursor = -totalHeight / 2;
-            rankIds.forEach((id, index) => {
-                const node = nodes.get(id);
-                if (!node) return;
-                const cx = xCursor + node.w / 2;
-                const cy = yCursor + node.h / 2;
-                positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
-                yCursor += node.h + (index < rankIds.length - 1 ? NODE_SEP : 0);
-            });
-            const rankWidth = Math.max(...rankIds.map((id) => nodes.get(id)?.w ?? 0), 0);
-            xCursor += rankWidth + RANK_SEP;
-        });
-    }
+        const rankHeight = Math.max(...rankIds.map((id) => nodes.get(id)?.h ?? 0), 0);
+        yCursor += rankHeight + RANK_SEP;
+    });
 
     return positions;
 }
@@ -762,6 +943,7 @@ export function layoutInnerGraph(
     edges: LayoutEdge[],
     pipelineOrder: string[] = [],
     rankDir: "TB" | "LR" = "TB",
+    wrapRows = true,
 ): { positions: Map<string, BBox>; contentBBox: BBox } {
     const hasInternalEdges = edges.some(
         ({ source, target }) => children.has(source) && children.has(target),
@@ -769,7 +951,7 @@ export function layoutInnerGraph(
     const rankEdges = hasInternalEdges ? buildRankEdges(children, edges) : edges;
     // Match the outer graph orientation so expanded metas don't flip axis mid-pipeline.
     const positions = hasInternalEdges
-        ? layoutLayeredDag(children, edges, rankDir, rankEdges)
+        ? layoutLayeredDag(children, edges, rankDir, rankEdges, wrapRows)
         : layoutVerticalStack(
               children,
               pipelineOrder.length ? pipelineOrder : sortIds(Array.from(children.keys())),
@@ -1064,6 +1246,7 @@ export function expandGroupInLayout(
     edges: Iterable<Cytoscape.EdgeDataDefinition>,
     rankDir: "TB" | "LR",
     pipelineOrder: string[] = [],
+    wrapRows = true,
 ): GraphLayout {
     const next = cloneLayout(layout);
     const groupEntry = next.get(groupId);
@@ -1095,6 +1278,7 @@ export function expandGroupInLayout(
         innerEdges,
         pipelineOrder.length ? pipelineOrder : innerIds,
         rankDir,
+        wrapRows,
     );
     const expandedSize = {
         w: contentBBox.w + GROUP_PADDING.left + GROUP_PADDING.right,
@@ -1201,6 +1385,7 @@ function planExpandedGroup(
     edgeList: LayoutEdge[],
     rankDir: "TB" | "LR",
     pipelineOrder: string[],
+    wrapRows = true,
 ): ExpandedGroupPlan | null {
     const members = getGroupMembers(nodes, groupId);
     if (!members.size) return null;
@@ -1227,6 +1412,7 @@ function planExpandedGroup(
         innerEdges,
         pipelineOrder.length ? pipelineOrder : innerIds,
         rankDir,
+        wrapRows,
     );
     return {
         size: {
@@ -1282,6 +1468,7 @@ export function buildCollapsedLayout(
     expanded: Set<string>,
     rankDir: "TB" | "LR",
     pipelineOrders: Map<string, string[]> = new Map(),
+    wrapRows = true,
 ): GraphLayout {
     const layout: GraphLayout = new Map();
     const edgeList = edgesToList(edges);
@@ -1297,6 +1484,7 @@ export function buildCollapsedLayout(
             edgeList,
             rankDir,
             pipelineOrders.get(groupId) ?? [],
+            wrapRows,
         );
         if (plan) plans.set(groupId, plan);
     });
@@ -1361,6 +1549,7 @@ export function buildCollapsedLayout(
         outerEdges,
         rankDir,
         buildRankEdges(layoutNodes, outerEdges),
+        wrapRows,
     );
     layoutNodes.forEach((node, id) => {
         const bbox = positions.get(id);

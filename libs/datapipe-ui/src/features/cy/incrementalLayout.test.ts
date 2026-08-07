@@ -265,7 +265,7 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         expect(positions.get("best")!.x).toBeLessThan(positions.get("fiftyone")!.x);
     });
 
-    it("layoutLayeredDag stacks same pipeline-step nodes in one LR column", () => {
+    it("layoutLayeredDag places step then stacked outs then next step L→R", () => {
         const nodes = new Map<string, MeasuredNode>([
             [
                 "step",
@@ -303,12 +303,155 @@ describe("minimizeLayerCrossings (barycenter)", () => {
             ],
         ]);
         const positions = layoutLayeredDag(nodes, [], "LR");
-        expect(positions.get("step")!.x).toBe(positions.get("out_a")!.x);
+        expect(positions.get("step")!.x).toBeLessThan(positions.get("out_a")!.x);
         expect(positions.get("out_a")!.x).toBe(positions.get("out_b")!.x);
-        expect(positions.get("step")!.x).toBeLessThan(positions.get("next")!.x);
-        // Vertical stack, not a horizontal ribbon.
-        const ys = ["step", "out_a", "out_b"].map((id) => positions.get(id)!.y);
-        expect(new Set(ys).size).toBe(3);
+        expect(positions.get("out_a")!.x).toBeLessThan(positions.get("next")!.x);
+        expect(positions.get("out_a")!.y).toBeLessThan(positions.get("out_b")!.y);
+    });
+
+    it("layoutLayeredDag places input → step → output left-to-right", () => {
+        const nodes = new Map<string, MeasuredNode>([
+            [
+                "in_t",
+                {
+                    ...stubNode("in_t"),
+                    type: "table",
+                    pipelineIndex: 2,
+                    pipelineOrderKey: "0002.in.0000",
+                },
+            ],
+            [
+                "step",
+                {
+                    ...stubNode("step"),
+                    pipelineIndex: 2,
+                    pipelineOrderKey: "0002",
+                },
+            ],
+            [
+                "out_t",
+                {
+                    ...stubNode("out_t"),
+                    type: "table",
+                    pipelineIndex: 2,
+                    pipelineOrderKey: "0002.out.0000",
+                },
+            ],
+        ]);
+        const positions = layoutLayeredDag(nodes, [], "LR");
+        expect(positions.get("in_t")!.x).toBeLessThan(positions.get("step")!.x);
+        expect(positions.get("step")!.x).toBeLessThan(positions.get("out_t")!.x);
+    });
+
+    it("layoutLayeredDag stacks parallel chains with empty mid slots", () => {
+        const nodes = new Map<string, MeasuredNode>([
+            [
+                "t1",
+                {
+                    ...stubNode("t1"),
+                    type: "table",
+                    pipelineOrderKey: "0001.in.0000",
+                },
+            ],
+            [
+                "t2",
+                {
+                    ...stubNode("t2"),
+                    type: "table",
+                    pipelineOrderKey: "0001.in.0001",
+                },
+            ],
+            [
+                "step",
+                {
+                    ...stubNode("step"),
+                    pipelineOrderKey: "0001",
+                },
+            ],
+            [
+                "t3",
+                {
+                    ...stubNode("t3"),
+                    type: "table",
+                    pipelineOrderKey: "0001.out.0000",
+                },
+            ],
+            [
+                "t4",
+                {
+                    ...stubNode("t4"),
+                    type: "table",
+                    pipelineOrderKey: "0001.out.0001",
+                },
+            ],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "t1", target: "step" },
+            { source: "step", target: "t3" },
+            { source: "t2", target: "t4" },
+        ];
+        const positions = layoutLayeredDag(nodes, edges, "LR");
+        expect(positions.get("t1")!.x).toBe(positions.get("t2")!.x);
+        expect(positions.get("t1")!.x).toBeLessThan(positions.get("step")!.x);
+        expect(positions.get("step")!.x).toBeLessThan(positions.get("t3")!.x);
+        expect(positions.get("t3")!.x).toBe(positions.get("t4")!.x);
+        // Parallel inputs / outputs stack; mid column has only the transform.
+        expect(positions.get("t1")!.y).not.toBe(positions.get("t2")!.y);
+        expect(positions.get("t3")!.y).not.toBe(positions.get("t4")!.y);
+    });
+
+    it("layoutLayeredDag flat horizontal keeps one long L→R ribbon", () => {
+        const nodes = new Map<string, MeasuredNode>();
+        for (let i = 0; i < 9; i += 1) {
+            const id = `s${i}`;
+            nodes.set(id, {
+                ...stubNode(id),
+                pipelineOrderKey: String(i).padStart(4, "0"),
+            });
+        }
+        const positions = layoutLayeredDag(nodes, [], "LR", undefined, false);
+        expect(positions.get("s0")!.y).toBe(positions.get("s8")!.y);
+        expect(positions.get("s0")!.x).toBeLessThan(positions.get("s4")!.x);
+        expect(positions.get("s4")!.x).toBeLessThan(positions.get("s8")!.x);
+    });
+
+    it("layoutLayeredDag wraps long pipelines into a snake grid", () => {
+        const nodes = new Map<string, MeasuredNode>();
+        for (let i = 0; i < 9; i += 1) {
+            const id = `s${i}`;
+            nodes.set(id, {
+                ...stubNode(id),
+                pipelineOrderKey: String(i).padStart(4, "0"),
+            });
+        }
+        const positions = layoutLayeredDag(nodes, [], "LR");
+        // 9 steps → ~3×3 snake: row0 L→R, row1 R→L under the previous exit.
+        expect(positions.get("s0")!.y).toBe(positions.get("s1")!.y);
+        expect(positions.get("s0")!.y).toBe(positions.get("s2")!.y);
+        expect(positions.get("s0")!.x).toBeLessThan(positions.get("s1")!.x);
+        expect(positions.get("s1")!.x).toBeLessThan(positions.get("s2")!.x);
+        expect(positions.get("s0")!.y).toBeLessThan(positions.get("s3")!.y);
+        // Continuation stays on the right: s2 above s3, then leftward s3→s4→s5.
+        expect(positions.get("s3")!.x).toBe(positions.get("s2")!.x);
+        expect(positions.get("s5")!.x).toBeLessThan(positions.get("s4")!.x);
+        expect(positions.get("s4")!.x).toBeLessThan(positions.get("s3")!.x);
+        expect(positions.get("s5")!.x).toBe(positions.get("s0")!.x);
+        // Wrapping must not split a step's in→step→out motif (still L→R locally).
+        nodes.set("in8", {
+            ...stubNode("in8"),
+            type: "table",
+            pipelineOrderKey: "0008.in.0000",
+        });
+        nodes.set("out8", {
+            ...stubNode("out8"),
+            type: "table",
+            pipelineOrderKey: "0008.out.0000",
+        });
+        const withIo = layoutLayeredDag(nodes, [], "LR");
+        expect(withIo.get("in8")!.x).toBeLessThan(withIo.get("s8")!.x);
+        expect(withIo.get("s8")!.x).toBeLessThan(withIo.get("out8")!.x);
+        expect(withIo.get("in8")!.y).toBe(withIo.get("s8")!.y);
+        expect(withIo.get("s8")!.y).toBe(withIo.get("out8")!.y);
     });
 
     it("layoutLayeredDag places uncrossed endpoints left-to-right consistently", () => {

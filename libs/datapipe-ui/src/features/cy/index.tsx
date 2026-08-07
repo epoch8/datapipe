@@ -40,6 +40,7 @@ import {
 } from "./graphSessionState";
 import { GraphData } from "../../types";
 import type { PipelineGraphProps } from "../../types/pipelineGraph";
+import { resolveFlowLayout } from "../../types/pipelineGraph";
 
 Cytoscape.use(dagre);
 Cytoscape.use(contextMenus);
@@ -183,6 +184,7 @@ function PipelineGraphView({
     runSteps = null,
     height = "100%",
     rankDir = "TB",
+    flowLayout: flowLayoutProp,
     refreshIntervalMs = 0,
     pipelineId: pipelineIdProp,
     graphRefreshToken = 0,
@@ -237,7 +239,13 @@ function PipelineGraphView({
     // instead, so the transition stays smooth and consistent.
     const firstMountRef = useRef(true);
 
+    const flowLayout = useMemo(
+        () => resolveFlowLayout(flowLayoutProp, rankDir),
+        [flowLayoutProp, rankDir],
+    );
+
     const needFitRef = useRef(true);
+    const flowLayoutRef = useRef(flowLayout);
     // Whether the user has manually panned/zoomed. Until they do, the camera is
     // considered "auto": a container resize (flex settle, inspector panel resize,
     // sidebar toggle, window resize) re-fits so the graph stays centered instead
@@ -486,9 +494,15 @@ function PipelineGraphView({
         // fetch for the current graphUrl lands so we animate to the right frame.
         if (loadedUrlRef.current !== graphUrl) return;
 
+        if (flowLayoutRef.current !== flowLayout) {
+            flowLayoutRef.current = flowLayout;
+            needFitRef.current = true;
+        }
+
         syncCyGraph(cy, rawGraph, expandedGroups, {
             mode: needFitRef.current ? "fit" : "preserve",
             rankDir,
+            flowLayout,
             layoutMode,
             labelKey: labelKey ?? "stage",
             labelOrder,
@@ -511,6 +525,7 @@ function PipelineGraphView({
         expandedGroups,
         loading,
         rankDir,
+        flowLayout,
         layoutMode,
         labelKey,
         labelOrder,

@@ -28,6 +28,11 @@ import {
     makeEdgeKey,
 } from "./edgeTransition";
 import { reprocessData } from "./process";
+import {
+    flowLayoutRankDir,
+    flowLayoutWrapRows,
+    resolveFlowLayout,
+} from "../../types/pipelineGraph";
 
 export type CyElement = Cytoscape.ElementDefinition;
 
@@ -36,6 +41,8 @@ export type SyncMode = "fit" | "preserve";
 export type SyncOptions = {
     mode: SyncMode;
     rankDir?: "TB" | "LR";
+    /** When set, overrides rankDir and enables/disables snake wrap. */
+    flowLayout?: "snake" | "horizontal" | "vertical";
     layoutMode?: "dag" | "columns";
     labelKey?: string;
     labelOrder?: string[];
@@ -310,7 +317,9 @@ export function syncCyGraph(
     expanded: Set<string>,
     options: SyncOptions,
 ) {
-    const rankDir = options.rankDir ?? "TB";
+    const flowLayout = resolveFlowLayout(options.flowLayout, options.rankDir);
+    const rankDir = flowLayoutRankDir(flowLayout);
+    const wrapRows = flowLayoutWrapRows(flowLayout);
     const target = buildElements(data, expanded, options.layoutMode ?? "dag");
     const { nodes, edges } = reprocessData(data, expanded);
     const anchorGroup = options.anchorGroup ?? null;
@@ -320,7 +329,9 @@ export function syncCyGraph(
     const previousStructureKey = structureKeyStore.get(cy);
     const currentLayoutConfigKey = JSON.stringify({
         layoutMode: options.layoutMode ?? "dag",
+        flowLayout,
         rankDir,
+        wrapRows,
         labelKey: options.labelKey ?? "stage",
         labelOrder: options.labelOrder ?? [],
         labelColumnMap: Array.from((options.labelColumnMap ?? new Map()).entries()).sort(),
@@ -339,8 +350,9 @@ export function syncCyGraph(
                   options.labelOrder ?? [],
                   pipelineOrders,
                   options.labelColumnMap ?? new Map(),
+                  wrapRows,
               )
-            : buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders);
+            : buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders, wrapRows);
 
     const isInitial = cy.nodes().empty() || !previousLayout;
 
@@ -483,6 +495,7 @@ export function syncCyGraph(
                 edges,
                 expandRankDir,
                 pipelineOrders.get(anchorGroup) ?? [],
+                wrapRows,
             );
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
             layoutStore.set(cy, nextLayout);

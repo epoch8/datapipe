@@ -21,6 +21,7 @@ const ARROW_MARKER = {
 
 const ARROW_MARKERS: Array<{ id: string; fill: string }> = [
     { id: "cy-internal-edge-arrow", fill: edgeColors.default },
+    { id: "cy-internal-edge-arrow-sequential", fill: edgeColors.sequential },
     { id: "cy-internal-edge-arrow-related", fill: edgeColors.related },
     { id: "cy-internal-edge-arrow-focused", fill: edgeColors.active },
     { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
@@ -73,6 +74,7 @@ function edgeStroke(edge: Cytoscape.EdgeSingular): string {
     if (edge.hasClass("failed")) return edgeColors.error;
     if (edge.hasClass("related")) return edgeColors.related;
     if (edge.hasClass("focused")) return edgeColors.active;
+    if (isSequentialEdge(edge)) return edgeColors.sequential;
     return edgeColors.default;
 }
 
@@ -80,6 +82,7 @@ function edgeArrowMarker(edge: Cytoscape.EdgeSingular): string {
     if (edge.hasClass("failed")) return "url(#cy-internal-edge-arrow-failed)";
     if (edge.hasClass("related")) return "url(#cy-internal-edge-arrow-related)";
     if (edge.hasClass("focused")) return "url(#cy-internal-edge-arrow-focused)";
+    if (isSequentialEdge(edge)) return "url(#cy-internal-edge-arrow-sequential)";
     return "url(#cy-internal-edge-arrow)";
 }
 
@@ -87,18 +90,20 @@ function edgeOpacity(edge: Cytoscape.EdgeSingular): number {
     if (edge.hasClass("muted")) return 0.12;
     if (edge.hasClass("focused") || edge.hasClass("failed")) return 1;
     if (edge.hasClass("related")) return 0.9;
+    if (isSequentialEdge(edge)) return 0.92;
     return 0.78;
 }
 
 function edgeWidth(edge: Cytoscape.EdgeSingular): number {
     if (edge.hasClass("focused") || edge.hasClass("failed")) return 3.2;
     if (edge.hasClass("related")) return 2.6;
+    if (isSequentialEdge(edge)) return 2.4;
     return 2.15;
 }
 
-/** Model-space dash; scales with the CSS layer like cytoscape dashed edges. */
-function edgeDashArray(edge: Cytoscape.EdgeSingular): string | null {
-    return isSequentialEdge(edge) ? "10 7" : null;
+/** Data edges are solid; chronology used to be dashed — keep solid for clarity. */
+function edgeDashArray(_edge: Cytoscape.EdgeSingular): string | null {
+    return null;
 }
 
 function updateOverlayCamera(cy: Cytoscape.Core, layer: HTMLDivElement, defs: SVGDefsElement): void {
@@ -191,6 +196,7 @@ function syncInternalEdgeOverlay(cy: Cytoscape.Core): void {
 
     cy.edges("[internalMeta]").forEach((edgeEle) => {
         const edge = edgeEle as Cytoscape.EdgeSingular;
+        if (edge.hasClass("focus-hidden") || edge.hasClass("label-hidden")) return;
         const id = edge.id();
         seen.add(id);
 

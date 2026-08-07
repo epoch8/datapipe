@@ -49,14 +49,22 @@ function paintHtmlLabels(cy: Cytoscape.Core, paint: FocusPaint | null): void {
 
         if (!paint) {
             setHtmlFocusClasses(labelEl, false, false, false);
+            labelEl.classList.remove("is-focus-hidden");
             return;
         }
 
         const id = node.id();
         const selected = paint.selectedIds.has(id);
         const related = paint.highlightedIds.has(id) && !selected;
-        const dimmed = !paint.highlightedIds.has(id);
-        setHtmlFocusClasses(labelEl, selected, related, dimmed);
+        const hidden = !paint.highlightedIds.has(id);
+        setHtmlFocusClasses(labelEl, selected, related, false);
+        labelEl.classList.toggle("is-focus-hidden", hidden);
+        if (hidden) {
+            labelEl.style.opacity = "0";
+        } else if (labelEl.style.opacity === "0" && !labelEl.classList.contains("is-label-hidden")) {
+            const stored = node.data("htmlLabelOpacity") as number | undefined;
+            labelEl.style.opacity = String(typeof stored === "number" ? stored : 1);
+        }
     });
 }
 
@@ -77,7 +85,7 @@ function setHtmlLabelHidden(cy: Cytoscape.Core, nodeId: string, hidden: boolean)
     labelEl.classList.toggle("is-label-hidden", hidden);
     // Templates and opacity sync write inline opacity; keep that in sync too so
     // focus hide/show stays correct even if CSS specificity changes later.
-    if (hidden) {
+    if (hidden || labelEl.classList.contains("is-focus-hidden")) {
         labelEl.style.opacity = "0";
     } else if (!labelEl.style.opacity || labelEl.style.opacity === "0") {
         const node = cy.getElementById(nodeId);
@@ -141,23 +149,37 @@ function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null):
     cy.batch(() => {
         cy.edges().forEach((edge) => {
             const related = paint?.edgeRelatedIds.has(edge.id()) ?? false;
-            const muted = paint != null && !related;
             edge.toggleClass("related", related);
-            edge.toggleClass("muted", muted);
+            edge.toggleClass("muted", false);
+            edge.toggleClass("focus-hidden", paint != null && !related);
             edge.removeClass("focused");
         });
 
         cy.nodes().forEach((node) => {
-            if (nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) return;
             const id = node.id();
             const focused = paint?.selectedIds.has(id) ?? false;
             const related = paint != null && !focused && paint.highlightedIds.has(id);
-            const dimmed = paint != null && !focused && !related;
-            node.toggleClass("focused", focused);
-            node.toggleClass("related", related);
-            node.toggleClass("dimmed", dimmed);
+            const hidden = paint != null && !paint.highlightedIds.has(id);
+            if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) {
+                node.toggleClass("focused", focused);
+                node.toggleClass("related", related);
+                node.toggleClass("dimmed", false);
+            }
+            node.toggleClass("focus-hidden", hidden);
         });
     });
+}
+
+function expandHighlightWithAncestors(
+    nodes: Cytoscape.NodeCollection,
+): Cytoscape.NodeCollection {
+    let expanded = nodes;
+    nodes.forEach((node) => {
+        if (node.isChild()) {
+            expanded = expanded.union(node.ancestors()) as Cytoscape.NodeCollection;
+        }
+    });
+    return expanded;
 }
 
 function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
@@ -167,7 +189,9 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
     if (selected.length === 1) {
         const node = selected.first() as Cytoscape.NodeSingular;
         const connectedEdges = node.connectedEdges();
-        const highlightedNodes = connectedEdges.connectedNodes().union(node);
+        const highlightedNodes = expandHighlightWithAncestors(
+            connectedEdges.connectedNodes().union(node) as Cytoscape.NodeCollection,
+        );
         return {
             selectedIds: new Set([node.id()]),
             highlightedIds: new Set(highlightedNodes.map((n) => n.id())),
@@ -182,6 +206,7 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
         highlightedEdges = highlightedEdges.union(connectedEdges) as Cytoscape.EdgeCollection;
         highlightedNodes = highlightedNodes.union(connectedEdges.connectedNodes());
     });
+    highlightedNodes = expandHighlightWithAncestors(highlightedNodes);
 
     return {
         selectedIds: new Set(selected.map((n) => n.id())),
@@ -206,6 +231,8 @@ function commitFocusPaint(cy: Cytoscape.Core, paint: FocusPaint | null): void {
     focusPaintStore.set(cy, paint);
     paintNativeNodesAndEdges(cy, paint);
     paintHtmlLabels(cy, paint);
+    // Selection hide must not leave label-filter hide stuck wrong after clear.
+    paintLabelFocus(cy, labelFocusStore.get(cy) ?? null);
     refreshInternalEdgeOverlay(cy);
 }
 

@@ -21,8 +21,9 @@ export function buildLabelColumnLayout(
     _preferredLabelOrder: string[] = [],
     pipelineOrders: Map<string, string[]> = new Map(),
     _labelColumnMap: Map<string, string> = new Map(),
+    wrapRows = true,
 ): GraphLayout {
-    return buildCollapsedLayout(nodes, edges, expanded, orientation, pipelineOrders);
+    return buildCollapsedLayout(nodes, edges, expanded, orientation, pipelineOrders, wrapRows);
 }
 
 /** Map every label/container id to its top-level ancestor column key. */

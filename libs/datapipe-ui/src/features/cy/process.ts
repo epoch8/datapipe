@@ -35,7 +35,7 @@ function shouldReplaceTableOrder(
     return nextOrderKey.localeCompare(currentOrderKey) < 0;
 }
 
-/** Prefer marking an existing hop as sequential; otherwise add a synthetic dashed hop. */
+/** Prefer marking an existing hop as sequential; otherwise add a synthetic next-step hop. */
 function ensureSequentialEdge(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     source: string,

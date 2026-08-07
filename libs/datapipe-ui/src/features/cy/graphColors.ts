@@ -32,4 +32,6 @@ export const edgeColors = {
     /** Neighbor highlight when a node is selected (muted teal, softer than selection). */
     related: "#5BA8A0",
     error: "#D92D20",
+    /** Pipeline chronology (next-step hops) — distinct from data-dependency edges. */
+    sequential: "#0F766E",
 } as const;

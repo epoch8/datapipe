@@ -147,7 +147,7 @@ describe("reprocessData duplicate meta names", () => {
 });
 
 describe("reprocessData sequential next-step edges", () => {
-    it("adds dashed sequential hops between consecutive top-level steps", () => {
+    it("adds sequential hops between consecutive top-level steps", () => {
         const catalog = {
             a_in: table("a_in"),
             a_out: table("a_out"),

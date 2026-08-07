@@ -29,11 +29,6 @@ function nodeHeight(node: Cytoscape.NodeSingular): number {
     return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).h;
 }
 
-/** Pipeline next-step hop (transform/group → transform/group) — dashed. */
-function isSequentialEdge(edge: Cytoscape.EdgeSingular): boolean {
-    return Boolean(edge.data("sequential"));
-}
-
 export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: "node",
@@ -147,10 +142,34 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "target-arrow-color": edgeColors.default,
             "target-arrow-shape": "triangle",
             "arrow-scale": 1.08,
-            "line-style": (edge: Cytoscape.EdgeSingular) =>
-                isSequentialEdge(edge) ? "dashed" : "solid",
+            "line-style": "solid",
             opacity: 0.78,
             "z-index": 1,
+        },
+    },
+    {
+        // Chronology spine: next pipeline step (not a data dependency).
+        selector: "edge[sequential]",
+        style: {
+            width: 2.4,
+            "line-style": "solid",
+            "line-color": edgeColors.sequential,
+            "target-arrow-color": edgeColors.sequential,
+            "target-arrow-shape": "chevron",
+            "arrow-scale": 1.25,
+            opacity: 0.92,
+            label: "next",
+            "font-size": 11,
+            "font-weight": 700,
+            color: edgeColors.sequential,
+            "text-background-color": graphColors.canvas.bg,
+            "text-background-opacity": 0.92,
+            "text-background-padding": "3px",
+            "text-border-width": 1,
+            "text-border-color": edgeColors.sequential,
+            "text-border-opacity": 0.35,
+            "text-rotation": "autorotate",
+            "z-index": 2,
         },
     },
     {
@@ -165,6 +184,15 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "arrow-scale": 1.35,
             "source-distance-from-node": 2,
             "target-distance-from-node": 4,
+        },
+    },
+    {
+        selector: 'edge[sequential][layoutMode = "columns"]',
+        style: {
+            "target-arrow-shape": "chevron",
+            "arrow-scale": 1.4,
+            width: 2.2,
+            opacity: 0.9,
         },
     },
     {
@@ -213,6 +241,23 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     },
     {
         selector: "edge.label-hidden",
+        style: {
+            opacity: 0,
+            display: "none",
+            events: "no",
+        },
+    },
+    {
+        // Selection neighborhood: hide everything outside the focused subgraph.
+        selector: "node.focus-hidden",
+        style: {
+            opacity: 0,
+            display: "none",
+            events: "no",
+        },
+    },
+    {
+        selector: "edge.focus-hidden",
         style: {
             opacity: 0,
             display: "none",

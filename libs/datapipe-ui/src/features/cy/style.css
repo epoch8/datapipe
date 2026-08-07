@@ -644,7 +644,9 @@
 }
 
 .node-core.is-label-hidden,
-.node-compound-label.is-label-hidden {
+.node-compound-label.is-label-hidden,
+.node-core.is-focus-hidden,
+.node-compound-label.is-focus-hidden {
     /* Beat inline opacity from htmlLabelOpacity / label templates. */
     opacity: 0 !important;
     pointer-events: none !important;

@@ -11,6 +11,7 @@ import { PageHeader } from "./shared";
 import { workflowIconSvg } from "../cy/nodeIcons";
 import { prependRecentRun } from "./utils/recentRuns";
 import { RunStepsDropdown } from "./components/RunStepsDropdown";
+import type { GraphFlowLayout } from "../../types/pipelineGraph";
 import {
     DEFAULT_LABEL_KEY,
     graphHref,
@@ -21,12 +22,23 @@ import {
     topLevelLabelOrder,
 } from "../cy/columnLayout";
 
+function parseFlowLayout(searchParams: URLSearchParams): GraphFlowLayout {
+    const layout = searchParams.get("layout");
+    if (layout === "snake" || layout === "horizontal" || layout === "vertical") {
+        return layout;
+    }
+    // Legacy `direction=` links.
+    if (searchParams.get("direction") === "TB") return "vertical";
+    if (searchParams.get("direction") === "LR") return "horizontal";
+    return "snake";
+}
+
 export function GraphPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const stage = searchParams.get("stage");
     const labelKeyParam = searchParams.get("label_key") || DEFAULT_LABEL_KEY;
-    const direction = searchParams.get("direction") === "TB" ? "TB" : "LR";
+    const flowLayout = parseFlowLayout(searchParams);
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
     const [stageRuns, setStageRuns] = React.useState<RecentRunSummary[]>([]);
@@ -51,10 +63,10 @@ export function GraphPage() {
     const clearLabelFocusHref = React.useMemo(() => {
         const params = new URLSearchParams();
         if (labelKey !== DEFAULT_LABEL_KEY) params.set("label_key", labelKey);
-        if (direction === "TB") params.set("direction", "TB");
+        if (flowLayout !== "snake") params.set("layout", flowLayout);
         const qs = params.toString();
         return qs ? `/graph?${qs}` : "/graph";
-    }, [labelKey, direction]);
+    }, [labelKey, flowLayout]);
 
     const loadCapabilities = React.useCallback(() => {
         opsApi.getCapabilities().then(setCapabilities).catch((e) => setError(e));
@@ -123,12 +135,13 @@ export function GraphPage() {
         );
     };
 
-    const setDirection = (nextDirection: string) => {
+    const setFlowLayout = (nextLayout: string) => {
         setSearchParams(
             (prev) => {
                 const next = new URLSearchParams(prev);
-                if (nextDirection === "LR") next.delete("direction");
-                else next.set("direction", "TB");
+                next.delete("direction");
+                if (nextLayout === "snake") next.delete("layout");
+                else next.set("layout", nextLayout);
                 return next;
             },
             { replace: true },
@@ -147,13 +160,13 @@ export function GraphPage() {
                 return;
             }
             const href = graphHref(label, labelKey);
-            if (direction === "TB") {
-                navigate(`${href}&direction=TB`);
+            if (flowLayout !== "snake") {
+                navigate(`${href}&layout=${flowLayout}`);
                 return;
             }
             navigate(href);
         },
-        [navigate, labelKey, stage, clearLabelFocus, direction],
+        [navigate, labelKey, stage, clearLabelFocus, flowLayout],
     );
 
     const startRun = (labels: [string, string][]) => {
@@ -242,12 +255,13 @@ export function GraphPage() {
                         <div className="pipeline-card-header-left">
                             <Segmented
                                 size="small"
-                                value={direction}
+                                value={flowLayout}
                                 options={[
-                                    { label: "Horizontal", value: "LR" },
-                                    { label: "Vertical", value: "TB" },
+                                    { label: "Zigzag", value: "snake" },
+                                    { label: "Horizontal", value: "horizontal" },
+                                    { label: "Vertical", value: "vertical" },
                                 ]}
-                                onChange={(value) => setDirection(String(value))}
+                                onChange={(value) => setFlowLayout(String(value))}
                             />
                             <div className="pipeline-card-title">
                                 <span
@@ -283,7 +297,7 @@ export function GraphPage() {
                             labelColumnMap={labelColumnMap}
                             layoutMode="columns"
                             height="100%"
-                            rankDir={direction}
+                            flowLayout={flowLayout}
                             refreshIntervalMs={0}
                             graphRefreshToken={graphRefreshToken}
                         />
