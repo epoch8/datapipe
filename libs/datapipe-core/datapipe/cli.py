@@ -16,9 +16,9 @@ from rich import print as rprint
 
 from datapipe.compute import (
     ComputeStep,
-    BaseIndexStep,
-    BaseFlowStep,
-    BaseMetaDataStep,
+    IndexStep,
+    FlowStep,
+    MetaDataStep,
     DatapipeApp, 
     run_steps, 
     run_steps_changelist
@@ -464,7 +464,7 @@ def step_list(ctx: click.Context, status: bool) -> None:  # noqa
             extra_args["total_idx_count"] = "[red]N/A[/red]"
             extra_args["changed_idx_count"] = "[red]N/A[/red]"
 
-            if isinstance(step, BaseIndexStep):
+            if isinstance(step, IndexStep):
                 try:
                     step_status = step.get_status(ds=app.ds)
                     extra_args["total_idx_count"] = str(step_status.total_idx_count)
@@ -529,7 +529,7 @@ def run_idx(ctx: click.Context, idx: str) -> None:
     idx_dict = {k: v for k, v in (i.split("=") for i in idx.split(","))}
 
     for step in steps_to_run:
-        if isinstance(step, BaseFlowStep):
+        if isinstance(step, FlowStep):
             step.run_idx(ds=app.ds, idx=cast(IndexDF, pd.DataFrame([idx_dict])))
 
 
@@ -556,8 +556,8 @@ def run_changelist(
         start_step_objs = [steps_to_run[0]]
 
     start_step_obj = start_step_objs[0]
-    assert isinstance(start_step_obj, BaseIndexStep)
-    assert isinstance(start_step_obj, BaseFlowStep)
+    assert isinstance(start_step_obj, IndexStep)
+    assert isinstance(start_step_obj, FlowStep)
 
     if start_step_obj not in steps_to_run:
         steps_to_run = [start_step_obj] + steps_to_run
@@ -608,7 +608,7 @@ def fill_metadata(ctx: click.Context) -> None:
     run_config = RunConfig(callback=StdoutRunCallback())
 
     for step in steps_to_run:
-        if isinstance(step, BaseMetaDataStep):
+        if isinstance(step, MetaDataStep):
             rprint(f"Filling metadata for step: [bold][green]{step.name}[/green][/bold]")
             step.fill_metadata(app.ds, run_config=run_config)
 
@@ -622,7 +622,7 @@ def reset_metadata(ctx: click.Context) -> None:  # noqa
     print(f"Resetting following steps: {', '.join(steps_to_run_names)}")
 
     for step in steps_to_run:
-        if isinstance(step, BaseMetaDataStep):
+        if isinstance(step, MetaDataStep):
             step.reset_metadata(app.ds)
 
 

@@ -20,9 +20,6 @@ from datapipe.compute import (
     ComputeInput,
     ComputeOutput,
     ComputeStep,
-    BaseIndexStep,
-    BaseFlowStep,
-    BaseMetaDataStep,
     ChaimComputeStep,
     PipelineStep,
     StepStatus,
@@ -68,7 +65,7 @@ ChainTransformFunc = Callable[..., TransformResult]
 ChainTransformRankFunc =  Callable[..., int]
 
 
-class BaseChainTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, ChaimComputeStep):
+class BaseChainTransformStep(ChaimComputeStep):
     """
     Abstract class for chain transform steps
     """

@@ -2,7 +2,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence, Protocol
+from typing import Iterable, Literal, Sequence, Protocol, runtime_checkable
 
 from opentelemetry import trace
 from sqlalchemy import Column
@@ -200,27 +200,26 @@ def pipeline_output_to_compute_output(ds: DataStore, catalog: Catalog, output: P
     return ComputeOutput(dt=catalog.get_datatable(ds, table), keys=keys)
 
 
-class BaseIndexStep:
+@runtime_checkable
+class IndexStep(Protocol):
     def get_full_process_ids(
         self,
         ds: DataStore,
         chunk_size: int | None = None,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[ProcessItem]]:
-        raise NotImplementedError()
+    ) -> tuple[int, Iterable[ProcessItem]]: ...
 
-    def get_status(self, ds: DataStore) -> StepStatus:
-        raise NotImplementedError
+    def get_status(self, ds: DataStore) -> StepStatus: ...
 
 
-class BaseFlowStep:
+@runtime_checkable
+class FlowStep(Protocol):
     def get_change_list_process_ids(
         self,
         ds: DataStore,
         change_list: ChangeList,
         run_config: RunConfig | None = None,
-    ) -> tuple[int, Iterable[ProcessItem]]:
-        raise NotImplementedError()
+    ) -> tuple[int, Iterable[ProcessItem]]: ...
 
     def run_changelist(
         self,
@@ -228,8 +227,7 @@ class BaseFlowStep:
         change_list: ChangeList,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
-    ) -> ChangeList: 
-        raise NotImplementedError()
+    ) -> ChangeList: ...
 
     def run_idx(
         self,
@@ -237,16 +235,14 @@ class BaseFlowStep:
         idx: ProcessItem,
         run_config: RunConfig | None = None,
         executor: Executor | None = None,
-    ) -> ChangeList: 
-        raise NotImplementedError()
+    ) -> ChangeList: ...
 
 
-class BaseMetaDataStep:
-    def reset_metadata(self, ds: DataStore) -> None: 
-        raise NotImplementedError()
+@runtime_checkable
+class MetaDataStep(Protocol):
+    def reset_metadata(self, ds: DataStore) -> None: ...
     
-    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None:
-        raise NotImplementedError()
+    def fill_metadata(self, ds: DataStore, run_config: RunConfig | None = None) -> None: ...
 
 
 class ComputeStep:
@@ -548,7 +544,7 @@ def run_steps_changelist(
                     with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
                         logger.info(f"Running {step.name} {step.format_io()}")
 
-                        if isinstance(step, BaseFlowStep):
+                        if isinstance(step, FlowStep):
                             step_changes = step.run_changelist(
                                 ds,
                                 current_changes,

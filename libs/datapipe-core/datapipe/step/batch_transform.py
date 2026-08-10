@@ -21,9 +21,6 @@ from datapipe.compute import (
     ComputeInput,
     ComputeOutput,
     ComputeStep,
-    BaseIndexStep,
-    BaseFlowStep,
-    BaseMetaDataStep,
     PipelineStep,
     StepStatus,
     make_mungled_step_name,
@@ -65,7 +62,7 @@ class DatatableBatchTransformFunc(Protocol):
 BatchTransformFunc = Callable[..., TransformResult]
 
 
-class BaseBatchTransformStep(BaseIndexStep, BaseFlowStep, BaseMetaDataStep, ComputeStep):
+class BaseBatchTransformStep(ComputeStep):
     """
     Abstract class for batch transform steps
     """
