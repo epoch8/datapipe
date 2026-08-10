@@ -16,22 +16,17 @@ function tableOrderKey(
 function shouldReplaceTableOrder(
     existing: Cytoscape.NodeDataDefinition | undefined,
     nextOrderKey: string | undefined,
-    source: TableOrderSource,
+    _source: TableOrderSource,
 ): boolean {
     if (!nextOrderKey) return false;
 
     const currentOrderKey = existing?.pipelineOrderKey as string | undefined;
-    const currentSource = existing?.tableOrderSource as TableOrderSource | undefined;
-
     if (!currentOrderKey) return true;
 
-    // Output tables should stay near the transform/meta-step that produced them.
-    // A later consumer must not pull a produced table sideways across the graph.
-    if (source === "producer" && currentSource !== "producer") return true;
-    if (source === "consumer" && currentSource === "producer") return false;
-
-    // Among producers, or among source-only consumer anchors, keep the earliest
-    // pipeline occurrence for deterministic stable ordering.
+    // First use wins: keep the earliest pipelineOrderKey so a table that is an
+    // early input (then later rewritten as an output) stays next to its first
+    // consumer — e.g. image__ground_truth before get_images_without_ground_truth,
+    // not next to a late parse_annotations producer.
     return nextOrderKey.localeCompare(currentOrderKey) < 0;
 }
 

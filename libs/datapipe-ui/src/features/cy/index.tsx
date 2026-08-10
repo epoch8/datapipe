@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Cytoscape from "cytoscape";
 import CytoscapeComponent from "react-cytoscapejs";
-import "cytoscape-context-menus/cytoscape-context-menus.css";
 
 import dagre from "cytoscape-dagre";
-import contextMenus from "cytoscape-context-menus";
 
 import "./style.css";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
@@ -44,7 +42,6 @@ import type { PipelineGraphProps } from "../../types/pipelineGraph";
 import { resolveFlowLayout } from "../../types/pipelineGraph";
 
 Cytoscape.use(dagre);
-Cytoscape.use(contextMenus);
 
 function buildGraphUrl(stageFilter?: string | null, labelKey?: string | null): string {
     const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
@@ -635,62 +632,6 @@ function PipelineGraphView({
                 }
             },
         });
-    }, [cy]);
-
-    useEffect(() => {
-        if (!cy || cy.destroyed()) return;
-
-        // @ts-ignore cytoscape-context-menus
-        cy.contextMenus({
-            menuItems: [
-                {
-                    id: "open-details",
-                    content: "Open details page…",
-                    selector: "node",
-                    onClickFunction: () => {
-                        const node = contextTargetRef.current;
-                        if (node && typeof node.data === "function") {
-                            openNodeDetailsRef.current(node);
-                        }
-                    },
-                },
-                {
-                    id: "expand-steps",
-                    content: "Expand into sub-steps",
-                    selector: 'node[type = "group"]',
-                    onClickFunction: () => {
-                        const node = contextTargetRef.current;
-                        if (node?.data("type") === "group") {
-                            toggleGroupExpandRef.current(node.id());
-                        }
-                    },
-                },
-                {
-                    id: "collapse-steps",
-                    content: "Collapse into single step",
-                    // Only the expanded blue frame — not child steps/tables (they have metaGroup).
-                    selector: 'node[type = "group-expanded"]',
-                    onClickFunction: () => {
-                        const node = contextTargetRef.current;
-                        if (node?.data("type") === "group-expanded") {
-                            toggleGroupExpandRef.current(node.id());
-                        }
-                    },
-                },
-            ],
-        });
-
-        return () => {
-            try {
-                if (!cy.destroyed()) {
-                    // @ts-ignore
-                    cy.contextMenus("destroy");
-                    labelsInitStore.delete(cy);
-                }
-            } catch {
-                /* cytoscape may already be torn down */
-            }
-        };
     }, [cy]);
 
     useEffect(() => {

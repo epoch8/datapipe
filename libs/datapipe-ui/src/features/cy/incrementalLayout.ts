@@ -46,6 +46,8 @@ export type LayoutEntry = {
     bbox: BBox;
     node: MeasuredNode;
     visible: boolean;
+    /** Zigzag row index from LR wrap (even L→R, odd R→L). */
+    snakeRow?: number;
 };
 
 export type GraphLayout = Map<string, LayoutEntry>;
@@ -57,6 +59,15 @@ const NODE_SEP = 48;
 const ROW_SEP = 96;
 /** Extra horizontal gap between adjacent pipeline-step blocks on one row. */
 const BLOCK_SEP = 72;
+
+/** Snake row ids produced by the last `placeLayeredLrWrapped` for a positions map. */
+const snakeRowsByPositions = new WeakMap<Map<string, BBox>, Map<string, number>>();
+
+export function getSnakeRowsForPositions(
+    positions: Map<string, BBox>,
+): Map<string, number> | undefined {
+    return snakeRowsByPositions.get(positions);
+}
 function bboxFromCenter(cx: number, cy: number, w: number, h: number): BBox {
     return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
@@ -734,7 +745,8 @@ function groupRanksIntoStepBlocks(
  *
  * Rows alternate direction (snake / boustrophedon): even L→R, odd R→L, so the
  * eye continues from the end of one row into the start of the next on the same
- * side. Inside each step block, `in → step → out` stays left-to-right.
+ * side. Within a block, `in → step → out` follows the row direction so the
+ * snake always reads inputs then step then outputs (mirrored on RTL rows).
  */
 function placeLayeredLrWrapped(
     nodes: Map<string, MeasuredNode>,
@@ -774,6 +786,7 @@ function placeLayeredLrWrapped(
     }
 
     const positions = new Map<string, BBox>();
+    const snakeRows = new Map<string, number>();
     let yRow = 0;
     for (let rowStart = 0; rowStart < blocks.length; rowStart += perRow) {
         const rowEnd = Math.min(rowStart + perRow, blocks.length);
@@ -794,8 +807,10 @@ function placeLayeredLrWrapped(
 
         placeOrder.forEach((bi, orderIndex) => {
             const rankKeys = blocks[bi];
+            // RTL rows: mirror in→step→out so snake R→L still reads inputs first.
+            const ranksToPlace = rtl ? [...rankKeys].reverse() : rankKeys;
             let x = xCursor;
-            rankKeys.forEach((r, ri) => {
+            ranksToPlace.forEach((r, ri) => {
                 const rankIds = orderedRanks.get(r) ?? [];
                 const colW = rankColumnWidth(rankIds, nodes);
                 const colH = rankColumnHeight(rankIds, nodes);
@@ -806,14 +821,16 @@ function placeLayeredLrWrapped(
                     const cx = x + colW / 2;
                     const cy = yCursor + node.h / 2;
                     positions.set(id, bboxFromCenter(cx, cy, node.w, node.h));
+                    snakeRows.set(id, rowIndex);
                     yCursor += node.h + (index < rankIds.length - 1 ? NODE_SEP : 0);
                 });
-                x += colW + (ri < rankKeys.length - 1 ? RANK_SEP : 0);
+                x += colW + (ri < ranksToPlace.length - 1 ? RANK_SEP : 0);
             });
             xCursor += blockSize[bi].width + (orderIndex < placeOrder.length - 1 ? BLOCK_SEP : 0);
         });
         yRow += rowHeight + ROW_SEP;
     }
+    snakeRowsByPositions.set(positions, snakeRows);
     return positions;
 }
 
@@ -1008,6 +1025,7 @@ export function cloneLayout(layout: GraphLayout): GraphLayout {
             bbox: { ...entry.bbox },
             node: { ...entry.node },
             visible: entry.visible,
+            snakeRow: entry.snakeRow,
         });
     });
     return next;
@@ -1599,10 +1617,16 @@ export function buildCollapsedLayout(
         buildRankEdges(layoutNodes, outerEdges),
         wrapRows,
     );
+    const snakeRows = getSnakeRowsForPositions(positions);
     layoutNodes.forEach((node, id) => {
         const bbox = positions.get(id);
         if (!bbox) return;
-        layout.set(id, { bbox, node, visible: true });
+        layout.set(id, {
+            bbox,
+            node,
+            visible: true,
+            snakeRow: snakeRows?.get(id),
+        });
     });
 
     plans.forEach((plan, groupId) => {
@@ -1637,65 +1661,245 @@ export function layoutToCenters(layout: GraphLayout): Map<string, { x: number; y
     return centers;
 }
 
-/** One zigzag (snake) row: travel direction + centerline polyline in model space. */
+/** One zigzag (snake) row: travel direction + padded row box in model space. */
 export type SnakeRowGuide = {
     rtl: boolean;
-    points: Array<{ x: number; y: number }>;
+    /** Padded axis-aligned box covering the row's top-level nodes. */
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    /** Padded leftmost node column — left-turn tube. */
+    leftX1: number;
+    leftX2: number;
+    /** Padded rightmost node column — right-turn tube. */
+    rightX1: number;
+    rightX2: number;
 };
 
 /**
- * Recover snake row guides from a finished layout (even L→R, odd R→L).
- * Top-level nodes only (collapsed metas + free steps/tables). Used to draw a
- * direction ribbon so zigzag left/right flow is readable at a glance.
+ * Recover snake rows from a finished layout (even L→R, odd R→L).
+ * Prefers `snakeRow` stamped by LR wrap placement — Y-clustering alone splits
+ * stacked column nodes into fake rows and breaks the S-corridor.
  */
 export function computeSnakeRowGuides(layout: GraphLayout): SnakeRowGuide[] {
-    const tops: Array<{ cx: number; cy: number; w: number; h: number }> = [];
+    type Top = { cx: number; cy: number; w: number; h: number; snakeRow?: number };
+    const tops: Top[] = [];
+    let hasSnakeRows = false;
     layout.forEach((entry) => {
         if (!entry.visible) return;
         if (entry.node.metaGroup) return;
         const c = bboxCenter(entry.bbox);
-        tops.push({ cx: c.x, cy: c.y, w: entry.bbox.w, h: entry.bbox.h });
+        if (entry.snakeRow !== undefined) hasSnakeRows = true;
+        tops.push({
+            cx: c.x,
+            cy: c.y,
+            w: entry.bbox.w,
+            h: entry.bbox.h,
+            snakeRow: entry.snakeRow,
+        });
     });
-    if (tops.length < 2) return [];
+    if (tops.length < 1) return [];
 
-    tops.sort((a, b) => a.cy - b.cy || a.cx - b.cx);
-    const medianH =
-        [...tops].map((n) => n.h).sort((a, b) => a - b)[Math.floor(tops.length / 2)] ?? 120;
-    const rowTol = Math.max(ROW_SEP * 0.45, medianH * 0.55);
+    const rowBuckets = new Map<number, Top[]>();
+    if (hasSnakeRows) {
+        tops.forEach((n) => {
+            if (n.snakeRow === undefined) return;
+            const bucket = rowBuckets.get(n.snakeRow) ?? [];
+            bucket.push(n);
+            rowBuckets.set(n.snakeRow, bucket);
+        });
+    } else {
+        // Fallback for non-wrapped layouts: cluster by Y (best-effort).
+        tops.sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+        const medianH =
+            [...tops].map((n) => n.h).sort((a, b) => a - b)[Math.floor(tops.length / 2)] ?? 120;
+        const rowTol = Math.max(ROW_SEP * 0.45, medianH * 0.55);
+        let rowIndex = 0;
+        tops.forEach((n) => {
+            const last = rowBuckets.get(rowIndex);
+            if (last && Math.abs(last[0].cy - n.cy) <= rowTol) {
+                last.push(n);
+                return;
+            }
+            if (last) rowIndex += 1;
+            rowBuckets.set(rowIndex, [n]);
+        });
+    }
 
-    const rows: Array<typeof tops> = [];
-    tops.forEach((n) => {
-        const last = rows[rows.length - 1];
-        if (last && Math.abs(last[0].cy - n.cy) <= rowTol) {
-            last.push(n);
-            return;
-        }
-        rows.push([n]);
-    });
-
-    if (rows.length < 1) return [];
-
-    const pad = 36;
-    return rows.map((row, rowIndex) => {
-        const rtl = rowIndex % 2 === 1;
-        const sorted = [...row].sort((a, b) => a.cx - b.cx);
-        const travel = rtl ? [...sorted].reverse() : sorted;
-        const y = travel.reduce((sum, n) => sum + n.cy, 0) / travel.length;
-        const points: Array<{ x: number; y: number }> = travel.map((n) => ({ x: n.cx, y }));
-        if (points.length >= 1) {
-            const first = travel[0];
-            const last = travel[travel.length - 1];
-            points[0] = {
-                x: rtl ? first.cx + first.w / 2 + pad : first.cx - first.w / 2 - pad,
-                y,
+    const padX = 28;
+    const padY = 22;
+    const colPad = 18;
+    return Array.from(rowBuckets.keys())
+        .sort((a, b) => a - b)
+        .map((rowIndex) => {
+            const row = rowBuckets.get(rowIndex) ?? [];
+            const rtl = rowIndex % 2 === 1;
+            let x1 = Infinity;
+            let y1 = Infinity;
+            let x2 = -Infinity;
+            let y2 = -Infinity;
+            let left = row[0];
+            let right = row[0];
+            row.forEach((n) => {
+                x1 = Math.min(x1, n.cx - n.w / 2);
+                y1 = Math.min(y1, n.cy - n.h / 2);
+                x2 = Math.max(x2, n.cx + n.w / 2);
+                y2 = Math.max(y2, n.cy + n.h / 2);
+                if (n.cx - n.w / 2 < left.cx - left.w / 2) left = n;
+                if (n.cx + n.w / 2 > right.cx + right.w / 2) right = n;
+            });
+            return {
+                rtl,
+                x1: x1 - padX,
+                y1: y1 - padY,
+                x2: x2 + padX,
+                y2: y2 + padY,
+                leftX1: left.cx - left.w / 2 - colPad,
+                leftX2: left.cx + left.w / 2 + colPad,
+                rightX1: right.cx - right.w / 2 - colPad,
+                rightX2: right.cx + right.w / 2 + colPad,
             };
-            points[points.length - 1] = {
-                x: rtl ? last.cx - last.w / 2 - pad : last.cx + last.w / 2 + pad,
-                y,
-            };
+        });
+}
+
+/**
+ * Closed S-shaped polygon around zigzag rows: padded row boxes joined by
+ * turn tubes over the rightmost nodes (after L→R) or leftmost nodes (after R→L).
+ * Vertical connectors sit on those end columns so the snake direction is obvious.
+ */
+export function computeSnakeBoundaryPolygon(rows: SnakeRowGuide[]): Array<{ x: number; y: number }> {
+    if (!rows.length) return [];
+    if (rows.length === 1) {
+        const r = rows[0];
+        return [
+            { x: r.x1, y: r.y1 },
+            { x: r.x2, y: r.y1 },
+            { x: r.x2, y: r.y2 },
+            { x: r.x1, y: r.y2 },
+        ];
+    }
+
+    /** Turn tube anchored at the outer edge, width ≈ end-column node. */
+    const turnBounds = (i: number): { xInner: number; xOuter: number } => {
+        const a = rows[i];
+        const b = rows[i + 1];
+        if (i % 2 === 0) {
+            const xOuter = Math.max(a.x2, b.x2);
+            const colW = Math.max(a.rightX2 - a.rightX1, b.rightX2 - b.rightX1, 72);
+            return { xInner: xOuter - colW, xOuter };
         }
-        return { rtl, points };
-    });
+        const xOuter = Math.min(a.x1, b.x1);
+        const colW = Math.max(a.leftX2 - a.leftX1, b.leftX2 - b.leftX1, 72);
+        return { xInner: xOuter + colW, xOuter };
+    };
+    const rightTurn = (i: number) => i % 2 === 0;
+
+    const pts: Array<{ x: number; y: number }> = [];
+    const n = rows.length;
+    const first = rows[0];
+    const last = rows[n - 1];
+
+    // Clockwise: top → right chain (left-turn notches) → bottom → left chain (right-turn notches).
+    pts.push({ x: first.x1, y: first.y1 });
+    pts.push({ x: first.x2, y: first.y1 });
+
+    for (let i = 0; i < n - 1; i += 1) {
+        const a = rows[i];
+        const b = rows[i + 1];
+        const { xInner, xOuter } = turnBounds(i);
+        if (rightTurn(i)) {
+            // Vertical down the rightmost-node column, through the inter-row gap.
+            pts.push({ x: xOuter, y: a.y1 });
+            pts.push({ x: xOuter, y: a.y2 });
+            pts.push({ x: xOuter, y: b.y1 });
+            if (Math.abs(b.x2 - xOuter) > 0.5) {
+                pts.push({ x: b.x2, y: b.y1 });
+            }
+        } else {
+            // Left turn: notch on the right; outer vertical is on the left (return path).
+            pts.push({ x: a.x2, y: a.y2 });
+            pts.push({ x: xInner, y: a.y2 });
+            pts.push({ x: xInner, y: b.y1 });
+            pts.push({ x: b.x2, y: b.y1 });
+        }
+    }
+
+    pts.push({ x: last.x2, y: last.y2 });
+    pts.push({ x: last.x1, y: last.y2 });
+
+    for (let i = n - 1; i >= 1; i -= 1) {
+        const b = rows[i];
+        const a = rows[i - 1];
+        const { xInner, xOuter } = turnBounds(i - 1);
+        if (rightTurn(i - 1)) {
+            // Right turn: notch on the left between rows.
+            pts.push({ x: b.x1, y: b.y1 });
+            pts.push({ x: xInner, y: b.y1 });
+            pts.push({ x: xInner, y: a.y2 });
+            pts.push({ x: a.x1, y: a.y2 });
+        } else {
+            // Vertical up the leftmost-node column, through the inter-row gap.
+            pts.push({ x: xOuter, y: b.y1 });
+            pts.push({ x: xOuter, y: a.y2 });
+            if (Math.abs(a.x1 - xOuter) > 0.5) {
+                pts.push({ x: a.x1, y: a.y2 });
+            }
+        }
+    }
+
+    pts.push({ x: first.x1, y: first.y1 });
+    return simplifyOrthogonal(pts);
+}
+
+/**
+ * Vertical turn tubes between consecutive snake rows (rightmost after L→R,
+ * leftmost after R→L). Drawn explicitly so the zigzag drop is obvious.
+ */
+export function computeSnakeTurnConnectors(
+    rows: SnakeRowGuide[],
+): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    const out: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    for (let i = 0; i < rows.length - 1; i += 1) {
+        const a = rows[i];
+        const b = rows[i + 1];
+        const y1 = a.y2;
+        const y2 = b.y1;
+        if (y2 - y1 < 1) continue;
+        if (i % 2 === 0) {
+            const x2 = Math.max(a.x2, b.x2);
+            const colW = Math.max(a.rightX2 - a.rightX1, b.rightX2 - b.rightX1, 72);
+            out.push({ x1: x2 - colW, y1, x2, y2 });
+        } else {
+            const x1 = Math.min(a.x1, b.x1);
+            const colW = Math.max(a.leftX2 - a.leftX1, b.leftX2 - b.leftX1, 72);
+            out.push({ x1, y1, x2: x1 + colW, y2 });
+        }
+    }
+    return out;
+}
+
+/** Drop consecutive duplicate / colinear orthogonal points. */
+function simplifyOrthogonal(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    if (points.length < 2) return points;
+    const out: Array<{ x: number; y: number }> = [];
+    const push = (p: { x: number; y: number }) => {
+        const prev = out[out.length - 1];
+        if (prev && Math.abs(prev.x - p.x) < 0.5 && Math.abs(prev.y - p.y) < 0.5) return;
+        const a = out[out.length - 2];
+        const b = out[out.length - 1];
+        if (a && b) {
+            const colinearH = Math.abs(a.y - b.y) < 0.5 && Math.abs(b.y - p.y) < 0.5;
+            const colinearV = Math.abs(a.x - b.x) < 0.5 && Math.abs(b.x - p.x) < 0.5;
+            if (colinearH || colinearV) {
+                out[out.length - 1] = p;
+                return;
+            }
+        }
+        out.push(p);
+    };
+    points.forEach(push);
+    return out;
 }
 
 export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {

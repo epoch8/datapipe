@@ -5,4 +5,7 @@ export {
     setSelectedNodeIds,
     clearSelectedNodeIds,
     toggleSelectedNodeId,
+    focusNodeNeighborhood,
+    clearNeighborhoodFocus,
+    hasNeighborhoodFocus,
 } from "./graphVisualState";

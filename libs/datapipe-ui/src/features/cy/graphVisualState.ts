@@ -1,16 +1,19 @@
 import Cytoscape from "cytoscape";
 import { getNodeHtmlLabelEl, nodeUsesHtmlLabel } from "./htmlLabelOpacity";
 import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
-import { refreshSnakeRowOverlay } from "./snakeRowOverlay";
 
 export type FocusPaint = {
     selectedIds: Set<string>;
     highlightedIds: Set<string>;
     edgeRelatedIds: Set<string>;
+    /** When true, nodes outside highlightedIds get focus-hidden. Single-click select keeps this false. */
+    hideUnrelated: boolean;
 };
 
 const selectedIdsByCy = new WeakMap<Cytoscape.Core, Set<string>>();
 const focusPaintStore = new WeakMap<Cytoscape.Core, FocusPaint | null>();
+/** Neighborhood locked by double-click focus; single-click select leaves this set alone. */
+const neighborhoodFocusByCy = new WeakMap<Cytoscape.Core, Set<string> | null>();
 const labelFocusStore = new WeakMap<
     Cytoscape.Core,
     { labelKey: string; labelValue: string } | null
@@ -57,7 +60,7 @@ function paintHtmlLabels(cy: Cytoscape.Core, paint: FocusPaint | null): void {
         const id = node.id();
         const selected = paint.selectedIds.has(id);
         const related = paint.highlightedIds.has(id) && !selected;
-        const hidden = !paint.highlightedIds.has(id);
+        const hidden = paint.hideUnrelated && !paint.highlightedIds.has(id);
         setHtmlFocusClasses(labelEl, selected, related, false);
         labelEl.classList.toggle("is-focus-hidden", hidden);
         if (hidden) {
@@ -145,7 +148,6 @@ function paintLabelFocus(
         });
     });
     refreshInternalEdgeOverlay(cy);
-    refreshSnakeRowOverlay(cy);
 }
 
 function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null): void {
@@ -154,7 +156,10 @@ function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null):
             const related = paint?.edgeRelatedIds.has(edge.id()) ?? false;
             edge.toggleClass("related", related);
             edge.toggleClass("muted", false);
-            edge.toggleClass("focus-hidden", paint != null && !related);
+            edge.toggleClass(
+                "focus-hidden",
+                Boolean(paint?.hideUnrelated) && paint != null && !related,
+            );
             edge.removeClass("focused");
         });
 
@@ -162,7 +167,8 @@ function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null):
             const id = node.id();
             const focused = paint?.selectedIds.has(id) ?? false;
             const related = paint != null && !focused && paint.highlightedIds.has(id);
-            const hidden = paint != null && !paint.highlightedIds.has(id);
+            const hidden =
+                paint != null && paint.hideUnrelated && !paint.highlightedIds.has(id);
             if (!nodeUsesHtmlLabel(node as Cytoscape.NodeSingular)) {
                 node.toggleClass("focused", focused);
                 node.toggleClass("related", related);
@@ -236,8 +242,31 @@ function expandHighlightWithMetaGroups(
 
 function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
     const selected = getSelectedNodes(cy);
+    const lockedNeighborhood = neighborhoodFocusByCy.get(cy);
+
+    // Double-click focus mode: keep the locked neighborhood visible; selection
+    // can move among those nodes without changing what is hidden.
+    if (lockedNeighborhood && lockedNeighborhood.size > 0) {
+        const selectedIds = new Set(selected.map((n) => n.id()));
+        const highlightedIds = new Set(lockedNeighborhood);
+        selectedIds.forEach((id) => highlightedIds.add(id));
+        const edgeRelatedIds = new Set<string>();
+        cy.edges().forEach((edge) => {
+            if (highlightedIds.has(edge.source().id()) && highlightedIds.has(edge.target().id())) {
+                edgeRelatedIds.add(edge.id());
+            }
+        });
+        return {
+            selectedIds,
+            highlightedIds,
+            edgeRelatedIds,
+            hideUnrelated: true,
+        };
+    }
+
     if (selected.empty()) return null;
 
+    // Single-click select: highlight selection (+ neighbors as related) but hide nothing.
     if (selected.length === 1) {
         const node = selected.first() as Cytoscape.NodeSingular;
         const connectedEdges = node.connectedEdges();
@@ -250,7 +279,6 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
             seedIds,
         });
 
-        // Edges between any highlighted nodes stay visible (not only the seed's).
         const highlightedIds = new Set(highlightedNodes.map((n) => n.id()));
         const edgeRelatedIds = new Set<string>();
         cy.edges().forEach((edge) => {
@@ -258,7 +286,6 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
                 edgeRelatedIds.add(edge.id());
             }
         });
-        // Always keep the seed's own edges even if an endpoint is outside.
         connectedEdges.forEach((edge) => {
             edgeRelatedIds.add(edge.id());
         });
@@ -267,6 +294,7 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
             selectedIds: new Set([node.id()]),
             highlightedIds,
             edgeRelatedIds,
+            hideUnrelated: false,
         };
     }
 
@@ -295,6 +323,7 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
         selectedIds: new Set(selected.map((n) => n.id())),
         highlightedIds,
         edgeRelatedIds,
+        hideUnrelated: false,
     };
 }
 
@@ -303,6 +332,7 @@ function commitFocusPaint(cy: Cytoscape.Core, paint: FocusPaint | null): void {
     if (
         paint &&
         prev &&
+        prev.hideUnrelated === paint.hideUnrelated &&
         setsEqual(prev.selectedIds, paint.selectedIds) &&
         setsEqual(prev.highlightedIds, paint.highlightedIds) &&
         setsEqual(prev.edgeRelatedIds, paint.edgeRelatedIds)
@@ -317,7 +347,6 @@ function commitFocusPaint(cy: Cytoscape.Core, paint: FocusPaint | null): void {
     // Selection hide must not leave label-filter hide stuck wrong after clear.
     paintLabelFocus(cy, labelFocusStore.get(cy) ?? null);
     refreshInternalEdgeOverlay(cy);
-    refreshSnakeRowOverlay(cy);
 }
 
 // --- Selection API ---
@@ -349,11 +378,13 @@ export function setSelectedNodeIds(cy: Cytoscape.Core, nodeIds: string[]): void 
         }),
     );
     selectedIdsByCy.set(cy, next);
+    // Soft select — does not clear or replace double-click neighborhood focus.
     commitFocusPaint(cy, computeFocusPaint(cy));
 }
 
 export function clearSelectedNodeIds(cy: Cytoscape.Core): void {
     selectedIdsByCy.set(cy, new Set());
+    neighborhoodFocusByCy.set(cy, null);
     commitFocusPaint(cy, null);
 }
 
@@ -369,6 +400,33 @@ export function toggleSelectedNodeId(cy: Cytoscape.Core, nodeId: string): boolea
     return true;
 }
 
+/**
+ * Double-click focus: select `nodeId` and hide everything outside its neighborhood.
+ * Further single-clicks only move selection inside the locked neighborhood;
+ * another double-click re-locks around the new seed.
+ */
+export function focusNodeNeighborhood(cy: Cytoscape.Core, nodeId: string): void {
+    const node = cy.getElementById(nodeId);
+    if (node.empty()) return;
+    selectedIdsByCy.set(cy, new Set([nodeId]));
+    // Temporarily clear lock so computeFocusPaint builds the seed neighborhood.
+    neighborhoodFocusByCy.set(cy, null);
+    const soft = computeFocusPaint(cy);
+    const neighborhood = soft?.highlightedIds ?? new Set([nodeId]);
+    neighborhoodFocusByCy.set(cy, new Set(neighborhood));
+    commitFocusPaint(cy, computeFocusPaint(cy));
+}
+
+export function clearNeighborhoodFocus(cy: Cytoscape.Core): void {
+    neighborhoodFocusByCy.set(cy, null);
+    commitFocusPaint(cy, computeFocusPaint(cy));
+}
+
+export function hasNeighborhoodFocus(cy: Cytoscape.Core): boolean {
+    const locked = neighborhoodFocusByCy.get(cy);
+    return Boolean(locked && locked.size > 0);
+}
+
 // --- Focus / visual sync ---
 
 export function applyGraphVisualState(cy: Cytoscape.Core): void {
@@ -376,7 +434,8 @@ export function applyGraphVisualState(cy: Cytoscape.Core): void {
 }
 
 export function clearGraphFocus(cy: Cytoscape.Core): void {
-    commitFocusPaint(cy, null);
+    neighborhoodFocusByCy.set(cy, null);
+    commitFocusPaint(cy, computeFocusPaint(cy));
 }
 
 export function setGraphLabelFocus(
@@ -399,7 +458,23 @@ export function initHtmlLabelInteractionStateSync(cy: Cytoscape.Core): void {
     if (!container) return;
 
     const observer = new MutationObserver((mutations) => {
-        if (!mutations.some((mutation) => mutation.addedNodes.length > 0)) return;
+        // Ignore overlay SVG churn (snake / internal edges) — redrawing those
+        // must not re-enter label focus painting (infinite loop).
+        const relevant = mutations.some((mutation) => {
+            if (mutation.addedNodes.length < 1) return false;
+            const target = mutation.target;
+            if (!(target instanceof Element)) return true;
+            if (
+                target.closest(".cy-snake-rows-layer") ||
+                target.closest(".cy-internal-edges-layer") ||
+                target.classList.contains("cy-snake-rows-layer") ||
+                target.classList.contains("cy-internal-edges-layer")
+            ) {
+                return false;
+            }
+            return true;
+        });
+        if (!relevant) return;
         paintHtmlLabels(cy, focusPaintStore.get(cy) ?? null);
         paintLabelFocus(cy, labelFocusStore.get(cy) ?? null);
     });

@@ -10,8 +10,8 @@ const initStore = new WeakMap<Cytoscape.Core, true>();
 const enabledStore = new WeakMap<Cytoscape.Core, boolean>();
 const layoutStore = new WeakMap<Cytoscape.Core, GraphLayout>();
 
-const GUIDE_STROKE = "rgba(91, 168, 160, 0.45)";
-const GUIDE_WIDTH = 2.2;
+/** Soft single-tone zigzag cue — light green, no hard dark edge. */
+const GUIDE_STROKE = "rgba(46, 160, 67, 0.28)";
 
 function ensureLayer(cy: Cytoscape.Core): { layer: HTMLDivElement; svg: SVGSVGElement } | null {
     const container = cy.container();
@@ -46,16 +46,51 @@ function updateCamera(cy: Cytoscape.Core, layer: HTMLDivElement): void {
     layer.style.transformOrigin = "top left";
 }
 
-function pointsToPath(points: Array<{ x: number; y: number }>): string {
-    if (!points.length) return "";
+/** Open polyline through row midlines + vertical drops through end-node columns. */
+export function computeSnakeSpine(rows: SnakeRowGuide[]): Array<{ x: number; y: number }> {
+    if (!rows.length) return [];
+    const pts: Array<{ x: number; y: number }> = [];
+    rows.forEach((row, i) => {
+        const midY = (row.y1 + row.y2) / 2;
+        const goRight = i % 2 === 0;
+        const leftMid = (row.leftX1 + row.leftX2) / 2;
+        const rightMid = (row.rightX1 + row.rightX2) / 2;
+        if (goRight) {
+            pts.push({ x: leftMid, y: midY });
+            pts.push({ x: rightMid, y: midY });
+        } else {
+            pts.push({ x: rightMid, y: midY });
+            pts.push({ x: leftMid, y: midY });
+        }
+        if (i >= rows.length - 1) return;
+        const next = rows[i + 1];
+        const nextMid = (next.y1 + next.y2) / 2;
+        // Drop through the rightmost / leftmost node column (not past the row pad).
+        const turnX = goRight
+            ? Math.max(rightMid, (next.rightX1 + next.rightX2) / 2)
+            : Math.min(leftMid, (next.leftX1 + next.leftX2) / 2);
+        const last = pts[pts.length - 1];
+        if (Math.abs(last.x - turnX) > 0.5) {
+            pts.push({ x: turnX, y: midY });
+        }
+        pts.push({ x: turnX, y: nextMid });
+    });
+    return pts;
+}
+
+function pointsToOpenPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length < 2) return "";
     return points
         .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
         .join(" ");
 }
 
-/** Selection focus hides most nodes — keep the direction ribbon out of the way. */
-function hasActiveFocus(cy: Cytoscape.Core): boolean {
-    return cy.nodes(".focus-hidden").length > 0 || cy.nodes(".label-hidden").length > 0;
+function spineStrokeWidth(rows: SnakeRowGuide[]): number {
+    if (!rows.length) return 64;
+    const heights = rows.map((r) => r.y2 - r.y1).sort((a, b) => a - b);
+    const median = heights[Math.floor(heights.length / 2)] ?? 120;
+    // Keep it a readable tube, not a full row highlight band.
+    return Math.max(48, Math.min(120, median * 0.28));
 }
 
 function syncGuides(cy: Cytoscape.Core): void {
@@ -67,65 +102,25 @@ function syncGuides(cy: Cytoscape.Core): void {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     if (!enabledStore.get(cy)) return;
-    // Overview cue only — filled bands over empty focus looked like "stripes".
-    if (hasActiveFocus(cy)) return;
     const layout = layoutStore.get(cy);
     if (!layout) return;
 
-    const guides = computeSnakeRowGuides(layout);
-    if (guides.length < 1) return;
-
-    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-    marker.setAttribute("id", "cy-snake-arrow");
-    marker.setAttribute("viewBox", "0 0 10 8");
-    marker.setAttribute("refX", "9");
-    marker.setAttribute("refY", "4");
-    marker.setAttribute("markerWidth", "7");
-    marker.setAttribute("markerHeight", "6");
-    marker.setAttribute("orient", "auto");
-    marker.setAttribute("markerUnits", "userSpaceOnUse");
-    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    arrow.setAttribute("d", "M0 0 L10 4 L0 8 Z");
-    arrow.setAttribute("fill", GUIDE_STROKE);
-    marker.appendChild(arrow);
-    defs.appendChild(marker);
-    svg.appendChild(defs);
+    const rows = computeSnakeRowGuides(layout);
+    if (rows.length < 1) return;
+    const spine = computeSnakeSpine(rows);
+    if (spine.length < 2) return;
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.setAttribute("class", "cy-snake-rows");
+    g.setAttribute("class", "cy-snake-boundary");
 
-    guides.forEach((guide: SnakeRowGuide, index) => {
-        if (guide.points.length < 2) return;
-
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        line.setAttribute("d", pointsToPath(guide.points));
-        line.setAttribute("fill", "none");
-        line.setAttribute("stroke", GUIDE_STROKE);
-        line.setAttribute("stroke-width", String(GUIDE_WIDTH));
-        line.setAttribute("stroke-linecap", "round");
-        line.setAttribute("stroke-linejoin", "round");
-        line.setAttribute("marker-end", "url(#cy-snake-arrow)");
-        g.appendChild(line);
-
-        const next = guides[index + 1];
-        if (!next || next.points.length < 1) return;
-        const from = guide.points[guide.points.length - 1];
-        const to = next.points[0];
-        const midY = (from.y + to.y) / 2;
-        const turn = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        turn.setAttribute(
-            "d",
-            `M${from.x.toFixed(1)} ${from.y.toFixed(1)} L${from.x.toFixed(1)} ${midY.toFixed(1)} L${to.x.toFixed(1)} ${midY.toFixed(1)} L${to.x.toFixed(1)} ${to.y.toFixed(1)}`,
-        );
-        turn.setAttribute("fill", "none");
-        turn.setAttribute("stroke", GUIDE_STROKE);
-        turn.setAttribute("stroke-width", String(GUIDE_WIDTH * 0.85));
-        turn.setAttribute("stroke-linecap", "round");
-        turn.setAttribute("stroke-linejoin", "round");
-        turn.setAttribute("stroke-dasharray", "8 7");
-        g.appendChild(turn);
-    });
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pointsToOpenPath(spine));
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", GUIDE_STROKE);
+    path.setAttribute("stroke-width", String(spineStrokeWidth(rows)));
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("stroke-linecap", "round");
+    g.appendChild(path);
 
     svg.appendChild(g);
 }

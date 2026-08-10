@@ -198,3 +198,49 @@ describe("reprocessData sequential next-step edges", () => {
         );
     });
 });
+
+describe("reprocessData table first-use chronology", () => {
+    it("keeps a table at its earliest pipeline use even if a later step produces it", () => {
+        const catalog = {
+            image__ground_truth: table("image__ground_truth"),
+            s3_images: table("s3_images"),
+            sec__image_without_ground_truth: table("sec__image_without_ground_truth"),
+            annotations_raw: table("annotations_raw"),
+        };
+        const data: GraphData = {
+            catalog,
+            pipeline: [
+                {
+                    id: "get_images_without_ground_truth",
+                    name: "get_images_without_ground_truth",
+                    type: "transform",
+                    inputs: ["s3_images", "image__ground_truth"],
+                    outputs: ["sec__image_without_ground_truth"],
+                },
+                {
+                    id: "mid_step",
+                    name: "mid_step",
+                    type: "transform",
+                    inputs: ["sec__image_without_ground_truth"],
+                    outputs: ["annotations_raw"],
+                },
+                {
+                    id: "parse_annotations",
+                    name: "parse_annotations",
+                    type: "transform",
+                    inputs: ["annotations_raw"],
+                    outputs: ["image__ground_truth"],
+                },
+            ],
+        };
+
+        const { nodes } = reprocessData(data, new Set());
+        const gt = nodes.get("image__ground_truth");
+        const early = nodes.get("get_images_without_ground_truth");
+        expect(early?.pipelineOrderKey).toBe("0000");
+        // First use is as input to step 0000 — must not jump to late producer 0002.out.
+        expect(gt?.pipelineOrderKey).toBe("0000.in.0001");
+        expect(gt?.tableOrderSource).toBe("consumer");
+        expect(nodes.get("parse_annotations")?.pipelineOrderKey).toBe("0002");
+    });
+});

@@ -7,4 +7,7 @@ export {
     focusSelection,
     clearFocus,
     focusNode,
+    focusNodeNeighborhood,
+    clearNeighborhoodFocus,
+    hasNeighborhoodFocus,
 } from "./graphVisualState";

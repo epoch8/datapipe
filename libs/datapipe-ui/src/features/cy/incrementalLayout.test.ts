@@ -1,5 +1,6 @@
 import {
     buildCollapsedLayout,
+    computeSnakeBoundaryPolygon,
     countBipartiteCrossings,
     countLayerCutCrossings,
     expandGroupInLayout,
@@ -9,8 +10,9 @@ import {
     minimizeLayerCrossings,
     pinLayoutAnchorCenter,
 } from "./incrementalLayout";
+import { computeSnakeSpine } from "./snakeRowOverlay";
 import { graphNodeDimensions } from "./graphNodeLayout";
-import type { LayoutEdge, MeasuredNode } from "./incrementalLayout";
+import type { LayoutEdge, MeasuredNode, SnakeRowGuide } from "./incrementalLayout";
 
 function makeGroupGraph() {
     const nodes = new Map<string, Cytoscape.NodeDataDefinition>([
@@ -472,7 +474,7 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         expect(positions.get("s5")!.x).toBeLessThan(positions.get("s4")!.x);
         expect(positions.get("s4")!.x).toBeLessThan(positions.get("s3")!.x);
         expect(positions.get("s5")!.x).toBe(positions.get("s0")!.x);
-        // Wrapping must not split a step's in→step→out motif (still L→R locally).
+        // L→R row (s8): in → step → out left-to-right.
         nodes.set("in8", {
             ...stubNode("in8"),
             type: "table",
@@ -483,11 +485,26 @@ describe("minimizeLayerCrossings (barycenter)", () => {
             type: "table",
             pipelineOrderKey: "0008.out.0000",
         });
+        // RTL row (s4): mirror so snake R→L still reads in → step → out
+        // (outputs sit left of the step on screen).
+        nodes.set("in4", {
+            ...stubNode("in4"),
+            type: "table",
+            pipelineOrderKey: "0004.in.0000",
+        });
+        nodes.set("out4", {
+            ...stubNode("out4"),
+            type: "table",
+            pipelineOrderKey: "0004.out.0000",
+        });
         const withIo = layoutLayeredDag(nodes, [], "LR");
         expect(withIo.get("in8")!.x).toBeLessThan(withIo.get("s8")!.x);
         expect(withIo.get("s8")!.x).toBeLessThan(withIo.get("out8")!.x);
         expect(withIo.get("in8")!.y).toBe(withIo.get("s8")!.y);
         expect(withIo.get("s8")!.y).toBe(withIo.get("out8")!.y);
+        expect(withIo.get("out4")!.x).toBeLessThan(withIo.get("s4")!.x);
+        expect(withIo.get("s4")!.x).toBeLessThan(withIo.get("in4")!.x);
+        expect(withIo.get("out4")!.y).toBe(withIo.get("s4")!.y);
     });
 
     it("layoutLayeredDag places uncrossed endpoints left-to-right consistently", () => {
@@ -582,5 +599,117 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         const d = bottom.indexOf("D");
         // Sequential A→D and B→C are uncrossed when (a-b)*(d-c) >= 0.
         expect((a - b) * (d - c)).toBeGreaterThanOrEqual(0);
+    });
+
+    it("computeSnakeBoundaryPolygon makes an S-corridor with turn notches", () => {
+        const rows: SnakeRowGuide[] = [
+            {
+                rtl: false,
+                x1: 0,
+                y1: 0,
+                x2: 100,
+                y2: 20,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+            {
+                rtl: true,
+                x1: 0,
+                y1: 40,
+                x2: 100,
+                y2: 60,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+            {
+                rtl: false,
+                x1: 0,
+                y1: 80,
+                x2: 100,
+                y2: 100,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+        ];
+        const poly = computeSnakeBoundaryPolygon(rows);
+        // Not a plain bounding rect — notches add vertices.
+        expect(poly.length).toBeGreaterThan(4);
+
+        // Right-turn outer vertical spans the gap at x=100 (row0.y2=20 → row1.y1=40).
+        const rightGap = poly.some(
+            (p, i) =>
+                i > 0 &&
+                Math.abs(p.x - 100) < 0.5 &&
+                Math.abs(poly[i - 1].x - 100) < 0.5 &&
+                Math.min(poly[i - 1].y, p.y) <= 20.5 &&
+                Math.max(poly[i - 1].y, p.y) >= 39.5,
+        );
+        expect(rightGap).toBe(true);
+        // Left-turn outer vertical spans the gap at x=0 (row1.y2=60 → row2.y1=80).
+        const leftGap = poly.some(
+            (p, i) =>
+                i > 0 &&
+                Math.abs(p.x) < 0.5 &&
+                Math.abs(poly[i - 1].x) < 0.5 &&
+                Math.min(poly[i - 1].y, p.y) <= 60.5 &&
+                Math.max(poly[i - 1].y, p.y) >= 79.5,
+        );
+        expect(leftGap).toBe(true);
+
+        // End-column width is 30, floored to 72 → notch inners at 28 and 72.
+        expect(poly.some((p) => Math.abs(p.x - 28) < 0.5 && Math.abs(p.y - 40) < 0.5)).toBe(true);
+        expect(poly.some((p) => Math.abs(p.x - 28) < 0.5 && Math.abs(p.y - 20) < 0.5)).toBe(true);
+        expect(poly.some((p) => Math.abs(p.x - 72) < 0.5 && Math.abs(p.y - 60) < 0.5)).toBe(true);
+        expect(poly.some((p) => Math.abs(p.x - 72) < 0.5 && Math.abs(p.y - 80) < 0.5)).toBe(true);
+    });
+
+    it("computeSnakeSpine drops vertically at left and right ends", () => {
+        const rows: SnakeRowGuide[] = [
+            {
+                rtl: false,
+                x1: 0,
+                y1: 0,
+                x2: 100,
+                y2: 20,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+            {
+                rtl: true,
+                x1: 0,
+                y1: 40,
+                x2: 100,
+                y2: 60,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+            {
+                rtl: false,
+                x1: 0,
+                y1: 80,
+                x2: 100,
+                y2: 100,
+                leftX1: 0,
+                leftX2: 30,
+                rightX1: 70,
+                rightX2: 100,
+            },
+        ];
+        const spine = computeSnakeSpine(rows);
+        // L→R on row0 through node centers, vertical on right col, R→L, vertical on left.
+        expect(spine[0]).toEqual({ x: 15, y: 10 });
+        expect(spine.some((p, i) => i > 0 && p.x === 85 && spine[i - 1].x === 85)).toBe(true);
+        expect(spine.some((p, i) => i > 0 && p.x === 15 && spine[i - 1].x === 15)).toBe(true);
+        expect(spine[spine.length - 1]).toEqual({ x: 85, y: 90 });
     });
 });
