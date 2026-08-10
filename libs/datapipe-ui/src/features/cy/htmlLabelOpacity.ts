@@ -7,7 +7,12 @@ function easeInOutCubic(t: number): number {
 
 const opacityStore = new WeakMap<Cytoscape.Core, Map<string, number>>();
 const syncInitStore = new WeakMap<Cytoscape.Core, true>();
-const activeRafStore = new WeakMap<Cytoscape.Core, Set<number>>();
+/** Current opacity RAF per node — never accumulate (stale ids cancel recycled rAFs). */
+const activeRafStore = new WeakMap<Cytoscape.Core, Map<string, number>>();
+const pendingOpacityStore = new WeakMap<
+    Cytoscape.Core,
+    Map<string, { toOpacity: number }>
+>();
 
 function getOpacityStore(cy: Cytoscape.Core): Map<string, number> {
     let store = opacityStore.get(cy);
@@ -18,13 +23,26 @@ function getOpacityStore(cy: Cytoscape.Core): Map<string, number> {
     return store;
 }
 
-function trackRaf(cy: Cytoscape.Core, id: number): void {
-    let set = activeRafStore.get(cy);
-    if (!set) {
-        set = new Set();
-        activeRafStore.set(cy, set);
+function getPendingOpacities(cy: Cytoscape.Core): Map<string, { toOpacity: number }> {
+    let map = pendingOpacityStore.get(cy);
+    if (!map) {
+        map = new Map();
+        pendingOpacityStore.set(cy, map);
     }
-    set.add(id);
+    return map;
+}
+
+function getActiveRafs(cy: Cytoscape.Core): Map<string, number> {
+    let map = activeRafStore.get(cy);
+    if (!map) {
+        map = new Map();
+        activeRafStore.set(cy, map);
+    }
+    return map;
+}
+
+function trackRaf(cy: Cytoscape.Core, nodeId: string, id: number): void {
+    getActiveRafs(cy).set(nodeId, id);
 }
 
 export function initHtmlLabelOpacitySync(cy: Cytoscape.Core): void {
@@ -57,6 +75,17 @@ export function stopHtmlOpacityAnimations(cy: Cytoscape.Core): void {
         rafs.forEach((id) => cancelAnimationFrame(id));
         rafs.clear();
     }
+    // Jump unfinished fades to their target (mirrors cy.stop jumpToEnd). Do not
+    // invoke per-animation onComplete — a newer sync owns the transition now.
+    const pending = pendingOpacityStore.get(cy);
+    if (!pending?.size) return;
+    pending.forEach(({ toOpacity }, nodeId) => {
+        const node = cy.getElementById(nodeId);
+        if (!node.empty()) {
+            setNodeVisualOpacity(cy, node as Cytoscape.NodeSingular, toOpacity);
+        }
+    });
+    pending.clear();
 }
 
 export function getNodeHtmlLabelEl(cy: Cytoscape.Core, nodeId: string): HTMLElement | null {
@@ -115,10 +144,15 @@ export function animateNodeVisualOpacity(
     const nodeEl = node as Cytoscape.NodeSingular;
     const usesHtml = nodeUsesHtmlLabel(nodeEl);
     const startAt = performance.now() + delay;
+    const pending = getPendingOpacities(cy);
+    pending.set(nodeId, { toOpacity });
 
     const tick = (now: number) => {
+        // Interrupted / superseded by stopHtmlOpacityAnimations.
+        if (!pending.has(nodeId)) return;
+
         if (now < startAt) {
-            trackRaf(cy, requestAnimationFrame(tick));
+            trackRaf(cy, nodeId, requestAnimationFrame(tick));
             return;
         }
 
@@ -132,7 +166,8 @@ export function animateNodeVisualOpacity(
                 labelEl.style.opacity = String(opacity);
             }
             getOpacityStore(cy).set(nodeId, opacity);
-            nodeEl.data("htmlLabelOpacity", opacity);
+            // Avoid node.data() every frame — it fires cy `data` handlers and
+            // can stall the parallel box-morph RAF under load.
             nodeEl.style("opacity", 0);
         } else {
             nodeEl.style("opacity", opacity);
@@ -140,12 +175,14 @@ export function animateNodeVisualOpacity(
         }
 
         if (t < 1) {
-            trackRaf(cy, requestAnimationFrame(tick));
+            trackRaf(cy, nodeId, requestAnimationFrame(tick));
         } else {
+            pending.delete(nodeId);
+            getActiveRafs(cy).delete(nodeId);
             setNodeVisualOpacity(cy, nodeEl, toOpacity);
             onComplete?.();
         }
     };
 
-    trackRaf(cy, requestAnimationFrame(tick));
+    trackRaf(cy, nodeId, requestAnimationFrame(tick));
 }

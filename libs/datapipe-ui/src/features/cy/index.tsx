@@ -19,6 +19,7 @@ import { stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
 import { initInternalEdgeOverlay, refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
+import { initSnakeRowOverlay, refreshSnakeRowOverlay } from "./snakeRowOverlay";
 import {
     applyFailedEdgeStyles,
     clearSelectedNodeIds,
@@ -151,6 +152,7 @@ function initNodeLabels(cy: Cytoscape.Core) {
     labelsInitStore.set(cy, true);
     initHtmlLabelOpacitySync(cy);
     initInternalEdgeOverlay(cy);
+    initSnakeRowOverlay(cy);
     initHtmlNodeLabels(cy, [
         {
             query: "node",
@@ -286,11 +288,16 @@ function PipelineGraphView({
             if (!saved || sessionRestoredRef.current || cyInstance.destroyed()) return;
             sessionRestoredRef.current = true;
 
-            // Skip stale camera when expanded metas were open — remount must fit
-            // the rebuilt layout instead of an old pan from a different viewport.
-            if (saved.userInteracted && saved.expandedGroups.length === 0) {
+            const hasExpanded = saved.expandedGroups.length > 0;
+
+            // With expanded blues the layout was rebuilt from scratch — never reuse a
+            // stale pan/zoom from before navigation (blues end up off-canvas).
+            if (saved.userInteracted && !hasExpanded) {
                 cyInstance.zoom(saved.zoom);
                 cyInstance.pan(saved.pan);
+            } else {
+                cyInstance.resize();
+                fitGraphViewport(cyInstance);
             }
 
             const nodeIds =
@@ -356,6 +363,8 @@ function PipelineGraphView({
 
     const toggleGroupExpand = useCallback((groupName: string) => {
         if (!cy) return;
+        // Expand/collapse must not autofit the camera (ResizeObserver / session).
+        userInteractedRef.current = true;
         anchorGroupRef.current = groupName;
         setExpandedGroups((prev) => {
             const next = new Set(prev);
@@ -510,15 +519,17 @@ function PipelineGraphView({
             anchorGroup: anchorGroupRef.current,
             expanding: expandingRef.current,
             onLayoutComplete: () => {
+                anchorGroupRef.current = null;
+                expandingRef.current = false;
                 refreshNodeLabelPositions(cy);
                 applyFailedEdgeStyles(cy, runStatusRef.current);
                 setGraphLabelFocus(cy, labelKey ?? "stage", labelFilter);
                 refreshInternalEdgeOverlay(cy);
+                refreshSnakeRowOverlay(cy);
                 applySessionRestore(cy);
             },
         });
         needFitRef.current = false;
-        anchorGroupRef.current = null;
     }, [
         cy,
         rawGraph,
@@ -608,6 +619,20 @@ function PipelineGraphView({
             },
             onContextTarget: (node) => {
                 contextTargetRef.current = node;
+            },
+            onContextMenuAction: (itemId) => {
+                const node = contextTargetRef.current;
+                if (!node || typeof node.data !== "function") return;
+                if (itemId === "open-details") {
+                    openNodeDetailsRef.current(node);
+                    return;
+                }
+                const type = node.data("type") as string;
+                if (itemId === "expand-steps" && type === "group") {
+                    toggleGroupExpandRef.current(node.id());
+                } else if (itemId === "collapse-steps" && type === "group-expanded") {
+                    toggleGroupExpandRef.current(node.id());
+                }
             },
         });
     }, [cy]);
@@ -738,20 +763,14 @@ function PipelineGraphView({
             }
             const node = cy.getElementById(nodeId);
             if (!node.empty()) {
-                const type = node.data("type") as string;
-                if (type !== "group-expanded") {
-                    setSelectedNodeIds(cy, [node.id()]);
-                    setInspector({ nodeId: node.id(), data: node.data() });
-                    setKeyPopover(null);
-                    return;
-                }
+                setSelectedNodeIds(cy, [node.id()]);
+                setInspector({ nodeId: node.id(), data: node.data() });
+                setKeyPopover(null);
+                return;
             }
             if (fallbackData) {
                 setInspector({ nodeId, data: fallbackData });
                 setKeyPopover(null);
-                if (!node.empty()) {
-                    clearSelectedNodeIds(cy);
-                }
             }
         },
         [cy, graphNodesById],

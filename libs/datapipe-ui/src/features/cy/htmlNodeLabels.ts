@@ -21,6 +21,9 @@ type LabelEntry = {
     config: HtmlNodeLabelConfig;
     dataKey: string;
     align: [number, number, number, number];
+    /** Top-left of the card in model space (after align). */
+    modelX: number;
+    modelY: number;
 };
 
 const layerStore = new WeakMap<Cytoscape.Core, HTMLDivElement>();
@@ -81,7 +84,26 @@ function renderLabelHtml(content: HTMLDivElement, html: string): void {
     });
 }
 
-function applyLabelTransform(entry: LabelEntry, position: LabelPosition): void {
+function applyRootScreenTransform(
+    entry: LabelEntry,
+    pan: { x: number; y: number },
+    zoom: number,
+): void {
+    // Single transform on the root (no parent scale). Nested
+    // layer-scale × child-translate breaks Chrome hit-testing.
+    entry.root.style.transformOrigin = "top left";
+    entry.root.style.transform = `translate(${(pan.x + entry.modelX * zoom).toFixed(2)}px,${(
+        pan.y +
+        entry.modelY * zoom
+    ).toFixed(2)}px) scale(${zoom})`;
+}
+
+function applyLabelTransform(
+    entry: LabelEntry,
+    position: LabelPosition,
+    pan: { x: number; y: number },
+    zoom: number,
+): void {
     // Keep the painted card size in sync with cytoscape box (morph updates
     // boxW/boxH without rebuilding label HTML). Size lives on the inner
     // `.node-compound-label`, not the absolute positioning root.
@@ -90,11 +112,16 @@ function applyLabelTransform(entry: LabelEntry, position: LabelPosition): void {
         if (position.w > 0) card.style.width = `${position.w}px`;
         if (position.h > 0) card.style.height = `${position.h}px`;
     }
-    const x = position.x + entry.align[0] * position.w;
-    const y = position.y + entry.align[1] * position.h;
-    const valRel = `translate(${entry.align[2]}%,${entry.align[3]}%) `;
-    const valAbs = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`;
-    entry.root.style.transform = valRel + valAbs;
+    // Explicit root box so Chrome hit-tests the scaled element itself (not only
+    // descendants under transform:scale, which miss elementFromPoint).
+    if (position.w > 0) entry.root.style.width = `${position.w}px`;
+    if (position.h > 0) entry.root.style.height = `${position.h}px`;
+    // Pixel-only model top-left (no percentage translate).
+    entry.modelX =
+        position.x + entry.align[0] * position.w + (entry.align[2] / 100) * position.w;
+    entry.modelY =
+        position.y + entry.align[1] * position.h + (entry.align[3] / 100) * position.h;
+    applyRootScreenTransform(entry, pan, zoom);
 }
 
 function ensureLayer(cy: Cytoscape.Core): HTMLDivElement | null {
@@ -110,25 +137,22 @@ function ensureLayer(cy: Cytoscape.Core): HTMLDivElement | null {
     layer = document.createElement("div");
     layer.className = "cy-node-html-labels";
     layer.style.position = "absolute";
+    layer.style.left = "0";
+    layer.style.top = "0";
     layer.style.zIndex = "10";
-    layer.style.width = "500px";
+    // Zero box: layer never steals empty-graph pans. Pan/zoom lives on each
+    // label root (not here) so Chrome hit-tests the cards correctly.
+    layer.style.width = "0";
+    layer.style.height = "0";
     layer.style.margin = "0";
     layer.style.padding = "0";
     layer.style.border = "0";
     layer.style.outline = "0";
-    layer.style.pointerEvents = "none";
+    layer.style.overflow = "visible";
+    layer.style.pointerEvents = "auto";
     canvas.parentNode.appendChild(layer);
     layerStore.set(cy, layer);
     return layer;
-}
-
-function updateLayerPanZoom(cy: Cytoscape.Core): void {
-    const layer = layerStore.get(cy);
-    if (!layer) return;
-    const pan = cy.pan();
-    const zoom = cy.zoom();
-    layer.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
-    layer.style.transformOrigin = "top left";
 }
 
 function matchingConfig(
@@ -153,6 +177,12 @@ export function initHtmlNodeLabels(cy: Cytoscape.Core, configs: HtmlNodeLabelCon
     initStore.set(cy, true);
 
     const entries = new Map<string, LabelEntry>();
+
+    const syncPanZoom = () => {
+        const pan = cy.pan();
+        const zoom = cy.zoom();
+        entries.forEach((entry) => applyRootScreenTransform(entry, pan, zoom));
+    };
 
     const removeNode = (nodeId: string) => {
         const entry = entries.get(nodeId);
@@ -184,8 +214,12 @@ export function initHtmlNodeLabels(cy: Cytoscape.Core, configs: HtmlNodeLabelCon
         if (!entry) {
             const root = document.createElement("div");
             root.style.position = "absolute";
+            root.style.left = "0";
+            root.style.top = "0";
+            root.style.pointerEvents = "auto";
             if (config.cssClass) root.classList.add(config.cssClass);
             const content = document.createElement("div");
+            content.style.pointerEvents = "auto";
             root.appendChild(content);
             layer.appendChild(root);
             entry = {
@@ -194,6 +228,8 @@ export function initHtmlNodeLabels(cy: Cytoscape.Core, configs: HtmlNodeLabelCon
                 config,
                 dataKey: "",
                 align: buildAlign(config),
+                modelX: 0,
+                modelY: 0,
             };
             entries.set(node.id(), entry);
         }
@@ -206,7 +242,7 @@ export function initHtmlNodeLabels(cy: Cytoscape.Core, configs: HtmlNodeLabelCon
             renderLabelHtml(entry.content, html);
         }
 
-        applyLabelTransform(entry, position);
+        applyLabelTransform(entry, position, cy.pan(), cy.zoom());
     };
 
     const syncAll = () => {
@@ -229,20 +265,25 @@ export function initHtmlNodeLabels(cy: Cytoscape.Core, configs: HtmlNodeLabelCon
         if (!target.isNode()) return;
         const entry = entries.get(target.id());
         if (!entry) return;
-        applyLabelTransform(entry, getNodePosition(target as Cytoscape.NodeSingular));
+        applyLabelTransform(
+            entry,
+            getNodePosition(target as Cytoscape.NodeSingular),
+            cy.pan(),
+            cy.zoom(),
+        );
     };
 
     cy.one("render", () => {
         ensureLayer(cy);
         syncAll();
-        updateLayerPanZoom(cy);
+        syncPanZoom();
     });
 
     cy.on("add", onData);
     cy.on("remove", (event) => removeNode(event.target.id()));
     cy.on("data", onData);
     cy.on("position bounds", onPosition);
-    cy.on("pan zoom", () => updateLayerPanZoom(cy));
+    cy.on("pan zoom", syncPanZoom);
 
     cy.one("destroy", () => {
         entries.forEach((entry) => entry.root.remove());

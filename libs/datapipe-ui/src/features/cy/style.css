@@ -24,6 +24,11 @@
     min-height: 0;
 }
 
+/* Label roots must be hittable; layer is 0×0 PE:auto (see htmlNodeLabels). */
+.cy-node-html-labels > div {
+    pointer-events: auto;
+}
+
 .node-core,
 .node-compound-label {
     box-sizing: border-box;
@@ -734,6 +739,20 @@
     transform-origin: top left;
 }
 
+.cy-snake-rows-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    /* Under internal edges (5) and labels (10); soft direction cue only. */
+    z-index: 3;
+    pointer-events: none;
+    overflow: visible;
+    transform-origin: top left;
+}
+
+.cy-snake-rows-svg,
 .cy-internal-edges-svg {
     overflow: visible;
     position: absolute;

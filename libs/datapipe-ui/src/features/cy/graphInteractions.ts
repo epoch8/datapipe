@@ -31,10 +31,18 @@ export type GraphInteractionCallbacks = {
     onUserInteracted: () => void;
     /** Last RMB target — used so menu actions don't rely on cytoscape-context-menus' scratch event. */
     onContextTarget?: (node: Cytoscape.NodeSingular) => void;
+    /**
+     * Context-menu item chosen by id. Needed because Chrome often hit-tests
+     * through the painted menu onto the canvas, so the plugin's button click
+     * never fires — we resolve the item by screen geometry instead.
+     */
+    onContextMenuAction?: (itemId: "open-details" | "expand-steps" | "collapse-steps") => void;
 };
 
-function canSelectNode(node: Cytoscape.NodeSingular): boolean {
-    return (node.data("type") as string) !== "group-expanded";
+function canSelectNode(_node: Cytoscape.NodeSingular): boolean {
+    // group-expanded is selectable so focus paint can keep its metaGroup inners
+    // visible; empty-frame chrome still pans via background handlers.
+    return true;
 }
 
 function modelPosFromClient(
@@ -44,9 +52,22 @@ function modelPosFromClient(
     clientY: number,
 ): { x: number; y: number; rendered: { x: number; y: number } } {
     const rect = container.getBoundingClientRect();
+    const rendered = { x: clientX - rect.left, y: clientY - rect.top };
+    // Prefer cytoscape's projector — accounts for container scale / DPR that a
+    // plain pan/zoom divide can miss (Chrome hit→select felt offset on blues).
+    const renderer = (
+        cy as Cytoscape.Core & {
+            renderer?: () => {
+                projectIntoViewport?: (x: number, y: number) => [number, number];
+            };
+        }
+    ).renderer?.();
+    const projected = renderer?.projectIntoViewport?.(clientX, clientY);
+    if (projected) {
+        return { x: projected[0], y: projected[1], rendered };
+    }
     const pan = cy.pan();
     const zoom = cy.zoom();
-    const rendered = { x: clientX - rect.left, y: clientY - rect.top };
     return {
         x: (rendered.x - pan.x) / zoom,
         y: (rendered.y - pan.y) / zoom,
@@ -62,14 +83,16 @@ function findExpandedFrameAt(
 ): Cytoscape.NodeSingular | null {
     let frame: Cytoscape.NodeSingular | null = null;
     let bestArea = Infinity;
+    // Native title sits above the body via stylesheet text-margin-y (~-12). Users
+    // RMB/dblclick that label band; includeLabels alone is unreliable at low zoom.
+    const FRAME_LABEL_PAD_TOP = 48;
     cy.nodes('node[type = "group-expanded"]').forEach((ele) => {
         if (!ele.visible()) return;
         const node = ele as Cytoscape.NodeSingular;
-        // includeLabels: title sits above the body (text-margin-y); users RMB/dblclick it.
         const bb = node.boundingBox({ includeLabels: true, includeOverlays: false });
-        if (x < bb.x1 || x > bb.x2 || y < bb.y1 || y > bb.y2) return;
-        // Prefer the tightest (nested) frame if several overlap.
-        const area = bb.w * bb.h;
+        const y1 = bb.y1 - FRAME_LABEL_PAD_TOP;
+        if (x < bb.x1 || x > bb.x2 || y < y1 || y > bb.y2) return;
+        const area = bb.w * (bb.h + FRAME_LABEL_PAD_TOP);
         if (area < bestArea) {
             bestArea = area;
             frame = node;
@@ -116,6 +139,8 @@ function resolvePointerTarget(
     const fromLabel = (() => {
         const label = (event.target as Element | null)?.closest?.("[data-cy-node-id]");
         if (!label) return null;
+        // Nested chip rows also carry data-cy-node-id; prefer the card root so a
+        // chip hit still selects the owning node (same id) via cy lookup.
         const nodeId = label.getAttribute("data-cy-node-id");
         if (!nodeId) return null;
         const node = cy.getElementById(nodeId);
@@ -130,12 +155,88 @@ function resolvePointerTarget(
     return findExpandedFrameAt(cy, pos.x, pos.y);
 }
 
+/** When HTML labels miss the hit (Chrome + scaled layer), resolve via model BB. */
+function resolveNodeAtClient(
+    cy: Cytoscape.Core,
+    container: HTMLElement,
+    clientX: number,
+    clientY: number,
+): Cytoscape.NodeSingular | null {
+    const pos = modelPosFromClient(cy, container, clientX, clientY);
+    const content = findContentNodeAt(cy, pos.x, pos.y);
+    if (content) return content;
+    return findExpandedFrameAt(cy, pos.x, pos.y);
+}
+
+function hideContextMenus(container: HTMLElement): void {
+    container.querySelectorAll(".cy-context-menus-cxt-menu").forEach((el) => {
+        (el as HTMLElement).style.display = "none";
+    });
+}
+
 function isContextMenuTarget(target: EventTarget | null): boolean {
     return Boolean(
         (target as Element | null)?.closest?.(
             ".cy-context-menus-cxt-menu, .cy-context-menus-cxt-menuitem",
         ),
     );
+}
+
+function visibleContextMenu(container: HTMLElement): HTMLElement | null {
+    const menus = container.querySelectorAll(".cy-context-menus-cxt-menu");
+    for (let i = 0; i < menus.length; i += 1) {
+        const menu = menus[i] as HTMLElement;
+        if (getComputedStyle(menu).display === "none") continue;
+        if (menu.offsetWidth <= 0 || menu.offsetHeight <= 0) continue;
+        return menu;
+    }
+    return null;
+}
+
+/** Menu item under a client point (geometry — Chrome often misses the painted button). */
+function contextMenuItemAtPoint(
+    container: HTMLElement,
+    clientX: number,
+    clientY: number,
+): HTMLElement | null {
+    const menu = visibleContextMenu(container);
+    if (!menu) return null;
+    const items = menu.querySelectorAll(".cy-context-menus-cxt-menuitem");
+    for (let i = 0; i < items.length; i += 1) {
+        const item = items[i] as HTMLElement;
+        if (getComputedStyle(item).display === "none") continue;
+        const r = item.getBoundingClientRect();
+        if (
+            clientX >= r.left &&
+            clientX <= r.right &&
+            clientY >= r.top &&
+            clientY <= r.bottom
+        ) {
+            return item;
+        }
+    }
+    // Click on menu chrome (padding) still counts as "on menu" — not empty graph.
+    const mr = menu.getBoundingClientRect();
+    if (
+        clientX >= mr.left &&
+        clientX <= mr.right &&
+        clientY >= mr.top &&
+        clientY <= mr.bottom
+    ) {
+        return menu;
+    }
+    return null;
+}
+
+function contextMenuItemId(
+    el: HTMLElement | null,
+): "open-details" | "expand-steps" | "collapse-steps" | null {
+    if (!el) return null;
+    const id = el.id || el.closest?.(".cy-context-menus-cxt-menuitem")?.id;
+    if (id === "open-details" || id === "expand-steps" || id === "collapse-steps") {
+        return id;
+    }
+    return null;
 }
 
 /**
@@ -444,6 +545,19 @@ export function attachGraphInteractions(
         const releasedOnCanvas = container.contains(event.target as Node);
         const duration = performance.now() - press.downAt;
         const isShortClick = !press.moved && duration <= BG_CLEAR_MAX_MS;
+
+        // Short click on empty expanded-frame chrome → select the blue meta
+        // (inners stay visible via metaGroup focus expansion).
+        if (releasedOnCanvas && !releasedOnNode && isShortClick) {
+            const at = modelPosFromClient(cy, container, event.clientX, event.clientY);
+            const frame = findExpandedFrameAt(cy, at.x, at.y);
+            if (frame && !findContentNodeAt(cy, at.x, at.y)) {
+                runSelectOnce(frame, event.ctrlKey || event.metaKey);
+                callbacks.onOpenInspector(frame);
+                return;
+            }
+        }
+
         const shouldClear =
             releasedOnCanvas &&
             !releasedOnNode &&
@@ -465,9 +579,30 @@ export function attachGraphInteractions(
 
     const onContainerMouseDown = (event: MouseEvent) => {
         if (event.button !== 0) return;
-        // Context-menu items live inside the cy container; do not treat their
-        // LMB as background/node press (that clears currentCyEvent / selection).
-        if (isContextMenuTarget(event.target)) return;
+
+        // Chrome often hit-tests through the painted context menu onto the canvas.
+        // Resolve the menu item by screen geometry before any node/background logic.
+        const menuHit =
+            (isContextMenuTarget(event.target)
+                ? ((event.target as Element).closest(
+                      ".cy-context-menus-cxt-menuitem",
+                  ) as HTMLElement | null)
+                : null) || contextMenuItemAtPoint(container, event.clientX, event.clientY);
+        if (menuHit) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            const itemId = contextMenuItemId(menuHit);
+            hideContextMenus(container);
+            armSelectSuppress();
+            selectHandledThisGesture = true;
+            if (itemId) callbacks.onContextMenuAction?.(itemId);
+            return;
+        }
+
+        // Drop any stuck RMB menu so it cannot steal subsequent LMB hits.
+        if (visibleContextMenu(container)) hideContextMenus(container);
+
         pressStartedOnOverflow = false;
         nodePress = null;
         selectionFreeze = null;
@@ -535,7 +670,11 @@ export function attachGraphInteractions(
             return;
         }
 
-        const nodeAtDown = resolveNodeFromLabel(event.target);
+        let nodeAtDown = resolveNodeFromLabel(event.target);
+        // HTML label PE can miss in Chrome (scaled layer); fall back to BB hit.
+        if (!nodeAtDown) {
+            nodeAtDown = resolveNodeAtClient(cy, container, event.clientX, event.clientY);
+        }
         if (nodeAtDown) {
             event.preventDefault();
             event.stopPropagation();
@@ -578,7 +717,12 @@ export function attachGraphInteractions(
 
     const onContainerClick = (event: MouseEvent) => {
         if (event.button !== 0) return;
-        if (isContextMenuTarget(event.target)) return;
+        // Menu action already handled on mousedown (geometry or direct hit).
+        if (isContextMenuTarget(event.target) || contextMenuItemAtPoint(container, event.clientX, event.clientY)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         if (consumeSelectSuppress()) {
             nodePress = null;
             restoreFrozenSelection();
@@ -598,6 +742,9 @@ export function attachGraphInteractions(
             return;
         }
         let node = resolveNodeFromLabel(event.target);
+        if (!node) {
+            node = resolveNodeAtClient(cy, container, event.clientX, event.clientY);
+        }
         if (!node && nodePress) {
             const dx = event.clientX - nodePress.x;
             const dy = event.clientY - nodePress.y;
@@ -620,14 +767,6 @@ export function attachGraphInteractions(
         clearGraphFocus(cy);
     };
 
-    const onDblTapGroup = (event: Cytoscape.EventObject) => {
-        const node = event.target as Cytoscape.NodeSingular;
-        const type = node.data("type") as string;
-        if (type === "group" || type === "group-expanded") {
-            callbacks.onToggleGroup(node.id());
-        }
-    };
-
     // HTML labels sit above the canvas and swallow the browser contextmenu, so
     // cytoscape-context-menus never sees a native cxttap. Forward RMB on labels
     // and on empty areas of the (events:no) expanded blue frame.
@@ -636,10 +775,20 @@ export function attachGraphInteractions(
         if (!node) return;
         event.preventDefault();
         event.stopPropagation();
-        // Skip native mouseup→core cxttap that would wipe this menu on empty
-        // frame chrome (title band has no events:yes node under the cursor).
-        const disarm = armNativeCxttapSuppression(cy);
-        void disarm; // runs until timeout; keep armed through mouseup
+        event.stopImmediatePropagation();
+
+        // Kill the trailing mouseup→core cxttap that wipes the menu we are about
+        // to open (esp. on events:no blue frames and HTML labels).
+        armNativeCxttapSuppression(cy);
+        const killBubble = (e: Event) => {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        };
+        document.addEventListener("mouseup", killBubble, true);
+        window.setTimeout(() => {
+            document.removeEventListener("mouseup", killBubble, true);
+        }, 320);
+
         callbacks.onContextTarget?.(node);
 
         // Plugin only *shows* matching items; it does not hide the rest unless the
@@ -659,41 +808,56 @@ export function attachGraphInteractions(
             originalEvent: event,
         });
 
-        // Plugin corner-flip math often drifts for HTML-label hits (esp. on the
-        // right half of the canvas). Pin the menu under the cursor instead.
-        // Also enforce item visibility from the resolved target (not stale selectors).
-        queueMicrotask(() => {
+        const pinMenu = () => {
             const menu = container.querySelector(
                 ".cy-context-menus-cxt-menu",
             ) as HTMLElement | null;
-            if (!menu || getComputedStyle(menu).display === "none") return;
-            const rect = container.getBoundingClientRect();
-            menu.style.left = `${event.clientX - rect.left}px`;
-            menu.style.top = `${event.clientY - rect.top}px`;
+            if (!menu) return;
+            // Force visible — plugin sometimes leaves display:none after a wiped cxttap.
+            menu.style.display = "block";
+            // Fixed to the viewport so Chrome hit-tests the buttons (absolute
+            // children under the cy canvas layer often paint but never receive LMB).
+            const menuW = menu.offsetWidth || 200;
+            const menuH = menu.offsetHeight || 120;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            let left = event.clientX;
+            let top = event.clientY;
+            left = Math.max(4, Math.min(left, Math.max(4, vw - menuW - 4)));
+            top = Math.max(4, Math.min(top, Math.max(4, vh - menuH - 4)));
+            menu.style.position = "fixed";
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
             menu.style.right = "auto";
             menu.style.bottom = "auto";
+            menu.style.zIndex = "2147483646";
+            menu.style.pointerEvents = "auto";
 
             const type = node.data("type") as string;
             const openDetails = menu.querySelector("#open-details") as HTMLElement | null;
             const expand = menu.querySelector("#expand-steps") as HTMLElement | null;
             const collapse = menu.querySelector("#collapse-steps") as HTMLElement | null;
-            if (openDetails) openDetails.style.display = "";
-            if (expand) expand.style.display = type === "group" ? "" : "none";
-            if (collapse) collapse.style.display = type === "group-expanded" ? "" : "none";
-        });
-    };
+            if (openDetails) {
+                openDetails.style.display = "";
+                openDetails.style.pointerEvents = "auto";
+            }
+            if (expand) {
+                expand.style.display = type === "group" ? "" : "none";
+                expand.style.pointerEvents = "auto";
+            }
+            if (collapse) {
+                collapse.style.display = type === "group-expanded" ? "" : "none";
+                collapse.style.pointerEvents = "auto";
+            }
+        };
 
-    // Double-click: HTML group labels, or empty area of an expanded blue frame
-    // (group-expanded uses events:no so dbltap does not fire there).
-    const onContainerDblClick = (event: MouseEvent) => {
-        const node = resolvePointerTarget(cy, container, event);
-        if (!node) return;
-        const type = node.data("type") as string;
-        if (type === "group" || type === "group-expanded") {
-            event.preventDefault();
-            event.stopPropagation();
-            callbacks.onToggleGroup(node.id());
-        }
+        // Plugin show is async; pin on microtask and next frames so a late layout
+        // pass cannot leave the menu off-screen or hidden.
+        queueMicrotask(pinMenu);
+        requestAnimationFrame(() => {
+            pinMenu();
+            requestAnimationFrame(pinMenu);
+        });
     };
 
     const onContainerWheel = (event: WheelEvent) => {
@@ -733,9 +897,7 @@ export function attachGraphInteractions(
     container.addEventListener("mousedown", onContainerMouseDown, true);
     container.addEventListener("click", onContainerClick, true);
     container.addEventListener("contextmenu", onContainerContextMenu, true);
-    container.addEventListener("dblclick", onContainerDblClick, true);
     container.addEventListener("mouseout", onContainerMouseOut, true);
-    cy.on("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
 
     return () => {
         document.removeEventListener("mousemove", onDocumentMouseMove, true);
@@ -752,10 +914,8 @@ export function attachGraphInteractions(
             container.removeEventListener("mousedown", onContainerMouseDown, true);
             container.removeEventListener("click", onContainerClick, true);
             container.removeEventListener("contextmenu", onContainerContextMenu, true);
-            container.removeEventListener("dblclick", onContainerDblClick, true);
             container.removeEventListener("mouseout", onContainerMouseOut, true);
             cy.off("tap", "node", onCyNodeTap);
-            cy.off("dbltap", 'node[type = "group"], node[type = "group-expanded"]', onDblTapGroup);
         }
     };
 }

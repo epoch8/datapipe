@@ -7,6 +7,7 @@ import {
     layoutLayeredDag,
     measureNode,
     minimizeLayerCrossings,
+    pinLayoutAnchorCenter,
 } from "./incrementalLayout";
 import { graphNodeDimensions } from "./graphNodeLayout";
 import type { LayoutEdge, MeasuredNode } from "./incrementalLayout";
@@ -60,6 +61,41 @@ describe("measureNode", () => {
         expect(inner.h).toBe(graphNodeDimensions.transform.height);
         expect(inner.w).toBe(top.w);
         expect(inner.h).toBe(top.h);
+    });
+});
+
+describe("pinLayoutAnchorCenter", () => {
+    it("translates the whole layout so the anchor keeps its center", () => {
+        const { nodes, edges } = makeGroupGraph();
+        const collapsed = buildCollapsedLayout(nodes, edges, new Set(), "LR");
+        const before = collapsed.get("group_a")!;
+        const pin = {
+            x: before.bbox.x + before.bbox.w / 2,
+            y: before.bbox.y + before.bbox.h / 2,
+        };
+
+        const expanded = buildCollapsedLayout(nodes, edges, new Set(["group_a"]), "LR");
+        pinLayoutAnchorCenter(expanded, "group_a", pin);
+        const after = expanded.get("group_a")!;
+        expect(after.bbox.x + after.bbox.w / 2).toBeCloseTo(pin.x, 5);
+        expect(after.bbox.y + after.bbox.h / 2).toBeCloseTo(pin.y, 5);
+    });
+});
+
+describe("expandGroupInLayout grows from center", () => {
+    it("keeps the group center fixed when expanding", () => {
+        const { nodes, edges } = makeGroupGraph();
+        let layout = buildCollapsedLayout(nodes, edges, new Set(), "LR");
+        const before = layout.get("group_a")!;
+        const cx = before.bbox.x + before.bbox.w / 2;
+        const cy = before.bbox.y + before.bbox.h / 2;
+
+        layout = expandGroupInLayout(layout, "group_a", nodes, edges, "LR", ["a1", "a2"]);
+        const after = layout.get("group_a")!;
+        expect(after.bbox.x + after.bbox.w / 2).toBeCloseTo(cx, 5);
+        expect(after.bbox.y + after.bbox.h / 2).toBeCloseTo(cy, 5);
+        expect(after.bbox.w).toBeGreaterThan(before.bbox.w);
+        expect(after.bbox.h).toBeGreaterThan(before.bbox.h);
     });
 });
 

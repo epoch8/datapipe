@@ -14,6 +14,10 @@ import {
 } from "./htmlLabelOpacity";
 import { ANIMATION_EASING, ANIMATION_MS } from "./animationConstants";
 import { animateEdgeOpacityTransitions, resetEdgeOpacities } from "./edgeTransition";
+import {
+    pauseInternalEdgeOverlayPaths,
+    resumeInternalEdgeOverlayPaths,
+} from "./internalEdgeOverlay";
 
 export type BBox = { x: number; y: number; w: number; h: number };
 
@@ -59,6 +63,25 @@ function bboxFromCenter(cx: number, cy: number, w: number, h: number): BBox {
 
 function bboxCenter(bbox: BBox): { x: number; y: number } {
     return { x: bbox.x + bbox.w / 2, y: bbox.y + bbox.h / 2 };
+}
+
+/** Shift every visible bbox so `nodeId`'s center lands on `center`. */
+export function pinLayoutAnchorCenter(
+    layout: GraphLayout,
+    nodeId: string,
+    center: { x: number; y: number },
+): void {
+    const entry = layout.get(nodeId);
+    if (!entry?.visible) return;
+    const current = bboxCenter(entry.bbox);
+    const dx = center.x - current.x;
+    const dy = center.y - current.y;
+    if (dx === 0 && dy === 0) return;
+    layout.forEach((item) => {
+        if (!item.visible) return;
+        item.bbox.x += dx;
+        item.bbox.y += dy;
+    });
 }
 
 function topCenter(bbox: BBox): { x: number; y: number } {
@@ -1160,10 +1183,9 @@ function reassignExternalRowsOnExpand(
 }
 
 /**
- * Upfront layout for expand/collapse: top-center anchor stays fixed; external nodes
- * at/ below the group top move by the group size delta. On expand, rows below the
- * blue frame are repacked from the pre-expand row structure. Expanded groups move
- * as rigid clusters (frame + inners) so multi-expand stays coherent.
+ * Upfront layout for expand/collapse: group grows/shrinks from its center;
+ * neighbors on each side move with the corresponding edge so the frame doesn't
+ * slide over them. Expanded groups move as rigid clusters (frame + inners).
  */
 function computeExternalPositionsAfterGroupResize(
     layout: GraphLayout,
@@ -1176,16 +1198,28 @@ function computeExternalPositionsAfterGroupResize(
         const deltaH = newGroupBBox.h - oldGroupBBox.h;
         if (deltaH === 0) return;
 
+        const dyTop = newGroupBBox.y - oldGroupBBox.y;
+        const dyBottom =
+            newGroupBBox.y + newGroupBBox.h - (oldGroupBBox.y + oldGroupBBox.h);
+
         if (deltaH > 0) {
+            // Nodes fully above the old frame follow the rising top edge.
+            collectLayoutMoveUnits(layout, exclude).forEach((unit) => {
+                if (unit.originY + unit.height <= oldGroupBBox.y) {
+                    translateUnit(unit, 0, dyTop);
+                }
+            });
+            // Nodes at/below the old top are repacked under the new bottom.
             reassignExternalRowsOnExpand(layout, oldGroupBBox, newGroupBBox, exclude);
             return;
         }
 
-        // Collapse fallback (when pre-expand snapshot is unavailable).
-        // Uniform delta keeps other expanded groups' internals aligned with their frame.
+        // Collapse: pull both sides back toward the center.
         collectLayoutMoveUnits(layout, exclude).forEach((unit) => {
-            if (unit.originY >= newGroupBBox.y) {
-                translateUnit(unit, 0, deltaH);
+            if (unit.originY + unit.height <= oldGroupBBox.y) {
+                translateUnit(unit, 0, dyTop);
+            } else if (unit.originY >= oldGroupBBox.y) {
+                translateUnit(unit, 0, dyBottom);
             }
         });
         return;
@@ -1194,11 +1228,24 @@ function computeExternalPositionsAfterGroupResize(
     const deltaW = newGroupBBox.w - oldGroupBBox.w;
     if (deltaW === 0) return;
 
+    const dxLeft = newGroupBBox.x - oldGroupBBox.x;
+    const dxRight =
+        newGroupBBox.x + newGroupBBox.w - (oldGroupBBox.x + oldGroupBBox.w);
     const floorX = newGroupBBox.x + newGroupBBox.w + NODE_SEP;
+
     collectLayoutMoveUnits(layout, exclude).forEach((unit) => {
+        if (unit.originX + unit.width <= oldGroupBBox.x) {
+            translateUnit(unit, dxLeft, 0);
+            return;
+        }
+        if (unit.originX >= oldGroupBBox.x + oldGroupBBox.w) {
+            translateUnit(unit, dxRight, 0);
+            return;
+        }
         if (unit.originX < oldGroupBBox.x) return;
 
-        let dx = deltaW;
+        // Overlapping the old frame's horizontal band — park to the right.
+        let dx = dxRight;
         const candidate: BBox = {
             x: unit.originX + dx,
             y: unit.originY,
@@ -1285,9 +1332,10 @@ export function expandGroupInLayout(
         h: contentBBox.h + GROUP_PADDING.top + GROUP_PADDING.bottom,
     };
 
-    const anchor = topCenter(groupEntry.bbox);
+    const oldCenter = bboxCenter(groupEntry.bbox);
     const oldBBox = { ...groupEntry.bbox };
-    const groupBBox = placeByTopCenter(anchor, expandedSize);
+    // Grow from the card center so expand doesn't slide the frame away.
+    const groupBBox = bboxFromCenter(oldCenter.x, oldCenter.y, expandedSize.w, expandedSize.h);
     const innerOrigin = {
         x: groupBBox.x + GROUP_PADDING.left - contentBBox.x,
         y: groupBBox.y + GROUP_PADDING.top - contentBBox.y,
@@ -1356,8 +1404,8 @@ export function collapseGroupInLayout(
         child_count: data?.child_count ?? members.size,
     });
 
-    const anchor = topCenter(oldBBox);
-    const collapsedBBox = placeByTopCenter(anchor, { w: collapsed.w, h: collapsed.h });
+    const oldCenter = bboxCenter(oldBBox);
+    const collapsedBBox = bboxFromCenter(oldCenter.x, oldCenter.y, collapsed.w, collapsed.h);
 
     members.forEach((id) => next.delete(id));
 
@@ -1589,6 +1637,67 @@ export function layoutToCenters(layout: GraphLayout): Map<string, { x: number; y
     return centers;
 }
 
+/** One zigzag (snake) row: travel direction + centerline polyline in model space. */
+export type SnakeRowGuide = {
+    rtl: boolean;
+    points: Array<{ x: number; y: number }>;
+};
+
+/**
+ * Recover snake row guides from a finished layout (even L→R, odd R→L).
+ * Top-level nodes only (collapsed metas + free steps/tables). Used to draw a
+ * direction ribbon so zigzag left/right flow is readable at a glance.
+ */
+export function computeSnakeRowGuides(layout: GraphLayout): SnakeRowGuide[] {
+    const tops: Array<{ cx: number; cy: number; w: number; h: number }> = [];
+    layout.forEach((entry) => {
+        if (!entry.visible) return;
+        if (entry.node.metaGroup) return;
+        const c = bboxCenter(entry.bbox);
+        tops.push({ cx: c.x, cy: c.y, w: entry.bbox.w, h: entry.bbox.h });
+    });
+    if (tops.length < 2) return [];
+
+    tops.sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+    const medianH =
+        [...tops].map((n) => n.h).sort((a, b) => a - b)[Math.floor(tops.length / 2)] ?? 120;
+    const rowTol = Math.max(ROW_SEP * 0.45, medianH * 0.55);
+
+    const rows: Array<typeof tops> = [];
+    tops.forEach((n) => {
+        const last = rows[rows.length - 1];
+        if (last && Math.abs(last[0].cy - n.cy) <= rowTol) {
+            last.push(n);
+            return;
+        }
+        rows.push([n]);
+    });
+
+    if (rows.length < 1) return [];
+
+    const pad = 36;
+    return rows.map((row, rowIndex) => {
+        const rtl = rowIndex % 2 === 1;
+        const sorted = [...row].sort((a, b) => a.cx - b.cx);
+        const travel = rtl ? [...sorted].reverse() : sorted;
+        const y = travel.reduce((sum, n) => sum + n.cy, 0) / travel.length;
+        const points: Array<{ x: number; y: number }> = travel.map((n) => ({ x: n.cx, y }));
+        if (points.length >= 1) {
+            const first = travel[0];
+            const last = travel[travel.length - 1];
+            points[0] = {
+                x: rtl ? first.cx + first.w / 2 + pad : first.cx - first.w / 2 - pad,
+                y,
+            };
+            points[points.length - 1] = {
+                x: rtl ? last.cx - last.w / 2 - pad : last.cx + last.w / 2 + pad,
+                y,
+            };
+        }
+        return { rtl, points };
+    });
+}
+
 export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {
     cy.batch(() => {
         // Parent compound nodes first so child positions stay stable.
@@ -1620,7 +1729,7 @@ export function applyLayoutToCy(cy: Cytoscape.Core, layout: GraphLayout): void {
     });
 }
 
-const morphRafStore = new WeakMap<Cytoscape.Core, Set<number>>();
+const morphRafStore = new WeakMap<Cytoscape.Core, Map<string, number>>();
 const pendingMorphStore = new WeakMap<
     Cytoscape.Core,
     Map<
@@ -1629,18 +1738,20 @@ const pendingMorphStore = new WeakMap<
             to: BBox;
             toCenter: { x: number; y: number };
             opacityTo?: number;
+            safetyTimer?: number;
+            intervalTimer?: number;
             onComplete?: () => void;
         }
     >
 >();
 
-function trackMorphRaf(cy: Cytoscape.Core, id: number): void {
-    let set = morphRafStore.get(cy);
-    if (!set) {
-        set = new Set();
-        morphRafStore.set(cy, set);
+function trackMorphRaf(cy: Cytoscape.Core, nodeId: string, id: number): void {
+    let map = morphRafStore.get(cy);
+    if (!map) {
+        map = new Map();
+        morphRafStore.set(cy, map);
     }
-    set.add(id);
+    map.set(nodeId, id);
 }
 
 function getPendingMorphs(cy: Cytoscape.Core) {
@@ -1661,9 +1772,17 @@ function stopMorphAnimations(cy: Cytoscape.Core): void {
     // Jump unfinished morphs to their end state (mirrors cy.stop(true, true)).
     // Cancelling mid-morph without this leaves group-expanded stuck at the
     // collapsed 450×168 frame (the "squashed blue node" after expand/collapse).
+    // Do NOT call morph.onComplete — a newer sync owns the transition; firing
+    // the old callback applied a stale layout on top of the new one.
     const pending = pendingMorphStore.get(cy);
     if (!pending?.size) return;
     pending.forEach((morph, nodeId) => {
+        if (morph.safetyTimer != null) {
+            window.clearTimeout(morph.safetyTimer);
+        }
+        if (morph.intervalTimer != null) {
+            window.clearInterval(morph.intervalTimer);
+        }
         const ele = cy.getElementById(nodeId);
         if (!ele.empty()) {
             const node = ele as Cytoscape.NodeSingular;
@@ -1675,7 +1794,6 @@ function stopMorphAnimations(cy: Cytoscape.Core): void {
                 node.style("opacity", morph.opacityTo);
             }
         }
-        morph.onComplete?.();
     });
     pending.clear();
 }
@@ -1685,9 +1803,13 @@ function easeInOutCubic(t: number): number {
 }
 
 /**
- * Animate group frame size via boxW/boxH data (stylesheet mappers), not style
- * width/height bypasses. Cytoscape's style-animate of width fights function-mapped
- * stylesheet rules and leaves expand stuck at the collapsed size.
+ * Animate group frame size. During the tween we bypass stylesheet width/height
+ * mappers with style() so we don't fire cy `data` every frame (that storms HTML
+ * label + overlay handlers and can stall the morph). On finish we clear the
+ * bypass and commit boxW/boxH for steady-state mapping.
+ *
+ * Driven by setInterval (not rAF): cytoscape/overlay work cancels stray
+ * animation frames and was leaving expand stuck mid-size.
  */
 function animateNodeBoxMorph(
     cy: Cytoscape.Core,
@@ -1710,23 +1832,30 @@ function animateNodeBoxMorph(
     const nodeId = node.id();
     const pending = getPendingMorphs(cy);
 
-    node.removeStyle("width");
-    node.removeStyle("height");
     node.position(fromCenter);
-    node.data({ boxW: from.w, boxH: from.h });
+    node.style({ width: from.w, height: from.h });
     if (fadeOpacity) {
         node.style("opacity", options.opacityFrom!);
     }
 
-    pending.set(nodeId, {
-        to,
-        toCenter,
-        opacityTo: fadeOpacity ? options.opacityTo : undefined,
-        onComplete: options.onComplete,
-    });
+    let finished = false;
+    let intervalTimer = 0;
+    let safetyTimer = 0;
 
     const finish = () => {
+        if (finished) return;
+        // Superseded by stopMorphAnimations — do not run onComplete.
+        if (!pending.has(nodeId)) {
+            finished = true;
+            window.clearInterval(intervalTimer);
+            window.clearTimeout(safetyTimer);
+            return;
+        }
+        finished = true;
+        window.clearInterval(intervalTimer);
+        window.clearTimeout(safetyTimer);
         pending.delete(nodeId);
+        morphRafStore.get(cy)?.delete(nodeId);
         if (cy.destroyed() || node.removed()) {
             options.onComplete?.();
             return;
@@ -1741,13 +1870,20 @@ function animateNodeBoxMorph(
         options.onComplete?.();
     };
 
-    const tick = (now: number) => {
-        if (!pending.has(nodeId)) return; // stopped / jumped to end
+    pending.set(nodeId, {
+        to,
+        toCenter,
+        opacityTo: fadeOpacity ? options.opacityTo : undefined,
+        onComplete: options.onComplete,
+    });
+
+    const tick = () => {
+        if (finished || !pending.has(nodeId)) return;
         if (cy.destroyed() || node.removed()) {
-            pending.delete(nodeId);
-            options.onComplete?.();
+            finish();
             return;
         }
+        const now = performance.now();
         const t = Math.min(1, (now - start) / duration);
         const e = easeInOutCubic(t);
         const w = from.w + (to.w - from.w) * e;
@@ -1755,23 +1891,29 @@ function animateNodeBoxMorph(
         const x = fromCenter.x + (toCenter.x - fromCenter.x) * e;
         const y = fromCenter.y + (toCenter.y - fromCenter.y) * e;
 
-        node.position({ x, y });
-        node.removeStyle("width");
-        node.removeStyle("height");
-        node.data({ boxW: w, boxH: h });
+        const cur = node.position();
+        if (cur.x !== x || cur.y !== y) {
+            node.position({ x, y });
+        }
+        node.style({ width: w, height: h });
         if (fadeOpacity) {
             const op = options.opacityFrom! + (options.opacityTo! - options.opacityFrom!) * e;
             node.style("opacity", op);
         }
 
-        if (t < 1) {
-            trackMorphRaf(cy, requestAnimationFrame(tick));
-            return;
+        if (t >= 1) {
+            finish();
         }
-        finish();
     };
 
-    trackMorphRaf(cy, requestAnimationFrame(tick));
+    intervalTimer = window.setInterval(tick, 16);
+    safetyTimer = window.setTimeout(finish, duration + 80);
+    const entry = pending.get(nodeId);
+    if (entry) {
+        entry.safetyTimer = safetyTimer;
+        entry.intervalTimer = intervalTimer;
+    }
+    tick();
 }
 
 export function stopLayoutAnimations(cy: Cytoscape.Core): void {
@@ -1779,6 +1921,8 @@ export function stopLayoutAnimations(cy: Cytoscape.Core): void {
     stopHtmlOpacityAnimations(cy);
     stopMorphAnimations(cy);
     cy.stop(true, true);
+    // A superseded transition may have left the overlay paused.
+    resumeInternalEdgeOverlayPaths(cy);
 }
 
 export type OpacityTiming = {
@@ -1815,11 +1959,14 @@ export function animateLayoutTransition(
     options?: LayoutTransitionOptions,
 ): void {
     stopLayoutAnimations(cy);
+    // stopLayoutAnimations resumes the overlay; pause again for this tween.
+    pauseInternalEdgeOverlayPaths(cy);
 
     const toCenters = layoutToCenters(toLayout);
     const fadeIn = options?.fadeIn ?? new Set<string>();
     const fadeOut = options?.fadeOut ?? new Set<string>();
     const morphBoxes = options?.morphBoxes ?? new Map<string, { from: BBox; to: BBox }>();
+    const groupMorphing = morphBoxes.size > 0;
 
     fadeIn.forEach((id) => {
         const node = cy.getElementById(id);
@@ -1837,8 +1984,30 @@ export function animateLayoutTransition(
         }
     });
 
-    applyLayoutToCy(cy, toLayout);
+    // Apply size metadata. For group morph, keep current positions so we can
+    // tween neighbors from→to (applyLayoutToCy would snap them and look like
+    // the graph "flew away"). Non-morph transitions still snap via applyLayoutToCy.
+    if (groupMorphing) {
+        cy.batch(() => {
+            toLayout.forEach((entry, id) => {
+                if (!entry.visible) return;
+                const ele = cy.getElementById(id);
+                if (ele.empty()) return;
+                const node = ele as Cytoscape.NodeSingular;
+                if (entry.node.type === "group" || entry.node.type === "group-expanded") {
+                    if (morphBoxes.has(id)) return;
+                    node.removeStyle("width");
+                    node.removeStyle("height");
+                    node.data({ boxW: entry.bbox.w, boxH: entry.bbox.h });
+                }
+            });
+        });
+    } else {
+        applyLayoutToCy(cy, toLayout);
+    }
 
+    // Group expand/collapse: morph the blue frame AND slide neighbors so the
+    // zigzag rebuild reads as a coordinated shift (camera stays put).
     type AnimSpec = {
         id: string;
         target?: { x: number; y: number };
@@ -1855,11 +2024,21 @@ export function animateLayoutTransition(
         const isFadeIn = fadeIn.has(id);
         const isFadeOut = fadeOut.has(id);
         const morph = morphBoxes.get(id);
-        const move = Boolean(from) || Boolean(morph);
+        const moved =
+            Boolean(from) &&
+            (Math.abs(from!.x - target.x) > 0.5 || Math.abs(from!.y - target.y) > 0.5);
+        const move = Boolean(morph) || moved || (!groupMorphing && Boolean(from));
         if (!move && !isFadeIn && !isFadeOut) {
             return;
         }
-        specs.push({ id, target, fadeIn: isFadeIn, fadeOut: isFadeOut, move, morph });
+        specs.push({
+            id,
+            target,
+            fadeIn: isFadeIn,
+            fadeOut: isFadeOut,
+            move,
+            morph,
+        });
     });
 
     morphBoxes.forEach((morph, id) => {
@@ -1885,8 +2064,13 @@ export function animateLayoutTransition(
     const edgeFadeOut = options?.edgeFadeOut ?? new Set<string>();
     const totalWork = specs.length + edgeFadeIn.size + edgeFadeOut.size;
 
-    if (!totalWork) {
+    const finishTransition = () => {
+        resumeInternalEdgeOverlayPaths(cy);
         options?.onComplete?.();
+    };
+
+    if (!totalWork) {
+        finishTransition();
         return;
     }
 
@@ -1907,7 +2091,7 @@ export function animateLayoutTransition(
                 }
             });
             resetEdgeOpacities(cy);
-            options?.onComplete?.();
+            finishTransition();
         }
     };
 
@@ -1931,10 +2115,8 @@ export function animateLayoutTransition(
             const fromCenter = bboxCenter(morph.from);
             const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
             nodeEl.position(fromCenter);
-            nodeEl.removeStyle("width");
-            nodeEl.removeStyle("height");
-            nodeEl.data("boxW", morph.from.w);
-            nodeEl.data("boxH", morph.from.h);
+            // Match animateNodeBoxMorph: style bypass for the start size.
+            nodeEl.style({ width: morph.from.w, height: morph.from.h });
             if (isNativeGroupFrame) {
                 ensureGroupExpandedVisible(nodeEl);
             }
@@ -1972,14 +2154,8 @@ export function animateLayoutTransition(
                 target,
                 {
                     duration: ANIMATION_MS,
-                    // Shrinking native frame fades out while the HTML collapsed card fades in.
-                    ...(shrinking && isNativeGroupFrame
-                        ? { opacityFrom: 1, opacityTo: 0 }
-                        : {}),
                     onComplete: () => {
-                        if (shrinking && isNativeGroupFrame) {
-                            nodeEl.style("opacity", 0);
-                        } else if (isNativeGroupFrame) {
+                        if (isNativeGroupFrame) {
                             ensureGroupExpandedVisible(nodeEl);
                         }
                         positionDone = true;
@@ -2002,10 +2178,17 @@ export function animateLayoutTransition(
         }
 
         if (isFadeIn || isFadeOut) {
-            const timing = resolveOpacityTiming(
+            const explicit = resolveOpacityTiming(
                 id,
                 isFadeIn ? options?.fadeInTiming : options?.fadeOutTiming,
             );
+            // Reveal expand inners after the frame has mostly grown so they aren't
+            // visible outside the still-collapsed blue box.
+            const morphFadeInDefaults =
+                groupMorphing && isFadeIn && !morph
+                    ? { delay: Math.round(ANIMATION_MS * 0.4), duration: Math.round(ANIMATION_MS * 0.6) }
+                    : {};
+            const timing = { ...morphFadeInDefaults, ...explicit };
             animateNodeVisualOpacity(
                 cy,
                 id,
@@ -2030,24 +2213,12 @@ export type FitViewportOptions = {
 };
 
 /**
- * Fit the camera to show all (or focused expanded) content. No readable-zoom
- * floor: Fit must be allowed to zoom out as far as the graph needs.
+ * Fit the camera to show the full graph. Always fit everything — zooming only to
+ * expanded blues left the rest of the pipeline off-screen (and after browser-back
+ * restore made blues look like they "flew" outside the graph).
  */
 export function fitGraphViewport(cy: Cytoscape.Core, _options?: FitViewportOptions): void {
-    const expanded = cy.nodes('node[type = "group-expanded"]');
-    let target = cy.elements();
-    if (expanded.nonempty()) {
-        let focus = cy.collection();
-        expanded.forEach((group) => {
-            focus = focus.union(group);
-            const groupId = group.id();
-            focus = focus.union(
-                cy.nodes().filter((node) => node.data("metaGroup") === groupId),
-            );
-        });
-        target = focus;
-    }
-
+    const target = cy.elements();
     cy.fit(target, FIT_PADDING);
     const fitZoom = cy.zoom();
     cy.minZoom(Math.min(0.05, fitZoom * 0.3));

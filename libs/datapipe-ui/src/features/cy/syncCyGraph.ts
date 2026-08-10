@@ -18,14 +18,17 @@ import {
     fitGraphViewport,
     getInnerNodeIdsFromLayout,
     GraphLayout,
+    pinLayoutAnchorCenter,
     stopLayoutAnimations,
 } from "./incrementalLayout";
 import { setNodeVisualOpacity, ensureGroupExpandedVisible } from "./htmlLabelOpacity";
 import { buildLabelColumnLayout } from "./columnLayout";
+import { setSnakeRowOverlayLayout } from "./snakeRowOverlay";
 import {
     addEdgesFromTarget,
     computeEdgeDiff,
     makeEdgeKey,
+    resetEdgeOpacities,
 } from "./edgeTransition";
 import { reprocessData } from "./process";
 import {
@@ -306,6 +309,15 @@ function scheduleLayoutComplete(cy: Cytoscape.Core, options: SyncOptions): void 
     layoutTimerStore.set(cy, timer);
 }
 
+function commitLayout(
+    cy: Cytoscape.Core,
+    layout: GraphLayout,
+    wrapRows: boolean,
+): void {
+    layoutStore.set(cy, layout);
+    setSnakeRowOverlayLayout(cy, layout, wrapRows);
+}
+
 /**
  * Sync graph elements and apply layout.
  * Columns mode always rebuilds the full layered DAG (stable across any
@@ -363,7 +375,7 @@ export function syncCyGraph(
         applyElementDiff(cy, target);
         const nextLayout = buildLayout();
         applyLayoutToCy(cy, nextLayout);
-        layoutStore.set(cy, nextLayout);
+        commitLayout(cy, nextLayout, wrapRows);
         structureKeyStore.set(cy, currentStructureKey);
         layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
         // Sync cached viewport dimensions before fitting: on first paint the flex
@@ -375,16 +387,17 @@ export function syncCyGraph(
         return;
     }
 
-    if (options.mode === "fit") {
+    if (options.mode === "fit" && !anchorGroup) {
         // Stage/graph switch with an existing graph on screen: animate node
         // positions to the new layout while the camera pans/zooms to the new fit
         // *in parallel*. Previously we snapped the camera (fitGraphViewport) and
         // only then animated the graph, which read as a jarring two-step jump.
+        // Skip when expanding/collapsing a blue meta — that must stay pinned in place.
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
         applyElementDiff(cy, target);
         const nextLayout = buildLayout();
-        layoutStore.set(cy, nextLayout);
+        commitLayout(cy, nextLayout, wrapRows);
         structureKeyStore.set(cy, currentStructureKey);
         layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
 
@@ -420,53 +433,169 @@ export function syncCyGraph(
         return;
     }
 
-    // Columns mode: always full layered-DAG rebuild. Incremental push/collapse
-    // cascades badly across multi-expand (especially LR) and pre-expand snapshots
-    // go stale when collapse order ≠ expand order — leaving a chaotic Fit view.
+    // Columns mode.
+    // - Expand/collapse of a blue meta: full layered rebuild (stable for large
+    //   metas like Train_*), then pin the anchor center so the card stays under
+    //   the cursor. Incremental expandGroupInLayout neighbor-push turns big
+    //   expands into chaos.
+    // - Anything else: full layered-DAG rebuild (stable across layout-mode changes).
     if (options.layoutMode === "columns") {
         stopLayoutAnimations(cy);
         clearLayoutTimer(cy);
 
-        const nextLayout = buildLayout();
-        layoutStore.set(cy, nextLayout);
-        structureKeyStore.set(cy, currentStructureKey);
-        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
-
-        if (anchorGroup && options.expanding) {
+        if (anchorGroup && previousLayout?.has(anchorGroup)) {
             const edgeDiff = computeEdgeDiff(cy, target);
-            applyNodeDiff(cy, target, false);
-            const expandedGroup = cy.getElementById(anchorGroup);
-            if (!expandedGroup.empty()) {
-                ensureGroupExpandedVisible(expandedGroup as Cytoscape.NodeSingular);
+            const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
+            const fromEntry = previousLayout.get(anchorGroup);
+            // Pin to the live cy center (what the user is looking at), not a
+            // possibly-stale layout-store bbox — otherwise the meta flies off-graph.
+            const cyAnchor = cy.getElementById(anchorGroup);
+            const pinCenter = !cyAnchor.empty()
+                ? {
+                      x: (cyAnchor as Cytoscape.NodeSingular).position("x"),
+                      y: (cyAnchor as Cytoscape.NodeSingular).position("y"),
+                  }
+                : fromEntry
+                  ? {
+                        x: fromEntry.bbox.x + fromEntry.bbox.w / 2,
+                        y: fromEntry.bbox.y + fromEntry.bbox.h / 2,
+                    }
+                  : null;
+            const fromBBox =
+                !cyAnchor.empty() && pinCenter
+                    ? {
+                          x: pinCenter.x - (cyAnchor as Cytoscape.NodeSingular).width() / 2,
+                          y: pinCenter.y - (cyAnchor as Cytoscape.NodeSingular).height() / 2,
+                          w: (cyAnchor as Cytoscape.NodeSingular).width(),
+                          h: (cyAnchor as Cytoscape.NodeSingular).height(),
+                      }
+                    : fromEntry
+                      ? { ...fromEntry.bbox }
+                      : null;
+
+            if (options.expanding) {
+                applyNodeDiff(cy, target, false);
+                const expandedGroup = cy.getElementById(anchorGroup);
+                if (!expandedGroup.empty()) {
+                    ensureGroupExpandedVisible(expandedGroup as Cytoscape.NodeSingular);
+                }
+                addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
+
+                const nextLayout = buildLayout();
+                if (pinCenter) pinLayoutAnchorCenter(nextLayout, anchorGroup, pinCenter);
+                const toEntry = nextLayout.get(anchorGroup);
+                if (fromBBox && toEntry) {
+                    morphBoxes.set(anchorGroup, { from: fromBBox, to: { ...toEntry.bbox } });
+                }
+
+                commitLayout(cy, nextLayout, wrapRows);
+                structureKeyStore.set(cy, currentStructureKey);
+                layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
+
+                const innerIds = getInnerNodeIds(nodes, anchorGroup);
+                animateLayoutTransition(cy, fromCenters, nextLayout, {
+                    fadeIn: innerIds,
+                    morphBoxes,
+                    edgeFadeIn: new Set(edgeDiff.toAdd),
+                    edgeFadeOut: new Set(edgeDiff.toRemove),
+                    onComplete: () => {
+                        applyLayoutToCy(cy, nextLayout);
+                        applyElementDiff(cy, target);
+                        cy.batch(() => {
+                            cy.nodes().forEach((nodeEle) => {
+                                const node = nodeEle as Cytoscape.NodeSingular;
+                                const entry = nextLayout.get(node.id());
+                                if (!entry?.visible) return;
+                                if (node.data("type") === "group-expanded") {
+                                    ensureGroupExpandedVisible(node);
+                                } else {
+                                    setNodeVisualOpacity(cy, node, 1);
+                                }
+                            });
+                        });
+                        resetEdgeOpacities(cy);
+                        scheduleLayoutComplete(cy, options);
+                    },
+                });
+                return;
             }
-            addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
-            const innerIds = getInnerNodeIds(nodes, anchorGroup);
+
+            // Collapse: full rebuild + pin, morph frame down, fade out inners.
+            const innerIds = getInnerNodeIdsFromLayout(previousLayout, anchorGroup);
+            getInnerNodeIds(nodes, anchorGroup).forEach((id) => {
+                if (previousLayout.get(id)?.node.metaGroup === anchorGroup) {
+                    innerIds.add(id);
+                }
+            });
+
+            const nextLayout = buildLayout();
+            if (pinCenter) pinLayoutAnchorCenter(nextLayout, anchorGroup, pinCenter);
+            const toEntry = nextLayout.get(anchorGroup);
+            if (fromBBox && toEntry) {
+                morphBoxes.set(anchorGroup, { from: fromBBox, to: { ...toEntry.bbox } });
+            }
+
+            commitLayout(cy, nextLayout, wrapRows);
+            structureKeyStore.set(cy, currentStructureKey);
+            layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
+
+            // Keep the native blue frame visible while it morphs down; swap to the
+            // HTML collapsed card in onComplete. Hiding it here killed the collapse anim.
+            const groupEle = cy.getElementById(anchorGroup);
+            if (!groupEle.empty()) {
+                const groupNode = groupEle as Cytoscape.NodeSingular;
+                groupNode.removeStyle("width");
+                groupNode.removeStyle("height");
+                if (groupNode.data("type") === "group-expanded") {
+                    ensureGroupExpandedVisible(groupNode);
+                }
+            }
+
             animateLayoutTransition(cy, fromCenters, nextLayout, {
-                fadeIn: innerIds,
+                fadeOut: innerIds,
+                morphBoxes,
                 edgeFadeIn: new Set(edgeDiff.toAdd),
                 edgeFadeOut: new Set(edgeDiff.toRemove),
                 onComplete: () => {
-                    applyLayoutToCy(cy, nextLayout);
                     applyElementDiff(cy, target);
+                    applyLayoutToCy(cy, nextLayout);
+                    cy.batch(() => {
+                        cy.nodes().forEach((nodeEle) => {
+                            const node = nodeEle as Cytoscape.NodeSingular;
+                            const entry = nextLayout.get(node.id());
+                            if (!entry?.visible) return;
+                            setNodeVisualOpacity(cy, node, 1);
+                        });
+                    });
+                    resetEdgeOpacities(cy);
                     scheduleLayoutComplete(cy, options);
                 },
             });
             return;
         }
 
-        if (anchorGroup && !options.expanding) {
-            // Snap-collapse onto the deterministic full layout so any close order
-            // lands on the same neat DAG (no stale push residuals).
-            applyElementDiff(cy, target);
-            applyLayoutToCy(cy, nextLayout);
-            scheduleLayoutComplete(cy, options);
-            return;
-        }
+        // Full rebuild (layout mode change, initial columns sync without anchor, etc.).
+        const nextLayout = buildLayout();
+        commitLayout(cy, nextLayout, wrapRows);
+        structureKeyStore.set(cy, currentStructureKey);
+        layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
 
         applyElementDiff(cy, target);
-        animateLayoutTransition(cy, fromCenters, nextLayout, {
-            onComplete: () => scheduleLayoutComplete(cy, options),
+        applyLayoutToCy(cy, nextLayout);
+        cy.batch(() => {
+            cy.nodes().forEach((nodeEle) => {
+                const node = nodeEle as Cytoscape.NodeSingular;
+                const entry = nextLayout.get(node.id());
+                if (!entry?.visible) return;
+                if (node.data("type") === "group-expanded") {
+                    ensureGroupExpandedVisible(node);
+                } else {
+                    setNodeVisualOpacity(cy, node, 1);
+                }
+            });
         });
+        resetEdgeOpacities(cy);
+        scheduleLayoutComplete(cy, options);
         return;
     }
 
@@ -488,6 +617,8 @@ export function syncCyGraph(
                 ensureGroupExpandedVisible(expandedGroup as Cytoscape.NodeSingular);
             }
             addEdgesFromTarget(cy, target, new Set(edgeDiff.toAdd), 0);
+            const fromEntry = workingLayout.get(anchorGroup);
+            const fromBBox = fromEntry ? { ...fromEntry.bbox } : null;
             const nextLayout = expandGroupInLayout(
                 workingLayout,
                 anchorGroup,
@@ -498,14 +629,16 @@ export function syncCyGraph(
                 wrapRows,
             );
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
-            layoutStore.set(cy, nextLayout);
+            commitLayout(cy, nextLayout, wrapRows);
             structureKeyStore.set(cy, currentStructureKey);
             layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
             const morphBoxes = new Map<string, { from: BBox; to: BBox }>();
-            const fromEntry = workingLayout.get(anchorGroup);
             const toEntry = nextLayout.get(anchorGroup);
-            if (fromEntry && toEntry) {
-                morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+            if (fromBBox && toEntry) {
+                morphBoxes.set(anchorGroup, {
+                    from: fromBBox,
+                    to: { ...toEntry.bbox },
+                });
             }
             animateLayoutTransition(cy, fromCenters, nextLayout, {
                 fadeIn: innerIds,
@@ -543,7 +676,7 @@ export function syncCyGraph(
                 innerIds,
             );
 
-        layoutStore.set(cy, collapsedLayout);
+        commitLayout(cy, collapsedLayout, wrapRows);
         structureKeyStore.set(cy, currentStructureKey);
         layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
         const edgeDiff = computeEdgeDiff(cy, target);
@@ -569,7 +702,10 @@ export function syncCyGraph(
         const fromEntry = previousLayout.get(anchorGroup);
         const toEntry = collapsedLayout.get(anchorGroup);
         if (fromEntry && toEntry) {
-            morphBoxes.set(anchorGroup, { from: fromEntry.bbox, to: toEntry.bbox });
+            morphBoxes.set(anchorGroup, {
+                from: { ...fromEntry.bbox },
+                to: { ...toEntry.bbox },
+            });
         }
 
         animateLayoutTransition(cy, fromCenters, collapsedLayout, {
@@ -593,7 +729,7 @@ export function syncCyGraph(
     clearLayoutTimer(cy);
     applyElementDiff(cy, target);
     const nextLayout = buildLayout();
-    layoutStore.set(cy, nextLayout);
+    commitLayout(cy, nextLayout, wrapRows);
     structureKeyStore.set(cy, currentStructureKey);
     layoutConfigKeyStore.set(cy, currentLayoutConfigKey);
     animateLayoutTransition(cy, fromCenters, nextLayout, {

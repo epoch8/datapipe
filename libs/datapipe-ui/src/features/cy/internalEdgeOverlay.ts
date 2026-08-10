@@ -240,6 +240,21 @@ function syncOverlayCameraOnly(cy: Cytoscape.Core): void {
     updateOverlayCamera(cy, root.layer, root.defs);
 }
 
+const pathUpdatesPaused = new WeakMap<Cytoscape.Core, boolean>();
+
+/** Pause path rebuilds during layout morph — position storms starve the morph RAF. */
+export function pauseInternalEdgeOverlayPaths(cy: Cytoscape.Core): void {
+    pathUpdatesPaused.set(cy, true);
+}
+
+export function resumeInternalEdgeOverlayPaths(cy: Cytoscape.Core): void {
+    if (!pathUpdatesPaused.get(cy)) return;
+    pathUpdatesPaused.set(cy, false);
+    if (!cy.destroyed()) {
+        syncInternalEdgeOverlay(cy);
+    }
+}
+
 export function initInternalEdgeOverlay(cy: Cytoscape.Core): void {
     if (overlayInitStore.has(cy)) return;
     overlayInitStore.set(cy, true);
@@ -248,9 +263,10 @@ export function initInternalEdgeOverlay(cy: Cytoscape.Core): void {
     let cameraFrame = 0;
 
     const updatePaths = () => {
+        if (pathUpdatesPaused.get(cy)) return;
         cancelAnimationFrame(pathFrame);
         pathFrame = requestAnimationFrame(() => {
-            if (cy.destroyed()) return;
+            if (cy.destroyed() || pathUpdatesPaused.get(cy)) return;
             syncInternalEdgeOverlay(cy);
         });
     };

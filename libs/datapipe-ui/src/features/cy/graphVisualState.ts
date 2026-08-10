@@ -1,6 +1,7 @@
 import Cytoscape from "cytoscape";
 import { getNodeHtmlLabelEl, nodeUsesHtmlLabel } from "./htmlLabelOpacity";
 import { refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
+import { refreshSnakeRowOverlay } from "./snakeRowOverlay";
 
 export type FocusPaint = {
     selectedIds: Set<string>;
@@ -127,6 +128,7 @@ function paintLabelFocus(
             expandedVisible = expandedVisible.union(node.parent());
         }
     });
+    expandedVisible = expandHighlightWithMetaGroups(cy, expandedVisible);
 
     const visibleIds = new Set(expandedVisible.map((node) => node.id()));
     cy.batch(() => {
@@ -143,6 +145,7 @@ function paintLabelFocus(
         });
     });
     refreshInternalEdgeOverlay(cy);
+    refreshSnakeRowOverlay(cy);
 }
 
 function paintNativeNodesAndEdges(cy: Cytoscape.Core, paint: FocusPaint | null): void {
@@ -182,6 +185,55 @@ function expandHighlightWithAncestors(
     return expanded;
 }
 
+/**
+ * Blue metas are not cytoscape compounds — membership is `metaGroup` data.
+ * When the *selected* node is the meta itself, keep the frame + all inners
+ * together. When an inner step is selected, do NOT pull the whole meta (that
+ * flooded the focus with siblings); callers pass only seed + edge neighbors.
+ */
+function expandHighlightWithMetaGroups(
+    cy: Cytoscape.Core,
+    nodes: Cytoscape.NodeCollection,
+    opts?: { onlyWhenSeedIsMeta?: boolean; seedIds?: Set<string> },
+): Cytoscape.NodeCollection {
+    let expanded = nodes;
+    const metaIds = new Set<string>();
+
+    nodes.forEach((node) => {
+        const type = node.data("type") as string;
+        const isMeta = type === "group" || type === "group-expanded";
+        if (opts?.onlyWhenSeedIsMeta) {
+            // Only expand metas that are themselves in the selection seed.
+            if (!isMeta || !opts.seedIds?.has(node.id())) return;
+            metaIds.add(node.id());
+            return;
+        }
+        if (isMeta) metaIds.add(node.id());
+        const metaGroup = node.data("metaGroup") as string | undefined;
+        if (metaGroup) metaIds.add(metaGroup);
+    });
+
+    metaIds.forEach((groupId) => {
+        const frame = cy.getElementById(groupId);
+        if (!frame.empty()) {
+            expanded = expanded.union(frame) as Cytoscape.NodeCollection;
+        }
+        const members = cy.nodes().filter((n) => n.data("metaGroup") === groupId);
+        expanded = expanded.union(members) as Cytoscape.NodeCollection;
+        // Outer edges of the meta (bound to members or the frame).
+        members.forEach((member) => {
+            expanded = expanded.union(member.connectedEdges().connectedNodes());
+        });
+        if (!frame.empty()) {
+            expanded = expanded.union(
+                (frame as Cytoscape.NodeSingular).connectedEdges().connectedNodes(),
+            );
+        }
+    });
+
+    return expanded;
+}
+
 function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
     const selected = getSelectedNodes(cy);
     if (selected.empty()) return null;
@@ -189,13 +241,32 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
     if (selected.length === 1) {
         const node = selected.first() as Cytoscape.NodeSingular;
         const connectedEdges = node.connectedEdges();
-        const highlightedNodes = expandHighlightWithAncestors(
+        let highlightedNodes = expandHighlightWithAncestors(
             connectedEdges.connectedNodes().union(node) as Cytoscape.NodeCollection,
         );
+        const seedIds = new Set([node.id()]);
+        highlightedNodes = expandHighlightWithMetaGroups(cy, highlightedNodes, {
+            onlyWhenSeedIsMeta: true,
+            seedIds,
+        });
+
+        // Edges between any highlighted nodes stay visible (not only the seed's).
+        const highlightedIds = new Set(highlightedNodes.map((n) => n.id()));
+        const edgeRelatedIds = new Set<string>();
+        cy.edges().forEach((edge) => {
+            if (highlightedIds.has(edge.source().id()) && highlightedIds.has(edge.target().id())) {
+                edgeRelatedIds.add(edge.id());
+            }
+        });
+        // Always keep the seed's own edges even if an endpoint is outside.
+        connectedEdges.forEach((edge) => {
+            edgeRelatedIds.add(edge.id());
+        });
+
         return {
             selectedIds: new Set([node.id()]),
-            highlightedIds: new Set(highlightedNodes.map((n) => n.id())),
-            edgeRelatedIds: new Set(connectedEdges.map((e) => e.id())),
+            highlightedIds,
+            edgeRelatedIds,
         };
     }
 
@@ -207,11 +278,23 @@ function computeFocusPaint(cy: Cytoscape.Core): FocusPaint | null {
         highlightedNodes = highlightedNodes.union(connectedEdges.connectedNodes());
     });
     highlightedNodes = expandHighlightWithAncestors(highlightedNodes);
+    highlightedNodes = expandHighlightWithMetaGroups(cy, highlightedNodes, {
+        onlyWhenSeedIsMeta: true,
+        seedIds: new Set(selected.map((n) => n.id())),
+    });
+
+    const highlightedIds = new Set(highlightedNodes.map((n) => n.id()));
+    const edgeRelatedIds = new Set(highlightedEdges.map((e) => e.id()));
+    cy.edges().forEach((edge) => {
+        if (highlightedIds.has(edge.source().id()) && highlightedIds.has(edge.target().id())) {
+            edgeRelatedIds.add(edge.id());
+        }
+    });
 
     return {
         selectedIds: new Set(selected.map((n) => n.id())),
-        highlightedIds: new Set(highlightedNodes.map((n) => n.id())),
-        edgeRelatedIds: new Set(highlightedEdges.map((e) => e.id())),
+        highlightedIds,
+        edgeRelatedIds,
     };
 }
 
@@ -234,6 +317,7 @@ function commitFocusPaint(cy: Cytoscape.Core, paint: FocusPaint | null): void {
     // Selection hide must not leave label-filter hide stuck wrong after clear.
     paintLabelFocus(cy, labelFocusStore.get(cy) ?? null);
     refreshInternalEdgeOverlay(cy);
+    refreshSnakeRowOverlay(cy);
 }
 
 // --- Selection API ---
