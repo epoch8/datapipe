@@ -713,3 +713,431 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         expect(spine[spine.length - 1]).toEqual({ x: 85, y: 90 });
     });
 });
+
+/** Long meta with sequential inners that would nest-wrap if wrapRows leaked in. */
+function makeWideMetaPipeline(innerCount = 8, outerAfter = 8) {
+    const nodes = new Map<string, Cytoscape.NodeDataDefinition>();
+    const edges: Cytoscape.EdgeDataDefinition[] = [];
+    const pipelineOrders = new Map<string, string[]>();
+
+    nodes.set("group_a", {
+        id: "group_a",
+        name: "group_a",
+        type: "group",
+        child_count: innerCount,
+        pipelineIndex: 0,
+        pipelineOrderKey: "0000",
+    });
+    const innerIds: string[] = [];
+    for (let i = 0; i < innerCount; i += 1) {
+        const id = `a${i}`;
+        innerIds.push(id);
+        nodes.set(id, {
+            id,
+            name: id,
+            type: "transform",
+            metaGroup: "group_a",
+            pipelineIndex: i,
+            pipelineOrderKey: `0000.${String(i).padStart(4, "0")}`,
+        });
+        if (i > 0) edges.push({ source: `a${i - 1}`, target: id });
+    }
+    pipelineOrders.set("group_a", innerIds);
+
+    nodes.set("group_b", {
+        id: "group_b",
+        name: "group_b",
+        type: "group",
+        child_count: 2,
+        pipelineIndex: 1,
+        pipelineOrderKey: "0001",
+    });
+    nodes.set("b0", {
+        id: "b0",
+        name: "b0",
+        type: "transform",
+        metaGroup: "group_b",
+        pipelineIndex: 0,
+        pipelineOrderKey: "0001.0000",
+    });
+    nodes.set("b1", {
+        id: "b1",
+        name: "b1",
+        type: "transform",
+        metaGroup: "group_b",
+        pipelineIndex: 1,
+        pipelineOrderKey: "0001.0001",
+    });
+    edges.push({ source: "b0", target: "b1" });
+    pipelineOrders.set("group_b", ["b0", "b1"]);
+
+    // Wire outer chronology through the metas (collapsed) / first-last inners.
+    edges.push({ source: "group_a", target: "group_b" });
+    edges.push({ source: `a${innerCount - 1}`, target: "b0" });
+
+    for (let i = 0; i < outerAfter; i += 1) {
+        const id = `s${i}`;
+        nodes.set(id, {
+            id,
+            name: id,
+            type: "transform",
+            pipelineIndex: 2 + i,
+            pipelineOrderKey: String(2 + i).padStart(4, "0"),
+        });
+        if (i === 0) {
+            edges.push({ source: "group_b", target: id });
+            edges.push({ source: "b1", target: id });
+        } else {
+            edges.push({ source: `s${i - 1}`, target: id });
+        }
+    }
+
+    return { nodes, edges, pipelineOrders, innerIds };
+}
+
+function frameCenterY(layout: ReturnType<typeof buildCollapsedLayout>, id: string): number {
+    const e = layout.get(id)!;
+    return e.bbox.y + e.bbox.h / 2;
+}
+
+describe("expanded meta stays in flow (snake / horizontal / vertical)", () => {
+    it("snake: expanded inners form one LR strip (no nested mini-snake tower)", () => {
+        const { nodes, edges, pipelineOrders, innerIds } = makeWideMetaPipeline(9, 6);
+        const layout = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "LR",
+            pipelineOrders,
+            true,
+        );
+        assertInnersInsideFrame(layout, "group_a");
+
+        const frame = layout.get("group_a")!;
+        const nodeH = graphNodeDimensions.transform.height;
+        // Single strip + padding — not a 3-row nested snake (~3*h + 2*ROW_SEP).
+        expect(frame.bbox.h).toBeLessThan(nodeH * 2 + GROUP_PADDING.top + GROUP_PADDING.bottom);
+
+        const ys = innerIds.map((id) => {
+            const e = layout.get(id)!;
+            return e.bbox.y + e.bbox.h / 2;
+        });
+        const yMin = Math.min(...ys);
+        const yMax = Math.max(...ys);
+        expect(yMax - yMin).toBeLessThan(nodeH * 0.6);
+
+        const xs = innerIds.map((id) => layout.get(id)!.bbox.x);
+        for (let i = 1; i < xs.length; i += 1) {
+            expect(xs[i]).toBeGreaterThan(xs[i - 1]);
+        }
+    });
+
+    it("snake: expanding a mid meta pushes later steps further along the wrap", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(8, 9);
+        const collapsed = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(),
+            "LR",
+            pipelineOrders,
+            true,
+        );
+        const expanded = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "LR",
+            pipelineOrders,
+            true,
+        );
+        assertInnersInsideFrame(expanded, "group_a");
+
+        const lastId = "s8";
+        const cLast = collapsed.get(lastId)!;
+        const eLast = expanded.get(lastId)!;
+        const cA = collapsed.get("group_a")!;
+        const eA = expanded.get("group_a")!;
+        expect(eA.bbox.w).toBeGreaterThan(cA.bbox.w);
+
+        // Downstream card moves: either later snake row or farther from the meta.
+        const movedDown = eLast.snakeRow !== undefined && cLast.snakeRow !== undefined
+            ? eLast.snakeRow! >= cLast.snakeRow!
+            : true;
+        const distCollapsed = Math.hypot(
+            cLast.bbox.x - cA.bbox.x,
+            cLast.bbox.y - cA.bbox.y,
+        );
+        const distExpanded = Math.hypot(
+            eLast.bbox.x - eA.bbox.x,
+            eLast.bbox.y - eA.bbox.y,
+        );
+        expect(movedDown || distExpanded > distCollapsed * 0.9).toBe(true);
+        expect(eA.bbox.w + eLast.bbox.w).toBeGreaterThan(cA.bbox.w);
+    });
+
+    it("snake: expand/collapse sequences keep frames coherent and restore size", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(6, 6);
+        const orders = pipelineOrders;
+
+        const both = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a", "group_b"]),
+            "LR",
+            orders,
+            true,
+        );
+        assertInnersInsideFrame(both, "group_a");
+        assertInnersInsideFrame(both, "group_b");
+        expect(both.get("group_a")!.bbox.x).toBeLessThan(both.get("group_b")!.bbox.x);
+
+        const onlyB = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_b"]),
+            "LR",
+            orders,
+            true,
+        );
+        assertInnersInsideFrame(onlyB, "group_b");
+        expect(onlyB.get("group_a")!.node.type).not.toBe("group-expanded");
+        expect(onlyB.get("a0")).toBeUndefined();
+
+        const onlyA = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "LR",
+            orders,
+            true,
+        );
+        assertInnersInsideFrame(onlyA, "group_a");
+
+        const none = buildCollapsedLayout(nodes, edges, new Set(), "LR", orders, true);
+        expect(none.get("a0")).toBeUndefined();
+        expect(none.get("b0")).toBeUndefined();
+        expect(none.get("group_a")!.bbox.w).toBeLessThan(onlyA.get("group_a")!.bbox.w);
+        expect(none.get("group_b")!.bbox.w).toBeLessThan(onlyB.get("group_b")!.bbox.w);
+
+        // Reverse expand order: B then A then collapse B.
+        const bThenA = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_b", "group_a"]),
+            "LR",
+            orders,
+            true,
+        );
+        assertInnersInsideFrame(bThenA, "group_a");
+        assertInnersInsideFrame(bThenA, "group_b");
+        expect(bThenA.get("group_a")!.bbox.x).toBeLessThan(bThenA.get("group_b")!.bbox.x);
+    });
+
+    it("horizontal: expand widens the meta and shifts later nodes right", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(5, 3);
+        const collapsed = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(),
+            "LR",
+            pipelineOrders,
+            false,
+        );
+        const expanded = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "LR",
+            pipelineOrders,
+            false,
+        );
+        assertInnersInsideFrame(expanded, "group_a");
+
+        expect(expanded.get("group_a")!.bbox.w).toBeGreaterThan(
+            collapsed.get("group_a")!.bbox.w,
+        );
+        expect(expanded.get("group_b")!.bbox.x).toBeGreaterThan(
+            collapsed.get("group_b")!.bbox.x,
+        );
+        expect(expanded.get("s0")!.bbox.x).toBeGreaterThan(collapsed.get("s0")!.bbox.x);
+        // Same ribbon Y for top-level cards.
+        expect(frameCenterY(expanded, "group_a")).toBeCloseTo(
+            frameCenterY(expanded, "group_b"),
+            0,
+        );
+    });
+
+    it("horizontal: multi expand/collapse order stays left-to-right", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(4, 2);
+        for (const expanded of [
+            new Set<string>(["group_a"]),
+            new Set<string>(["group_b"]),
+            new Set<string>(["group_a", "group_b"]),
+            new Set<string>(["group_b", "group_a"]),
+            new Set<string>(),
+        ]) {
+            const layout = buildCollapsedLayout(
+                nodes,
+                edges,
+                expanded,
+                "LR",
+                pipelineOrders,
+                false,
+            );
+            expect(layout.get("group_a")!.bbox.x).toBeLessThan(layout.get("group_b")!.bbox.x);
+            expect(layout.get("group_b")!.bbox.x).toBeLessThan(layout.get("s0")!.bbox.x);
+            if (expanded.has("group_a")) assertInnersInsideFrame(layout, "group_a");
+            if (expanded.has("group_b")) assertInnersInsideFrame(layout, "group_b");
+        }
+    });
+
+    it("vertical: expand grows the meta and shifts later nodes down", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(5, 3);
+        const collapsed = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(),
+            "TB",
+            pipelineOrders,
+            false,
+        );
+        const expanded = buildCollapsedLayout(
+            nodes,
+            edges,
+            new Set(["group_a"]),
+            "TB",
+            pipelineOrders,
+            false,
+        );
+        assertInnersInsideFrame(expanded, "group_a");
+
+        expect(expanded.get("group_a")!.bbox.h).toBeGreaterThan(
+            collapsed.get("group_a")!.bbox.h,
+        );
+        expect(expanded.get("group_b")!.bbox.y).toBeGreaterThan(
+            collapsed.get("group_b")!.bbox.y,
+        );
+        expect(expanded.get("s0")!.bbox.y).toBeGreaterThan(collapsed.get("s0")!.bbox.y);
+    });
+
+    it("vertical: multi expand/collapse order stays top-to-bottom", () => {
+        const { nodes, edges, pipelineOrders } = makeWideMetaPipeline(4, 2);
+        for (const expanded of [
+            new Set<string>(["group_a"]),
+            new Set<string>(["group_b"]),
+            new Set<string>(["group_a", "group_b"]),
+            new Set<string>(),
+        ]) {
+            const layout = buildCollapsedLayout(
+                nodes,
+                edges,
+                expanded,
+                "TB",
+                pipelineOrders,
+                false,
+            );
+            expect(layout.get("group_a")!.bbox.y).toBeLessThan(layout.get("group_b")!.bbox.y);
+            expect(layout.get("group_b")!.bbox.y).toBeLessThan(layout.get("s0")!.bbox.y);
+            if (expanded.has("group_a")) assertInnersInsideFrame(layout, "group_a");
+            if (expanded.has("group_b")) assertInnersInsideFrame(layout, "group_b");
+        }
+    });
+
+    it("snake: expanded frame without __orderKey suffix stays on the same row", () => {
+        // Mirrors LabelStudioUploadTasks: unique meta name → id has no __0007 suffix.
+        const collapsedNodes = new Map<string, Cytoscape.NodeDataDefinition>([
+            [
+                "early",
+                {
+                    id: "early",
+                    name: "early",
+                    type: "transform",
+                    pipelineOrderKey: "0000",
+                    pipelineIndex: 0,
+                },
+            ],
+            [
+                "LabelStudioUploadTasks",
+                {
+                    id: "LabelStudioUploadTasks",
+                    name: "LabelStudioUploadTasks",
+                    type: "group",
+                    pipelineOrderKey: "0001",
+                    pipelineIndex: 1,
+                    child_count: 2,
+                },
+            ],
+            [
+                "late",
+                {
+                    id: "late",
+                    name: "late",
+                    type: "transform",
+                    pipelineOrderKey: "0002",
+                    pipelineIndex: 2,
+                },
+            ],
+        ]);
+        const expandedNodes = new Map<string, Cytoscape.NodeDataDefinition>([
+            ...collapsedNodes,
+            [
+                "LabelStudioUploadTasks",
+                {
+                    ...collapsedNodes.get("LabelStudioUploadTasks")!,
+                    type: "group-expanded",
+                },
+            ],
+            [
+                "t1",
+                {
+                    id: "t1",
+                    name: "t1",
+                    type: "transform",
+                    metaGroup: "LabelStudioUploadTasks",
+                    pipelineOrderKey: "0001.0000",
+                    pipelineIndex: 0,
+                },
+            ],
+            [
+                "t2",
+                {
+                    id: "t2",
+                    name: "t2",
+                    type: "transform",
+                    metaGroup: "LabelStudioUploadTasks",
+                    pipelineOrderKey: "0001.0001",
+                    pipelineIndex: 1,
+                },
+            ],
+        ]);
+        const edges: Cytoscape.EdgeDataDefinition[] = [
+            { source: "early", target: "LabelStudioUploadTasks" },
+            { source: "LabelStudioUploadTasks", target: "late" },
+            { source: "t1", target: "t2" },
+            { source: "early", target: "t1" },
+            { source: "t2", target: "late" },
+        ];
+        const collapsedLayout = buildCollapsedLayout(
+            collapsedNodes,
+            edges,
+            new Set(),
+            "LR",
+            new Map(),
+            true,
+        );
+        const expandedLayout = buildCollapsedLayout(
+            expandedNodes,
+            edges,
+            new Set(["LabelStudioUploadTasks"]),
+            "LR",
+            new Map([["LabelStudioUploadTasks", ["t1", "t2"]]]),
+            true,
+        );
+        const c = collapsedLayout.get("LabelStudioUploadTasks")!;
+        const e = expandedLayout.get("LabelStudioUploadTasks")!;
+        expect(e.snakeRow).toBe(c.snakeRow);
+        expect(e.bbox.x).toBeGreaterThan(collapsedLayout.get("early")!.bbox.x);
+        expect(expandedLayout.get("late")!.bbox.x).toBeGreaterThan(e.bbox.x);
+        assertInnersInsideFrame(expandedLayout, "LabelStudioUploadTasks");
+    });
+});

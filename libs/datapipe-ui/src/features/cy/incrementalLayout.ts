@@ -985,18 +985,56 @@ export function layoutInnerGraph(
     rankDir: "TB" | "LR" = "TB",
     wrapRows = true,
 ): { positions: Map<string, BBox>; contentBBox: BBox } {
+    void wrapRows;
+    // Expanded-meta children share a parent prefix (`0001.0000`, `0001.0001`, …).
+    // chronologicalRanks only uses the first `\d{4}`, so every inner would land in
+    // one vertical column and the blue frame would tower out of the snake. Strip
+    // the shared prefix so inners lay out along the flow like a mini-pipeline.
+    const layoutNodes = stripSharedPipelineOrderPrefix(children);
     const hasInternalEdges = edges.some(
-        ({ source, target }) => children.has(source) && children.has(target),
+        ({ source, target }) => layoutNodes.has(source) && layoutNodes.has(target),
     );
-    const rankEdges = hasInternalEdges ? buildRankEdges(children, edges) : edges;
+    const rankEdges = hasInternalEdges ? buildRankEdges(layoutNodes, edges) : edges;
     // Match the outer graph orientation so expanded metas don't flip axis mid-pipeline.
+    // Never nest a zigzag inside the blue frame (outer snake already wraps).
     const positions = hasInternalEdges
-        ? layoutLayeredDag(children, edges, rankDir, rankEdges, wrapRows)
+        ? layoutLayeredDag(layoutNodes, edges, rankDir, rankEdges, false)
         : layoutVerticalStack(
-              children,
-              pipelineOrder.length ? pipelineOrder : sortIds(Array.from(children.keys())),
+              layoutNodes,
+              pipelineOrder.length ? pipelineOrder : sortIds(Array.from(layoutNodes.keys())),
           );
     return { positions, contentBBox: innerGraphBBox(positions) };
+}
+
+/**
+ * If every node shares the same leading `NNNN.` order segment (typical inside an
+ * expanded meta), strip it so chronological ranking can advance per child step.
+ */
+function stripSharedPipelineOrderPrefix(
+    nodes: Map<string, MeasuredNode>,
+): Map<string, MeasuredNode> {
+    let current = nodes;
+    for (let guard = 0; guard < 8; guard += 1) {
+        const keys = Array.from(current.values())
+            .map((n) => n.pipelineOrderKey)
+            .filter((k): k is string => Boolean(k));
+        if (keys.length < current.size * 0.5) return current;
+        const primaries = new Set(keys.map((k) => primaryPipelineOrderKey(k)));
+        if (primaries.size !== 1) return current;
+        const primary = Array.from(primaries)[0];
+        const prefix = `${primary}.`;
+        if (!keys.some((k) => k.startsWith(prefix))) return current;
+        const next = new Map<string, MeasuredNode>();
+        current.forEach((node, id) => {
+            const key = node.pipelineOrderKey;
+            next.set(id, {
+                ...node,
+                pipelineOrderKey: key?.startsWith(prefix) ? key.slice(prefix.length) : key,
+            });
+        });
+        current = next;
+    }
+    return current;
 }
 
 function normalizeLayout(layout: GraphLayout, margin = 80): void {
@@ -1313,6 +1351,7 @@ export function expandGroupInLayout(
     pipelineOrder: string[] = [],
     wrapRows = true,
 ): GraphLayout {
+    void wrapRows;
     const next = cloneLayout(layout);
     const groupEntry = next.get(groupId);
     if (!groupEntry) return next;
@@ -1343,7 +1382,10 @@ export function expandGroupInLayout(
         innerEdges,
         pipelineOrder.length ? pipelineOrder : innerIds,
         rankDir,
-        wrapRows,
+        // Never nest a zigzag inside the blue frame — that towers out of the
+        // outer snake corridor. Inners stay a single strip along the outer axis
+        // so expand grows along the flow and downstream nodes shift further.
+        false,
     );
     const expandedSize = {
         w: contentBBox.w + GROUP_PADDING.left + GROUP_PADDING.right,
@@ -1381,6 +1423,7 @@ export function expandGroupInLayout(
             },
             node: { ...measured, metaGroup: groupId },
             visible: true,
+            snakeRow: groupEntry.snakeRow,
         });
     });
 
@@ -1451,7 +1494,7 @@ function planExpandedGroup(
     edgeList: LayoutEdge[],
     rankDir: "TB" | "LR",
     pipelineOrder: string[],
-    wrapRows = true,
+    _wrapRows = true,
 ): ExpandedGroupPlan | null {
     const members = getGroupMembers(nodes, groupId);
     if (!members.size) return null;
@@ -1478,7 +1521,8 @@ function planExpandedGroup(
         innerEdges,
         pipelineOrder.length ? pipelineOrder : innerIds,
         rankDir,
-        wrapRows,
+        // Flat strip along the outer axis — see expandGroupInLayout.
+        false,
     );
     return {
         size: {
@@ -1511,6 +1555,7 @@ function placeExpandedInners(
         x: groupBBox.x + GROUP_PADDING.left - plan.contentBBox.x,
         y: groupBBox.y + GROUP_PADDING.top - plan.contentBBox.y,
     };
+    const snakeRow = groupEntry.snakeRow;
     plan.innerIds.forEach((id) => {
         const innerBBox = plan.innerPositions.get(id);
         const measured = plan.innerNodes.get(id);
@@ -1524,6 +1569,7 @@ function placeExpandedInners(
             },
             node: { ...measured, metaGroup: groupId },
             visible: true,
+            snakeRow,
         });
     });
 }

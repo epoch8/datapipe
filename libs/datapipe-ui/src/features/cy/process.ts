@@ -93,6 +93,30 @@ function parseMetaGraphId(groupId: string): { name: string; orderKey: string | n
     return { name: groupId, orderKey: null };
 }
 
+/** Resolve chronology for a meta id that has no `__orderKey` suffix (unique names). */
+function findMetaOrderKey(
+    pipeline: PipelineNode[],
+    groupId: string,
+    parentOrderKey = "",
+): string | null {
+    const { name, orderKey: parsed } = parseMetaGraphId(groupId);
+    for (let index = 0; index < pipeline.length; index += 1) {
+        const pipe = pipeline[index];
+        if (pipe.type !== "meta") continue;
+        const key = parentOrderKey
+            ? `${parentOrderKey}.${padOrderIndex(index)}`
+            : padOrderIndex(index);
+        if (parsed) {
+            if (pipe.name === name && key === parsed) return key;
+        } else if (pipe.name === name) {
+            return key;
+        }
+        const nested = findMetaOrderKey(pipe.graph.pipeline, groupId, key);
+        if (nested) return nested;
+    }
+    return null;
+}
+
 /**
  * Dashed next-step hops between consecutive transform/group cards in a pipeline list.
  * Skips expanded metas (their children get their own sequential chain).
@@ -290,6 +314,21 @@ function processMetaGraph(
                         );
                     }
                 });
+                nodes.set(childId, {
+                    id: childId,
+                    type: "group-expanded",
+                    name: child.name,
+                    transform_type: child.transform_type || child.name,
+                    labels: child.labels,
+                    child_count: child.graph?.pipeline?.length ?? 0,
+                    inputs: child.inputs || [],
+                    outputs: child.outputs || [],
+                    transform_primary_keys:
+                        child.transform_primary_keys ?? child.tpk ?? [],
+                    metaGroup,
+                    pipelineIndex: index,
+                    pipelineOrderKey: orderKey,
+                });
             } else {
                 addCollapsedMeta(nodes, edges, child.graph, child, childId, index, orderKey);
             }
@@ -316,6 +355,23 @@ function processData(
         const metaId = metaGraphId(pipe.name, orderKey, counts);
         if (expandedGroups.has(metaId)) {
             processMetaGraph(nodes, edges, pipe.graph, expandedGroups, metaId, orderKey);
+            // Seed the blue-frame node with chronology. Expanded path skips
+            // addCollapsedMeta, and without pipelineOrderKey the frame ranks as
+            // "unkeyed leftover" at the end of the snake (e.g. LabelStudioUploadTasks).
+            nodes.set(metaId, {
+                id: metaId,
+                type: "group-expanded",
+                name: pipe.name,
+                transform_type: pipe.transform_type || pipe.name,
+                labels: pipe.labels,
+                child_count: pipe.graph?.pipeline?.length ?? 0,
+                inputs: pipe.inputs || [],
+                outputs: pipe.outputs || [],
+                transform_primary_keys:
+                    pipe.transform_primary_keys ?? pipe.tpk ?? [],
+                pipelineIndex: index,
+                pipelineOrderKey: orderKey,
+            });
         } else {
             addCollapsedMeta(nodes, edges, data, pipe, metaId, index, orderKey);
         }
@@ -432,6 +488,11 @@ function assignCompoundParents(
             const prev = nodes.get(group);
             const metaPipe = findMetaNode(data.pipeline, group);
             const displayName = metaPipe?.name ?? parseMetaGraphId(group).name;
+            const orderKey =
+                (prev?.pipelineOrderKey as string | undefined) ||
+                parseMetaGraphId(group).orderKey ||
+                findMetaOrderKey(data.pipeline, group) ||
+                undefined;
             nodes.set(group, {
                 ...prev,
                 id: group,
@@ -451,6 +512,7 @@ function assignCompoundParents(
                     [],
                 inputs: prev?.inputs ?? metaPipe?.inputs ?? [],
                 outputs: prev?.outputs ?? metaPipe?.outputs ?? [],
+                ...(orderKey ? { pipelineOrderKey: orderKey } : {}),
             });
         }
     });

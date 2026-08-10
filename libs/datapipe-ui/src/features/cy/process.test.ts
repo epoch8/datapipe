@@ -68,6 +68,68 @@ describe("reprocessData expanded boundary tables", () => {
         expect(nodes.get("G")?.type).toBe("group-expanded");
         expect(nodes.get("G")?.labels).toEqual([["stage", "annotation"]]);
     });
+
+    it("keeps pipelineOrderKey on the expanded blue frame (snake chronology)", () => {
+        // Unique meta names have no __0007 id suffix; without seeding orderKey the
+        // frame ranked as an unkeyed leftover at the end of the snake.
+        const catalog = {
+            early_out: table("early_out"),
+            in_a: table("in_a"),
+            mid: table("mid"),
+            out_x: table("out_x"),
+            late_in: table("late_in"),
+        };
+        const data: GraphData = {
+            catalog,
+            pipeline: [
+                {
+                    id: "early",
+                    name: "early",
+                    type: "transform",
+                    inputs: [],
+                    outputs: ["early_out"],
+                },
+                {
+                    id: "G",
+                    name: "LabelStudioUploadTasks",
+                    type: "meta",
+                    inputs: ["in_a"],
+                    outputs: ["out_x"],
+                    graph: {
+                        catalog,
+                        pipeline: [
+                            {
+                                id: "t1",
+                                name: "t1",
+                                type: "transform",
+                                inputs: ["in_a"],
+                                outputs: ["mid"],
+                            },
+                            {
+                                id: "t2",
+                                name: "t2",
+                                type: "transform",
+                                inputs: ["mid"],
+                                outputs: ["out_x"],
+                            },
+                        ],
+                    },
+                },
+                {
+                    id: "late",
+                    name: "late",
+                    type: "transform",
+                    inputs: ["late_in"],
+                    outputs: [],
+                },
+            ],
+        };
+        const collapsed = reprocessData(data, new Set());
+        const expanded = reprocessData(data, new Set(["LabelStudioUploadTasks"]));
+        expect(collapsed.nodes.get("LabelStudioUploadTasks")?.pipelineOrderKey).toBe("0001");
+        expect(expanded.nodes.get("LabelStudioUploadTasks")?.type).toBe("group-expanded");
+        expect(expanded.nodes.get("LabelStudioUploadTasks")?.pipelineOrderKey).toBe("0001");
+    });
 });
 
 describe("reprocessData duplicate meta names", () => {
