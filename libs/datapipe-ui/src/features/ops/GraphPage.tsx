@@ -218,29 +218,36 @@ export function GraphPage() {
                 </div>
             ) : null}
             <div className="graph-page-overview">
-                {detail && pipelineId ? (
-                    <PipelineLabelGraphOverview
-                        pipelineId={pipelineId}
-                        stages={detail.stages}
-                        stageEdges={detail.stage_edges}
-                        labelGraph={detail.label_graph}
-                        availableLabelKeys={availableKeys}
-                        labelKey={labelKey}
-                        selectedLabel={stage}
-                        mode="compact"
-                        onLabelKeyChange={setLabelKey}
-                        onLabelSelect={selectGraphLabel}
-                        onLabelClear={clearLabelFocus}
-                        onStageRun={(label) => startRun([[labelKey, label]])}
-                    />
-                ) : (
-                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-                        <Spin />
-                    </div>
-                )}
-            </div>
-            <div className="pipeline-card pipeline-card-with-sidebar">
-                <aside className="pipeline-stage-sidebar">
+                <div className="graph-page-overview-main">
+                    {detail && pipelineId ? (
+                        <PipelineLabelGraphOverview
+                            pipelineId={pipelineId}
+                            stages={detail.stages}
+                            stageEdges={detail.stage_edges}
+                            labelGraph={detail.label_graph}
+                            availableLabelKeys={availableKeys}
+                            labelKey={labelKey}
+                            selectedLabel={stage}
+                            mode="compact"
+                            onLabelKeyChange={setLabelKey}
+                            onLabelSelect={selectGraphLabel}
+                            onLabelClear={clearLabelFocus}
+                            onStageRun={(label) => startRun([[labelKey, label]])}
+                        />
+                    ) : (
+                        <div
+                            style={{
+                                display: "flex",
+                                justifyContent: "center",
+                                alignItems: "center",
+                                minHeight: 180,
+                            }}
+                        >
+                            <Spin />
+                        </div>
+                    )}
+                </div>
+                <aside className="graph-page-overview-runs">
                     <Card title="Recent runs" size="small" className="pipeline-stage-runs-card">
                         <RecentRunsList
                             runs={recentRuns}
@@ -250,58 +257,58 @@ export function GraphPage() {
                         />
                     </Card>
                 </aside>
-                <div className="pipeline-card-main">
-                    <div className="pipeline-card-header">
-                        <div className="pipeline-card-header-left">
-                            <Segmented
-                                size="small"
-                                value={flowLayout}
-                                options={[
-                                    { label: "Zigzag", value: "snake" },
-                                    { label: "Horizontal", value: "horizontal" },
-                                    { label: "Vertical", value: "vertical" },
-                                ]}
-                                onChange={(value) => setFlowLayout(String(value))}
+            </div>
+            <div className="pipeline-card">
+                <div className="pipeline-card-header">
+                    <div className="pipeline-card-header-left">
+                        <Segmented
+                            size="small"
+                            value={flowLayout}
+                            options={[
+                                { label: "Zigzag", value: "snake" },
+                                { label: "Horizontal", value: "horizontal" },
+                                { label: "Vertical", value: "vertical" },
+                            ]}
+                            onChange={(value) => setFlowLayout(String(value))}
+                        />
+                        <div className="pipeline-card-title">
+                            <span
+                                className="pipeline-card-title-icon"
+                                dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
                             />
-                            <div className="pipeline-card-title">
+                            {title}
+                            {stage ? (
                                 <span
-                                    className="pipeline-card-title-icon"
-                                    dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
-                                />
-                                {title}
-                                {stage ? (
-                                    <span
-                                        className="pipeline-card-label-badge"
-                                        title={`${labelKey}=${stage}`}
+                                    className="pipeline-card-label-badge"
+                                    title={`${labelKey}=${stage}`}
+                                >
+                                    <span className="pipeline-card-label-badge-key">{labelKey}</span>
+                                    <span className="pipeline-card-label-badge-value">{stage}</span>
+                                    <button
+                                        type="button"
+                                        className="pipeline-card-label-badge-clear"
+                                        onClick={clearLabelFocus}
+                                        aria-label="Clear label focus"
                                     >
-                                        <span className="pipeline-card-label-badge-key">{labelKey}</span>
-                                        <span className="pipeline-card-label-badge-value">{stage}</span>
-                                        <button
-                                            type="button"
-                                            className="pipeline-card-label-badge-clear"
-                                            onClick={clearLabelFocus}
-                                            aria-label="Clear label focus"
-                                        >
-                                            ×
-                                        </button>
-                                    </span>
-                                ) : null}
-                            </div>
+                                        ×
+                                    </button>
+                                </span>
+                            ) : null}
                         </div>
                     </div>
-                    <div className="pipeline-card-body">
-                        <PipelineGraphAgentOnly
-                            labelFilter={stage}
-                            labelKey={labelKey}
-                            labelOrder={labelOrder}
-                            labelColumnMap={labelColumnMap}
-                            layoutMode="columns"
-                            height="100%"
-                            flowLayout={flowLayout}
-                            refreshIntervalMs={0}
-                            graphRefreshToken={graphRefreshToken}
-                        />
-                    </div>
+                </div>
+                <div className="pipeline-card-body">
+                    <PipelineGraphAgentOnly
+                        labelFilter={stage}
+                        labelKey={labelKey}
+                        labelOrder={labelOrder}
+                        labelColumnMap={labelColumnMap}
+                        layoutMode="columns"
+                        height="100%"
+                        flowLayout={flowLayout}
+                        refreshIntervalMs={0}
+                        graphRefreshToken={graphRefreshToken}
+                    />
                 </div>
             </div>
         </div>
