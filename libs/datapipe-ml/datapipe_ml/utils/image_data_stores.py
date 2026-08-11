@@ -298,6 +298,8 @@ class FiftyOneImagesDataTableStore(TableStore):
         fo_detections_label: Optional[str] = None,
         fo_classification_label: Optional[str] = None,
         fo_keypoints_label: Optional[str] = None,
+        keypoints_skeleton_labels: Optional[List[str]] = None,
+        keypoints_skeleton_edges: Optional[List[List[int]]] = None,
         primary_schema: Optional[DataSchema] = None,
         images_table_store: Optional[TableStoreFiledir] = None,
         mapping_filepath: Callable[[str], str] = lambda filepath: filepath,
@@ -313,6 +315,8 @@ class FiftyOneImagesDataTableStore(TableStore):
         self.fo_detections_label = fo_detections_label
         self.fo_classification_label = fo_classification_label
         self.fo_keypoints_label = fo_keypoints_label
+        self.keypoints_skeleton_labels = keypoints_skeleton_labels
+        self.keypoints_skeleton_edges = keypoints_skeleton_edges
         self.fo_session = fo_session
         self.images_table_store = images_table_store
         self.mapping_filepath = mapping_filepath
@@ -335,10 +339,22 @@ class FiftyOneImagesDataTableStore(TableStore):
         assert (
             "sample" not in self.attrnames
         ), "The key 'sample' is reserved for this TableStore. Use other key name instead."
+        if self.keypoints_skeleton_edges is not None and self.keypoints_skeleton_labels is None:
+            raise ValueError("keypoints_skeleton_edges requires keypoints_skeleton_labels")
         self.attrnames_no_filepath = [attrname for attrname in self.attrnames if attrname != "filepath"]
         self.fo_dataset = None
         self.create_dataset_if_empty = create_dataset_if_empty
         _register_fiftyone_dataset_store(self)
+
+    def _apply_default_skeleton(self, fo_dataset) -> None:
+        if self.keypoints_skeleton_labels is None:
+            return
+        fo_dataset.default_skeleton = self.fo_session.fiftyone.KeypointSkeleton(
+            labels=list(self.keypoints_skeleton_labels),
+            edges=list(self.keypoints_skeleton_edges or []),
+        )
+        if hasattr(fo_dataset, "save"):
+            fo_dataset.save()
 
     def get_primary_schema(self) -> DataSchema:
         return self.primary_schema
@@ -364,6 +380,7 @@ class FiftyOneImagesDataTableStore(TableStore):
             if self.create_dataset_if_empty:
                 self.fo_dataset = self.fo_session.fiftyone.Dataset(self.dataset)
                 assert self.fo_dataset is not None
+                self._apply_default_skeleton(self.fo_dataset)
                 self.fo_dataset.persistent = True
             else:
                 raise ValueError(f"Dataset {self.dataset} not found.")
