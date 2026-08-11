@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 import datapipe_app.api.v1alpha1 as api_v1alpha1
 import datapipe_app.api.v1alpha2 as api_v1alpha2
@@ -163,11 +164,17 @@ class DatapipeAPI(FastAPI, OpsSpecsMixin, DatapipeApp):
                     ops.pipeline_id,
                     display_name=ops.pipeline_id.replace("_", " ").title(),
                 )
-            except Exception:
-                logger.warning(
+            except (ProgrammingError, OperationalError):
+                # Empty DB / schema not migrated yet — expected during `alembic upgrade`.
+                logger.debug(
                     "Observability tables missing; skip pipeline registry update. "
                     "Create schema via Alembic / `datapipe db create-all`, or set "
                     "DATAPIPE_APP_CREATE_OBSERVABILITY_TABLES=true.",
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to register pipeline in observability store; "
+                    "skip pipeline registry update.",
                     exc_info=True,
                 )
             else:

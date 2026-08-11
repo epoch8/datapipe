@@ -178,7 +178,7 @@ def _resolve_executor(executor: ExecutorSource) -> Executor | None:
 
 def run_step(
     ds: DataStore,
-    step: BaseBatchTransformStep,
+    step: ComputeStep,
     transform_state: models.RunStepResponse,
     filters: Optional[List[Dict]],
     recorder: Optional[RunRecorder] = None,
@@ -192,6 +192,8 @@ def run_step(
             return None
 
         def on_step_progress(self, step_: Any, completed: int, total: int | None) -> None:
+            if not isinstance(step, BaseBatchTransformStep):
+                return
             transform_state.total = total if total is not None else 0
             transform_state.status = "running"
             transform_state.processed = completed * step.chunk_size
@@ -208,28 +210,46 @@ def run_step(
         def on_run_error(self, error: BaseException) -> None:
             return None
 
-    def _run() -> None:
+    def _run_batch(batch_step: BaseBatchTransformStep) -> None:
         if filters is not None:
-            transform_meta = require_sql_transform_meta(step.meta)
+            transform_meta = require_sql_transform_meta(batch_step.meta)
             selected_data = [
                 {k: v for k, v in row.items() if k in transform_meta.transform_keys} for row in filters
             ]
             idx = pd.DataFrame.from_records(selected_data)
             transform_state.total = len(selected_data)
             transform_state.status = "running"
-            chunk_count = math.ceil(len(idx) / step.chunk_size) if len(idx) else 0
+            chunk_count = math.ceil(len(idx) / batch_step.chunk_size) if len(idx) else 0
             for i in range(chunk_count):
-                start = i * step.chunk_size
-                end = (i + 1) * step.chunk_size
-                step.run_idx(ds, IndexDF(idx.iloc[start:end]))
-                transform_state.processed += step.chunk_size
+                start = i * batch_step.chunk_size
+                end = (i + 1) * batch_step.chunk_size
+                batch_step.run_idx(ds, IndexDF(idx.iloc[start:end]))
+                transform_state.processed += batch_step.chunk_size
             return
 
+        batch_step.run_full(
+            ds=ds,
+            run_config=RunConfig(callback=_UiProgressCallback()),
+            executor=_resolve_executor(executor),
+        )
+
+    def _run_generic() -> None:
+        if filters:
+            raise ValueError("Index filters are only supported for batch transforms")
+        transform_state.status = "running"
+        transform_state.total = 1
         step.run_full(
             ds=ds,
             run_config=RunConfig(callback=_UiProgressCallback()),
             executor=_resolve_executor(executor),
         )
+        transform_state.processed = 1
+
+    def _run() -> None:
+        if isinstance(step, BaseBatchTransformStep):
+            _run_batch(step)
+        else:
+            _run_generic()
 
     if recorder is not None:
         run_id = recorder.start_run(trigger="websocket")
@@ -420,30 +440,36 @@ def register_pipeline_ui_routes(
                 filtered_steps = filter_steps_by_labels(steps, name_prefix=transform)
                 if len(filtered_steps) != 1:
                     await websocket.send_json({"status": "not found"})
+                    continue
 
                 step = filtered_steps[0]
-                if not isinstance(step, BaseBatchTransformStep):
-                    await websocket.send_json({"status": "not allowed"})
+                if json_data.filters and not isinstance(step, BaseBatchTransformStep):
+                    await websocket.send_json(
+                        {
+                            "status": "not allowed",
+                            "detail": "Index filters require a batch transform",
+                        }
+                    )
+                    continue
 
-                else:
-                    running_steps_helper[transform] = models.RunStepResponse(
-                        status="starting",
-                        processed=0,
-                        total=0,
-                    )
-                    _ = asyncio.create_task(running_steps_helper.update_transform_status(transform=transform))
-                    run_step_thread = asyncio.to_thread(
-                        run_step,
-                        ds,
-                        step,
-                        running_steps_helper[transform],
-                        json_data.filters,
-                        recorder,
-                        executor,
-                    )
-                    run_steps_task = asyncio.create_task(run_step_thread)
-                    run_steps_task.add_done_callback(
-                        lambda _: running_steps_helper.set_job_as_finished(transform)
-                    )
+                running_steps_helper[transform] = models.RunStepResponse(
+                    status="starting",
+                    processed=0,
+                    total=0,
+                )
+                _ = asyncio.create_task(running_steps_helper.update_transform_status(transform=transform))
+                run_step_thread = asyncio.to_thread(
+                    run_step,
+                    ds,
+                    step,
+                    running_steps_helper[transform],
+                    json_data.filters,
+                    recorder,
+                    executor,
+                )
+                run_steps_task = asyncio.create_task(run_step_thread)
+                run_steps_task.add_done_callback(
+                    lambda _: running_steps_helper.set_job_as_finished(transform)
+                )
         except WebSocketDisconnect:
             running_steps_helper.remove_ws(websocket, transform)

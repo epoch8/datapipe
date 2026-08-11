@@ -13,11 +13,11 @@ from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_step
 from datapipe.executor import Executor
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
+from datapipe.types import Labels
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel
 
-from datapipe_app.api.v1alpha1 import filter_steps_by_labels
 from datapipe_app.observability.runs.active_runs import get_active_run_registry
 from datapipe_app.observability.runs.run_scope import (
     derive_run_scope,
@@ -45,6 +45,36 @@ if TYPE_CHECKING:
 
 
 _STOP_REASON = "Stopped by user"
+
+
+def filter_steps_by_labels(
+    steps: List[ComputeStep],
+    labels: Labels = [],
+    name_prefix: str = "",
+) -> List[ComputeStep]:
+    """Filter steps by label pairs (v1alpha3 semantics).
+
+    Values for the *same* key are OR'd (match any); different keys are AND'd.
+    Example: ``[("stage", "extract"), ("stage", "transform")]`` matches steps
+    labeled extract *or* transform.
+    """
+    by_key: dict[str, set[str]] = {}
+    for key, value in labels:
+        by_key.setdefault(key, set()).add(value)
+
+    res: List[ComputeStep] = []
+    for step in steps:
+        step_pairs = set(step.labels or [])
+        matched = True
+        for key, values in by_key.items():
+            step_values = {v for k, v in step_pairs if k == key}
+            if step_values.isdisjoint(values):
+                matched = False
+                break
+        if matched and step.name.startswith(name_prefix):
+            res.append(step)
+
+    return res
 
 
 class ResetTransformMetadataResponse(BaseModel):

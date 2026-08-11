@@ -102,8 +102,14 @@ export function RunsPage() {
                 subtitle="All pipeline executions and stage runs"
                 onRefresh={loadRuns}
                 extra={
-                    pipeline ? (
-                        <RunStepsDropdown stages={pipeline.stages} onStart={runStage} />
+                    pipeline && pipelineId ? (
+                        <RunStepsDropdown
+                            pipelineId={pipelineId}
+                            stages={pipeline.stages}
+                            availableLabelKeys={pipeline.available_label_keys}
+                            labelGraph={pipeline.label_graph}
+                            onStart={runStage}
+                        />
                     ) : undefined
                 }
             />

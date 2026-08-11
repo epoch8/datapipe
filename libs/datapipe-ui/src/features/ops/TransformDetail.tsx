@@ -6,6 +6,7 @@ import {
     Popconfirm,
     Space,
     Spin,
+    Typography,
 } from "antd";
 import { useParams } from "react-router-dom";
 import { GraphNodeDetailBody } from "../cy/GraphNodeDetailContent";
@@ -122,32 +123,36 @@ export function TransformDetail() {
             <Card title="Run transform" style={{ marginBottom: 16 }}>
                 <TransformRunPanel transformName={decodedName} indexKeys={indexKeys} />
             </Card>
-            {hasTransformMeta && (
-                <Card title="Actions" style={{ marginBottom: 16 }}>
-                    <Space direction="vertical" style={{ width: "100%" }}>
-                        <Popconfirm
-                            title="Reset transform meta table? All rows will be marked unprocessed and the transform will re-run on the next execution."
-                            onConfirm={resetTransformMeta}
-                            okText="Reset"
-                            okButtonProps={{ danger: true }}
-                        >
-                            <Button danger loading={resetting}>
-                                Reset Transform Meta Table
-                            </Button>
-                        </Popconfirm>
-                        {resetAlert && (
-                            <Alert
-                                type={resetAlert.type}
-                                message={resetAlert.message}
-                                showIcon
-                                closable
-                                onClose={() => setResetAlert(null)}
-                            />
-                        )}
-                    </Space>
-                </Card>
-            )}
-            {hasTransformMeta && (
+            <Card title="Actions" style={{ marginBottom: 16 }}>
+                <Space direction="vertical" style={{ width: "100%" }}>
+                    <Popconfirm
+                        title="Reset transform meta table? All rows will be marked unprocessed and the transform will re-run on the next execution."
+                        onConfirm={resetTransformMeta}
+                        okText="Reset"
+                        okButtonProps={{ danger: true }}
+                    >
+                        <Button danger loading={resetting}>
+                            Reset Transform Meta Table
+                        </Button>
+                    </Popconfirm>
+                    {!hasTransformMeta && (
+                        <Typography.Text type="secondary">
+                            Meta table controls still run against the API; if this step has no
+                            transform meta, reset may return an error.
+                        </Typography.Text>
+                    )}
+                    {resetAlert && (
+                        <Alert
+                            type={resetAlert.type}
+                            message={resetAlert.message}
+                            showIcon
+                            closable
+                            onClose={() => setResetAlert(null)}
+                        />
+                    )}
+                </Space>
+            </Card>
+            {(hasTransformMeta || indexKeys.length > 0) && (
                 <Card title="Transform meta table">
                     <div style={{ marginBottom: 12 }}>
                         <TableSizeControl

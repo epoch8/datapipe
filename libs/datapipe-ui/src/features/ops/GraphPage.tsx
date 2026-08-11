@@ -11,33 +11,19 @@ import { PageHeader } from "./shared";
 import { workflowIconSvg } from "../cy/nodeIcons";
 import { prependRecentRun } from "./utils/recentRuns";
 import { RunStepsDropdown } from "./components/RunStepsDropdown";
-import type { GraphFlowLayout } from "../../types/pipelineGraph";
 import {
     DEFAULT_LABEL_KEY,
     graphHref,
     normalizeLabelKey,
 } from "./utils/labelKey";
 import {
+    FLOW_LAYOUT_SEGMENTED_OPTIONS,
+    parseFlowLayout,
+} from "./utils/flowLayout";
+import {
     buildLabelColumnMap,
     topLevelLabelOrder,
 } from "../cy/columnLayout";
-
-function parseFlowLayout(searchParams: URLSearchParams): GraphFlowLayout {
-    const layout = searchParams.get("layout");
-    if (
-        layout === "snake" ||
-        layout === "horizontal" ||
-        layout === "vertical" ||
-        layout === "horizontal_compact" ||
-        layout === "vertical_compact"
-    ) {
-        return layout;
-    }
-    // Legacy `direction=` links.
-    if (searchParams.get("direction") === "TB") return "vertical";
-    if (searchParams.get("direction") === "LR") return "horizontal";
-    return "snake";
-}
 
 export function GraphPage() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -214,7 +200,14 @@ export function GraphPage() {
                 onRefresh={refresh}
                 extra={
                     detail ? (
-                        <RunStepsDropdown stages={detail.stages} onStart={startRun} />
+                        <RunStepsDropdown
+                            pipelineId={detail.pipeline_id}
+                            stages={detail.stages}
+                            availableLabelKeys={availableKeys}
+                            labelGraph={detail.label_graph}
+                            defaultLabelKey={labelKey}
+                            onStart={startRun}
+                        />
                     ) : undefined
                 }
             />
@@ -270,13 +263,7 @@ export function GraphPage() {
                         <Segmented
                             size="small"
                             value={flowLayout}
-                            options={[
-                                { label: "Zigzag", value: "snake" },
-                                { label: "Horizontal", value: "horizontal" },
-                                { label: "H Compact", value: "horizontal_compact" },
-                                { label: "Vertical", value: "vertical" },
-                                { label: "V Compact", value: "vertical_compact" },
-                            ]}
+                            options={[...FLOW_LAYOUT_SEGMENTED_OPTIONS]}
                             onChange={(value) => setFlowLayout(String(value))}
                         />
                         <div className="pipeline-card-title">

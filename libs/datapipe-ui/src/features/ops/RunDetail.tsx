@@ -4,9 +4,8 @@ import {
     Button,
     Card,
     Descriptions,
-    Dropdown,
-    Menu,
     Modal,
+    Segmented,
     Spin,
     Table,
     Tabs,
@@ -22,6 +21,7 @@ import { PageHeader } from "./shared";
 import { PipelineGraphAgentOnly } from "./components/PipelineGraph";
 import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
 import { RunLogsPanel } from "./components/RunLogsPanel";
+import { RunStepsDropdown } from "./components/RunStepsDropdown";
 import { resolveRunScopeDisplay } from "./utils/runScope";
 import { formatRunTriggerLabel } from "./utils/recentRuns";
 import { workflowIconSvg } from "../cy/nodeIcons";
@@ -31,6 +31,10 @@ import {
     labelKeyFromRunLabels,
     normalizeLabelKey,
 } from "./utils/labelKey";
+import {
+    FLOW_LAYOUT_SEGMENTED_OPTIONS,
+    parseFlowLayout,
+} from "./utils/flowLayout";
 
 const { Text } = Typography;
 
@@ -78,6 +82,7 @@ export function RunDetail() {
     const labelKeyOverride = searchParams.get("label_key");
     const runLabelKey = labelKeyFromRunLabels(run?.target_labels);
     const labelKeyParam = labelKeyOverride || runLabelKey;
+    const flowLayout = parseFlowLayout(searchParams);
 
     const setActiveTab = React.useCallback(
         (tab: string) => {
@@ -121,6 +126,22 @@ export function RunDetail() {
             { replace: true },
         );
     }, [setSearchParams]);
+
+    const setFlowLayout = React.useCallback(
+        (nextLayout: string) => {
+            setSearchParams(
+                (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.delete("direction");
+                    if (nextLayout === "snake") next.delete("layout");
+                    else next.set("layout", nextLayout);
+                    return next;
+                },
+                { replace: true },
+            );
+        },
+        [setSearchParams],
+    );
 
     const refresh = React.useCallback(() => {
         setRefreshToken((token) => token + 1);
@@ -223,58 +244,6 @@ export function RunDetail() {
         });
     };
 
-    const runStepsMenu = (
-        <Menu>
-            {isStageRun ? (
-                <Menu.Item
-                    key="rerun-stage"
-                    onClick={() => startRun([["stage", targetLabel]])}
-                >
-                    Rerun this stage
-                </Menu.Item>
-            ) : (
-                <Menu.Item key="rerun-run" onClick={() => startRun([])}>
-                    Rerun this run
-                </Menu.Item>
-            )}
-            {!isStageRun && pipeline && (
-                <Menu.SubMenu key="run-label" title="Run selected label..." disabled>
-                    {pipeline.stages.map((s) => (
-                        <Menu.Item
-                            key={s.stage}
-                            onClick={() => startRun([["stage", s.stage]])}
-                        >
-                            {s.stage}
-                        </Menu.Item>
-                    ))}
-                </Menu.SubMenu>
-            )}
-            {isStageRun && (
-                <>
-                    <Menu.Divider />
-                    <Menu.Item key="overview" onClick={() => navigate("/")}>
-                        View in overview
-                    </Menu.Item>
-                    <Menu.Item key="graph" onClick={() => navigate("/graph")}>
-                        View pipeline graph
-                    </Menu.Item>
-                </>
-            )}
-            <Menu.Divider />
-            <Menu.Item key="__all__" onClick={() => startRun([])}>
-                All labels
-            </Menu.Item>
-            {pipeline?.stages.map((s) => (
-                <Menu.Item
-                    key={s.stage}
-                    onClick={() => startRun([["stage", s.stage]])}
-                >
-                    {s.stage}
-                </Menu.Item>
-            ))}
-        </Menu>
-    );
-
     const headerExtra = (
         <>
             {runIsActive ? (
@@ -283,9 +252,14 @@ export function RunDetail() {
                 </Button>
             ) : null}
             {pipeline ? (
-                <Dropdown overlay={runStepsMenu}>
-                    <Button type="primary">Run steps</Button>
-                </Dropdown>
+                <RunStepsDropdown
+                    pipelineId={run.pipeline_id}
+                    stages={pipeline.stages}
+                    availableLabelKeys={availableKeys}
+                    labelGraph={pipeline.label_graph}
+                    defaultLabelKey={labelKey}
+                    onStart={startRun}
+                />
             ) : null}
         </>
     );
@@ -349,7 +323,12 @@ export function RunDetail() {
                     { label: `Run ${run.run_id.slice(0, 8)}` },
                 ]}
                 title={`Run ${run.run_id.slice(0, 8)}`}
-                statusChips={[{ label: run.status, variant: run.status === "completed" ? "success" : "default" }]}
+                statusChips={[
+                    {
+                        label: run.status,
+                        variant: run.status === "completed" ? "success" : "default",
+                    },
+                ]}
                 onRefresh={refresh}
                 extra={headerExtra}
             />
@@ -410,12 +389,20 @@ export function RunDetail() {
                     />
                     <div className="pipeline-card pipeline-card-main" style={{ marginTop: 16 }}>
                         <div className="pipeline-card-header">
-                            <div className="pipeline-card-title">
-                                <span
-                                    className="pipeline-card-title-icon"
-                                    dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                            <div className="pipeline-card-header-left">
+                                <Segmented
+                                    size="small"
+                                    value={flowLayout}
+                                    options={[...FLOW_LAYOUT_SEGMENTED_OPTIONS]}
+                                    onChange={(value) => setFlowLayout(String(value))}
                                 />
-                                {pipelineGraphTitle}
+                                <div className="pipeline-card-title">
+                                    <span
+                                        className="pipeline-card-title-icon"
+                                        dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                                    />
+                                    {pipelineGraphTitle}
+                                </div>
                             </div>
                         </div>
                         <div className="pipeline-card-body">
@@ -426,7 +413,7 @@ export function RunDetail() {
                                 labelKey={labelKey}
                                 runSteps={run.steps}
                                 height={480}
-                                rankDir="TB"
+                                flowLayout={flowLayout}
                                 refreshIntervalMs={runIsActive ? getRefreshIntervalMs() : 0}
                                 graphRefreshToken={refreshToken}
                                 pipelineId={run.pipeline_id}

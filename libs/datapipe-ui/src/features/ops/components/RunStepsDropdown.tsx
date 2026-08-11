@@ -1,38 +1,178 @@
 import React from "react";
-import { Button, Dropdown, Menu } from "antd";
-
-type StageRef = { stage: string };
+import { Button, Popover, Select, Space, Typography } from "antd";
+import { opsApi } from "../../../api/client";
+import type { LabelGraphPayload, StageItem } from "../../../types/ops";
+import { DEFAULT_LABEL_KEY, normalizeLabelKey } from "../utils/labelKey";
 
 type RunStepsDropdownProps = {
-    stages: StageRef[];
+    pipelineId: string;
+    stages?: StageItem[] | { stage: string }[];
+    availableLabelKeys?: string[];
+    labelGraph?: LabelGraphPayload | null;
+    defaultLabelKey?: string;
     onStart: (labels: [string, string][]) => void;
     disabled?: boolean;
     primary?: boolean;
 };
 
+function valuesFromGraph(graph: LabelGraphPayload | null | undefined): string[] {
+    if (!graph?.nodes?.length) return [];
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const node of graph.nodes) {
+        if (node.kind !== "label") continue;
+        if (seen.has(node.id)) continue;
+        seen.add(node.id);
+        values.push(node.id);
+    }
+    return values;
+}
+
+function valuesFromStages(stages: RunStepsDropdownProps["stages"]): string[] {
+    return (stages ?? []).map((s) => s.stage);
+}
+
 export function RunStepsDropdown({
-    stages,
+    pipelineId,
+    stages = [],
+    availableLabelKeys = [],
+    labelGraph = null,
+    defaultLabelKey,
     onStart,
     disabled,
     primary = true,
 }: RunStepsDropdownProps) {
-    const menu = (
-        <Menu>
-            <Menu.Item key="__all__" onClick={() => onStart([])}>
-                All labels
-            </Menu.Item>
-            <Menu.Divider />
-            {stages.map((s) => (
-                <Menu.Item key={s.stage} onClick={() => onStart([["stage", s.stage]])}>
-                    {s.stage}
-                </Menu.Item>
-            ))}
-        </Menu>
+    const keys = React.useMemo(() => {
+        if (availableLabelKeys.length) return availableLabelKeys;
+        return [DEFAULT_LABEL_KEY];
+    }, [availableLabelKeys]);
+
+    const initialKey = normalizeLabelKey(defaultLabelKey ?? labelGraph?.label_key, keys);
+    const [open, setOpen] = React.useState(false);
+    const [labelKey, setLabelKey] = React.useState(initialKey);
+    const [values, setValues] = React.useState<string[]>(() => {
+        const fromGraph =
+            labelGraph?.label_key === initialKey ? valuesFromGraph(labelGraph) : [];
+        return fromGraph.length ? fromGraph : valuesFromStages(stages);
+    });
+    const [selected, setSelected] = React.useState<string[]>([]);
+    const [loadingValues, setLoadingValues] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!open) return;
+        const nextKey = normalizeLabelKey(defaultLabelKey ?? labelGraph?.label_key, keys);
+        setLabelKey(nextKey);
+        setSelected([]);
+        if (labelGraph?.label_key === nextKey && valuesFromGraph(labelGraph).length) {
+            setValues(valuesFromGraph(labelGraph));
+        } else if (nextKey === DEFAULT_LABEL_KEY && stages.length) {
+            setValues(valuesFromStages(stages));
+        }
+    }, [open, defaultLabelKey, labelGraph, keys, stages]);
+
+    const loadValuesForKey = React.useCallback(
+        async (key: string) => {
+            setLoadingValues(true);
+            try {
+                if (key === labelGraph?.label_key) {
+                    const fromGraph = valuesFromGraph(labelGraph);
+                    if (fromGraph.length) {
+                        setValues(fromGraph);
+                        return;
+                    }
+                }
+                if (key === DEFAULT_LABEL_KEY && stages.length) {
+                    setValues(valuesFromStages(stages));
+                    return;
+                }
+                const detail = await opsApi.getPipeline(pipelineId, { label_key: key });
+                const fromGraph = valuesFromGraph(detail.label_graph);
+                setValues(
+                    fromGraph.length
+                        ? fromGraph
+                        : key === DEFAULT_LABEL_KEY
+                          ? valuesFromStages(detail.stages)
+                          : [],
+                );
+            } catch {
+                setValues(key === DEFAULT_LABEL_KEY ? valuesFromStages(stages) : []);
+            } finally {
+                setLoadingValues(false);
+            }
+        },
+        [pipelineId, labelGraph, stages],
+    );
+
+    React.useEffect(() => {
+        if (!open) return;
+        void loadValuesForKey(labelKey);
+    }, [open, labelKey, loadValuesForKey]);
+
+    const runSelected = () => {
+        if (!selected.length) return;
+        onStart(selected.map((value) => [labelKey, value]));
+        setOpen(false);
+    };
+
+    const runAll = () => {
+        onStart([]);
+        setOpen(false);
+    };
+
+    const content = (
+        <div style={{ width: 300 }} onClick={(e) => e.stopPropagation()}>
+            <Space direction="vertical" style={{ width: "100%" }} size="small">
+                <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        Label key
+                    </Typography.Text>
+                    <Select
+                        style={{ width: "100%", marginTop: 4 }}
+                        value={labelKey}
+                        options={keys.map((key) => ({ label: key, value: key }))}
+                        onChange={(next) => {
+                            setLabelKey(next);
+                            setSelected([]);
+                        }}
+                    />
+                </div>
+                <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        Values
+                    </Typography.Text>
+                    <Select
+                        mode="multiple"
+                        allowClear
+                        style={{ width: "100%", marginTop: 4 }}
+                        placeholder={loadingValues ? "Loading…" : "Select values"}
+                        loading={loadingValues}
+                        value={selected}
+                        options={values.map((value) => ({ label: value, value }))}
+                        onChange={setSelected}
+                        maxTagCount="responsive"
+                    />
+                </div>
+                <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                    <Button onClick={runAll}>All steps</Button>
+                    <Button type="primary" disabled={!selected.length} onClick={runSelected}>
+                        Run selected
+                    </Button>
+                </Space>
+            </Space>
+        </div>
     );
 
     return (
-        <Dropdown overlay={menu} disabled={disabled}>
-            <Button type={primary ? "primary" : "default"}>Run steps</Button>
-        </Dropdown>
+        <Popover
+            trigger="click"
+            visible={open}
+            onVisibleChange={setOpen}
+            placement="bottomRight"
+            content={content}
+        >
+            <Button type={primary ? "primary" : "default"} disabled={disabled}>
+                Run steps
+            </Button>
+        </Popover>
     );
 }

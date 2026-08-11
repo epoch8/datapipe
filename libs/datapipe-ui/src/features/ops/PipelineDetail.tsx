@@ -90,7 +90,16 @@ export function PipelineDetail({
                 breadcrumbs={[{ label: "Overview" }]}
                 title={detail.display_name}
                 onRefresh={load}
-                extra={<RunStepsDropdown stages={detail.stages} onStart={runStage} />}
+                extra={
+                    <RunStepsDropdown
+                        pipelineId={id}
+                        stages={detail.stages}
+                        availableLabelKeys={availableKeys}
+                        labelGraph={detail.label_graph}
+                        defaultLabelKey={labelKey}
+                        onStart={runStage}
+                    />
+                }
             />
             <div style={{ marginBottom: 16 }}>
                 {detail.task_type && <Tag>{detail.task_type}</Tag>}
