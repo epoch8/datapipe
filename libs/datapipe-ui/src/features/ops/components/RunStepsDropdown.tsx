@@ -4,6 +4,9 @@ import { opsApi } from "../../../api/client";
 import type { LabelGraphPayload, StageItem } from "../../../types/ops";
 import { DEFAULT_LABEL_KEY, normalizeLabelKey } from "../utils/labelKey";
 
+const ALL_VALUES = "__all_values__";
+const ALL_LABELS = "__all_labels__";
+
 type RunStepsDropdownProps = {
     pipelineId: string;
     stages?: StageItem[] | { stage: string }[];
@@ -108,14 +111,35 @@ export function RunStepsDropdown({
         void loadValuesForKey(labelKey);
     }, [open, labelKey, loadValuesForKey]);
 
-    const runSelected = () => {
-        if (!selected.length) return;
-        onStart(selected.map((value) => [labelKey, value]));
-        setOpen(false);
+    const valueOptions = React.useMemo(
+        () => [
+            ...values.map((value) => ({ label: value, value })),
+            { label: "All values", value: ALL_VALUES },
+            { label: "All labels", value: ALL_LABELS },
+        ],
+        [values],
+    );
+
+    const onValuesChange = (next: string[]) => {
+        if (next.includes(ALL_LABELS)) {
+            // Exclusive: run the whole pipeline (empty label filter).
+            setSelected([ALL_LABELS]);
+            return;
+        }
+        if (next.includes(ALL_VALUES)) {
+            setSelected([...values]);
+            return;
+        }
+        setSelected(next);
     };
 
-    const runAll = () => {
-        onStart([]);
+    const runSelected = () => {
+        if (!selected.length) return;
+        if (selected.includes(ALL_LABELS)) {
+            onStart([]);
+        } else {
+            onStart(selected.map((value) => [labelKey, value]));
+        }
         setOpen(false);
     };
 
@@ -147,17 +171,19 @@ export function RunStepsDropdown({
                         placeholder={loadingValues ? "Loading…" : "Select values"}
                         loading={loadingValues}
                         value={selected}
-                        options={values.map((value) => ({ label: value, value }))}
-                        onChange={setSelected}
+                        options={valueOptions}
+                        onChange={onValuesChange}
                         maxTagCount="responsive"
                     />
                 </div>
-                <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                    <Button onClick={runAll}>All steps</Button>
-                    <Button type="primary" disabled={!selected.length} onClick={runSelected}>
-                        Run selected
-                    </Button>
-                </Space>
+                <Button
+                    type="primary"
+                    block
+                    disabled={!selected.length}
+                    onClick={runSelected}
+                >
+                    Run selected
+                </Button>
             </Space>
         </div>
     );

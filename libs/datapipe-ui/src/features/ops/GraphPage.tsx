@@ -260,12 +260,6 @@ export function GraphPage() {
             <div className="pipeline-card">
                 <div className="pipeline-card-header">
                     <div className="pipeline-card-header-left">
-                        <Segmented
-                            size="small"
-                            value={flowLayout}
-                            options={[...FLOW_LAYOUT_SEGMENTED_OPTIONS]}
-                            onChange={(value) => setFlowLayout(String(value))}
-                        />
                         <div className="pipeline-card-title">
                             <span
                                 className="pipeline-card-title-icon"
@@ -290,6 +284,12 @@ export function GraphPage() {
                                 </span>
                             ) : null}
                         </div>
+                        <Segmented
+                            size="small"
+                            value={flowLayout}
+                            options={[...FLOW_LAYOUT_SEGMENTED_OPTIONS]}
+                            onChange={(value) => setFlowLayout(String(value))}
+                        />
                     </div>
                 </div>
                 <div className="pipeline-card-body">
