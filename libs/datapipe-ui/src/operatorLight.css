@@ -492,6 +492,10 @@
     flex: 1 1 auto;
 }
 
+.pipeline-card-header-left .ant-segmented {
+    flex-shrink: 0;
+}
+
 .pipeline-card-title {
     display: flex;
     align-items: center;

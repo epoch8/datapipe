@@ -41,6 +41,8 @@ export type LayoutEdge = {
     y1: number;
     x2: number;
     y2: number;
+    /** Target sits left of source — draw a top wrap-around feedback path. */
+    wrapAround?: boolean;
 };
 
 export type EdgeHighlightLevel = "focused" | "context" | "muted";
@@ -175,9 +177,61 @@ function sortByOrderMin(ids: string[], orderMap: Map<string, number>): string[] 
     });
 }
 
-function edgePath(x1: number, y1: number, x2: number, y2: number): string {
+/** Forward LR cubic. */
+function edgePathForward(x1: number, y1: number, x2: number, y2: number): string {
     const midX = (x1 + x2) / 2;
     return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+}
+
+/** How far above node midlines the wrap arc sits (keep in sync with layout pad). */
+export const LABEL_EDGE_WRAP_RISE = 48;
+/** Clear space above the wrap stroke so overflow/clipping doesn't shave the arc. */
+export const LABEL_EDGE_WRAP_TOP_PAD = 36;
+/** Clear space left of the wrap stub (leftX = targetLeft - STUB must stay ≥ this). */
+export const LABEL_EDGE_WRAP_SIDE_PAD = 16;
+const LABEL_EDGE_WRAP_STUB = 24;
+const LABEL_EDGE_WRAP_CORNER = 14;
+
+/**
+ * Feedback / cycle edge: leave the right side of the later node, arc above both
+ * labels, enter the left side of the earlier node.
+ *
+ *   ┌──────────────────────────┐
+ *   ▼                          │
+ * [earlier] …            [later]
+ */
+export function edgePathWrapAround(x1: number, y1: number, x2: number, y2: number): string {
+    const stub = LABEL_EDGE_WRAP_STUB;
+    const rise = LABEL_EDGE_WRAP_RISE;
+    const loopY = Math.min(y1, y2) - rise;
+    const rightX = x1 + stub;
+    const leftX = x2 - stub;
+    const r = LABEL_EDGE_WRAP_CORNER;
+    return [
+        `M ${x1} ${y1}`,
+        `L ${rightX - r} ${y1}`,
+        `Q ${rightX} ${y1}, ${rightX} ${y1 - r}`,
+        `L ${rightX} ${loopY + r}`,
+        `Q ${rightX} ${loopY}, ${rightX - r} ${loopY}`,
+        `L ${leftX + r} ${loopY}`,
+        `Q ${leftX} ${loopY}, ${leftX} ${loopY + r}`,
+        `L ${leftX} ${y2 - r}`,
+        `Q ${leftX} ${y2}, ${leftX + r} ${y2}`,
+        `L ${x2} ${y2}`,
+    ].join(" ");
+}
+
+export function edgePath(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    wrapAround = false,
+): string {
+    if (wrapAround || x2 < x1 - 8) {
+        return edgePathWrapAround(x1, y1, x2, y2);
+    }
+    return edgePathForward(x1, y1, x2, y2);
 }
 
 // A soft "]" style bracket: two short legs dropping from each node bottom, joined
@@ -698,6 +752,7 @@ export function layoutLabelGraph(
         const from = resolveAnchor(edge.source, "right");
         const to = resolveAnchor(edge.target, "left");
         if (!from || !to) return null;
+        const wrapAround = to.x < from.x - 8;
         return {
             id: edge.id,
             source: edge.source,
@@ -710,6 +765,7 @@ export function layoutLabelGraph(
             y1: from.y,
             x2: to.x,
             y2: to.y,
+            wrapAround,
         };
     };
 
@@ -750,16 +806,49 @@ export function layoutLabelGraph(
     }
 
     const allBounds = Array.from(bounds.values());
-    const maxX = Math.max(...allBounds.map((b) => b.x + b.w), cfg.canvasPad);
+    const wrapEdges = [...orderEdges, ...exactEdges].filter((e) => e.wrapAround);
+    const hasWrap = wrapEdges.length > 0;
+    const maxX = Math.max(
+        ...allBounds.map((b) => b.x + b.w),
+        ...wrapEdges.map((e) => e.x1 + LABEL_EDGE_WRAP_STUB + 8),
+        cfg.canvasPad,
+    );
+    // Left stub is `x2 - STUB`; without a shift that often goes negative and gets
+    // clipped by the SVG viewport / overflow-x:auto ancestors.
+    const minLoopX = hasWrap
+        ? Math.min(...wrapEdges.map((e) => e.x2 - LABEL_EDGE_WRAP_STUB))
+        : cfg.canvasPad;
+    const minLoopY = hasWrap
+        ? Math.min(...wrapEdges.map((e) => Math.min(e.y1, e.y2) - LABEL_EDGE_WRAP_RISE))
+        : cfg.canvasPad;
     const maxY = Math.max(
         ...allBounds.map((b) => b.y + b.h),
         ...sharedBrackets.map((b) => b.y + 42),
         cfg.canvasPad,
     );
+    // Push content so the wrap arc (+ stroke) sits fully inside the canvas.
+    const xShift = hasWrap ? Math.max(0, LABEL_EDGE_WRAP_SIDE_PAD - minLoopX) : 0;
+    const yShift = hasWrap ? Math.max(0, LABEL_EDGE_WRAP_TOP_PAD - minLoopY) : 0;
+    if (xShift > 0 || yShift > 0) {
+        layoutNodes.forEach((n) => {
+            n.x += xShift;
+            n.y += yShift;
+        });
+        for (const edge of [...orderEdges, ...exactEdges]) {
+            edge.x1 += xShift;
+            edge.x2 += xShift;
+            edge.y1 += yShift;
+            edge.y2 += yShift;
+        }
+        sharedBrackets.forEach((b) => {
+            b.x += xShift;
+            b.y += yShift;
+        });
+    }
 
     return {
-        width: maxX + cfg.canvasPad,
-        height: maxY + cfg.canvasPad,
+        width: maxX + xShift + cfg.canvasPad,
+        height: maxY + yShift + cfg.canvasPad,
         nodes: layoutNodes,
         orderEdges,
         exactEdges,
@@ -850,4 +939,4 @@ export function getEdgeHighlightLevel(
     return "context";
 }
 
-export { edgePath, buildFallbackPayload as buildFallbackLabelGraphFromStages };
+export { buildFallbackPayload as buildFallbackLabelGraphFromStages };

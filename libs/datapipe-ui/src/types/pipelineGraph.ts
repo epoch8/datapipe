@@ -4,7 +4,20 @@ export type GraphRunStep = {
 };
 
 /** How the pipeline DAG is packed on screen. */
-export type GraphFlowLayout = "snake" | "horizontal" | "vertical";
+export type GraphFlowLayout =
+    | "snake"
+    | "horizontal"
+    | "vertical"
+    | "horizontal_compact"
+    | "vertical_compact";
+
+const FLOW_LAYOUTS: ReadonlySet<string> = new Set([
+    "snake",
+    "horizontal",
+    "vertical",
+    "horizontal_compact",
+    "vertical_compact",
+]);
 
 export type PipelineGraphProps = {
     stageFilter?: string | null;
@@ -18,7 +31,11 @@ export type PipelineGraphProps = {
     height?: number | string;
     /** @deprecated Prefer `flowLayout`. Still used when flowLayout is omitted. */
     rankDir?: "TB" | "LR";
-    /** snake = wrapped zigzag (default), horizontal = long LR ribbon, vertical = TB. */
+    /**
+     * snake = chronology zigzag;
+     * horizontal/vertical = chronology flat LR/TB;
+     * *_compact = dependency-depth LR/TB (lane prototype).
+     */
     flowLayout?: GraphFlowLayout;
     refreshIntervalMs?: number;
     pipelineId?: string | null;
@@ -29,16 +46,21 @@ export function resolveFlowLayout(
     flowLayout?: GraphFlowLayout | null,
     rankDir?: "TB" | "LR" | null,
 ): GraphFlowLayout {
-    if (flowLayout === "snake" || flowLayout === "horizontal" || flowLayout === "vertical") {
+    if (flowLayout && FLOW_LAYOUTS.has(flowLayout)) {
         return flowLayout;
     }
     return rankDir === "TB" ? "vertical" : "snake";
 }
 
 export function flowLayoutRankDir(flow: GraphFlowLayout): "TB" | "LR" {
-    return flow === "vertical" ? "TB" : "LR";
+    return flow === "vertical" || flow === "vertical_compact" ? "TB" : "LR";
 }
 
 export function flowLayoutWrapRows(flow: GraphFlowLayout): boolean {
     return flow === "snake";
+}
+
+/** Chronology for snake / H / V; dependency depth for compact modes. */
+export function flowLayoutPreferChronology(flow: GraphFlowLayout): boolean {
+    return flow !== "horizontal_compact" && flow !== "vertical_compact";
 }

@@ -240,7 +240,12 @@ describe("reprocessData sequential next-step edges", () => {
         const sequential = Array.from(edges).filter((e) => e.sequential);
         expect(sequential).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ source: "t1", target: "t2", sequential: true }),
+                expect.objectContaining({
+                    source: "t1",
+                    target: "t2",
+                    sequential: true,
+                    synthetic: true,
+                }),
             ]),
         );
     });
@@ -254,6 +259,7 @@ describe("reprocessData sequential next-step edges", () => {
                     source: "t1",
                     target: "t2",
                     sequential: true,
+                    synthetic: true,
                     internalMeta: "G",
                 }),
             ]),

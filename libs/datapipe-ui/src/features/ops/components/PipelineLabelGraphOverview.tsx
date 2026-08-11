@@ -155,10 +155,11 @@ function LabelGraphNodeCard({
 
 function renderEdge(edge: LayoutEdge, level: EdgeHighlightLevel, exact: boolean): React.ReactNode {
     const focused = level === "focused";
+    const wrap = Boolean(edge.wrapAround);
     return (
         <path
             key={edge.id}
-            d={edgePath(edge.x1, edge.y1, edge.x2, edge.y2)}
+            d={edgePath(edge.x1, edge.y1, edge.x2, edge.y2, wrap)}
             className={[
                 "label-edge",
                 exact ? "exact" : "",

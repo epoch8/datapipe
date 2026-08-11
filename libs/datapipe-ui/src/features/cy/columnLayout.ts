@@ -7,10 +7,9 @@ import {
 /**
  * Pipeline graph layout for `/graph`.
  *
- * Uses the same layered DAG as the classic (pre-columns) renderer so nodes keep
- * a neat left→right / top→bottom dependency order — matching the HTML lane
- * prototype and commit-era `buildCollapsedLayout` look. Label focus/hiding is
- * handled separately via `setGraphLabelFocus`; this function only places nodes.
+ * Delegates to `buildCollapsedLayout`. Pass `preferChronology=false` for
+ * compact (dependency-depth) packing. Label focus is handled via
+ * `setGraphLabelFocus`; this function only places nodes.
  */
 export function buildLabelColumnLayout(
     nodes: Map<string, Cytoscape.NodeDataDefinition>,
@@ -22,8 +21,17 @@ export function buildLabelColumnLayout(
     pipelineOrders: Map<string, string[]> = new Map(),
     _labelColumnMap: Map<string, string> = new Map(),
     wrapRows = true,
+    preferChronology = true,
 ): GraphLayout {
-    return buildCollapsedLayout(nodes, edges, expanded, orientation, pipelineOrders, wrapRows);
+    return buildCollapsedLayout(
+        nodes,
+        edges,
+        expanded,
+        orientation,
+        pipelineOrders,
+        wrapRows,
+        preferChronology,
+    );
 }
 
 /** Map every label/container id to its top-level ancestor column key. */

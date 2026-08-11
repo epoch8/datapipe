@@ -50,8 +50,51 @@ function taxiPathFromPoints(points: number[]): string {
     return segments.join(" ");
 }
 
+/**
+ * Route chronology hops clear of mid-lane data edges: arc above for LR flow,
+ * or to the right for TB flow.
+ */
+function sequentialBypassPath(edge: Cytoscape.EdgeSingular): string {
+    const src = edge.source();
+    const tgt = edge.target();
+    const sb = src.boundingBox({ includeLabels: false });
+    const tb = tgt.boundingBox({ includeLabels: false });
+    const scx = (sb.x1 + sb.x2) / 2;
+    const scy = (sb.y1 + sb.y2) / 2;
+    const tcx = (tb.x1 + tb.x2) / 2;
+    const tcy = (tb.y1 + tb.y2) / 2;
+    const dx = tcx - scx;
+    const dy = tcy - scy;
+    const rise = 44;
+    const side = 44;
+
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        const x1 = dx >= 0 ? sb.x2 : sb.x1;
+        const y1 = scy;
+        const x2 = dx >= 0 ? tb.x1 : tb.x2;
+        const y2 = tcy;
+        const bypassY = Math.min(sb.y1, tb.y1) - rise;
+        return `M ${x1} ${y1} L ${x1} ${bypassY} L ${x2} ${bypassY} L ${x2} ${y2}`;
+    }
+
+    const x1 = scx;
+    const y1 = dy >= 0 ? sb.y2 : sb.y1;
+    const x2 = tcx;
+    const y2 = dy >= 0 ? tb.y1 : tb.y2;
+    const bypassX = Math.max(sb.x2, tb.x2) + side;
+    return `M ${x1} ${y1} L ${bypassX} ${y1} L ${bypassX} ${y2} L ${x2} ${y2}`;
+}
+
+function isSequentialEdge(edge: Cytoscape.EdgeSingular): boolean {
+    return Boolean(edge.data("sequential"));
+}
+
 /** Path in *model* coordinates — camera pan/zoom is applied via CSS on the layer. */
 function edgePathD(edge: Cytoscape.EdgeSingular): string {
+    if (isSequentialEdge(edge)) {
+        return sequentialBypassPath(edge);
+    }
+
     const scratch = (edge as unknown as { _private?: { rscratch?: { allpts?: number[] } } })._private
         ?.rscratch;
     const allpts = scratch?.allpts;
@@ -64,10 +107,6 @@ function edgePathD(edge: Cytoscape.EdgeSingular): string {
     const target = edge.target().position();
     const midY = (source.y + target.y) / 2;
     return `M ${source.x} ${source.y} L ${source.x} ${midY} L ${target.x} ${midY} L ${target.x} ${target.y}`;
-}
-
-function isSequentialEdge(edge: Cytoscape.EdgeSingular): boolean {
-    return Boolean(edge.data("sequential"));
 }
 
 function edgeStroke(edge: Cytoscape.EdgeSingular): string {
@@ -101,8 +140,9 @@ function edgeWidth(edge: Cytoscape.EdgeSingular): number {
     return 2.15;
 }
 
-/** Data edges are solid; chronology used to be dashed — keep solid for clarity. */
-function edgeDashArray(_edge: Cytoscape.EdgeSingular): string | null {
+/** Data edges solid; chronology (next) dashed. */
+function edgeDashArray(edge: Cytoscape.EdgeSingular): string | null {
+    if (isSequentialEdge(edge)) return "8 6";
     return null;
 }
 

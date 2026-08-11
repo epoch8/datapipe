@@ -80,6 +80,8 @@
 }
 
 .pipeline-label-graph-scroll {
+    /* Pairing overflow-x:auto with overflow-y:visible forces both to auto in
+       browsers, which clips wrap stubs that would otherwise paint outside. */
     overflow-x: auto;
     overflow-y: hidden;
 }
@@ -87,6 +89,7 @@
 .pipeline-label-graph-canvas {
     position: relative;
     min-height: 80px;
+    overflow: visible;
 }
 
 .pipeline-label-graph-containers,

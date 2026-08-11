@@ -34,8 +34,10 @@ import { reprocessData } from "./process";
 import {
     flowLayoutRankDir,
     flowLayoutWrapRows,
+    flowLayoutPreferChronology,
     resolveFlowLayout,
 } from "../../types/pipelineGraph";
+import type { GraphFlowLayout } from "../../types/pipelineGraph";
 
 export type CyElement = Cytoscape.ElementDefinition;
 
@@ -45,7 +47,7 @@ export type SyncOptions = {
     mode: SyncMode;
     rankDir?: "TB" | "LR";
     /** When set, overrides rankDir and enables/disables snake wrap. */
-    flowLayout?: "snake" | "horizontal" | "vertical";
+    flowLayout?: GraphFlowLayout;
     layoutMode?: "dag" | "columns";
     labelKey?: string;
     labelOrder?: string[];
@@ -332,6 +334,7 @@ export function syncCyGraph(
     const flowLayout = resolveFlowLayout(options.flowLayout, options.rankDir);
     const rankDir = flowLayoutRankDir(flowLayout);
     const wrapRows = flowLayoutWrapRows(flowLayout);
+    const preferChronology = flowLayoutPreferChronology(flowLayout);
     const target = buildElements(data, expanded, options.layoutMode ?? "dag");
     const { nodes, edges } = reprocessData(data, expanded);
     const anchorGroup = options.anchorGroup ?? null;
@@ -344,6 +347,7 @@ export function syncCyGraph(
         flowLayout,
         rankDir,
         wrapRows,
+        preferChronology,
         labelKey: options.labelKey ?? "stage",
         labelOrder: options.labelOrder ?? [],
         labelColumnMap: Array.from((options.labelColumnMap ?? new Map()).entries()).sort(),
@@ -363,8 +367,17 @@ export function syncCyGraph(
                   pipelineOrders,
                   options.labelColumnMap ?? new Map(),
                   wrapRows,
+                  preferChronology,
               )
-            : buildCollapsedLayout(nodes, edges, expanded, rankDir, pipelineOrders, wrapRows);
+            : buildCollapsedLayout(
+                  nodes,
+                  edges,
+                  expanded,
+                  rankDir,
+                  pipelineOrders,
+                  wrapRows,
+                  preferChronology,
+              );
 
     const isInitial = cy.nodes().empty() || !previousLayout;
 
@@ -627,6 +640,7 @@ export function syncCyGraph(
                 expandRankDir,
                 pipelineOrders.get(anchorGroup) ?? [],
                 wrapRows,
+                preferChronology,
             );
             const innerIds = getInnerNodeIds(nodes, anchorGroup);
             commitLayout(cy, nextLayout, wrapRows);

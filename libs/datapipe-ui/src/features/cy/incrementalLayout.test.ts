@@ -258,7 +258,7 @@ describe("minimizeLayerCrossings (barycenter)", () => {
     it("layoutLayeredDag prefers pipeline chronology over reverse dependencies", () => {
         // Early annotation step depends on a late "best model" table — classic
         // longest-path would put fiftyone-like nodes left of annotation. Chronology
-        // must keep pipeline order left→right.
+        // must keep pipeline order left→right (snake / wrapRows=true).
         const nodes = new Map<string, MeasuredNode>([
             [
                 "early",
@@ -301,6 +301,92 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         expect(positions.get("early")!.x).toBeLessThan(positions.get("late_consumer")!.x);
         expect(positions.get("late_consumer")!.x).toBeLessThan(positions.get("best")!.x);
         expect(positions.get("best")!.x).toBeLessThan(positions.get("fiftyone")!.x);
+    });
+
+    it("layoutLayeredDag flat LR/TB compact ranks by dependency depth, not chronology", () => {
+        // Same graph as chronology test: compact (preferChronology=false) uses
+        // longest-path so `best → late_consumer` shares layers with early→fiftyone.
+        const nodes = new Map<string, MeasuredNode>([
+            [
+                "early",
+                {
+                    ...stubNode("early"),
+                    pipelineIndex: 1,
+                    pipelineOrderKey: "0001",
+                },
+            ],
+            [
+                "fiftyone",
+                {
+                    ...stubNode("fiftyone"),
+                    pipelineIndex: 18,
+                    pipelineOrderKey: "0018",
+                },
+            ],
+            [
+                "best",
+                {
+                    ...stubNode("best"),
+                    pipelineIndex: 15,
+                    pipelineOrderKey: "0015",
+                },
+            ],
+            [
+                "late_consumer",
+                {
+                    ...stubNode("late_consumer"),
+                    pipelineIndex: 8,
+                    pipelineOrderKey: "0008",
+                },
+            ],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "best", target: "late_consumer" },
+            { source: "early", target: "fiftyone" },
+        ];
+        const lr = layoutLayeredDag(nodes, edges, "LR", undefined, false, false);
+        expect(lr.get("best")!.x).toBeLessThan(lr.get("late_consumer")!.x);
+        expect(lr.get("early")!.x).toBe(lr.get("best")!.x);
+        expect(lr.get("fiftyone")!.x).toBe(lr.get("late_consumer")!.x);
+
+        const tb = layoutLayeredDag(nodes, edges, "TB", undefined, false, false);
+        expect(tb.get("best")!.y).toBeLessThan(tb.get("late_consumer")!.y);
+        expect(tb.get("early")!.y).toBe(tb.get("best")!.y);
+        expect(tb.get("fiftyone")!.y).toBe(tb.get("late_consumer")!.y);
+    });
+
+    it("layoutLayeredDag flat horizontal keeps chronology ribbon (non-compact)", () => {
+        const nodes = new Map<string, MeasuredNode>();
+        for (let i = 0; i < 9; i += 1) {
+            const id = `s${i}`;
+            nodes.set(id, {
+                ...stubNode(id),
+                pipelineOrderKey: String(i).padStart(4, "0"),
+            });
+        }
+        // preferChronology defaults true — order keys alone make an L→R ribbon.
+        const positions = layoutLayeredDag(nodes, [], "LR", undefined, false);
+        expect(positions.get("s0")!.y).toBe(positions.get("s8")!.y);
+        expect(positions.get("s0")!.x).toBeLessThan(positions.get("s4")!.x);
+        expect(positions.get("s4")!.x).toBeLessThan(positions.get("s8")!.x);
+    });
+
+    it("layoutLayeredDag flat horizontal compact stacks parallel sources in one column", () => {
+        const nodes = new Map<string, MeasuredNode>([
+            ["a", { ...stubNode("a"), pipelineOrderKey: "0001" }],
+            ["b", { ...stubNode("b"), pipelineOrderKey: "0002" }],
+            ["c", { ...stubNode("c"), pipelineOrderKey: "0003" }],
+            ["d", { ...stubNode("d"), pipelineOrderKey: "0004" }],
+        ]);
+        const edges: LayoutEdge[] = [
+            { source: "a", target: "c" },
+            { source: "b", target: "d" },
+        ];
+        const positions = layoutLayeredDag(nodes, edges, "LR", undefined, false, false);
+        expect(positions.get("a")!.x).toBe(positions.get("b")!.x);
+        expect(positions.get("c")!.x).toBe(positions.get("d")!.x);
+        expect(positions.get("a")!.x).toBeLessThan(positions.get("c")!.x);
+        expect(positions.get("a")!.y).not.toBe(positions.get("b")!.y);
     });
 
     it("layoutLayeredDag places step then stacked outs then next step L→R", () => {
@@ -436,21 +522,6 @@ describe("minimizeLayerCrossings (barycenter)", () => {
         // Parallel inputs / outputs stack; mid column has only the transform.
         expect(positions.get("t1")!.y).not.toBe(positions.get("t2")!.y);
         expect(positions.get("t3")!.y).not.toBe(positions.get("t4")!.y);
-    });
-
-    it("layoutLayeredDag flat horizontal keeps one long L→R ribbon", () => {
-        const nodes = new Map<string, MeasuredNode>();
-        for (let i = 0; i < 9; i += 1) {
-            const id = `s${i}`;
-            nodes.set(id, {
-                ...stubNode(id),
-                pipelineOrderKey: String(i).padStart(4, "0"),
-            });
-        }
-        const positions = layoutLayeredDag(nodes, [], "LR", undefined, false);
-        expect(positions.get("s0")!.y).toBe(positions.get("s8")!.y);
-        expect(positions.get("s0")!.x).toBeLessThan(positions.get("s4")!.x);
-        expect(positions.get("s4")!.x).toBeLessThan(positions.get("s8")!.x);
     });
 
     it("layoutLayeredDag wraps long pipelines into a snake grid", () => {

@@ -24,7 +24,13 @@ import {
 
 function parseFlowLayout(searchParams: URLSearchParams): GraphFlowLayout {
     const layout = searchParams.get("layout");
-    if (layout === "snake" || layout === "horizontal" || layout === "vertical") {
+    if (
+        layout === "snake" ||
+        layout === "horizontal" ||
+        layout === "vertical" ||
+        layout === "horizontal_compact" ||
+        layout === "vertical_compact"
+    ) {
         return layout;
     }
     // Legacy `direction=` links.
@@ -267,7 +273,9 @@ export function GraphPage() {
                             options={[
                                 { label: "Zigzag", value: "snake" },
                                 { label: "Horizontal", value: "horizontal" },
+                                { label: "H Compact", value: "horizontal_compact" },
                                 { label: "Vertical", value: "vertical" },
+                                { label: "V Compact", value: "vertical_compact" },
                             ]}
                             onChange={(value) => setFlowLayout(String(value))}
                         />

@@ -1,5 +1,5 @@
 import type { LabelGraphNode, LabelGraphPayload, LabelSegment } from "../../../types/ops";
-import { layoutLabelGraph, normalizeLabelGraphHierarchy } from "./labelGraph";
+import { edgePath, layoutLabelGraph, normalizeLabelGraphHierarchy } from "./labelGraph";
 
 const segment = (labelId: string, order: number): LabelSegment => ({
     label_id: labelId,
@@ -109,4 +109,59 @@ test("preserves interleaved lanes and places their group before tied labels", ()
 
     expect(interleaved?.interleavedLabelIds).toEqual(["extract", "transform"]);
     expect(interleaved?.x).toBeLessThan(dataModel?.x ?? Number.POSITIVE_INFINITY);
+});
+
+test("backward label edges use wrap-around routing", () => {
+    const payload: LabelGraphPayload = {
+        label_key: "flow",
+        nodes: [
+            labelNode("on-demand", 0),
+            labelNode("regular", 1),
+            labelNode("eval", 2),
+        ],
+        edges: [
+            {
+                id: "regular->on-demand",
+                source: "regular",
+                target: "on-demand",
+                kind: "order",
+                visible_by_default: true,
+            },
+            {
+                id: "regular->eval",
+                source: "regular",
+                target: "eval",
+                kind: "order",
+                visible_by_default: true,
+            },
+            {
+                id: "eval->on-demand",
+                source: "eval",
+                target: "on-demand",
+                kind: "order",
+                visible_by_default: true,
+            },
+        ],
+        containments: [],
+        shared_relations: [],
+        interleavings: [],
+    };
+
+    const layout = layoutLabelGraph(payload, "compact");
+    const back = layout.orderEdges.find((e) => e.id === "eval->on-demand");
+    const forward = layout.orderEdges.find((e) => e.id === "regular->eval");
+    const leftward = layout.orderEdges.find((e) => e.id === "regular->on-demand");
+
+    expect(back?.wrapAround).toBe(true);
+    expect(leftward?.wrapAround).toBe(true);
+    expect(forward?.wrapAround).toBeFalsy();
+
+    const wrap = edgePath(back!.x1, back!.y1, back!.x2, back!.y2, true);
+    expect(wrap).toContain("Q");
+    // Wrap arc must sit inside the canvas (not flush/clipped on top or left).
+    const loopTop = Math.min(back!.y1, back!.y2) - 48;
+    expect(loopTop).toBeGreaterThanOrEqual(28);
+    const leftStub = back!.x2 - 24;
+    expect(leftStub).toBeGreaterThanOrEqual(12);
+    expect(wrap).toMatch(/M \d/);
 });

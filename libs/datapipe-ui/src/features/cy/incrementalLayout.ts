@@ -675,9 +675,14 @@ function computeRanks(
     nodes: Map<string, MeasuredNode>,
     renderEdges: LayoutEdge[],
     rankEdges?: LayoutEdge[],
+    preferChronology = true,
 ): Map<string, number> {
-    const chrono = chronologicalRanks(nodes);
-    if (chrono) return chrono;
+    // Snake (wrapped LR) keeps pipeline chronology. Flat horizontal / vertical
+    // use dependency depth so parallel sources share a column (prototype lanes).
+    if (preferChronology) {
+        const chrono = chronologicalRanks(nodes);
+        if (chrono) return chrono;
+    }
     const edgesForRank = rankEdges ?? buildRankEdges(nodes, renderEdges);
     return densifyRanks(longestPathRanks(nodes, edgesForRank));
 }
@@ -864,13 +869,15 @@ function placeLayeredLrFlat(
 
 /**
  * Deterministic layered layout (top-to-bottom or left-to-right).
- * Layers follow pipeline chronology when order keys exist (inputs → step →
- * outputs per step); within-layer order uses Sugiyama-style barycenter
- * crossing minimization so parallel chains stack vertically.
+ *
+ * When `preferChronology` is true (snake / horizontal / vertical): layers follow
+ * pipeline order keys when present (inputs → step → outputs per step).
+ * When false (compact H/V): layers follow dependency depth (longest-path) so
+ * parallel sources stack in one column — matching the stage-lane prototype.
  *
  * LR + wrapRows: snake grid (even L→R, odd R→L).
- * LR without wrap: one long horizontal ribbon.
- * TB: top-to-bottom layers (no row wrap).
+ * LR without wrap / TB: flat layered ribbon / stack.
+ * Within-layer order uses Sugiyama-style barycenter crossing minimization.
  */
 export function layoutLayeredDag(
     nodes: Map<string, MeasuredNode>,
@@ -878,11 +885,12 @@ export function layoutLayeredDag(
     rankDir: "TB" | "LR" = "TB",
     rankEdges?: LayoutEdge[],
     wrapRows = true,
+    preferChronology = true,
 ): Map<string, BBox> {
     const ids = sortIds(Array.from(nodes.keys()));
     if (!ids.length) return new Map();
 
-    const rank = computeRanks(nodes, edges, rankEdges);
+    const rank = computeRanks(nodes, edges, rankEdges, preferChronology);
 
     const ranks = new Map<number, string[]>();
     ids.forEach((id) => {
@@ -984,6 +992,7 @@ export function layoutInnerGraph(
     pipelineOrder: string[] = [],
     rankDir: "TB" | "LR" = "TB",
     wrapRows = true,
+    preferChronology = true,
 ): { positions: Map<string, BBox>; contentBBox: BBox } {
     void wrapRows;
     // Expanded-meta children share a parent prefix (`0001.0000`, `0001.0001`, …).
@@ -998,7 +1007,7 @@ export function layoutInnerGraph(
     // Match the outer graph orientation so expanded metas don't flip axis mid-pipeline.
     // Never nest a zigzag inside the blue frame (outer snake already wraps).
     const positions = hasInternalEdges
-        ? layoutLayeredDag(layoutNodes, edges, rankDir, rankEdges, false)
+        ? layoutLayeredDag(layoutNodes, edges, rankDir, rankEdges, false, preferChronology)
         : layoutVerticalStack(
               layoutNodes,
               pipelineOrder.length ? pipelineOrder : sortIds(Array.from(layoutNodes.keys())),
@@ -1350,6 +1359,7 @@ export function expandGroupInLayout(
     rankDir: "TB" | "LR",
     pipelineOrder: string[] = [],
     wrapRows = true,
+    preferChronology = true,
 ): GraphLayout {
     void wrapRows;
     const next = cloneLayout(layout);
@@ -1386,6 +1396,7 @@ export function expandGroupInLayout(
         // outer snake corridor. Inners stay a single strip along the outer axis
         // so expand grows along the flow and downstream nodes shift further.
         false,
+        preferChronology,
     );
     const expandedSize = {
         w: contentBBox.w + GROUP_PADDING.left + GROUP_PADDING.right,
@@ -1495,6 +1506,7 @@ function planExpandedGroup(
     rankDir: "TB" | "LR",
     pipelineOrder: string[],
     _wrapRows = true,
+    preferChronology = true,
 ): ExpandedGroupPlan | null {
     const members = getGroupMembers(nodes, groupId);
     if (!members.size) return null;
@@ -1523,6 +1535,7 @@ function planExpandedGroup(
         rankDir,
         // Flat strip along the outer axis — see expandGroupInLayout.
         false,
+        preferChronology,
     );
     return {
         size: {
@@ -1581,6 +1594,7 @@ export function buildCollapsedLayout(
     rankDir: "TB" | "LR",
     pipelineOrders: Map<string, string[]> = new Map(),
     wrapRows = true,
+    preferChronology = true,
 ): GraphLayout {
     const layout: GraphLayout = new Map();
     const edgeList = edgesToList(edges);
@@ -1597,6 +1611,7 @@ export function buildCollapsedLayout(
             rankDir,
             pipelineOrders.get(groupId) ?? [],
             wrapRows,
+            preferChronology,
         );
         if (plan) plans.set(groupId, plan);
     });
@@ -1662,6 +1677,7 @@ export function buildCollapsedLayout(
         rankDir,
         buildRankEdges(layoutNodes, outerEdges),
         wrapRows,
+        preferChronology,
     );
     const snakeRows = getSnakeRowsForPositions(positions);
     layoutNodes.forEach((node, id) => {

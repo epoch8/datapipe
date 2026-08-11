@@ -30,25 +30,17 @@ function shouldReplaceTableOrder(
     return nextOrderKey.localeCompare(currentOrderKey) < 0;
 }
 
-/** Prefer marking an existing hop as sequential; otherwise add a synthetic next-step hop. */
+/** Always add a dedicated chronology hop — never restyle an existing data edge. */
 function ensureSequentialEdge(
     edges: Set<Cytoscape.EdgeDataDefinition>,
     source: string,
     target: string,
     extra: Partial<Cytoscape.EdgeDataDefinition> = {},
 ): void {
-    let found: Cytoscape.EdgeDataDefinition | null = null;
     for (const edge of Array.from(edges)) {
-        if (edge.source === source && edge.target === target) {
-            found = edge;
-            break;
+        if (edge.source === source && edge.target === target && edge.sequential) {
+            return;
         }
-    }
-    if (found) {
-        if (found.sequential) return;
-        edges.delete(found);
-        edges.add({ ...found, sequential: true, ...extra });
-        return;
     }
     edges.add({ source, target, sequential: true, synthetic: true, ...extra });
 }

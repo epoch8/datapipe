@@ -149,10 +149,16 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     },
     {
         // Chronology spine: next pipeline step (not a data dependency).
+        // Route upward so the dashed hop clears mid-height data taxi edges.
         selector: "edge[sequential]",
         style: {
+            "curve-style": "taxi",
+            "taxi-direction": "upward",
+            "taxi-turn": 48,
+            "taxi-turn-min-distance": 36,
             width: 2.4,
-            "line-style": "solid",
+            "line-style": "dashed",
+            "line-dash-pattern": [8, 6],
             "line-color": edgeColors.sequential,
             "target-arrow-color": edgeColors.sequential,
             "target-arrow-shape": "chevron",
@@ -170,6 +176,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
             "text-border-opacity": 0.35,
             "text-rotation": "autorotate",
             "z-index": 2,
+            "source-endpoint": "outside-to-node",
+            "target-endpoint": "outside-to-node",
         },
     },
     {
@@ -189,6 +197,9 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
     {
         selector: 'edge[sequential][layoutMode = "columns"]',
         style: {
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": [-72],
+            "control-point-weights": [0.5],
             "target-arrow-shape": "chevron",
             "arrow-scale": 1.4,
             width: 2.2,
