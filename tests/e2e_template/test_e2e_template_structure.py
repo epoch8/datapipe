@@ -19,7 +19,6 @@ def test_detection_template_builds_expected_pipeline():
     assert len(detection_pipeline.steps) >= 15
     assert {
         ("stage", "annotation"),
-        ("stage", "ls-sync"),
         ("stage", "train"),
         ("stage", "train-prepare"),
         ("stage", "inference"),
@@ -37,7 +36,6 @@ def test_keypoints_template_builds_expected_pipeline():
     assert len(keypoints_pipeline.steps) >= 15
     assert {
         ("stage", "annotation"),
-        ("stage", "ls-sync"),
         ("stage", "train"),
         ("stage", "train-prepare"),
         ("stage", "inference"),
@@ -54,12 +52,15 @@ def test_detection_template_catalog_has_expected_tables():
     assert {
         "s3_images",
         "detection_model",
-        "detection_predictions",
+        "best_detection_model",
+        "detection_prediction",
+        "ls_detection_prediction",
+        "sec__image_without_ground_truth",
         "images_with_predictions",
         "image__ground_truth",
         "image__subset",
         "local_images",
-        "fiftyone_predictions",
+        "fiftyone_predictions_from_best_model",
         "fiftyone_annotations",
     }.issubset(catalog.catalog)
 
@@ -71,13 +72,16 @@ def test_keypoints_template_catalog_has_expected_tables():
     catalog = load_template_module("keypoints", "data").catalog
     assert {
         "s3_images",
-        "keypoints_model",
-        "keypoints_predictions",
+        "keypoints_model_train",
+        "best_keypoints_model",
+        "keypoints_prediction_train",
+        "ls_keypoints_prediction",
+        "sec__image_without_ground_truth",
         "images_with_predictions",
         "image__ground_truth",
         "image__subset",
         "local_images",
-        "fiftyone_predictions",
+        "fiftyone_predictions_from_best_model",
         "fiftyone_annotations",
     }.issubset(catalog.catalog)
 

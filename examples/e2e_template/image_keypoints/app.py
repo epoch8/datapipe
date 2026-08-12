@@ -4,18 +4,21 @@ from datapipe.compute import DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
+from datapipe.types import Required
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.keypoints.freeze import KeypointsFreezeDataset
 from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
-from datapipe_ml.tasks.keypoints.metrics import CountMetrics_FrozenDataset_KeypointsModel
+from datapipe_ml.tasks.keypoints.metrics import CountMetrics_Subset_KeypointsModel
 from datapipe_ml.tasks.keypoints.train.yolov8 import Train_YoloV8_KeypointsModel, YoloV8_TrainingConfig
 
 import steps
 from config import (
     DATAPIPE_DIR,
+    KEYPOINTS_MODEL_CONFIG,
+    CLASSES_TO_KEEP,
     datapipe_tmp_folder,
     DBCONN,
     label_studio_storages,
@@ -23,6 +26,9 @@ from config import (
     LABEL_STUDIO_API_KEY,
     LABEL_STUDIO_URL,
     PROJECT_NAME,
+    gpu_executor,
+    metrics_executor,
+    parallel_io_executor,
 )
 from data import catalog
 
@@ -35,34 +41,64 @@ pipeline = Pipeline(
         ),
         BatchGenerate(
             steps.list_keypoints_models,
-            outputs=["keypoints_model"],
+            outputs=["keypoints_model_train"],
+            labels=[("stage", "annotation")],
+            delete_stale=False
+        ),
+        BatchTransform(
+            func=steps.get_images_without_ground_truth,
+            inputs=["s3_images", "image__ground_truth"],
+            outputs=["sec__image_without_ground_truth"],
+            transform_keys=["image_name"],
+            kwargs=dict(primary_keys=["image_name"]),
             labels=[("stage", "annotation")],
         ),
         BatchTransform(
-            func=steps.untracked_inference,
-            inputs=["s3_images"],
-            outputs=["keypoints_predictions"],
-            transform_keys=["image_name"],
+            func=steps.resolve_best_keypoints_model,
+            inputs=["keypoints_model_train", "best_keypoints_model"],
+            outputs=["best_keypoints_model"],
+            transform_keys=["keypoints_model_id"],
             kwargs=dict(
-                best_model_table="best_keypoints_model",
-                trained_models_table="keypoints_model_train",
-                fallback_model_table="keypoints_model",
                 model_id_column="keypoints_model_id",
-                primary_keys=["image_name"],
-                image__image_path__name="image_url",
-                bbox_id__name=None,
-                batch_size_default=1,
-                keypoints_model_primary_keys=["keypoints_model_id"],
+                fallback_model_id=KEYPOINTS_MODEL_CONFIG["keypoints_model_id"],
             ),
             labels=[("stage", "annotation")],
         ),
+        Inference_KeypointsModel(
+            input__image=["s3_images", "sec__image_without_ground_truth"],
+            input__keypoints_model=["keypoints_model_train", "best_keypoints_model"],
+            output__keypoints_prediction="ls_keypoints_prediction_raw",
+            primary_keys=["image_name"],
+            bbox_id__name=None,
+            image__image_path__name="image_url",
+            batch_size_default=1,
+            executor_config=gpu_executor(),
+            labels=[("stage", "annotation")],
+        ),
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["ls_keypoints_prediction_raw"],
+            outputs=["ls_keypoints_prediction"],
+            transform_keys=["image_name", "keypoints_model_id"],
+            labels=[("stage", "annotation")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="keypoints_model_id",
+            ),
+        ),
         BatchTransform(
             func=steps.keypoints_to_ls_prediction,
-            inputs=["keypoints_predictions", "s3_images"],
+            inputs=["ls_keypoints_prediction", "s3_images"],
             outputs=["images_with_predictions"],
-            transform_keys=["image_name"],
+            transform_keys=["image_name", "keypoints_model_id"],
             labels=[("stage", "annotation")],
-            kwargs=dict(image__image_path__name="image_url", hide_bboxes=True),
+            kwargs=dict(
+                image__image_path__name="image_url",
+                primary_keys=["image_name"],
+                model_keys=["keypoints_model_id"],
+                hide_bboxes=True,
+            ),
         ),
         LabelStudioUploadTasks(
             input__item="s3_images",
@@ -77,24 +113,26 @@ pipeline = Pipeline(
             columns=["image_url"],
             storages=label_studio_storages(),
             chunk_size=100,
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            labels=[("stage", "annotation")],
         ),
         LabelStudioUploadPredictions(
             input__item__has__prediction="images_with_predictions",
             input__label_studio_project_task="ls_task",
+            input__best_model="best_keypoints_model",
             output__label_studio_project_prediction="ls_predictions",
+            output__label_studio_current_model_version="ls_current_model_version",
             ls_url=LABEL_STUDIO_URL,
             api_key=LABEL_STUDIO_API_KEY,
             project_identifier=PROJECT_NAME,
-            primary_keys=["image_name"],
-            model_version__column="keypoints_model_id",
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            primary_keys=["image_name", "keypoints_model_id"],
+            model_keys=["keypoints_model_id"],
+            labels=[("stage", "annotation")],
         ),
         BatchTransform(
             func=steps.parse_annotations_from_label_studio,
             inputs=["ls_annotations"],
             outputs=["image__ground_truth"],
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            labels=[("stage", "annotation")],
             transform_keys=["image_name"],
         ),
         BatchTransform(
@@ -116,18 +154,20 @@ pipeline = Pipeline(
             output__keypoints_frozen_dataset="keypoints_frozen_dataset",
             output__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
             working_dir=str(DATAPIPE_DIR),
-            min_within_time="1d",
+            min_within_time="15min",
             min_delta=10,
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
             labels=[("stage", "train"), ("stage", "train-prepare")],
-            create_table=True,
         ),
         Train_YoloV8_KeypointsModel(  # type: ignore[list-item]
             input__keypoints_frozen_dataset="keypoints_frozen_dataset",
             input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__yolov8_custom_train_config="yolov8_custom_train_config",
+            output__keypoints_training_request="keypoints_training_request",
+            output__model_keypoints_size_for_resize="model_keypoints_size_for_resize",
             output__keypoints_size_for_resize="keypoints_size_for_resize",
             output__keypoints_frozen_dataset__resized_image_file="keypoints_frozen_dataset__resized_image_file",
             output__keypoints_frozen_dataset__yolo_txt="keypoints_frozen_dataset__yolo_txt",
@@ -147,7 +187,6 @@ pipeline = Pipeline(
                     batch=8,
                     epochs=30,
                     exist_ok=True,
-                    save_period=1,
                 )
             ],
             sync_config=TrainingSyncConfig(
@@ -168,35 +207,52 @@ pipeline = Pipeline(
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train")],
-            create_table=True,
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
+            prepare_data_executor_config=parallel_io_executor(),
         ),
         Inference_KeypointsModel(
-            input__image="s3_images",
+            input__image=["s3_images", "image__subset"],
             input__keypoints_model="keypoints_model_train",
-            output__keypoints_prediction="keypoints_prediction_train",
+            output__keypoints_prediction="keypoints_prediction_train_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
             labels=[("stage", "train"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
-            create_table=True,
+            executor_config=gpu_executor(),
+            filters={"subset_id": "val"},
         ),
-        CountMetrics_FrozenDataset_KeypointsModel(
-            input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
-            input__keypoints_model="keypoints_model_train",
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["keypoints_prediction_train_raw"],
+            outputs=["keypoints_prediction_train"],
+            transform_keys=["image_name", "keypoints_model_id"],
+            labels=[("stage", "train"), ("stage", "inference")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="keypoints_model_id",
+            ),
+        ),
+        CountMetrics_Subset_KeypointsModel(
+            input__image__ground_truth="image__ground_truth",
+            input__subset__has__image="image__subset",
             input__keypoints_prediction="keypoints_prediction_train",
-            output__keypoints_model__metrics_on__frozen_dataset="keypoints_model_train__metrics_on_frozen_dataset",
+            output__keypoints_model__metrics_on__image="keypoints_model_train__metrics_on_image",
+            output__keypoints_model__metrics_by_cls_on__subset="keypoints_model_train__metrics_by_cls_on_subset",
+            output__keypoints_model__metrics_on__subset="keypoints_model_train__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
+            keypoints_model_primary_keys=["keypoints_model_id"],
             labels=[("stage", "train"), ("stage", "count-metrics")],
             minimum_iou=0.5,
-            create_table=True,
+            executor_config=metrics_executor(),
+            # filters={"subset_id": "val"},
         ),
         FindBestModel(
             input__model="keypoints_model_train",
-            input__model__metrics_on__subset="keypoints_model_train__metrics_on_frozen_dataset",
+            input__model__metrics_on__subset="keypoints_model_train__metrics_on_subset",
             output__attr__model__is_best="attr__keypoints_model__is_best",
             output__best_model="best_keypoints_model",
             subset_id="val",
@@ -213,6 +269,7 @@ pipeline = Pipeline(
             outputs=["local_images"],
             transform_keys=["image_name"],
             labels=[("stage", "fiftyone")],
+            executor_config=parallel_io_executor(),
             kwargs=dict(
                 image__image_path__name="image_url",
                 image__local_image_path__name="local_path",
@@ -220,20 +277,39 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone,
-            inputs=["local_images", "keypoints_prediction_train"],
-            outputs=["fiftyone_predictions"],
+            inputs=["local_images"],
+            outputs=["fiftyone_images"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_to_fiftyone,
-            inputs=["local_images", "image__ground_truth"],
+            func=steps.publish_to_fiftyone_ground_truth,
+            inputs=["local_images", Required("image__ground_truth"), Required("image__subset")],
             outputs=["fiftyone_annotations"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_predictions_from_best_model,
+            inputs=["local_images", "keypoints_prediction_train", Required("best_keypoints_model")],
+            outputs=["fiftyone_predictions_from_best_model"],
+            transform_keys=["image_name", "keypoints_model_id"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                model_keys=["keypoints_model_id"],
+                image__image_path__name="local_path",
+            ),
         ),
     ]
 )
 
-ds = DataStore(DBCONN, create_meta_table=True)
+
+ds = DataStore(DBCONN)
 app = DatapipeApp(ds, catalog, pipeline)
