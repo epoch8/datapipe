@@ -57,6 +57,7 @@ catalog = Catalog(
                     Column("labels", JSON),
                     Column("prediction__detection_scores", JSON),
                     Column("prediction__keypoints_scores", JSON),
+                    Column("keypoints_labels", JSON),
                 ],
             )
         ),
@@ -72,6 +73,7 @@ catalog = Catalog(
                     Column("labels", JSON),
                     Column("prediction__detection_scores", JSON),
                     Column("prediction__keypoints_scores", JSON),
+                    Column("keypoints_labels", JSON),
                 ],
             )
         ),
