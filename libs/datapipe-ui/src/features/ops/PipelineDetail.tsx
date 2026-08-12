@@ -32,12 +32,12 @@ export function PipelineDetail({
     const [searchParams, setSearchParams] = useSearchParams();
     const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
     const [error, setError] = React.useState<unknown>(null);
-    const labelKeyParam = searchParams.get("label_key") || DEFAULT_LABEL_KEY;
+    const labelKeyParam = searchParams.get("label_key");
 
     const load = React.useCallback(() => {
         if (!id) return;
         opsApi
-            .getPipeline(id, { label_key: labelKeyParam })
+            .getPipeline(id, labelKeyParam ? { label_key: labelKeyParam } : undefined)
             .then(setDetail)
             .catch((e) => setError(e));
     }, [id, labelKeyParam]);

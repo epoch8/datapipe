@@ -21,12 +21,17 @@ export function Overview() {
     const [runTotal, setRunTotal] = React.useState(0);
     const [countsByStatus, setCountsByStatus] = React.useState<Record<string, number>>({});
     const [error, setError] = React.useState<unknown>(null);
-    const labelKey = searchParams.get("label_key") || "stage";
+    const labelKeyParam = searchParams.get("label_key");
 
     const load = React.useCallback(() => {
         if (!pipelineId) return;
         opsApi
-            .getPipeline(pipelineId, { label_key: labelKey })
+            // Omit label_key when unset so the API picks the pipeline's preferred key
+            // (stage if present, otherwise most common — e.g. entity/layer).
+            .getPipeline(
+                pipelineId,
+                labelKeyParam ? { label_key: labelKeyParam } : undefined,
+            )
             .then(setDetail)
             .catch((e) => setError(e));
         opsApi
@@ -36,7 +41,7 @@ export function Overview() {
                 setCountsByStatus(res.counts_by_status ?? {});
             })
             .catch(() => undefined);
-    }, [pipelineId, labelKey]);
+    }, [pipelineId, labelKeyParam]);
 
     React.useEffect(() => {
         opsApi
@@ -82,7 +87,7 @@ export function Overview() {
                         stages={detail.stages}
                         availableLabelKeys={detail.available_label_keys}
                         labelGraph={detail.label_graph}
-                        defaultLabelKey={labelKey}
+                        defaultLabelKey={labelKeyParam ?? detail.label_graph?.label_key}
                         onStart={runStage}
                     />
                 }

@@ -269,7 +269,9 @@ export function PipelineLabelGraphOverview({
         isSharedVisible(b, selectedLabel, hoveredNodeId),
     );
 
-    if (!stages.length) return null;
+    // Prefer label_graph nodes; `stages` is only the legacy stage=* summary and may
+    // be empty when the pipeline uses another label key (entity/layer/group/…).
+    if (!payload.nodes.length) return null;
 
     const containerNodes = layout.nodes.filter((n) => n.kind === "container");
     const interleavedContainers = layout.nodes.filter((n) => n.kind === "interleaved-group");

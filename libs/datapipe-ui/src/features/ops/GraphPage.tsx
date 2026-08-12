@@ -29,7 +29,7 @@ export function GraphPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const stage = searchParams.get("stage");
-    const labelKeyParam = searchParams.get("label_key") || DEFAULT_LABEL_KEY;
+    const labelKeyParam = searchParams.get("label_key");
     const flowLayout = parseFlowLayout(searchParams);
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(null);
     const [detail, setDetail] = React.useState<PipelineDetail | null>(null);
@@ -67,7 +67,10 @@ export function GraphPage() {
     const loadDetail = React.useCallback(() => {
         if (!pipelineId) return;
         opsApi
-            .getPipeline(pipelineId, { label_key: labelKeyParam })
+            .getPipeline(
+                pipelineId,
+                labelKeyParam ? { label_key: labelKeyParam } : undefined,
+            )
             .then(setDetail)
             .catch((e) => setError(e));
     }, [pipelineId, labelKeyParam]);
@@ -81,7 +84,7 @@ export function GraphPage() {
     }, [loadDetail]);
 
     const loadStageRuns = React.useCallback(() => {
-        if (!stage || !pipelineId || labelKeyParam !== DEFAULT_LABEL_KEY) {
+        if (!stage || !pipelineId || labelKey !== DEFAULT_LABEL_KEY) {
             setStageRuns([]);
             return;
         }
@@ -89,21 +92,21 @@ export function GraphPage() {
             .resolveStageRecentRuns(pipelineId, stage)
             .then((response) => setStageRuns(response.recent_runs))
             .catch((e) => setError(e));
-    }, [stage, pipelineId, labelKeyParam]);
+    }, [stage, pipelineId, labelKey]);
 
     React.useEffect(() => {
         if (!pipelineId) return undefined;
         const tick = () => {
-            if (stage && labelKeyParam === DEFAULT_LABEL_KEY) loadStageRuns();
+            if (stage && labelKey === DEFAULT_LABEL_KEY) loadStageRuns();
             else loadDetail();
         };
         tick();
         const timer = setInterval(tick, getRefreshIntervalMs());
         return () => clearInterval(timer);
-    }, [pipelineId, stage, labelKeyParam, loadStageRuns, loadDetail]);
+    }, [pipelineId, stage, labelKey, loadStageRuns, loadDetail]);
 
     const recentRuns =
-        stage && labelKeyParam === DEFAULT_LABEL_KEY
+        stage && labelKey === DEFAULT_LABEL_KEY
             ? stageRuns
             : (detail?.recent_runs ?? []);
 
@@ -168,7 +171,7 @@ export function GraphPage() {
                 const stageName = labels.find(([key]) => key === "stage")?.[1];
                 const trigger = stageName ? `api:stage:${stageName}` : "api:pipeline";
                 const entry = { ...started, trigger };
-                if (stageName === stage && labelKeyParam === DEFAULT_LABEL_KEY) {
+                if (stageName === stage && labelKey === DEFAULT_LABEL_KEY) {
                     setStageRuns((current) => prependRecentRun(current, entry));
                 }
                 if (!stage) {
