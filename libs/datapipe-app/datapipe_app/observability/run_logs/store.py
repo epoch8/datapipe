@@ -222,10 +222,17 @@ class ClickHouseRunLogStore(RunLogStore):
         url: str,
         *,
         table_name: str,
+        create_table: bool = False,
     ) -> ClickHouseRunLogStore:
+        """Build a store from a ClickHouse URL.
+
+        ``create_table`` defaults to False so constructing the backend does
+        not run DDL — use Alembic / ``ensure_table()`` / ``create_table=True``.
+        """
         client = _create_clickhouse_client(url)
         store = cls(client, table_name=table_name)
-        store.ensure_table()
+        if create_table:
+            store.ensure_table()
         return store
 
     def ensure_table(self) -> None:

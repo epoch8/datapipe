@@ -196,6 +196,29 @@ def test_warn_if_run_logs_backend_missing(caplog):
     assert any(MISSING_RUN_LOGS_BACKEND_WARNING[:40] in record.message for record in caplog.records)
 
 
+def test_clickhouse_from_url_does_not_create_table_by_default(fake_clickhouse_client, monkeypatch):
+    monkeypatch.setattr(
+        "datapipe_app.observability.run_logs.store._create_clickhouse_client",
+        lambda _url: fake_clickhouse_client,
+    )
+
+    store = ClickHouseRunLogStore.from_url(
+        "clickhouse://default:@localhost:8123/default",
+        table_name=DEFAULT_RUN_LOGS_TABLE_NAME,
+    )
+    assert fake_clickhouse_client.commands == []
+
+    RunLogsBackend.clickhouse("clickhouse://default:@localhost:8123/default")
+    assert fake_clickhouse_client.commands == []
+
+    RunLogsBackend.clickhouse(
+        "clickhouse://default:@localhost:8123/default",
+        create_table=True,
+    )
+    assert len(fake_clickhouse_client.commands) == 1
+    assert fake_clickhouse_client.commands[0].startswith("CREATE TABLE IF NOT EXISTS")
+
+
 def test_warn_if_run_logs_backend_missing_skips_with_clickhouse(caplog, monkeypatch):
     caplog.set_level("WARNING")
     monkeypatch.setattr(

@@ -28,13 +28,25 @@ class RunLogsBackend:
         url: str,
         *,
         table_name: str = DEFAULT_RUN_LOGS_TABLE_NAME,
+        create_table: bool = False,
     ) -> RunLogsBackend:
+        """Connect to ClickHouse for run logs.
+
+        ``create_table`` defaults to False — create the table via Alembic
+        (or call ``store.ensure_table()`` / pass ``create_table=True``).
+        """
         if not is_clickhouse_url(url):
             raise ValueError(
                 f"Unsupported run logs URL scheme: {url!r}. "
                 "Only ClickHouse URLs are supported (clickhouse://...)."
             )
-        return cls(ClickHouseRunLogStore.from_url(url, table_name=table_name))
+        return cls(
+            ClickHouseRunLogStore.from_url(
+                url,
+                table_name=table_name,
+                create_table=create_table,
+            )
+        )
 
     @classmethod
     def memory(cls) -> RunLogsBackend:

@@ -43,6 +43,8 @@ Ops API: `/api/v1alpha3/runs`, `/pipelines/{id}`, spec-driven `/ops-specs/*`, ca
 Optional env: `DATAPIPE_APP_PIPELINE_ID` (default pipeline id for single-pipeline apps).
 Observability DDL is **off by default** — use Alembic / `datapipe db create-all`, or set
 `DATAPIPE_APP_CREATE_OBSERVABILITY_TABLES=true` / `DatapipeAPI(..., create_observability_tables=True)`.
+ClickHouse run-log tables are also **off by default** (`RunLogsBackend.clickhouse(..., create_table=False)`);
+create them with Alembic or `create_table=True` / `store.ensure_table()`.
 
 ## Makefile
 

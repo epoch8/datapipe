@@ -25,6 +25,10 @@
   (`DATAPIPE_APP_RECORD_CLI_RUNS`, `--no-callbacks`)
 * Buffered run log capture; optional ClickHouse backend
   (`RunLogsBackend.clickhouse`, extra `[clickhouse]`)
+* ClickHouse run-log DDL is **off by default**
+  (`create_table=False` on `RunLogsBackend.clickhouse` /
+  `ClickHouseRunLogStore.from_url`); use Alembic /
+  `store.ensure_table()` / `create_table=True`
 * Entry points wired into core CLI:
   `datapipe.pipeline_init`, `datapipe.run_callbacks`, `datapipe.db_create_all`
 * Settings: `DATAPIPE_APP_PIPELINE_ID`, `DATAPIPE_APP_SHOW_STEP_STATUS`,
